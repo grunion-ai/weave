@@ -188,6 +188,11 @@ export function loaderDraw({ c1, c2, sw = 3.5, id = "dr", dur = 2 }) {
     `aria-label="Loading"><defs>${defs}</defs>${body}</svg>`;
 }
 
+// The shipped loaders run at this period. The UI imports the number (via the
+// data-cycle attribute it is stamped into) so "let it finish one cycle" is one
+// fact, not two that can drift.
+export const LOADER_CYCLE_MS = 2000;
+
 export const LOADERS = {
   travel: { label: "Travel — endless rope through a fading window", fn: loaderTravel },
   twist: { label: "Twist-in — flat strands twist into the mark", fn: loaderTwist },
@@ -231,6 +236,9 @@ export const VARIANTS = [
   { file: "weave-favicon.svg",         svg: weaveSvg({ c1: PALETTE.blue, c2: PALETTE.blue, sw: 4.5 }) },
   // app icon (decision 1A)
   { file: "weave-app-icon.svg",        svg: appIconSvg() },
+  // loaders (decision 7): weave-on, the same strand pairs as the marks
+  { file: "weave-loader-dark.svg",     svg: loaderSvg("draw", { c1: PALETTE.blue, c2: PALETTE.sky, id: "ld" }) },
+  { file: "weave-loader-light.svg",    svg: loaderSvg("draw", { c1: PALETTE.blue, c2: PALETTE.ink, id: "ll" }) },
   // lockups (decisions 3A + 4B)
   { file: "weave-lockup-dark.svg",     svg: lockupSvg(PALETTE.cream) },
   { file: "weave-lockup-light.svg",    svg: lockupSvg(PALETTE.ink) },

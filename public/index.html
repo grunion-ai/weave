@@ -33,6 +33,11 @@
     <nav id="nav"></nav>
   </aside>
   <main id="main"></main>
+  <!-- Page loader. A sibling of <main>, not a child, so a page render's
+       replaceChildren() cannot wipe it mid-wait. Filled by initPageLoader()
+       with both themed ropes inlined — inline SVG, because only that exposes
+       the clock control that makes "finish the cycle" exact. -->
+  <div id="page-loader" hidden aria-hidden="true"></div>
 </div>
 <script src="/app.js"></script>
 </body>

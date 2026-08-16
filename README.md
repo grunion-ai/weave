@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="public/brand/weave-mark-light.svg" alt="weave logo" width="72">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/assets/png/weave-loader-dark.gif">
+    <img src="brand/assets/png/weave-loader-light.gif" alt="weave logo — two strands weaving into the mark" width="240">
+  </picture>
 </p>
 
 <h1 align="center">weave</h1>

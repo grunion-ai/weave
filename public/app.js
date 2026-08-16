@@ -1668,17 +1668,102 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+/* ---------- page loader ---------- */
+
+/* The weave-on rope (brand decision 7) covers every page-load wait.
+
+   Two rules, and they pull against each other:
+   - It must not tax fast navigation, so it only appears once a wait passes
+     LOADER_SHOW_AFTER_MS. Most route changes are local and never show it.
+   - Once it does appear it always finishes at least one whole cycle, so the
+     rope is never caught half-woven. Hiding therefore waits out the remainder
+     of the cycle it is in — which is a full cycle when it has only just
+     appeared, and rounds up to the next boundary when the wait ran long.
+
+   The SVGs are fetched and inlined rather than used as <img>: only an inline
+   SVG exposes setCurrentTime, and restarting the clock at show time is what
+   makes "one whole cycle" true rather than approximately true — an <img>
+   timeline free-runs from page load, so it would be at an arbitrary phase. */
+const LOADER_CYCLE_MS = 2000; // must match LOADER_CYCLE_MS in brand/build-logos.mjs
+const LOADER_SHOW_AFTER_MS = 200;
+const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, ready: false };
+
+async function initPageLoader() {
+  const host = $('#page-loader');
+  if (!host) return;
+  const pairs = [['mark-light', 'light'], ['mark-dark', 'dark']];
+  const svgs = await Promise.all(pairs.map(async ([cls, theme]) => {
+    const res = await fetch(`/brand/weave-loader-${theme}.svg`);
+    const wrap = el('span', { class: cls });
+    wrap.innerHTML = await res.text();
+    return wrap;
+  })).catch(() => null);
+  if (!svgs) return; // no loader is better than a bare wash
+  host.replaceChildren(...svgs);
+  loading.ready = true;
+}
+
+function showPageLoader() {
+  const host = $('#page-loader');
+  if (!host || !loading.ready) return;
+  loading.shownAt = Date.now();
+  host.hidden = false;
+  host.setAttribute('aria-hidden', 'false');
+  // Restart both clocks so the visible rope begins at the start of a weave.
+  for (const svg of host.querySelectorAll('svg')) svg.setCurrentTime(0);
+}
+
+function hidePageLoader() {
+  const host = $('#page-loader');
+  if (!host) return;
+  host.hidden = true;
+  host.setAttribute('aria-hidden', 'true');
+  loading.shownAt = 0;
+}
+
+/* Runs `work`, showing the loader if it takes long enough to be a wait. */
+async function withPageLoader(work) {
+  loading.depth += 1;
+  clearTimeout(loading.hideTimer);
+  loading.hideTimer = null;
+  if (!loading.shownAt && !loading.showTimer) {
+    loading.showTimer = setTimeout(() => {
+      loading.showTimer = null;
+      showPageLoader();
+    }, LOADER_SHOW_AFTER_MS);
+  }
+  try {
+    return await work();
+  } finally {
+    loading.depth -= 1;
+    if (loading.depth > 0) return; // a newer route is still in flight
+    if (loading.showTimer) { // finished before it ever appeared
+      clearTimeout(loading.showTimer);
+      loading.showTimer = null;
+      return;
+    }
+    if (!loading.shownAt) return;
+    const elapsed = Date.now() - loading.shownAt;
+    loading.hideTimer = setTimeout(hidePageLoader, LOADER_CYCLE_MS - (elapsed % LOADER_CYCLE_MS));
+  }
+}
+
 /* ---------- boot ---------- */
 
-function route() {
+function renderRoute() {
   const hash = location.hash || '#/';
   let m;
-  if ((m = hash.match(/^#\/trash\/([^/?]+)/))) showTrash(m[1]);
-  else if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)/))) showDatabase(m[1]);
-  else if ((m = hash.match(/^#\/space\/([^/?]+)/))) showSpace(m[1]);
-  else if (hash.startsWith('#/map')) showMap();
-  else if ((m = hash.match(/^#\/entity\/([^/?]+)/))) showEntity(m[1]);
-  else showHome();
+  if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
+  if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)/))) return showDatabase(m[1]);
+  if ((m = hash.match(/^#\/space\/([^/?]+)/))) return showSpace(m[1]);
+  if (hash.startsWith('#/map')) return showMap();
+  if ((m = hash.match(/^#\/entity\/([^/?]+)/))) return showEntity(m[1]);
+  return showHome();
+}
+
+// Every route change is a page-load wait, including the one boot performs.
+function route() {
+  return withPageLoader(renderRoute);
 }
 
 window.addEventListener('hashchange', route);
@@ -1832,7 +1917,9 @@ window.addEventListener('focus', async () => {
   route();
 });
 
-loadSchema().then(route);
+// The loader is fetched before the first route so boot's own wait can use it.
+initPageLoader();
+withPageLoader(() => loadSchema().then(renderRoute));
 wireSearchButton();
 buildWsRail();
 wireWsNew();

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rope, weaveSvg, VARIANTS, build, LOADERS, loaderSvg } from "./build-logos.mjs";
+import { rope, weaveSvg, VARIANTS, build, LOADERS, loaderSvg, LOADER_CYCLE_MS } from "./build-logos.mjs";
 
 test("rope(3,8) produces the selected h3 geometry", () => {
   const r = rope(3, 8);
@@ -174,4 +174,19 @@ test("morph loaders close the gap and hide the crossing as the rope flattens", (
     const over = svg.slice(svg.indexOf("</defs>")).match(/attributeName="opacity" values="([^"]+)"/)[1];
     assert.equal(over.split(";")[flat], "0", `${name}: crossing hidden at the flat frame`);
   }
+});
+
+test("the shipped loaders are the weave-on pair, matching the marks' strands", () => {
+  const files = VARIANTS.map(v => v.file);
+  for (const f of ["weave-loader-dark.svg", "weave-loader-light.svg"]) assert.ok(files.includes(f), `missing ${f}`);
+  const dark = VARIANTS.find(v => v.file === "weave-loader-dark.svg").svg;
+  const light = VARIANTS.find(v => v.file === "weave-loader-light.svg").svg;
+  assert.ok(dark.includes("#60a5fa"), "dark pairs blue + sky, like weave-mark-dark");
+  assert.ok(light.includes("#0c1b33"), "light pairs blue + ink, like weave-mark-light (decision 5B)");
+  for (const svg of [dark, light]) {
+    assert.ok(svg.includes('stroke-dashoffset'), "weave-on, not one of the morph variants");
+    assert.ok(svg.includes(`dur="${LOADER_CYCLE_MS / 1000}s"`), "runs at the published cycle");
+  }
+  assert.notEqual(dark.match(/id="(\w+)A"/)[1], light.match(/id="(\w+)A"/)[1],
+    "distinct mask ids so both can be inlined in one document");
 });

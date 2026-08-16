@@ -376,13 +376,18 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
    The threshold + one-full-cycle rules live in app.js — see pageLoader(). */
 #page-loader[hidden] { display: none; }
 #page-loader {
-  position: fixed; inset: 0 0 0 0; z-index: 40;
+  /* Above #ws-rail (60), which sets its own z-index to clear #main —
+     a page load washes the whole window, chrome included. */
+  position: fixed; inset: 0 0 0 0; z-index: 70;
   display: flex; align-items: center; justify-content: center;
   pointer-events: none;
-  background: color-mix(in srgb, var(--tblr-body-bg) 72%, transparent);
+  background: color-mix(in srgb, var(--tblr-body-bg) 94%, transparent);
   animation: loader-in .18s ease both;
 }
-#page-loader img { width: 72px; height: 72px; object-fit: contain; }
+/* The rope is inlined SVG with a viewBox and no width/height, so as a flex
+   item it has no intrinsic size and collapses to 0x0 unless sized here. */
+#page-loader .mark-light, #page-loader .mark-dark { width: 96px; height: 96px; }
+#page-loader svg { width: 100%; height: 100%; display: block; }
 #page-loader .mark-dark { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-light { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-dark { display: block; }
