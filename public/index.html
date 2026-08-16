@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weave</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;text y='.9em' font-size='90'&gt;🕸️&lt;/text&gt;&lt;/svg&gt;">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">🕸️ <strong>Weave</strong></div>
+    <input id="search" type="search" placeholder="Search entities…" autocomplete="off">
+    <div id="search-results" class="hidden"></div>
+    <nav id="nav"></nav>
+    <div class="sidebar-actions">
+      <button id="add-space" class="ghost">+ Space</button>
+      <button id="add-db" class="ghost">+ Database</button>
+    </div>
+  </aside>
+  <main id="main"></main>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
