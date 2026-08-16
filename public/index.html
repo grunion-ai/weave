@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weave</title>
+<link rel="stylesheet" href="/vendor/tabler.min.css">
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg">
+<link rel="alternate icon" href="/brand/favicon.ico">
+</head>
+<body>
+<div id="app">
+  <nav id="ws-rail" aria-label="Workspaces">
+    <a id="rail-weave" class="ws-icon ws-weave" href="/w/weave/" title="weave — docs, roadmap &amp; issues">
+      <img class="mark-light" src="/brand/weave-mark-light.svg" alt="weave">
+      <img class="mark-dark" src="/brand/weave-mark-dark.svg" alt="weave">
+    </a>
+    <button id="nav-expand" class="hidden" title="Expand sidebar" type="button">›</button>
+    <div id="ws-list"></div>
+    <button id="ws-new" class="ws-icon ws-new" title="New workspace" type="button">+</button>
+    <span class="rail-spacer"></span>
+    <button id="theme-toggle" class="ws-icon" title="Theme: auto" type="button"></button>
+  </nav>
+  <aside id="sidebar">
+    <div class="brand">
+      <span id="ws-name" class="ws-wordmark"></span>
+      <button id="nav-collapse" class="btn btn-sm btn-icon btn-ghost-secondary tiny" title="Collapse sidebar" type="button">‹</button>
+    </div>
+    <button id="search-btn" class="search-like" type="button">
+      <span class="search-label">Search…</span><kbd>⌘K</kbd>
+    </button>
+    <nav id="nav"></nav>
+  </aside>
+  <main id="main"></main>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

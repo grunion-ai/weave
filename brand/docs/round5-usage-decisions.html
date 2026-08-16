@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="kind" content="design-review">
+<meta name="generated-at" content="2026-08-16T17:31:06Z">
+<meta name="repo" content="weave">
+<meta name="branch" content="main">
+<title>weave — h3 usage decisions</title>
+<style>
+  :root{
+    --fg:#e0dcd4; --muted:#b4b8c4; --faint:#7e8394; --line:#1a2d54;
+    --bg:#0c1b33; --soft:#132444; --elev:#1a2d54;
+    --accent:#2563eb; --accent2:#60a5fa; --paper:#fafaf8;
+    --mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;
+    padding:0 24px 64px}
+  .wrap{max-width:960px;margin:0 auto}
+  header.plan-header{margin:24px 0 8px}
+  .topbar{background:#060f1f;border:1px solid var(--line);border-radius:8px;
+    padding:10px 16px;display:flex;align-items:baseline;gap:14px;font-family:var(--mono)}
+  .kind{font-size:11px;letter-spacing:.12em;color:var(--accent2);border:1px solid var(--accent);
+    border-radius:4px;padding:2px 8px;text-transform:uppercase}
+  .topbar h1{font-size:16px;margin:0;font-weight:600;color:var(--fg)}
+  .topbar time{margin-left:auto;font-size:12px;color:var(--faint)}
+  dl.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 24px;margin:10px 0 0;
+    font-family:var(--mono);font-size:12px;color:var(--muted)}
+  dl.meta div{display:flex;gap:8px}
+  dl.meta dt{color:var(--faint);margin:0}
+  dl.meta dd{margin:0;color:var(--fg)}
+  p.sub{color:var(--muted);font-size:14px;margin:14px 2px 10px;font-style:italic}
+
+  h2{font-size:13px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);margin:34px 2px 12px}
+  h2 b{color:var(--accent2);font-weight:500}
+
+  table.summary{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0 2px}
+  table.summary th{font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--faint);text-align:left;padding:7px 10px;
+    border-bottom:1px solid var(--line)}
+  table.summary td{padding:7px 10px;border-bottom:1px solid var(--line);color:var(--muted);
+    vertical-align:top}
+  table.summary td:first-child{color:var(--fg);white-space:nowrap}
+  table.summary td.rec{color:var(--accent2);font-family:var(--mono);white-space:nowrap}
+
+  .optrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:16px}
+  .opt{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .opt .stage{display:flex;align-items:center;justify-content:center;gap:18px;min-height:104px;
+    border-radius:10px;border:1px solid var(--line);background:var(--soft)}
+  .opt .tag{margin-top:10px;font-family:var(--mono);font-size:12px;color:var(--accent2)}
+  .opt .tag .star{color:#e8b64c}
+  .opt .why{font-size:12.5px;color:var(--muted);line-height:1.45;margin-top:3px}
+
+  .apptile{width:76px;height:76px;border-radius:18px;display:flex;align-items:center;justify-content:center}
+  .favrow{display:flex;align-items:center;gap:16px}
+  .favcell{display:flex;flex-direction:column;align-items:center;gap:6px;
+    font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .favchip{background:#0a1830;border:1px solid var(--line);border-radius:6px;
+    display:flex;align-items:center;justify-content:center}
+  .lockup-demo{display:flex;align-items:center;gap:10px}
+  .lockup-demo.stack{flex-direction:column;gap:7px}
+  .word{font-weight:600;letter-spacing:-.02em;color:var(--fg)}
+  svg{display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="plan-header">
+  <div class="topbar">
+    <span class="kind">design-review</span>
+    <h1>weave — h3 usage decisions</h1>
+    <time>2026-08-16T17:31:06Z</time>
+  </div>
+  <dl class="meta">
+    <div><dt>Repo</dt><dd>weave</dd></div>
+    <div><dt>Branch</dt><dd>main</dd></div>
+    <div><dt>Commit</dt><dd>70812b6</dd></div>
+    <div><dt>Working dir</dt><dd>weave/</dd></div>
+    <div><dt>Kind</dt><dd>design-review</dd></div>
+    <div><dt>Generated</dt><dd>2026-08-16T17:31:06Z</dd></div>
+  </dl>
+</header>
+
+<p class="sub">Mark selected: <b>h3</b> — horizontal rope, 3 crossings, duotone. Six finishing
+decisions, each with rendered options on the real mark. Reply with picks like
+<span style="font-family:var(--mono)">"1B 2A 3A 4B 5B 6A"</span>. ★ = my recommendation.
+Wordmark samples use the system stack — production face is Outfit.</p>
+
+<h2>decision summary</h2>
+<table class="summary">
+  <tr><th>#</th><th>Decision</th><th>Options</th><th>Recommendation</th></tr>
+  <tr><td>1</td><td>App icon tile</td><td>A blue tile · B navy tile · C paper tile</td><td class="rec">1A</td></tr>
+  <tr><td>2</td><td>Favicon treatment</td><td>A duotone as-is · B mono thick · C cream mono</td><td class="rec">2B</td></tr>
+  <tr><td>3</td><td>Lockup geometry</td><td>A inline small · B inline large · C stacked</td><td class="rec">3A</td></tr>
+  <tr><td>4</td><td>Wordmark weight</td><td>A 500 · B 600 · C 700</td><td class="rec">4B</td></tr>
+  <tr><td>5</td><td>Light-mode strand pair</td><td>A blue+sky · B blue+ink · C blue+slate</td><td class="rec">5B</td></tr>
+  <tr><td>6</td><td>Canonical one-color mark</td><td>A brand blue · B cream · C white-on-blue</td><td class="rec">6A</td></tr>
+</table>
+
+<h2>1 · app icon tile <b>· home screens, dock, PWA</b></h2>
+<div class="optrow" id="d1"></div>
+
+<h2>2 · favicon at 16px <b>· shown actual size + 4× magnified</b></h2>
+<div class="optrow" id="d2"></div>
+
+<h2>3 · lockup geometry <b>· mark ↔ wordmark relationship</b></h2>
+<div class="optrow" id="d3"></div>
+
+<h2>4 · wordmark weight <b>· Outfit weight for "weave"</b></h2>
+<div class="optrow" id="d4"></div>
+
+<h2>5 · light-mode strand pair <b>· docs, invoices, light UI</b></h2>
+<div class="optrow" id="d5"></div>
+
+<h2>6 · canonical one-color mark <b>· embossing, print, watermark</b></h2>
+<div class="optrow" id="d6"></div>
+
+<script>
+// h3 rope: n=3, pitch=8, amplitude 8, centered (24,24)
+const A = "M12,20 C16,20 16,28 20,28 C24,28 24,20 28,20 C32,20 32,28 36,28";
+const B = "M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20";
+const OV = "M22.7,26.3 Q24,24 25.3,21.7";
+
+// build one h3 svg with explicit colors; gap follows the given tile color
+function h3(size, c1, c2, tile, sw = 3.5) {
+  const gw = sw + 2.5;
+  const p = (d, stroke, w) =>
+    `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round"/>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 48 48">` +
+    p(A, c1, sw) + p(B, tile, gw) + p(B, c2, sw) + p(OV, tile, gw) + p(OV, c1, sw) + `</svg>`;
+}
+
+const BLUE = "#2563eb", SKY = "#60a5fa", CREAM = "#e0dcd4", INK = "#0c1b33",
+      SLATE = "#3c4459", WHITE = "#ffffff", PAPER = "#fafaf8", NAVY = "#0c1b33",
+      DARKCHIP = "#0a1830";
+
+const opt = (stageStyle, stageHTML, tag, why, star) => `
+  <div class="opt">
+    <div class="stage" style="${stageStyle}">${stageHTML}</div>
+    <div class="tag">${star ? '<span class="star">★ </span>' : ""}${tag}</div>
+    <div class="why">${why}</div>
+  </div>`;
+
+// 1 — app icon tile
+document.getElementById("d1").innerHTML =
+  opt("", `<div class="apptile" style="background:${BLUE}">${h3(56, CREAM, "#bcd3ff", BLUE, 4)}</div>`,
+      "1A · blue tile, cream + ice strands",
+      "Brand-blue field, warm cream leads. Highest shelf presence; matches Grunion's blue-primary rule.", true) +
+  opt("", `<div class="apptile" style="background:${NAVY};border:1px solid #24365c">${h3(56, BLUE, SKY, NAVY, 4)}</div>`,
+      "1B · navy tile, standard duotone",
+      "The mark exactly as designed. Subtle on dark launchers; can vanish against dark wallpapers.") +
+  opt("", `<div class="apptile" style="background:${PAPER}">${h3(56, BLUE, INK, PAPER, 4)}</div>`,
+      "1C · paper tile, blue + ink",
+      "Light tile stands out on dark docks. Feels more utility-app than brand-forward.");
+
+// 2 — favicon
+const favcell = (label, html) => `<div class="favcell">${html}<span>${label}</span></div>`;
+document.getElementById("d2").innerHTML =
+  opt("", `<div class="favrow">
+      ${favcell("16px", `<div class="favchip" style="width:24px;height:24px">${h3(16, BLUE, SKY, DARKCHIP)}</div>`)}
+      ${favcell("4×",  `<div class="favchip" style="width:72px;height:72px">${h3(64, BLUE, SKY, DARKCHIP)}</div>`)}
+    </div>`,
+    "2A · duotone as-is (3.5px strands)",
+    "Keeps both colors, but the sky strand thins out and the weave gaps clog at 16px.") +
+  opt("", `<div class="favrow">
+      ${favcell("16px", `<div class="favchip" style="width:24px;height:24px">${h3(16, BLUE, BLUE, DARKCHIP, 4.5)}</div>`)}
+      ${favcell("4×",  `<div class="favchip" style="width:72px;height:72px">${h3(64, BLUE, BLUE, DARKCHIP, 4.5)}</div>`)}
+    </div>`,
+    "2B · mono blue, thickened to 4.5px",
+    "Optical correction for tiny sizes: one color, fatter strands, gaps still legible. Standard favicon practice.", true) +
+  opt("", `<div class="favrow">
+      ${favcell("16px", `<div class="favchip" style="width:24px;height:24px">${h3(16, CREAM, CREAM, DARKCHIP, 4.5)}</div>`)}
+      ${favcell("4×",  `<div class="favchip" style="width:72px;height:72px">${h3(64, CREAM, CREAM, DARKCHIP, 4.5)}</div>`)}
+    </div>`,
+    "2C · cream mono, thickened",
+    "Maximum contrast in dark browser chrome, but drops the brand blue entirely.");
+
+// 3 — lockup geometry
+document.getElementById("d3").innerHTML =
+  opt("", `<div class="lockup-demo">${h3(26, BLUE, SKY, "#132444")}<span class="word" style="font-size:21px">weave</span></div>`,
+      "3A · inline, mark ≈ x-height",
+      "Mark sits like a glyph before the name — reads as one word. Best for headers and app chrome.", true) +
+  opt("", `<div class="lockup-demo">${h3(40, BLUE, SKY, "#132444")}<span class="word" style="font-size:21px">weave</span></div>`,
+      "3B · inline, mark ≈ 1.5× cap height",
+      "Mark dominates — better when the mark must carry recognition alone (marketing pages).") +
+  opt("", `<div class="lockup-demo stack">${h3(34, BLUE, SKY, "#132444")}<span class="word" style="font-size:19px">weave</span></div>`,
+      "3C · stacked, centered",
+      "For square placements: splash screens, social avatars, footer badges. Companion to 3A/3B, or primary if you prefer vertical.");
+
+// 4 — wordmark weight
+document.getElementById("d4").innerHTML =
+  opt("", `<div class="lockup-demo">${h3(26, BLUE, SKY, "#132444")}<span class="word" style="font-size:21px;font-weight:500;letter-spacing:0">weave</span></div>`,
+      "4A · Outfit 500",
+      "Lightest, most editorial. Risks feeling faint next to the rope's 3.5px strands.") +
+  opt("", `<div class="lockup-demo">${h3(26, BLUE, SKY, "#132444")}<span class="word" style="font-size:21px;font-weight:600">weave</span></div>`,
+      "4B · Outfit 600",
+      "Matches the visual weight of the strands — what the sheets have used so far.", true) +
+  opt("", `<div class="lockup-demo">${h3(26, BLUE, SKY, "#132444")}<span class="word" style="font-size:21px;font-weight:700;letter-spacing:-.03em">weave</span></div>`,
+      "4C · Outfit 700, tight",
+      "Boldest, most app-y. The wordmark starts to out-shout the mark.");
+
+// 5 — light-mode strand pair
+document.getElementById("d5").innerHTML =
+  opt(`background:${PAPER};border-color:#d8d4ca`, h3(60, BLUE, SKY, PAPER),
+      "5A · blue + sky (same as dark)",
+      "One pair everywhere — but sky #60a5fa is low-contrast on white (fails AA as a text color; weak as a strand).") +
+  opt(`background:${PAPER};border-color:#d8d4ca`, h3(60, BLUE, INK, PAPER),
+      "5B · blue + ink navy",
+      "Ink stands in for the light strand on paper. Crisp, keeps the duotone depth; mirrors how the dark version works.", true) +
+  opt(`background:${PAPER};border-color:#d8d4ca`, h3(60, BLUE, SLATE, PAPER),
+      "5C · blue + slate",
+      "Softer secondary — closer to body-text gray. Gentler, slightly less definitive.");
+
+// 6 — canonical one-color mark
+document.getElementById("d6").innerHTML =
+  opt(`background:${PAPER};border-color:#d8d4ca`, h3(60, BLUE, BLUE, PAPER),
+      "6A · brand blue mono",
+      "Default single-color mark for print, PDFs, stamps. Matches Grunion's 'logo mark in brand blue' rule.", true) +
+  opt("", h3(60, CREAM, CREAM, "#132444"),
+      "6B · cream mono",
+      "For dark surfaces and photography overlays — the dark-side twin of 6A.") +
+  opt(`background:${BLUE}`, h3(60, WHITE, WHITE, BLUE),
+      "6C · white on blue field",
+      "For blue-filled contexts: buttons, banners, the app tile itself. Usually a derived asset, not the canonical.");
+</script>
+
+</div>
+</body>
+</html>

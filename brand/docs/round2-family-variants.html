@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="kind" content="design-review">
+<meta name="generated-at" content="2026-08-16T17:06:08Z">
+<meta name="repo" content="weave">
+<meta name="branch" content="main">
+<title>weave — logo variants v2 (twist · strand-w · waves)</title>
+<style>
+  :root{
+    --fg:#e0dcd4; --muted:#b4b8c4; --faint:#7e8394; --line:#1a2d54;
+    --bg:#0c1b33; --soft:#132444; --elev:#1a2d54;
+    --accent:#2563eb; --accent2:#60a5fa; --paper:#fafaf8;
+    --mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;
+    padding:0 24px 64px}
+  .wrap{max-width:960px;margin:0 auto}
+  header.plan-header{margin:24px 0 8px}
+  .topbar{background:#060f1f;border:1px solid var(--line);border-radius:8px;
+    padding:10px 16px;display:flex;align-items:baseline;gap:14px;font-family:var(--mono)}
+  .kind{font-size:11px;letter-spacing:.12em;color:var(--accent2);border:1px solid var(--accent);
+    border-radius:4px;padding:2px 8px;text-transform:uppercase}
+  .topbar h1{font-size:16px;margin:0;font-weight:600;color:var(--fg)}
+  .topbar time{margin-left:auto;font-size:12px;color:var(--faint)}
+  dl.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 24px;margin:10px 0 0;
+    font-family:var(--mono);font-size:12px;color:var(--muted)}
+  dl.meta div{display:flex;gap:8px}
+  dl.meta dt{color:var(--faint);margin:0}
+  dl.meta dd{margin:0;color:var(--fg)}
+  p.sub{color:var(--muted);font-size:14px;margin:14px 2px 10px;font-style:italic}
+
+  h2{font-size:13px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);margin:30px 2px 12px}
+  h2 b{color:var(--accent2);font-weight:500}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:16px}
+  .card{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .row{display:flex;align-items:center;gap:14px}
+  .tile{--tile:var(--soft);width:88px;height:88px;flex:0 0 88px;display:flex;
+    align-items:center;justify-content:center;background:var(--tile);
+    border:1px solid var(--line);border-radius:10px}
+  .sizes{display:flex;align-items:flex-end;gap:10px;flex:1}
+  .chip{--tile:#0a1830;background:var(--tile);border:1px solid var(--line);
+    border-radius:8px;display:flex;align-items:center;justify-content:center}
+  .chip.c32{width:48px;height:48px}
+  .chip.c20{width:36px;height:36px}
+  .chip.paper{--tile:var(--paper);width:36px;height:36px;border-color:#d8d4ca}
+  .lockup{display:flex;align-items:center;gap:9px;margin-top:14px;padding-top:12px;
+    border-top:1px solid var(--line)}
+  .lockup .word{font-size:19px;font-weight:600;letter-spacing:-.02em;color:var(--fg)}
+  .name{margin-top:10px;font-family:var(--mono);font-size:12px;color:var(--accent2)}
+  .note{font-size:12.5px;color:var(--muted);line-height:1.45;margin-top:3px}
+
+  svg{display:block}
+  .s1{stroke:var(--accent);fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+  .s2{stroke:var(--accent2);fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+  .gap{stroke:var(--tile);fill:none;stroke-width:10;stroke-linecap:round;stroke-linejoin:round}
+  .gap7{stroke:var(--tile);fill:none;stroke-width:7;stroke-linecap:round}
+  .gapb{stroke:var(--tile);fill:none;stroke-width:7;stroke-linecap:butt}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="plan-header">
+  <div class="topbar">
+    <span class="kind">design-review</span>
+    <h1>weave — logo variants v2</h1>
+    <time>2026-08-16T17:06:08Z</time>
+  </div>
+  <dl class="meta">
+    <div><dt>Repo</dt><dd>weave</dd></div>
+    <div><dt>Branch</dt><dd>main</dd></div>
+    <div><dt>Commit</dt><dd>70812b6</dd></div>
+    <div><dt>Working dir</dt><dd>weave/</dd></div>
+    <div><dt>Kind</dt><dd>design-review</dd></div>
+    <div><dt>Generated</dt><dd>2026-08-16T17:06:08Z</dd></div>
+  </dl>
+</header>
+
+<p class="sub">Round two: variants of your three picks from the first sheet —
+06&nbsp;twist, 03&nbsp;strand&nbsp;w, 07&nbsp;waves. Same Grunion palette, same size ladder
+(64 / 32 / 20&nbsp;px, paper chip, wordmark lockup).</p>
+
+<!-- ============ symbol defs ============ -->
+<svg width="0" height="0" aria-hidden="true">
+  <defs>
+    <!-- T1 triple twist -->
+    <symbol id="v-triple" viewBox="0 0 48 48">
+      <path class="s1" d="M16,4 C16,10.7 32,10.7 32,17.3 C32,24 16,24 16,30.7 C16,37.3 32,37.3 32,44"/>
+      <path class="gap7" d="M32,4 C32,10.7 16,10.7 16,17.3 C16,24 32,24 32,30.7 C32,37.3 16,37.3 16,44"/>
+      <path class="s2" d="M32,4 C32,10.7 16,10.7 16,17.3 C16,24 32,24 32,30.7 C32,37.3 16,37.3 16,44"/>
+      <path class="gap7" d="M28.5,21.9 Q24,24 19.5,26.1"/>
+      <path class="s1" d="M28.5,21.9 Q24,24 19.5,26.1"/>
+    </symbol>
+
+    <!-- T2 vesica twist -->
+    <symbol id="v-vesica" viewBox="0 0 48 48">
+      <path class="s1" d="M10,6 C34,14 34,34 10,42"/>
+      <path class="gap7" d="M38,6 C14,14 14,34 38,42"/>
+      <path class="s2" d="M38,6 C14,14 14,34 38,42"/>
+      <path class="gap7" d="M27.3,28.2 Q24.6,33.4 19.2,37.7"/>
+      <path class="s1" d="M27.3,28.2 Q24.6,33.4 19.2,37.7"/>
+    </symbol>
+
+    <!-- T3 horizontal twist -->
+    <symbol id="v-htwist" viewBox="0 0 48 48">
+      <path class="s1" d="M6,16 C15,16 15,32 24,32 C33,32 33,16 42,16"/>
+      <path class="gap" d="M6,32 C15,32 15,16 24,16 C33,16 33,32 42,32"/>
+      <path class="s2" d="M6,32 C15,32 15,16 24,16 C33,16 33,32 42,32"/>
+      <path class="gap" d="M30.2,28.5 Q33,24 35.9,19.5"/>
+      <path class="s1" d="M30.2,28.5 Q33,24 35.9,19.5"/>
+    </symbol>
+
+    <!-- T4 mono twist -->
+    <symbol id="v-monotwist" viewBox="0 0 48 48">
+      <path class="s1" d="M16,6 C16,15 32,15 32,24 C32,33 16,33 16,42"/>
+      <path class="gap" d="M32,6 C32,15 16,15 16,24 C16,33 32,33 32,42"/>
+      <path class="s1" d="M32,6 C32,15 16,15 16,24 C16,33 32,33 32,42"/>
+      <path class="gap" d="M28.5,30.2 Q24,33.4 19.5,35.9"/>
+      <path class="s1" d="M28.5,30.2 Q24,33.4 19.5,35.9"/>
+    </symbol>
+
+    <!-- S1 soft strand w -->
+    <symbol id="v-softw" viewBox="0 0 48 48">
+      <path class="s1" d="M7,14 L13,29 Q15.5,35 18,29 L21.5,20 Q24,14 26.5,20 L30,29 Q32.5,35 35,29 L41,14"/>
+      <path class="gap7" d="M7,34 L13,19 Q15.5,13 18,19 L21.5,28 Q24,34 26.5,28 L30,19 Q32.5,13 35,19 L41,34"/>
+      <path class="s2" d="M7,34 L13,19 Q15.5,13 18,19 L21.5,28 Q24,34 26.5,28 L30,19 Q32.5,13 35,19 L41,34"/>
+      <path class="gap7" d="M18.8,27 L21,21.4"/>
+      <path class="s1" d="M18.8,27 L21,21.4"/>
+      <path class="gap7" d="M35.8,27 L38.2,21"/>
+      <path class="s1" d="M35.8,27 L38.2,21"/>
+    </symbol>
+
+    <!-- S2 lattice w -->
+    <symbol id="v-latticew" viewBox="0 0 48 48">
+      <path class="s1" d="M4,13 L12,32 L20,13 L28,32 L36,13"/>
+      <path class="gap7" d="M12,13 L20,32 L28,13 L36,32 L44,13"/>
+      <path class="s2" d="M12,13 L20,32 L28,13 L36,32 L44,13"/>
+      <path class="gap7" d="M14.5,26 L17.5,19"/>
+      <path class="s1" d="M14.5,26 L17.5,19"/>
+      <path class="gap7" d="M30.5,26 L33.5,19"/>
+      <path class="s1" d="M30.5,26 L33.5,19"/>
+    </symbol>
+
+    <!-- S3 mono strand w -->
+    <symbol id="v-monow" viewBox="0 0 48 48">
+      <path class="s1" d="M7,14 L15.5,34 L24,15 L32.5,34 L41,14"/>
+      <path class="gap" d="M7,34 L15.5,14 L24,33 L32.5,14 L41,34"/>
+      <path class="s1" d="M7,34 L15.5,14 L24,33 L32.5,14 L41,34"/>
+    </symbol>
+
+    <!-- S4 w current -->
+    <symbol id="v-wcurrent" viewBox="0 0 48 48">
+      <path class="s1" d="M9,14 L16.5,34 L24,16 L31.5,34 L39,14"/>
+      <path class="gap7" d="M5,25 C13,17 19,33 24,25 C29,17 35,33 43,25"/>
+      <path class="s2" d="M5,25 C13,17 19,33 24,25 C29,17 35,33 43,25"/>
+    </symbol>
+
+    <!-- V1 eye -->
+    <symbol id="v-eye" viewBox="0 0 48 48">
+      <path class="s1" d="M5,26 C14,12 34,12 43,26"/>
+      <path class="gap" d="M5,22 C14,36 34,36 43,22"/>
+      <path class="s2" d="M5,22 C14,36 34,36 43,22"/>
+      <path class="gap" d="M36.5,19.3 Q40.5,22 43,26"/>
+      <path class="s1" d="M36.5,19.3 Q40.5,22 43,26"/>
+    </symbol>
+
+    <!-- V2 infinity -->
+    <symbol id="v-infinity" viewBox="0 0 48 48">
+      <path class="s1" d="M24,24 C18,14 6,16 6,24 C6,32 18,34 24,24"/>
+      <path class="s2" d="M24,24 C30,14 42,16 42,24 C42,32 30,34 24,24"/>
+    </symbol>
+
+    <!-- V3 current -->
+    <symbol id="v-current" viewBox="0 0 48 48">
+      <path class="s1" d="M6,15 Q24,25 42,15"/>
+      <path class="s2" d="M6,24 Q24,34 42,24"/>
+      <path class="s1" d="M6,33 Q24,43 42,33"/>
+    </symbol>
+
+    <!-- V4 braid -->
+    <symbol id="v-braid" viewBox="0 0 48 48">
+      <line class="s2" x1="24" y1="4" x2="24" y2="44"/>
+      <path class="gap7" d="M16,4 C16,12 32,16 32,22 C32,30 16,34 16,42"/>
+      <path class="s1" d="M16,4 C16,12 32,16 32,22 C32,30 16,34 16,42"/>
+      <path class="gap7" d="M32,8 C32,16 16,20 16,26 C16,32 32,36 32,44"/>
+      <path class="s1" d="M32,8 C32,16 16,20 16,26 C16,32 32,36 32,44"/>
+      <path class="gapb" d="M24,15.4 L24,20.6"/>
+      <line class="s2" x1="24" y1="15.4" x2="24" y2="20.6"/>
+      <path class="gapb" d="M24,29.8 L24,33.4"/>
+      <line class="s2" x1="24" y1="29.8" x2="24" y2="33.4"/>
+    </symbol>
+  </defs>
+</svg>
+
+<h2>twist family <b>· from 06</b></h2>
+<div class="grid" data-marks="twist"></div>
+
+<h2>strand-w family <b>· from 03</b></h2>
+<div class="grid" data-marks="strandw"></div>
+
+<h2>waves family <b>· from 07</b></h2>
+<div class="grid" data-marks="waves"></div>
+
+<script>
+const FAMILIES = {
+  twist: [
+    ["v-triple","t1 triple twist","Three alternating crossings — a fuller helix. Densest twist; still clear at 20px."],
+    ["v-vesica","t2 vesica","Two strands bow apart then re-cross, holding an almond of space. Calmer than the helix."],
+    ["v-htwist","t3 twist horizontal","The original twist laid on its side — sits wide, pairs naturally with a wordmark."],
+    ["v-monotwist","t4 twist mono","Original 06 in single brand blue. Favicon-ready; proves the mark without the accent."]
+  ],
+  strandw: [
+    ["v-softw","s1 soft w","03 with rounded valleys and peaks — same interlace, friendlier tone, alternating over-under."],
+    ["v-latticew","s2 lattice w","Two identical Ws phase-shifted half a step — the crossings make a diamond lattice band."],
+    ["v-monow","s3 strand w mono","03 in single blue. The interlace gaps alone carry the weave; strongest small-size contrast."],
+    ["v-wcurrent","s4 w current","Sharp w with a wave strand flowing through it — hybrid of your 03 + 07 picks."]
+  ],
+  waves: [
+    ["v-eye","v1 eye","Two long strands cross at the ends and hold an eye of negative space. Quietest of the set."],
+    ["v-infinity","v2 infinity","The waves close into a two-loop band — weave as a continuous cycle. Very tight at 16px."],
+    ["v-current","v3 current","Three stacked strands, no crossings — weave as flow. The most minimal, most abstract."],
+    ["v-braid","v4 braid","Three strands in a staggered braid — outer strands pass the core alternately. Richest texture."]
+  ]
+};
+for (const [key, marks] of Object.entries(FAMILIES)) {
+  document.querySelector(`[data-marks="${key}"]`).innerHTML = marks.map(([id,name,note]) => `
+    <div class="card">
+      <div class="row">
+        <div class="tile"><svg width="64" height="64"><use href="#${id}"/></svg></div>
+        <div class="sizes">
+          <div class="chip c32"><svg width="32" height="32"><use href="#${id}"/></svg></div>
+          <div class="chip c20"><svg width="20" height="20"><use href="#${id}"/></svg></div>
+          <div class="chip paper"><svg width="20" height="20"><use href="#${id}"/></svg></div>
+        </div>
+      </div>
+      <div class="lockup">
+        <svg width="26" height="26"><use href="#${id}"/></svg>
+        <span class="word">weave</span>
+      </div>
+      <div class="name">${name}</div>
+      <div class="note">${note}</div>
+    </div>`).join("");
+}
+</script>
+
+</div>
+</body>
+</html>

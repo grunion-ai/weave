@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="kind" content="design-review">
+<meta name="generated-at" content="2026-08-16T17:25:08Z">
+<meta name="repo" content="weave">
+<meta name="branch" content="main">
+<title>weave — rope mark matrix (crossings · orientation · color)</title>
+<style>
+  :root{
+    --fg:#e0dcd4; --muted:#b4b8c4; --faint:#7e8394; --line:#1a2d54;
+    --bg:#0c1b33; --soft:#132444; --elev:#1a2d54;
+    --accent:#2563eb; --accent2:#60a5fa; --paper:#fafaf8;
+    --mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;
+    padding:0 24px 64px}
+  .wrap{max-width:960px;margin:0 auto}
+  header.plan-header{margin:24px 0 8px}
+  .topbar{background:#060f1f;border:1px solid var(--line);border-radius:8px;
+    padding:10px 16px;display:flex;align-items:baseline;gap:14px;font-family:var(--mono)}
+  .kind{font-size:11px;letter-spacing:.12em;color:var(--accent2);border:1px solid var(--accent);
+    border-radius:4px;padding:2px 8px;text-transform:uppercase}
+  .topbar h1{font-size:16px;margin:0;font-weight:600;color:var(--fg)}
+  .topbar time{margin-left:auto;font-size:12px;color:var(--faint)}
+  dl.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 24px;margin:10px 0 0;
+    font-family:var(--mono);font-size:12px;color:var(--muted)}
+  dl.meta div{display:flex;gap:8px}
+  dl.meta dt{color:var(--faint);margin:0}
+  dl.meta dd{margin:0;color:var(--fg)}
+  p.sub{color:var(--muted);font-size:14px;margin:14px 2px 10px;font-style:italic}
+
+  h2{font-size:13px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);margin:30px 2px 12px}
+  h2 b{color:var(--accent2);font-weight:500}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:16px}
+  .card{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .row{display:flex;align-items:center;gap:14px}
+  .tile{--tile:var(--soft);width:88px;height:88px;flex:0 0 88px;display:flex;
+    align-items:center;justify-content:center;background:var(--tile);
+    border:1px solid var(--line);border-radius:10px}
+  .sizes{display:flex;align-items:flex-end;gap:10px;flex:1}
+  .chip{--tile:#0a1830;background:var(--tile);border:1px solid var(--line);
+    border-radius:8px;display:flex;align-items:center;justify-content:center}
+  .chip.c32{width:48px;height:48px}
+  .chip.c20{width:36px;height:36px}
+  .chip.paper{--tile:var(--paper);width:36px;height:36px;border-color:#d8d4ca}
+  .lockup{display:flex;align-items:center;gap:9px;margin-top:14px;padding-top:12px;
+    border-top:1px solid var(--line)}
+  .lockup .word{font-size:19px;font-weight:600;letter-spacing:-.02em;color:var(--fg)}
+  .name{margin-top:10px;font-family:var(--mono);font-size:12px;color:var(--accent2)}
+  .note{font-size:12.5px;color:var(--muted);line-height:1.45;margin-top:3px}
+
+  svg{display:block}
+  .s1t{stroke:var(--accent);fill:none;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round}
+  .s2t{stroke:var(--accent2);fill:none;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round}
+  .g6{stroke:var(--tile);fill:none;stroke-width:6;stroke-linecap:round}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="plan-header">
+  <div class="topbar">
+    <span class="kind">design-review</span>
+    <h1>weave — rope mark matrix</h1>
+    <time>2026-08-16T17:25:08Z</time>
+  </div>
+  <dl class="meta">
+    <div><dt>Repo</dt><dd>weave</dd></div>
+    <div><dt>Branch</dt><dd>main</dd></div>
+    <div><dt>Commit</dt><dd>70812b6</dd></div>
+    <div><dt>Working dir</dt><dd>weave/</dd></div>
+    <div><dt>Kind</dt><dd>design-review</dd></div>
+    <div><dt>Generated</dt><dd>2026-08-16T17:25:08Z</dd></div>
+  </dl>
+</header>
+
+<p class="sub">The b1 rope, explored as a matrix: crossing count (3 / 5 / 7) ×
+orientation (horizontal / vertical / diagonal), all duotone — then three color
+treatments on the strongest cuts. All ropes are generated from one parametric weave
+(3.5px strands, true alternating over-under), so every variant is geometrically identical
+apart from the knobs.</p>
+
+<h2>crossings × orientation <b>· duotone</b></h2>
+<div class="grid" data-marks="matrix"></div>
+
+<h2>color treatments <b>· on the 5-crossing rope</b></h2>
+<div class="grid" data-marks="colors"></div>
+
+<script>
+// ---- parametric rope ------------------------------------------------------
+// n crossings at the given pitch, horizontal, centered on (24,24), amplitude 8.
+// Strand A starts top, B starts bottom. B is drawn over A everywhere (gap trick),
+// then A is re-drawn over at odd crossings -> true alternating weave.
+function rope(n, pitch) {
+  const p = pitch, x0 = 24 - n * p / 2, yT = 20, yB = 28;
+  const seg = (x, yf, yt) => `C${(x + p/2).toFixed(1)},${yf} ${(x + p/2).toFixed(1)},${yt} ${(x + p).toFixed(1)},${yt}`;
+  let a = `M${x0},${yT}`, b = `M${x0},${yB}`;
+  for (let k = 0; k < n; k++) {
+    const x = x0 + k * p;
+    a += seg(x, k % 2 ? yB : yT, k % 2 ? yT : yB);
+    b += seg(x, k % 2 ? yT : yB, k % 2 ? yB : yT);
+  }
+  // A's odd segments travel bottom->top; re-draw their middles over B
+  const overs = [];
+  for (let k = 1; k < n; k += 2) {
+    const x = x0 + k * p;
+    overs.push(`M${(x + .34*p).toFixed(1)},26.3 Q${(x + .5*p).toFixed(1)},24 ${(x + .66*p).toFixed(1)},21.7`);
+  }
+  return { a, b, overs };
+}
+
+const ROT = { h: "", v: ' transform="rotate(90 24 24)"', d: ' transform="rotate(-45 24 24)"' };
+
+function symbol(id, n, pitch, orient, c1, c2) {
+  const r = rope(n, pitch);
+  const overs = r.overs.map(o => `<path class="g6" d="${o}"/><path class="${c1}" d="${o}"/>`).join("");
+  return `<symbol id="${id}" viewBox="0 0 48 48"><g${ROT[orient]}>
+    <path class="${c1}" d="${r.a}"/>
+    <path class="g6" d="${r.b}"/><path class="${c2}" d="${r.b}"/>
+    ${overs}</g></symbol>`;
+}
+
+// ---- variants -------------------------------------------------------------
+const MATRIX = [
+  ["r-h3", 3, 8, "h", "s1t", "s2t", "h · 3 crossings", "Shortest cut — almost a knot. Fits tight horizontal spaces."],
+  ["r-h5", 5, 8, "h", "s1t", "s2t", "h · 5 crossings", "The original b1 reference. Balanced rope length."],
+  ["r-h7", 7, 6, "h", "s1t", "s2t", "h · 7 crossings", "Finer pitch, longer run — reads as woven cord."],
+  ["r-v3", 3, 8, "v", "s1t", "s2t", "v · 3 crossings", "Compact upright plait."],
+  ["r-v5", 5, 8, "v", "s1t", "s2t", "v · 5 crossings", "Column braid — strong beside a left-aligned wordmark."],
+  ["r-v7", 7, 6, "v", "s1t", "s2t", "v · 7 crossings", "Tallest, finest — rope as a vertical rule."],
+  ["r-d3", 3, 8, "d", "s1t", "s2t", "d · 3 crossings", "Rising diagonal knot — most dynamic small mark."],
+  ["r-d5", 5, 8, "d", "s1t", "s2t", "d · 5 crossings", "Rising rope — energy without busyness."],
+  ["r-d7", 7, 6, "d", "s1t", "s2t", "d · 7 crossings", "Long fine diagonal — favors large lockups."]
+];
+const COLORS = [
+  ["r-mono-h", 5, 8, "h", "s1t", "s1t", "mono blue · h5", "Single brand blue — the over-under gaps alone carry the weave. Favicon-safe."],
+  ["r-mono-d", 5, 8, "d", "s1t", "s1t", "mono blue · d5", "Mono on the rising diagonal."],
+  ["r-flip-v", 5, 8, "v", "s2t", "s1t", "flipped duo · v5", "Light strand leads, brand blue recedes — softer, lighter feel."]
+];
+
+// ---- render ---------------------------------------------------------------
+const defs = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+defs.setAttribute("width", "0"); defs.setAttribute("height", "0");
+defs.innerHTML = "<defs>" +
+  [...MATRIX, ...COLORS].map(([id, n, p, o, c1, c2]) => symbol(id, n, p, o, c1, c2)).join("") +
+  "</defs>";
+document.body.prepend(defs);
+
+const card = ([id, , , , , , name, note]) => `
+  <div class="card">
+    <div class="row">
+      <div class="tile"><svg width="64" height="64"><use href="#${id}"/></svg></div>
+      <div class="sizes">
+        <div class="chip c32"><svg width="32" height="32"><use href="#${id}"/></svg></div>
+        <div class="chip c20"><svg width="20" height="20"><use href="#${id}"/></svg></div>
+        <div class="chip paper"><svg width="20" height="20"><use href="#${id}"/></svg></div>
+      </div>
+    </div>
+    <div class="lockup">
+      <svg width="26" height="26"><use href="#${id}"/></svg>
+      <span class="word">weave</span>
+    </div>
+    <div class="name">${name}</div>
+    <div class="note">${note}</div>
+  </div>`;
+document.querySelector('[data-marks="matrix"]').innerHTML = MATRIX.map(card).join("");
+document.querySelector('[data-marks="colors"]').innerHTML = COLORS.map(card).join("");
+</script>
+
+</div>
+</body>
+</html>
