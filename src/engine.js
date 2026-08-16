@@ -245,7 +245,12 @@ export class Weave {
 
   deleteTable(ref) {
     const db = this.getTable(ref);
-    for (const e of this.listEntities(db.id)) this.deleteEntity(e.id);
+    // Purge, not trash: the table itself is going away, so a soft-deleted row
+    // would be left pointing at a table that no longer exists — unrestorable
+    // and fatal to any read of the trash. Trashed rows go too.
+    for (const e of this.listEntities(db.id, { includeDeleted: true })) {
+      this.deleteEntity(e.id, { hard: true });
+    }
     // Remove paired relation fields living in other tables.
     for (const field of Object.values(db.fields)) {
       if (field.type === 'relation') {

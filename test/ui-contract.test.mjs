@@ -299,20 +299,30 @@ test('hold-to-confirm fires only on a completed hold', () => {
   const fn = APP.slice(APP.indexOf('function holdToConfirm'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
   assert.match(body, /transitionend/, 'completion is what fires it');
-  assert.match(body, /if \(!armed \|\| e\.propertyName !== 'width'\) return;/,
+  assert.match(body, /if \(!armed \|\| e\.propertyName !== 'transform'\) return;/,
     'a stray transition must not delete anything');
   for (const ev of ['pointerup', 'pointerleave', 'blur']) {
     assert.ok(body.includes(`'${ev}'`), `releasing via ${ev} must cancel`);
   }
   assert.match(body, /keydown/, 'keyboard users must be able to hold too');
   // Collapsing must be untransitioned or releasing early would still fire.
-  assert.equal(rulesFor('.hold-fill').transition, 'width 0s');
-  assert.match(rulesFor('.hold-btn.holding .hold-fill').transition, /width \.\ds linear/);
+  // Swept with a transform, not an animated width: width/height animations
+  // thrash layout every frame, transforms composite.
+  const rest = rulesFor('.hold-fill');
+  assert.equal(rest.transition, 'transform 0s');
+  assert.equal(rest.transform, 'scaleX(0)');
+  assert.equal(rest['transform-origin'], 'left', 'the sweep must start at the left edge');
+  assert.match(rulesFor('.hold-btn.holding .hold-fill').transition, /transform \.\ds linear/);
+  assert.doesNotMatch(rest.transition, /width|height|padding|margin/, 'no layout-property animation');
   assert.equal(rulesFor('.hold-btn').overflow, 'hidden', 'the fill must be clipped to the button');
 });
 
-test('both destructive actions use it', () => {
-  assert.equal((APP.match(/holdToConfirm\(/g) ?? []).length, 3, 'definition + entity delete + field delete');
+test('destructive actions use it', () => {
+  // A count, not an exact number: new destructive actions adopting the helper
+  // is the desired direction, so only the floor is pinned. The real guard
+  // against regressing to a browser dialog is the no-window.confirm test.
+  const uses = (APP.match(/holdToConfirm\(/g) ?? []).length - 1; // minus the definition
+  assert.ok(uses >= 2, `expected at least two hold-to-confirm call sites, found ${uses}`);
 });
 
 test('the entity menu sits in the corner with a vertical ellipsis', () => {
@@ -375,16 +385,68 @@ test('static UI assets are served revalidating', async () => {
   // after every edit — the UI looked unchanged until a manual hard reload.
   const { Weave } = await import('../src/engine.js');
   const { startServer } = await import('../src/server.js');
-  const server = startServer(new Weave(), { port: 0 });
-  await new Promise((r) => server.once('listening', r));
-  const base = `http://127.0.0.1:${server.address().port}`;
+  const { server, port } = await startServer(new Weave(), { port: 0 });
   try {
     for (const asset of ['/app.js', '/style.css', '/index.html']) {
-      const res = await fetch(base + asset);
+      const res = await fetch(`http://127.0.0.1:${port}${asset}`);
       assert.equal(res.status, 200, asset);
       assert.equal(res.headers.get('cache-control'), 'no-cache', `${asset} must revalidate`);
     }
   } finally {
     server.close();
   }
+});
+
+/* ---------- overflow menus on tables and spaces (Kyle, 2026-08-16) ----------
+   Export and delete are occasional, and one of them is irreversible, so they
+   belong in an overflow menu rather than the header toolbar. */
+
+test('one dotsMenu implementation serves entity, table and space', () => {
+  assert.match(APP, /function dotsMenu\(/);
+  // Every ⋮ trigger comes from the helper — no hand-rolled second menu.
+  assert.equal((APP.match(/dots-btn/g) ?? []).length, 1, 'only dotsMenu may build the ⋮ button');
+  assert.equal((APP.match(/class: `dl-menu hidden/g) ?? []).length, 1, 'only dotsMenu may build the panel');
+  for (const t of ["title: 'Entity actions'", "title: 'Table actions'", "title: 'Space actions'"]) {
+    assert.ok(APP.includes(t), `${t} must be a dotsMenu call`);
+  }
+});
+
+test('table and space menus carry CSV export and delete', () => {
+  assert.ok(APP.includes("label: 'Export CSV'"), 'the table menu exports CSV');
+  // A space has no CSV of its own, so it offers one export per table it holds.
+  assert.match(APP, /space\.tables\.map\(\(d\) => \(\{[\s\S]{0,40}label: `Export \$\{d\.name\}\.csv`/);
+  assert.match(APP, /api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
+  assert.match(APP, /api\('DELETE', `\/spaces\/\$\{spaceId\}`\)/);
+  // The toolbar CSV button moved into the menu — it must not remain in both.
+  assert.doesNotMatch(APP, /class: 'btn btn-sm', href: `\$\{WS_PREFIX\}\/api\/tables\/\$\{db\.id\}\/export\.csv`/);
+});
+
+test('deleting a table or a space is behind a hold', () => {
+  assert.ok(APP.includes("hold: 'Delete table'"));
+  assert.match(APP, /hold: space\.tables\.length/, 'the space menu names how many tables go with it');
+});
+
+test('header menus hang off the right edge and fill their rows', () => {
+  assert.match(APP, /align: 'right'/);
+  const right = rulesFor('.dl-menu-right');
+  assert.equal(right.left, 'auto');
+  assert.equal(right.right, '0');
+  assert.equal(rulesFor('.dl-menu .hold-btn').width, '100%',
+    'a hold item must fill the menu row like any other item');
+});
+
+test('only one overflow menu is open at a time', () => {
+  const fn = APP.slice(APP.indexOf('function dotsMenu'));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  assert.match(body, /querySelectorAll\('\.dl-menu'\)/, 'opening one must close the others');
+  assert.match(body, /addEventListener\('click', function away/, 'clicking away must close it');
+});
+
+/* ---------- entity side column (Kyle, 2026-08-16) ---------- */
+
+test('comments and activity sit under fields in the side column', () => {
+  assert.match(APP, /right\.append\(fieldsPanel, commentsPanel, actPanel\)/,
+    'the side column reads Fields → Comments → Activity');
+  assert.doesNotMatch(APP, /left\.append\(commentsPanel\)/, 'comments must leave the main column');
+  assert.doesNotMatch(APP, /left\.append\(actPanel\)/, 'activity must leave the main column');
 });

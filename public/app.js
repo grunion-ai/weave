@@ -383,10 +383,11 @@ function holdToConfirm(label, onConfirm, { holdingLabel = 'Hold to confirm…' }
   for (const ev of ['pointerup', 'pointerleave', 'blur']) btn.addEventListener(ev, stop);
   btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); } });
   btn.addEventListener('keyup', stop);
-  // Fires once the fill reaches full width. Collapsing is untransitioned, so
-  // releasing early cannot trigger it.
+  // Fires once the fill finishes sweeping across. Collapsing is untransitioned,
+  // so releasing early cannot trigger it. The sweep is a scaleX transform, not
+  // an animated width — width/height animations thrash layout on every frame.
   fill.addEventListener('transitionend', async (e) => {
-    if (!armed || e.propertyName !== 'width') return;
+    if (!armed || e.propertyName !== 'transform') return;
     stop();
     await onConfirm();
   });
@@ -445,6 +446,52 @@ function openCellPicker(cell) {
 function rowClickTarget(e) {
   if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return 'ignore';
   return e.target.closest('.cell-pick');
+}
+
+/* The ⋮ overflow menu, one implementation for every view that has one.
+   items: {label, href, download} for a link, {label, run, danger} for a
+   button, {hold: label, run} for a hold-to-confirm, or 'divider'.
+   align 'right' hangs the panel off the right edge — the table and space
+   menus sit at the end of the header toolbar, where left-aligning would
+   push the panel off-screen. */
+function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } = {}) {
+  const menu = el('div', { class: `dl-menu hidden${align === 'right' ? ' dl-menu-right' : ''}` });
+  const close = () => menu.classList.add('hidden');
+  for (const it of items.filter(Boolean)) {
+    if (it === 'divider') { menu.append(el('div', { class: 'dropdown-divider' })); continue; }
+    if (it.href) {
+      menu.append(el('a', { class: 'dropdown-item', href: it.href, download: it.download, onclick: close }, it.label));
+      continue;
+    }
+    if (it.hold) {
+      menu.append(holdToConfirm(it.hold, async () => { close(); await it.run(); },
+        { holdingLabel: it.holdingLabel ?? 'Hold to confirm…' }));
+      continue;
+    }
+    menu.append(el('button', {
+      class: 'dropdown-item' + (it.danger ? ' text-danger' : ''), type: 'button',
+      onclick: async () => { close(); await it.run(); },
+    }, it.label));
+  }
+  const wrap = el('span', { class: `dl-wrap ${extraClass}`.trim() },
+    el('button', {
+      class: 'btn btn-sm btn-ghost-secondary dots-btn', title, type: 'button',
+      onclick: (e) => {
+        e.stopPropagation();
+        const opening = menu.classList.contains('hidden');
+        // One menu at a time, and clicking anywhere else closes it.
+        for (const m of document.querySelectorAll('.dl-menu')) m.classList.add('hidden');
+        if (!opening) return;
+        menu.classList.remove('hidden');
+        addEventListener('click', function away(ev) {
+          if (wrap.contains(ev.target)) return;
+          close();
+          removeEventListener('click', away);
+        });
+      },
+    }, '⋮'),
+    menu);
+  return wrap;
 }
 
 function editorFor(f, item, db, onSaved, { compact = false } = {}) {
@@ -737,9 +784,25 @@ function drawDatabase(db, items, trashCount = 0) {
       // Board and list have no grid to host them, so they keep the buttons.
       state.route.view === 'table' ? null
         : el('button', { class: 'btn btn-sm', onclick: () => openSchemaEditor(db) }, '⚙ Fields'),
-      el('a', { class: 'btn btn-sm', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` }, 'CSV'),
       state.route.view === 'table' ? null
         : el('button', { class: 'btn btn-sm btn-primary', onclick: () => quickCreate(db) }, '+ New'),
+      // Export and delete are occasional and one of them is irreversible, so
+      // they live in the overflow rather than the toolbar.
+      dotsMenu([
+        { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
+        'divider',
+        {
+          hold: 'Delete table', holdingLabel: 'Hold to delete table…',
+          run: async () => {
+            try {
+              await api('DELETE', `/tables/${db.id}`);
+              await loadSchema();
+              location.hash = `#/space/${db.spaceId}`;
+              toast(`Deleted ${db.name}`);
+            } catch (err) { toast(err.message, true); }
+          },
+        },
+      ], { title: 'Table actions', align: 'right' }),
     ],
   }));
 
@@ -1034,7 +1097,34 @@ async function showSpace(spaceId) {
         await api('PATCH', `/spaces/${spaceId}`, { description: md });
         await loadSchema();
       },
-      actions: [el('a', { class: 'btn btn-sm', href: '#/map' }, '🗺 Map')],
+      actions: [
+        el('a', { class: 'btn btn-sm', href: '#/map' }, '🗺 Map'),
+        // A space has no CSV of its own — it is a container — so the menu
+        // offers one export per table it holds, then the destructive act.
+        dotsMenu([
+          ...space.tables.map((d) => ({
+            label: `Export ${d.name}.csv`,
+            href: `${WS_PREFIX}/api/tables/${d.id}/export.csv`,
+            download: `${d.name}.csv`,
+          })),
+          space.tables.length ? 'divider' : null,
+          {
+            hold: space.tables.length
+              ? `Delete space + ${space.tables.length} table${space.tables.length > 1 ? 's' : ''}`
+              : 'Delete space',
+            holdingLabel: 'Hold to delete space…',
+            run: async () => {
+              try {
+                await api('DELETE', `/spaces/${spaceId}`);
+                await loadSchema();
+                location.hash = wsHomeHref().replace(/^[^#]*/, '') || '#/';
+                showHome();
+                toast(`Deleted ${space.space}`);
+              } catch (err) { toast(err.message, true); }
+            },
+          },
+        ], { title: 'Space actions', align: 'right' }),
+      ],
     }),
     el('div', { class: 'card list-rows' }, ...space.tables.map((d) =>
       el('div', { class: 'list-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
@@ -1190,15 +1280,17 @@ async function showEntity(id) {
 
   // Upper-left ⋯ menu: whole-entity downloads + delete (with confirmation).
   const entBase = `${WS_PREFIX}/e/${id}/entity`;
-  const dlMenu = el('div', { class: 'dl-menu hidden' },
-    ...['md', 'html', 'pdf'].map((ext) =>
-      el('a', { class: 'dropdown-item', href: `${entBase}.${ext}`, download: `${(entity.name || 'entity')}.${ext}` }, `Download .${ext}`)),
-    el('div', { class: 'dropdown-divider' }),
+  const dlBtn = dotsMenu([
+    ...['md', 'html', 'pdf'].map((ext) => ({
+      label: `Download .${ext}`, href: `${entBase}.${ext}`,
+      download: `${(entity.name || 'entity')}.${ext}`,
+    })),
+    'divider',
     // Deleting is recoverable now, so it is a plain item with an undo rather
     // than a hold-to-confirm. The irreversible purge lives in the trash view.
-    el('button', {
-      class: 'dropdown-item text-danger', type: 'button',
-      onclick: async () => {
+    {
+      label: 'Move to trash', danger: true,
+      run: async () => {
         try {
           await api('DELETE', `/entities/${id}`);
           await loadSchema();
@@ -1213,10 +1305,8 @@ async function showEntity(id) {
           });
         } catch (err) { toast(err.message, true); }
       },
-    }, 'Move to trash'));
-  const dlBtn = el('span', { class: 'dl-wrap entity-dl-corner' },
-    el('button', { class: 'btn btn-sm btn-ghost-secondary dots-btn', title: 'Entity actions', onclick: () => dlMenu.classList.toggle('hidden') }, '⋮'),
-    dlMenu);
+    },
+  ], { title: 'Entity actions', extraClass: 'entity-dl-corner' });
 
   main.append(
     dlBtn,
@@ -1311,8 +1401,6 @@ async function showEntity(id) {
     }
   });
   commentsBody.append(el('div', { style: 'margin-top:8px' }, commentInput));
-  left.append(commentsPanel);
-  left.append(actPanel);
 
   /* Fields panel */
   const fieldsBody = el('div', { class: 'card-body' });
@@ -1324,8 +1412,10 @@ async function showEntity(id) {
     fieldsBody.append(el('div', { class: 'fieldrow' },
       el('label', {}, f.name), editorFor(f, entity, db, () => refresh())));
   }
-  right.append(fieldsPanel); // delete lives in the upper-left ⋯ menu
-
+  // The side column reads top-down as metadata about the entity: what it is
+  // (Fields), what people said (Comments), what happened (Activity). That
+  // leaves the main column to the documents, which are the reason to be here.
+  right.append(fieldsPanel, commentsPanel, actPanel); // delete lives in the ⋮ menu
 }
 
 /* ---------- create & schema dialogs ---------- */

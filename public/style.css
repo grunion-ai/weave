@@ -330,10 +330,16 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 /* Hold-to-confirm: the fill IS the confirmation, so there is no browser
    dialog. Collapsing is untransitioned — releasing early cannot complete it. */
 .hold-btn { position: relative; overflow: hidden; cursor: pointer; }
-.hold-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(214, 57, 57, .25); transition: width 0s; }
-.hold-btn.holding .hold-fill { width: 100%; transition: width .9s linear; }
+.hold-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; transform: scaleX(0); transform-origin: left; background: rgba(214, 57, 57, .25); transition: transform 0s; }
+.hold-btn.holding .hold-fill { transform: scaleX(1); transition: transform .9s linear; }
 .hold-btn .hold-label { position: relative; }
 @media (prefers-reduced-motion: reduce) { .hold-btn.holding .hold-fill { transition-duration: .6s; } }
+/* Header-toolbar menus sit at the right edge; left-aligning the panel would
+   hang it off-screen. */
+.dl-menu-right { left: auto; right: 0; }
+/* holdToConfirm renders a .dropdown-item, so inside a menu it must fill the
+   row like every other item rather than shrink to its label. */
+.dl-menu .hold-btn { display: block; width: 100%; text-align: left; }
 .dl-menu .dropdown-divider { border-top: 1px solid var(--tblr-border-color); margin: 4px 0; }
 .dl-menu button.dropdown-item { width: 100%; text-align: left; background: none; border: 0; }
 .dl-menu .text-danger:hover { background: rgba(214, 57, 57, .08); }
