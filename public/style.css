@@ -241,9 +241,14 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .fieldrow .computed { color: var(--tblr-body-color); }
 
 /* ---------- entity page ---------- */
-.entity-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; }
+/* The entity head is a .wv-toolbar row, so it must not fight the toolbar's
+   own alignment — a baseline row would sit the ⋮ glyph off the title. */
+.entity-head { display: flex; align-items: center; gap: 10px; margin-bottom: 0; flex-wrap: wrap; }
 .entity-head .pid { color: var(--tblr-secondary); }
-.entity-head input.name-edit { font-size: 20px; font-weight: 700; border: none; background: none; color: inherit; padding: 2px 4px; width: 100%; max-width: 640px; }
+/* The name grows to fill the row (capped) and the ⋮ is pushed to the right
+   edge, matching where viewHeader() leaves it on every other view. */
+.entity-head input.name-edit { font-size: 20px; font-weight: 700; border: none; background: none; color: inherit; padding: 2px 4px; flex: 1; min-width: 0; max-width: 640px; }
+.entity-head .dl-wrap { margin-left: auto; }
 .entity-head input.name-edit:hover, .entity-head input.name-edit:focus { background: var(--tblr-bg-surface-secondary); border-radius: var(--tblr-border-radius); outline: none; }
 .crumb { color: var(--tblr-secondary); font-size: 12.5px; margin-bottom: 14px; }
 .crumb a { color: var(--tblr-primary); text-decoration: none; }
@@ -363,9 +368,6 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .nav-inline-add:focus { box-shadow: none; border-color: var(--tblr-primary); }
 .nav-inline-add::placeholder { color: var(--tblr-secondary); }
 #main { position: relative; }
-/* Entity actions sit in the true upper-left corner of the main column. */
-.entity-dl-corner { position: absolute; top: 6px; left: 2px; z-index: 25; }
-.crumb-offset { margin-left: 26px; }
 /* Vertical ellipsis: a tall, narrow glyph in a tall, narrow button. */
 .dots-btn { padding: 2px 5px; line-height: 1.1; font-size: 15px; letter-spacing: 0; }
 /* Hold-to-confirm: the fill IS the confirmation, so there is no browser

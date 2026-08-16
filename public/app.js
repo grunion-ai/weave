@@ -1498,17 +1498,20 @@ async function showEntity(id) {
         } catch (err) { toast(err.message, true); }
       },
     },
-  ], { title: 'Entity actions', extraClass: 'entity-dl-corner' });
+  ], { title: 'Entity actions', align: 'right' });
 
+  /* Crumb row, then a title row that ends in the ⋮ — the same two-row shape
+     viewHeader() builds for tables, boards, lists and spaces, so the menu is
+     in one place across the app. */
   main.append(
-    dlBtn,
-    el('div', { class: 'crumb crumb-offset' },
-      el('a', { href: `#/table/${entity.dbId}` }, entity.db), ' › ',
-      el('span', {
-        class: 'permalink-copy', title: 'Copy permalink',
-        onclick: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied'),
-      }, `#${entity.publicId} ⧉`)),
-    el('div', { class: 'entity-head' }, nameInput),
+    el('div', { class: 'view-header' },
+      el('div', { class: 'crumb' },
+        el('a', { href: `#/table/${entity.dbId}` }, entity.db), ' › ',
+        el('span', {
+          class: 'permalink-copy', title: 'Copy permalink',
+          onclick: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied'),
+        }, `#${entity.publicId} ⧉`)),
+      el('div', { class: 'wv-toolbar entity-head' }, nameInput, dlBtn)),
   );
 
   const grid = el('div', { class: 'entity-grid' });

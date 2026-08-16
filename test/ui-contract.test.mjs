@@ -329,10 +329,10 @@ test('destructive actions use it', () => {
   assert.ok(uses >= 2, `expected at least two hold-to-confirm call sites, found ${uses}`);
 });
 
-test('the entity menu sits in the corner with a vertical ellipsis', () => {
-  const corner = rulesFor('.entity-dl-corner');
-  assert.ok(px(corner.left) <= 4, `menu should hug the left edge, got ${corner.left}`);
-  assert.ok(px(corner.top) <= 8);
+/* Placement is asserted by "the entity ⋮ sits at the right end of the title
+   row" at the foot of this file — the corner geometry this test used to pin
+   was the defect. What survives is the glyph contract. */
+test('the overflow menu is a vertical ellipsis', () => {
   assert.match(APP, /dots-btn.*'⋮'/s, 'the glyph must be the vertical ellipsis');
   assert.doesNotMatch(APP, /'⋯'/, 'no horizontal ellipsis left behind');
   assert.ok(rulesFor('.dots-btn').padding, 'the vertical glyph needs its own button metrics');
@@ -708,4 +708,50 @@ test('an idle inline-edit cell casts no shadow', () => {
     '.inline-edit:not(:focus) must zero Tabler\'s --tblr-shadow-input');
   assert.equal(rulesFor('.inline-edit')['box-shadow'], undefined,
     'the reset must not be unscoped — that would kill the focus ring too');
+});
+
+/* ---------- defect: the entity ⋮ sat in a different place from every other
+   view's ⋮ ----------
+   Every view built by viewHeader() puts its overflow menu at the right end of
+   the title row, after the action buttons. The entity page hand-rolled its
+   header instead and pinned the same control to the upper-LEFT corner of
+   #main, above the breadcrumb — which is also why the crumb needed a 26px
+   left margin to clear it. Measured live on Development/Issue at :4400
+   before the fix (offsets from #main's box, 1280px viewport):
+
+   | view   | ⋮ left | gap to right edge | ⋮ top | on the title row? |
+   |--------|--------|-------------------|-------|-------------------|
+   | table  | 1178   | 32                | 47    | yes (title top 42)|
+   | entity | 2      | 1208              | 6     | no (title top 52) |
+
+   1176px apart. The fix makes the entity head a .wv-toolbar row that ends in
+   the menu, exactly like .view-title-row. */
+
+test('the entity ⋮ sits at the right end of the title row, like every other view', () => {
+  assert.doesNotMatch(APP, /entity-dl-corner/, 'no absolutely-positioned corner menu remains');
+  assert.doesNotMatch(CSS, /entity-dl-corner/, 'and its stylesheet block is gone with it');
+  assert.doesNotMatch(APP, /crumb-offset/, 'the crumb no longer indents around a corner control');
+  assert.doesNotMatch(CSS, /crumb-offset/);
+
+  // The head is a toolbar row (same flex container as .view-title-row) and
+  // the menu is its last child, inside the same .view-header block every
+  // other view wraps its crumb + title row in.
+  assert.match(APP, /class: 'wv-toolbar entity-head' \}, nameInput, dlBtn\)/,
+    'the entity ⋮ must be the trailing element of the entity head row');
+  assert.match(APP, /class: 'view-header' \},\s*\n\s*el\('div', \{ class: 'crumb' \}/,
+    'the entity crumb + title row live in a .view-header, so crumb spacing matches');
+  assert.equal(rulesFor('.entity-head')['margin-bottom'], '0',
+    '.view-header owns the gap below the header, exactly as on .view-title-row');
+
+  const head = rulesFor('.entity-head');
+  const bar = rulesFor('.wv-toolbar');
+  assert.equal(head['align-items'], bar['align-items'],
+    '.entity-head must align its row the same way .wv-toolbar does');
+  assert.equal(rulesFor('.entity-head .dl-wrap')['margin-left'], 'auto',
+    'margin-left:auto is what pushes the menu to the right edge');
+
+  // Right edge means the panel must hang off the right, or it runs off-screen.
+  const call = APP.match(/\{ title: 'Entity actions'[^}]*\}/);
+  assert.ok(call, 'the entity menu call site should be findable');
+  assert.match(call[0], /align: 'right'/, 'a right-edge menu must drop its panel to the left');
 });
