@@ -313,3 +313,52 @@ test('import/export JSON roundtrip', () => {
   w2.importJSON(dump);
   assert.equal(w2.query('Task', {}).total, 1);
 });
+
+/* ---------- column order (Feature #41) ----------
+   describeSchema() emits fields in fieldOrder, so the grid's column order IS
+   fieldOrder. Reordering columns therefore has to be a schema write, not a
+   client-side sort, or the order dies with the page. */
+
+test('a table reorders its fields', () => {
+  const { w, tasks } = buildWorkspace();
+  const before = w.getTable(tasks).fieldOrder.slice();
+  const names = () => w.describeSchema()[0].tables.find((t) => t.name === 'Task').fields.map((f) => f.name);
+  const original = names();
+
+  // Accepts names, not just ids — the UI holds column labels.
+  const moved = [original[0], original[2], original[1], ...original.slice(3)];
+  w.updateTable(tasks, { fieldOrder: moved });
+  assert.deepEqual(names(), moved, 'describeSchema must follow the new order');
+  assert.equal(w.getTable(tasks).fieldOrder.length, before.length, 'reorder must not add or drop fields');
+
+  // A partial or padded order is a bug in the caller, not a silent field drop.
+  assert.throws(() => w.updateTable(tasks, { fieldOrder: [original[0]] }), /every field/i);
+  assert.throws(() => w.updateTable(tasks, { fieldOrder: [...original, original[0]] }), /every field/i);
+  assert.throws(() => w.updateTable(tasks, { fieldOrder: [...original.slice(1), 'Nope'] }), /not found/i);
+  assert.deepEqual(names(), moved, 'a rejected reorder leaves the order untouched');
+});
+
+test('a reordered table survives a reload', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'weave-order-'));
+  try {
+    const path = join(dir, 'ws.db');
+    const w1 = new Weave({ path });
+    w1.createSpace({ name: 'S' });
+    const db = w1.createTable({ space: 'S', name: 'Item' });
+    w1.addField(db, { name: 'A', type: 'text' });
+    w1.addField(db, { name: 'B', type: 'text' });
+    // Derived, not hard-coded: a fresh table ships with its own fields
+    // (Name, Description) and the order must stay a full permutation.
+    const start = w1.describeSchema()[0].tables[0].fields.map((f) => f.name);
+    const want = ['B', 'A', ...start.filter((n) => n !== 'A' && n !== 'B')];
+    w1.updateTable(db, { fieldOrder: want });
+
+    const w2 = new Weave({ path });
+    assert.deepEqual(
+      w2.describeSchema()[0].tables[0].fields.map((f) => f.name),
+      want,
+      'fieldOrder is persisted schema, not view state');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

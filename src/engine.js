@@ -239,6 +239,17 @@ export class Weave {
     if (patch.name != null) db.name = patch.name;
     if (patch.description != null) db.description = patch.description;
     if (patch.icon != null) db.icon = patch.icon;
+    // Column order is fieldOrder — describeSchema() reads it — so a reorder is
+    // a schema write. Demand a full permutation: a short list would silently
+    // drop columns off the grid, which reads exactly like data loss.
+    if (patch.fieldOrder != null) {
+      const ids = patch.fieldOrder.map((ref2) => this.getField(db.id, ref2).id);
+      const unique = new Set(ids);
+      if (unique.size !== ids.length || ids.length !== db.fieldOrder.length) {
+        throw new WeaveError('fieldOrder must list every field exactly once', 'invalid');
+      }
+      db.fieldOrder = ids;
+    }
     this.save();
     return db;
   }

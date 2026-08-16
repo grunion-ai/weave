@@ -130,6 +130,25 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 .wv-grid td.cell-computed { background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); cursor: default; }
 .computed { cursor: default; }
 .computed-mark { margin-right: 5px; opacity: .55; font-size: 11px; }
+/* Column header = the field's control (Feature #41). The ⋮ is absolutely
+   positioned so it costs the label no width: a header sized to its text does
+   not jump when the affordance appears. It stays invisible until the header is
+   hovered or the button itself takes keyboard focus — quiet chrome, but a real
+   control, so focus-visible has to reveal it as loudly as hover does. */
+.wv-grid th.col-head { position: relative; padding-right: 24px; }
+.wv-grid th.col-head .col-label { pointer-events: none; }
+.field-menu { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 18px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; transition: opacity .12s ease; }
+/* The ⋮ sits at its column's right edge — hard against the next column's
+   label — so the hovered header tints too: the tint says which column the
+   affordance belongs to. */
+.wv-grid th.col-head:hover { background: var(--tblr-bg-surface); }
+.wv-grid th.col-head:hover .field-menu, .field-menu:focus-visible { opacity: 1; }
+.field-menu:hover, .field-menu:focus-visible { color: var(--tblr-primary); background: var(--tblr-bg-surface); }
+/* Drop cue for a dragged column: an insertion edge, not a filled cell — the
+   column lands where the line is. */
+.wv-grid th.drop-target { box-shadow: inset 2px 0 0 var(--tblr-primary); }
+.modal-note { color: var(--tblr-secondary); font-size: 12px; margin-top: 2px; }
+
 /* "+" closing the header bar: adds a field where the fields live. */
 .wv-grid th.add-field-head { width: 1%; white-space: nowrap; padding-left: 4px; padding-right: 8px; cursor: default; }
 .add-field-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; }

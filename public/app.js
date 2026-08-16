@@ -911,9 +911,26 @@ function renderTable(main, db, items, onSaved) {
     const table = el('table', { class: 'table table-sm table-vcenter card-table table-hover wv-grid' },
       el('thead', {}, el('tr', {},
         el('th', { class: 'pid-head' }, '#'),
-        ...cols.map((c) => el('th', {
+        ...cols.map((c, i) => el('th', {
+          class: 'col-head',
+          draggable: 'true',
           onclick: () => { sortDir = sortKey === c ? -sortDir : 1; sortKey = c; draw(); },
-        }, c + (sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : ''))),
+          // Dragging a header moves the column. The drop lands before the
+          // target when the column travels left, after it when it travels
+          // right — the same "insert where the gap opened" reading as a
+          // dragged card.
+          ondragstart: (e) => { e.dataTransfer.setData('text/plain', c); e.dataTransfer.effectAllowed = 'move'; },
+          ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add('drop-target'); },
+          ondragleave: (e) => e.currentTarget.classList.remove('drop-target'),
+          ondrop: (e) => {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drop-target');
+            const from = e.dataTransfer.getData('text/plain');
+            if (from && from !== c) reorderField(db, from, c, { after: cols.indexOf(from) < i });
+          },
+        },
+          el('span', { class: 'col-label' }, c + (sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : '')),
+          fieldMenuButton(db, db.fields.find((f) => f.name === c), cols, i))),
         el('th', { title: documentFields(db).map((f) => f.name).join(', ') },
           `Docs (${documentFields(db).length})`),
         // Adding a field lives where the fields are: the end of the header bar.
@@ -923,6 +940,108 @@ function renderTable(main, db, items, onSaved) {
   };
   draw();
   main.append(wrap);
+}
+
+/* ---------- the column header as a control (Feature #41, option A) ----------
+   Until this, the header only sorted and there was NO edit path for a field:
+   changing a select's options meant deleting the column and building it again,
+   which takes the column's data with it. The ⋮ puts the field's whole life —
+   edit, move, insert, delete — on the header it belongs to, reusing the chip
+   popover so it matches every other picker in the grid. */
+
+function fieldMenuButton(db, f, cols, i) {
+  const btn = el('button', {
+    class: 'field-menu', type: 'button',
+    title: `Configure ${f.name}`, 'aria-label': `Configure field ${f.name}`,
+  }, '⋮');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();   // configuring a column must not also sort it
+    const row = (label, run) => el('button', {
+      class: 'chip-pop-row', type: 'button',
+      onclick: () => { document.querySelector('.chip-pop')?.remove(); run(); },
+    }, label);
+    const rows = [row('✎ Edit field…', () => editFieldDialog(db, f))];
+    if (i > 0) rows.push(row('← Move left', () => reorderField(db, f.name, cols[i - 1])));
+    if (i < cols.length - 1) rows.push(row('→ Move right', () => reorderField(db, f.name, cols[i + 1], { after: true })));
+    rows.push(row('+ Insert field…', () => addFieldDialog(db)));
+    if (f.name !== 'Name') {
+      rows.push(holdToConfirm('🗑 Delete field', async () => {
+        document.querySelector('.chip-pop')?.remove();
+        try {
+          await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
+          await loadSchema();
+          showDatabase(db.id);
+        } catch (err) { toast(err.message, true); }
+      }, { holdingLabel: 'Hold to delete…' }));
+    }
+    showPopover(btn, rows);
+  });
+  return btn;
+}
+
+/* Edit, not replace: the engine patches a field in place, so options and
+   states can change without the column's values going anywhere. Type itself
+   is not editable here — that is a data coercion, and it stays refused until
+   the dry-run migration exists (design review, open question 2). */
+function editFieldDialog(db, f) {
+  const fields = [];
+  if (f.name !== 'Name') {
+    fields.push(el('input', { name: 'name', value: f.name, class: 'form-control full', style: 'width:100%' }));
+  }
+  if (f.type === 'select' || f.type === 'multiselect') {
+    fields.push(el('input', {
+      name: 'options', class: 'form-control full', style: 'width:100%',
+      value: (f.options ?? []).join(', '), placeholder: 'Options (comma-separated)',
+    }));
+  } else if (f.type === 'workflow') {
+    fields.push(el('input', {
+      name: 'states', class: 'form-control full', style: 'width:100%',
+      value: (f.states ?? []).map((s) => `${s.name}:${s.category}`).join(', '),
+      placeholder: 'States: Open:not-started, Doing:in-progress, Done:done',
+    }));
+  } else if (f.type === 'formula') {
+    fields.push(el('input', {
+      name: 'expression', class: 'form-control full', style: 'width:100%',
+      value: f.expression ?? '', placeholder: 'e.g. if(Estimate > 5, "big", "small")',
+    }));
+  }
+  fields.push(el('div', { class: 'full modal-note' }, `${f.type} field — the type cannot be changed here`));
+
+  modal(`Edit ${f.name}`, fields, async (fd) => {
+    const patch = {};
+    if (fd.get('name') && fd.get('name') !== f.name) patch.name = fd.get('name');
+    if (f.type === 'select' || f.type === 'multiselect') {
+      patch.config = { options: String(fd.get('options') ?? '').split(',').map((s) => s.trim()).filter(Boolean) };
+    } else if (f.type === 'workflow') {
+      patch.config = {
+        states: String(fd.get('states') ?? '').split(',').map((s) => {
+          const [name, category] = s.split(':').map((x) => x.trim());
+          return { name, category: category ?? 'in-progress' };
+        }).filter((s) => s.name),
+      };
+    } else if (f.type === 'formula') {
+      patch.config = { expression: fd.get('expression') };
+    }
+    await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, patch);
+    await loadSchema();
+    showDatabase(db.id);
+  }, 'Save changes');
+}
+
+/* Column order IS fieldOrder, so a move is a schema write — drag a column and
+   it is still there tomorrow. The order sent covers every field, document
+   columns included, because the engine refuses a partial order rather than
+   silently dropping what the grid cannot see. */
+async function reorderField(db, fromName, toName, { after = false } = {}) {
+  const order = db.fields.map((f) => f.name).filter((n) => n !== fromName);
+  const at = order.indexOf(toName);
+  if (at < 0) return;
+  order.splice(after ? at + 1 : at, 0, fromName);
+  try {
+    await api('PATCH', `/tables/${db.id}`, { fieldOrder: order });
+    await loadSchema();
+    showDatabase(db.id);
+  } catch (err) { toast(err.message, true); }
 }
 
 /* The "+" that closes the grid's header bar. A menu rather than a straight

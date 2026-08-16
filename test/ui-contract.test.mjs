@@ -252,8 +252,12 @@ test('one popover implementation serves every anchored menu', () => {
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
   assert.match(body, /querySelector\('\.chip-pop'\)\?\.remove\(\)/, 'never two popovers at once');
   assert.match(body, /Escape/);
-  // Both callers go through it rather than rebuilding the popover inline.
-  assert.equal((APP.match(/showPopover\(/g) ?? []).length, 3, 'definition + chipPicker + field menu');
+  // Every caller goes through it rather than rebuilding the popover inline.
+  // Counted as "more than one caller" rather than an exact number — a new menu
+  // is fine, a second popover implementation is not.
+  assert.ok((APP.match(/showPopover\(/g) ?? []).length >= 3, 'definition + at least two callers');
+  assert.equal((APP.match(/class: 'chip-pop'/g) ?? []).length, 1,
+    'only showPopover may build a .chip-pop — no second implementation');
 });
 
 /* ---------- keyboard: fill in a record without the mouse ---------- */
@@ -520,4 +524,97 @@ test('number inputs show no native spinner chip', () => {
   const num = rulesFor('input[type=number]');
   assert.equal(num.appearance, 'textfield', 'standards-track spelling drops the spinner');
   assert.equal(num['-moz-appearance'], 'textfield', 'Firefox needs the prefixed spelling');
+});
+
+/* ---------- the inert column header (Feature #41, Option A) ----------
+   The 2026-08-16 design review scored the field surfaces against seven
+   faults. Two were fatal: F1, there was no edit path at all — changing a
+   select's options meant delete + recreate, which drops that column's data —
+   and F6, the header did nothing but sort. Option A makes the header the
+   control surface: the label still sorts, a ⋮ opens one popover that renames,
+   edits options/states, moves and deletes, and the header is a drag handle.
+   Reorder is a schema write (fieldOrder on the table), not page state, so a
+   dragged column is still there after a reload. */
+
+/* The body of a top-level `function name(` declaration, to its closing brace
+   at column 0. Same trick the nav tests use, factored out. */
+function fnBody(name) {
+  const at = APP.indexOf(`function ${name}(`);
+  assert.ok(at > 0, `${name}() must exist in app.js`);
+  const rest = APP.slice(at);
+  return rest.slice(0, rest.indexOf('\n}\n') + 2);
+}
+
+test('every column header carries a field menu', () => {
+  const head = fnBody('renderTable');
+  assert.match(head, /fieldMenuButton\(/, 'each column th mounts the field menu');
+  assert.match(head, /sortKey = c/, 'the label still sorts — the menu is additive, not a replacement');
+  const menu = fnBody('fieldMenuButton');
+  assert.match(menu, /showPopover\(/, 'the menu reuses the chip popover, not a new overlay');
+  assert.match(menu, /stopPropagation/, 'opening the menu must not also sort the column');
+});
+
+test('the field menu edits a field rather than dropping and rebuilding it', () => {
+  const dlg = fnBody('editFieldDialog');
+  assert.match(dlg, /'PATCH'/, 'F1: editing a field is a PATCH to /fields/:id');
+  assert.doesNotMatch(dlg, /'DELETE'/, 'never delete-and-recreate — that drops the column data');
+  assert.match(dlg, /options|states|expression/, 'the editor reaches the type config, not just the name');
+});
+
+test('deleting a field from the header is guarded and never offered for Name', () => {
+  const menu = fnBody('fieldMenuButton');
+  assert.match(menu, /holdToConfirm\(/, 'destructive rows are hold-to-confirm, like the schema page');
+  assert.match(menu, /'Name'/, 'the Name field must not offer a delete row');
+});
+
+test('column reorder is persisted as fieldOrder, not page state', () => {
+  const move = fnBody('reorderField');
+  assert.match(move, /fieldOrder/, 'reorder writes the schema…');
+  assert.match(move, /'PATCH'/, '…through PATCH /tables/:id');
+  assert.match(move, /loadSchema\(\)/, 'and reloads the schema so every view sees the new order');
+  const menu = fnBody('fieldMenuButton');
+  assert.match(menu, /reorderField\(/, 'the menu offers move-left / move-right for keyboard users');
+});
+
+test('a column header is a drag handle for reorder', () => {
+  const head = fnBody('renderTable');
+  assert.match(head, /draggable: 'true'/, 'the th must be draggable');
+  for (const ev of ['dragstart', 'dragover', 'drop']) {
+    assert.match(head, new RegExp(ev), `the th must handle ${ev}`);
+  }
+  assert.match(head, /reorderField\(/, 'a drop commits through the same schema write as the menu');
+  const drop = rulesFor('.wv-grid th.drop-target');
+  assert.ok(drop['box-shadow'] || drop['border-left'] || drop.outline,
+    'the drop target needs a visible insertion cue');
+});
+
+test('the field menu affordance does not squeeze the column label', () => {
+  const head = rulesFor('.wv-grid th.col-head');
+  assert.equal(head.position, 'relative', 'the ⋮ is positioned against its own header cell');
+  const btn = rulesFor('.field-menu');
+  assert.equal(btn.position, 'absolute', 'the ⋮ floats — it must not take label width');
+  assert.equal(btn.opacity, '0', 'quiet until the header is hovered or focused');
+  const shown = rulesFor('.wv-grid th.col-head:hover .field-menu');
+  assert.equal(shown.opacity, '1', 'hover reveals it');
+  const focused = rulesFor('.field-menu:focus-visible');
+  assert.equal(focused.opacity, '1', 'keyboard focus reveals it too — it is a real control');
+});
+
+/* UAT (live, 2026-08-16): the edit dialog's submit button read "Create" — the
+   modal() default — on a form that renames an existing field. modal() already
+   takes a submit label; the editor has to pass one. */
+test('the field editor commits with a save label, not Create', () => {
+  const dlg = fnBody('editFieldDialog');
+  assert.match(dlg, /\}, '(Save|Save changes)'\)/, 'editFieldDialog must pass modal() a save label');
+});
+
+/* Live check (2026-08-16): the ⋮ paints at its column's right edge, which is
+   millimetres from the NEXT column's label — with no other cue it reads as
+   belonging to the wrong column. The hovered header is tinted so the pair
+   reads as one object. */
+test('a hovered header is tinted so the menu has a visible owner', () => {
+  const hover = rulesFor('.wv-grid th.col-head:hover');
+  assert.ok(hover.background, 'the hovered header must change background');
+  assert.notEqual(hover.background, rulesFor('.wv-grid thead th').background,
+    'the hover tint has to differ from the resting header');
 });
