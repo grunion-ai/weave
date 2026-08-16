@@ -110,6 +110,15 @@ test('the served loaders are byte-identical to the generated brand assets', () =
   }
 });
 
+test('the README\'s inline HTML survives GitHub\'s tag scanner', () => {
+  // A bare > inside an attribute value is legal HTML but ends the tag as far
+  // as GitHub's markdown scanner is concerned: alt="Node >= 22.16" rendered as
+  // a broken image followed by the rest of the tag as visible text.
+  const readme = read('README.md');
+  const bad = [...readme.matchAll(/<[a-z]+\s[^>]*?\w+="[^"]*[<>][^"]*"/gi)].map((m) => m[0]);
+  assert.deepEqual(bad, [], 'escape < and > inside attribute values as &lt; / &gt;');
+});
+
 test('the README hero is a GIF pair, because GitHub will not run SMIL', () => {
   const readme = read('README.md');
   assert.match(readme, /<source media="\(prefers-color-scheme: dark\)" srcset="brand\/assets\/png\/weave-loader-dark\.gif">/);

@@ -19,7 +19,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="Node >= 22.16" src="https://img.shields.io/badge/node-%E2%89%A5%2022.16-3c873a.svg">
+  <img alt="Node &gt;= 22.16" src="https://img.shields.io/badge/node-%E2%89%A5%2022.16-3c873a.svg">
   <img alt="Runtime dependencies: 0" src="https://img.shields.io/badge/runtime%20dependencies-0-brightgreen.svg">
   <img alt="Self-hosted" src="https://img.shields.io/badge/self--hosted-yes-blueviolet.svg">
   <img alt="MCP server included" src="https://img.shields.io/badge/MCP-server%20included-8a63d2.svg">
