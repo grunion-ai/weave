@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/grunion-ai/weave/discussions
+    about: How do I model this? Why does that field behave that way? Ask here.
+  - name: Security vulnerability
+    url: https://github.com/grunion-ai/weave/security/advisories/new
+    about: Report privately — never in a public issue.
+  - name: Roadmap and known issues
+    url: https://github.com/grunion-ai/weave/blob/main/docs/PARITY.md
+    about: What is built, what is partial, what is not. The live tracker runs inside weave at /w/weave/.

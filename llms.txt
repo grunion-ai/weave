@@ -1,0 +1,33 @@
+# weave
+
+> An open-source, self-hosted alternative to Airtable, Fibery, Notion databases,
+> and ClickUp, in which AI agents are first-class users. Connected tables,
+> bidirectional relations, workflow states, lookups, rollups, formulas,
+> automations, and per-entity markdown documents — one SQLite file, zero runtime
+> dependencies, no build step, MIT licensed.
+
+weave runs as a single Node process over a single `.db` file. Everything the web
+UI can do is also available over a REST API, a scriptable CLI, and a built-in
+Model Context Protocol (MCP) server backed by the same engine. There is no
+cloud, no signup, and no telemetry. It has no authentication of its own: a
+self-hosted instance is expected to sit behind a reverse proxy, SSO proxy, or
+private network.
+
+Requires Node ≥ 22.16 (Node 24 LTS recommended). Install is `git clone` — there
+is nothing to build and nothing to install from npm.
+
+## Docs
+
+- [README](https://github.com/grunion-ai/weave/blob/main/README.md): what weave is, quickstart, comparison against Airtable/ClickUp/Fibery and other open-source alternatives, self-hosting, FAQ
+- [AGENTS.md](https://github.com/grunion-ai/weave/blob/main/AGENTS.md): agent-facing map — repo layout, the 23 MCP tools, entity-ref forms, rules for changing the repo
+- [Feature parity matrix](https://github.com/grunion-ai/weave/blob/main/docs/PARITY.md): weave against Fibery's core work-platform feature set, feature by feature
+- [weave vs Airtable](https://github.com/grunion-ai/weave/blob/main/docs/comparison/airtable.md): how Airtable concepts map onto weave, and what is missing
+- [weave vs Fibery](https://github.com/grunion-ai/weave/blob/main/docs/comparison/fibery.md): how Fibery concepts map onto weave, and what is missing
+- [Open-source alternatives compared](https://github.com/grunion-ai/weave/blob/main/docs/comparison/alternatives.md): weave against NocoDB, Baserow, Grist, and Teable
+- [CONTRIBUTING](https://github.com/grunion-ai/weave/blob/main/CONTRIBUTING.md): setup, the zero-dependency and no-build-step rules, PR expectations
+- [SECURITY](https://github.com/grunion-ai/weave/blob/main/SECURITY.md): threat model, what is in scope, private reporting
+
+## Optional
+
+- [Screenshots](https://github.com/grunion-ai/weave/tree/main/docs/screenshots): table, board, entity documents, relation map, search
+- [License](https://github.com/grunion-ai/weave/blob/main/LICENSE): MIT

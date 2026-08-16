@@ -1,7 +1,7 @@
 {
   "name": "weave",
   "version": "0.3.0",
-  "description": "Weave — a local, open-source, agent-accessible work platform (Fibery-style): tables, relations, workflows, lookups, rollups, formulas, per-entity documents (MD/HTML/PDF), REST API, web UI, CLI, and MCP server.",
+  "description": "Open-source, self-hosted alternative to Airtable, Fibery, Notion databases and ClickUp, built so AI agents are first-class users. Connected tables, relations, workflows, lookups, rollups, formulas and per-entity markdown documents (MD/HTML/PDF) in one SQLite file — web UI, REST API, CLI and MCP server. Zero dependencies, no build step.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -17,14 +17,27 @@
     "node": ">=22.16"
   },
   "keywords": [
-    "fibery",
-    "work-management",
-    "database",
-    "no-code",
-    "mcp",
-    "agent",
+    "airtable-alternative",
+    "fibery-alternative",
+    "notion-alternative",
+    "clickup-alternative",
+    "self-hosted",
     "local-first",
-    "markdown"
+    "open-source",
+    "no-code",
+    "low-code",
+    "database",
+    "sqlite",
+    "work-management",
+    "project-management",
+    "knowledge-base",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ai-agents",
+    "rest-api",
+    "markdown",
+    "zero-dependency"
   ],
   "repository": {
     "type": "git",

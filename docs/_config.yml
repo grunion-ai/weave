@@ -1,0 +1,19 @@
+# GitHub Pages configuration for the docs/ site.
+# Only this folder is published; the repo root is not.
+title: weave documentation
+description: >-
+  weave is an open-source, self-hosted alternative to Airtable, Fibery, Notion
+  databases, and ClickUp, built so that AI agents are first-class users.
+  Connected tables, relations, workflows, formulas, rollups, and per-entity
+  markdown documents in one SQLite file. Zero dependencies, no build step, MIT.
+theme: jekyll-theme-primer
+plugins:
+  - jekyll-seo-tag       # <title>, meta description, Open Graph, JSON-LD
+  - jekyll-sitemap       # /sitemap.xml for crawlers
+  - jekyll-relative-links # rewrites relative .md links to their .html pages
+lang: en
+author: Grunion AI
+twitter:
+  card: summary
+exclude:
+  - screenshots/README.md

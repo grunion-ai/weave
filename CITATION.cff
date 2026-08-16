@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+title: >-
+  weave — an open-source, self-hosted, agent-accessible work platform
+message: If you use weave in your work, please cite it using these metadata.
+type: software
+authors:
+  - name: Grunion AI
+    website: https://github.com/grunion-ai
+repository-code: https://github.com/grunion-ai/weave
+abstract: >-
+  weave is a local-first, self-hostable alternative to Airtable, Fibery, Notion
+  databases, and ClickUp. It provides connected tables, bidirectional relations,
+  workflow states, lookups, rollups, formulas, automations, and per-entity
+  markdown documents rendered as Markdown, HTML, or PDF. A workspace is a single
+  SQLite file. Every capability is reachable through a web UI, a REST API, a
+  CLI, and a built-in Model Context Protocol (MCP) server, so AI agents are
+  first-class users. It has zero runtime dependencies and no build step.
+keywords:
+  - work management
+  - no-code database
+  - self-hosted
+  - local-first
+  - Airtable alternative
+  - Fibery alternative
+  - Model Context Protocol
+  - MCP
+  - AI agents
+  - SQLite
+license: MIT

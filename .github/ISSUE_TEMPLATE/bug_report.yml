@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in weave does not work the way it is documented
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For anything security-related, do **not** open an issue — use
+        [private reporting](https://github.com/grunion-ai/weave/security/advisories/new)
+        instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+      placeholder: |
+        1. Created a rollup field on Project over Task.Estimate
+        2. Changed an Estimate
+        3. The rollup did not update until I reloaded
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      multiple: true
+      options:
+        - Web UI
+        - REST API
+        - CLI
+        - MCP server
+        - Documents (md / html / pdf)
+        - Storage / data file
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: "`git rev-parse --short HEAD`"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: "`node --version` (weave requires ≥ 22.16)"
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Logs, screenshots, or a minimal workspace
+      description: |
+        Screenshots help a lot for UI bugs — please include both themes if the
+        bug is visual. Never paste a workspace that contains real data.
