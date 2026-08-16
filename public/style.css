@@ -15,7 +15,7 @@ body { font-size: 14px; }
 .ws-wordmark { font-family: 'Inter', var(--tblr-font-sans-serif, -apple-system, sans-serif); font-weight: 700; font-size: 18px; letter-spacing: -0.02em; line-height: 22px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #nav-collapse { flex-shrink: 0; }
 #nav { flex: 1; }
-.nav-space-row { display: flex; align-items: center; margin: 8px 0 2px; }
+.nav-space-row { display: flex; align-items: center; gap: 2px; margin: 8px 0 2px; }
 .nav-space { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--tblr-secondary); }
 a.nav-space { text-decoration: none; display: block; }
 a.nav-space:hover { color: var(--tblr-primary); }
@@ -66,15 +66,25 @@ a.nav-space:hover { color: var(--tblr-primary); }
 [data-bs-theme="dark"] .ws-weave .mark-light { display: none; }
 [data-bs-theme="dark"] .ws-weave .mark-dark { display: inline; }
 #ws-list { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+/* The list is filled by an async fetch. An empty flex item still eats a gap
+   on each side, so the rail loaded with 16px of dead space under the mark and
+   the "+" chip jumped once the fetch landed (UAT, 2026-08-16). */
+#ws-list:empty { display: none; }
 .rail-spacer { flex: 1; }
 #app.nav-collapsed #sidebar { display: none; }
 /* Expand control keeps the collapse chevron's upper-left position (fixed
    beside the rail) instead of stacking as a workspace chip. */
 #nav-expand { position: fixed; top: 10px; left: 60px; z-index: 60; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
 #nav-expand:hover { color: var(--tblr-primary); border-color: var(--tblr-primary); }
-.nav-caret { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 4px; padding: 0; background: none; border: 0; border-radius: 4px; color: var(--tblr-secondary); cursor: pointer; font-size: 12px; line-height: 1; transition: transform .12s ease; }
+/* Disclosure caret: a stroked chevron in a full 24px target, LEADING the
+   space label. A 12px `▾` glyph in an 18px box read as a speck and could not
+   match the stroke weight of the rest of the chrome (UAT, 2026-08-16). */
+.nav-caret { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; margin-left: -4px; padding: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); cursor: pointer; line-height: 0; transition: transform .12s ease, color .12s ease, background-color .12s ease; }
+.nav-caret svg { width: 15px; height: 15px; stroke: currentColor; }
 .nav-caret.folded { transform: rotate(-90deg); }
-.nav-caret:hover { color: var(--tblr-primary); background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
+.nav-caret:hover, .nav-space-row:hover .nav-caret { color: var(--tblr-body-color); }
+.nav-caret:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
+.nav-caret:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
 .kind-mark { width: 13px; height: 13px; vertical-align: -2px; }
 
 /* ---------- shared view header ---------- */
@@ -357,3 +367,26 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .logo-dark { display: none; }
 [data-bs-theme="dark"] .logo-light { display: none; }
 [data-bs-theme="dark"] .logo-dark { display: inline; }
+
+/* ---------- page loader (brand decision 7) ----------
+   The weave-on rope, shown while a route is being fetched and rendered.
+   Fixed over #main rather than inside it: page renders replace #main's
+   children wholesale, so a child loader would vanish the moment a slow
+   render finally landed. `hidden` is the off state; app.js flips it.
+   The threshold + one-full-cycle rules live in app.js — see pageLoader(). */
+#page-loader[hidden] { display: none; }
+#page-loader {
+  position: fixed; inset: 0 0 0 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--tblr-body-bg) 72%, transparent);
+  animation: loader-in .18s ease both;
+}
+#page-loader img { width: 72px; height: 72px; object-fit: contain; }
+#page-loader .mark-dark { display: none; }
+[data-bs-theme="dark"] #page-loader .mark-light { display: none; }
+[data-bs-theme="dark"] #page-loader .mark-dark { display: block; }
+@keyframes loader-in { from { opacity: 0; } to { opacity: 1; } }
+/* The rope's own motion is the loading signal; the wash fading in is not.
+   Honour a reduced-motion request by dropping the fade, not the loader. */
+@media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }

@@ -26,6 +26,14 @@ const svgEl = (tag, attrs = {}, ...children) => {
   return node;
 };
 
+/* Tabler-house chevron: stroked, round caps, 24-unit box so it sizes off the
+   CSS box rather than a font metric. Text glyphs (▾) cannot match the stroke
+   weight of the surrounding chrome — see the nav-caret UAT note in style.css. */
+const chevron = () => svgEl('svg', {
+  viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2',
+  'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true',
+}, svgEl('path', { d: 'M6 9l6 6l6 -6' }));
+
 // Workspace scoping: the app is served at / (default workspace) and at
 // /w/<name>/ for sibling workspaces — one SPA, path-scoped API + permalinks.
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
@@ -222,17 +230,18 @@ function renderNav() {
   for (const space of state.schema) {
     const isFolded = folded.has(space.spaceId);
     const spaceRow = el('div', { class: 'nav-space-row' },
-      el('a', { class: 'nav-space', href: `#/space/${space.spaceId}` }, space.space),
       el('button', {
         class: 'nav-caret' + (isFolded ? ' folded' : ''),
         title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`, type: 'button',
+        'aria-expanded': String(!isFolded),
         onclick: () => {
           if (folded.has(space.spaceId)) folded.delete(space.spaceId);
           else folded.add(space.spaceId);
           localStorage.setItem('weave-folded-spaces', JSON.stringify([...folded]));
           renderNav();
         },
-      }, '▾'),
+      }, chevron()),
+      el('a', { class: 'nav-space', href: `#/space/${space.spaceId}` }, space.space),
       el('button', {
         class: 'btn btn-sm btn-icon btn-ghost-secondary tiny nav-add-table',
         title: `New table in ${space.space}`, type: 'button',

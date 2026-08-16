@@ -450,3 +450,54 @@ test('comments and activity sit under fields in the side column', () => {
   assert.doesNotMatch(APP, /left\.append\(commentsPanel\)/, 'comments must leave the main column');
   assert.doesNotMatch(APP, /left\.append\(actPanel\)/, 'activity must leave the main column');
 });
+
+/* ---------- space disclosure caret (Kyle, 2026-08-16) ----------
+   UAT: "space carrots are still too small and the wrong design". The fold
+   control was a 12px `▾` text glyph in an 18px box, trailing the space name.
+   Two separate faults: a sub-24px hit target, and a text glyph whose weight
+   and baseline cannot match the rest of the chrome. Replaced with a stroked
+   chevron drawn as SVG, in a 24px target, LEADING the label — the standard
+   disclosure position, so the caret column lines up down the whole nav. */
+
+test('the space caret is a real hit target, not a 18px sliver', () => {
+  const caret = rulesFor('.nav-caret');
+  assert.ok(px(caret.width) >= 24 && px(caret.height) >= 24,
+    `caret must be at least 24x24, got ${caret.width} x ${caret.height}`);
+  assert.equal(caret.flex ?? caret['flex-shrink'], '0',
+    'the caret must not shrink when a space name is long');
+});
+
+test('the space caret is a drawn chevron, not a text glyph', () => {
+  const fn = APP.slice(APP.indexOf('function renderNav'));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  assert.doesNotMatch(body, /'▾'|"▾"|'▸'|'▼'/, 'no text-glyph caret — it cannot match the chrome');
+  assert.match(body, /chevron\(/, 'the caret renders the shared chevron() svg');
+  const at = APP.indexOf('chevron = (');
+  assert.ok(at > 0, 'chevron() must be defined in app.js');
+  assert.match(APP.slice(at, at + 400), /'stroke-linecap': 'round'/,
+    'stroked chevron, round caps — Tabler house style');
+  const icon = rulesFor('.nav-caret svg');
+  assert.ok(px(icon.width) >= 14, `chevron glyph must be >= 14px, got ${icon.width}`);
+});
+
+test('the caret leads the space label', () => {
+  const fn = APP.slice(APP.indexOf('function renderNav'));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  const row = body.indexOf("class: 'nav-space-row'");
+  assert.ok(body.indexOf('nav-caret', row) < body.indexOf("class: 'nav-space'", row),
+    'the caret is appended before the space link — disclosure controls lead');
+});
+
+/* ---------- rail load shift (Kyle, 2026-08-16) ----------
+   UAT: "sometimes the page loads with too much padding on the leftmost
+   workspace nav". #ws-list is filled by an async fetch. While empty it is
+   still a flex item of #ws-rail (gap: 8px), so it eats a gap on BOTH sides —
+   16px of dead space under the brand mark instead of 8px — and the "+" chip
+   jumps 76px down when the fetch lands. Measured live: #ws-new top 64 while
+   empty, 140 once populated. :empty removes the item and the phantom gap. */
+
+test('an unfilled #ws-list does not eat a rail gap', () => {
+  assert.ok(px(rulesFor('#ws-rail').gap) > 0, 'the rail spaces its chips with gap');
+  assert.equal(rulesFor('#ws-list:empty').display, 'none',
+    '#ws-list must leave the flex flow until the workspace fetch lands');
+});
