@@ -215,7 +215,12 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 
 
 /* ---------- inline editing surfaces (all views) ---------- */
+/* Tabler gives every .form-control a 1px drop shadow. A cell that has given
+   up its border and background has nothing to cast one, so the shadow read as
+   a smudge under the text. Scoped to :not(:focus) — the focus ring rides the
+   same property. */
 .inline-edit { border-color: transparent; background: transparent; max-width: 100%; }
+.inline-edit:not(:focus) { box-shadow: none; }
 .inline-edit:hover { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .inline-edit:focus { border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
 select.inline-edit:not(:hover):not(:focus) { background-image: none; }

@@ -691,3 +691,21 @@ test('the <select> era leaves nothing behind', () => {
   assert.doesNotMatch(APP, /state-select/, 'no code path renders a state <select> any more');
   assert.doesNotMatch(CSS, /state-select/, 'and its stylesheet block is gone with it');
 });
+
+/* ---------- defect: a shadow floated under every chromeless cell ----------
+   Tabler's .form-control carries `box-shadow: var(--tblr-shadow-input)`
+   (0 1px 1px rgba(31,41,55,.06)). .inline-edit drops the border and the
+   background to make a cell read as text, but the shadow survived — so each
+   idle cell showed a 1px smudge under its text with nothing casting it.
+   Measured live on Development/Feature before the fix: computed border
+   rgba(0,0,0,0), background rgba(0,0,0,0), box-shadow rgba(31,41,55,.06)
+   0 1px 1px. The reset is scoped to :not(:focus) so Tabler's focus ring —
+   which rides the same property — still lands on the focused cell. */
+
+test('an idle inline-edit cell casts no shadow', () => {
+  const idle = rulesFor('.inline-edit:not(:focus)');
+  assert.equal(idle['box-shadow'], 'none',
+    '.inline-edit:not(:focus) must zero Tabler\'s --tblr-shadow-input');
+  assert.equal(rulesFor('.inline-edit')['box-shadow'], undefined,
+    'the reset must not be unscoped — that would kill the focus ring too');
+});
