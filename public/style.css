@@ -103,14 +103,6 @@ table.grid { border-collapse: collapse; width: 100%; background: var(--card); }
 .doc-toolbar { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
 .doc-toolbar .fmt { color: var(--accent); text-decoration: none; font-size: 12.5px; border: 1px solid var(--line); padding: 3px 9px; border-radius: 6px; }
 .doc-toolbar .fmt:hover { border-color: var(--accent); }
-#doc-edit { width: 100%; min-height: 260px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
-#doc-preview { border: 1px solid var(--line); border-radius: 8px; min-height: 100px; padding: 4px 16px; overflow-x: auto; }
-#doc-preview h1 { font-size: 20px; } #doc-preview h2 { font-size: 17px; }
-#doc-preview code { background: var(--soft); border-radius: 4px; padding: 1px 4px; }
-#doc-preview pre { background: var(--soft); padding: 10px; border-radius: 8px; overflow-x: auto; }
-#doc-preview blockquote { border-left: 3px solid var(--line); margin-left: 0; padding-left: 14px; color: var(--muted); }
-#doc-preview table { border-collapse: collapse; } #doc-preview th, #doc-preview td { border: 1px solid var(--line); padding: 4px 9px; }
-#doc-preview a.mention { background: var(--accent-soft); border-radius: 4px; padding: 0 4px; text-decoration: none; color: var(--accent); }
 .comment { border-top: 1px solid var(--line); padding: 8px 0; }
 .comment .who { font-weight: 600; font-size: 12.5px; }
 .comment .when { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
