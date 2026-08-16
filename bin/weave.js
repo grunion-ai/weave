@@ -64,11 +64,11 @@ Server
   mcp                                 Start the MCP stdio server (for agents)
 
 Schema
-  schema                              Describe spaces, databases, fields
+  schema                              Describe spaces, tables, fields
   space create <name>
-  db create <space> <name>
-  field add <db> <name> <type> [--config '{json}']
-  relation add <db> <name> <targetDb> [--cardinality many-to-one] [--inverse Name]
+  table create <space> <name>
+  field add <table> <name> <type> [--config '{json}']
+  relation add <table> <name> <targetTable> [--cardinality many-to-one] [--inverse Name]
 
 Entities
   query <db> [--where '[["Field","=",1]]'] [--select 'A,B'] [--sort Field] [--limit n]
@@ -79,11 +79,12 @@ Entities
   state <ref> <field> <state>         Move workflow state
   link <ref> <field> <target> [--unlink]
 
-Documents
-  doc get <ref>                       Print markdown
-  doc set <ref> (--content 'md' | --file path)
-  doc append <ref> (--content 'md' | --file path)
-  doc export <ref> --format md|html|pdf [--out path]
+Documents (entities can carry several document fields; --field picks one,
+default is the table's first document field, usually "Description")
+  doc get <ref> [--field Name]
+  doc set <ref> (--content 'md' | --file path) [--field Name]
+  doc append <ref> (--content 'md' | --file path) [--field Name]
+  doc export <ref> --format md|html|pdf [--out path] [--field Name]
 
 Collaboration & data
   comment <ref> <text> [--author name]
@@ -92,7 +93,7 @@ Collaboration & data
   export [--out path]                 Full workspace JSON
   import --file path
 
-Refs: entities accept "Database#publicId" (e.g. Task#3), a UUID, or a name with --db.
+Refs: entities accept "Table#publicId" (e.g. Task#3), a UUID, or a name with --db.
 Data file: --data flag > WEAVE_DATA env > ~/.weave/workspace.json`;
 
 async function main() {
@@ -121,10 +122,11 @@ async function main() {
       if (sub === 'create') return out(w.createSpace({ name }));
       return out(w.listSpaces());
     }
-    case 'db': {
+    case 'table':
+    case 'db': { // `db` kept as an alias
       const [sub, space, name] = args;
-      if (sub === 'create') return out(w.createDatabase({ space, name }));
-      return out(w.listDatabases().map((d) => w.qualifiedName(d)));
+      if (sub === 'create') return out(w.createTable({ space, name }));
+      return out(w.listTables().map((d) => w.qualifiedName(d)));
     }
     case 'field': {
       const [sub, db, name, type] = args;
@@ -183,17 +185,19 @@ async function main() {
       const [sub, ref] = args;
       const e = resolveEntityRef(w, ref, flags.db);
       const content = flags.file ? readFileSync(flags.file, 'utf8') : flags.content;
-      if (sub === 'get') return out(w.getDoc(e.id));
-      if (sub === 'set') { w.setDoc(e.id, content ?? ''); return out({ ok: true }); }
-      if (sub === 'append') { w.appendDoc(e.id, content ?? ''); return out({ ok: true }); }
+      const docField = flags.field === true ? null : flags.field ?? null; // named document field, default = first
+      if (sub === 'get') return out(w.getDoc(e.id, docField));
+      if (sub === 'set') { w.setDoc(e.id, content ?? '', docField); return out({ ok: true }); }
+      if (sub === 'append') { w.appendDoc(e.id, content ?? '', docField); return out({ ok: true }); }
       if (sub === 'export') {
         const read = w.readEntity(e.id);
-        const subtitle = `${read.db} #${read.publicId}`;
+        const markdown = w.getDoc(e.id, docField);
+        const subtitle = `${read.db} #${read.publicId}${docField ? ` • ${docField}` : ''}`;
         const format = flags.format ?? 'md';
         let data;
-        if (format === 'md') data = read.doc;
-        else if (format === 'html') data = renderDocumentPage({ title: read.name, subtitle, markdown: read.doc });
-        else if (format === 'pdf') data = markdownToPdf(read.doc, { title: read.name, subtitle });
+        if (format === 'md') data = markdown;
+        else if (format === 'html') data = renderDocumentPage({ title: read.name, subtitle, markdown });
+        else if (format === 'pdf') data = markdownToPdf(markdown, { title: read.name, subtitle });
         else throw new WeaveError(`Unknown format '${format}'`);
         if (flags.out) {
           writeFileSync(flags.out, data);

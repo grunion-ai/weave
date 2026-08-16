@@ -4,8 +4,8 @@ import { Weave } from '../src/engine.js';
 export function seed(w) {
   // ---------- Product space ----------
   w.createSpace({ name: 'Product', description: 'Product development' });
-  const projects = w.createDatabase({ space: 'Product', name: 'Project' });
-  const tasks = w.createDatabase({ space: 'Product', name: 'Task' });
+  const projects = w.createTable({ space: 'Product', name: 'Project' });
+  const tasks = w.createTable({ space: 'Product', name: 'Task' });
 
   w.addField(projects, { name: 'Budget', type: 'number' });
   w.addField(projects, { name: 'Kickoff', type: 'date' });
@@ -35,6 +35,7 @@ export function seed(w) {
     },
   });
   w.addRelation(tasks, { name: 'Project', targetDb: projects, cardinality: 'many-to-one', inverseName: 'Tasks' });
+  w.addField(tasks, { name: 'Spec', type: 'document' }); // second document field
   w.addField(tasks, { name: 'Project Budget', type: 'lookup', config: { relationField: 'Project', targetField: 'Budget' } });
   w.addField(tasks, { name: 'Size', type: 'formula', config: { expression: 'if(empty(Estimate), "unsized", if(Estimate > 5, "large", "small"))' } });
   w.addField(projects, { name: 'Task Count', type: 'rollup', config: { relationField: 'Tasks', aggregate: 'count' } });
@@ -43,7 +44,7 @@ export function seed(w) {
 
   // ---------- People space ----------
   w.createSpace({ name: 'People' });
-  const people = w.createDatabase({ space: 'People', name: 'Person' });
+  const people = w.createTable({ space: 'People', name: 'Person' });
   w.addField(people, { name: 'Email', type: 'email' });
   w.addField(people, { name: 'Role', type: 'select', config: { options: ['Engineer', 'Designer', 'PM'] } });
   w.addRelation(tasks, { name: 'Assignee', targetDb: people, cardinality: 'many-to-one', inverseName: 'Assigned Tasks' });

@@ -39,11 +39,11 @@ async function readBody(req) {
 }
 
 export function createServer(weave) {
-  // Resolves [[Database#12]] mentions in rendered documents.
+  // Resolves [[Table#12]] mentions in rendered documents.
   const resolveMention = (dbName, pid) => {
     let db;
     try {
-      db = weave.findDatabase(dbName);
+      db = weave.findTable(dbName);
     } catch {
       return null;
     }
@@ -79,18 +79,23 @@ export function createServer(weave) {
 
     try {
       // ---------- native document views ----------
+      // /e/:id/doc.<fmt> serves the default (first) document field;
+      // /e/:id/doc/<Field Name>.<fmt> serves a named document field.
       let m;
-      if ((m = path.match(/^\/e\/([^/]+)\/doc\.(md|html|pdf)$/))) {
+      if ((m = path.match(/^\/e\/([^/]+)\/doc(?:\/([^/]+?))?\.(md|html|pdf)$/))) {
         const entity = weave.readEntity(m[1]);
-        const subtitle = `${entity.db} #${entity.publicId} • ${entity.name} • updated ${entity.updatedAt.slice(0, 10)}`;
-        if (m[2] === 'md') {
-          return send(200, entity.doc, { 'Content-Type': 'text/markdown; charset=utf-8' });
+        const fieldRef = m[2] ?? null;
+        const markdown = weave.getDoc(m[1], fieldRef);
+        const docLabel = fieldRef ? ` • ${fieldRef}` : '';
+        const subtitle = `${entity.db} #${entity.publicId} • ${entity.name}${docLabel} • updated ${entity.updatedAt.slice(0, 10)}`;
+        if (m[3] === 'md') {
+          return send(200, markdown, { 'Content-Type': 'text/markdown; charset=utf-8' });
         }
-        if (m[2] === 'html') {
-          const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown: entity.doc, resolveMention });
+        if (m[3] === 'html') {
+          const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown, resolveMention });
           return send(200, page, { 'Content-Type': 'text/html; charset=utf-8' });
         }
-        const pdf = markdownToPdf(entity.doc, { title: entity.name || `#${entity.publicId}`, subtitle });
+        const pdf = markdownToPdf(markdown, { title: entity.name || `#${entity.publicId}`, subtitle });
         return send(200, pdf, {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `inline; filename="${(entity.name || 'document').replace(/[^\w.-]+/g, '_')}.pdf"`,
@@ -118,34 +123,34 @@ export function createServer(weave) {
           if (req.method === 'DELETE') { weave.deleteSpace(m[1]); return send(200, { ok: true }); }
         }
 
-        if (route === 'GET /api/databases') {
+        if (route === 'GET /api/tables') {
           const space = url.searchParams.get('space');
-          const dbs = weave.listDatabases(space ? weave.getSpace(space).id : null);
+          const dbs = weave.listTables(space ? weave.getSpace(space).id : null);
           return send(200, dbs.map((db) => ({ id: db.id, name: db.name, qualified: weave.qualifiedName(db), spaceId: db.spaceId })));
         }
-        if (route === 'POST /api/databases') return send(201, weave.createDatabase(body));
-        if ((m = path.match(/^\/api\/databases\/([^/]+)$/))) {
+        if (route === 'POST /api/tables') return send(201, weave.createTable(body));
+        if ((m = path.match(/^\/api\/tables\/([^/]+)$/))) {
           if (req.method === 'GET') {
-            const db = weave.getDatabase(m[1]);
-            const schema = weave.describeSchema().flatMap((s) => s.databases).find((d) => d.id === db.id);
+            const db = weave.getTable(m[1]);
+            const schema = weave.describeSchema().flatMap((s) => s.tables).find((d) => d.id === db.id);
             return send(200, schema);
           }
-          if (req.method === 'PATCH') return send(200, weave.updateDatabase(m[1], body));
-          if (req.method === 'DELETE') { weave.deleteDatabase(m[1]); return send(200, { ok: true }); }
+          if (req.method === 'PATCH') return send(200, weave.updateTable(m[1], body));
+          if (req.method === 'DELETE') { weave.deleteTable(m[1]); return send(200, { ok: true }); }
         }
 
-        if ((m = path.match(/^\/api\/databases\/([^/]+)\/fields$/)) && req.method === 'POST') {
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields$/)) && req.method === 'POST') {
           return send(201, weave.addField(m[1], body));
         }
-        if ((m = path.match(/^\/api\/databases\/([^/]+)\/fields\/([^/]+)$/))) {
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)$/))) {
           if (req.method === 'PATCH') return send(200, weave.updateField(m[1], m[2], body));
           if (req.method === 'DELETE') { weave.deleteField(m[1], m[2]); return send(200, { ok: true }); }
         }
-        if ((m = path.match(/^\/api\/databases\/([^/]+)\/relations$/)) && req.method === 'POST') {
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/relations$/)) && req.method === 'POST') {
           return send(201, weave.addRelation(m[1], body));
         }
 
-        if ((m = path.match(/^\/api\/databases\/([^/]+)\/entities$/))) {
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
           if (req.method === 'POST') {
             const e = weave.createEntity(m[1], body);
             return send(201, weave.readEntity(e.id));
@@ -156,13 +161,13 @@ export function createServer(weave) {
             return send(200, weave.query(m[1], { limit, offset }));
           }
         }
-        if ((m = path.match(/^\/api\/databases\/([^/]+)\/query$/)) && req.method === 'POST') {
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/query$/)) && req.method === 'POST') {
           return send(200, weave.query(m[1], body));
         }
-        if ((m = path.match(/^\/api\/databases\/([^/]+)\/export\.csv$/)) && req.method === 'GET') {
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/export\.csv$/)) && req.method === 'GET') {
           return send(200, weave.exportCSV(m[1]), { 'Content-Type': 'text/csv; charset=utf-8' });
         }
-        if ((m = path.match(/^\/api\/databases\/([^/]+)\/import\.csv$/)) && req.method === 'POST') {
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/import\.csv$/)) && req.method === 'POST') {
           return send(200, weave.importCSV(m[1], body.csv ?? ''));
         }
 
@@ -187,10 +192,13 @@ export function createServer(weave) {
           return send(200, weave.readEntity(m[1]));
         }
 
+        // Document field selected by ?field= (GET) or body.field (PUT/POST);
+        // omitted = the table's default (first) document field.
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc$/))) {
-          if (req.method === 'GET') return send(200, { doc: weave.getDoc(m[1]) });
-          if (req.method === 'PUT') { weave.setDoc(m[1], body.doc ?? body.markdown ?? ''); return send(200, { ok: true }); }
-          if (req.method === 'POST') { weave.appendDoc(m[1], body.doc ?? body.markdown ?? ''); return send(200, { ok: true }); }
+          const fieldRef = url.searchParams.get('field') ?? body.field ?? null;
+          if (req.method === 'GET') return send(200, { field: fieldRef, doc: weave.getDoc(m[1], fieldRef) });
+          if (req.method === 'PUT') { weave.setDoc(m[1], body.doc ?? body.markdown ?? '', fieldRef); return send(200, { ok: true }); }
+          if (req.method === 'POST') { weave.appendDoc(m[1], body.doc ?? body.markdown ?? '', fieldRef); return send(200, { ok: true }); }
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/files$/)) && req.method === 'POST') {
@@ -217,7 +225,7 @@ export function createServer(weave) {
         }
 
         if (route === 'GET /api/automations') {
-          return send(200, weave.listAutomations(url.searchParams.get('db')));
+          return send(200, weave.describeAutomations(url.searchParams.get('db')));
         }
         if (route === 'POST /api/automations') {
           return send(201, weave.createAutomation(body.db, body));
@@ -228,7 +236,7 @@ export function createServer(weave) {
         }
 
         if (route === 'GET /api/search') {
-          return send(200, weave.search(url.searchParams.get('q') ?? '', { limit: Number(url.searchParams.get('limit') ?? 25) }));
+          return send(200, weave.universalSearch(url.searchParams.get('q') ?? '', { limit: Number(url.searchParams.get('limit') ?? 25) }));
         }
         if (route === 'GET /api/export') return send(200, weave.exportJSON());
         if (route === 'POST /api/import') { weave.importJSON(body); return send(200, { ok: true }); }

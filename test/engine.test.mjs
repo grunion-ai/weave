@@ -8,8 +8,8 @@ import { Weave } from '../src/engine.js';
 function buildWorkspace() {
   const w = new Weave();
   const space = w.createSpace({ name: 'Product' });
-  const projects = w.createDatabase({ space: 'Product', name: 'Project' });
-  const tasks = w.createDatabase({ space: 'Product', name: 'Task' });
+  const projects = w.createTable({ space: 'Product', name: 'Project' });
+  const tasks = w.createTable({ space: 'Product', name: 'Task' });
 
   w.addField(projects, { name: 'Budget', type: 'number' });
   w.addField(tasks, { name: 'Estimate', type: 'number' });
@@ -30,13 +30,13 @@ function buildWorkspace() {
   return { w, space, projects, tasks };
 }
 
-test('spaces and databases', () => {
+test('spaces and tables', () => {
   const { w } = buildWorkspace();
   assert.equal(w.listSpaces().length, 1);
-  assert.equal(w.listDatabases().length, 2);
-  assert.equal(w.getDatabase('Product/Task').name, 'Task');
-  assert.equal(w.getDatabase('task').name, 'Task');
-  assert.throws(() => w.getDatabase('Nope'), /not found/);
+  assert.equal(w.listTables().length, 2);
+  assert.equal(w.getTable('Product/Task').name, 'Task');
+  assert.equal(w.getTable('task').name, 'Task');
+  assert.throws(() => w.getTable('Nope'), /not found/);
   assert.throws(() => w.createSpace({ name: 'Product' }), /already exists/);
 });
 
@@ -112,8 +112,8 @@ test('many-to-one relation with bidirectional consistency', () => {
 test('many-to-many relation', () => {
   const w = new Weave();
   w.createSpace({ name: 'S' });
-  const a = w.createDatabase({ space: 'S', name: 'Doc' });
-  const b = w.createDatabase({ space: 'S', name: 'Tag' });
+  const a = w.createTable({ space: 'S', name: 'Doc' });
+  const b = w.createTable({ space: 'S', name: 'Tag' });
   w.addRelation(a, { name: 'Tags', targetDb: b, cardinality: 'many-to-many', inverseName: 'Docs' });
   const d1 = w.createEntity(a, { name: 'D1' });
   const d2 = w.createEntity(a, { name: 'D2' });
@@ -265,19 +265,19 @@ test('field deletion cascades: relation pairs and dependent computeds', () => {
   w.createEntity(projects, { name: 'P' });
   w.createEntity(tasks, { name: 'T', values: { Project: 'P' } });
   w.deleteField(projects, 'Tasks');
-  assert.equal(w.findField(w.getDatabase(projects.id), 'Task Count'), undefined); // dependent rollup dropped
-  assert.equal(w.findField(w.getDatabase(tasks.id), 'Project'), undefined); // paired end dropped
+  assert.equal(w.findField(w.getTable(projects.id), 'Task Count'), undefined); // dependent rollup dropped
+  assert.equal(w.findField(w.getTable(tasks.id), 'Project'), undefined); // paired end dropped
 });
 
 test('CSV export and schema description', () => {
   const { w, tasks } = buildWorkspace();
   w.createEntity(tasks, { name: 'Comma, task', values: { Estimate: 2 } });
   const csv = w.exportCSV(tasks);
-  assert.match(csv, /^Public Id,Name,Estimate/);
+  assert.match(csv, /^Public Id,Name,Description,Estimate/);
   assert.match(csv, /"Comma, task"/);
   const schema = w.describeSchema();
   assert.equal(schema[0].space, 'Product');
-  const taskDb = schema[0].databases.find((d) => d.name === 'Task');
+  const taskDb = schema[0].tables.find((d) => d.name === 'Task');
   assert.ok(taskDb.fields.some((f) => f.type === 'workflow' && f.states.length === 4));
 });
 
@@ -287,7 +287,7 @@ test('persistence roundtrip', () => {
   try {
     const w1 = new Weave({ path });
     w1.createSpace({ name: 'S' });
-    const db = w1.createDatabase({ space: 'S', name: 'Item' });
+    const db = w1.createTable({ space: 'S', name: 'Item' });
     w1.createEntity(db, { name: 'Persisted', doc: 'body' });
 
     const w2 = new Weave({ path });

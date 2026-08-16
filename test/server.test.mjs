@@ -30,42 +30,42 @@ test('health and schema bootstrap', async () => {
   assert.equal(health.data.ok, true);
 
   assert.equal((await api('POST', '/api/spaces', { name: 'Product' })).status, 201);
-  assert.equal((await api('POST', '/api/databases', { space: 'Product', name: 'Project' })).status, 201);
-  assert.equal((await api('POST', '/api/databases', { space: 'Product', name: 'Task' })).status, 201);
+  assert.equal((await api('POST', '/api/tables', { space: 'Product', name: 'Project' })).status, 201);
+  assert.equal((await api('POST', '/api/tables', { space: 'Product', name: 'Task' })).status, 201);
 
-  await api('POST', '/api/databases/Project/fields', { name: 'Budget', type: 'number' });
-  await api('POST', '/api/databases/Task/fields', { name: 'Estimate', type: 'number' });
-  await api('POST', '/api/databases/Task/fields', {
+  await api('POST', '/api/tables/Project/fields', { name: 'Budget', type: 'number' });
+  await api('POST', '/api/tables/Task/fields', { name: 'Estimate', type: 'number' });
+  await api('POST', '/api/tables/Task/fields', {
     name: 'State', type: 'workflow',
     config: { states: [{ name: 'Open', category: 'not-started', default: true }, { name: 'Done', category: 'done' }] },
   });
-  const rel = await api('POST', '/api/databases/Task/relations', {
+  const rel = await api('POST', '/api/tables/Task/relations', {
     name: 'Project', targetDb: 'Project', cardinality: 'many-to-one', inverseName: 'Tasks',
   });
   assert.equal(rel.status, 201);
 
-  await api('POST', '/api/databases/Project/fields', {
+  await api('POST', '/api/tables/Project/fields', {
     name: 'Total Estimate', type: 'rollup',
     config: { relationField: 'Tasks', targetField: 'Estimate', aggregate: 'sum' },
   });
-  await api('POST', '/api/databases/Task/fields', {
+  await api('POST', '/api/tables/Task/fields', {
     name: 'Project Budget', type: 'lookup',
     config: { relationField: 'Project', targetField: 'Budget' },
   });
 
   const schema = await api('GET', '/api/schema');
   assert.equal(schema.data[0].space, 'Product');
-  assert.equal(schema.data[0].databases.length, 2);
+  assert.equal(schema.data[0].tables.length, 2);
 });
 
 let projectId, taskId;
 
 test('entity lifecycle over HTTP', async () => {
-  const p = await api('POST', '/api/databases/Project/entities', { name: 'Apollo', values: { Budget: 5000 } });
+  const p = await api('POST', '/api/tables/Project/entities', { name: 'Apollo', values: { Budget: 5000 } });
   assert.equal(p.status, 201);
   projectId = p.data.id;
 
-  const t = await api('POST', '/api/databases/Task/entities', { name: 'Design', values: { Estimate: 8, Project: 'Apollo' } });
+  const t = await api('POST', '/api/tables/Task/entities', { name: 'Design', values: { Estimate: 8, Project: 'Apollo' } });
   assert.equal(t.status, 201);
   taskId = t.data.id;
   assert.equal(t.data.fields.Project.name, 'Apollo');
@@ -85,8 +85,8 @@ test('entity lifecycle over HTTP', async () => {
 });
 
 test('query endpoint', async () => {
-  await api('POST', '/api/databases/Task/entities', { name: 'Build', values: { Estimate: 21, Project: 'Apollo' } });
-  const q = await api('POST', '/api/databases/Task/query', {
+  await api('POST', '/api/tables/Task/entities', { name: 'Build', values: { Estimate: 21, Project: 'Apollo' } });
+  const q = await api('POST', '/api/tables/Task/query', {
     where: [['Project.Name', '=', 'Apollo'], ['Estimate', '>', 15]],
     select: ['Estimate', 'State'],
   });
@@ -128,7 +128,7 @@ test('comments, search, csv, automations over HTTP', async () => {
   const s = await api('GET', '/api/search?q=design');
   assert.ok(s.data.some((r) => r.name === 'Design'));
 
-  const csv = await fetch(`${base}/api/databases/Task/export.csv`);
+  const csv = await fetch(`${base}/api/tables/Task/export.csv`);
   assert.match(await csv.text(), /Design/);
 
   const auto = await api('POST', '/api/automations', {
@@ -144,7 +144,7 @@ test('comments, search, csv, automations over HTTP', async () => {
 test('error semantics', async () => {
   assert.equal((await api('GET', '/api/entities/nope')).status, 404);
   assert.equal((await api('POST', '/api/spaces', { name: 'Product' })).status, 409);
-  assert.equal((await api('POST', '/api/databases/Task/fields', { name: 'Bad', type: 'nope' })).status, 400);
+  assert.equal((await api('POST', '/api/tables/Task/fields', { name: 'Bad', type: 'nope' })).status, 400);
   assert.equal((await api('GET', '/api/nothing')).status, 404);
 });
 
@@ -153,6 +153,6 @@ test('export/import roundtrip preserves workspace', async () => {
   assert.equal(dump.status, 200);
   const imp = await api('POST', '/api/import', dump.data);
   assert.equal(imp.status, 200);
-  const q = await api('POST', '/api/databases/Task/query', {});
+  const q = await api('POST', '/api/tables/Task/query', {});
   assert.ok(q.data.total >= 2);
 });

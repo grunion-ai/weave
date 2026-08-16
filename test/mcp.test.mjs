@@ -64,7 +64,7 @@ test('MCP tool calls drive a full workflow', async () => {
   };
 
   await toolCall('weave_create_space', { name: 'Ops' });
-  await toolCall('weave_create_database', { space: 'Ops', name: 'Ticket' });
+  await toolCall('weave_create_table', { space: 'Ops', name: 'Ticket' });
   await toolCall('weave_add_field', {
     db: 'Ticket', name: 'Status', type: 'workflow',
     config: { states: [{ name: 'New', category: 'not-started', default: true }, { name: 'Resolved', category: 'done' }] },
@@ -106,8 +106,8 @@ test('MCP unknown method errors cleanly', async () => {
 test('dispatchTool covers relations and rollups directly', () => {
   const w = new Weave();
   dispatchTool(w, 'weave_create_space', { name: 'S' });
-  dispatchTool(w, 'weave_create_database', { space: 'S', name: 'A' });
-  dispatchTool(w, 'weave_create_database', { space: 'S', name: 'B' });
+  dispatchTool(w, 'weave_create_table', { space: 'S', name: 'A' });
+  dispatchTool(w, 'weave_create_table', { space: 'S', name: 'B' });
   dispatchTool(w, 'weave_add_relation', { db: 'A', name: 'Items', targetDb: 'B', cardinality: 'one-to-many', inverseName: 'Parent' });
   dispatchTool(w, 'weave_add_field', { db: 'B', name: 'Points', type: 'number' });
   dispatchTool(w, 'weave_add_field', { db: 'A', name: 'Sum', type: 'rollup', config: { relationField: 'Items', targetField: 'Points', aggregate: 'sum' } });

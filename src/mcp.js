@@ -7,7 +7,7 @@ function textResult(data) {
   return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 1) }] };
 }
 
-// Entity refs accepted everywhere: raw entity id, or "Database#publicId".
+// Entity refs accepted everywhere: raw entity id, or "Table#publicId".
 function resolveEntity(weave, ref) {
   const m = String(ref).match(/^(.+)#(\d+)$/);
   if (m) {
@@ -20,16 +20,16 @@ function resolveEntity(weave, ref) {
 export const TOOLS = [
   {
     name: 'weave_schema',
-    description: 'Describe the whole workspace: spaces, databases, fields (with types, options, workflow states, relations, lookups, rollups, formulas), and entity counts.',
+    description: 'Describe the whole workspace: spaces, tables, fields (with types, options, workflow states, relations, lookups, rollups, formulas), and entity counts.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'weave_query',
-    description: 'Query entities in a database. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
+    description: 'Query entities in a table. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
     inputSchema: {
       type: 'object',
       properties: {
-        db: { type: 'string', description: 'Database name, Space/Name, or id' },
+        db: { type: 'string', description: 'Table name, Space/Name, or id' },
         where: { description: 'Array of [path, op, value] conditions (AND) or {and/or} tree' },
         sort: { description: 'Array of field names or {field, dir} objects' },
         limit: { type: 'number' },
@@ -42,7 +42,7 @@ export const TOOLS = [
   {
     name: 'weave_get_entity',
     description: 'Read one entity in full: all field values (including computed lookups/rollups/formulas), document markdown, comments, activity.',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string', description: 'Entity id or "Database#publicId"' } }, required: ['entity'] },
+    inputSchema: { type: 'object', properties: { entity: { type: 'string', description: 'Entity id or "Table#publicId"' } }, required: ['entity'] },
   },
   {
     name: 'weave_create_entity',
@@ -53,7 +53,8 @@ export const TOOLS = [
         db: { type: 'string' },
         name: { type: 'string' },
         values: { type: 'object' },
-        doc: { type: 'string', description: 'Initial markdown document' },
+        doc: { type: 'string', description: 'Initial markdown for the default document field' },
+        docs: { type: 'object', description: 'Initial markdown per document field name, e.g. {"Description": "...", "Spec": "..."}' },
       },
       required: ['db'],
     },
@@ -85,13 +86,13 @@ export const TOOLS = [
   },
   {
     name: 'weave_get_doc',
-    description: 'Read an entity document as markdown.',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' } }, required: ['entity'] },
+    description: 'Read an entity document as markdown. Entities can carry several document fields; omit field for the default (the table\'s first document field, usually "Description").',
+    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string', description: 'Document field name (optional)' } }, required: ['entity'] },
   },
   {
     name: 'weave_set_doc',
-    description: 'Write an entity document. mode "replace" (default) or "append".',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, markdown: { type: 'string' }, mode: { type: 'string', enum: ['replace', 'append'] } }, required: ['entity', 'markdown'] },
+    description: 'Write an entity document. mode "replace" (default) or "append". field picks a document field; omit for the default.',
+    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, markdown: { type: 'string' }, mode: { type: 'string', enum: ['replace', 'append'] }, field: { type: 'string' } }, required: ['entity', 'markdown'] },
   },
   {
     name: 'weave_add_comment',
@@ -100,17 +101,17 @@ export const TOOLS = [
   },
   {
     name: 'weave_search',
-    description: 'Full-text search across entity names, documents, and comments.',
+    description: 'Universal search across the workspace, spaces, tables, and entities (names, documents, comments). Every result carries a stable permalink url.',
     inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] },
   },
   {
     name: 'weave_create_space',
-    description: 'Create a space (top-level grouping of databases).',
+    description: 'Create a space (top-level grouping of tables).',
     inputSchema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' } }, required: ['name'] },
   },
   {
-    name: 'weave_create_database',
-    description: 'Create a database in a space (a Name text field is added automatically).',
+    name: 'weave_create_table',
+    description: 'Create a table in a space (a Name text field is added automatically).',
     inputSchema: { type: 'object', properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' } }, required: ['space', 'name'] },
   },
   {
@@ -124,7 +125,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_relation',
-    description: 'Create a bidirectional relation between two databases. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one. The inverse field is created automatically on the target database.',
+    description: 'Create a bidirectional relation between two tables. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one. The inverse field is created automatically on the target table.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, targetDb: { type: 'string' }, cardinality: { type: 'string' }, inverseName: { type: 'string' } },
@@ -142,7 +143,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_export_csv',
-    description: 'Export a database as CSV.',
+    description: 'Export a table as CSV.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
   },
   {
@@ -170,7 +171,7 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_get_entity':
       return weave.readEntity(resolveEntity(weave, args.entity));
     case 'weave_create_entity': {
-      const e = weave.createEntity(args.db, { name: args.name, values: args.values, doc: args.doc });
+      const e = weave.createEntity(args.db, { name: args.name, values: args.values, doc: args.doc, docs: args.docs });
       return weave.readEntity(e.id);
     }
     case 'weave_update_entity': {
@@ -197,21 +198,21 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.readEntity(id);
     }
     case 'weave_get_doc':
-      return weave.getDoc(resolveEntity(weave, args.entity));
+      return weave.getDoc(resolveEntity(weave, args.entity), args.field ?? null);
     case 'weave_set_doc': {
       const id = resolveEntity(weave, args.entity);
-      if (args.mode === 'append') weave.appendDoc(id, args.markdown);
-      else weave.setDoc(id, args.markdown);
-      return { ok: true, length: weave.getDoc(id).length };
+      if (args.mode === 'append') weave.appendDoc(id, args.markdown, args.field ?? null);
+      else weave.setDoc(id, args.markdown, args.field ?? null);
+      return { ok: true, length: weave.getDoc(id, args.field ?? null).length };
     }
     case 'weave_add_comment':
       return weave.addComment(resolveEntity(weave, args.entity), { author: args.author ?? 'agent', text: args.text });
     case 'weave_search':
-      return weave.search(args.query, { limit: args.limit ?? 25 });
+      return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
     case 'weave_create_space':
       return weave.createSpace(args);
-    case 'weave_create_database':
-      return weave.createDatabase(args);
+    case 'weave_create_table':
+      return weave.createTable(args);
     case 'weave_add_field':
       return weave.addField(args.db, { name: args.name, type: args.type, config: args.config ?? {} });
     case 'weave_add_relation':

@@ -15,7 +15,7 @@ test('parseCSV handles quotes, commas, newlines', () => {
 function smallWorkspace() {
   const w = new Weave();
   w.createSpace({ name: 'S' });
-  const db = w.createDatabase({ space: 'S', name: 'Item' });
+  const db = w.createTable({ space: 'S', name: 'Item' });
   w.addField(db, { name: 'Points', type: 'number' });
   w.addField(db, { name: 'Tags', type: 'multiselect', config: { options: ['a', 'b', 'c'] } });
   w.addField(db, { name: 'Ready', type: 'checkbox' });
@@ -39,7 +39,7 @@ test('CSV export → import roundtrip', () => {
   const csv = w.exportCSV(db);
   const w2 = new Weave();
   w2.createSpace({ name: 'S' });
-  const db2 = w2.createDatabase({ space: 'S', name: 'Item' });
+  const db2 = w2.createTable({ space: 'S', name: 'Item' });
   w2.addField(db2, { name: 'Points', type: 'number' });
   w2.addField(db2, { name: 'Tags', type: 'multiselect', config: { options: ['a', 'b', 'c'] } });
   w2.addField(db2, { name: 'Ready', type: 'checkbox' });
@@ -55,7 +55,7 @@ test('file attach with disk persistence and read-back', () => {
   try {
     const w = new Weave({ path: join(dir, 'ws.json') });
     w.createSpace({ name: 'S' });
-    const db = w.createDatabase({ space: 'S', name: 'Doc' });
+    const db = w.createTable({ space: 'S', name: 'Doc' });
     const e = w.createEntity(db, { name: 'E' });
     const file = w.attachFile(e.id, { name: 'note.txt', mime: 'text/plain', bytes: Buffer.from('hello weave') });
     assert.ok(existsSync(join(dir, 'files', file.id)));
@@ -72,7 +72,7 @@ test('file attach with disk persistence and read-back', () => {
 test('file and CSV endpoints over HTTP', async () => {
   const w = new Weave();
   w.createSpace({ name: 'S' });
-  const db = w.createDatabase({ space: 'S', name: 'Item' });
+  const db = w.createTable({ space: 'S', name: 'Item' });
   w.addField(db, { name: 'Points', type: 'number' });
   const e = w.createEntity(db, { name: 'E' });
   const { server } = await startServer(w, { port: 0 });
@@ -89,7 +89,7 @@ test('file and CSV endpoints over HTTP', async () => {
     assert.equal(dl.headers.get('content-type'), 'text/plain');
     assert.equal(await dl.text(), 'file body');
 
-    const imp = await fetch(`${base}/api/databases/Item/import.csv`, {
+    const imp = await fetch(`${base}/api/tables/Item/import.csv`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ csv: 'Name,Points\nImported,7\n' }),
@@ -115,7 +115,7 @@ test('webhook automation fires on state change', async () => {
   try {
     const w = new Weave();
     w.createSpace({ name: 'S' });
-    const db = w.createDatabase({ space: 'S', name: 'Job' });
+    const db = w.createTable({ space: 'S', name: 'Job' });
     w.addField(db, {
       name: 'State', type: 'workflow',
       config: { states: [{ name: 'Todo', category: 'not-started', default: true }, { name: 'Done', category: 'done' }] },

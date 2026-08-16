@@ -41,7 +41,7 @@ export function parseCSV(text) {
 
 const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation'];
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
-export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES];
+export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
 const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
 const MAX_COMPUTE_DEPTH = 8;
@@ -62,13 +62,51 @@ export class Weave {
     this.store = new Store(path);
     const loaded = this.store.load();
     this.state = loaded ?? {
-      version: 1,
+      version: 2,
       meta: { name: 'Weave Workspace', createdAt: nowISO() },
       spaces: {},
-      databases: {},
+      tables: {},
       entities: {},
       automations: {},
     };
+    this.#migrate();
+  }
+
+  // Upgrade v1 workspaces in place: `databases` state key → `tables`, and the
+  // single entity-level `doc` → a Description document field per table.
+  #migrate() {
+    const s = this.state;
+    if (s.databases && !s.tables) {
+      s.tables = s.databases;
+      delete s.databases;
+    }
+    s.tables = s.tables ?? {};
+    let changed = false;
+    for (const db of Object.values(s.tables)) {
+      let docField = Object.values(db.fields).find((f) => f.type === 'document');
+      if (!docField) {
+        docField = { id: uuid(), name: 'Description', type: 'document', config: {} };
+        db.fields[docField.id] = docField;
+        db.fieldOrder.push(docField.id);
+        changed = true;
+      }
+    }
+    for (const e of Object.values(s.entities ?? {})) {
+      if (e.docs) continue;
+      e.docs = {};
+      if (e.doc) {
+        const db = s.tables[e.dbId];
+        const docField = Object.values(db.fields).find((f) => f.type === 'document');
+        if (docField) e.docs[docField.id] = e.doc;
+      }
+      delete e.doc;
+      changed = true;
+    }
+    if (s.version !== 2) {
+      s.version = 2;
+      changed = true;
+    }
+    if (changed) this.save();
   }
 
   save() {
@@ -112,19 +150,20 @@ export class Weave {
 
   deleteSpace(ref) {
     const s = this.getSpace(ref);
-    for (const db of this.listDatabases(s.id)) this.deleteDatabase(db.id);
+    for (const db of this.listTables(s.id)) this.deleteTable(db.id);
     delete this.state.spaces[s.id];
     this.save();
   }
 
-  // ---------------- databases ----------------
+  // ---------------- tables ----------------
 
-  createDatabase({ space, name, description = '', icon = '' }) {
+  createTable({ space, name, description = '', icon = '' }) {
     const sp = this.getSpace(space);
-    if (!name) throw new WeaveError('Database name is required', 'invalid');
+    if (!name) throw new WeaveError('Table name is required', 'invalid');
     const qualified = `${sp.name}/${name}`;
-    if (this.findDatabase(qualified)) throw new WeaveError(`Database '${qualified}' already exists`, 'conflict');
+    if (this.findTable(qualified)) throw new WeaveError(`Table '${qualified}' already exists`, 'conflict');
     const nameField = { id: uuid(), name: 'Name', type: 'text', config: {} };
+    const docField = { id: uuid(), name: 'Description', type: 'document', config: {} };
     const db = {
       id: uuid(),
       spaceId: sp.id,
@@ -133,17 +172,17 @@ export class Weave {
       icon,
       publicIdCounter: 0,
       nameFieldId: nameField.id,
-      fields: { [nameField.id]: nameField },
-      fieldOrder: [nameField.id],
+      fields: { [nameField.id]: nameField, [docField.id]: docField },
+      fieldOrder: [nameField.id, docField.id],
       createdAt: nowISO(),
     };
-    this.state.databases[db.id] = db;
+    this.state.tables[db.id] = db;
     this.save();
     return db;
   }
 
-  listDatabases(spaceId = null) {
-    const all = Object.values(this.state.databases);
+  listTables(spaceId = null) {
+    const all = Object.values(this.state.tables);
     return spaceId ? all.filter((d) => d.spaceId === spaceId) : all;
   }
 
@@ -152,28 +191,28 @@ export class Weave {
     return `${sp ? sp.name : '?'}/${db.name}`;
   }
 
-  findDatabase(ref) {
+  findTable(ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
-    if (this.state.databases[ref]) return this.state.databases[ref];
-    const all = Object.values(this.state.databases);
+    if (this.state.tables[ref]) return this.state.tables[ref];
+    const all = Object.values(this.state.tables);
     if (String(ref).includes('/')) {
       const [spName, dbName] = String(ref).split('/');
       return all.find((d) => d.name.toLowerCase() === dbName.toLowerCase()
         && this.state.spaces[d.spaceId]?.name.toLowerCase() === spName.toLowerCase());
     }
     const matches = all.filter((d) => d.name.toLowerCase() === String(ref).toLowerCase());
-    if (matches.length > 1) throw new WeaveError(`Database name '${ref}' is ambiguous; qualify as Space/Name`, 'ambiguous');
+    if (matches.length > 1) throw new WeaveError(`Table name '${ref}' is ambiguous; qualify as Space/Name`, 'ambiguous');
     return matches[0];
   }
 
-  getDatabase(ref) {
-    const db = this.findDatabase(ref);
-    if (!db) throw new WeaveError(`Database '${ref}' not found`, 'not-found');
+  getTable(ref) {
+    const db = this.findTable(ref);
+    if (!db) throw new WeaveError(`Table '${ref}' not found`, 'not-found');
     return db;
   }
 
-  updateDatabase(ref, patch) {
-    const db = this.getDatabase(ref);
+  updateTable(ref, patch) {
+    const db = this.getTable(ref);
     if (patch.name != null) db.name = patch.name;
     if (patch.description != null) db.description = patch.description;
     if (patch.icon != null) db.icon = patch.icon;
@@ -181,20 +220,20 @@ export class Weave {
     return db;
   }
 
-  deleteDatabase(ref) {
-    const db = this.getDatabase(ref);
+  deleteTable(ref) {
+    const db = this.getTable(ref);
     for (const e of this.listEntities(db.id)) this.deleteEntity(e.id);
-    // Remove paired relation fields living in other databases.
+    // Remove paired relation fields living in other tables.
     for (const field of Object.values(db.fields)) {
       if (field.type === 'relation') {
-        const other = this.state.databases[field.config.targetDb];
+        const other = this.state.tables[field.config.targetDb];
         if (other && other.id !== db.id) this.#removeFieldRaw(other, field.config.inverseFieldId);
       }
     }
     for (const [id, auto] of Object.entries(this.state.automations)) {
       if (auto.dbId === db.id) delete this.state.automations[id];
     }
-    delete this.state.databases[db.id];
+    delete this.state.tables[db.id];
     this.save();
   }
 
@@ -209,14 +248,14 @@ export class Weave {
   }
 
   getField(dbRef, ref) {
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     const f = this.findField(db, ref);
-    if (!f) throw new WeaveError(`Field '${ref}' not found in database '${db.name}'`, 'not-found');
+    if (!f) throw new WeaveError(`Field '${ref}' not found in table '${db.name}'`, 'not-found');
     return f;
   }
 
   addField(dbRef, { name, type, config = {} }) {
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     if (!name) throw new WeaveError('Field name is required', 'invalid');
     if (this.findField(db, name)) throw new WeaveError(`Field '${name}' already exists`, 'conflict');
     if (!FIELD_TYPES.includes(type)) throw new WeaveError(`Unknown field type '${type}'`, 'invalid');
@@ -266,8 +305,8 @@ export class Weave {
   }
 
   addRelation(dbRef, { name, targetDb, cardinality = 'many-to-one', inverseName }) {
-    const db = this.getDatabase(dbRef);
-    const target = this.getDatabase(targetDb);
+    const db = this.getTable(dbRef);
+    const target = this.getTable(targetDb);
     if (!name) throw new WeaveError('Relation field name is required', 'invalid');
     if (this.findField(db, name)) throw new WeaveError(`Field '${name}' already exists`, 'conflict');
     const cards = {
@@ -279,7 +318,7 @@ export class Weave {
     const card = cards[cardinality];
     if (!card) throw new WeaveError(`Invalid cardinality '${cardinality}'`, 'invalid');
     const invName = inverseName ?? db.name + (card.targetMany ? 's' : '');
-    if (this.findField(target, invName)) throw new WeaveError(`Field '${invName}' already exists in target database`, 'conflict');
+    if (this.findField(target, invName)) throw new WeaveError(`Field '${invName}' already exists in target table`, 'conflict');
 
     const a = { id: uuid(), name, type: 'relation', config: { targetDb: target.id, many: card.thisMany } };
     const b = { id: uuid(), name: invName, type: 'relation', config: { targetDb: db.id, many: card.targetMany } };
@@ -294,7 +333,7 @@ export class Weave {
   }
 
   updateField(dbRef, fieldRef, patch) {
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
     if (patch.name != null) {
       if (field.id === db.nameFieldId) throw new WeaveError('Cannot rename the Name field', 'invalid');
@@ -323,7 +362,7 @@ export class Weave {
   }
 
   deleteField(dbRef, fieldRef) {
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
     if (field.id === db.nameFieldId) throw new WeaveError('Cannot delete the Name field', 'invalid');
     if (field.type === 'relation') {
@@ -331,7 +370,7 @@ export class Weave {
       for (const e of this.listEntities(db.id)) {
         if (e.values[field.id] != null) this.#setRelationValue(e, db, field, []);
       }
-      const other = this.state.databases[field.config.targetDb];
+      const other = this.state.tables[field.config.targetDb];
       if (other) this.#removeFieldRaw(other, field.config.inverseFieldId);
     }
     // Drop dependent computed fields.
@@ -348,7 +387,26 @@ export class Weave {
     if (!db.fields[fieldId]) return;
     delete db.fields[fieldId];
     db.fieldOrder = db.fieldOrder.filter((id) => id !== fieldId);
-    for (const e of this.listEntities(db.id)) delete e.values[fieldId];
+    for (const e of this.listEntities(db.id)) {
+      delete e.values[fieldId];
+      if (e.docs) delete e.docs[fieldId];
+    }
+  }
+
+  // Document fields on a table, in field order. The first one is the default.
+  documentFields(db) {
+    return db.fieldOrder.map((id) => db.fields[id]).filter((f) => f.type === 'document');
+  }
+
+  #resolveDocField(db, fieldRef = null) {
+    if (fieldRef == null) {
+      const first = this.documentFields(db)[0];
+      if (!first) throw new WeaveError(`Table '${db.name}' has no document field`, 'not-found');
+      return first;
+    }
+    const f = this.findField(db, fieldRef);
+    if (!f || f.type !== 'document') throw new WeaveError(`'${fieldRef}' is not a document field of '${db.name}'`, 'invalid');
+    return f;
   }
 
   // ---------------- entities ----------------
@@ -367,7 +425,7 @@ export class Weave {
     // ref: entity object, entity id, public id (number or '#12'), or exact name
     if (ref && typeof ref === 'object') ref = ref.id;
     if (this.state.entities[ref]) return this.state.entities[ref];
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     const list = this.listEntities(db.id);
     const pid = String(ref).replace(/^#/, '');
     if (/^\d+$/.test(pid)) {
@@ -379,12 +437,12 @@ export class Weave {
   }
 
   entityName(e) {
-    const db = this.state.databases[e.dbId];
+    const db = this.state.tables[e.dbId];
     return String(e.values[db.nameFieldId] ?? '');
   }
 
   createEntity(dbRef, input = {}, { depth = 0 } = {}) {
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     const values = { ...(input.values ?? {}) };
     if (input.name != null && values.Name == null) values.Name = input.name;
     const e = {
@@ -392,13 +450,23 @@ export class Weave {
       dbId: db.id,
       publicId: ++db.publicIdCounter,
       values: {},
-      doc: input.doc ?? '',
+      docs: {},
       comments: [],
       activity: [],
       files: [],
       createdAt: nowISO(),
       updatedAt: nowISO(),
     };
+    // Initial documents: input.doc fills the default document field;
+    // input.docs maps document field names to markdown.
+    if (input.doc) {
+      const f = this.#resolveDocField(db);
+      e.docs[f.id] = String(input.doc);
+    }
+    for (const [fieldName, md] of Object.entries(input.docs ?? {})) {
+      const f = this.#resolveDocField(db, fieldName);
+      e.docs[f.id] = String(md);
+    }
     // Default workflow states.
     for (const f of Object.values(db.fields)) {
       if (f.type === 'workflow') {
@@ -427,7 +495,7 @@ export class Weave {
 
   updateEntity(id, valuesByName, { depth = 0 } = {}) {
     const e = this.getEntity(id);
-    const db = this.state.databases[e.dbId];
+    const db = this.state.tables[e.dbId];
     this.#applyValues(e, db, valuesByName, { depth });
     this.save();
     return e;
@@ -436,7 +504,7 @@ export class Weave {
   #applyValues(e, db, valuesByName, { depth = 0, isCreate = false } = {}) {
     for (const [key, raw] of Object.entries(valuesByName)) {
       const field = this.findField(db, key);
-      if (!field) throw new WeaveError(`Field '${key}' not found in database '${db.name}'`, 'not-found');
+      if (!field) throw new WeaveError(`Field '${key}' not found in table '${db.name}'`, 'not-found');
       if (COMPUTED_TYPES.includes(field.type)) {
         throw new WeaveError(`Field '${field.name}' is computed (${field.type}) and cannot be written`, 'invalid');
       }
@@ -447,6 +515,14 @@ export class Weave {
       }
       if (field.type === 'workflow') {
         this.#setStateInternal(e, db, field, raw, depth);
+        continue;
+      }
+      if (field.type === 'document') {
+        const md = String(raw ?? '');
+        if ((e.docs[field.id] ?? '') === md) continue;
+        e.docs[field.id] = md;
+        e.updatedAt = nowISO();
+        if (!isCreate) this.#logActivity(e, 'doc-updated', { field: field.name, length: md.length });
         continue;
       }
       const val = this.#validateValue(field, raw);
@@ -519,7 +595,7 @@ export class Weave {
     return arr.map((r) => {
       const target = this.findEntity(field.config.targetDb, r);
       if (!target) throw new WeaveError(`Related entity '${r}' not found`, 'not-found');
-      if (target.dbId !== field.config.targetDb) throw new WeaveError(`Entity '${r}' is not in the related database`, 'invalid');
+      if (target.dbId !== field.config.targetDb) throw new WeaveError(`Entity '${r}' is not in the related table`, 'invalid');
       return target.id;
     });
   }
@@ -533,7 +609,7 @@ export class Weave {
     const added = newIds.filter((id) => !oldIds.includes(id));
     if (!removed.length && !added.length) return;
 
-    const targetDb = this.state.databases[field.config.targetDb];
+    const targetDb = this.state.tables[field.config.targetDb];
     const inverse = targetDb.fields[field.config.inverseFieldId];
 
     for (const rid of removed) {
@@ -578,7 +654,7 @@ export class Weave {
 
   link(entityId, fieldRef, targetRefs) {
     const e = this.getEntity(entityId);
-    const db = this.state.databases[e.dbId];
+    const db = this.state.tables[e.dbId];
     const field = this.getField(db.id, fieldRef);
     if (field.type !== 'relation') throw new WeaveError(`Field '${field.name}' is not a relation`, 'invalid');
     const addIds = this.#normalizeRelationInput(field, targetRefs);
@@ -591,7 +667,7 @@ export class Weave {
 
   unlink(entityId, fieldRef, targetRefs) {
     const e = this.getEntity(entityId);
-    const db = this.state.databases[e.dbId];
+    const db = this.state.tables[e.dbId];
     const field = this.getField(db.id, fieldRef);
     if (field.type !== 'relation') throw new WeaveError(`Field '${field.name}' is not a relation`, 'invalid');
     const removeIds = this.#normalizeRelationInput(field, targetRefs);
@@ -603,7 +679,7 @@ export class Weave {
 
   setState(entityId, fieldRef, stateRef, { depth = 0 } = {}) {
     const e = this.getEntity(entityId);
-    const db = this.state.databases[e.dbId];
+    const db = this.state.tables[e.dbId];
     const field = this.getField(db.id, fieldRef);
     if (field.type !== 'workflow') throw new WeaveError(`Field '${field.name}' is not a workflow`, 'invalid');
     this.#setStateInternal(e, db, field, stateRef, depth);
@@ -627,7 +703,7 @@ export class Weave {
 
   deleteEntity(id) {
     const e = this.getEntity(id);
-    const db = this.state.databases[e.dbId];
+    const db = this.state.tables[e.dbId];
     // Unlink every relation so inverse sides stay consistent.
     for (const field of Object.values(db.fields)) {
       if (field.type === 'relation' && e.values[field.id] != null) {
@@ -641,13 +717,13 @@ export class Weave {
   // ---------------- computed values ----------------
 
   resolveField(e, fieldRef, depth = 0) {
-    const db = this.state.databases[e.dbId];
+    const db = this.state.tables[e.dbId];
     const field = this.findField(db, fieldRef);
     if (!field) {
       if (fieldRef === 'createdAt' || fieldRef === 'Created At') return e.createdAt;
       if (fieldRef === 'updatedAt' || fieldRef === 'Updated At') return e.updatedAt;
       if (fieldRef === 'publicId' || fieldRef === 'Public Id') return e.publicId;
-      throw new WeaveError(`Field '${fieldRef}' not found in database '${db.name}'`, 'not-found');
+      throw new WeaveError(`Field '${fieldRef}' not found in table '${db.name}'`, 'not-found');
     }
     return this.#resolve(e, db, field, depth);
   }
@@ -659,7 +735,7 @@ export class Weave {
         return this.#relationIds(e, field);
       case 'lookup': {
         const rel = db.fields[field.config.relationField];
-        const targetDb = this.state.databases[rel.config.targetDb];
+        const targetDb = this.state.tables[rel.config.targetDb];
         const targetField = targetDb.fields[field.config.targetField];
         const vals = this.#relationIds(e, rel)
           .map((id) => this.state.entities[id])
@@ -669,7 +745,7 @@ export class Weave {
       }
       case 'rollup': {
         const rel = db.fields[field.config.relationField];
-        const targetDb = this.state.databases[rel.config.targetDb];
+        const targetDb = this.state.tables[rel.config.targetDb];
         const related = this.#relationIds(e, rel).map((id) => this.state.entities[id]).filter(Boolean);
         if (field.config.aggregate === 'count') return related.length;
         const targetField = targetDb.fields[field.config.targetField];
@@ -700,6 +776,8 @@ export class Weave {
           return `#ERR: ${err.message}`;
         }
       }
+      case 'document':
+        return e.docs?.[field.id] ?? '';
       default:
         return e.values[field.id] ?? (field.type === 'checkbox' ? false : null);
     }
@@ -730,7 +808,7 @@ export class Weave {
   // Full materialized read: everything by field name, display values + raw.
   readEntity(id) {
     const e = this.getEntity(id);
-    const db = this.state.databases[e.dbId];
+    const db = this.state.tables[e.dbId];
     const fields = {};
     const raw = {};
     for (const fid of db.fieldOrder) {
@@ -744,6 +822,9 @@ export class Weave {
         fields[f.name] = this.#displayValue(db, f, resolved);
       }
     }
+    const docs = {};
+    for (const f of this.documentFields(db)) docs[f.name] = e.docs?.[f.id] ?? '';
+    const defaultDocField = this.documentFields(db)[0];
     return {
       id: e.id,
       publicId: e.publicId,
@@ -752,7 +833,8 @@ export class Weave {
       name: this.entityName(e),
       fields,
       raw,
-      doc: e.doc,
+      doc: defaultDocField ? (e.docs?.[defaultDocField.id] ?? '') : '',
+      docs,
       comments: e.comments,
       activity: e.activity,
       files: e.files,
@@ -764,7 +846,7 @@ export class Weave {
   #summary(id) {
     const e = this.state.entities[id];
     if (!e) return null;
-    const db = this.state.databases[e.dbId];
+    const db = this.state.tables[e.dbId];
     return { id: e.id, publicId: e.publicId, name: this.entityName(e), db: this.qualifiedName(db) };
   }
 
@@ -772,7 +854,7 @@ export class Weave {
 
   // where: [ [path, op, value], ... ] AND-combined, or { or:[...] } / { and:[...] } nodes.
   query(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null } = {}) {
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     let rows = this.listEntities(db.id);
     if (where && (Array.isArray(where) ? where.length : true)) {
       rows = rows.filter((e) => this.#matchNode(e, db, Array.isArray(where) ? { and: where } : where));
@@ -848,13 +930,13 @@ export class Weave {
         if (parts[i] === 'createdAt') { results.push(ce.createdAt); continue; }
         if (parts[i] === 'updatedAt') { results.push(ce.updatedAt); continue; }
         const f = this.findField(cdb, parts[i]);
-        if (!f) throw new WeaveError(`Field '${parts[i]}' not found in database '${cdb.name}'`, 'not-found');
+        if (!f) throw new WeaveError(`Field '${parts[i]}' not found in table '${cdb.name}'`, 'not-found');
         const resolved = this.#resolve(ce, cdb, f, 0);
         if (isLast) {
           results.push(this.#displayValue(cdb, f, resolved));
         } else {
           if (f.type !== 'relation') throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');
-          const tdb = this.state.databases[f.config.targetDb];
+          const tdb = this.state.tables[f.config.targetDb];
           for (const rid of resolved) {
             const t = this.state.entities[rid];
             if (t) next.push({ e: t, db: tdb });
@@ -874,24 +956,35 @@ export class Weave {
 
   // ---------------- documents ----------------
 
-  getDoc(entityId) {
-    return this.getEntity(entityId).doc ?? '';
+  // field is optional everywhere: default = the table's first document field.
+  getDoc(entityId, fieldRef = null) {
+    const e = this.getEntity(entityId);
+    const db = this.state.tables[e.dbId];
+    const f = this.#resolveDocField(db, fieldRef);
+    return e.docs?.[f.id] ?? '';
   }
 
-  setDoc(entityId, markdown) {
+  setDoc(entityId, markdown, fieldRef = null) {
     const e = this.getEntity(entityId);
-    e.doc = String(markdown ?? '');
+    const db = this.state.tables[e.dbId];
+    const f = this.#resolveDocField(db, fieldRef);
+    e.docs = e.docs ?? {};
+    e.docs[f.id] = String(markdown ?? '');
     e.updatedAt = nowISO();
-    this.#logActivity(e, 'doc-updated', { length: e.doc.length });
+    this.#logActivity(e, 'doc-updated', { field: f.name, length: e.docs[f.id].length });
     this.save();
     return e;
   }
 
-  appendDoc(entityId, markdown) {
+  appendDoc(entityId, markdown, fieldRef = null) {
     const e = this.getEntity(entityId);
-    e.doc = (e.doc ? e.doc.replace(/\n*$/, '\n\n') : '') + String(markdown ?? '');
+    const db = this.state.tables[e.dbId];
+    const f = this.#resolveDocField(db, fieldRef);
+    e.docs = e.docs ?? {};
+    const cur = e.docs[f.id] ?? '';
+    e.docs[f.id] = (cur ? cur.replace(/\n*$/, '\n\n') : '') + String(markdown ?? '');
     e.updatedAt = nowISO();
-    this.#logActivity(e, 'doc-appended', { length: e.doc.length });
+    this.#logActivity(e, 'doc-appended', { field: f.name, length: e.docs[f.id].length });
     this.save();
     return e;
   }
@@ -922,7 +1015,7 @@ export class Weave {
   // ---------------- automations ----------------
 
   createAutomation(dbRef, { name, trigger, actions, enabled = true }) {
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed'].includes(trigger.type)) {
       throw new WeaveError(`Invalid automation trigger`, 'invalid');
     }
@@ -941,7 +1034,11 @@ export class Weave {
         const f = this.getField(db.id, a.field);
         return { type: 'set-field', fieldId: f.id, value: a.value };
       }
-      if (a.type === 'append-doc') return { type: 'append-doc', text: String(a.text ?? '') };
+      if (a.type === 'append-doc') {
+        const act = { type: 'append-doc', text: String(a.text ?? '') };
+        if (a.field) act.fieldId = this.#resolveDocField(db, a.field).id;
+        return act;
+      }
       if (a.type === 'add-comment') return { type: 'add-comment', text: String(a.text ?? ''), author: a.author ?? 'automation' };
       if (a.type === 'webhook') {
         if (!/^https?:\/\//.test(a.url ?? '')) throw new WeaveError('Webhook action needs an http(s) url', 'invalid');
@@ -959,8 +1056,37 @@ export class Weave {
   listAutomations(dbRef = null) {
     const all = Object.values(this.state.automations);
     if (!dbRef) return all;
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     return all.filter((a) => a.dbId === db.id);
+  }
+
+  // Human/agent-readable automation descriptions (field ids → names).
+  // Powers the relation map's automation layer.
+  describeAutomations(dbRef = null) {
+    return this.listAutomations(dbRef).map((auto) => {
+      const db = this.state.tables[auto.dbId];
+      const fieldName = (fid) => db?.fields[fid]?.name ?? null;
+      const trigger = { type: auto.trigger.type };
+      if (auto.trigger.fieldId) trigger.field = fieldName(auto.trigger.fieldId);
+      if (auto.trigger.toStateId && auto.trigger.fieldId) {
+        trigger.toState = db.fields[auto.trigger.fieldId]?.config.states
+          ?.find((s) => s.id === auto.trigger.toStateId)?.name ?? null;
+      }
+      return {
+        id: auto.id,
+        name: auto.name,
+        table: db ? this.qualifiedName(db) : null,
+        tableId: auto.dbId,
+        enabled: auto.enabled,
+        trigger,
+        actions: auto.actions.map((a) => {
+          if (a.type === 'set-field') return { type: a.type, field: fieldName(a.fieldId) };
+          if (a.type === 'append-doc') return { type: a.type, field: a.fieldId ? fieldName(a.fieldId) : 'Description' };
+          if (a.type === 'webhook') return { type: a.type, url: a.url };
+          return { type: a.type };
+        }),
+      };
+    });
   }
 
   updateAutomation(id, patch) {
@@ -990,8 +1116,13 @@ export class Weave {
           const f = db.fields[action.fieldId];
           if (f) this.#applyValues(e, db, { [f.name]: action.value }, { depth: depth + 1 });
         } else if (action.type === 'append-doc') {
-          e.doc = (e.doc ? e.doc.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
-          e.updatedAt = nowISO();
+          const docField = db.fields[action.fieldId] ?? this.documentFields(db)[0];
+          if (docField) {
+            e.docs = e.docs ?? {};
+            const cur = e.docs[docField.id] ?? '';
+            e.docs[docField.id] = (cur ? cur.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
+            e.updatedAt = nowISO();
+          }
         } else if (action.type === 'add-comment') {
           e.comments.push({ id: uuid(), author: action.author, text: this.#template(action.text, e, db), createdAt: nowISO() });
         } else if (action.type === 'webhook') {
@@ -1034,18 +1165,46 @@ export class Weave {
     const results = [];
     for (const e of Object.values(this.state.entities)) {
       const name = this.entityName(e);
-      const doc = e.doc ?? '';
+      const docText = Object.values(e.docs ?? {}).join('\n');
       const comments = e.comments.map((c) => c.text).join('\n');
       let score = 0;
       let snippet = '';
       if (name.toLowerCase().includes(needle)) score += 10;
-      const hay = doc + '\n' + comments;
+      const hay = docText + '\n' + comments;
       const idx = hay.toLowerCase().indexOf(needle);
       if (idx >= 0) {
         score += 5;
         snippet = hay.slice(Math.max(0, idx - 40), idx + needle.length + 40).replace(/\n+/g, ' ').trim();
       }
       if (score > 0) results.push({ ...this.#summary(e.id), score, snippet });
+    }
+    return results.sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+
+  // Universal search across everything addressable, with stable permalinks.
+  // Kinds: workspace, space, table, entity.
+  universalSearch(text, { limit = 25 } = {}) {
+    const needle = String(text).toLowerCase().trim();
+    if (!needle) return [];
+    const results = [];
+    if (this.state.meta.name.toLowerCase().includes(needle)) {
+      results.push({ kind: 'workspace', id: 'workspace', name: this.state.meta.name, url: '/', score: 8 });
+    }
+    for (const sp of this.listSpaces()) {
+      if (sp.name.toLowerCase().includes(needle)) {
+        results.push({ kind: 'space', id: sp.id, name: sp.name, url: `/#/space/${sp.id}`, score: 9 });
+      }
+    }
+    for (const db of this.listTables()) {
+      if (db.name.toLowerCase().includes(needle) || this.qualifiedName(db).toLowerCase().includes(needle)) {
+        results.push({
+          kind: 'table', id: db.id, name: this.qualifiedName(db),
+          url: `/#/table/${db.id}`, entityCount: this.listEntities(db.id).length, score: 9,
+        });
+      }
+    }
+    for (const hit of this.search(text, { limit })) {
+      results.push({ kind: 'entity', url: `/e/${hit.id}`, ...hit });
     }
     return results.sort((a, b) => b.score - a.score).slice(0, limit);
   }
@@ -1098,7 +1257,7 @@ export class Weave {
   // ---------------- CSV import ----------------
 
   importCSV(dbRef, csvText) {
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     const rows = parseCSV(csvText);
     if (!rows.length) return { created: 0 };
     const header = rows[0];
@@ -1139,7 +1298,8 @@ export class Weave {
   describeSchema() {
     return this.listSpaces().map((sp) => ({
       space: sp.name,
-      databases: this.listDatabases(sp.id).map((db) => ({
+      spaceId: sp.id,
+      tables: this.listTables(sp.id).map((db) => ({
         id: db.id,
         name: db.name,
         qualified: this.qualifiedName(db),
@@ -1150,14 +1310,18 @@ export class Weave {
           if (f.type === 'select' || f.type === 'multiselect') out.options = f.config.options.map((o) => o.name);
           if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ name: s.name, category: s.category, default: !!s.default }));
           if (f.type === 'relation') {
-            out.targetDb = this.qualifiedName(this.state.databases[f.config.targetDb]);
+            const target = this.state.tables[f.config.targetDb];
+            out.targetDb = this.qualifiedName(target);
+            out.targetDbId = target.id;
             out.many = f.config.many;
+            out.inverseFieldId = f.config.inverseFieldId;
+            out.inverseField = target.fields[f.config.inverseFieldId]?.name ?? null;
           }
           if (f.type === 'lookup' || f.type === 'rollup') {
             const rel = db.fields[f.config.relationField];
             out.via = rel?.name;
             if (f.config.targetField) {
-              const tdb = this.state.databases[rel.config.targetDb];
+              const tdb = this.state.tables[rel.config.targetDb];
               out.targetField = tdb.fields[f.config.targetField]?.name;
             }
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
@@ -1174,13 +1338,14 @@ export class Weave {
   }
 
   importJSON(state) {
-    if (!state || state.version !== 1) throw new WeaveError('Unsupported workspace format', 'invalid');
+    if (!state || ![1, 2].includes(state.version)) throw new WeaveError('Unsupported workspace format', 'invalid');
     this.state = JSON.parse(JSON.stringify(state));
+    this.#migrate();
     this.save();
   }
 
   exportCSV(dbRef) {
-    const db = this.getDatabase(dbRef);
+    const db = this.getTable(dbRef);
     const fieldNames = db.fieldOrder.map((fid) => db.fields[fid].name);
     const header = ['Public Id', ...fieldNames, 'Created At', 'Updated At'];
     const esc = (v) => {

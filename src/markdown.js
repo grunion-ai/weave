@@ -2,7 +2,7 @@
 // Supports: headings, paragraphs, bold, italic, strikethrough, inline code,
 // links, images, fenced code blocks, blockquotes, hr, ordered/unordered lists
 // (with nesting by 2-space indent), tables, task lists, and entity mentions
-// of the form [[Database#123]] or [[Database#123|label]].
+// of the form [[Table#123]] or [[Table#123|label]].
 
 function escapeHtml(s) {
   return String(s)

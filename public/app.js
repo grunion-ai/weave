@@ -1,4 +1,7 @@
-/* Weave web UI — vanilla JS SPA over the REST API. */
+/* Weave web UI — vanilla JS SPA over the REST API.
+   Every writable field and every document field is natively editable in every
+   view (table, board, list, entity page). ⌘K opens universal search with
+   permalinks. #/map visualizes relations and automations. */
 'use strict';
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -16,6 +19,12 @@ const el = (tag, attrs = {}, ...children) => {
   }
   return node;
 };
+const svgEl = (tag, attrs = {}, ...children) => {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  for (const c of children.flat()) if (c != null) node.append(c.nodeType ? c : document.createTextNode(c));
+  return node;
+};
 
 async function api(method, path, body) {
   const res = await fetch('/api' + path, {
@@ -31,7 +40,7 @@ async function api(method, path, body) {
 function toast(msg, isErr = false) {
   const t = el('div', { class: 'toast' + (isErr ? ' err' : '') }, msg);
   document.body.append(t);
-  setTimeout(() => t.remove(), isErr ? 4200 : 1800);
+  setTimeout(() => t.remove(), isErr ? 4200 : 1400);
 }
 
 function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
@@ -55,10 +64,10 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   if (first) first.focus();
 }
 
-const state = { schema: [], route: null };
+const state = { schema: [], route: null, expanded: new Set() };
 
-function allDatabases() {
-  return state.schema.flatMap((s) => s.databases.map((d) => ({ ...d, space: s.space })));
+function allTables() {
+  return state.schema.flatMap((s) => s.tables.map((d) => ({ ...d, space: s.space, spaceId: s.spaceId })));
 }
 
 async function loadSchema() {
@@ -71,18 +80,22 @@ async function loadSchema() {
 function renderNav() {
   const nav = $('#nav');
   nav.replaceChildren();
+  nav.append(el('a', {
+    class: 'nav-db nav-map' + (state.route?.page === 'map' ? ' active' : ''),
+    href: '#/map',
+  }, '🗺 Relation map'));
   for (const space of state.schema) {
-    nav.append(el('div', { class: 'nav-space' }, space.space));
-    for (const db of space.databases) {
+    nav.append(el('a', { class: 'nav-space', href: `#/space/${space.spaceId}` }, space.space));
+    for (const db of space.tables) {
       nav.append(el('a', {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
-        href: `#/db/${db.id}`,
+        href: `#/table/${db.id}`,
       }, db.name, el('span', { class: 'count' }, String(db.entityCount))));
     }
   }
 }
 
-/* ---------- views ---------- */
+/* ---------- shared value rendering ---------- */
 
 function fieldValueCell(value) {
   if (value == null || value === '') return '';
@@ -95,49 +108,228 @@ function fieldValueCell(value) {
   return String(value);
 }
 
-function stateChip(dbSchema, entity) {
-  const wf = dbSchema.fields.find((f) => f.type === 'workflow');
-  if (!wf) return null;
-  const name = entity.fields?.[wf.name] ?? entity[wf.name];
-  if (!name) return null;
-  const st = wf.states.find((s) => s.name === name);
-  return el('span', { class: `chip state-${st?.category ?? 'not-started'}` }, name);
+function stateCategory(fieldSchema, stateName) {
+  return fieldSchema.states?.find((s) => s.name === stateName)?.category ?? 'not-started';
 }
 
+function documentFields(db) {
+  return db.fields.filter((f) => f.type === 'document');
+}
+
+/* ---------- universal field editor ---------- */
+
+function editorFor(f, item, db, onSaved, { compact = false } = {}) {
+  const id = item.id;
+  const val = item.fields[f.name];
+  const saved = async () => {
+    const fresh = await api('GET', `/entities/${id}`);
+    toast('Saved');
+    onSaved(fresh);
+  };
+  const patch = async (value) => {
+    try {
+      await api('PATCH', `/entities/${id}`, { values: { [f.name]: value } });
+      await saved();
+    } catch (err) { toast(err.message, true); }
+  };
+
+  if (['lookup', 'rollup', 'formula'].includes(f.type)) {
+    const box = el('span', { class: 'computed', title: f.type }, fieldValueCell(val) || '—');
+    if (!compact) box.append(el('span', { class: 'tag' }, f.type));
+    return box;
+  }
+  if (f.type === 'workflow') {
+    const sel = el('select', {
+      class: `inline-edit state-select state-${stateCategory(f, val)}`,
+      onchange: async () => {
+        try {
+          await api('POST', `/entities/${id}/state`, { field: f.name, state: sel.value });
+          await saved();
+        } catch (err) { toast(err.message, true); }
+      },
+    }, ...f.states.map((s) => el('option', { selected: s.name === val ? '' : null }, s.name)));
+    return sel;
+  }
+  if (f.type === 'select') {
+    return el('select', {
+      class: 'inline-edit',
+      onchange: (e) => patch(e.target.value || null),
+    }, el('option', { value: '' }, '—'), ...f.options.map((o) => el('option', { selected: o === val ? '' : null }, o)));
+  }
+  if (f.type === 'multiselect') {
+    const box = el('span', { class: 'ms-box' });
+    const current = Array.isArray(val) ? val : [];
+    for (const v of current) {
+      box.append(el('span', { class: 'chip' }, v, el('span', {
+        class: 'x', onclick: () => patch(current.filter((x) => x !== v)),
+      }, '×')), ' ');
+    }
+    const remaining = f.options.filter((o) => !current.includes(o));
+    if (remaining.length) {
+      const sel = el('select', { class: 'inline-edit ghost-select', onchange: (e) => e.target.value && patch([...current, e.target.value]) },
+        el('option', { value: '' }, '+'), ...remaining.map((o) => el('option', {}, o)));
+      box.append(sel);
+    }
+    return box;
+  }
+  if (f.type === 'checkbox') {
+    const cb = el('input', { type: 'checkbox', onchange: () => patch(cb.checked) });
+    cb.checked = !!val;
+    return cb;
+  }
+  if (f.type === 'relation') {
+    const box = el('span', { class: 'ms-box' });
+    const current = val == null ? [] : Array.isArray(val) ? val : [val];
+    for (const s of current) {
+      box.append(el('span', { class: 'chip rel' },
+        el('a', { href: `#/entity/${s.id}`, onclick: (e) => e.stopPropagation() }, s.name || `#${s.publicId}`),
+        el('span', {
+          class: 'x',
+          onclick: async () => {
+            try {
+              await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
+              await saved();
+            } catch (err) { toast(err.message, true); }
+          },
+        }, '×')), ' ');
+    }
+    box.append(el('button', {
+      class: 'ghost tiny',
+      onclick: async () => {
+        const target = allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb);
+        const list = await api('POST', `/tables/${target.id}/query`, { select: ['Name'] });
+        const linked = new Set(current.map((s) => s.id));
+        const options = list.items.filter((i) => !linked.has(i.id));
+        if (!options.length) return toast('Nothing left to link');
+        modal(`Link ${f.name}`, [
+          el('select', { name: 'target', class: 'full', style: 'width:100%' },
+            ...options.map((o) => el('option', { value: o.id }, `#${o.publicId} ${o.name}`))),
+        ], async (fd) => {
+          await api('POST', `/entities/${id}/link`, { field: f.name, targets: [fd.get('target')] });
+          await saved();
+        }, 'Link');
+      },
+    }, '+ link'));
+    return box;
+  }
+  if (f.type === 'document') {
+    // Documents are edited through the doc editor surfaces, not a cell input.
+    const text = String(val ?? '');
+    return el('span', { class: 'computed', title: 'document' }, text ? text.slice(0, 60).replace(/\n/g, ' ') + (text.length > 60 ? '…' : '') : '—');
+  }
+  const input = el('input', {
+    class: 'inline-edit',
+    type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text',
+    value: val ?? '',
+    onclick: (e) => e.stopPropagation(),
+  });
+  input.addEventListener('change', () => patch(input.value === '' ? null : f.type === 'number' ? Number(input.value) : input.value));
+  return input;
+}
+
+/* ---------- inline multi-document editor ----------
+   Tabbed across every document field of the table. Used by all views. */
+
+function docsEditor(item, db, onSaved) {
+  const fields = documentFields(db);
+  if (!fields.length) return el('div', { class: 'doc-inline-wrap' }, 'This table has no document fields.');
+  let active = fields[0].name;
+  const wrap = el('div', { class: 'doc-inline-wrap' });
+
+  const draw = () => {
+    wrap.replaceChildren();
+    const tabs = el('div', { class: 'doc-tabs' },
+      ...fields.map((f) => el('button', {
+        class: 'doc-tab' + (f.name === active ? ' active' : ''),
+        onclick: () => { active = f.name; draw(); },
+      }, f.name)));
+    const area = el('textarea', {
+      class: 'doc-inline', spellcheck: 'false',
+      dataset: { eid: item.id, field: active },
+    });
+    area.value = item.docs?.[active] ?? '';
+    const fmtBase = `/e/${item.id}/doc/${encodeURIComponent(active)}`;
+    wrap.append(
+      el('div', { class: 'doc-toolbar' },
+        tabs,
+        el('span', { style: 'flex:1' }),
+        el('a', { class: 'fmt', href: `${fmtBase}.md`, target: '_blank' }, 'MD'),
+        el('a', { class: 'fmt', href: `${fmtBase}.html`, target: '_blank' }, 'HTML'),
+        el('a', { class: 'fmt', href: `${fmtBase}.pdf`, target: '_blank' }, 'PDF')),
+      area,
+      el('div', { style: 'margin-top:6px; text-align:right' },
+        el('button', {
+          class: 'primary',
+          onclick: async () => {
+            try {
+              await api('PUT', `/entities/${item.id}/doc`, { field: active, doc: area.value });
+              toast(`${active} saved`);
+              const fresh = await api('GET', `/entities/${item.id}`);
+              onSaved(fresh);
+            } catch (err) { toast(err.message, true); }
+          },
+        }, `Save ${active}`)));
+  };
+  draw();
+  return wrap;
+}
+
+/* ---------- table views ---------- */
+
 async function showDatabase(dbId, view) {
-  const db = allDatabases().find((d) => d.id === dbId);
+  const db = allTables().find((d) => d.id === dbId);
   if (!db) return showHome();
+  if (state.route?.dbId !== dbId) state.expanded.clear();
   state.route = { page: 'db', dbId, view: view ?? state.route?.view ?? 'table' };
   renderNav();
-  const result = await api('POST', `/databases/${db.id}/query`, {});
+  const result = await api('POST', `/tables/${db.id}/query`, {});
+  drawDatabase(db, result.items);
+}
+
+function drawDatabase(db, items) {
   const main = $('#main');
+  const unsaved = new Map();
+  for (const area of main.querySelectorAll('textarea.doc-inline[data-eid]')) {
+    unsaved.set(`${area.dataset.eid}::${area.dataset.field}`, area.value);
+  }
   main.replaceChildren();
 
   const switcher = el('div', { class: 'view-switch' },
     ...['table', 'board', 'list'].map((v) =>
       el('button', {
         class: state.route.view === v ? 'active' : '',
-        onclick: () => showDatabase(dbId, v),
+        onclick: () => showDatabase(db.id, v),
       }, v[0].toUpperCase() + v.slice(1))));
 
   main.append(el('div', { class: 'toolbar' },
     el('h1', {}, `${db.space} / ${db.name}`),
     switcher,
     el('button', { onclick: () => openSchemaEditor(db) }, '⚙ Fields'),
-    el('a', { href: `/api/databases/${db.id}/export.csv`, download: `${db.name}.csv` }, el('button', {}, 'CSV')),
+    el('a', { href: `/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` }, el('button', {}, 'CSV')),
     el('button', { class: 'primary', onclick: () => quickCreate(db) }, '+ New')));
 
-  if (!result.items.length) {
+  if (!items.length) {
     main.append(el('div', { class: 'empty' }, 'No entities yet. Create the first one.'));
     return;
   }
-  if (state.route.view === 'table') renderTable(main, db, result.items);
-  else if (state.route.view === 'board') renderBoard(main, db, result.items);
-  else renderListView(main, db, result.items);
+
+  const onSaved = async () => {
+    const fresh = await api('POST', `/tables/${db.id}/query`, {});
+    drawDatabase(db, fresh.items);
+  };
+
+  if (state.route.view === 'table') renderTable(main, db, items, onSaved);
+  else if (state.route.view === 'board') renderBoard(main, db, items, onSaved);
+  else renderListView(main, db, items, onSaved);
+
+  for (const area of main.querySelectorAll('textarea.doc-inline[data-eid]')) {
+    const key = `${area.dataset.eid}::${area.dataset.field}`;
+    if (unsaved.has(key)) area.value = unsaved.get(key);
+  }
 }
 
-function renderTable(main, db, items) {
-  const cols = db.fields.map((f) => f.name);
+function renderTable(main, db, items, onSaved) {
+  const cols = db.fields.filter((f) => f.type !== 'document').map((f) => f.name);
   let sortKey = null, sortDir = 1;
   const wrap = el('div', { class: 'table-wrap' });
 
@@ -151,32 +343,45 @@ function renderTable(main, db, items) {
         return (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(fieldValueCell(av)).localeCompare(String(fieldValueCell(bv)))) * sortDir;
       });
     }
+    const tbody = el('tbody');
+    for (const item of sorted) {
+      const row = el('tr', {},
+        el('td', { class: 'num' },
+          el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`)),
+        ...cols.map((c) => {
+          const f = db.fields.find((x) => x.name === c);
+          return el('td', { class: f.type === 'number' ? 'num' : '' }, editorFor(f, item, db, onSaved, { compact: true }));
+        }),
+        el('td', {}, el('button', {
+          class: 'ghost tiny' + (state.expanded.has(item.id) ? ' active-toggle' : ''),
+          title: 'Edit documents',
+          onclick: () => {
+            if (state.expanded.has(item.id)) state.expanded.delete(item.id);
+            else state.expanded.add(item.id);
+            draw();
+          },
+        }, state.expanded.has(item.id) ? '📄▾' : '📄')));
+      tbody.append(row);
+      if (state.expanded.has(item.id)) {
+        tbody.append(el('tr', { class: 'doc-row' },
+          el('td', { colspan: String(cols.length + 2) }, docsEditor(item, db, onSaved))));
+      }
+    }
     const table = el('table', { class: 'grid' },
       el('thead', {}, el('tr', {},
         el('th', {}, '#'),
         ...cols.map((c) => el('th', {
           onclick: () => { sortDir = sortKey === c ? -sortDir : 1; sortKey = c; draw(); },
-        }, c + (sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : ''))))),
-      el('tbody', {}, ...sorted.map((item) =>
-        el('tr', { onclick: () => { location.hash = `#/entity/${item.id}`; } },
-          el('td', { class: 'num' }, String(item.publicId)),
-          ...cols.map((c) => {
-            const f = db.fields.find((x) => x.name === c);
-            const v = item.fields[c];
-            const td = el('td', { class: typeof v === 'number' ? 'num' : '' });
-            if (f.type === 'workflow' && v) {
-              const st = f.states.find((s) => s.name === v);
-              td.append(el('span', { class: `chip state-${st?.category ?? 'not-started'}` }, v));
-            } else td.textContent = fieldValueCell(v);
-            return td;
-          })))));
+        }, c + (sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : ''))),
+        el('th', {}, 'Docs'))),
+      tbody);
     wrap.replaceChildren(table);
   };
   draw();
   main.append(wrap);
 }
 
-function renderBoard(main, db, items) {
+function renderBoard(main, db, items, onSaved) {
   const groupField = db.fields.find((f) => f.type === 'workflow') ?? db.fields.find((f) => f.type === 'select');
   if (!groupField) {
     main.append(el('div', { class: 'empty' }, 'Board view needs a workflow or select field.'));
@@ -184,16 +389,47 @@ function renderBoard(main, db, items) {
   }
   const groups = groupField.type === 'workflow' ? groupField.states.map((s) => s.name) : groupField.options;
   const board = el('div', { class: 'board' });
+  const redraw = () => drawDatabase(db, items);
+
   for (const group of groups) {
     const inGroup = items.filter((i) => i.fields[groupField.name] === group);
     const col = el('div', { class: 'board-col', dataset: { group } },
       el('h3', {}, group, el('span', {}, String(inGroup.length))),
       ...inGroup.map((item) => {
-        const card = el('div', { class: 'card', draggable: 'true', dataset: { id: item.id } },
-          el('div', { class: 'pid' }, `#${item.publicId}`),
-          el('div', {}, item.name || '(unnamed)'),
-        );
-        card.addEventListener('click', () => { location.hash = `#/entity/${item.id}`; });
+        const expanded = state.expanded.has(item.id);
+        const nameInput = el('input', { class: 'card-name', value: item.name || '' });
+        nameInput.addEventListener('click', (e) => e.stopPropagation());
+        nameInput.addEventListener('change', async () => {
+          try {
+            await api('PATCH', `/entities/${item.id}`, { values: { Name: nameInput.value } });
+            toast('Saved');
+            onSaved();
+          } catch (err) { toast(err.message, true); }
+        });
+        const card = el('div', { class: 'card' + (expanded ? ' editing' : ''), draggable: 'true', dataset: { id: item.id } },
+          el('div', { class: 'card-top' },
+            el('a', { class: 'pid', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`),
+            el('span', { style: 'flex:1' }),
+            el('button', {
+              class: 'ghost tiny' + (expanded ? ' active-toggle' : ''),
+              title: 'Edit fields & documents',
+              onclick: (e) => {
+                e.stopPropagation();
+                if (expanded) state.expanded.delete(item.id);
+                else state.expanded.add(item.id);
+                redraw();
+              },
+            }, expanded ? '✕' : '✎')),
+          nameInput);
+        if (expanded) {
+          const fieldsBox = el('div', { class: 'card-fields' });
+          for (const f of db.fields) {
+            if (f.name === 'Name' || f.type === 'document' || f.id === groupField.id) continue;
+            fieldsBox.append(el('div', { class: 'fieldrow compact' },
+              el('label', {}, f.name), editorFor(f, item, db, onSaved, { compact: true })));
+          }
+          card.append(fieldsBox, docsEditor(item, db, onSaved));
+        }
         card.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', item.id));
         return card;
       }));
@@ -207,7 +443,7 @@ function renderBoard(main, db, items) {
         if (groupField.type === 'workflow') await api('POST', `/entities/${id}/state`, { field: groupField.name, state: group });
         else await api('PATCH', `/entities/${id}`, { values: { [groupField.name]: group } });
         await loadSchema();
-        showDatabase(db.id, 'board');
+        onSaved();
       } catch (err) { toast(err.message, true); }
     });
     board.append(col);
@@ -215,13 +451,171 @@ function renderBoard(main, db, items) {
   main.append(board);
 }
 
-function renderListView(main, db, items) {
-  main.append(el('div', { class: 'list-rows' }, ...items.map((item) =>
-    el('div', { class: 'list-row', onclick: () => { location.hash = `#/entity/${item.id}`; } },
-      el('span', { class: 'pid' }, `#${item.publicId}`),
-      el('span', {}, item.name || '(unnamed)'),
+function renderListView(main, db, items, onSaved) {
+  const wf = db.fields.find((f) => f.type === 'workflow');
+  const rows = el('div', { class: 'list-rows' });
+  const redraw = () => drawDatabase(db, items);
+  for (const item of items) {
+    const expanded = state.expanded.has(item.id);
+    const nameInput = el('input', { class: 'row-name', value: item.name || '' });
+    nameInput.addEventListener('change', async () => {
+      try {
+        await api('PATCH', `/entities/${item.id}`, { values: { Name: nameInput.value } });
+        toast('Saved');
+        onSaved();
+      } catch (err) { toast(err.message, true); }
+    });
+    rows.append(el('div', { class: 'list-row' },
+      el('a', { class: 'pid', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`),
+      nameInput,
       el('span', { class: 'spacer' }),
-      stateChip(db, item)))));
+      wf ? editorFor(wf, item, db, onSaved, { compact: true }) : null,
+      el('button', {
+        class: 'ghost tiny' + (expanded ? ' active-toggle' : ''),
+        title: 'Edit fields & documents',
+        onclick: () => {
+          if (expanded) state.expanded.delete(item.id);
+          else state.expanded.add(item.id);
+          redraw();
+        },
+      }, expanded ? '▴' : '▾')));
+    if (expanded) {
+      const detail = el('div', { class: 'list-detail' });
+      const fieldsBox = el('div', { class: 'detail-fields' });
+      for (const f of db.fields) {
+        if (f.name === 'Name' || f.type === 'document') continue;
+        fieldsBox.append(el('div', { class: 'fieldrow compact' },
+          el('label', {}, f.name), editorFor(f, item, db, onSaved, { compact: true })));
+      }
+      detail.append(fieldsBox, docsEditor(item, db, onSaved));
+      rows.append(detail);
+    }
+  }
+  main.append(rows);
+}
+
+/* ---------- space page ---------- */
+
+async function showSpace(spaceId) {
+  const space = state.schema.find((s) => s.spaceId === spaceId);
+  if (!space) return showHome();
+  state.route = { page: 'space', spaceId };
+  renderNav();
+  const main = $('#main');
+  main.replaceChildren(
+    el('div', { class: 'toolbar' },
+      el('h1', {}, space.space),
+      el('a', { href: '#/map' }, el('button', {}, '🗺 Map'))),
+    el('div', { class: 'list-rows' }, ...space.tables.map((d) =>
+      el('div', { class: 'list-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
+        el('span', {}, d.name),
+        el('span', { class: 'spacer' }),
+        el('span', { class: 'pid' }, `${d.entityCount} entities`)))));
+}
+
+/* ---------- relation map (tables, relations, automations) ---------- */
+
+async function showMap() {
+  state.route = { page: 'map' };
+  renderNav();
+  const main = $('#main');
+  main.replaceChildren(el('div', { class: 'toolbar' }, el('h1', {}, 'Relation map')));
+
+  const [schema, automations] = await Promise.all([api('GET', '/schema'), api('GET', '/automations')]);
+  const tables = schema.flatMap((s) => s.tables.map((t) => ({ ...t, space: s.space })));
+  if (!tables.length) {
+    main.append(el('div', { class: 'empty' }, 'No tables yet.'));
+    return;
+  }
+
+  const W = 1060;
+  const NODE_W = 190, NODE_H = 58;
+  const autosByTable = new Map();
+  for (const a of automations) {
+    if (!autosByTable.has(a.tableId)) autosByTable.set(a.tableId, []);
+    autosByTable.get(a.tableId).push(a);
+  }
+  const hasWebhook = automations.some((a) => a.actions.some((x) => x.type === 'webhook'));
+
+  // Circle layout, with vertical room under each node for automation pills.
+  const n = tables.length;
+  const cx = W / 2, cy = 290;
+  const rx = Math.min(400, 140 + n * 45), ry = 185;
+  const pos = new Map();
+  tables.forEach((t, i) => {
+    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+    pos.set(t.id, { x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) });
+  });
+  const maxAutos = Math.max(0, ...[...autosByTable.values()].map((a) => a.length));
+  const H = 580 + maxAutos * 24;
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'relmap' });
+
+  // Relations: draw each pair once (dedupe by field id vs inverse id).
+  const drawn = new Set();
+  for (const t of tables) {
+    for (const f of t.fields) {
+      if (f.type !== 'relation' || drawn.has(f.id) || drawn.has(f.inverseFieldId)) continue;
+      drawn.add(f.id);
+      const a = pos.get(t.id), b = pos.get(f.targetDbId);
+      if (!a || !b) continue;
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      svg.append(svgEl('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'rel-line' }));
+      const thisCard = f.many ? '∗' : '1';
+      const target = tables.find((x) => x.id === f.targetDbId);
+      const invField = target?.fields.find((x) => x.id === f.inverseFieldId);
+      const invCard = invField?.many ? '∗' : '1';
+      const label = `${t.name}.${f.name} ${invCard}—${thisCard} ${f.inverseField ?? ''}`;
+      const tw = label.length * 6.2 + 12;
+      svg.append(svgEl('rect', { x: mx - tw / 2, y: my - 10, width: tw, height: 18, rx: 9, class: 'rel-label-bg' }));
+      svg.append(svgEl('text', { x: mx, y: my + 3, 'text-anchor': 'middle', class: 'rel-label' }, label));
+    }
+  }
+
+  // External webhook node.
+  if (hasWebhook) {
+    svg.append(svgEl('rect', { x: W - 130, y: 16, width: 112, height: 34, rx: 8, class: 'ext-node' }));
+    svg.append(svgEl('text', { x: W - 74, y: 37, 'text-anchor': 'middle', class: 'node-title' }, '🌐 webhooks'));
+  }
+
+  // Table nodes + automation pills.
+  for (const t of tables) {
+    const p = pos.get(t.id);
+    const x = p.x - NODE_W / 2, y = p.y - NODE_H / 2;
+    const g = svgEl('g', { class: 'table-node', cursor: 'pointer' });
+    g.addEventListener('click', () => { location.hash = `#/table/${t.id}`; });
+    g.append(svgEl('rect', { x, y, width: NODE_W, height: NODE_H, rx: 10, class: 'node-box' }));
+    g.append(svgEl('text', { x: p.x, y: y + 24, 'text-anchor': 'middle', class: 'node-title' }, t.name));
+    g.append(svgEl('text', { x: p.x, y: y + 43, 'text-anchor': 'middle', class: 'node-sub' }, `${t.space} • ${t.entityCount} entities`));
+    svg.append(g);
+
+    const autos = autosByTable.get(t.id) ?? [];
+    autos.forEach((a, i) => {
+      const ay = y + NODE_H + 10 + i * 22;
+      const actions = a.actions.map((x) =>
+        x.type === 'set-field' ? `set ${x.field}` :
+        x.type === 'append-doc' ? `append ${x.field}` :
+        x.type === 'add-comment' ? 'comment' : 'webhook').join(', ');
+      const trig = a.trigger.type === 'state-changed' ? `${a.trigger.field}→${a.trigger.toState ?? '*'}` :
+        a.trigger.type === 'field-updated' ? `${a.trigger.field} changed` : 'created';
+      const label = `⚡ ${trig} ⇒ ${actions}`;
+      const tw = Math.min(NODE_W + 70, label.length * 5.8 + 14);
+      svg.append(svgEl('line', { x1: p.x, y1: y + NODE_H, x2: p.x, y2: ay, class: 'auto-line' }));
+      svg.append(svgEl('rect', { x: p.x - tw / 2, y: ay, width: tw, height: 17, rx: 8.5, class: 'auto-pill' + (a.enabled ? '' : ' off') }));
+      svg.append(svgEl('text', { x: p.x, y: ay + 12, 'text-anchor': 'middle', class: 'auto-label' }, label));
+      if (a.actions.some((x) => x.type === 'webhook') && hasWebhook) {
+        svg.append(svgEl('line', { x1: p.x + tw / 2, y1: ay + 8, x2: W - 130, y2: 40, class: 'auto-line dashed' }));
+      }
+    });
+  }
+
+  const legend = el('div', { class: 'map-legend' },
+    el('span', {}, '▢ table (click to open)'),
+    el('span', {}, '— relation (1/∗ = cardinality)'),
+    el('span', {}, '⚡ automation: trigger ⇒ actions'));
+  const wrap = el('div', { class: 'map-wrap' });
+  wrap.append(svg);
+  main.append(wrap, legend);
 }
 
 /* ---------- entity page ---------- */
@@ -233,11 +627,13 @@ async function showEntity(id) {
   } catch {
     return showHome();
   }
-  const db = allDatabases().find((d) => d.id === entity.dbId);
+  const db = allTables().find((d) => d.id === entity.dbId);
   state.route = { page: 'entity', id, dbId: entity.dbId };
   renderNav();
   const main = $('#main');
   main.replaceChildren();
+
+  const refresh = () => showEntity(id);
 
   const nameInput = el('input', { class: 'name-edit', value: entity.name });
   nameInput.addEventListener('change', async () => {
@@ -247,7 +643,7 @@ async function showEntity(id) {
 
   main.append(
     el('div', { class: 'crumb' },
-      el('a', { href: `#/db/${entity.dbId}` }, entity.db), ` › #${entity.publicId}`),
+      el('a', { href: `#/table/${entity.dbId}` }, entity.db), ` › #${entity.publicId}`),
     el('div', { class: 'entity-head' }, nameInput),
   );
 
@@ -257,43 +653,38 @@ async function showEntity(id) {
   const right = el('div');
   grid.append(left, right);
 
-  /* Document panel */
-  const docPanel = el('div', { class: 'panel' }, el('h2', {}, 'Document'));
-  const preview = el('div', { id: 'doc-preview' });
-  const editArea = el('textarea', { id: 'doc-edit', class: 'hidden' });
-  editArea.value = entity.doc ?? '';
-  const editBtn = el('button', {
-    onclick: async () => {
-      if (editArea.classList.contains('hidden')) {
-        editArea.classList.remove('hidden');
-        preview.classList.add('hidden');
-        editBtn.textContent = 'Save';
-        editBtn.classList.add('primary');
-      } else {
-        try {
-          await api('PUT', `/entities/${id}/doc`, { doc: editArea.value });
-          toast('Document saved');
-          showEntity(id);
-        } catch (err) { toast(err.message, true); }
-      }
-    },
-  }, 'Edit');
-  docPanel.append(
-    el('div', { class: 'doc-toolbar' },
-      editBtn,
-      el('span', { style: 'flex:1' }),
-      el('a', { class: 'fmt', href: `/e/${id}/doc.md`, target: '_blank' }, 'MD'),
-      el('a', { class: 'fmt', href: `/e/${id}/doc.html`, target: '_blank' }, 'HTML'),
-      el('a', { class: 'fmt', href: `/e/${id}/doc.pdf`, target: '_blank' }, 'PDF')),
-    preview, editArea);
-  // Server-rendered preview keeps one markdown implementation.
-  fetch(`/e/${id}/doc.html`).then((r) => r.text()).then((html) => {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    const body = doc.body;
-    body.querySelector('.doc-meta')?.remove();
-    preview.innerHTML = body.innerHTML || '<p style="color:var(--muted)">Empty document — click Edit.</p>';
-  });
-  left.append(docPanel);
+  /* One document panel per document field: rendered preview + flip to edit. */
+  for (const f of documentFields(db)) {
+    const panel = el('div', { class: 'panel' }, el('h2', {}, f.name));
+    const preview = el('div', { class: 'doc-preview' });
+    const editorWrap = el('div', { class: 'hidden' });
+    const singleFieldDb = { ...db, fields: [f] }; // editor scoped to this field
+    editorWrap.append(docsEditor(entity, singleFieldDb, () => refresh()));
+    const fmtBase = `/e/${id}/doc/${encodeURIComponent(f.name)}`;
+    const editBtn = el('button', {
+      onclick: () => {
+        const editing = !editorWrap.classList.contains('hidden');
+        editorWrap.classList.toggle('hidden', editing);
+        preview.classList.toggle('hidden', !editing);
+        editBtn.textContent = editing ? 'Edit' : 'Preview';
+      },
+    }, 'Edit');
+    panel.append(
+      el('div', { class: 'doc-toolbar' },
+        editBtn,
+        el('span', { style: 'flex:1' }),
+        el('a', { class: 'fmt', href: `${fmtBase}.md`, target: '_blank' }, 'MD'),
+        el('a', { class: 'fmt', href: `${fmtBase}.html`, target: '_blank' }, 'HTML'),
+        el('a', { class: 'fmt', href: `${fmtBase}.pdf`, target: '_blank' }, 'PDF')),
+      preview, editorWrap);
+    fetch(`${fmtBase}.html`).then((r) => r.text()).then((html) => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const body = doc.body;
+      body.querySelector('.doc-meta')?.remove();
+      preview.innerHTML = body.innerHTML || '<p style="color:var(--muted)">Empty — click Edit.</p>';
+    });
+    left.append(panel);
+  }
 
   /* Comments panel */
   const commentsPanel = el('div', { class: 'panel' }, el('h2', {}, `Comments (${entity.comments.length})`));
@@ -307,7 +698,7 @@ async function showEntity(id) {
     if (e.key === 'Enter' && commentInput.value.trim()) {
       try {
         await api('POST', `/entities/${id}/comments`, { author: 'me', text: commentInput.value.trim() });
-        showEntity(id);
+        refresh();
       } catch (err) { toast(err.message, true); }
     }
   });
@@ -317,10 +708,9 @@ async function showEntity(id) {
   /* Fields panel */
   const fieldsPanel = el('div', { class: 'panel' }, el('h2', {}, 'Fields'));
   for (const f of db.fields) {
-    if (f.name === 'Name') continue;
-    const row = el('div', { class: 'fieldrow' }, el('label', {}, f.name));
-    row.append(fieldEditor(f, entity, db));
-    fieldsPanel.append(row);
+    if (f.name === 'Name' || f.type === 'document') continue;
+    fieldsPanel.append(el('div', { class: 'fieldrow' },
+      el('label', {}, f.name), editorFor(f, entity, db, () => refresh())));
   }
   fieldsPanel.append(el('div', { style: 'margin-top:10px; display:flex; gap:8px' },
     el('button', {
@@ -328,7 +718,7 @@ async function showEntity(id) {
         if (!confirm(`Delete “${entity.name}”?`)) return;
         await api('DELETE', `/entities/${id}`);
         toast('Deleted');
-        location.hash = `#/db/${entity.dbId}`;
+        location.hash = `#/table/${entity.dbId}`;
       },
     }, 'Delete entity')));
   right.append(fieldsPanel);
@@ -339,90 +729,11 @@ async function showEntity(id) {
     const what = a.kind === 'state-changed' ? `${a.detail.field}: ${a.detail.from ?? '—'} → ${a.detail.to}`
       : a.kind === 'field-updated' ? `${a.detail.field} updated`
       : a.kind === 'relation-updated' ? `${a.detail.field} changed`
+      : a.kind === 'doc-updated' || a.kind === 'doc-appended' ? `${a.detail.field ?? 'Description'} document updated`
       : a.kind;
     act.append(el('div', { class: 'activity-item' }, `${new Date(a.ts).toLocaleString()} — ${what}`));
   }
   right.append(act);
-}
-
-function fieldEditor(f, entity, db) {
-  const id = entity.id;
-  const val = entity.fields[f.name];
-  const patch = async (value) => {
-    try {
-      await api('PATCH', `/entities/${id}`, { values: { [f.name]: value } });
-      toast('Saved');
-      showEntity(id);
-    } catch (err) { toast(err.message, true); }
-  };
-
-  if (['lookup', 'rollup', 'formula'].includes(f.type)) {
-    return el('div', { class: 'computed' }, fieldValueCell(val) || '—', el('span', { class: 'tag' }, f.type));
-  }
-  if (f.type === 'workflow') {
-    const sel = el('select', { onchange: () => api('POST', `/entities/${id}/state`, { field: f.name, state: sel.value }).then(() => showEntity(id)).catch((e) => toast(e.message, true)) },
-      ...f.states.map((s) => el('option', { selected: s.name === val ? '' : null }, s.name)));
-    return sel;
-  }
-  if (f.type === 'select') {
-    const sel = el('select', { onchange: () => patch(sel.value || null) },
-      el('option', { value: '' }, '—'),
-      ...f.options.map((o) => el('option', { selected: o === val ? '' : null }, o)));
-    return sel;
-  }
-  if (f.type === 'multiselect') {
-    const box = el('div');
-    const current = Array.isArray(val) ? val : [];
-    for (const v of current) {
-      box.append(el('span', { class: 'chip' }, v, el('span', {
-        class: 'x', onclick: () => patch(current.filter((x) => x !== v)),
-      }, '×')), ' ');
-    }
-    const remaining = f.options.filter((o) => !current.includes(o));
-    if (remaining.length) {
-      const sel = el('select', { onchange: () => sel.value && patch([...current, sel.value]) },
-        el('option', { value: '' }, '+ add'), ...remaining.map((o) => el('option', {}, o)));
-      box.append(sel);
-    }
-    return box;
-  }
-  if (f.type === 'checkbox') {
-    const cb = el('input', { type: 'checkbox', onchange: () => patch(cb.checked) });
-    cb.checked = !!val;
-    return cb;
-  }
-  if (f.type === 'relation') {
-    const box = el('div');
-    const current = val == null ? [] : Array.isArray(val) ? val : [val];
-    for (const s of current) {
-      box.append(el('span', { class: 'chip rel' },
-        el('span', { onclick: () => { location.hash = `#/entity/${s.id}`; } }, s.name || `#${s.publicId}`),
-        el('span', { class: 'x', onclick: async () => { await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] }); showEntity(id); } }, '×')), ' ');
-    }
-    const addBtn = el('button', { class: 'ghost' }, '+ link');
-    addBtn.addEventListener('click', async () => {
-      const target = allDatabases().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb);
-      const list = await api('POST', `/databases/${target.id}/query`, { select: ['Name'] });
-      const linked = new Set(current.map((s) => s.id));
-      const options = list.items.filter((i) => !linked.has(i.id));
-      modal(`Link ${f.name}`, [
-        el('select', { name: 'target', class: 'full', style: 'width:100%' },
-          ...options.map((o) => el('option', { value: o.id }, `#${o.publicId} ${o.name}`))),
-      ], async (fd) => {
-        await api('POST', `/entities/${id}/link`, { field: f.name, targets: [fd.get('target')] });
-        showEntity(id);
-      }, 'Link');
-    });
-    box.append(addBtn);
-    return box;
-  }
-  // text / number / date / url / email
-  const input = el('input', {
-    type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text',
-    value: val ?? '',
-  });
-  input.addEventListener('change', () => patch(input.value === '' ? null : f.type === 'number' ? Number(input.value) : input.value));
-  return input;
 }
 
 /* ---------- create & schema dialogs ---------- */
@@ -431,7 +742,7 @@ function quickCreate(db) {
   modal(`New ${db.name}`, [
     el('input', { name: 'name', placeholder: 'Name', class: 'full', style: 'width:100%' }),
   ], async (fd) => {
-    const e = await api('POST', `/databases/${db.id}/entities`, { name: fd.get('name') });
+    const e = await api('POST', `/tables/${db.id}/entities`, { name: fd.get('name') });
     await loadSchema();
     location.hash = `#/entity/${e.id}`;
   });
@@ -461,9 +772,9 @@ function openSchemaEditor(db) {
         onclick: async () => {
           if (!confirm(`Delete field ${f.name}?`)) return;
           try {
-            await api('DELETE', `/databases/${db.id}/fields/${encodeURIComponent(f.id)}`);
+            await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
             await loadSchema();
-            openSchemaEditor(allDatabases().find((d) => d.id === db.id));
+            openSchemaEditor(allTables().find((d) => d.id === db.id));
           } catch (err) { toast(err.message, true); }
         },
       }, '🗑'))))));
@@ -476,7 +787,7 @@ function openSchemaEditor(db) {
 
 function addFieldDialog(db) {
   const typeSel = el('select', { name: 'type', class: 'full', style: 'width:100%' },
-    ...['text', 'number', 'date', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'lookup', 'rollup', 'formula']
+    ...['text', 'number', 'date', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'document', 'lookup', 'rollup', 'formula']
       .map((t) => el('option', {}, t)));
   const extra = el('div', { class: 'full' });
   const drawExtra = () => {
@@ -521,9 +832,9 @@ function addFieldDialog(db) {
     } else if (type === 'formula') {
       config.expression = fd.get('expression');
     }
-    await api('POST', `/databases/${db.id}/fields`, { name: fd.get('name'), type, config });
+    await api('POST', `/tables/${db.id}/fields`, { name: fd.get('name'), type, config });
     await loadSchema();
-    openSchemaEditor(allDatabases().find((d) => d.id === db.id));
+    openSchemaEditor(allTables().find((d) => d.id === db.id));
   });
 }
 
@@ -531,37 +842,66 @@ function addRelationDialog(db) {
   modal('Add relation', [
     el('input', { name: 'name', placeholder: 'Field name (e.g. Project)', class: 'full', style: 'width:100%' }),
     el('select', { name: 'targetDb', class: 'full', style: 'width:100%' },
-      ...allDatabases().map((d) => el('option', { value: d.id }, d.qualified))),
+      ...allTables().map((d) => el('option', { value: d.id }, d.qualified))),
     el('select', { name: 'cardinality', class: 'full', style: 'width:100%' },
       ...['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'].map((c) => el('option', {}, c))),
     el('input', { name: 'inverseName', placeholder: 'Inverse field name (optional)', class: 'full', style: 'width:100%' }),
   ], async (fd) => {
-    await api('POST', `/databases/${db.id}/relations`, {
+    await api('POST', `/tables/${db.id}/relations`, {
       name: fd.get('name'),
       targetDb: fd.get('targetDb'),
       cardinality: fd.get('cardinality'),
       inverseName: fd.get('inverseName') || undefined,
     });
     await loadSchema();
-    openSchemaEditor(allDatabases().find((d) => d.id === db.id));
+    openSchemaEditor(allTables().find((d) => d.id === db.id));
   });
 }
 
-/* ---------- home & search ---------- */
+/* ---------- home ---------- */
 
 function showHome() {
   state.route = { page: 'home' };
   renderNav();
   const main = $('#main');
-  const dbs = allDatabases();
+  const dbs = allTables();
   main.replaceChildren(
-    el('div', { class: 'toolbar' }, el('h1', {}, 'Weave')),
+    el('div', { class: 'toolbar' }, el('h1', {}, 'Weave'),
+      el('span', { class: 'kbd-hint' }, '⌘K to search everything')),
     dbs.length
       ? el('div', { class: 'list-rows' }, ...dbs.map((d) =>
-        el('div', { class: 'list-row', onclick: () => { location.hash = `#/db/${d.id}`; } },
+        el('div', { class: 'list-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
           el('span', {}, d.qualified), el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, `${d.entityCount} entities`))))
-      : el('div', { class: 'empty' }, 'Welcome to Weave. Create a space and a database to get started.'));
+      : el('div', { class: 'empty' }, 'Welcome to Weave. Create a space and a table to get started.'));
+}
+
+/* ---------- universal search (sidebar + ⌘K palette) ---------- */
+
+const KIND_ICON = { workspace: '🕸', space: '▣', table: '▦', entity: '●' };
+
+function navigateToResult(hit) {
+  if (hit.kind === 'entity') location.hash = `#/entity/${hit.id}`;
+  else if (hit.kind === 'table') location.hash = `#/table/${hit.id}`;
+  else if (hit.kind === 'space') location.hash = `#/space/${hit.id}`;
+  else location.hash = '#/';
+}
+
+function resultRow(hit, onPick) {
+  const permalink = location.origin + hit.url;
+  return el('div', { class: 'result', onclick: () => onPick(hit) },
+    el('div', { class: 'result-main' },
+      el('span', { class: 'kind-badge' }, `${KIND_ICON[hit.kind] ?? ''} ${hit.kind}`),
+      el('span', {}, hit.kind === 'entity' ? `${hit.db} #${hit.publicId} — ${hit.name}` : hit.name),
+      el('button', {
+        class: 'ghost tiny copy-btn', title: 'Copy permalink',
+        onclick: (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(permalink).then(() => toast('Permalink copied'));
+        },
+      }, '⧉')),
+    el('div', { class: 'snip mono' }, permalink),
+    hit.snippet ? el('div', { class: 'snip' }, hit.snippet) : null);
 }
 
 function wireSearch() {
@@ -574,10 +914,12 @@ function wireSearch() {
       const q = input.value.trim();
       if (!q) { results.classList.add('hidden'); return; }
       const hits = await api('GET', `/search?q=${encodeURIComponent(q)}`);
-      results.replaceChildren(...(hits.length ? hits.map((h) =>
-        el('div', { class: 'result', onclick: () => { results.classList.add('hidden'); input.value = ''; location.hash = `#/entity/${h.id}`; } },
-          el('div', {}, `${h.db} #${h.publicId} — ${h.name}`),
-          h.snippet ? el('div', { class: 'snip' }, h.snippet) : null))
+      results.replaceChildren(...(hits.length
+        ? hits.map((h) => resultRow(h, (hit) => {
+          results.classList.add('hidden');
+          input.value = '';
+          navigateToResult(hit);
+        }))
         : [el('div', { class: 'result' }, 'No results')]));
       results.classList.remove('hidden');
     }, 200);
@@ -587,12 +929,52 @@ function wireSearch() {
   });
 }
 
+function openCommandK() {
+  if ($('#cmdk-back')) return;
+  const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) back.remove(); } });
+  const input = el('input', { id: 'cmdk-input', placeholder: 'Search workspace, spaces, tables, entities…', autocomplete: 'off' });
+  const list = el('div', { id: 'cmdk-results' });
+  let hits = [];
+  let timer;
+  const pick = (hit) => { back.remove(); navigateToResult(hit); };
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const q = input.value.trim();
+      if (!q) { list.replaceChildren(); return; }
+      hits = await api('GET', `/search?q=${encodeURIComponent(q)}`);
+      list.replaceChildren(...(hits.length
+        ? hits.map((h) => resultRow(h, pick))
+        : [el('div', { class: 'result' }, 'No results')]));
+    }, 150);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && hits.length) pick(hits[0]);
+    if (e.key === 'Escape') back.remove();
+  });
+  back.append(el('div', { id: 'cmdk' },
+    input,
+    list,
+    el('div', { class: 'cmdk-foot' }, 'Enter opens top result • ⧉ copies a permalink • Esc closes')));
+  document.body.append(back);
+  input.focus();
+}
+
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    openCommandK();
+  }
+});
+
 /* ---------- boot ---------- */
 
 function route() {
   const hash = location.hash || '#/';
   let m;
-  if ((m = hash.match(/^#\/db\/([^/?]+)/))) showDatabase(m[1]);
+  if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)/))) showDatabase(m[1]);
+  else if ((m = hash.match(/^#\/space\/([^/?]+)/))) showSpace(m[1]);
+  else if (hash.startsWith('#/map')) showMap();
   else if ((m = hash.match(/^#\/entity\/([^/?]+)/))) showEntity(m[1]);
   else showHome();
 }
@@ -607,11 +989,11 @@ $('#add-space').addEventListener('click', () => {
     });
 });
 $('#add-db').addEventListener('click', () => {
-  modal('New database', [
+  modal('New table', [
     el('select', { name: 'space', style: 'width:100%' }, ...state.schema.map((s) => el('option', {}, s.space))),
-    el('input', { name: 'name', placeholder: 'Database name', style: 'width:100%; margin-top:6px' }),
+    el('input', { name: 'name', placeholder: 'Table name', style: 'width:100%; margin-top:6px' }),
   ], async (fd) => {
-    await api('POST', '/databases', { space: fd.get('space'), name: fd.get('name') });
+    await api('POST', '/tables', { space: fd.get('space'), name: fd.get('name') });
     await loadSchema();
     route();
   });
