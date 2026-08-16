@@ -882,7 +882,12 @@ function renderTable(main, db, items, onSaved) {
           const f = db.fields.find((x) => x.name === c);
           const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
             : READONLY_FIELD_TYPES.includes(f.type) ? ' cell-computed' : '';
-          return el('td', { class: (f.type === 'number' ? 'num' : '') + kind }, editorFor(f, item, db, onSaved, { compact: true }));
+          return el('td', {
+            class: (f.type === 'number' ? 'num' : '') + kind,
+            // A resized column overrides the shared 260px cap — otherwise the
+            // header widens and the cells keep ellipsising at the old width.
+            style: f.width ? `max-width:${f.width}px` : null,
+          }, editorFor(f, item, db, onSaved, { compact: true }));
         }),
         el('td', {}, el('button', {
           class: 'btn btn-sm btn-ghost-secondary tiny' + (state.expanded.has(item.id) ? ' active-toggle' : ''),
@@ -914,6 +919,7 @@ function renderTable(main, db, items, onSaved) {
         ...cols.map((c, i) => el('th', {
           class: 'col-head',
           draggable: 'true',
+          style: colField(db, c).width ? `width:${colField(db, c).width}px` : null,
           onclick: () => { sortDir = sortKey === c ? -sortDir : 1; sortKey = c; draw(); },
           // Dragging a header moves the column. The drop lands before the
           // target when the column travels left, after it when it travels
@@ -930,7 +936,8 @@ function renderTable(main, db, items, onSaved) {
           },
         },
           el('span', { class: 'col-label' }, c + (sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : '')),
-          fieldMenuButton(db, db.fields.find((f) => f.name === c), cols, i))),
+          fieldMenuButton(db, colField(db, c), cols, i),
+          columnResizeGrip(db, colField(db, c)))),
         el('th', { title: documentFields(db).map((f) => f.name).join(', ') },
           `Docs (${documentFields(db).length})`),
         // Adding a field lives where the fields are: the end of the header bar.
@@ -940,6 +947,55 @@ function renderTable(main, db, items, onSaved) {
   };
   draw();
   main.append(wrap);
+}
+
+const colField = (db, name) => db.fields.find((f) => f.name === name);
+
+/* ---------- column widths (Feature #42) ----------
+   Mirrors the engine's floor: a drag that writes anything narrower comes back
+   as a 400 and the column snaps to a width nobody asked for. */
+const MIN_COLUMN_WIDTH = 60;
+
+/* Drag the edge to size a column, double-click it to hand the column back to
+   the browser. The width is per-field schema, so it is the grid's width for
+   everyone — one write on release, never one per pointermove. */
+function columnResizeGrip(db, f) {
+  const grip = el('span', { class: 'col-resize', title: 'Drag to resize — double-click to auto-fit' });
+  grip.addEventListener('click', (e) => e.stopPropagation());        // resizing is not sorting
+  grip.addEventListener('dblclick', (e) => { e.stopPropagation(); setColumnWidth(db, f, null); });
+  grip.addEventListener('dragstart', (e) => { e.preventDefault(); e.stopPropagation(); });
+  grip.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    e.preventDefault();   // the th is draggable; a grab on the edge is a resize
+    const th = grip.closest('th');
+    const startX = e.clientX;
+    const base = th.getBoundingClientRect().width;
+    let width = base;
+    // Tracked on the window, not the grip: a resize drag routinely outruns a
+    // 6px target, and the pointer must keep steering the column anyway.
+    const move = (ev) => {
+      width = Math.max(MIN_COLUMN_WIDTH, Math.round(base + ev.clientX - startX));
+      th.style.width = `${width}px`;
+    };
+    const up = () => {
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', up);
+      removeEventListener('pointercancel', up);
+      if (Math.round(width) !== Math.round(base)) setColumnWidth(db, f, width);
+    };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+    addEventListener('pointercancel', up);
+  });
+  return grip;
+}
+
+async function setColumnWidth(db, f, width) {
+  try {
+    await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, { config: { width } });
+    await loadSchema();
+    showDatabase(db.id);
+  } catch (err) { toast(err.message, true); }
 }
 
 /* ---------- the column header as a control (Feature #41, option A) ----------

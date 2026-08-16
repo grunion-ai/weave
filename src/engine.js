@@ -45,6 +45,8 @@ export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
 const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
 const MAX_COMPUTE_DEPTH = 8;
+// Narrower than this and a column can hold neither a chip nor a resize grip.
+const MIN_COLUMN_WIDTH = 60;
 
 export { WeaveError };
 
@@ -379,6 +381,17 @@ export class Weave {
       field.name = patch.name;
     }
     if (patch.config) {
+      // Column width belongs to every field type, so it is handled before the
+      // type switch — and independently of it, so a resize cannot clobber a
+      // select's options and an options edit cannot reset the width. null is
+      // the auto-fit reset: back to letting the column size itself.
+      if ('width' in patch.config) {
+        const width = patch.config.width;
+        if (width === null) delete field.config.width;
+        else if (typeof width !== 'number' || !Number.isFinite(width) || width < MIN_COLUMN_WIDTH) {
+          throw new WeaveError(`Column width must be a number of at least ${MIN_COLUMN_WIDTH}px`, 'invalid');
+        } else field.config.width = Math.round(width);
+      }
       if (field.type === 'select' || field.type === 'multiselect') {
         if (patch.config.options) {
           field.config.options = patch.config.options.map((o) =>
@@ -1451,6 +1464,7 @@ export class Weave {
         fields: db.fieldOrder.map((fid) => {
           const f = db.fields[fid];
           const out = { id: f.id, name: f.name, type: f.type };
+          if (f.config.width) out.width = f.config.width;
           if (f.type === 'select' || f.type === 'multiselect') out.options = f.config.options.map((o) => o.name);
           if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ name: s.name, category: s.category, default: !!s.default }));
           if (f.type === 'relation') {

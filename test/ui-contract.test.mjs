@@ -618,3 +618,54 @@ test('a hovered header is tinted so the menu has a visible owner', () => {
   assert.notEqual(hover.background, rulesFor('.wv-grid thead th').background,
     'the hover tint has to differ from the resting header');
 });
+
+/* ---------- column widths (Feature #42) ----------
+   Every column shared one 260px cap, so a title column ellipsised while a
+   status column wasted half its width. Widths are per-field schema (see
+   engine: config.width), which means a drag has to end in a PATCH, not in
+   page state — and the client's floor has to be the engine's floor, or the
+   drag writes a width the server rejects. */
+
+test('a stored column width reaches both the header and its cells', () => {
+  const head = fnBody('renderTable');
+  assert.match(head, /f\.width/, 'the header applies the field width');
+  assert.match(head, /max-width:\$\{f\.width\}px|max-width: \$\{f\.width\}px/,
+    'cells need a matching max-width or the 260px cap still ellipsises them');
+});
+
+test('a resize grip commits once, on release', () => {
+  const grip = fnBody('columnResizeGrip');
+  assert.match(grip, /pointerdown/, 'the grip drags');
+  assert.match(grip, /pointermove/, 'and tracks the pointer');
+  assert.match(grip, /setColumnWidth\(/, 'and commits through one writer');
+  const commits = [...grip.matchAll(/setColumnWidth\(/g)];
+  assert.equal(commits.length, 2, 'exactly two commits: release and auto-fit — never per move');
+  assert.match(grip, /dblclick/, 'double-click auto-fits');
+  assert.match(grip, /stopPropagation/, 'grabbing the grip must not sort the column');
+});
+
+test('auto-fit clears the width rather than writing a measured number', () => {
+  const grip = fnBody('columnResizeGrip');
+  assert.match(grip, /setColumnWidth\(db, f, null\)/,
+    'auto-fit hands the column back to the browser — null, not a pixel guess');
+  const writer = fnBody('setColumnWidth');
+  assert.match(writer, /'PATCH'/, 'width is a schema write');
+  assert.match(writer, /config: \{ width/, 'through the field config');
+});
+
+test('the client width floor is the engine width floor', () => {
+  const engine = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
+  const server = Number(engine.match(/MIN_COLUMN_WIDTH = (\d+)/)?.[1]);
+  const client = Number(APP.match(/MIN_COLUMN_WIDTH = (\d+)/)?.[1]);
+  assert.ok(server > 0, 'engine must name its minimum');
+  assert.equal(client, server, 'a drag must never write a width the engine refuses');
+});
+
+test('the resize grip is a visible edge, not an invisible strip', () => {
+  const grip = rulesFor('.col-resize');
+  assert.equal(grip.position, 'absolute', 'the grip rides its header edge');
+  assert.equal(grip.cursor, 'col-resize', 'the cursor is the whole affordance');
+  assert.ok(px(grip.width) >= 5, `the grip needs a grabbable width, got ${grip.width}`);
+  const hot = rulesFor('.wv-grid th.col-head:hover .col-resize');
+  assert.ok(hot.background, 'hovering a header shows where the edge is');
+});

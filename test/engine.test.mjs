@@ -362,3 +362,32 @@ test('a reordered table survives a reload', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/* ---------- column widths (Feature #42) ----------
+   A dragged column width is per-field, not per-viewer: the grid is the shared
+   surface, so the width rides on the field like its name does. It is config on
+   every field type, not a new column type, and clearing it returns the column
+   to auto sizing. */
+
+test('a field carries a column width', () => {
+  const { w, tasks } = buildWorkspace();
+  const fieldOf = (name) => w.describeSchema()[0].tables.find((t) => t.name === 'Task').fields.find((f) => f.name === name);
+  assert.equal(fieldOf('Due').width, undefined, 'no width until one is set');
+
+  w.updateField(tasks, 'Due', { config: { width: 180 } });
+  assert.equal(fieldOf('Due').width, 180);
+
+  // Width is orthogonal to the type config — setting one must not wipe the other.
+  w.updateField(tasks, 'Priority', { config: { width: 120 } });
+  assert.deepEqual(fieldOf('Priority').options, ['Low', 'Medium', 'High'], 'options survive a resize');
+  w.updateField(tasks, 'Priority', { config: { options: ['Low', 'High'] } });
+  assert.equal(fieldOf('Priority').width, 120, 'the width survives an options edit');
+
+  // Auto-fit resets to auto sizing rather than writing a computed number.
+  w.updateField(tasks, 'Due', { config: { width: null } });
+  assert.equal(fieldOf('Due').width, undefined, 'null clears the width');
+
+  // A width narrower than a usable column is a bug upstream, not a new default.
+  assert.throws(() => w.updateField(tasks, 'Due', { config: { width: 4 } }), /width/i);
+  assert.throws(() => w.updateField(tasks, 'Due', { config: { width: 'wide' } }), /width/i);
+});

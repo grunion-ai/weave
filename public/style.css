@@ -144,6 +144,12 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 .wv-grid th.col-head:hover { background: var(--tblr-bg-surface); }
 .wv-grid th.col-head:hover .field-menu, .field-menu:focus-visible { opacity: 1; }
 .field-menu:hover, .field-menu:focus-visible { color: var(--tblr-primary); background: var(--tblr-bg-surface); }
+/* Resize grip (Feature #42): the column's own right edge. It spans the full
+   header height so the target is a line, not a dot, and it only shows its
+   tint once the header is hovered — the cursor carries the affordance. */
+.col-resize { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize; user-select: none; }
+.wv-grid th.col-head:hover .col-resize { background: var(--tblr-border-color); }
+.col-resize:hover { background: var(--tblr-primary) !important; }
 /* Drop cue for a dragged column: an insertion edge, not a filled cell — the
    column lands where the line is. */
 .wv-grid th.drop-target { box-shadow: inset 2px 0 0 var(--tblr-primary); }
