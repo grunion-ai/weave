@@ -5,9 +5,10 @@
 <h1 align="center">weave</h1>
 
 <p align="center">
-  A local, open-source, <strong>agent-accessible</strong> work platform —
-  tables, relations, workflows, formulas, and per-entity markdown documents,
-  in the spirit of Fibery/Notion/Airtable, with zero runtime dependencies.
+  An open-source, self-hostable alternative to <strong>Airtable, ClickUp, and
+  Fibery</strong> — tables, relations, workflows, formulas, and per-entity
+  markdown documents, built to be <strong>agent-accessible</strong>, with zero
+  runtime dependencies.
 </p>
 
 ---
@@ -19,14 +20,21 @@ for **humans and agents as equals**: everything the web UI can do, the REST API,
 the CLI, and the MCP server can do too — same engine, same permissions, same
 data file on your disk. No accounts, no cloud, no telemetry.
 
+It is meant to **replace the SaaS your work already lives in** — Airtable's
+bases and grids, ClickUp's tasks and boards, Fibery's connected databases with
+documents and automations — running on your laptop or your own server, with no
+per-seat bill and no vendor holding the export button.
+
 - **Local-first** — your workspace is one SQLite file next to your project.
+- **Yours to host** — one Node process and one file; run it on a laptop or a
+  small VPS behind your own TLS and login (see [Self-hosting](#self-hosting)).
 - **Zero dependencies** — `git clone` and run. Storage is Node's built-in
   `node:sqlite`; the only third-party code is vendored and pinned.
 - **Agent-native** — an MCP server, a scriptable CLI, `Table#12` refs
   everywhere, and markdown documents addressable as plain URLs
   (`/e/Task#12/doc.md`, `.html`, `.pdf`).
 
-## Quickstart
+## Quickstart (local)
 
 Requires **Node ≥ 22.16** (Node 24 LTS recommended).
 
@@ -40,6 +48,91 @@ Open http://127.0.0.1:4400 — press **⌘K** to search everything. A
 self-documenting **weave** docs workspace is provisioned alongside your data at
 `/w/weave/`: handbook, wiki, the public issue tracker and roadmap, and a
 Quality space mirroring the test suite.
+
+## Self-hosting
+
+A server install is the local install plus a front door. Any always-on Linux box
+with **Node ≥ 22.16** will do — there is nothing to build and nothing to install
+from npm.
+
+**1. Run it as a service.** Keep it bound to `127.0.0.1`; step 2 is what the
+network actually talks to.
+
+```bash
+sudo git clone https://github.com/grunion-ai/weave /opt/weave
+sudo useradd --system --home /var/lib/weave --create-home weave
+```
+
+```ini
+# /etc/systemd/system/weave.service
+[Unit]
+Description=weave
+After=network.target
+
+[Service]
+User=weave
+WorkingDirectory=/opt/weave
+ExecStart=/usr/bin/node /opt/weave/bin/weave.js serve --port 4400 --data /var/lib/weave/workspace.db
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now weave
+```
+
+**2. Put a front door on it.** weave has no accounts and no login of its own —
+whoever reaches the port has full read/write on every workspace — so the proxy
+or private network in front of it *is* the authentication. Pick one:
+
+*Tailscale* — private to your devices, nothing exposed to the internet, no
+certificate to manage. One command on the server:
+
+```bash
+tailscale serve --bg 4400
+```
+
+*Caddy* — a public hostname with automatic TLS and a shared password. Create the
+hash with `caddy hash-password`, then:
+
+```caddyfile
+# /etc/caddy/Caddyfile
+weave.example.com {
+	basic_auth {
+		you $2a$14$replace-with-your-bcrypt-hash
+	}
+	reverse_proxy 127.0.0.1:4400
+}
+```
+
+Basic auth is one shared credential for everyone — weave has no per-user
+permissions, so every person who gets in is an admin. If you need distinct
+identities, put an SSO proxy (Cloudflare Access, oauth2-proxy, Authelia) in that
+slot instead.
+
+**3. Back up the data directory.** Everything lives in `/var/lib/weave`: one
+`.db` per workspace (yours, plus the `weave.db` docs workspace provisioned
+alongside it) and one `files/` directory of attachments.
+
+```bash
+for db in /var/lib/weave/*.db; do
+	sqlite3 "$db" ".backup '/backups/$(basename "$db" .db)-$(date +%F).db'"
+done
+rsync -a /var/lib/weave/files/ /backups/files/
+```
+
+Use `.backup` rather than copying the file — it is safe while the server is
+running and folds in the `-wal`/`-shm` sidecars. `node bin/weave.js export
+--data <file>` writes the same workspace as human-readable JSON if you want a
+copy you can read without weave.
+
+**4. Update** with `git pull` — there is no migration step or build:
+
+```bash
+sudo git -C /opt/weave pull && sudo systemctl restart weave
+```
 
 ## What's inside
 
@@ -85,9 +178,14 @@ its own development.
 
 ## Security notes
 
-The server binds `127.0.0.1` and has no authentication — it is a personal,
-local tool. Documents may contain raw HTML that renders same-origin. Do not
-expose the port publicly.
+weave has **no built-in authentication and no per-user permissions** — anyone who
+can reach the port can read and write every workspace. The server binds
+`127.0.0.1`, so a local install stays private to your machine; a self-hosted
+install must sit behind a proxy or private network that does the authenticating
+(see [Self-hosting](#self-hosting)). Never expose the port directly.
+
+Documents may contain raw HTML, which renders same-origin — treat access to a
+shared workspace the way you'd treat write access to a repo.
 
 ## License
 

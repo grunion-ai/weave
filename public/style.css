@@ -37,7 +37,11 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .search-like kbd { font: 11px var(--tblr-font-monospace); background: var(--tblr-bg-surface-secondary); border: 1px solid var(--tblr-border-color); border-radius: 4px; padding: 1px 5px; color: var(--tblr-secondary); }
 
 /* ---------- workspace icon rail (far-left) ---------- */
-#ws-rail { width: 52px; flex-shrink: 0; background: var(--tblr-bg-surface-secondary); border-right: 1px solid var(--tblr-border-color); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; position: sticky; top: 0; height: 100vh; }
+/* z-index is load-bearing: position:sticky creates a stacking context, so the
+   rail's own layer — not #nav-expand's z-index — is what must clear #main.
+   Without it #main (position:relative, later sibling) paints over the expand
+   chevron that overhangs the rail, and the collapsed nav can never re-open. */
+#ws-rail { width: 52px; flex-shrink: 0; background: var(--tblr-bg-surface-secondary); border-right: 1px solid var(--tblr-border-color); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; position: sticky; top: 0; height: 100vh; z-index: 60; }
 .ws-icon { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-weight: 700; font-size: 14px; text-decoration: none; cursor: pointer; padding: 0; }
 .ws-icon:hover { color: var(--tblr-primary); border-color: var(--tblr-primary); }
 .ws-icon.active { background: var(--tblr-primary); border-color: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); }
@@ -71,10 +75,10 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .view-title-row { margin-bottom: 0; }
 .view-title { font-size: 19px; font-weight: 700; font-family: 'Inter', var(--tblr-font-sans-serif, -apple-system, sans-serif); background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); padding: 2px 6px; margin: 0 auto 0 -6px; min-width: 0; flex: 1; color: var(--tblr-body-color); }
 .view-title:not([readonly]):hover, .view-title:focus { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); outline: none; }
-.view-desc { margin-top: 6px; font-size: 13.5px; color: var(--tblr-secondary); max-width: 720px; cursor: text; }
-.view-desc p { margin: 4px 0; }
+.view-desc { margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--tblr-secondary); max-width: 720px; cursor: text; }
+.view-desc p { margin: 2px 0; }
 .view-desc-empty { font-style: italic; opacity: .6; }
-.view-desc-edit { width: 100%; min-height: 60px; font: inherit; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); padding: 6px 8px; }
+.view-desc-edit { width: 100%; min-height: 38px; font: inherit; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); padding: 4px 6px; }
 
 /* ---------- chip picker popover (replaces native selects) ---------- */
 button.chip-trigger { cursor: pointer; font: inherit; }
@@ -96,6 +100,26 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 .wv-grid thead th { position: sticky; top: 0; z-index: 1; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* The id column carries a short "#12 ↗" link — collapse it to its content
+   instead of letting the table hand it an equal share of the width. */
+.wv-grid th.pid-head, .wv-grid td.pid-cell { width: 1%; white-space: nowrap; text-align: left; padding-right: 6px; }
+/* Whole-cell hit target: the chip is small, the cell is not, and a click on
+   the padding must open the picker rather than navigate to the entity. */
+.wv-grid td.cell-pick { cursor: pointer; }
+/* Computed / read-only cells must not read as editable. */
+.wv-grid td.cell-computed { background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); cursor: default; }
+.computed { cursor: default; }
+.computed-mark { margin-right: 5px; opacity: .55; font-size: 11px; }
+/* "+" closing the header bar: adds a field where the fields live. */
+.wv-grid th.add-field-head { width: 1%; white-space: nowrap; padding-left: 4px; padding-right: 8px; cursor: default; }
+.add-field-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; }
+.add-field-btn:hover { color: var(--tblr-primary); border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
+/* Creating an entity is the grid's last row, so the table reads as one
+   surface that grows from the bottom rather than a table plus a button. */
+.wv-grid tr.add-entity-row td { padding: 0; border-bottom: 0; }
+.wv-grid tr.add-entity-row:hover td { background: none; }
+.add-entity-btn { width: 100%; display: block; padding: 7px 12px; background: none; border: 0; color: var(--tblr-secondary); font: inherit; text-align: left; cursor: pointer; }
+.add-entity-btn:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-primary); }
 .entity-row { cursor: pointer; }
 .doc-row td { background: var(--tblr-bg-surface-secondary); }
 .doc-row:hover td { background: var(--tblr-bg-surface-secondary); box-shadow: none; }
@@ -272,8 +296,11 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .dl-menu { position: absolute; top: 100%; left: 0; z-index: 30; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-shadow-dropdown, 0 2px 8px rgba(0,0,0,.15)); min-width: 150px; padding: 4px 0; }
 .dl-menu .dropdown-item { display: block; padding: 5px 12px; color: var(--tblr-body-color); text-decoration: none; font-size: 13px; }
 .dl-menu .dropdown-item:hover { background: var(--tblr-active-bg, rgba(var(--tblr-primary-rgb), .08)); }
-.add-row-bar { position: sticky; bottom: 0; z-index: 20; padding: 8px 0; background: linear-gradient(to top, var(--tblr-body-bg, var(--tblr-bg-surface)) 70%, transparent); }
-.nav-foot input, .nav-space-row + input { margin: 4px 0; }
+/* The inline create field sits in the table list, so it matches a .nav-db row
+   — same indent, height and type scale — rather than a stock form control. */
+.nav-inline-add { margin: 2px 0; padding: 5px 8px; height: auto; font-size: inherit; line-height: 1.4; border-radius: var(--tblr-border-radius); border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
+.nav-inline-add:focus { box-shadow: none; border-color: var(--tblr-primary); }
+.nav-inline-add::placeholder { color: var(--tblr-secondary); }
 #main { position: relative; }
 .entity-dl-corner { position: absolute; top: 10px; left: 12px; z-index: 25; }
 .crumb-offset { margin-left: 34px; }

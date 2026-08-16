@@ -65,6 +65,9 @@ function toast(msg, isErr = false) {
 }
 
 function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
+  // One dialog at a time: a second open replaces the first instead of stacking
+  // another backdrop (and another set of blank inputs) on top of it.
+  document.querySelector('#modal-back')?.remove();
   const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) back.remove(); } });
   const form = el('form', {}, ...bodyNodes,
     el('div', { class: 'actions' },
@@ -81,6 +84,10 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   });
   back.append(el('div', { id: 'modal' }, el('h2', {}, title), form));
   document.body.append(back);
+  addEventListener('keydown', function esc(e) {
+    if (!back.isConnected) return removeEventListener('keydown', esc);
+    if (e.key === 'Escape') { back.remove(); removeEventListener('keydown', esc); }
+  });
   const first = form.querySelector('input,select,textarea');
   if (first) first.focus();
 }
@@ -102,14 +109,22 @@ async function loadSchema() {
 /* ---------- navigation sidebar ---------- */
 
 // Inline name entry, replacing popup dialogs: Enter commits, Esc cancels.
+/* Single-instance inline create field for the sidebar. Only ever one is open:
+   clicking "+ New space" (or a space's "+") again — or clicking the other one —
+   moves the existing input rather than stacking another blank row. Enter
+   commits, Escape or blurring an empty input cancels. */
 function inlineNameInput(placeholder, onCommit) {
-  const input = el('input', { class: 'form-control form-control-sm', placeholder });
+  document.querySelectorAll('.nav-inline-add').forEach((n) => n.remove());
+  const input = el('input', { class: 'form-control form-control-sm nav-inline-add', placeholder });
+  const cancel = () => { input.remove(); renderNav(); };
   input.addEventListener('keydown', async (e) => {
-    if (e.key === 'Escape') { input.remove(); renderNav(); }
-    if (e.key === 'Enter' && input.value.trim()) {
-      try { await onCommit(input.value.trim()); } catch (err) { toast(err.message, true); }
-    }
+    if (e.key === 'Escape') return cancel();
+    if (e.key !== 'Enter' || !input.value.trim()) return;
+    input.disabled = true;
+    try { await onCommit(input.value.trim()); } catch (err) { input.disabled = false; toast(err.message, true); }
   });
+  // An abandoned input should not linger in the nav.
+  input.addEventListener('blur', () => { if (!input.disabled && !input.value.trim()) cancel(); });
   requestAnimationFrame(() => input.focus());
   return input;
 }
@@ -175,7 +190,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
       ta.addEventListener('blur', save);
       ta.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') ta.blur(); });
       descBox.replaceChildren(ta);
-      requestAnimationFrame(() => { ta.focus(); ta.style.height = Math.max(60, ta.scrollHeight) + 'px'; });
+      requestAnimationFrame(() => { ta.focus(); ta.style.height = Math.max(38, ta.scrollHeight) + 'px'; });
     };
     descBox.addEventListener('click', (e) => { if (!e.target.closest('a,textarea')) startEdit(); });
     showRendered(current);
@@ -298,27 +313,63 @@ function renderMermaidIn(container) {
 /* In-app chip picker: replaces native <select> popups (which can't be
    styled and clash with the chip aesthetic — weave Issue #9). options:
    [{name, cls}], current = selected name. */
+/* Anchored popover shared by the chip picker and the header field menu:
+   flips above the trigger when it would overflow, closes on outside click or
+   Escape, and never leaves two popovers open at once. */
+function showPopover(trigger, rows) {
+  document.querySelector('.chip-pop')?.remove();
+  const pop = el('div', { class: 'chip-pop' }, ...rows);
+  document.body.append(pop);
+  const r = trigger.getBoundingClientRect();
+  pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
+  pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
+  const close = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); removeEventListener('click', close, true); } };
+  addEventListener('click', close, true);
+  addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape') { pop.remove(); removeEventListener('keydown', esc); } });
+  return pop;
+}
+
 function chipPicker({ trigger, options, current, onPick }) {
   trigger.classList.add('chip-trigger');
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
-    document.querySelector('.chip-pop')?.remove();
-    const pop = el('div', { class: 'chip-pop' },
-      ...options.map((o) => el('button', {
-        class: 'chip-pop-row', type: 'button',
-        onclick: async () => { pop.remove(); if (o.name !== current) await onPick(o.name); },
-      },
-        el('span', { class: `chip ${o.cls ?? ''}` }, o.name),
-        o.name === current ? el('span', { class: 'chip-pop-check' }, '✓') : '')));
-    document.body.append(pop);
-    const r = trigger.getBoundingClientRect();
-    pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
-    pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
-    const close = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); removeEventListener('click', close, true); } };
-    addEventListener('click', close, true);
-    addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape') { pop.remove(); removeEventListener('keydown', esc); } });
+    const pop = showPopover(trigger, options.map((o) => el('button', {
+      class: 'chip-pop-row', type: 'button',
+      onclick: async () => { pop.remove(); if (o.name !== current) await onPick(o.name); },
+    },
+      el('span', { class: `chip ${o.cls ?? ''}` }, o.name),
+      o.name === current ? el('span', { class: 'chip-pop-check' }, '✓') : '')));
   });
   return trigger;
+}
+
+/* Field-type groupings the row/cell chrome keys off.
+   PICKER: the cell's whole area opens a chooser. READONLY: computed values
+   that render as text and must not look editable. */
+const PICKER_FIELD_TYPES = ['select', 'multiselect', 'workflow'];
+const READONLY_FIELD_TYPES = ['lookup', 'rollup', 'formula', 'document'];
+
+// Inline glyph marking how a read-only value is produced.
+function computedMark(type) {
+  return { formula: 'ƒ', rollup: 'Σ', lookup: '↗', document: '¶' }[type] ?? '·';
+}
+
+/* A click landed on a picker cell's padding rather than its control: forward
+   it to the control. Chip pickers open on click; a native <select> opens its
+   own dropdown (showPicker where supported, focus as the fallback). */
+function openCellPicker(cell) {
+  const trigger = cell.querySelector('.chip-trigger');
+  if (trigger) return trigger.click();
+  const sel = cell.querySelector('select');
+  if (!sel) return;
+  sel.focus();
+  try { sel.showPicker?.(); } catch { /* not user-activated — focus is enough */ }
+}
+
+// Row click → 'ignore' (a control handled it), the picker cell, or null (open).
+function rowClickTarget(e) {
+  if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return 'ignore';
+  return e.target.closest('.cell-pick');
 }
 
 function editorFor(f, item, db, onSaved, { compact = false } = {}) {
@@ -336,8 +387,11 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     } catch (err) { toast(err.message, true); }
   };
 
-  if (['lookup', 'rollup', 'formula'].includes(f.type)) {
-    const box = el('span', { class: 'computed', title: f.type }, fieldValueCell(val) || '—');
+  if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
+    // Read-only: the glyph says "computed, not editable" at a glance so these
+    // are not mistaken for the chips and inputs beside them.
+    const box = el('span', { class: 'computed', title: `${f.type} — read-only` },
+      el('span', { class: 'computed-mark' }, computedMark(f.type)), fieldValueCell(val) || '—');
     if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
     return box;
   }
@@ -421,7 +475,9 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   if (f.type === 'document') {
     // Documents are edited through the doc editor surfaces, not a cell input.
     const text = String(val ?? '');
-    return el('span', { class: 'computed', title: 'document' }, text ? text.slice(0, 60).replace(/\n/g, ' ') + (text.length > 60 ? '…' : '') : '—');
+    return el('span', { class: 'computed', title: 'document — edit in the doc editor' },
+      el('span', { class: 'computed-mark' }, computedMark('document')),
+      text ? text.slice(0, 60).replace(/\n/g, ' ') + (text.length > 60 ? '…' : '') : '—');
   }
   const input = el('input', {
     class: 'form-control form-control-sm inline-edit',
@@ -528,9 +584,12 @@ function drawDatabase(db, items) {
     },
     actions: [
       switcher,
-      el('button', { class: 'btn btn-sm', onclick: () => openSchemaEditor(db) }, '⚙ Fields'),
+      // Table view carries both affordances inside the grid itself — a "+"
+      // in the header bar for fields, a "+ New" row at the foot for entities.
+      // Board and list have no grid to host them, so they keep the buttons.
+      state.route.view === 'table' ? null
+        : el('button', { class: 'btn btn-sm', onclick: () => openSchemaEditor(db) }, '⚙ Fields'),
       el('a', { class: 'btn btn-sm', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` }, 'CSV'),
-      // Table view creates inline at the table bottom; other views keep the dialog.
       state.route.view === 'table' ? null
         : el('button', { class: 'btn btn-sm btn-primary', onclick: () => quickCreate(db) }, '+ New'),
     ],
@@ -568,6 +627,9 @@ function drawDatabase(db, items) {
 
 function renderTable(main, db, items, onSaved) {
   const cols = db.fields.filter((f) => f.type !== 'document').map((f) => f.name);
+  // Header bar = id + one per field + docs + the "+" field control. Full-width
+  // rows span it, so it is derived once rather than restated per call site.
+  const colCount = cols.length + 3;
   let sortKey = null, sortDir = 1;
   const wrap = el('div', { class: 'card table-wrap' });
 
@@ -587,15 +649,19 @@ function renderTable(main, db, items, onSaved) {
         class: 'entity-row',
         dataset: { eid: item.id },
         onclick: (e) => {
-          if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return;
+          const pick = rowClickTarget(e);
+          if (pick === 'ignore') return;
+          if (pick) return openCellPicker(pick);
           openEntity(item.id);
         },
       },
-        el('td', { class: 'num' },
+        el('td', { class: 'pid-cell' },
           el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`)),
         ...cols.map((c) => {
           const f = db.fields.find((x) => x.name === c);
-          return el('td', { class: f.type === 'number' ? 'num' : '' }, editorFor(f, item, db, onSaved, { compact: true }));
+          const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
+            : READONLY_FIELD_TYPES.includes(f.type) ? ' cell-computed' : '';
+          return el('td', { class: (f.type === 'number' ? 'num' : '') + kind }, editorFor(f, item, db, onSaved, { compact: true }));
         }),
         el('td', {}, el('button', {
           class: 'btn btn-sm btn-ghost-secondary tiny' + (state.expanded.has(item.id) ? ' active-toggle' : ''),
@@ -609,25 +675,53 @@ function renderTable(main, db, items, onSaved) {
       tbody.append(row);
       if (state.expanded.has(item.id)) {
         tbody.append(el('tr', { class: 'doc-row' },
-          el('td', { colspan: String(cols.length + 2) }, docsEditor(item, db, onSaved))));
+          el('td', { colspan: String(colCount) }, docsEditor(item, db, onSaved))));
       }
     }
+    // Creating an entity is the last row of the grid, not a detached bar:
+    // the table reads as one surface that grows from the bottom.
+    tbody.append(el('tr', { class: 'add-entity-row' },
+      el('td', { colspan: String(colCount) },
+        el('button', {
+          class: 'add-entity-btn', type: 'button', title: 'Add an entity',
+          onclick: () => state.inlineAdd?.(),
+        }, '+ New'))));
+
     const table = el('table', { class: 'table table-sm table-vcenter card-table table-hover wv-grid' },
       el('thead', {}, el('tr', {},
-        el('th', {}, '#'),
+        el('th', { class: 'pid-head' }, '#'),
         ...cols.map((c) => el('th', {
           onclick: () => { sortDir = sortKey === c ? -sortDir : 1; sortKey = c; draw(); },
         }, c + (sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : ''))),
         el('th', { title: documentFields(db).map((f) => f.name).join(', ') },
-          `Docs (${documentFields(db).length})`))),
+          `Docs (${documentFields(db).length})`),
+        // Adding a field lives where the fields are: the end of the header bar.
+        el('th', { class: 'add-field-head' }, addFieldMenuButton(db)))),
       tbody);
     wrap.replaceChildren(table);
   };
   draw();
   main.append(wrap);
-  // Bottom + New: floats (sticky) when the table outgrows the viewport.
-  main.append(el('div', { class: 'add-row-bar' },
-    el('button', { class: 'btn btn-sm btn-primary', onclick: () => state.inlineAdd?.() }, `+ New`)));
+}
+
+/* The "+" that closes the grid's header bar. A menu rather than a straight
+   dialog because it replaces the "⚙ Fields" button in table view, so it has
+   to keep relations and field management reachable — not just adding. */
+function addFieldMenuButton(db) {
+  const btn = el('button', { class: 'add-field-btn', type: 'button', title: 'Add or manage fields' }, '+');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const row = (label, run) => el('button', {
+      class: 'chip-pop-row', type: 'button',
+      onclick: () => { document.querySelector('.chip-pop')?.remove(); run(); },
+    }, label);
+    showPopover(btn, [
+      row('+ Field', () => addFieldDialog(db)),
+      row('+ Relation', () => addRelationDialog(db)),
+      row('⚙ Manage fields', () => openSchemaEditor(db)),
+    ]);
+  });
+  return btn;
 }
 
 function renderBoard(main, db, items, onSaved) {
@@ -659,7 +753,9 @@ function renderBoard(main, db, items, onSaved) {
           class: 'card board-card' + (expanded ? ' editing' : ''), draggable: 'true', dataset: { id: item.id },
           onclick: (e) => {
             if (expanded) return;
-            if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return;
+            const pick = rowClickTarget(e);
+            if (pick === 'ignore') return;
+            if (pick) return openCellPicker(pick);
             openEntity(item.id);
           },
         },
@@ -731,7 +827,9 @@ function renderListView(main, db, items, onSaved) {
     rows.append(el('div', {
       class: 'list-row entity-row',
       onclick: (e) => {
-        if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return;
+        const pick = rowClickTarget(e);
+        if (pick === 'ignore') return;
+        if (pick) return openCellPicker(pick);
         openEntity(item.id);
       },
     },
@@ -1332,26 +1430,10 @@ function route() {
 
 window.addEventListener('hashchange', route);
 
-function newSpaceModal() {
-  modal('New space', [el('input', { name: 'name', class: 'form-control', placeholder: 'Space name', style: 'width:100%' })],
-    async (fd) => {
-      await api('POST', '/spaces', { name: fd.get('name') });
-      await loadSchema();
-    });
-}
-
-// preSpace: pre-select a space (used by the per-space "+" in the sidebar).
-function newTableModal(preSpace) {
-  modal('New table', [
-    el('select', { name: 'space', class: 'form-select', style: 'width:100%' },
-      ...state.schema.map((s) => el('option', { selected: s.space === preSpace ? '' : null }, s.space))),
-    el('input', { name: 'name', class: 'form-control', placeholder: 'Table name', style: 'width:100%; margin-top:6px' }),
-  ], async (fd) => {
-    await api('POST', '/tables', { space: fd.get('space'), name: fd.get('name') });
-    await loadSchema();
-    route();
-  });
-}
+/* Spaces and tables are created by the single-instance inline input in the
+   sidebar (inlineNameInput). The modal variants that used to live here were
+   unreachable and styled differently, so the same action had two competing
+   designs — weave Issue #16. */
 
 /* Shift+Enter anywhere on a table view = quick-create in the current table. */
 document.addEventListener('keydown', (e) => {
