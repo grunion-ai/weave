@@ -51,8 +51,8 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) back.remove(); } });
   const form = el('form', {}, ...bodyNodes,
     el('div', { class: 'actions' },
-      el('button', { type: 'button', onclick: () => back.remove() }, 'Cancel'),
-      el('button', { class: 'primary', type: 'submit' }, submitLabel)));
+      el('button', { class: 'btn', type: 'button', onclick: () => back.remove() }, 'Cancel'),
+      el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
@@ -69,6 +69,9 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
 }
 
 const state = { schema: [], route: null, expanded: new Set() };
+
+// Single entry point for opening an entity (future: side-peek drawer).
+function openEntity(id) { location.hash = `#/entity/${id}`; }
 
 function allTables() {
   return state.schema.flatMap((s) => s.tables.map((d) => ({ ...d, space: s.space, spaceId: s.spaceId })));
@@ -89,7 +92,13 @@ function renderNav() {
     href: '#/map',
   }, '🗺 Relation map'));
   for (const space of state.schema) {
-    nav.append(el('a', { class: 'nav-space', href: `#/space/${space.spaceId}` }, space.space));
+    nav.append(el('div', { class: 'nav-space-row' },
+      el('a', { class: 'nav-space', href: `#/space/${space.spaceId}` }, space.space),
+      el('button', {
+        class: 'btn btn-sm btn-icon btn-ghost-secondary tiny nav-add-table',
+        title: `New table in ${space.space}`, type: 'button',
+        onclick: () => newTableModal(space.space),
+      }, '+')));
     for (const db of space.tables) {
       nav.append(el('a', {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
@@ -97,6 +106,10 @@ function renderNav() {
       }, db.name, el('span', { class: 'count' }, String(db.entityCount))));
     }
   }
+  nav.append(el('div', { class: 'nav-foot' },
+    el('button', {
+      class: 'btn btn-sm btn-ghost-secondary', type: 'button', onclick: newSpaceModal,
+    }, '+ New space')));
 }
 
 /* ---------- shared value rendering ---------- */
@@ -132,7 +145,7 @@ function renderMermaidIn(container) {
     s.onload = () => {
       window.mermaid?.initialize({
         startOnLoad: false,
-        theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+        theme: document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'default',
       });
       resolve();
     };
@@ -161,12 +174,12 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
 
   if (['lookup', 'rollup', 'formula'].includes(f.type)) {
     const box = el('span', { class: 'computed', title: f.type }, fieldValueCell(val) || '—');
-    if (!compact) box.append(el('span', { class: 'tag' }, f.type));
+    if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
     return box;
   }
   if (f.type === 'workflow') {
     const sel = el('select', {
-      class: `inline-edit state-select state-${stateCategory(f, val)}`,
+      class: `form-select form-select-sm inline-edit state-select state-${stateCategory(f, val)}`,
       onchange: async () => {
         try {
           await api('POST', `/entities/${id}/state`, { field: f.name, state: sel.value });
@@ -178,7 +191,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   }
   if (f.type === 'select') {
     return el('select', {
-      class: 'inline-edit',
+      class: 'form-select form-select-sm inline-edit',
       onchange: (e) => patch(e.target.value || null),
     }, el('option', { value: '' }, '—'), ...f.options.map((o) => el('option', { selected: o === val ? '' : null }, o)));
   }
@@ -192,14 +205,14 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     }
     const remaining = f.options.filter((o) => !current.includes(o));
     if (remaining.length) {
-      const sel = el('select', { class: 'inline-edit ghost-select', onchange: (e) => e.target.value && patch([...current, e.target.value]) },
+      const sel = el('select', { class: 'form-select form-select-sm inline-edit ghost-select', onchange: (e) => e.target.value && patch([...current, e.target.value]) },
         el('option', { value: '' }, '+'), ...remaining.map((o) => el('option', {}, o)));
       box.append(sel);
     }
     return box;
   }
   if (f.type === 'checkbox') {
-    const cb = el('input', { type: 'checkbox', onchange: () => patch(cb.checked) });
+    const cb = el('input', { type: 'checkbox', class: 'form-check-input', onchange: () => patch(cb.checked) });
     cb.checked = !!val;
     return cb;
   }
@@ -220,7 +233,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
         }, '×')), ' ');
     }
     box.append(el('button', {
-      class: 'ghost tiny',
+      class: 'btn btn-sm btn-ghost-secondary tiny',
       onclick: async () => {
         const target = allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb);
         const list = await api('POST', `/tables/${target.id}/query`, { select: ['Name'] });
@@ -228,7 +241,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
         const options = list.items.filter((i) => !linked.has(i.id));
         if (!options.length) return toast('Nothing left to link');
         modal(`Link ${f.name}`, [
-          el('select', { name: 'target', class: 'full', style: 'width:100%' },
+          el('select', { name: 'target', class: 'form-select full', style: 'width:100%' },
             ...options.map((o) => el('option', { value: o.id }, `#${o.publicId} ${o.name}`))),
         ], async (fd) => {
           await api('POST', `/entities/${id}/link`, { field: f.name, targets: [fd.get('target')] });
@@ -244,7 +257,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     return el('span', { class: 'computed', title: 'document' }, text ? text.slice(0, 60).replace(/\n/g, ' ') + (text.length > 60 ? '…' : '') : '—');
   }
   const input = el('input', {
-    class: 'inline-edit',
+    class: 'form-control form-control-sm inline-edit',
     type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text',
     value: val ?? '',
     onclick: (e) => e.stopPropagation(),
@@ -264,13 +277,14 @@ function docsEditor(item, db, onSaved) {
 
   const draw = () => {
     wrap.replaceChildren();
-    const tabs = el('div', { class: 'doc-tabs' },
+    const tabs = el('nav', { class: 'nav nav-tabs doc-tabs' },
       ...fields.map((f) => el('button', {
-        class: 'doc-tab' + (f.name === active ? ' active' : ''),
+        class: 'nav-link doc-tab' + (f.name === active ? ' active' : ''),
+        type: 'button',
         onclick: () => { active = f.name; draw(); },
       }, f.name)));
     const area = el('textarea', {
-      class: 'doc-inline', spellcheck: 'false',
+      class: 'form-control doc-inline', spellcheck: 'false',
       dataset: { eid: item.id, field: active },
     });
     area.value = item.docs?.[active] ?? '';
@@ -279,13 +293,14 @@ function docsEditor(item, db, onSaved) {
       el('div', { class: 'doc-toolbar' },
         tabs,
         el('span', { style: 'flex:1' }),
-        el('a', { class: 'fmt', href: `${fmtBase}.md`, target: '_blank' }, 'MD'),
-        el('a', { class: 'fmt', href: `${fmtBase}.html`, target: '_blank' }, 'HTML'),
-        el('a', { class: 'fmt', href: `${fmtBase}.pdf`, target: '_blank' }, 'PDF')),
+        el('div', { class: 'btn-group' },
+          el('a', { class: 'btn btn-sm fmt', href: `${fmtBase}.md`, target: '_blank' }, 'MD'),
+          el('a', { class: 'btn btn-sm fmt', href: `${fmtBase}.html`, target: '_blank' }, 'HTML'),
+          el('a', { class: 'btn btn-sm fmt', href: `${fmtBase}.pdf`, target: '_blank' }, 'PDF'))),
       area,
-      el('div', { style: 'margin-top:6px; text-align:right' },
+      el('div', { style: 'margin-top:8px; text-align:right' },
         el('button', {
-          class: 'primary',
+          class: 'btn btn-sm btn-primary',
           onclick: async () => {
             try {
               await api('PUT', `/entities/${item.id}/doc`, { field: active, doc: area.value });
@@ -320,22 +335,22 @@ function drawDatabase(db, items) {
   }
   main.replaceChildren();
 
-  const switcher = el('div', { class: 'view-switch' },
+  const switcher = el('div', { class: 'btn-group view-switch' },
     ...['table', 'board', 'list'].map((v) =>
       el('button', {
-        class: state.route.view === v ? 'active' : '',
+        class: 'btn btn-sm' + (state.route.view === v ? ' active' : ''),
         onclick: () => showDatabase(db.id, v),
       }, v[0].toUpperCase() + v.slice(1))));
 
-  main.append(el('div', { class: 'toolbar' },
+  main.append(el('div', { class: 'wv-toolbar' },
     el('h1', {}, `${db.space} / ${db.name}`),
     switcher,
-    el('button', { onclick: () => openSchemaEditor(db) }, '⚙ Fields'),
-    el('a', { href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` }, el('button', {}, 'CSV')),
-    el('button', { class: 'primary', onclick: () => quickCreate(db) }, '+ New')));
+    el('button', { class: 'btn btn-sm', onclick: () => openSchemaEditor(db) }, '⚙ Fields'),
+    el('a', { class: 'btn btn-sm', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` }, 'CSV'),
+    el('button', { class: 'btn btn-sm btn-primary', onclick: () => quickCreate(db) }, '+ New')));
 
   if (!items.length) {
-    main.append(el('div', { class: 'empty' }, 'No entities yet. Create the first one.'));
+    main.append(el('div', { class: 'wv-empty' }, 'No entities yet. Create the first one.'));
     return;
   }
 
@@ -357,7 +372,7 @@ function drawDatabase(db, items) {
 function renderTable(main, db, items, onSaved) {
   const cols = db.fields.filter((f) => f.type !== 'document').map((f) => f.name);
   let sortKey = null, sortDir = 1;
-  const wrap = el('div', { class: 'table-wrap' });
+  const wrap = el('div', { class: 'card table-wrap' });
 
   const draw = () => {
     const sorted = [...items];
@@ -371,7 +386,13 @@ function renderTable(main, db, items, onSaved) {
     }
     const tbody = el('tbody');
     for (const item of sorted) {
-      const row = el('tr', {},
+      const row = el('tr', {
+        class: 'entity-row',
+        onclick: (e) => {
+          if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return;
+          openEntity(item.id);
+        },
+      },
         el('td', { class: 'num' },
           el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`)),
         ...cols.map((c) => {
@@ -379,7 +400,7 @@ function renderTable(main, db, items, onSaved) {
           return el('td', { class: f.type === 'number' ? 'num' : '' }, editorFor(f, item, db, onSaved, { compact: true }));
         }),
         el('td', {}, el('button', {
-          class: 'ghost tiny' + (state.expanded.has(item.id) ? ' active-toggle' : ''),
+          class: 'btn btn-sm btn-ghost-secondary tiny' + (state.expanded.has(item.id) ? ' active-toggle' : ''),
           title: 'Edit documents',
           onclick: () => {
             if (state.expanded.has(item.id)) state.expanded.delete(item.id);
@@ -393,7 +414,7 @@ function renderTable(main, db, items, onSaved) {
           el('td', { colspan: String(cols.length + 2) }, docsEditor(item, db, onSaved))));
       }
     }
-    const table = el('table', { class: 'grid' },
+    const table = el('table', { class: 'table table-sm table-vcenter card-table table-hover wv-grid' },
       el('thead', {}, el('tr', {},
         el('th', {}, '#'),
         ...cols.map((c) => el('th', {
@@ -411,7 +432,7 @@ function renderTable(main, db, items, onSaved) {
 function renderBoard(main, db, items, onSaved) {
   const groupField = db.fields.find((f) => f.type === 'workflow') ?? db.fields.find((f) => f.type === 'select');
   if (!groupField) {
-    main.append(el('div', { class: 'empty' }, 'Board view needs a workflow or select field.'));
+    main.append(el('div', { class: 'wv-empty' }, 'Board view needs a workflow or select field.'));
     return;
   }
   const groups = groupField.type === 'workflow' ? groupField.states.map((s) => s.name) : groupField.options;
@@ -433,12 +454,19 @@ function renderBoard(main, db, items, onSaved) {
             onSaved();
           } catch (err) { toast(err.message, true); }
         });
-        const card = el('div', { class: 'card' + (expanded ? ' editing' : ''), draggable: 'true', dataset: { id: item.id } },
+        const card = el('div', {
+          class: 'card board-card' + (expanded ? ' editing' : ''), draggable: 'true', dataset: { id: item.id },
+          onclick: (e) => {
+            if (expanded) return;
+            if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return;
+            openEntity(item.id);
+          },
+        },
           el('div', { class: 'card-top' },
             el('a', { class: 'pid', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`),
             el('span', { style: 'flex:1' }),
             el('button', {
-              class: 'ghost tiny' + (expanded ? ' active-toggle' : ''),
+              class: 'btn btn-sm btn-ghost-secondary tiny' + (expanded ? ' active-toggle' : ''),
               title: 'Edit fields & documents',
               onclick: (e) => {
                 e.stopPropagation();
@@ -480,7 +508,7 @@ function renderBoard(main, db, items, onSaved) {
 
 function renderListView(main, db, items, onSaved) {
   const wf = db.fields.find((f) => f.type === 'workflow');
-  const rows = el('div', { class: 'list-rows' });
+  const rows = el('div', { class: 'card list-rows' });
   const redraw = () => drawDatabase(db, items);
   for (const item of items) {
     const expanded = state.expanded.has(item.id);
@@ -492,13 +520,19 @@ function renderListView(main, db, items, onSaved) {
         onSaved();
       } catch (err) { toast(err.message, true); }
     });
-    rows.append(el('div', { class: 'list-row' },
+    rows.append(el('div', {
+      class: 'list-row entity-row',
+      onclick: (e) => {
+        if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return;
+        openEntity(item.id);
+      },
+    },
       el('a', { class: 'pid', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`),
       nameInput,
       el('span', { class: 'spacer' }),
       wf ? editorFor(wf, item, db, onSaved, { compact: true }) : null,
       el('button', {
-        class: 'ghost tiny' + (expanded ? ' active-toggle' : ''),
+        class: 'btn btn-sm btn-ghost-secondary tiny' + (expanded ? ' active-toggle' : ''),
         title: 'Edit fields & documents',
         onclick: () => {
           if (expanded) state.expanded.delete(item.id);
@@ -530,10 +564,10 @@ async function showSpace(spaceId) {
   renderNav();
   const main = $('#main');
   main.replaceChildren(
-    el('div', { class: 'toolbar' },
+    el('div', { class: 'wv-toolbar' },
       el('h1', {}, space.space),
-      el('a', { href: '#/map' }, el('button', {}, '🗺 Map'))),
-    el('div', { class: 'list-rows' }, ...space.tables.map((d) =>
+      el('a', { class: 'btn btn-sm', href: '#/map' }, '🗺 Map')),
+    el('div', { class: 'card list-rows' }, ...space.tables.map((d) =>
       el('div', { class: 'list-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
         el('span', {}, d.name),
         el('span', { class: 'spacer' }),
@@ -546,12 +580,12 @@ async function showMap() {
   state.route = { page: 'map' };
   renderNav();
   const main = $('#main');
-  main.replaceChildren(el('div', { class: 'toolbar' }, el('h1', {}, 'Relation map')));
+  main.replaceChildren(el('div', { class: 'wv-toolbar' }, el('h1', {}, 'Relation map')));
 
   const [schema, automations] = await Promise.all([api('GET', '/schema'), api('GET', '/automations')]);
   const tables = schema.flatMap((s) => s.tables.map((t) => ({ ...t, space: s.space })));
   if (!tables.length) {
-    main.append(el('div', { class: 'empty' }, 'No tables yet.'));
+    main.append(el('div', { class: 'wv-empty' }, 'No tables yet.'));
     return;
   }
 
@@ -682,13 +716,13 @@ async function showEntity(id) {
 
   /* One document panel per document field: rendered preview + flip to edit. */
   for (const f of documentFields(db)) {
-    const panel = el('div', { class: 'panel' }, el('h2', {}, f.name));
     const preview = el('div', { class: 'doc-preview' });
     const editorWrap = el('div', { class: 'hidden' });
     const singleFieldDb = { ...db, fields: [f] }; // editor scoped to this field
     editorWrap.append(docsEditor(entity, singleFieldDb, () => refresh()));
     const fmtBase = `${WS_PREFIX}/e/${id}/doc/${encodeURIComponent(f.name)}`;
     const editBtn = el('button', {
+      class: 'btn btn-sm',
       onclick: () => {
         const editing = !editorWrap.classList.contains('hidden');
         editorWrap.classList.toggle('hidden', editing);
@@ -696,33 +730,39 @@ async function showEntity(id) {
         editBtn.textContent = editing ? 'Edit' : 'Preview';
       },
     }, 'Edit');
-    panel.append(
-      el('div', { class: 'doc-toolbar' },
-        editBtn,
-        el('span', { style: 'flex:1' }),
-        el('a', { class: 'fmt', href: `${fmtBase}.md`, target: '_blank' }, 'MD'),
-        el('a', { class: 'fmt', href: `${fmtBase}.html`, target: '_blank' }, 'HTML'),
-        el('a', { class: 'fmt', href: `${fmtBase}.pdf`, target: '_blank' }, 'PDF')),
-      preview, editorWrap);
+    const panel = el('div', { class: 'card panel' },
+      el('div', { class: 'card-header' },
+        el('h3', { class: 'card-title' }, f.name),
+        el('div', { class: 'card-actions' },
+          editBtn, ' ',
+          el('div', { class: 'btn-group' },
+            el('a', { class: 'btn btn-sm fmt', href: `${fmtBase}.md`, target: '_blank' }, 'MD'),
+            el('a', { class: 'btn btn-sm fmt', href: `${fmtBase}.html`, target: '_blank' }, 'HTML'),
+            el('a', { class: 'btn btn-sm fmt', href: `${fmtBase}.pdf`, target: '_blank' }, 'PDF')))),
+      el('div', { class: 'card-body' }, preview, editorWrap));
     fetch(`${fmtBase}.html`).then((r) => r.text()).then((html) => {
       const doc = new DOMParser().parseFromString(html, 'text/html');
       const body = doc.body;
       body.querySelector('.doc-meta')?.remove();
       body.querySelectorAll('script').forEach((s) => s.remove());
-      preview.innerHTML = body.innerHTML || '<p style="color:var(--muted)">Empty — click Edit.</p>';
+      preview.innerHTML = body.innerHTML || '<p style="color:var(--tblr-secondary)">Empty — click Edit.</p>';
       renderMermaidIn(preview);
     });
     left.append(panel);
   }
 
   /* Comments panel */
-  const commentsPanel = el('div', { class: 'panel' }, el('h2', {}, `Comments (${entity.comments.length})`));
+  const commentsBody = el('div', { class: 'card-body' });
+  const commentsPanel = el('div', { class: 'card panel' },
+    el('div', { class: 'card-header' },
+      el('h3', { class: 'card-title' }, `Comments (${entity.comments.length})`)),
+    commentsBody);
   for (const c of entity.comments) {
-    commentsPanel.append(el('div', { class: 'comment' },
+    commentsBody.append(el('div', { class: 'comment' },
       el('div', {}, el('span', { class: 'who' }, c.author), el('span', { class: 'when' }, new Date(c.createdAt).toLocaleString())),
       el('div', {}, c.text)));
   }
-  const commentInput = el('input', { placeholder: 'Add a comment…', style: 'width:100%' });
+  const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…', style: 'width:100%' });
   commentInput.addEventListener('keydown', async (e) => {
     if (e.key === 'Enter' && commentInput.value.trim()) {
       try {
@@ -731,18 +771,22 @@ async function showEntity(id) {
       } catch (err) { toast(err.message, true); }
     }
   });
-  commentsPanel.append(el('div', { style: 'margin-top:8px' }, commentInput));
+  commentsBody.append(el('div', { style: 'margin-top:8px' }, commentInput));
   left.append(commentsPanel);
 
   /* Fields panel */
-  const fieldsPanel = el('div', { class: 'panel' }, el('h2', {}, 'Fields'));
+  const fieldsBody = el('div', { class: 'card-body' });
+  const fieldsPanel = el('div', { class: 'card panel' },
+    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Fields')),
+    fieldsBody);
   for (const f of db.fields) {
     if (f.name === 'Name' || f.type === 'document') continue;
-    fieldsPanel.append(el('div', { class: 'fieldrow' },
+    fieldsBody.append(el('div', { class: 'fieldrow' },
       el('label', {}, f.name), editorFor(f, entity, db, () => refresh())));
   }
-  fieldsPanel.append(el('div', { style: 'margin-top:10px; display:flex; gap:8px' },
+  fieldsBody.append(el('div', { style: 'margin-top:10px; display:flex; gap:8px' },
     el('button', {
+      class: 'btn btn-sm btn-outline-danger',
       onclick: async () => {
         if (!confirm(`Delete “${entity.name}”?`)) return;
         await api('DELETE', `/entities/${id}`);
@@ -753,14 +797,17 @@ async function showEntity(id) {
   right.append(fieldsPanel);
 
   /* Activity */
-  const act = el('div', { class: 'panel' }, el('h2', {}, 'Activity'));
+  const actBody = el('div', { class: 'card-body' });
+  const act = el('div', { class: 'card panel' },
+    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Activity')),
+    actBody);
   for (const a of [...entity.activity].reverse().slice(0, 12)) {
     const what = a.kind === 'state-changed' ? `${a.detail.field}: ${a.detail.from ?? '—'} → ${a.detail.to}`
       : a.kind === 'field-updated' ? `${a.detail.field} updated`
       : a.kind === 'relation-updated' ? `${a.detail.field} changed`
       : a.kind === 'doc-updated' || a.kind === 'doc-appended' ? `${a.detail.field ?? 'Description'} document updated`
       : a.kind;
-    act.append(el('div', { class: 'activity-item' }, `${new Date(a.ts).toLocaleString()} — ${what}`));
+    actBody.append(el('div', { class: 'activity-item' }, `${new Date(a.ts).toLocaleString()} — ${what}`));
   }
   right.append(act);
 }
@@ -769,23 +816,24 @@ async function showEntity(id) {
 
 function quickCreate(db) {
   modal(`New ${db.name}`, [
-    el('input', { name: 'name', placeholder: 'Name', class: 'full', style: 'width:100%' }),
+    el('input', { name: 'name', placeholder: 'Name', class: 'form-control full', style: 'width:100%' }),
   ], async (fd) => {
     const e = await api('POST', `/tables/${db.id}/entities`, { name: fd.get('name') });
     await loadSchema();
-    location.hash = `#/entity/${e.id}`;
+    openEntity(e.id);
   });
 }
 
 function openSchemaEditor(db) {
   const main = $('#main');
   main.replaceChildren(
-    el('div', { class: 'toolbar' },
+    el('div', { class: 'wv-toolbar' },
       el('h1', {}, `${db.space} / ${db.name} — fields`),
-      el('button', { onclick: () => showDatabase(db.id) }, '← Back')),
+      el('button', { class: 'btn btn-sm', onclick: () => showDatabase(db.id) }, '← Back')),
   );
-  const panel = el('div', { class: 'panel' });
-  const table = el('table', { class: 'schema-table' },
+  const panel = el('div', { class: 'card panel' });
+  const body = el('div', { class: 'card-body' });
+  const table = el('table', { class: 'table table-sm table-vcenter schema-table' },
     el('thead', {}, el('tr', {}, el('th', {}, 'Field'), el('th', {}, 'Type'), el('th', {}, 'Details'), el('th', {}, ''))),
     el('tbody', {}, ...db.fields.map((f) => el('tr', {},
       el('td', {}, f.name),
@@ -797,7 +845,7 @@ function openSchemaEditor(db) {
           : f.via ? `via ${f.via}${f.targetField ? ` . ${f.targetField}` : ''}${f.aggregate ? ` (${f.aggregate})` : ''}`
           : f.expression ?? ''),
       el('td', {}, f.name === 'Name' ? '' : el('button', {
-        class: 'ghost',
+        class: 'btn btn-sm btn-ghost-secondary tiny',
         onclick: async () => {
           if (!confirm(`Delete field ${f.name}?`)) return;
           try {
@@ -807,15 +855,16 @@ function openSchemaEditor(db) {
           } catch (err) { toast(err.message, true); }
         },
       }, '🗑'))))));
-  panel.append(table,
+  body.append(table,
     el('div', { style: 'margin-top:12px; display:flex; gap:8px' },
-      el('button', { onclick: () => addFieldDialog(db) }, '+ Field'),
-      el('button', { onclick: () => addRelationDialog(db) }, '+ Relation')));
+      el('button', { class: 'btn btn-sm', onclick: () => addFieldDialog(db) }, '+ Field'),
+      el('button', { class: 'btn btn-sm', onclick: () => addRelationDialog(db) }, '+ Relation')));
+  panel.append(body);
   main.append(panel);
 }
 
 function addFieldDialog(db) {
-  const typeSel = el('select', { name: 'type', class: 'full', style: 'width:100%' },
+  const typeSel = el('select', { name: 'type', class: 'form-select full', style: 'width:100%' },
     ...['text', 'number', 'date', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'document', 'lookup', 'rollup', 'formula']
       .map((t) => el('option', {}, t)));
   const extra = el('div', { class: 'full' });
@@ -823,26 +872,26 @@ function addFieldDialog(db) {
     const t = typeSel.value;
     extra.replaceChildren();
     if (t === 'select' || t === 'multiselect') {
-      extra.append(el('input', { name: 'options', placeholder: 'Options (comma-separated)', style: 'width:100%' }));
+      extra.append(el('input', { name: 'options', class: 'form-control', placeholder: 'Options (comma-separated)', style: 'width:100%' }));
     } else if (t === 'workflow') {
-      extra.append(el('input', { name: 'states', placeholder: 'States: Open:not-started, Doing:in-progress, Done:done', style: 'width:100%' }));
+      extra.append(el('input', { name: 'states', class: 'form-control', placeholder: 'States: Open:not-started, Doing:in-progress, Done:done', style: 'width:100%' }));
     } else if (t === 'lookup' || t === 'rollup') {
       const rels = db.fields.filter((f) => f.type === 'relation');
       extra.append(
-        el('select', { name: 'relationField', style: 'width:100%' }, ...rels.map((r) => el('option', {}, r.name))),
-        el('input', { name: 'targetField', placeholder: 'Target field name', style: 'width:100%; margin-top:6px' }));
+        el('select', { name: 'relationField', class: 'form-select', style: 'width:100%' }, ...rels.map((r) => el('option', {}, r.name))),
+        el('input', { name: 'targetField', class: 'form-control', placeholder: 'Target field name', style: 'width:100%; margin-top:6px' }));
       if (t === 'rollup') {
-        extra.append(el('select', { name: 'aggregate', style: 'width:100%; margin-top:6px' },
+        extra.append(el('select', { name: 'aggregate', class: 'form-select', style: 'width:100%; margin-top:6px' },
           ...['count', 'sum', 'avg', 'min', 'max', 'join'].map((a) => el('option', {}, a))));
       }
     } else if (t === 'formula') {
-      extra.append(el('input', { name: 'expression', placeholder: 'e.g. if(Estimate > 5, "big", "small")', style: 'width:100%' }));
+      extra.append(el('input', { name: 'expression', class: 'form-control', placeholder: 'e.g. if(Estimate > 5, "big", "small")', style: 'width:100%' }));
     }
   };
   typeSel.addEventListener('change', drawExtra);
   drawExtra();
   modal('Add field', [
-    el('input', { name: 'name', placeholder: 'Field name', class: 'full', style: 'width:100%' }),
+    el('input', { name: 'name', placeholder: 'Field name', class: 'form-control full', style: 'width:100%' }),
     typeSel, extra,
   ], async (fd) => {
     const type = fd.get('type');
@@ -869,12 +918,12 @@ function addFieldDialog(db) {
 
 function addRelationDialog(db) {
   modal('Add relation', [
-    el('input', { name: 'name', placeholder: 'Field name (e.g. Project)', class: 'full', style: 'width:100%' }),
-    el('select', { name: 'targetDb', class: 'full', style: 'width:100%' },
+    el('input', { name: 'name', placeholder: 'Field name (e.g. Project)', class: 'form-control full', style: 'width:100%' }),
+    el('select', { name: 'targetDb', class: 'form-select full', style: 'width:100%' },
       ...allTables().map((d) => el('option', { value: d.id }, d.qualified))),
-    el('select', { name: 'cardinality', class: 'full', style: 'width:100%' },
+    el('select', { name: 'cardinality', class: 'form-select full', style: 'width:100%' },
       ...['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'].map((c) => el('option', {}, c))),
-    el('input', { name: 'inverseName', placeholder: 'Inverse field name (optional)', class: 'full', style: 'width:100%' }),
+    el('input', { name: 'inverseName', placeholder: 'Inverse field name (optional)', class: 'form-control full', style: 'width:100%' }),
   ], async (fd) => {
     await api('POST', `/tables/${db.id}/relations`, {
       name: fd.get('name'),
@@ -895,13 +944,13 @@ function showHome() {
   const main = $('#main');
   const dbs = allTables();
   main.replaceChildren(
-    el('div', { class: 'toolbar' }, el('h1', {}, 'Weave')),
+    el('div', { class: 'wv-toolbar' }, el('h1', {}, 'Weave')),
     dbs.length
-      ? el('div', { class: 'list-rows' }, ...dbs.map((d) =>
+      ? el('div', { class: 'card list-rows' }, ...dbs.map((d) =>
         el('div', { class: 'list-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
           el('span', {}, d.qualified), el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, `${d.entityCount} entities`))))
-      : el('div', { class: 'empty' }, 'Welcome to Weave. Create a space and a table to get started.'));
+      : el('div', { class: 'wv-empty' }, 'Welcome to Weave. Create a space and a table to get started.'));
 }
 
 /* ---------- universal search (sidebar + ⌘K palette) ---------- */
@@ -915,7 +964,7 @@ function navigateToResult(hit) {
     location.href = hit.kind === 'entity' ? `${hitPrefix}/#/entity/${hit.id}` : hit.url;
     return;
   }
-  if (hit.kind === 'entity') location.hash = `#/entity/${hit.id}`;
+  if (hit.kind === 'entity') openEntity(hit.id);
   else if (hit.kind === 'table') location.hash = `#/table/${hit.id}`;
   else if (hit.kind === 'space') location.hash = `#/space/${hit.id}`;
   else location.hash = '#/';
@@ -928,7 +977,7 @@ function resultRow(hit, onPick) {
       el('span', { class: 'kind-badge' }, `${KIND_ICON[hit.kind] ?? ''} ${hit.kind}`),
       el('span', {}, hit.kind === 'entity' ? `${hit.db} #${hit.publicId} — ${hit.name}` : hit.name),
       el('button', {
-        class: 'ghost tiny copy-btn', title: 'Copy permalink',
+        class: 'btn btn-sm btn-ghost-secondary tiny copy-btn', title: 'Copy permalink',
         onclick: (e) => {
           e.stopPropagation();
           navigator.clipboard.writeText(permalink).then(() => toast('Permalink copied'));
@@ -948,23 +997,35 @@ function openCommandK() {
   const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) back.remove(); } });
   const input = el('input', { id: 'cmdk-input', placeholder: 'Search workspace, spaces, tables, entities…', autocomplete: 'off' });
   const list = el('div', { id: 'cmdk-results' });
-  let hits = [];
+  let hits = [], rowEls = [], sel = 0;
   let timer;
   const pick = (hit) => { back.remove(); navigateToResult(hit); };
+  const setSel = (i, scroll = true) => {
+    if (!rowEls.length) return;
+    sel = ((i % rowEls.length) + rowEls.length) % rowEls.length; // wrap at ends
+    rowEls.forEach((r, j) => r.classList.toggle('active', j === sel));
+    if (scroll) rowEls[sel].scrollIntoView({ block: 'nearest' });
+  };
   input.addEventListener('input', () => {
     clearTimeout(timer);
     timer = setTimeout(async () => {
       const q = input.value.trim();
-      if (!q) { list.replaceChildren(); return; }
+      if (!q) { hits = []; rowEls = []; list.replaceChildren(); return; }
       hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`);
-      list.replaceChildren(...(hits.length
-        ? hits.map((h) => resultRow(h, pick))
-        : [el('div', { class: 'result' }, 'No results')]));
+      rowEls = hits.map((h, i) => {
+        const row = resultRow(h, pick);
+        row.addEventListener('mouseenter', () => setSel(i, false));
+        return row;
+      });
+      list.replaceChildren(...(rowEls.length ? rowEls : [el('div', { class: 'result' }, 'No results')]));
+      setSel(0); // highlight resets to the top on every re-render
     }, 150);
   });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && hits.length) pick(hits[0]);
-    if (e.key === 'Escape') back.remove();
+    if (e.key === 'ArrowDown') { e.preventDefault(); setSel(sel + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(sel - 1); }
+    else if (e.key === 'Enter' && hits.length) pick(hits[sel] ?? hits[0]);
+    else if (e.key === 'Escape') back.remove();
   });
   back.append(el('div', { id: 'cmdk' },
     input,
@@ -995,22 +1056,37 @@ function route() {
 
 window.addEventListener('hashchange', route);
 
-$('#add-space').addEventListener('click', () => {
-  modal('New space', [el('input', { name: 'name', placeholder: 'Space name', style: 'width:100%' })],
+function newSpaceModal() {
+  modal('New space', [el('input', { name: 'name', class: 'form-control', placeholder: 'Space name', style: 'width:100%' })],
     async (fd) => {
       await api('POST', '/spaces', { name: fd.get('name') });
       await loadSchema();
     });
-});
-$('#add-db').addEventListener('click', () => {
+}
+
+// preSpace: pre-select a space (used by the per-space "+" in the sidebar).
+function newTableModal(preSpace) {
   modal('New table', [
-    el('select', { name: 'space', style: 'width:100%' }, ...state.schema.map((s) => el('option', {}, s.space))),
-    el('input', { name: 'name', placeholder: 'Table name', style: 'width:100%; margin-top:6px' }),
+    el('select', { name: 'space', class: 'form-select', style: 'width:100%' },
+      ...state.schema.map((s) => el('option', { selected: s.space === preSpace ? '' : null }, s.space))),
+    el('input', { name: 'name', class: 'form-control', placeholder: 'Table name', style: 'width:100%; margin-top:6px' }),
   ], async (fd) => {
     await api('POST', '/tables', { space: fd.get('space'), name: fd.get('name') });
     await loadSchema();
     route();
   });
+}
+
+/* Shift+Enter anywhere on a table view = quick-create in the current table. */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !e.shiftKey) return;
+  if (state.route?.page !== 'db') return;
+  if (e.target.closest?.('input,select,textarea,[contenteditable]')) return;
+  if ($('#modal-back') || $('#cmdk-back')) return;
+  const db = allTables().find((d) => d.id === state.route.dbId);
+  if (!db) return;
+  e.preventDefault();
+  quickCreate(db);
 });
 
 /* Workspace rail: one icon per workspace in the far-left nav, one click to
@@ -1032,7 +1108,7 @@ async function buildWsRail() {
         class: 'ws-icon ws-new',
         title: 'New workspace',
         onclick: () => {
-          modal('New workspace', [el('input', { name: 'name', placeholder: 'Workspace name (e.g. dos)', style: 'width:100%' })],
+          modal('New workspace', [el('input', { name: 'name', class: 'form-control', placeholder: 'Workspace name (e.g. dos)', style: 'width:100%' })],
             async (fd) => {
               const created = await api('POST', '/workspaces', { name: fd.get('name') });
               location.href = created.url;
@@ -1042,24 +1118,30 @@ async function buildWsRail() {
   } catch { /* single-workspace hub */ }
 }
 
-/* Theme toggle: auto (follow OS) → dark → light. */
+/* Theme toggle: auto (follow OS, live) → dark → light.
+   Tabler themes via data-bs-theme on <html>; data-theme kept for legacy
+   custom scopes. Auto resolves from the OS and tracks OS changes live. */
 function wireThemeToggle() {
   const btn = $('#theme-toggle');
   if (!btn) return;
   const icons = { auto: '◐ auto', dark: '● dark', light: '○ light' };
-  const apply = (pref) => {
+  const media = matchMedia('(prefers-color-scheme: dark)');
+  let pref = localStorage.getItem('weave-theme') ?? 'auto';
+  if (!icons[pref]) pref = 'auto';
+  const apply = () => {
+    const resolved = pref === 'auto' ? (media.matches ? 'dark' : 'light') : pref;
+    document.documentElement.dataset.bsTheme = resolved;
     if (pref === 'auto') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = pref;
     btn.textContent = icons[pref];
     btn.title = `Theme: ${pref} (click to switch)`;
   };
-  let pref = localStorage.getItem('weave-theme') ?? 'auto';
-  if (!icons[pref]) pref = 'auto';
-  apply(pref);
+  media.addEventListener('change', () => { if (pref === 'auto') apply(); });
+  apply();
   btn.addEventListener('click', () => {
     pref = pref === 'auto' ? 'dark' : pref === 'dark' ? 'light' : 'auto';
     localStorage.setItem('weave-theme', pref);
-    apply(pref);
+    apply();
   });
 }
 
