@@ -75,7 +75,9 @@ Entities
   get <ref> [--db name]               Read one entity ("Task#3" or id)
   create <db> <name> [--values '{json}'] [--doc 'markdown']
   update <ref> --values '{json}'
-  delete <ref>
+  delete <ref> [--hard]               Soft by default (recoverable); --hard purges
+  restore <ref>                       Bring a soft-deleted entity back
+  trash [table]                       Deleted entities, one table or all
   state <ref> <field> <state>         Move workflow state
   link <ref> <field> <target> [--unlink]
 
@@ -185,9 +187,14 @@ async function main() {
     }
     case 'delete': {
       const e = resolveEntityRef(w, args[0], flags.db);
-      w.deleteEntity(e.id);
-      return out({ ok: true });
+      return out(w.deleteEntity(e.id, { hard: Boolean(flags.hard) }));
     }
+    case 'restore': {
+      const e = resolveEntityRef(w, args[0], flags.db);
+      return out(w.restoreEntity(e.id));
+    }
+    case 'trash':
+      return out(w.listTrash(args[0] ?? null));
     case 'state': {
       const [ref, field, ...stateParts] = args;
       const e = resolveEntityRef(w, ref, flags.db);

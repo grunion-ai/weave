@@ -58,10 +58,18 @@ async function copyText(text, label = 'Copied') {
   toast(ok ? label : text, !ok);
 }
 
-function toast(msg, isErr = false) {
+/* action = { label, run } adds an inline button and holds the toast open long
+   enough to use it — the undo affordance for recoverable actions. */
+function toast(msg, isErr = false, action = null) {
   const t = el('div', { class: 'toast' + (isErr ? ' err' : '') }, msg);
+  if (action) {
+    t.append(el('button', {
+      class: 'toast-action', type: 'button',
+      onclick: async () => { t.remove(); await action.run(); },
+    }, action.label));
+  }
   document.body.append(t);
-  setTimeout(() => t.remove(), isErr ? 4200 : 1400);
+  setTimeout(() => t.remove(), action ? 7000 : isErr ? 4200 : 1400);
 }
 
 function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
@@ -92,7 +100,7 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   if (first) first.focus();
 }
 
-const state = { schema: [], route: null, expanded: new Set() };
+const state = { schema: [], route: null, expanded: new Set(), refocus: null };
 
 // Single entry point for opening an entity (future: side-peek drawer).
 function openEntity(id) { location.hash = `#/entity/${id}`; }
@@ -325,8 +333,75 @@ function showPopover(trigger, rows) {
   pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
   const close = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); removeEventListener('click', close, true); } };
   addEventListener('click', close, true);
-  addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape') { pop.remove(); removeEventListener('keydown', esc); } });
+
+  /* Keyboard: arrows move, Enter/Space commit (native <button> behaviour),
+     Escape closes and hands focus back, Tab closes and carries on along the
+     row — so a record can be filled in without touching the mouse. */
+  const opts = [...pop.querySelectorAll('.chip-pop-row')];
+  const focusAt = (i) => opts[((i % opts.length) + opts.length) % opts.length].focus();
+  pop.addEventListener('keydown', (ev) => {
+    const i = opts.indexOf(document.activeElement);
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); focusAt(i + 1); }
+    else if (ev.key === 'ArrowUp') { ev.preventDefault(); focusAt(i - 1); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); pop.remove(); trigger.focus(); }
+    else if (ev.key === 'Tab') pop.remove();
+  });
+  // Open on the current value when there is one, otherwise the first option.
+  const checked = opts.findIndex((o) => o.querySelector('.chip-pop-check'));
+  if (opts.length) focusAt(checked < 0 ? 0 : checked);
+
+  // A pick redraws the grid and destroys this cell's control; remember where
+  // we were so focus can be put back on the replacement.
+  const cell = trigger.closest?.('tr[data-eid] > td');
+  state.refocus = cell
+    ? { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell) }
+    : null;
   return pop;
+}
+
+/* Press-and-hold destructive action: the button fills over ~900ms and fires
+   only when the fill completes; letting go early cancels. The confirmation is
+   the gesture, so there is no window.confirm() dialog to break the page's
+   design. Keyboard users hold Enter or Space, which works the same way. */
+function holdToConfirm(label, onConfirm, { holdingLabel = 'Hold to confirm…' } = {}) {
+  const fill = el('span', { class: 'hold-fill' });
+  const text = el('span', { class: 'hold-label' }, label);
+  const btn = el('button', { class: 'dropdown-item text-danger hold-btn', type: 'button' }, fill, text);
+  let armed = false;
+  const start = () => {
+    if (armed) return;
+    armed = true;
+    btn.classList.add('holding');
+    text.textContent = holdingLabel;
+  };
+  const stop = () => {
+    armed = false;
+    btn.classList.remove('holding');
+    text.textContent = label;
+  };
+  btn.addEventListener('pointerdown', start);
+  for (const ev of ['pointerup', 'pointerleave', 'blur']) btn.addEventListener(ev, stop);
+  btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); } });
+  btn.addEventListener('keyup', stop);
+  // Fires once the fill reaches full width. Collapsing is untransitioned, so
+  // releasing early cannot trigger it.
+  fill.addEventListener('transitionend', async (e) => {
+    if (!armed || e.propertyName !== 'width') return;
+    stop();
+    await onConfirm();
+  });
+  return btn;
+}
+
+/* Put focus back on the cell that triggered a redraw (see showPopover). */
+function restoreGridFocus() {
+  const want = state.refocus;
+  state.refocus = null;
+  if (!want) return;
+  requestAnimationFrame(() => {
+    const td = $(`tr[data-eid="${want.eid}"]`)?.children[want.col];
+    td?.querySelector('button,input,select')?.focus();
+  });
 }
 
 function chipPicker({ trigger, options, current, onPick }) {
@@ -538,6 +613,68 @@ function docsEditor(item, db, onSaved) {
   return wrap;
 }
 
+/* ---------- trash ----------
+   Deleted rows keep their public id and links, so this reads as the table it
+   came from, minus the editing: each row can only go back (restore) or away
+   for good (purge, hold-to-confirm — it is the one irreversible action). */
+
+async function showTrash(dbId) {
+  const db = allTables().find((d) => d.id === dbId);
+  if (!db) return showHome();
+  state.route = { page: 'trash', dbId };
+  renderNav();
+  const { items } = await api('GET', `/tables/${db.id}/trash`);
+  const main = $('#main');
+  main.replaceChildren();
+  main.append(viewHeader({
+    crumbs: [
+      { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
+      { label: db.space, href: `#/space/${db.spaceId}` },
+      { label: db.name, href: `#/table/${db.id}` },
+    ],
+    permalink: `${location.origin}${WS_PREFIX}/#/trash/${db.id}`,
+    title: `${db.name} — trash`,
+  }));
+
+  if (!items.length) {
+    main.append(el('div', { class: 'card panel empty-note' }, 'Nothing in the trash.'));
+    return;
+  }
+  const rows = el('tbody');
+  for (const item of items) {
+    rows.append(el('tr', {},
+      el('td', { class: 'pid-cell' }, `#${item.publicId}`),
+      el('td', {}, item.name || el('span', { class: 'view-desc-empty' }, 'Untitled')),
+      el('td', { class: 'trash-when' }, new Date(item.deletedAt).toLocaleString()),
+      el('td', { class: 'trash-acts' },
+        el('button', {
+          class: 'btn btn-sm', type: 'button',
+          onclick: async () => {
+            try {
+              await api('POST', `/entities/${item.id}/restore`);
+              toast('Restored');
+              await loadSchema(); // the nav's row counts moved
+              showTrash(dbId);
+            } catch (err) { toast(err.message, true); }
+          },
+        }, 'Restore'),
+        holdToConfirm('Delete forever', async () => {
+          try {
+            await api('DELETE', `/entities/${item.id}?hard=1`);
+            toast('Purged');
+            await loadSchema();
+            showTrash(dbId);
+          } catch (err) { toast(err.message, true); }
+        }, { holdingLabel: 'Hold to purge…' }))));
+  }
+  main.append(el('div', { class: 'card table-wrap' },
+    el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
+      el('thead', {}, el('tr', {},
+        el('th', { class: 'pid-head' }, '#'), el('th', {}, 'Name'),
+        el('th', {}, 'Deleted'), el('th', {}, ''))),
+      rows)));
+}
+
 /* ---------- table views ---------- */
 
 async function showDatabase(dbId, view) {
@@ -546,11 +683,17 @@ async function showDatabase(dbId, view) {
   if (state.route?.dbId !== dbId) state.expanded.clear();
   state.route = { page: 'db', dbId, view: view ?? state.route?.view ?? 'table' };
   renderNav();
-  const result = await api('POST', `/tables/${db.id}/query`, {});
-  drawDatabase(db, result.items);
+  // public/ is served from disk while the server process is long-lived, so a
+  // page can be newer than the routes behind it (git pull without a restart).
+  // The trash badge is decoration — it must never keep the table from opening.
+  const [result, trash] = await Promise.all([
+    api('POST', `/tables/${db.id}/query`, {}),
+    api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0 })),
+  ]);
+  drawDatabase(db, result.items, trash.total);
 }
 
-function drawDatabase(db, items) {
+function drawDatabase(db, items, trashCount = 0) {
   const main = $('#main');
   const unsaved = new Map();
   for (const area of main.querySelectorAll('textarea.doc-inline[data-eid]')) {
@@ -575,7 +718,7 @@ function drawDatabase(db, items) {
     onRename: async (name) => {
       await api('PATCH', `/tables/${db.id}`, { name });
       await loadSchema();
-      drawDatabase(allTables().find((d) => d.id === db.id), items);
+      drawDatabase(allTables().find((d) => d.id === db.id), items, trashCount);
     },
     description: db.description,
     onSaveDescription: async (md) => {
@@ -584,6 +727,11 @@ function drawDatabase(db, items) {
     },
     actions: [
       switcher,
+      // Only surfaced once the table actually has deleted rows — an empty
+      // trash is not worth a permanent control.
+      trashCount
+        ? el('a', { class: 'btn btn-sm', href: `#/trash/${db.id}`, title: 'Deleted entities' }, `🗑 ${trashCount}`)
+        : null,
       // Table view carries both affordances inside the grid itself — a "+"
       // in the header bar for fields, a "+ New" row at the foot for entities.
       // Board and list have no grid to host them, so they keep the buttons.
@@ -598,6 +746,7 @@ function drawDatabase(db, items) {
   const onSaved = async () => {
     const fresh = await api('POST', `/tables/${db.id}/query`, {});
     drawDatabase(db, fresh.items);
+    restoreGridFocus();
   };
 
   // Inline add: create an empty entity, redraw, focus its Name cell.
@@ -1045,20 +1194,28 @@ async function showEntity(id) {
     ...['md', 'html', 'pdf'].map((ext) =>
       el('a', { class: 'dropdown-item', href: `${entBase}.${ext}`, download: `${(entity.name || 'entity')}.${ext}` }, `Download .${ext}`)),
     el('div', { class: 'dropdown-divider' }),
+    // Deleting is recoverable now, so it is a plain item with an undo rather
+    // than a hold-to-confirm. The irreversible purge lives in the trash view.
     el('button', {
-      class: 'dropdown-item text-danger',
+      class: 'dropdown-item text-danger', type: 'button',
       onclick: async () => {
-        if (!confirm(`Delete “${entity.name || '#' + entity.publicId}”? This cannot be undone.`)) return;
         try {
           await api('DELETE', `/entities/${id}`);
-          toast('Deleted');
           await loadSchema();
           location.hash = `#/table/${entity.dbId}`;
+          toast('Moved to trash', false, {
+            label: 'Undo',
+            run: async () => {
+              await api('POST', `/entities/${id}/restore`);
+              location.hash = `#/entity/${id}`;
+              toast('Restored');
+            },
+          });
         } catch (err) { toast(err.message, true); }
       },
-    }, 'Delete entity…'));
+    }, 'Move to trash'));
   const dlBtn = el('span', { class: 'dl-wrap entity-dl-corner' },
-    el('button', { class: 'btn btn-sm btn-ghost-secondary', title: 'Entity actions', onclick: () => dlMenu.classList.toggle('hidden') }, '⋯'),
+    el('button', { class: 'btn btn-sm btn-ghost-secondary dots-btn', title: 'Entity actions', onclick: () => dlMenu.classList.toggle('hidden') }, '⋮'),
     dlMenu);
 
   main.append(
@@ -1203,17 +1360,13 @@ function openSchemaEditor(db) {
           : f.targetDb ? `→ ${f.targetDb}${f.many ? ' (many)' : ''}`
           : f.via ? `via ${f.via}${f.targetField ? ` . ${f.targetField}` : ''}${f.aggregate ? ` (${f.aggregate})` : ''}`
           : f.expression ?? ''),
-      el('td', {}, f.name === 'Name' ? '' : el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny',
-        onclick: async () => {
-          if (!confirm(`Delete field ${f.name}?`)) return;
-          try {
-            await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
-            await loadSchema();
-            openSchemaEditor(allTables().find((d) => d.id === db.id));
-          } catch (err) { toast(err.message, true); }
-        },
-      }, '🗑'))))));
+      el('td', {}, f.name === 'Name' ? '' : holdToConfirm('🗑', async () => {
+        try {
+          await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
+          await loadSchema();
+          openSchemaEditor(allTables().find((d) => d.id === db.id));
+        } catch (err) { toast(err.message, true); }
+      }, { holdingLabel: 'Hold…' }))))));
   body.append(table,
     el('div', { style: 'margin-top:12px; display:flex; gap:8px' },
       el('button', { class: 'btn btn-sm', onclick: () => addFieldDialog(db) }, '+ Field'),
@@ -1421,7 +1574,8 @@ document.addEventListener('keydown', (e) => {
 function route() {
   const hash = location.hash || '#/';
   let m;
-  if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)/))) showDatabase(m[1]);
+  if ((m = hash.match(/^#\/trash\/([^/?]+)/))) showTrash(m[1]);
+  else if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)/))) showDatabase(m[1]);
   else if ((m = hash.match(/^#\/space\/([^/?]+)/))) showSpace(m[1]);
   else if (hash.startsWith('#/map')) showMap();
   else if ((m = hash.match(/^#\/entity\/([^/?]+)/))) showEntity(m[1]);

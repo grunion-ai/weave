@@ -54,7 +54,12 @@ test('entity CRUD, public ids, name field', () => {
   assert.equal(w.readEntity(t1.id).name, 'Renamed');
   assert.equal(w.findEntity(tasks, '#2').id, t2.id);
   assert.equal(w.findEntity(tasks, 'Second task').id, t2.id);
+  // Deleting is recoverable by default (see soft-delete.test.mjs): the row
+  // leaves the table but is still addressable. Purging is the opt-in.
   w.deleteEntity(t2.id);
+  assert.equal(w.findEntity(tasks, '#2'), undefined);
+  assert.equal(w.getEntity(t2.id).id, t2.id);
+  w.deleteEntity(t2.id, { hard: true });
   assert.throws(() => w.getEntity(t2.id), /not found/);
 });
 

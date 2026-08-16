@@ -178,8 +178,12 @@ export class Store {
             ON CONFLICT(id) DO UPDATE SET db_id = excluded.db_id, public_id = excluded.public_id,
             updated_at = excluded.updated_at, json = excluded.json`)
             .run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
+          // Soft-deleted rows stay in `entities` (restore needs them) but leave
+          // the search index — the trash must not be searchable.
           db.prepare('DELETE FROM entities_fts WHERE id = ?').run(id);
-          db.prepare('INSERT INTO entities_fts (id, text) VALUES (?, ?)').run(id, this.#ftsText(state, e));
+          if (!e.deletedAt) {
+            db.prepare('INSERT INTO entities_fts (id, text) VALUES (?, ?)').run(id, this.#ftsText(state, e));
+          }
         }
       }
       db.exec('COMMIT');

@@ -41,16 +41,24 @@ a.nav-space:hover { color: var(--tblr-primary); }
    rail's own layer — not #nav-expand's z-index — is what must clear #main.
    Without it #main (position:relative, later sibling) paints over the expand
    chevron that overhangs the rail, and the collapsed nav can never re-open. */
-#ws-rail { width: 52px; flex-shrink: 0; background: var(--tblr-bg-surface-secondary); border-right: 1px solid var(--tblr-border-color); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; position: sticky; top: 0; height: 100vh; z-index: 60; }
-.ws-icon { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-weight: 700; font-size: 14px; text-decoration: none; cursor: pointer; padding: 0; }
+/* Top padding centres the first (weave) chip on the sidebar wordmark:
+   #sidebar padding-top (14px) + half the .ws-wordmark line box (22px)
+   − half the .ws-weave chip (46px) = 2px. Keep the terms in sync if any
+   of those three change — the UI contract test asserts the equality. */
+#ws-rail { width: 52px; flex-shrink: 0; background: var(--tblr-bg-surface-secondary); border-right: 1px solid var(--tblr-border-color); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: calc(14px + 22px / 2 - 46px / 2) 0 12px; position: sticky; top: 0; height: 100vh; z-index: 60; }
+/* flex-shrink:0 is load-bearing: the rail is a column flexbox, so height is
+   the main axis and a declared chip height is otherwise only a maximum —
+   chips silently shrink to their content and the centring calc goes stale. */
+.ws-icon { width: 34px; height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-weight: 700; font-size: 14px; text-decoration: none; cursor: pointer; padding: 0; }
 .ws-icon:hover { color: var(--tblr-primary); border-color: var(--tblr-primary); }
 .ws-icon.active { background: var(--tblr-primary); border-color: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); }
 .ws-icon.ws-new { border-style: dashed; font-weight: 400; }
 .ws-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 /* Pinned weave chip: the bare rope mark, larger than workspace chips
-   (also when active — .ws-icon.active must not repaint it). */
-.ws-icon.ws-weave, .ws-icon.ws-weave.active { background: none; border: none; width: 40px; height: 40px; }
-.ws-weave img { width: 30px; height: 30px; object-fit: contain; }
+   (also when active — .ws-icon.active must not repaint it). The mark fills
+   nearly the whole 52px rail — it is the brand, not one more chip. */
+.ws-icon.ws-weave, .ws-icon.ws-weave.active { background: none; border: none; width: 46px; height: 46px; }
+.ws-weave img { width: 42px; height: 42px; object-fit: contain; }
 .ws-weave:hover img { transform: scale(1.08); }
 .ws-weave img { transition: transform .12s ease; }
 .ws-weave.active img { filter: drop-shadow(0 0 3px rgba(37, 99, 235, .6)); }
@@ -84,7 +92,9 @@ a.nav-space:hover { color: var(--tblr-primary); }
 button.chip-trigger { cursor: pointer; font: inherit; }
 .chip-pop { position: fixed; z-index: 200; min-width: 140px; padding: 4px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg, 8px); box-shadow: 0 8px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px; }
 .chip-pop-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: none; border: 0; border-radius: var(--tblr-border-radius); cursor: pointer; text-align: left; color: var(--tblr-body-color); }
-.chip-pop-row:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
+.chip-pop-row:hover, .chip-pop-row:focus { background: var(--tblr-active-bg, rgba(0,0,0,.05)); outline: none; }
+/* Keyboard focus needs to be as loud as hover — arrows move focus, not hover. */
+.chip-pop-row:focus-visible { box-shadow: inset 0 0 0 2px var(--tblr-primary); }
 .chip-pop-check { margin-left: auto; color: var(--tblr-primary); font-weight: 700; }
 .doc-preview { color: var(--tblr-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; flex-shrink: 1; }
 .card-doc-preview { margin-top: 4px; max-width: none; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -247,6 +257,16 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .wv-empty { color: var(--tblr-secondary); text-align: center; padding: 60px 0; }
 .toast { position: fixed; bottom: 18px; right: 18px; background: var(--tblr-body-color); color: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius); padding: 9px 16px; box-shadow: var(--tblr-box-shadow); z-index: 2000; }
 .toast.err { background: var(--tblr-danger); color: #fff; }
+/* Undo sits inside the toast: the action and the way back are one object. */
+.toast-action { margin-left: 12px; padding: 0; background: none; border: 0; border-bottom: 1px solid currentColor; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+
+/* ---------- trash ---------- */
+.empty-note { padding: 18px; color: var(--tblr-secondary); }
+.wv-grid td.trash-when { color: var(--tblr-secondary); font-size: 12.5px; }
+.wv-grid td.trash-acts { white-space: nowrap; text-align: right; }
+/* holdToConfirm renders a .dropdown-item; in a row it has to sit inline
+   beside Restore rather than fill the cell like a menu entry. */
+.trash-acts .hold-btn { display: inline-flex; width: auto; margin-left: 6px; vertical-align: middle; }
 
 /* ---------- universal search results ---------- */
 #search-results { background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-box-shadow); max-height: 300px; overflow-y: auto; }
@@ -302,8 +322,18 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .nav-inline-add:focus { box-shadow: none; border-color: var(--tblr-primary); }
 .nav-inline-add::placeholder { color: var(--tblr-secondary); }
 #main { position: relative; }
-.entity-dl-corner { position: absolute; top: 10px; left: 12px; z-index: 25; }
-.crumb-offset { margin-left: 34px; }
+/* Entity actions sit in the true upper-left corner of the main column. */
+.entity-dl-corner { position: absolute; top: 6px; left: 2px; z-index: 25; }
+.crumb-offset { margin-left: 26px; }
+/* Vertical ellipsis: a tall, narrow glyph in a tall, narrow button. */
+.dots-btn { padding: 2px 5px; line-height: 1.1; font-size: 15px; letter-spacing: 0; }
+/* Hold-to-confirm: the fill IS the confirmation, so there is no browser
+   dialog. Collapsing is untransitioned — releasing early cannot complete it. */
+.hold-btn { position: relative; overflow: hidden; cursor: pointer; }
+.hold-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(214, 57, 57, .25); transition: width 0s; }
+.hold-btn.holding .hold-fill { width: 100%; transition: width .9s linear; }
+.hold-btn .hold-label { position: relative; }
+@media (prefers-reduced-motion: reduce) { .hold-btn.holding .hold-fill { transition-duration: .6s; } }
 .dl-menu .dropdown-divider { border-top: 1px solid var(--tblr-border-color); margin: 4px 0; }
 .dl-menu button.dropdown-item { width: 100%; text-align: left; background: none; border: 0; }
 .dl-menu .text-danger:hover { background: rgba(214, 57, 57, .08); }

@@ -331,6 +331,10 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/query$/)) && req.method === 'POST') {
           return send(200, weave.query(m[1], body));
         }
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/trash$/)) && req.method === 'GET') {
+          const items = weave.listTrash(m[1]);
+          return send(200, { total: items.length, items });
+        }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/export\.csv$/)) && req.method === 'GET') {
           return send(200, weave.exportCSV(m[1]), { 'Content-Type': 'text/csv; charset=utf-8' });
         }
@@ -344,7 +348,14 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
             weave.updateEntity(m[1], body.values ?? body);
             return send(200, weave.readEntity(m[1]));
           }
-          if (req.method === 'DELETE') { weave.deleteEntity(m[1]); return send(200, { ok: true }); }
+          // Soft by default; ?hard=1 is the irreversible purge.
+          if (req.method === 'DELETE') {
+            const hard = ['1', 'true'].includes(url.searchParams.get('hard') ?? '');
+            return send(200, { ok: true, ...weave.deleteEntity(m[1], { hard }) });
+          }
+        }
+        if ((m = path.match(/^\/api\/entities\/([^/]+)\/restore$/)) && req.method === 'POST') {
+          return send(200, weave.restoreEntity(m[1]));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/link$/)) && req.method === 'POST') {
           weave.link(m[1], body.field, body.targets ?? body.items);
@@ -428,7 +439,13 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
       const file = path === '/' ? '/index.html' : path;
       const full = join(PUBLIC_DIR, file.replace(/\.\./g, ''));
       if (existsSync(full) && !full.endsWith('/')) {
-        return send(200, readFileSync(full), { 'Content-Type': MIME[extname(full)] ?? 'application/octet-stream' });
+        // no-cache, not no-store: the browser may keep a copy but must
+        // revalidate. Without it heuristic caching serves a stale app.js or
+        // style.css after an edit, so UI changes only appear on a hard reload.
+        return send(200, readFileSync(full), {
+          'Content-Type': MIME[extname(full)] ?? 'application/octet-stream',
+          'Cache-Control': 'no-cache',
+        });
       }
       return send(404, 'Not found');
     } catch (err) {

@@ -35,6 +35,7 @@ export const TOOLS = [
         limit: { type: 'number' },
         offset: { type: 'number' },
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
+        includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
       },
       required: ['db'],
     },
@@ -66,8 +67,18 @@ export const TOOLS = [
   },
   {
     name: 'weave_delete_entity',
-    description: 'Delete an entity (relations are unlinked cleanly).',
+    description: 'Delete an entity. Recoverable by default — it moves to the trash keeping its id, public id and links. Pass hard: true to purge it irreversibly (relations are unlinked cleanly).',
+    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, hard: { type: 'boolean' } }, required: ['entity'] },
+  },
+  {
+    name: 'weave_restore_entity',
+    description: 'Restore a soft-deleted entity from the trash, links intact.',
     inputSchema: { type: 'object', properties: { entity: { type: 'string' } }, required: ['entity'] },
+  },
+  {
+    name: 'weave_trash',
+    description: 'List deleted entities — one table, or the whole workspace when table is omitted.',
+    inputSchema: { type: 'object', properties: { table: { type: 'string' } } },
   },
   {
     name: 'weave_set_state',
@@ -170,7 +181,10 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_schema':
       return weave.describeSchema();
     case 'weave_query':
-      return weave.query(args.db, { where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null, offset: args.offset ?? 0, select: args.select ?? null });
+      return weave.query(args.db, {
+        where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null,
+        offset: args.offset ?? 0, select: args.select ?? null, includeDeleted: Boolean(args.includeDeleted),
+      });
     case 'weave_get_entity':
       return weave.readEntity(resolveEntity(weave, args.entity));
     case 'weave_create_entity': {
@@ -183,8 +197,11 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.readEntity(id);
     }
     case 'weave_delete_entity':
-      weave.deleteEntity(resolveEntity(weave, args.entity));
-      return { ok: true };
+      return weave.deleteEntity(resolveEntity(weave, args.entity), { hard: Boolean(args.hard) });
+    case 'weave_restore_entity':
+      return weave.restoreEntity(resolveEntity(weave, args.entity));
+    case 'weave_trash':
+      return { items: weave.listTrash(args.table ?? null) };
     case 'weave_set_state': {
       const id = resolveEntity(weave, args.entity);
       weave.setState(id, args.field, args.state);

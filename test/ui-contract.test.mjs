@@ -68,6 +68,31 @@ test('#nav-expand paints inside the rail stacking context, not above it', () => 
   assert.ok(rail >= px(expand['z-index'] ?? 0) || rail > 0);
 });
 
+test('the first rail chip is centred on the sidebar wordmark', () => {
+  // Both centrelines are measured from the viewport top, so they must agree.
+  const sidebarPadTop = px(rulesFor('#sidebar').padding.split(/\s+/)[0]);
+  const wordmark = px(rulesFor('.ws-wordmark')['line-height']);
+  const chip = px(rulesFor('.ws-icon.ws-weave').height);
+  const railPadTop = rulesFor('#ws-rail').padding.match(/calc\(([^)]*)\)/)?.[1];
+  assert.ok(railPadTop, '#ws-rail top padding must be derived, not a bare constant');
+  // calc(14px + 22px / 2 - 40px / 2) — the terms must be the real ones.
+  const terms = railPadTop.match(/[\d.]+/g).map(Number);
+  assert.deepEqual(terms, [sidebarPadTop, wordmark, 2, chip, 2],
+    'rail padding must be built from the sidebar padding, wordmark and chip sizes');
+  const railPad = terms[0] + wordmark / 2 - chip / 2;
+  assert.equal(railPad + chip / 2, sidebarPadTop + wordmark / 2, 'centrelines must coincide');
+  // The rail is a column flexbox: without flex-shrink:0 a declared chip height
+  // is only a maximum, chips shrink to their content, and the calc goes stale.
+  // Measured live: the 46px mark rendered at 42px until this was set.
+  assert.equal(rulesFor('.ws-icon')['flex-shrink'], '0');
+});
+
+/* The trash badge is decoration on a long-lived server that serves public/
+   straight from disk — a page newer than its routes must still open. */
+test('an unavailable trash count cannot stop a table from rendering', () => {
+  assert.match(APP, /api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)\.catch\(\(\) => \(\{ total: 0 \}\)\)/);
+});
+
 test('.hidden beats id-selector display rules', () => {
   // #nav-expand sets display:flex via an id selector; only !important hides it.
   assert.match(rulesFor('.hidden').display ?? '', /none\s*!important/);
@@ -231,6 +256,104 @@ test('one popover implementation serves every anchored menu', () => {
   assert.equal((APP.match(/showPopover\(/g) ?? []).length, 3, 'definition + chipPicker + field menu');
 });
 
+/* ---------- keyboard: fill in a record without the mouse ---------- */
+
+test('popover options are keyboard navigable', () => {
+  const fn = APP.slice(APP.indexOf('function showPopover'));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  assert.match(body, /ArrowDown/);
+  assert.match(body, /ArrowUp/);
+  // Rows are <button>s, so Enter/Space commit natively — what has to be
+  // explicit is that focus lands in the popover on open.
+  assert.match(body, /\.focus\(\)/, 'opening must move focus into the popover');
+  assert.match(body, /chip-pop-check/, 'focus opens on the current value when there is one');
+  assert.match(body, /ev\.key === 'Tab'/, 'Tab must close and carry on along the row');
+  assert.match(body, /trigger\.focus\(\)/, 'Escape must hand focus back to the trigger');
+});
+
+test('focus survives the redraw a pick causes', () => {
+  // drawDatabase replaces every row, so without this a keyboard pick drops
+  // focus to the document and Tab restarts from the top of the page.
+  assert.match(APP, /state\.refocus/);
+  assert.match(APP, /function restoreGridFocus/);
+  assert.match(APP, /drawDatabase\(db, fresh\.items\);\s*\n\s*restoreGridFocus\(\);/);
+  assert.match(APP, /refocus: null/, 'state must declare the slot');
+});
+
+test('the focused popover row is as visible as the hovered one', () => {
+  assert.ok(rulesFor('.chip-pop-row:focus').background, 'focus must be styled, not only hover');
+  assert.ok(rulesFor('.chip-pop-row:focus-visible')['box-shadow']);
+});
+
+/* ---------- destructive actions confirm in-place, not via the browser ---------- */
+
+test('no window.confirm anywhere in the UI', () => {
+  // The browser dialog cannot be styled and breaks the page's design.
+  // Matches a bare `confirm(` — not `holdToConfirm(` (letter before) and not
+  // `window.confirm()` inside a comment (dot before).
+  assert.doesNotMatch(APP, /[^\w.]confirm\(/, 'use holdToConfirm instead of window.confirm');
+});
+
+test('hold-to-confirm fires only on a completed hold', () => {
+  assert.match(APP, /function holdToConfirm/);
+  const fn = APP.slice(APP.indexOf('function holdToConfirm'));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  assert.match(body, /transitionend/, 'completion is what fires it');
+  assert.match(body, /if \(!armed \|\| e\.propertyName !== 'width'\) return;/,
+    'a stray transition must not delete anything');
+  for (const ev of ['pointerup', 'pointerleave', 'blur']) {
+    assert.ok(body.includes(`'${ev}'`), `releasing via ${ev} must cancel`);
+  }
+  assert.match(body, /keydown/, 'keyboard users must be able to hold too');
+  // Collapsing must be untransitioned or releasing early would still fire.
+  assert.equal(rulesFor('.hold-fill').transition, 'width 0s');
+  assert.match(rulesFor('.hold-btn.holding .hold-fill').transition, /width \.\ds linear/);
+  assert.equal(rulesFor('.hold-btn').overflow, 'hidden', 'the fill must be clipped to the button');
+});
+
+test('both destructive actions use it', () => {
+  assert.equal((APP.match(/holdToConfirm\(/g) ?? []).length, 3, 'definition + entity delete + field delete');
+});
+
+test('the entity menu sits in the corner with a vertical ellipsis', () => {
+  const corner = rulesFor('.entity-dl-corner');
+  assert.ok(px(corner.left) <= 4, `menu should hug the left edge, got ${corner.left}`);
+  assert.ok(px(corner.top) <= 8);
+  assert.match(APP, /dots-btn.*'⋮'/s, 'the glyph must be the vertical ellipsis');
+  assert.doesNotMatch(APP, /'⋯'/, 'no horizontal ellipsis left behind');
+  assert.ok(rulesFor('.dots-btn').padding, 'the vertical glyph needs its own button metrics');
+});
+
+/* ---------- Feature #38: soft delete in the UI ----------
+   Deleting is recoverable, so the entity menu must offer a plain undoable
+   action rather than a hold-to-confirm, and the one irreversible control
+   (purge) must live behind the hold, in the trash. */
+
+test('the entity menu moves to trash with an undo, not a hold-to-confirm', () => {
+  assert.match(APP, /'Move to trash'/);
+  assert.doesNotMatch(APP, /holdToConfirm\('Delete entity'/,
+    'a recoverable delete must not demand a hold');
+  assert.match(APP, /label: 'Undo'[\s\S]{0,200}\/restore/, 'the toast must offer restore');
+  assert.match(APP, /function toast\(msg, isErr = false, action = null\)/);
+  assert.ok(rulesFor('.toast-action').cursor, '.toast-action must be styled as a control');
+});
+
+test('purging keeps the hold-to-confirm and is the only hard delete in the UI', () => {
+  assert.match(APP, /holdToConfirm\('Delete forever'/);
+  const hard = [...APP.matchAll(/\?hard=1/g)];
+  assert.equal(hard.length, 1, 'exactly one call site may purge');
+  assert.match(APP, /function showTrash/);
+  assert.match(APP, /#\\?\/trash\\?\/\(\[\^\/\?\]\+\)/, 'trash needs a route');
+});
+
+test('the trash entry point appears only when there is something in it', () => {
+  const draw = APP.slice(APP.indexOf('function drawDatabase'));
+  assert.match(draw.slice(0, draw.indexOf('function renderTable')),
+    /trashCount\s*\n?\s*\?\s*el\('a'.*?#\/trash\//s,
+    'the 🗑 control must be conditional on trashCount');
+  assert.match(APP, /api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/);
+});
+
 /* ---------- defect: the description block was oversized ---------- */
 
 test('the description block is compact', () => {
@@ -243,4 +366,25 @@ test('the description block is compact', () => {
   // The autosize floor in app.js must match the CSS min-height.
   const floor = Number(APP.match(/Math\.max\((\d+), ta\.scrollHeight\)/)?.[1]);
   assert.equal(floor, px(edit['min-height']), 'autosize floor must match CSS min-height');
+});
+
+/* ---------- defect: edits did not appear without a hard reload ---------- */
+
+test('static UI assets are served revalidating', async () => {
+  // No Cache-Control meant heuristic caching served a stale app.js/style.css
+  // after every edit — the UI looked unchanged until a manual hard reload.
+  const { Weave } = await import('../src/engine.js');
+  const { startServer } = await import('../src/server.js');
+  const server = startServer(new Weave(), { port: 0 });
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    for (const asset of ['/app.js', '/style.css', '/index.html']) {
+      const res = await fetch(base + asset);
+      assert.equal(res.status, 200, asset);
+      assert.equal(res.headers.get('cache-control'), 'no-cache', `${asset} must revalidate`);
+    }
+  } finally {
+    server.close();
+  }
 });

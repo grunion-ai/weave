@@ -435,8 +435,29 @@ export class Weave {
 
   // ---------------- entities ----------------
 
-  listEntities(dbId) {
-    return Object.values(this.state.entities).filter((e) => e.dbId === dbId);
+  /* Soft-deleted rows keep their id, publicId, values, documents and relation
+     links — they are simply not "in the table" any more. Every read that means
+     "the rows of this table" goes through here, so the trash is invisible by
+     default and opting back into it is one explicit flag. */
+  listEntities(dbId, { includeDeleted = false } = {}) {
+    return Object.values(this.state.entities)
+      .filter((e) => e.dbId === dbId && (includeDeleted || !e.deletedAt));
+  }
+
+  // The deleted rows of one table, or of the whole workspace when ref is null.
+  listTrash(dbRef = null) {
+    const dbId = dbRef == null ? null : this.getTable(dbRef).id;
+    return Object.values(this.state.entities)
+      .filter((e) => e.deletedAt && (dbId == null || e.dbId === dbId))
+      .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))
+      .map((e) => this.readEntity(e.id));
+  }
+
+  // A relation target that is still live. Deleted targets keep their link (so
+  // restore is lossless) but must not be seen by anything reading through it.
+  #liveEntity(id) {
+    const e = this.state.entities[id];
+    return e && !e.deletedAt ? e : null;
   }
 
   getEntity(id) {
@@ -733,9 +754,22 @@ export class Weave {
     this.#runAutomations(db, e, { type: 'state-changed', fieldId: field.id, toStateId: state.id }, depth);
   }
 
-  deleteEntity(id) {
+  /* Recoverable by default. `hard` is the irreversible opt-in: it unlinks the
+     relations (so the inverse sides stay consistent) and drops the row. A soft
+     delete deliberately leaves the links in place — restoring has to give back
+     exactly what was deleted. */
+  deleteEntity(id, { hard = false } = {}) {
     const e = this.getEntity(id);
     const db = this.state.tables[e.dbId];
+    if (!hard) {
+      if (e.deletedAt) return this.readEntity(id); // already in the trash
+      e.deletedAt = nowISO();
+      e.updatedAt = e.deletedAt;
+      e.activity.push({ ts: e.deletedAt, kind: 'deleted', detail: {} });
+      this.#mark(e);
+      this.save();
+      return this.readEntity(id);
+    }
     // Unlink every relation so inverse sides stay consistent.
     for (const field of Object.values(db.fields)) {
       if (field.type === 'relation' && e.values[field.id] != null) {
@@ -745,6 +779,18 @@ export class Weave {
     delete this.state.entities[id];
     this.#mark(id); // absent from state at save time → row delete
     this.save();
+    return { id, purged: true };
+  }
+
+  restoreEntity(id) {
+    const e = this.getEntity(id);
+    if (!e.deletedAt) return this.readEntity(id);
+    e.deletedAt = null;
+    e.updatedAt = nowISO();
+    e.activity.push({ ts: e.updatedAt, kind: 'restored', detail: {} });
+    this.#mark(e);
+    this.save();
+    return this.readEntity(id);
   }
 
   // ---------------- computed values ----------------
@@ -765,13 +811,14 @@ export class Weave {
     if (depth > MAX_COMPUTE_DEPTH) return null;
     switch (field.type) {
       case 'relation':
-        return this.#relationIds(e, field);
+        // Deleted targets stay linked in storage but are never read back out.
+        return this.#relationIds(e, field).filter((id) => this.#liveEntity(id));
       case 'lookup': {
         const rel = db.fields[field.config.relationField];
         const targetDb = this.state.tables[rel.config.targetDb];
         const targetField = targetDb.fields[field.config.targetField];
         const vals = this.#relationIds(e, rel)
-          .map((id) => this.state.entities[id])
+          .map((id) => this.#liveEntity(id))
           .filter(Boolean)
           .map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
         return rel.config.many ? vals : (vals[0] ?? null);
@@ -779,7 +826,7 @@ export class Weave {
       case 'rollup': {
         const rel = db.fields[field.config.relationField];
         const targetDb = this.state.tables[rel.config.targetDb];
-        const related = this.#relationIds(e, rel).map((id) => this.state.entities[id]).filter(Boolean);
+        const related = this.#relationIds(e, rel).map((id) => this.#liveEntity(id)).filter(Boolean);
         if (field.config.aggregate === 'count') return related.length;
         const targetField = targetDb.fields[field.config.targetField];
         const vals = related.map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
@@ -873,6 +920,7 @@ export class Weave {
       files: e.files,
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
+      deletedAt: e.deletedAt ?? null,
     };
   }
 
@@ -886,9 +934,9 @@ export class Weave {
   // ---------------- query ----------------
 
   // where: [ [path, op, value], ... ] AND-combined, or { or:[...] } / { and:[...] } nodes.
-  query(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null } = {}) {
+  query(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, includeDeleted = false } = {}) {
     const db = this.getTable(dbRef);
-    let rows = this.listEntities(db.id);
+    let rows = this.listEntities(db.id, { includeDeleted });
     if (where && (Array.isArray(where) ? where.length : true)) {
       rows = rows.filter((e) => this.#matchNode(e, db, Array.isArray(where) ? { and: where } : where));
     }
@@ -971,7 +1019,7 @@ export class Weave {
           if (f.type !== 'relation') throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');
           const tdb = this.state.tables[f.config.targetDb];
           for (const rid of resolved) {
-            const t = this.state.entities[rid];
+            const t = this.#liveEntity(rid);
             if (t) next.push({ e: t, db: tdb });
           }
         }
@@ -1199,6 +1247,7 @@ export class Weave {
     if (!needle) return [];
     const results = [];
     for (const e of Object.values(this.state.entities)) {
+      if (e.deletedAt) continue; // the trash is not searchable
       const name = this.entityName(e);
       const docText = Object.values(e.docs ?? {}).join('\n');
       const comments = e.comments.map((c) => c.text).join('\n');
