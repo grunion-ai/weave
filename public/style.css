@@ -213,22 +213,12 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 .chip .x { margin-left: 4px; cursor: pointer; color: var(--tblr-secondary); }
 .chip .x:hover { color: var(--tblr-danger); }
 
-/* Workflow select: same soft tint treatment as the chips */
-select.state-select { width: auto; display: inline-block; border-radius: 4px; font-size: 12px; padding-top: 2px; padding-bottom: 2px; }
-select.state-select.state-not-started { background-color: rgba(0, 5, 20, .05); border-color: rgba(0, 10, 40, .16); color: #60646c; }
-select.state-select.state-in-progress { background-color: rgba(71, 105, 235, .10); border-color: rgba(71, 105, 235, .38); color: #3a5bc7; }
-select.state-select.state-done { background-color: rgba(46, 160, 67, .12); border-color: rgba(46, 160, 67, .42); color: #218358; }
-select.state-select.state-canceled { background-color: rgba(229, 72, 77, .10); border-color: rgba(229, 72, 77, .38); color: #ce2c31; }
-[data-bs-theme="dark"] select.state-select.state-not-started { background-color: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .16); color: #b0b4ba; }
-[data-bs-theme="dark"] select.state-select.state-in-progress { background-color: rgba(99, 140, 245, .16); border-color: rgba(99, 140, 245, .48); color: #9eb1ff; }
-[data-bs-theme="dark"] select.state-select.state-done { background-color: rgba(70, 180, 110, .15); border-color: rgba(70, 180, 110, .48); color: #71d083; }
-[data-bs-theme="dark"] select.state-select.state-canceled { background-color: rgba(255, 100, 100, .14); border-color: rgba(255, 100, 100, .48); color: #ff9592; }
 
 /* ---------- inline editing surfaces (all views) ---------- */
 .inline-edit { border-color: transparent; background: transparent; max-width: 100%; }
 .inline-edit:hover { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .inline-edit:focus { border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
-select.inline-edit:not(.state-select):not(:hover):not(:focus) { background-image: none; }
+select.inline-edit:not(:hover):not(:focus) { background-image: none; }
 td .inline-edit { width: 100%; min-width: 70px; }
 /* The UA number stepper is browser chrome, not Tabler chrome: it ignores the
    --tblr-* tokens, floats over the cell's right padding, and duplicates
@@ -236,7 +226,6 @@ td .inline-edit { width: 100%; min-width: 70px; }
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
 input[type=number] { -moz-appearance: textfield; appearance: textfield; }
-td select.state-select { width: auto; min-width: 110px; }
 .ms-box { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px; }
 .ghost-select { width: 60px; display: inline-block; color: var(--tblr-secondary); }
 .btn.tiny { padding: 1px 7px; font-size: 12px; }

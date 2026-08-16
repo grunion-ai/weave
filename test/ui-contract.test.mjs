@@ -669,3 +669,25 @@ test('the resize grip is a visible edge, not an invisible strip', () => {
   const hot = rulesFor('.wv-grid th.col-head:hover .col-resize');
   assert.ok(hot.background, 'hovering a header shows where the edge is');
 });
+
+/* ---------- state chips fit their text (Feature #43) ----------
+   Workflow and select cells used to be native <select>s held at a 110px
+   minimum, so "Low" and "In Progress" occupied the same slab. The chip picker
+   (Issue #9) replaced them with buttons that size to their label — measured
+   live on Development/Issue: Low 44px, Fixed 52px, Medium 70px. The rule that
+   has to hold is that nothing reintroduces a fixed width, and the <select>
+   era's styling does not linger as dead weight. */
+
+test('a chip is sized by its label, never by a fixed width', () => {
+  const chip = rulesFor('.chip');
+  assert.equal(chip.display, 'inline-block', 'inline-block shrink-wraps the label');
+  assert.ok(chip.padding, 'the chip is padding around text, not a box of a set size');
+  for (const prop of ['width', 'min-width']) {
+    assert.equal(chip[prop], undefined, `.chip must not declare ${prop}`);
+  }
+});
+
+test('the <select> era leaves nothing behind', () => {
+  assert.doesNotMatch(APP, /state-select/, 'no code path renders a state <select> any more');
+  assert.doesNotMatch(CSS, /state-select/, 'and its stylesheet block is gone with it');
+});
