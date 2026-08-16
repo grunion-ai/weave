@@ -1060,6 +1060,27 @@ async function wireWorkspaceSwitch() {
   } catch { /* single-workspace hub */ }
 }
 
+/* Theme toggle: auto (follow OS) → dark → light. */
+function wireThemeToggle() {
+  const btn = $('#theme-toggle');
+  if (!btn) return;
+  const icons = { auto: '◐ auto', dark: '● dark', light: '○ light' };
+  const apply = (pref) => {
+    if (pref === 'auto') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = pref;
+    btn.textContent = icons[pref];
+    btn.title = `Theme: ${pref} (click to switch)`;
+  };
+  let pref = localStorage.getItem('weave-theme') ?? 'auto';
+  if (!icons[pref]) pref = 'auto';
+  apply(pref);
+  btn.addEventListener('click', () => {
+    pref = pref === 'auto' ? 'dark' : pref === 'dark' ? 'light' : 'auto';
+    localStorage.setItem('weave-theme', pref);
+    apply(pref);
+  });
+}
+
 // Schema can change from another tab, the CLI, or an agent while a view is
 // open. On refocus, re-fetch it; if it changed, re-render — unless a document
 // editor is open (never clobber unsaved text; hint instead).
@@ -1079,3 +1100,4 @@ window.addEventListener('focus', async () => {
 loadSchema().then(route);
 wireSearch();
 wireWorkspaceSwitch();
+wireThemeToggle();
