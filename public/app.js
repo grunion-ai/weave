@@ -399,7 +399,8 @@ function renderTable(main, db, items, onSaved) {
         ...cols.map((c) => el('th', {
           onclick: () => { sortDir = sortKey === c ? -sortDir : 1; sortKey = c; draw(); },
         }, c + (sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : ''))),
-        el('th', {}, 'Docs'))),
+        el('th', { title: documentFields(db).map((f) => f.name).join(', ') },
+          `Docs (${documentFields(db).length})`))),
       tbody);
     wrap.replaceChildren(table);
   };
@@ -1058,6 +1059,22 @@ async function wireWorkspaceSwitch() {
     });
   } catch { /* single-workspace hub */ }
 }
+
+// Schema can change from another tab, the CLI, or an agent while a view is
+// open. On refocus, re-fetch it; if it changed, re-render — unless a document
+// editor is open (never clobber unsaved text; hint instead).
+window.addEventListener('focus', async () => {
+  const before = JSON.stringify(state.schema);
+  try {
+    await loadSchema();
+  } catch { return; }
+  if (JSON.stringify(state.schema) === before) return;
+  if (document.querySelector('textarea.doc-inline')) {
+    toast('Schema changed elsewhere — close the doc editor and reopen to see new fields');
+    return;
+  }
+  route();
+});
 
 loadSchema().then(route);
 wireSearch();
