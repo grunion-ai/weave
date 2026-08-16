@@ -9,12 +9,14 @@
 </head>
 <body>
 <div id="app">
+  <nav id="ws-rail" aria-label="Workspaces"></nav>
   <aside id="sidebar">
     <div class="brand">🕸️ <strong>Weave</strong>
-      <select id="ws-switch" title="Switch workspace"></select>
+      <span id="ws-name" class="ws-name"></span>
     </div>
-    <input id="search" type="search" placeholder="Search entities…" autocomplete="off">
-    <div id="search-results" class="hidden"></div>
+    <button id="search-btn" class="search-like" type="button">
+      <span class="search-label">Search…</span><kbd>⌘K</kbd>
+    </button>
     <nav id="nav"></nav>
     <div class="sidebar-actions">
       <button id="add-space" class="ghost">+ Space</button>

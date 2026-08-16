@@ -229,3 +229,17 @@ a.nav-space:hover { color: var(--accent); }
   --accent: #4f46e5; --accent-soft: #eef0ff; --card: #ffffff; --shadow: 0 1px 3px rgba(0,0,0,.08);
 }
 #theme-toggle { font-size: 13px; }
+
+/* Workspace icon rail (far-left) */
+#ws-rail { width: 52px; flex-shrink: 0; background: var(--soft); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; position: sticky; top: 0; height: 100vh; }
+.ws-icon { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 9px; background: var(--card); border: 1px solid var(--line); color: var(--muted); font-weight: 700; font-size: 14px; text-decoration: none; cursor: pointer; }
+.ws-icon:hover { color: var(--accent); border-color: var(--accent); }
+.ws-icon.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ws-icon.ws-new { border-style: dashed; font-weight: 400; }
+.ws-name { margin-left: auto; color: var(--muted); font-size: 12px; }
+
+/* Search control = ⌘K entry point */
+.search-like { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; }
+.search-like:hover { border-color: var(--accent); color: var(--fg); }
+.search-like .search-label { flex: 1; }
+.search-like kbd { font: 11px var(--mono, ui-monospace, Menlo, monospace); background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--muted); }

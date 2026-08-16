@@ -895,8 +895,7 @@ function showHome() {
   const main = $('#main');
   const dbs = allTables();
   main.replaceChildren(
-    el('div', { class: 'toolbar' }, el('h1', {}, 'Weave'),
-      el('span', { class: 'kbd-hint' }, '⌘K to search everything')),
+    el('div', { class: 'toolbar' }, el('h1', {}, 'Weave')),
     dbs.length
       ? el('div', { class: 'list-rows' }, ...dbs.map((d) =>
         el('div', { class: 'list-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
@@ -939,29 +938,9 @@ function resultRow(hit, onPick) {
     hit.snippet ? el('div', { class: 'snip' }, hit.snippet) : null);
 }
 
-function wireSearch() {
-  const input = $('#search');
-  const results = $('#search-results');
-  let timer;
-  input.addEventListener('input', () => {
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
-      const q = input.value.trim();
-      if (!q) { results.classList.add('hidden'); return; }
-      const hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`);
-      results.replaceChildren(...(hits.length
-        ? hits.map((h) => resultRow(h, (hit) => {
-          results.classList.add('hidden');
-          input.value = '';
-          navigateToResult(hit);
-        }))
-        : [el('div', { class: 'result' }, 'No results')]));
-      results.classList.remove('hidden');
-    }, 200);
-  });
-  document.addEventListener('click', (e) => {
-    if (!results.contains(e.target) && e.target !== input) results.classList.add('hidden');
-  });
+// The sidebar search control IS the ⌘K palette — one search surface.
+function wireSearchButton() {
+  $('#search-btn')?.addEventListener('click', openCommandK);
 }
 
 function openCommandK() {
@@ -1034,29 +1013,32 @@ $('#add-db').addEventListener('click', () => {
   });
 });
 
-/* Workspace switcher: one web app hosts several workspaces. */
-async function wireWorkspaceSwitch() {
-  const sel = $('#ws-switch');
-  if (!sel) return;
+/* Workspace rail: one icon per workspace in the far-left nav, one click to
+   switch (Slack/Fibery style). */
+async function buildWsRail() {
+  const rail = $('#ws-rail');
+  if (!rail) return;
   try {
     const list = await api('GET', '/workspaces');
     const current = WS_PREFIX ? WS_PREFIX.slice(3) : list.find((w) => w.default)?.name;
-    sel.replaceChildren(
-      ...list.map((w) => el('option', { value: w.name, selected: w.name === current ? '' : null }, w.name)),
-      el('option', { value: '__new__' }, '+ new workspace'));
-    sel.addEventListener('change', () => {
-      if (sel.value === '__new__') {
-        modal('New workspace', [el('input', { name: 'name', placeholder: 'Workspace name (e.g. dos)', style: 'width:100%' })],
-          async (fd) => {
-            const created = await api('POST', '/workspaces', { name: fd.get('name') });
-            location.href = created.url;
-          });
-        sel.value = current;
-        return;
-      }
-      const target = list.find((w) => w.name === sel.value);
-      location.href = target?.default ? '/' : `/w/${sel.value}/`;
-    });
+    $('#ws-name').textContent = current ?? '';
+    rail.replaceChildren(
+      ...list.map((w) => el('a', {
+        class: 'ws-icon' + (w.name === current ? ' active' : ''),
+        href: w.default ? '/' : `/w/${w.name}/`,
+        title: `${w.name} — ${w.tables} tables, ${w.entities} entities`,
+      }, w.name.slice(0, 1).toUpperCase())),
+      el('button', {
+        class: 'ws-icon ws-new',
+        title: 'New workspace',
+        onclick: () => {
+          modal('New workspace', [el('input', { name: 'name', placeholder: 'Workspace name (e.g. dos)', style: 'width:100%' })],
+            async (fd) => {
+              const created = await api('POST', '/workspaces', { name: fd.get('name') });
+              location.href = created.url;
+            });
+        },
+      }, '+'));
   } catch { /* single-workspace hub */ }
 }
 
@@ -1098,6 +1080,6 @@ window.addEventListener('focus', async () => {
 });
 
 loadSchema().then(route);
-wireSearch();
-wireWorkspaceSwitch();
+wireSearchButton();
+buildWsRail();
 wireThemeToggle();
