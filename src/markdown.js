@@ -32,7 +32,13 @@ function renderInline(text, resolveMention) {
         const kind = typed ? typed[1] : /^.+#\d+$/.test(ref) ? 'entity' : null;
         const target = typed ? (typed[2] ?? '').trim() : ref;
         if (kind && resolveMention && (kind === 'workspace' || target)) {
-          const resolved = resolveMention(kind, target);
+          // A resolver reaches into workspace state and can throw on an
+          // ambiguous or half-deleted target. One bad reference must cost its
+          // own chip, not the rest of the document.
+          let resolved = null;
+          try {
+            resolved = resolveMention(kind, target);
+          } catch { /* falls through to the broken chip below */ }
           if (resolved) {
             out += `<a class="mention mention-${kind}" href="${escapeHtml(resolved.href)}">`
               + `${escapeHtml(label ?? resolved.label)}</a>`;
