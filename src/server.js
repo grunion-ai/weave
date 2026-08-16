@@ -149,17 +149,34 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
     weave.maybeRefresh();
 
     // Resolves [[Table#12]] mentions in rendered documents (active workspace).
-    const resolveMention = (dbName, pid) => {
-      let db;
+    // The one place that knows how each reference kind is addressed and what
+    // it links to. Returns null for a miss, which renders as a broken chip.
+    const resolveMention = (kind, ref) => {
       try {
-        db = weave.findTable(dbName);
+        if (kind === 'workspace') {
+          return { href: `${wsPrefix}/`, label: weave.state.meta.name || 'workspace' };
+        }
+        if (kind === 'space') {
+          const sp = weave.findSpace(ref);
+          return sp ? { href: `${wsPrefix}/#/space/${sp.id}`, label: sp.name } : null;
+        }
+        if (kind === 'table') {
+          const db = weave.findTable(ref);
+          return db ? { href: `${wsPrefix}/#/table/${db.id}`, label: weave.qualifiedName(db) } : null;
+        }
+        const m = /^(.+)#(\d+)$/.exec(ref);
+        if (!m) return null;
+        const db = weave.findTable(m[1].trim());
+        if (!db) return null;
+        const entity = weave.listEntities(db.id).find((e) => String(e.publicId) === m[2]);
+        if (!entity) return null;
+        return {
+          href: `${wsPrefix}/e/${entity.id}/doc.html`,
+          label: `${db.name}#${m[2]} — ${weave.entityName(entity)}`,
+        };
       } catch {
-        return null;
+        return null; // an ambiguous or malformed ref is a miss, not a 500
       }
-      if (!db) return null;
-      const entity = weave.listEntities(db.id).find((e) => String(e.publicId) === String(pid));
-      if (!entity) return null;
-      return { href: `${wsPrefix}/e/${entity.id}/doc.html`, label: `${db.name}#${pid} — ${weave.entityName(entity)}` };
     };
     const send = (status, data, headers = {}) => {
       const isBuf = Buffer.isBuffer(data);

@@ -47,11 +47,13 @@ test('tables', () => {
 });
 
 test('entity mentions resolve via callback', () => {
-  const resolve = (db, pid) =>
-    db === 'Task' && pid === '12' ? { href: '/e/abc', label: 'Task #12 — Fix login' } : null;
+  // The resolver takes (kind, ref); see references.test.mjs for the other
+  // kinds a [[…]] reference can address.
+  const resolve = (kind, ref) =>
+    kind === 'entity' && ref === 'Task#12' ? { href: '/e/abc', label: 'Task #12 — Fix login' } : null;
   const html = renderMarkdown('Blocked by [[Task#12]] and [[Task#12|the login fix]] and [[Nope#9]].', { resolveMention: resolve });
-  assert.match(html, /<a class="mention" href="\/e\/abc">Task #12 — Fix login<\/a>/);
-  assert.match(html, /<a class="mention" href="\/e\/abc">the login fix<\/a>/);
+  assert.match(html, /<a class="mention mention-entity" href="\/e\/abc">Task #12 — Fix login<\/a>/);
+  assert.match(html, /<a class="mention mention-entity" href="\/e\/abc">the login fix<\/a>/);
   assert.match(html, /<span class="mention broken">Nope#9<\/span>/);
 });
 

@@ -111,7 +111,7 @@ test('document endpoints serve MD, HTML, PDF natively', async () => {
   assert.equal(html.headers.get('content-type'), 'text/html; charset=utf-8');
   const htmlText = await html.text();
   assert.match(htmlText, /<h1>Design notes<\/h1>/);
-  assert.match(htmlText, /class="mention"/); // [[Task#2]] resolved to a link
+  assert.match(htmlText, /class="mention mention-entity"/); // [[Task#2]] resolved to a link
   assert.match(htmlText, /Task#2 — Build/);
 
   const pdf = await fetch(`${base}/e/${taskId}/doc.pdf`);

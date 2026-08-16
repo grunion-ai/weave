@@ -17,17 +17,25 @@ function renderInline(text, resolveMention) {
   let i = 0;
   const src = String(text);
   while (i < src.length) {
-    // Entity mention [[Db#12]] or [[Db#12|label]]
+    /* Reference: [[Table#12]] (entity), [[table:Space/Name]], [[space:Name]],
+       [[workspace]] — any of them with |label. The parser only splits kind
+       from reference; the resolver decides what each kind addresses and what
+       it links to, so there is one place that knows the URL shapes. */
     if (src.startsWith('[[', i)) {
       const end = src.indexOf(']]', i);
       if (end > 0) {
         const inner = src.slice(i + 2, end);
-        const [ref, label] = inner.split('|');
-        const m = ref.match(/^(.+)#(\d+)$/);
-        if (m && resolveMention) {
-          const resolved = resolveMention(m[1].trim(), m[2]);
+        const pipe = inner.indexOf('|');
+        const ref = (pipe < 0 ? inner : inner.slice(0, pipe)).trim();
+        const label = pipe < 0 ? null : inner.slice(pipe + 1).trim();
+        const typed = ref.match(/^(table|space|workspace)(?::(.*))?$/);
+        const kind = typed ? typed[1] : /^.+#\d+$/.test(ref) ? 'entity' : null;
+        const target = typed ? (typed[2] ?? '').trim() : ref;
+        if (kind && resolveMention && (kind === 'workspace' || target)) {
+          const resolved = resolveMention(kind, target);
           if (resolved) {
-            out += `<a class="mention" href="${escapeHtml(resolved.href)}">${escapeHtml(label ?? resolved.label)}</a>`;
+            out += `<a class="mention mention-${kind}" href="${escapeHtml(resolved.href)}">`
+              + `${escapeHtml(label ?? resolved.label)}</a>`;
             i = end + 2;
             continue;
           }
@@ -302,6 +310,14 @@ h1:first-child { margin-top: 0; }
 a { color: var(--accent); }
 a.mention { background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; text-decoration: none; }
 .mention.broken { color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 0 4px; }
+/* A leading glyph says what kind of thing a reference points at, so a chip is
+   readable without following it. Generated content, so it never lands in a
+   copy-paste of the text. */
+.mention::before { color: var(--muted); margin-right: 4px; font-size: .9em; }
+.mention-entity::before { content: "#"; }
+.mention-table::before { content: "▦"; }
+.mention-space::before { content: "◇"; }
+.mention-workspace::before { content: "⬡"; }
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 pre { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; }
 pre code { background: none; padding: 0; }

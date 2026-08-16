@@ -241,6 +241,12 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .doc-preview blockquote { border-left: 3px solid var(--tblr-border-color); margin-left: 0; padding-left: 14px; color: var(--tblr-secondary); }
 .doc-preview table { border-collapse: collapse; } .doc-preview th, .doc-preview td { border: 1px solid var(--tblr-border-color); padding: 4px 9px; }
 .doc-preview a.mention { background: rgba(var(--tblr-primary-rgb), .08); border-radius: 4px; padding: 0 4px; text-decoration: none; color: var(--tblr-primary); }
+/* Kind glyphs match the standalone document page (src/markdown.js). */
+.doc-preview a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
+.doc-preview .mention-entity::before { content: "#"; }
+.doc-preview .mention-table::before { content: "▦"; }
+.doc-preview .mention-space::before { content: "◇"; }
+.doc-preview .mention-workspace::before { content: "⬡"; }
 
 /* ---------- schema editor ---------- */
 .schema-table .type { color: var(--tblr-secondary); font-size: 12px; }
