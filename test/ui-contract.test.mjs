@@ -501,3 +501,23 @@ test('an unfilled #ws-list does not eat a rail gap', () => {
   assert.equal(rulesFor('#ws-list:empty').display, 'none',
     '#ws-list must leave the flex flow until the workspace fetch lands');
 });
+
+/* ---------- number spinner chip (Kyle, 2026-08-16) ----------
+   UAT: focusing a number cell painted Chrome's rounded up/down stepper chip
+   inside the field. It is UA chrome, not Tabler chrome — it ignores the
+   --tblr-* tokens, floats over the cell's right padding, and duplicates
+   typing + arrow keys, which already work. Suppressed in both engines:
+   ::-webkit-*-spin-button for Chrome/Safari, appearance:textfield for
+   Firefox (and as the standards-track spelling). */
+
+test('number inputs show no native spinner chip', () => {
+  const inner = rulesFor('input[type=number]::-webkit-inner-spin-button');
+  const outer = rulesFor('input[type=number]::-webkit-outer-spin-button');
+  assert.equal(inner['-webkit-appearance'], 'none', 'Chrome/Safari inner stepper must be removed');
+  assert.equal(outer['-webkit-appearance'], 'none', 'Chrome/Safari outer stepper must be removed');
+  assert.equal(inner.margin, '0', 'a zeroed stepper must not keep reserving margin');
+
+  const num = rulesFor('input[type=number]');
+  assert.equal(num.appearance, 'textfield', 'standards-track spelling drops the spinner');
+  assert.equal(num['-moz-appearance'], 'textfield', 'Firefox needs the prefixed spelling');
+});

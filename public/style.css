@@ -205,6 +205,12 @@ select.state-select.state-canceled { background-color: rgba(229, 72, 77, .10); b
 .inline-edit:focus { border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
 select.inline-edit:not(.state-select):not(:hover):not(:focus) { background-image: none; }
 td .inline-edit { width: 100%; min-width: 70px; }
+/* The UA number stepper is browser chrome, not Tabler chrome: it ignores the
+   --tblr-* tokens, floats over the cell's right padding, and duplicates
+   typing + arrow keys. Drop it in both engines. */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 td select.state-select { width: auto; min-width: 110px; }
 .ms-box { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px; }
 .ghost-select { width: 60px; display: inline-block; color: var(--tblr-secondary); }
