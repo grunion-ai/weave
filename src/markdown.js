@@ -282,7 +282,7 @@ a.mention { background: var(--soft); border: 1px solid var(--line); border-radiu
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 pre { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; }
 pre code { background: none; padding: 0; }
-blockquote { border-left: 3px solid var(--accent); margin: 1em 0; padding: 2px 0 2px 16px; color: var(--muted); }
+blockquote { border-left: 3px solid var(--line); margin: 1em 0; padding: 2px 0 2px 16px; color: var(--muted); }
 table { border-collapse: collapse; width: 100%; margin: 1em 0; }
 th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
 th { background: var(--soft); }

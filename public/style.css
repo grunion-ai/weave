@@ -108,7 +108,7 @@ table.grid { border-collapse: collapse; width: 100%; background: var(--card); }
 #doc-preview h1 { font-size: 20px; } #doc-preview h2 { font-size: 17px; }
 #doc-preview code { background: var(--soft); border-radius: 4px; padding: 1px 4px; }
 #doc-preview pre { background: var(--soft); padding: 10px; border-radius: 8px; overflow-x: auto; }
-#doc-preview blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 14px; color: var(--muted); }
+#doc-preview blockquote { border-left: 3px solid var(--line); margin-left: 0; padding-left: 14px; color: var(--muted); }
 #doc-preview table { border-collapse: collapse; } #doc-preview th, #doc-preview td { border: 1px solid var(--line); padding: 4px 9px; }
 #doc-preview a.mention { background: var(--accent-soft); border-radius: 4px; padding: 0 4px; text-decoration: none; color: var(--accent); }
 .comment { border-top: 1px solid var(--line); padding: 8px 0; }
