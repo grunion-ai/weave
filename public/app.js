@@ -436,7 +436,7 @@ const READONLY_FIELD_TYPES = ['lookup', 'rollup', 'formula', 'document'];
 
 // Inline glyph marking how a read-only value is produced.
 function computedMark(type) {
-  return { formula: 'ƒ', rollup: 'Σ', lookup: '↗', document: '¶' }[type] ?? '·';
+  return { formula: 'ƒ', rollup: 'Σ', lookup: '↗', document: '¶', field: '⌗' }[type] ?? '·';
 }
 
 /* A click landed on a picker cell's padding rather than its control: forward
@@ -609,6 +609,14 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     return el('span', { class: 'computed', title: 'document — edit in the doc editor' },
       el('span', { class: 'computed-mark' }, computedMark('document')),
       text ? text.slice(0, 60).replace(/\n/g, ' ') + (text.length > 60 ? '…' : '') : '—');
+  }
+  if (f.type === 'field') {
+    // A field definition, edited on the entity page — same reason as document:
+    // the value is structured, so the generic text fallback would render an
+    // editable box that can only ever produce an invalid definition.
+    return el('span', { class: 'computed', title: 'field definition — edit on the entity page' },
+      el('span', { class: 'computed-mark' }, computedMark('field')),
+      val == null ? '—' : String(val));
   }
   const input = el('input', {
     class: 'form-control form-control-sm inline-edit',

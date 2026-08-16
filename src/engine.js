@@ -39,12 +39,86 @@ export function parseCSV(text) {
   return rows.filter((r) => !(r.length === 1 && r[0] === ''));
 }
 
-const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation'];
+const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field'];
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
 const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
 const MAX_COMPUTE_DEPTH = 8;
+
+/* The `field` type holds a field DEFINITION as its value — the schema of a
+   field one level down the hierarchy. It is what terminates the meta-model's
+   recursion: a space-level `Fields` table needs fields to describe fields, and
+   the innermost descriptor is this ordinary primitive whose options come from
+   the array below, which lives beneath the entity layer. Nothing is circular.
+
+   `relation` and the computed types are NOT definable: their config names
+   fields of a specific resolved table, which a down-hierarchy definition does
+   not have yet. Refusing them at definition time is deliberate — the
+   alternative is a definition that only fails when something tries to
+   materialise it. */
+export const DEFINABLE_TYPES = [
+  'text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email',
+  'select', 'multiselect', 'workflow', 'document', 'field',
+];
+const MAX_DEFINITION_DEPTH = 4;
+
+/* The single normaliser for every type whose config is self-contained. Used
+   by addField AND by `field` value validation, so a definition can never
+   describe a field the engine would refuse to create. */
+function normalizeSelfContainedConfig(type, config = {}) {
+  if (type === 'select' || type === 'multiselect') {
+    return {
+      options: (config.options ?? []).map((o) => (typeof o === 'string'
+        ? { id: slug(o), name: o, color: '' }
+        : { id: o.id ?? slug(o.name), name: o.name, color: o.color ?? '' })),
+    };
+  }
+  if (type === 'workflow') {
+    const states = (config.states ?? []).map((s) => (typeof s === 'string'
+      ? { id: slug(s), name: s, category: 'in-progress', default: false }
+      : { id: s.id ?? slug(s.name), name: s.name, category: s.category ?? 'in-progress', default: !!s.default }));
+    if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
+    for (const s of states) {
+      if (!STATE_CATEGORIES.includes(s.category)) {
+        throw new WeaveError(`Invalid state category '${s.category}' (use ${STATE_CATEGORIES.join(', ')})`, 'invalid');
+      }
+    }
+    return { states };
+  }
+  if (type === 'field') {
+    const depth = config.depth ?? 1;
+    if (!Number.isInteger(depth) || depth < 1 || depth > MAX_DEFINITION_DEPTH) {
+      throw new WeaveError(`Definition depth must be 1..${MAX_DEFINITION_DEPTH}, got '${depth}'`, 'invalid');
+    }
+    return { types: [...DEFINABLE_TYPES], depth };
+  }
+  return {};
+}
+
+/* Validate one field definition — the value of a `field`-typed field.
+   `depth` is how many further levels this definition is allowed to define;
+   at depth 1 it must describe a leaf, so it may not itself be a `field`. */
+function normalizeDefinition(raw, depth) {
+  if (raw == null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new WeaveError('A field definition must be an object of { type, config }', 'invalid');
+  }
+  const { type } = raw;
+  if (!DEFINABLE_TYPES.includes(type)) {
+    throw new WeaveError(`'${type}' is not a definable field type (use ${DEFINABLE_TYPES.join(', ')})`, 'invalid');
+  }
+  if (type === 'field' && depth < 2) {
+    throw new WeaveError(
+      'A definition at depth 1 must describe a leaf field; raise the field\'s depth to nest one', 'invalid');
+  }
+  const config = normalizeSelfContainedConfig(type, raw.config ?? {});
+  if (type === 'field' && config.depth > depth - 1) {
+    throw new WeaveError(
+      `A nested definition may declare depth ${depth - 1} at most, got ${config.depth}`, 'invalid');
+  }
+  return { type, config };
+}
 // Narrower than this and a column can hold neither a chip nor a resize grip.
 const MIN_COLUMN_WIDTH = 60;
 
@@ -303,21 +377,14 @@ export class Weave {
     if (type === 'relation') throw new WeaveError(`Use addRelation() to create relation fields`, 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
-    if (type === 'select' || type === 'multiselect') {
-      field.config.options = (config.options ?? []).map((o) =>
-        typeof o === 'string' ? { id: slug(o), name: o, color: '' } : { id: o.id ?? slug(o.name), name: o.name, color: o.color ?? '' });
-    } else if (type === 'workflow') {
-      const states = (config.states ?? []).map((s) =>
-        typeof s === 'string' ? { id: slug(s), name: s, category: 'in-progress', default: false }
-          : { id: s.id ?? slug(s.name), name: s.name, category: s.category ?? 'in-progress', default: !!s.default });
-      if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
-      for (const s of states) {
-        if (!STATE_CATEGORIES.includes(s.category)) {
-          throw new WeaveError(`Invalid state category '${s.category}' (use ${STATE_CATEGORIES.join(', ')})`, 'invalid');
-        }
+    if (type === 'select' || type === 'multiselect' || type === 'workflow' || type === 'field') {
+      // One normaliser, shared with `field` value validation — see the note on
+      // normalizeSelfContainedConfig. If these drift, a definition can describe
+      // a field addField would reject.
+      field.config = normalizeSelfContainedConfig(type, config);
+      if (type === 'workflow' && !field.config.states.some((s) => s.default)) {
+        field.config.states[0].default = true;
       }
-      if (!states.some((s) => s.default)) states[0].default = true;
-      field.config.states = states;
     } else if (type === 'lookup') {
       const rel = this.getField(db.id, config.relationField ?? config.relation);
       if (rel.type !== 'relation') throw new WeaveError('Lookup must point at a relation field', 'invalid');
@@ -659,6 +726,10 @@ export class Weave {
           return opt.id;
         });
       }
+      case 'field':
+        // The value IS a field definition. Validated by the same normaliser
+        // addField uses, so it can only ever describe a creatable field.
+        return normalizeDefinition(raw, field.config.depth ?? 1);
       default:
         throw new WeaveError(`Cannot write field type '${field.type}'`, 'invalid');
     }
@@ -902,6 +973,12 @@ export class Weave {
         return resolved.map((id) => this.#findOption(field.config.options, id)?.name ?? id);
       case 'workflow':
         return field.config.states.find((s) => s.id === resolved)?.name ?? resolved;
+      case 'field': {
+        // A definition should read as a sentence in a grid cell, not as JSON.
+        const n = resolved.config?.options?.length ?? resolved.config?.states?.length ?? 0;
+        const unit = resolved.config?.states ? 'state' : 'option';
+        return n ? `${resolved.type} · ${n} ${unit}${n === 1 ? '' : 's'}` : resolved.type;
+      }
       case 'relation': {
         const names = resolved.map((id) => {
           const t = this.state.entities[id];
