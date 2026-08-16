@@ -9,7 +9,7 @@
   },
   "main": "src/engine.js",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test 'test/**/*.test.mjs'",
     "start": "node bin/weave.js serve",
     "seed": "node scripts/seed.mjs"
   },

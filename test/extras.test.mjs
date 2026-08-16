@@ -141,3 +141,30 @@ test('webhook automation fires on state change', async () => {
     hook.close();
   }
 });
+
+// ---------- repo contract: one test command, not two ----------
+// `npm test` ran the bare directory form while CI, the README, CONTRIBUTING
+// and AGENTS.md all ran the glob form. The two are not equivalent: the bare
+// path resolves `test` as a module specifier, so a gitignored workspace file
+// named `test.json` beside the repo root — which the README's own quickstart
+// can create — is loaded as a test and the whole run dies with
+// ERR_IMPORT_ATTRIBUTE_MISSING. CI stayed green the entire time because it
+// never used the npm script. Pin them together.
+// (Line comments, not a block: the glob itself contains a comment terminator.)
+
+test('npm test runs exactly the command CI and the docs run', async () => {
+  const { readFileSync } = await import('node:fs');
+  const root = new URL('../', import.meta.url);
+  const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'));
+  const CI = readFileSync(new URL('.github/workflows/test.yml', root), 'utf8');
+
+  const documented = "node --test 'test/**/*.test.mjs'";
+  assert.equal(pkg.scripts.test, documented,
+    'the npm script is the entry point a new contributor types first');
+  assert.ok(CI.includes(documented), 'CI must run the same command the script does');
+
+  for (const doc of ['README.md', 'CONTRIBUTING.md', 'AGENTS.md']) {
+    assert.ok(readFileSync(new URL(doc, root), 'utf8').includes("node --test 'test/**/*.test.mjs'"),
+      `${doc} must document the same command`);
+  }
+});
