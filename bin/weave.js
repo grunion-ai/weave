@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Weave CLI — full workspace access from the terminal (and for agents).
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { Weave, WeaveError } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
@@ -101,9 +101,25 @@ async function main() {
 
   if (command === 'serve') {
     const w = new Weave({ path: dataPath });
+    // Workspace name = data file basename (unless already named).
+    const base = dataPath.split('/').pop().replace(/\.json$/, '');
+    if (!w.state.meta.name || w.state.meta.name === 'Weave Workspace') {
+      w.state.meta.name = base;
+      w.save();
+    }
+    // The self-referential docs workspace ("weaver") always exists alongside.
+    if (w.state.meta.name !== 'weaver') {
+      const weaverPath = join(dirname(dataPath), 'weaver.json');
+      if (!existsSync(weaverPath)) {
+        const { seedWeaver } = await import('../src/weaver-seed.js');
+        seedWeaver(new Weave({ path: weaverPath }));
+        console.log(`Created docs workspace at ${weaverPath}`);
+      }
+    }
     const port = Number(flags.port ?? 4400);
     const { port: actual } = await startServer(w, { port });
-    console.log(`Weave running at http://127.0.0.1:${actual}  (data: ${dataPath})`);
+    console.log(`Weave running at http://127.0.0.1:${actual}  (workspace: ${w.state.meta.name}, data: ${dataPath})`);
+    console.log(`Docs workspace: http://127.0.0.1:${actual}/w/weaver/`);
     return;
   }
   if (command === 'mcp') {

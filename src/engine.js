@@ -61,6 +61,11 @@ export class Weave {
   constructor({ path = null } = {}) {
     this.store = new Store(path);
     const loaded = this.store.load();
+    // A pre-existing file must actually be a workspace — never adopt (and
+    // never migrate-write!) arbitrary JSON like a package.json.
+    if (loaded && (!loaded.meta || (loaded.tables == null && loaded.databases == null))) {
+      throw new WeaveError(`'${path}' is not a Weave workspace file`, 'invalid');
+    }
     this.state = loaded ?? {
       version: 2,
       meta: { name: 'Weave Workspace', createdAt: nowISO() },
@@ -1183,28 +1188,28 @@ export class Weave {
 
   // Universal search across everything addressable, with stable permalinks.
   // Kinds: workspace, space, table, entity.
-  universalSearch(text, { limit = 25 } = {}) {
+  universalSearch(text, { limit = 25, prefix = '' } = {}) {
     const needle = String(text).toLowerCase().trim();
     if (!needle) return [];
     const results = [];
     if (this.state.meta.name.toLowerCase().includes(needle)) {
-      results.push({ kind: 'workspace', id: 'workspace', name: this.state.meta.name, url: '/', score: 8 });
+      results.push({ kind: 'workspace', id: 'workspace', name: this.state.meta.name, url: prefix + '/', score: 8 });
     }
     for (const sp of this.listSpaces()) {
       if (sp.name.toLowerCase().includes(needle)) {
-        results.push({ kind: 'space', id: sp.id, name: sp.name, url: `/#/space/${sp.id}`, score: 9 });
+        results.push({ kind: 'space', id: sp.id, name: sp.name, url: `${prefix}/#/space/${sp.id}`, score: 9 });
       }
     }
     for (const db of this.listTables()) {
       if (db.name.toLowerCase().includes(needle) || this.qualifiedName(db).toLowerCase().includes(needle)) {
         results.push({
           kind: 'table', id: db.id, name: this.qualifiedName(db),
-          url: `/#/table/${db.id}`, entityCount: this.listEntities(db.id).length, score: 9,
+          url: `${prefix}/#/table/${db.id}`, entityCount: this.listEntities(db.id).length, score: 9,
         });
       }
     }
     for (const hit of this.search(text, { limit })) {
-      results.push({ kind: 'entity', url: `/e/${hit.id}`, ...hit });
+      results.push({ kind: 'entity', url: `${prefix}/e/${hit.id}`, ...hit });
     }
     return results.sort((a, b) => b.score - a.score).slice(0, limit);
   }

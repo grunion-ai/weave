@@ -221,3 +221,5 @@ button.tiny { padding: 1px 7px; font-size: 12px; }
 a.nav-space { text-decoration: none; display: block; }
 a.nav-space:hover { color: var(--accent); }
 .nav-map { margin-bottom: 4px; }
+.brand { display: flex; align-items: center; gap: 6px; }
+#ws-switch { margin-left: auto; max-width: 110px; font-size: 12px; padding: 2px 5px; background: var(--card); }

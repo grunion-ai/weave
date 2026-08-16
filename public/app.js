@@ -26,8 +26,12 @@ const svgEl = (tag, attrs = {}, ...children) => {
   return node;
 };
 
+// Workspace scoping: the app is served at / (default workspace) and at
+// /w/<name>/ for sibling workspaces — one SPA, path-scoped API + permalinks.
+const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
+
 async function api(method, path, body) {
-  const res = await fetch('/api' + path, {
+  const res = await fetch(WS_PREFIX + '/api' + path, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -114,6 +118,28 @@ function stateCategory(fieldSchema, stateName) {
 
 function documentFields(db) {
   return db.fields.filter((f) => f.type === 'document');
+}
+
+// Lazy mermaid: load the vendored lib only when a preview contains a diagram.
+let mermaidLoading = null;
+function renderMermaidIn(container) {
+  const nodes = container.querySelectorAll('pre.mermaid');
+  if (!nodes.length) return;
+  mermaidLoading ??= new Promise((resolve) => {
+    if (window.mermaid) return resolve();
+    const s = document.createElement('script');
+    s.src = '/vendor/mermaid.min.js';
+    s.onload = () => {
+      window.mermaid?.initialize({
+        startOnLoad: false,
+        theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+      });
+      resolve();
+    };
+    s.onerror = () => resolve(); // fall back to visible source
+    document.head.append(s);
+  });
+  mermaidLoading.then(() => window.mermaid?.run({ nodes }));
 }
 
 /* ---------- universal field editor ---------- */
@@ -248,7 +274,7 @@ function docsEditor(item, db, onSaved) {
       dataset: { eid: item.id, field: active },
     });
     area.value = item.docs?.[active] ?? '';
-    const fmtBase = `/e/${item.id}/doc/${encodeURIComponent(active)}`;
+    const fmtBase = `${WS_PREFIX}/e/${item.id}/doc/${encodeURIComponent(active)}`;
     wrap.append(
       el('div', { class: 'doc-toolbar' },
         tabs,
@@ -305,7 +331,7 @@ function drawDatabase(db, items) {
     el('h1', {}, `${db.space} / ${db.name}`),
     switcher,
     el('button', { onclick: () => openSchemaEditor(db) }, '⚙ Fields'),
-    el('a', { href: `/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` }, el('button', {}, 'CSV')),
+    el('a', { href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` }, el('button', {}, 'CSV')),
     el('button', { class: 'primary', onclick: () => quickCreate(db) }, '+ New')));
 
   if (!items.length) {
@@ -660,7 +686,7 @@ async function showEntity(id) {
     const editorWrap = el('div', { class: 'hidden' });
     const singleFieldDb = { ...db, fields: [f] }; // editor scoped to this field
     editorWrap.append(docsEditor(entity, singleFieldDb, () => refresh()));
-    const fmtBase = `/e/${id}/doc/${encodeURIComponent(f.name)}`;
+    const fmtBase = `${WS_PREFIX}/e/${id}/doc/${encodeURIComponent(f.name)}`;
     const editBtn = el('button', {
       onclick: () => {
         const editing = !editorWrap.classList.contains('hidden');
@@ -681,7 +707,9 @@ async function showEntity(id) {
       const doc = new DOMParser().parseFromString(html, 'text/html');
       const body = doc.body;
       body.querySelector('.doc-meta')?.remove();
+      body.querySelectorAll('script').forEach((s) => s.remove());
       preview.innerHTML = body.innerHTML || '<p style="color:var(--muted)">Empty — click Edit.</p>';
+      renderMermaidIn(preview);
     });
     left.append(panel);
   }
@@ -881,6 +909,12 @@ function showHome() {
 const KIND_ICON = { workspace: '🕸', space: '▣', table: '▦', entity: '●' };
 
 function navigateToResult(hit) {
+  // Results can come from another workspace: follow the permalink's path.
+  const hitPrefix = (hit.url.match(/^\/w\/[^/]+/) ?? [''])[0];
+  if (hitPrefix !== WS_PREFIX) {
+    location.href = hit.kind === 'entity' ? `${hitPrefix}/#/entity/${hit.id}` : hit.url;
+    return;
+  }
   if (hit.kind === 'entity') location.hash = `#/entity/${hit.id}`;
   else if (hit.kind === 'table') location.hash = `#/table/${hit.id}`;
   else if (hit.kind === 'space') location.hash = `#/space/${hit.id}`;
@@ -913,7 +947,7 @@ function wireSearch() {
     timer = setTimeout(async () => {
       const q = input.value.trim();
       if (!q) { results.classList.add('hidden'); return; }
-      const hits = await api('GET', `/search?q=${encodeURIComponent(q)}`);
+      const hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`);
       results.replaceChildren(...(hits.length
         ? hits.map((h) => resultRow(h, (hit) => {
           results.classList.add('hidden');
@@ -942,7 +976,7 @@ function openCommandK() {
     timer = setTimeout(async () => {
       const q = input.value.trim();
       if (!q) { list.replaceChildren(); return; }
-      hits = await api('GET', `/search?q=${encodeURIComponent(q)}`);
+      hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`);
       list.replaceChildren(...(hits.length
         ? hits.map((h) => resultRow(h, pick))
         : [el('div', { class: 'result' }, 'No results')]));
@@ -999,5 +1033,32 @@ $('#add-db').addEventListener('click', () => {
   });
 });
 
+/* Workspace switcher: one web app hosts several workspaces. */
+async function wireWorkspaceSwitch() {
+  const sel = $('#ws-switch');
+  if (!sel) return;
+  try {
+    const list = await api('GET', '/workspaces');
+    const current = WS_PREFIX ? WS_PREFIX.slice(3) : list.find((w) => w.default)?.name;
+    sel.replaceChildren(
+      ...list.map((w) => el('option', { value: w.name, selected: w.name === current ? '' : null }, w.name)),
+      el('option', { value: '__new__' }, '+ new workspace'));
+    sel.addEventListener('change', () => {
+      if (sel.value === '__new__') {
+        modal('New workspace', [el('input', { name: 'name', placeholder: 'Workspace name (e.g. dos)', style: 'width:100%' })],
+          async (fd) => {
+            const created = await api('POST', '/workspaces', { name: fd.get('name') });
+            location.href = created.url;
+          });
+        sel.value = current;
+        return;
+      }
+      const target = list.find((w) => w.name === sel.value);
+      location.href = target?.default ? '/' : `/w/${sel.value}/`;
+    });
+  } catch { /* single-workspace hub */ }
+}
+
 loadSchema().then(route);
 wireSearch();
+wireWorkspaceSwitch();

@@ -1,8 +1,8 @@
 import { createServer as createHttpServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WeaveError } from './engine.js';
+import { Weave, WeaveError } from './engine.js';
 import { renderDocumentPage } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 
@@ -38,24 +38,107 @@ async function readBody(req) {
   }
 }
 
-export function createServer(weave) {
-  // Resolves [[Table#12]] mentions in rendered documents.
-  const resolveMention = (dbName, pid) => {
-    let db;
-    try {
-      db = weave.findTable(dbName);
-    } catch {
-      return null;
+// One web app can host several workspaces (like the.fibery.io):
+// the default workspace lives at /, siblings at /w/<name>/ — same UI, same
+// API shapes, path-scoped. Sibling <name>.json files next to the default
+// workspace's data file are discovered automatically.
+export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
+  const instances = new Map();
+  const defaultName = defaultWeave.state.meta.name || 'workspace';
+  instances.set(defaultName, defaultWeave);
+  for (const [name, w] of Object.entries(workspaces)) instances.set(name, w);
+
+  const dataDir = defaultWeave.store.path ? dirname(defaultWeave.store.path) : null;
+  const scan = () => {
+    if (!dataDir) return;
+    for (const file of readdirSync(dataDir)) {
+      if (!file.endsWith('.json') || file.endsWith('.tmp')) continue;
+      const name = file.slice(0, -5);
+      if (instances.has(name)) continue;
+      // Only load files that look like Weave workspaces.
+      try {
+        const w = new Weave({ path: join(dataDir, file) });
+        if (w.state.meta) {
+          if (!w.state.meta.name || w.state.meta.name === 'Weave Workspace') {
+            w.state.meta.name = name;
+            w.save();
+          }
+          instances.set(w.state.meta.name, w);
+        }
+      } catch { /* not a workspace file */ }
     }
-    if (!db) return null;
-    const entity = weave.listEntities(db.id).find((e) => String(e.publicId) === String(pid));
-    if (!entity) return null;
-    return { href: `/e/${entity.id}/doc.html`, label: `${db.name}#${pid} — ${weave.entityName(entity)}` };
   };
+  scan();
+
+  return {
+    defaultName,
+    get(name) {
+      if (instances.has(name)) return instances.get(name);
+      scan();
+      return instances.get(name) ?? null;
+    },
+    list() {
+      scan();
+      return [...instances.entries()].map(([name, w]) => ({
+        name,
+        default: name === defaultName,
+        spaces: w.listSpaces().length,
+        tables: w.listTables().length,
+        entities: Object.keys(w.state.entities).length,
+      }));
+    },
+    create(name) {
+      if (!/^[a-z0-9][a-z0-9-_]*$/i.test(name)) throw new WeaveError('Workspace name must be alphanumeric', 'invalid');
+      if (this.get(name)) throw new WeaveError(`Workspace '${name}' already exists`, 'conflict');
+      if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
+      const w = new Weave({ path: join(dataDir, `${name}.json`) });
+      w.state.meta.name = name;
+      w.save();
+      instances.set(name, w);
+      return w;
+    },
+    entries() {
+      scan();
+      return [...instances.entries()];
+    },
+  };
+}
+
+export function createServer(defaultWeave, { workspaces = {} } = {}) {
+  const hub = createWorkspaceHub(defaultWeave, { workspaces });
 
   const server = createHttpServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
-    const path = decodeURIComponent(url.pathname);
+    let path = decodeURIComponent(url.pathname);
+
+    // Workspace scoping: /w/<name>/... targets a sibling workspace.
+    let weave = defaultWeave;
+    let wsPrefix = '';
+    const wsM = path.match(/^\/w\/([^/]+)(\/.*|$)/);
+    if (wsM && wsM[1] !== 'undefined') {
+      const target = hub.get(wsM[1]);
+      if (!target) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: `Workspace '${wsM[1]}' not found`, code: 'not-found' }));
+      }
+      weave = target;
+      wsPrefix = `/w/${wsM[1]}`;
+      path = wsM[2] || '/';
+    }
+
+    // Resolves [[Table#12]] mentions in rendered documents (active workspace).
+    const resolveMention = (dbName, pid) => {
+      let db;
+      try {
+        db = weave.findTable(dbName);
+      } catch {
+        return null;
+      }
+      if (!db) return null;
+      const entity = weave.listEntities(db.id).find((e) => String(e.publicId) === String(pid));
+      if (!entity) return null;
+      return { href: `${wsPrefix}/e/${entity.id}/doc.html`, label: `${db.name}#${pid} — ${weave.entityName(entity)}` };
+    };
     const send = (status, data, headers = {}) => {
       const isBuf = Buffer.isBuffer(data);
       const isStr = typeof data === 'string';
@@ -82,7 +165,7 @@ export function createServer(weave) {
       // /e/:id/doc.<fmt> serves the default (first) document field;
       // /e/:id/doc/<Field Name>.<fmt> serves a named document field.
       let m;
-      if ((m = path.match(/^\/e\/([^/]+)\/doc(?:\/([^/]+?))?\.(md|html|pdf)$/))) {
+      if ((m = path.match(/^\/e\/([^/]+)\/doc(?:\/([^/]+?))?\.(md|mmd|html|pdf)$/))) {
         const entity = weave.readEntity(m[1]);
         const fieldRef = m[2] ?? null;
         const markdown = weave.getDoc(m[1], fieldRef);
@@ -90,6 +173,9 @@ export function createServer(weave) {
         const subtitle = `${entity.db} #${entity.publicId} • ${entity.name}${docLabel} • updated ${entity.updatedAt.slice(0, 10)}`;
         if (m[3] === 'md') {
           return send(200, markdown, { 'Content-Type': 'text/markdown; charset=utf-8' });
+        }
+        if (m[3] === 'mmd') {
+          return send(200, markdown, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
         }
         if (m[3] === 'html') {
           const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown, resolveMention });
@@ -103,7 +189,7 @@ export function createServer(weave) {
       }
       if ((m = path.match(/^\/e\/([^/]+)$/))) {
         const entity = weave.readEntity(m[1]); // 404s if missing
-        res.writeHead(302, { Location: `/#/entity/${entity.id}` });
+        res.writeHead(302, { Location: `${wsPrefix}/#/entity/${entity.id}` });
         return res.end();
       }
 
@@ -112,8 +198,14 @@ export function createServer(weave) {
         const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req) : {};
         const route = `${req.method} ${path}`;
 
-        if (route === 'GET /api/health') return send(200, { ok: true, name: 'weave', version: '0.1.0' });
+        if (route === 'GET /api/health') return send(200, { ok: true, name: 'weave', version: '0.2.0', workspace: weave.state.meta.name });
         if (route === 'GET /api/schema') return send(200, weave.describeSchema());
+
+        if (route === 'GET /api/workspaces') return send(200, hub.list());
+        if (route === 'POST /api/workspaces') {
+          const w = hub.create(body.name);
+          return send(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/` });
+        }
 
         if (route === 'GET /api/spaces') return send(200, weave.listSpaces());
         if (route === 'POST /api/spaces') return send(201, weave.createSpace(body));
@@ -236,7 +328,20 @@ export function createServer(weave) {
         }
 
         if (route === 'GET /api/search') {
-          return send(200, weave.universalSearch(url.searchParams.get('q') ?? '', { limit: Number(url.searchParams.get('limit') ?? 25) }));
+          const q = url.searchParams.get('q') ?? '';
+          const limit = Number(url.searchParams.get('limit') ?? 25);
+          if (url.searchParams.get('all')) {
+            // Cross-workspace search: permalinks carry the workspace path.
+            const results = [];
+            for (const [name, w] of hub.entries()) {
+              const prefix = name === hub.defaultName ? '' : `/w/${name}`;
+              for (const hit of w.universalSearch(q, { limit, prefix })) {
+                results.push({ workspace: name, ...hit });
+              }
+            }
+            return send(200, results.sort((a, b) => b.score - a.score).slice(0, limit));
+          }
+          return send(200, weave.universalSearch(q, { limit, prefix: wsPrefix }));
         }
         if (route === 'GET /api/export') return send(200, weave.exportJSON());
         if (route === 'POST /api/import') { weave.importJSON(body); return send(200, { ok: true }); }
@@ -261,8 +366,8 @@ export function createServer(weave) {
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1' } = {}) {
-  const server = createServer(weave);
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {} } = {}) {
+  const server = createServer(weave, { workspaces });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

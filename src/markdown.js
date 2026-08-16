@@ -107,14 +107,28 @@ export function parseBlocks(markdown) {
     const line = lines[i];
     if (/^\s*$/.test(line)) { i++; continue; }
 
-    // Fenced code
+    // Fenced code (```mermaid / ```mmd become diagram blocks)
     const fence = line.match(/^```(\w*)\s*$/);
     if (fence) {
       const code = [];
       i++;
       while (i < lines.length && !/^```\s*$/.test(lines[i])) code.push(lines[i++]);
       i++; // closing fence
-      blocks.push({ type: 'code', lang: fence[1] || '', text: code.join('\n') });
+      const lang = fence[1] || '';
+      blocks.push({
+        type: ['mermaid', 'mmd'].includes(lang.toLowerCase()) ? 'mermaid' : 'code',
+        lang,
+        text: code.join('\n'),
+      });
+      continue;
+    }
+
+    // Raw HTML block: passes through untouched until a blank line.
+    if (/^<[a-zA-Z!/]/.test(line)) {
+      const html = [line];
+      i++;
+      while (i < lines.length && !/^\s*$/.test(lines[i])) html.push(lines[i++]);
+      blocks.push({ type: 'html', text: html.join('\n') });
       continue;
     }
 
@@ -235,6 +249,14 @@ export function renderMarkdown(markdown, { resolveMention = null } = {}) {
       case 'code':
         html += `<pre><code${b.lang ? ` class="language-${escapeHtml(b.lang)}"` : ''}>${escapeHtml(b.text)}</code></pre>\n`;
         break;
+      case 'mermaid':
+        // Mermaid's native target element; renders when mermaid.js is present,
+        // and the escaped source stays legible when it is not.
+        html += `<pre class="mermaid">${escapeHtml(b.text)}</pre>\n`;
+        break;
+      case 'html':
+        html += b.text + '\n';
+        break;
       case 'quote':
         html += `<blockquote>${renderMarkdown(b.text, { resolveMention })}</blockquote>\n`;
         break;
@@ -288,11 +310,14 @@ th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
 th { background: var(--soft); }
 hr { border: none; border-top: 1px solid var(--line); margin: 2em 0; }
 img { max-width: 100%; }
+pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align: center; }
 </style>
 </head>
 <body>
 <div class="doc-meta">${escapeHtml(subtitle)}</div>
 ${body}
+${body.includes('class="mermaid"') ? `<script src="/vendor/mermaid.min.js" onerror="document.querySelectorAll('pre.mermaid').forEach(p=>p.style.textAlign='left')"></script>
+<script>if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });</script>` : ''}
 </body>
 </html>`;
 }

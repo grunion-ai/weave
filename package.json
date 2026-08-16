@@ -1,7 +1,7 @@
 {
   "name": "weave",
-  "version": "0.1.0",
-  "description": "Weave — a local, open-source, agent-accessible work platform (Fibery-style): databases, relations, workflows, lookups, rollups, formulas, per-entity documents (MD/HTML/PDF), REST API, web UI, CLI, and MCP server.",
+  "version": "0.2.0",
+  "description": "Weave — a local, open-source, agent-accessible work platform (Fibery-style): tables, relations, workflows, lookups, rollups, formulas, per-entity documents (MD/HTML/PDF), REST API, web UI, CLI, and MCP server.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -28,6 +28,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/weave-local/weave"
+    "url": "https://github.com/grunion-ai/weave"
   }
 }

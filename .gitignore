@@ -1,4 +1,7 @@
 node_modules/
 demo-workspace.json
+uno.json
+weaver.json
+files/
 *.tmp
 .DS_Store
