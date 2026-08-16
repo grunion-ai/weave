@@ -120,7 +120,7 @@ async function main() {
         console.log(`Created docs workspace at ${weavePath}`);
       }
     }
-    const port = Number(flags.port ?? 4400);
+    const port = Number(flags.port ?? process.env.PORT ?? 4400);
     const { port: actual } = await startServer(w, { port });
     console.log(`Weave running at http://127.0.0.1:${actual}  (workspace: ${w.state.meta.name}, data: ${dataPath})`);
     console.log(`Docs workspace: http://127.0.0.1:${actual}/w/weave/`);
