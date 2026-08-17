@@ -183,3 +183,28 @@ test('the workspace activity feed is served, filtered and paged', async () => {
   assert.equal(one.data.kind, 'doc-updated');
   assert.equal((await api('GET', '/api/activity/nope:1')).status, 404);
 });
+
+/* A create that returns 201 having stored nothing is worse than a 400 (Issue
+   #33): PATCH accepts `body.values ?? body`, so POST must accept the same flat
+   body rather than answering "created" with an empty row. */
+test('POST /entities accepts a flat body, like PATCH does', async () => {
+  const created = await api('POST', '/api/tables/Task/entities',
+    { Name: 'Flat create', Estimate: 3 });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.fields.Name, 'Flat create', 'the name must survive the POST');
+  assert.equal(created.data.fields.Estimate, 3);
+
+  // Re-read from the server, not just the create response.
+  const read = await api('GET', `/api/entities/${created.data.id}`);
+  assert.equal(read.data.fields.Name, 'Flat create');
+
+  // A misspelled field fails loudly instead of creating a blank row. It is a
+  // 404 because the field is what was not found — the same code PATCH already
+  // returns through the same validation, which is the consistency at issue.
+  const bad = await api('POST', '/api/tables/Task/entities', { Nmae: 'typo' });
+  assert.equal(bad.status, 404);
+  assert.match(bad.data.error, /Nmae/, 'the error names the offending field');
+
+  const badPatch = await api('PATCH', `/api/entities/${created.data.id}`, { Nmae: 'typo' });
+  assert.equal(badPatch.status, 404, 'create and update answer a bad field the same way');
+});

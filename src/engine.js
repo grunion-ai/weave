@@ -147,6 +147,10 @@ function normalizeDefinition(raw, depth) {
 // Narrower than this and a column can hold neither a chip nor a resize grip.
 const MIN_COLUMN_WIDTH = 60;
 
+// The documented keys of a createEntity input. Everything else in the object
+// is treated as a field value, so a flat create behaves like a flat update.
+const CREATE_INPUT_KEYS = new Set(['values', 'name', 'doc', 'docs']);
+
 export { WeaveError };
 
 function nowISO() {
@@ -615,7 +619,16 @@ export class Weave {
 
   createEntity(dbRef, input = {}, { depth = 0 } = {}) {
     const db = this.getTable(dbRef);
-    const values = { ...(input.values ?? {}) };
+    // Create must be as forgiving as update (Issue #33). updateEntity takes
+    // values by name and the REST layer hands it `body.values ?? body`, so a
+    // flat {Name, Estimate} object is the shape callers reach for first.
+    // Reading only `input.values` turned that into a 201 with an empty row —
+    // silent data loss, and how Feature #66 ended up blank. Anything that is
+    // not a documented key is a value; a misspelled field still fails loudly
+    // in #applyValues rather than vanishing.
+    const flat = Object.fromEntries(
+      Object.entries(input).filter(([k]) => !CREATE_INPUT_KEYS.has(k)));
+    const values = { ...flat, ...(input.values ?? {}) };
     if (input.name != null && values.Name == null) values.Name = input.name;
     const e = {
       id: uuid(),

@@ -487,3 +487,33 @@ test('activityFeed reads every event across the workspace', () => {
   assert.equal(w.activityFeed({ limit: 2 }).items.length, 2);
   assert.equal(w.activityFeed({ limit: 2 }).total, feed.total, 'total counts the feed, not the page');
 });
+
+/* ---------- create is as forgiving as update (Issue #33) ----------
+   updateEntity takes values by name, and the REST layer hands it `body.values
+   ?? body`, so a flat {Name, Status} object is the shape callers reach for
+   first. createEntity read only `input.values`, so the same flat object
+   produced a row with nothing in it — and a 201 saying it worked. */
+
+test('createEntity accepts values at the top level', () => {
+  const { w, tasks } = buildWorkspace();
+
+  const flat = w.createEntity(tasks, { Name: 'Flat', Estimate: 5, Priority: 'High' });
+  const read = w.readEntity(flat.id);
+  assert.equal(read.name, 'Flat', 'a top-level Name is a value, not a discarded key');
+  assert.equal(read.fields.Estimate, 5);
+  assert.equal(read.fields.Priority, 'High');
+
+  // The documented shapes keep working, and `values` stays authoritative when
+  // both are present — same precedence as `input.name` losing to values.Name.
+  const nested = w.createEntity(tasks, { name: 'Nested', values: { Estimate: 1 } });
+  assert.equal(w.readEntity(nested.id).fields.Estimate, 1);
+  const both = w.createEntity(tasks, { Estimate: 9, values: { Estimate: 2 } });
+  assert.equal(w.readEntity(both.id).fields.Estimate, 2, 'explicit values win over flat keys');
+
+  // Reserved keys are still reserved, not mistaken for fields.
+  const doc = w.createEntity(tasks, { name: 'Doc', doc: '# hi' });
+  assert.match(w.getDoc(doc.id), /# hi/);
+
+  // A misspelled field is now loud instead of silently dropped.
+  assert.throws(() => w.createEntity(tasks, { Nmae: 'typo' }), /not found/);
+});
