@@ -1827,6 +1827,17 @@ async function showEntity(id) {
     });
   }
 
+  /* Collections of related records go under the documents, in the body rather
+     than the side panel: they are work to do, not attributes to read. Each is
+     fetched on its own so a slow one cannot hold up the page. */
+  for (const f of db.fields.filter((x) => x.type === 'relation' && x.many)) {
+    const slot = el('div', {});
+    left.append(slot);
+    relatedGrid(entity, f, refresh)
+      .then((grid) => { if (grid) slot.replaceWith(grid); })
+      .catch((err) => toast(err.message, true));
+  }
+
   /* Comments panel */
   const commentsBody = el('div', { class: 'card-body' });
   const commentsPanel = el('div', { class: 'card panel' },
@@ -1856,8 +1867,14 @@ async function showEntity(id) {
     fieldsBody);
   for (const f of db.fields) {
     if (f.name === 'Name' || f.type === 'document') continue;
+    // A collection relation is the grid in the body; a row of chips repeating
+    // it here would be the same links twice, one of them worse.
+    if (f.type === 'relation' && f.many) continue;
     fieldsBody.append(el('div', { class: 'fieldrow' },
       el('label', {}, fieldNameLabel(f)), editorFor(f, entity, db, () => refresh())));
+  }
+  if (!fieldsBody.childElementCount) {
+    fieldsBody.append(el('span', { class: 'wv-empty' }, 'This table has no fields beyond its name.'));
   }
   // The side column reads top-down as metadata about the entity: what it is
   // (Fields), what people said (Comments), what happened (Activity). That
@@ -1992,6 +2009,104 @@ function addRelationDialog(db) {
     await loadSchema();
     openSchemaEditor(allTables().find((d) => d.id === db.id));
   });
+}
+
+/* ---------- related records, rendered as the table they live in ----------
+   A collection relation was chips in the Fields panel: enough to see what is
+   linked, useless for working on it — every edit meant opening five other
+   pages. It renders here as the target table's own grid, built from the same
+   parts as the table view (its columns, editorFor cells, the picker routing),
+   so a Project page is where its Tasks are worked on. Single-value relations
+   stay chips: a one-row grid is a worse chip. */
+async function relatedGrid(entity, f, onSaved) {
+  const target = allTables().find((d) => d.id === f.targetDbId)
+    ?? allTables().find((d) => d.qualified === f.targetDb);
+  if (!target) return null;
+  const val = entity.fields[f.name];
+  const linked = (Array.isArray(val) ? val : [val]).filter(Boolean);
+  const rows = linked.length
+    ? (await api('POST', `/tables/${target.id}/query`, { where: [['id', 'in', linked.map((s) => s.id)]] })).items
+    : [];
+  // Every column the target table has, minus its documents (edited on their
+  // own page) and minus the relation pointing back at the record you are
+  // already looking at.
+  const cols = target.fields.filter((c) => c.type !== 'document' && c.name !== f.inverseField);
+  const colCount = cols.length + 2;
+
+  const link = async (targets) => {
+    await api('POST', `/entities/${entity.id}/link`, { field: f.name, targets });
+    await onSaved();
+  };
+
+  const body = el('tbody', {},
+    ...rows.map((item) => el('tr', {
+      class: 'entity-row',
+      onclick: (e) => {
+        const pick = rowClickTarget(e);
+        if (pick === 'ignore') return;
+        if (pick) return openCellPicker(pick);
+        openEntity(item.id);
+      },
+    },
+      el('td', { class: 'pid-cell' },
+        el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`)),
+      ...cols.map((c) => el('td', {
+        class: (c.type === 'number' ? 'num' : '')
+          + (PICKER_FIELD_TYPES.includes(c.type) ? ' cell-pick' : READONLY_FIELD_TYPES.includes(c.type) ? ' cell-computed' : ''),
+      }, editorFor(c, item, target, onSaved, { compact: true }))),
+      el('td', {}, el('button', {
+        class: 'btn btn-sm btn-ghost-secondary tiny unlink-btn', title: `Unlink from ${f.name}`,
+        onclick: async (e) => {
+          e.stopPropagation();
+          try {
+            await api('POST', `/entities/${entity.id}/unlink`, { field: f.name, targets: [item.id] });
+            await onSaved();
+          } catch (err) { toast(err.message, true); }
+        },
+      }, '×')))),
+    /* Adding grows the table from the bottom, as it does in the table view —
+       and a row added HERE is created and linked in one step, because the
+       reason to add it is that it belongs to this record. */
+    el('tr', { class: 'add-entity-row' },
+      el('td', { colspan: String(colCount) },
+        el('button', {
+          class: 'add-entity-btn', type: 'button',
+          onclick: async () => {
+            try {
+              const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: `New ${target.name}` } });
+              await link([made.id]);
+            } catch (err) { toast(err.message, true); }
+          },
+        }, `+ New ${target.name}`),
+        el('button', {
+          class: 'add-entity-btn', type: 'button',
+          onclick: async () => {
+            const list = await api('POST', `/tables/${target.id}/query`, { select: ['Name'] });
+            const already = new Set(linked.map((s) => s.id));
+            const options = list.items.filter((i) => !already.has(i.id));
+            if (!options.length) return toast('Nothing left to link');
+            modal(`Link ${f.name}`, [
+              el('select', { name: 'target', class: 'form-select full', style: 'width:100%' },
+                ...options.map((o) => el('option', { value: o.id }, `#${o.publicId} ${o.name}`))),
+            ], async (fd) => link([fd.get('target')]), 'Link');
+          },
+        }, '+ Link existing'))));
+
+  return el('section', { class: 'related-section' },
+    el('div', { class: 'related-head' },
+      el('span', { class: 'related-name' }, f.name),
+      el('span', { class: 'related-count' }, `${rows.length}`),
+      el('a', { class: 'panel-link', href: `#/table/${target.id}` }, `${target.qualified} →`)),
+    rows.length
+      ? el('div', { class: 'card' },
+        el('table', { class: 'table table-sm table-vcenter card-table table-hover wv-grid' },
+          el('thead', {}, el('tr', {},
+            el('th', { class: 'pid-head' }, '#'),
+            ...cols.map((c) => el('th', {}, el('span', { class: 'col-label' }, fieldNameLabel(c)))),
+            el('th', {}, ''))),
+          body))
+      : el('div', { class: 'card' },
+        el('table', { class: 'table table-sm wv-grid' }, body)));
 }
 
 /* ---------- the Activity system table ----------

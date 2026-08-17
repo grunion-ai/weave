@@ -1186,6 +1186,9 @@ export class Weave {
       const next = [];
       const results = [];
       for (const { e: ce, db: cdb } of current) {
+        // `id` alongside publicId: asking for a known set of rows by identity
+        // is what an embedded related grid does, and a name can collide.
+        if (parts[i] === 'id') { results.push(ce.id); continue; }
         if (parts[i] === 'publicId' || parts[i] === 'Public Id') { results.push(ce.publicId); continue; }
         if (parts[i] === 'createdAt') { results.push(ce.createdAt); continue; }
         if (parts[i] === 'updatedAt') { results.push(ce.updatedAt); continue; }

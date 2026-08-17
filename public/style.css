@@ -375,6 +375,24 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
    get out of its way: a quiet line of text, not a card header. Controls stay
    invisible until the section is hovered — the document is the content, the
    title is a label. */
+/* ---------- related records embedded in an entity body ----------
+   The head reads like a document section head — quiet, uppercase, out of the
+   grid's way — because the grid under it is the content. */
+.related-section { margin: 0 0 26px; }
+.related-head { display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; }
+.related-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
+.related-count { font-size: 11px; color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); border-radius: 999px; padding: 0 6px; }
+/* Two ways to add a row belong on one line: "new" and "link existing" are the
+   same decision, not two rows of chrome. */
+.related-section .add-entity-row td { display: flex; }
+.related-section .add-entity-btn { width: auto; }
+/* The slack goes to the name, not to the id column — an embedded grid has
+   fewer columns than a table view, so there is slack to place. */
+.related-section .wv-grid th.pid-head, .related-section .wv-grid td.pid-cell { width: 1%; white-space: nowrap; }
+.unlink-btn { opacity: 0; transition: opacity .12s ease; }
+.entity-row:hover .unlink-btn, .entity-row:focus-within .unlink-btn { opacity: .7; }
+.unlink-btn:hover { opacity: 1; }
+
 /* The computed-field glyph on a field NAME: an annotation, so it never
    competes with the name it hangs off. */
 .field-mark { font-size: .72em; font-weight: 400; color: var(--tblr-secondary); margin-left: 2px; cursor: help; }

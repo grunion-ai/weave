@@ -570,3 +570,20 @@ test('field defaults: defined once, applied to every new row', () => {
   const copied = copy.getField(copy.getTable('Product/Task').id, 'Lane');
   assert.equal(copied.config.default, w.getField(tasks.id ?? tasks, 'Lane').config.default);
 });
+
+/* An embedded related-record grid asks one question — "these exact rows, with
+   all their fields" — and `id` was the one path a query could not name. */
+test('a query can filter on entity id', () => {
+  const { w, tasks } = buildWorkspace();
+  const a = w.createEntity(tasks, { name: 'A' });
+  const b = w.createEntity(tasks, { name: 'B' });
+  w.createEntity(tasks, { name: 'C' });
+
+  const picked = w.query(tasks, { where: [['id', 'in', [a.id, b.id]]] });
+  assert.equal(picked.total, 2);
+  assert.deepEqual(picked.items.map((i) => i.name).sort(), ['A', 'B']);
+  assert.equal(w.query(tasks, { where: [['id', '=', a.id]] }).items[0].name, 'A');
+  assert.equal(w.query(tasks, { where: [['id', 'in', []] ] }).total, 0);
+  // The rows come back whole, because the grid renders every column.
+  assert.ok('Estimate' in picked.items[0].fields, 'a filtered row is a full row');
+});

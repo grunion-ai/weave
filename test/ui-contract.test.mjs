@@ -126,7 +126,7 @@ test('row click on a picker cell opens the picker instead of the entity', () => 
   // Every clickable row surface (grid <tr>, list-row, board card) routes
   // through rowClickTarget before it may navigate.
   const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*openEntity\(/g)];
-  assert.equal(routed.length, 3, 'grid, list and board rows must all route clicks');
+  assert.equal(routed.length, 4, 'grid, list, board and embedded related rows must all route clicks');
   assert.equal((APP.match(/openEntity\(item\.id\)/g) ?? []).length, routed.length,
     'no row surface may call openEntity without routing first');
   assert.match(APP, /function rowClickTarget/);
@@ -207,9 +207,11 @@ test('the field "+" keeps relations and field management reachable', () => {
 test('full-width grid rows derive their span from one column count', () => {
   // The header gained a column; a restated `cols.length + N` would silently
   // under-span the doc and new-entity rows.
-  assert.match(APP, /const colCount = cols\.length \+ 3;/);
-  assert.doesNotMatch(APP, /colspan: String\(cols\.length/);
-  assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 2);
+  assert.match(APP, /const colCount = cols\.length \+ 3;/, 'the table view derives it once');
+  assert.match(APP, /const colCount = cols\.length \+ 2;/, 'so does the embedded related grid, from its own columns');
+  assert.doesNotMatch(APP, /colspan: String\(cols\.length/, 'never restated at a use site');
+  assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 3,
+    'doc row and new-entity row in the table view, plus the related grid\'s add row');
 });
 
 test('grid create controls are styled', () => {
@@ -917,4 +919,38 @@ test('the field dialogs offer a default value for the types that can hold one', 
   assert.match(read, /return null/, 'an emptied input clears the default');
   assert.match(read, /checkbox/, 'a checkbox default is a boolean, not the string "true"');
   assert.match(read, /Number\(/, 'a number default is a number');
+});
+
+/* ---------- related records are the table they live in (Feature #94) --------
+   Kyle: "show the table of related tasks as a sub table visible within the
+   project entity where the table is in the main body, the same structure as
+   our main table field rules etc, so you can interact with these related
+   referenced entities." A collection relation was a row of chips in the side
+   panel; it is now the target table's grid in the body, built from the same
+   parts as the table view. */
+
+test('a collection relation renders as the target table grid, in the body', () => {
+  const grid = fnBody('relatedGrid');
+  assert.match(grid, /editorFor\(/, 'cells are the same editors the table view uses');
+  assert.match(grid, /PICKER_FIELD_TYPES\.includes/, 'and carry the same picker/computed cell classes');
+  assert.match(grid, /rowClickTarget\(e\)/, 'so a click on a picker opens the picker, not the entity');
+  assert.match(grid, /openEntity\(item\.id\)/, 'and a click elsewhere opens the row');
+  assert.match(grid, /\['id', 'in', linked\.map/, 'the rows are fetched whole, by id');
+  assert.match(grid, /c\.name !== f\.inverseField/, 'the column pointing back at this record is dropped');
+
+  const body = fnBody('showEntity');
+  assert.match(body, /relatedGrid\(entity, f, refresh\)/, 'the entity page mounts one per collection relation');
+  assert.match(body, /x\.type === 'relation' && x\.many/, 'collections only — a single link stays a chip');
+  assert.match(body, /left\.append\(slot\)/, 'they live in the main body, under the documents');
+  assert.match(body, /if \(f\.type === 'relation' && f\.many\) continue;/,
+    'and are not repeated as chips in the Fields panel');
+});
+
+test('an embedded grid can add a record and link it in one step', () => {
+  const grid = fnBody('relatedGrid');
+  assert.match(grid, /api\('POST', `\/tables\/\$\{target\.id\}\/entities`/, 'new rows are created in the target table');
+  assert.match(grid, /link\(\[made\.id\]\)/, 'and linked immediately — that is why they were added here');
+  assert.match(grid, /'\/entities\/\$\{entity\.id\}\/unlink'|unlink/, 'a row can be unlinked without opening it');
+  assert.ok(rulesFor('.unlink-btn').opacity === '0', 'unlink is quiet until the row is hovered');
+  assert.equal(rulesFor('.entity-row:hover .unlink-btn').opacity, '.7');
 });
