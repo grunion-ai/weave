@@ -1450,30 +1450,50 @@ const DOC_SAVE_DEBOUNCE = 600;
 const liveEditors = new Set();
 const pendingDocSaves = new Map();
 
+/* Picking this item opens the ⌘K search instead of inserting text. It travels
+   through Vditor as a value, because a hint item can only insert — so the
+   editor's own input handler recognises the marker, takes it back out and
+   hands over to the picker. U+2063 is invisible and not something a writer
+   types by accident. */
+const ENTITY_LINK_MARKER = '⁣entity-link⁣';
+
 /* The block set. With the toolbar hidden this list is the ONLY way to reach a
    markdown construct, so anything missing here is unreachable. `insert` is
-   what replaces the typed "/query" — Vditor swaps the trigger for the value. */
+   what replaces the typed "/query" — Vditor swaps the trigger for the value.
+
+   Line-prefix blocks carry placeholder text on purpose. A marker with nothing
+   after it is not a block: "# " round-tripped through Lute as "#\n" and "> "
+   vanished to "\n", so every heading, quote and list item the menu inserted
+   came out empty. Placeholders make the block real and visible, and the
+   writer types over them. */
 function slashItems() {
   return [
-    { label: 'Heading 1', insert: '# ' },
-    { label: 'Heading 2', insert: '## ' },
-    { label: 'Heading 3', insert: '### ' },
+    { label: 'Heading 1', insert: '# Heading' },
+    { label: 'Heading 2', insert: '## Heading' },
+    { label: 'Heading 3', insert: '### Heading' },
     { label: 'Bold', insert: '**text**' },
     { label: 'Italic', insert: '*text*' },
     { label: 'Strikethrough', insert: '~~text~~' },
     { label: 'Inline code', insert: '`code`' },
-    { label: 'Code block', insert: '```\n\n```' },
-    { label: 'Quote', insert: '> ' },
-    { label: 'Bulleted list', insert: '- ' },
-    { label: 'Numbered list', insert: '1. ' },
-    { label: 'Task list', insert: '- [ ] ' },
-    { label: 'Table', insert: '| Column | Column |\n| --- | --- |\n|  |  |' },
+    { label: 'Code block', insert: '```\ncode\n```' },
+    { label: 'Quote', insert: '> Quote' },
+    { label: 'Bulleted list', insert: '- List item' },
+    { label: 'Numbered list', insert: '1. List item' },
+    { label: 'Task list', insert: '- [ ] To do' },
+    { label: 'Table', insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
     { label: 'Divider', insert: '\n---\n' },
     { label: 'Link', insert: '[text](url)' },
     { label: 'Image', insert: '![alt](url)' },
     { label: 'Mermaid diagram', insert: '```mermaid\ngraph TD\n  A --> B\n```' },
-    { label: 'Entity link', insert: '[[Table#1]]' },
+    { label: 'Entity link', insert: ENTITY_LINK_MARKER },
   ];
+}
+
+// [[Space/Table#12|Name]] — qualified, so a table name shared by two spaces
+// cannot resolve to the wrong one. The label keeps the chip readable when the
+// reference is read as plain markdown.
+function entityReference(hit) {
+  return `[[${hit.db}#${hit.publicId}|${hit.name}]]`;
 }
 
 function slashHint(query) {
@@ -1521,11 +1541,43 @@ function mountDocEditor(host, { value, placeholder, onInput }) {
       theme: { current: t.content, path: '/vendor/vditor/dist/css/content-theme' },
     },
     hint: { emoji: {}, extend: [{ key: '/', hint: slashHint }] },
-    input: (v) => onInput(v),
+    input: (v) => {
+      // The entity-link command arrives here as its marker, never as content.
+      if (v.includes(ENTITY_LINK_MARKER)) return pickEntityLink(editor, v, onInput);
+      onInput(v);
+    },
   });
   liveEditors.add(editor);
   return editor;
 }
+
+/* Hands off to the same search the ⌘K palette runs, so one search surface
+   serves navigation and referencing. Picking writes the reference where the
+   marker was; dismissing leaves the document as it was. */
+function pickEntityLink(editor, value, onInput) {
+  const settle = (replacement) => {
+    const next = value.replace(ENTITY_LINK_MARKER, replacement);
+    editor.setValue(next);
+    editor.focus();
+    onInput(next);
+  };
+  openCommandK({
+    entitiesOnly: true,
+    onPick: (hit) => settle(entityReference(hit)),
+    onDismiss: () => settle(''),
+  });
+}
+
+/* Exposed for the browser-driven slash-command suite: what a menu item
+   produces depends on Lute and contenteditable, so the tests need the live
+   instance to read the document back rather than scraping the DOM. */
+window.__weaveEditors = liveEditors;
+window.__weaveDocSaves = pendingDocSaves;
+/* Same flush the page runs on unload and on route change. Exposed because a
+   headless page is backgrounded, and Chrome throttles timers there — the
+   debounce is not a usable clock in a test, so the suite asks for the write
+   instead of waiting for one. */
+window.__weaveFlushDocSaves = flushDocSaves;
 
 function retheme() {
   const t = vditorTheme();
@@ -1945,14 +1997,27 @@ function wireSearchButton() {
   $('#search-btn')?.addEventListener('click', openCommandK);
 }
 
-function openCommandK() {
+/* One search surface. By default a pick navigates; callers that need a
+   reference rather than a jump — the editor's entity-link command — pass
+   their own onPick and get the hit back instead. */
+function openCommandK({ onPick = null, onDismiss = null, entitiesOnly = false } = {}) {
   if ($('#cmdk-back')) return;
-  const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) back.remove(); } });
-  const input = el('input', { id: 'cmdk-input', placeholder: 'Search workspace, spaces, tables, entities…', autocomplete: 'off' });
+  let picked = false;
+  const dismiss = () => { back.remove(); if (!picked) onDismiss?.(); };
+  const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
+  const input = el('input', {
+    id: 'cmdk-input', autocomplete: 'off',
+    placeholder: entitiesOnly ? 'Search entities to link…' : 'Search workspace, spaces, tables, entities…',
+  });
   const list = el('div', { id: 'cmdk-results' });
   let hits = [], rowEls = [], sel = 0;
   let timer;
-  const pick = (hit) => { back.remove(); navigateToResult(hit); };
+  const pick = (hit) => {
+    picked = true;
+    back.remove();
+    if (onPick) onPick(hit);
+    else navigateToResult(hit);
+  };
   const setSel = (i, scroll = true) => {
     if (!rowEls.length) return;
     sel = ((i % rowEls.length) + rowEls.length) % rowEls.length; // wrap at ends
@@ -1965,6 +2030,8 @@ function openCommandK() {
       const q = input.value.trim();
       if (!q) { hits = []; rowEls = []; list.replaceChildren(); return; }
       hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`);
+      // Only an entity can be the target of a [[…]] reference.
+      if (entitiesOnly) hits = hits.filter((h) => h.kind === 'entity');
       rowEls = hits.map((h, i) => {
         const row = resultRow(h, pick);
         row.addEventListener('mouseenter', () => setSel(i, false));
@@ -1978,7 +2045,7 @@ function openCommandK() {
     if (e.key === 'ArrowDown') { e.preventDefault(); setSel(sel + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(sel - 1); }
     else if (e.key === 'Enter' && hits.length) pick(hits[sel] ?? hits[0]);
-    else if (e.key === 'Escape') back.remove();
+    else if (e.key === 'Escape') dismiss();
   });
   back.append(el('div', { id: 'cmdk' },
     input,

@@ -45,6 +45,9 @@ test('the vendored tree carries every asset the editor loads at runtime', () => 
     'dist/js/i18n/en_US.js',
     'dist/js/icons/ant.js',
     'dist/js/highlight.js/highlight.min.js',
+    // Vditor requests this straight after highlight.min.js. Pruning it left a
+    // 404 in every document that contains a code block.
+    'dist/js/highlight.js/third-languages.js',
     'dist/js/highlight.js/styles/github.min.css',
     'dist/js/highlight.js/styles/github-dark.min.css',
     'dist/css/content-theme/light.css',
