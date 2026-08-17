@@ -28,11 +28,15 @@ const svgEl = (tag, attrs = {}, ...children) => {
 
 /* Tabler-house chevron: stroked, round caps, 24-unit box so it sizes off the
    CSS box rather than a font metric. Text glyphs (▾) cannot match the stroke
-   weight of the surrounding chrome — see the nav-caret UAT note in style.css. */
+   weight of the surrounding chrome — see the nav-caret UAT note in style.css.
+
+   Points RIGHT at rest and is turned down by CSS rotation, never by swapping
+   the path: one glyph means the open and closed states cannot drift apart,
+   and the turn is animatable. Hairline stroke per Kyle's "Routines ›". */
 const chevron = () => svgEl('svg', {
-  viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2',
+  viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5',
   'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true',
-}, svgEl('path', { d: 'M6 9l6 6l6 -6' }));
+}, svgEl('path', { d: 'M9 6l6 6l-6 6' }));
 
 // Workspace scoping: the app is served at / (default workspace) and at
 // /w/<name>/ for sibling workspaces — one SPA, path-scoped API + permalinks.
@@ -230,8 +234,11 @@ function renderNav() {
   for (const space of state.schema) {
     const isFolded = folded.has(space.spaceId);
     const spaceRow = el('div', { class: 'nav-space-row' },
+      el('a', { class: 'nav-space', href: `#/space/${space.spaceId}` }, space.space),
+      // Trails the label, "Routines ›" — the caret reads as part of the space
+      // name, not as a gutter control. Open is a rotation of the same glyph.
       el('button', {
-        class: 'nav-caret' + (isFolded ? ' folded' : ''),
+        class: 'nav-caret' + (isFolded ? '' : ' open'),
         title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`, type: 'button',
         'aria-expanded': String(!isFolded),
         onclick: () => {
@@ -241,7 +248,6 @@ function renderNav() {
           renderNav();
         },
       }, chevron()),
-      el('a', { class: 'nav-space', href: `#/space/${space.spaceId}` }, space.space),
       el('button', {
         class: 'btn btn-sm btn-icon btn-ghost-secondary tiny nav-add-table',
         title: `New table in ${space.space}`, type: 'button',

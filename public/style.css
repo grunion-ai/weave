@@ -76,12 +76,16 @@ a.nav-space:hover { color: var(--tblr-primary); }
    beside the rail) instead of stacking as a workspace chip. */
 #nav-expand { position: fixed; top: 10px; left: 60px; z-index: 60; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
 #nav-expand:hover { color: var(--tblr-primary); border-color: var(--tblr-primary); }
-/* Disclosure caret: a stroked chevron in a full 24px target, LEADING the
-   space label. A 12px `▾` glyph in an 18px box read as a speck and could not
-   match the stroke weight of the rest of the chrome (UAT, 2026-08-16). */
-.nav-caret { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; margin-left: -4px; padding: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); cursor: pointer; line-height: 0; transition: transform .12s ease, color .12s ease, background-color .12s ease; }
+/* Disclosure caret: a hairline chevron in a full 24px target, TRAILING the
+   space label — "Routines ›" (UAT round 2, Kyle, 2026-08-16). It points right
+   at rest and turns down when open, so one glyph covers both states.
+   Round 1 fixed the glyph itself: a 12px `▾` in an 18px box read as a speck
+   and could not match the chrome's stroke weight. The 24px target is that
+   round's fix and stays — the reference reads light because the stroke is a
+   hairline and the color is muted, not because the target is small. */
+.nav-caret { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; margin-left: -2px; padding: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); cursor: pointer; line-height: 0; transition: transform .12s ease, color .12s ease, background-color .12s ease; }
 .nav-caret svg { width: 15px; height: 15px; stroke: currentColor; }
-.nav-caret.folded { transform: rotate(-90deg); }
+.nav-caret.open { transform: rotate(90deg); }
 .nav-caret:hover, .nav-space-row:hover .nav-caret { color: var(--tblr-body-color); }
 .nav-caret:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
 .nav-caret:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }

@@ -456,12 +456,18 @@ test('comments and activity sit under fields in the side column', () => {
 });
 
 /* ---------- space disclosure caret (Kyle, 2026-08-16) ----------
-   UAT: "space carrots are still too small and the wrong design". The fold
-   control was a 12px `▾` text glyph in an 18px box, trailing the space name.
-   Two separate faults: a sub-24px hit target, and a text glyph whose weight
-   and baseline cannot match the rest of the chrome. Replaced with a stroked
-   chevron drawn as SVG, in a 24px target, LEADING the label — the standard
-   disclosure position, so the caret column lines up down the whole nav. */
+   UAT round 1: "space carrots are still too small and the wrong design". The
+   fold control was a 12px `▾` text glyph in an 18px box. Two separate faults:
+   a sub-24px hit target, and a text glyph whose weight and baseline cannot
+   match the rest of the chrome. Replaced with a stroked SVG chevron in a 24px
+   target.
+
+   UAT round 2 (reference image, "Routines ›"): the caret TRAILS the label and
+   points right, drawn thin. Round 1 had moved it to lead the label; the
+   reference overrides that. The two rounds agree on everything else, so the
+   24px target survives — the reference reads light because of stroke weight
+   and color, not because the target shrank. Resting state points right; the
+   expanded state rotates it down, so the glyph itself never changes. */
 
 test('the space caret is a real hit target, not a 18px sliver', () => {
   const caret = rulesFor('.nav-caret');
@@ -478,18 +484,33 @@ test('the space caret is a drawn chevron, not a text glyph', () => {
   assert.match(body, /chevron\(/, 'the caret renders the shared chevron() svg');
   const at = APP.indexOf('chevron = (');
   assert.ok(at > 0, 'chevron() must be defined in app.js');
-  assert.match(APP.slice(at, at + 400), /'stroke-linecap': 'round'/,
+  const decl = APP.slice(at, at + 400);
+  assert.match(decl, /'stroke-linecap': 'round'/,
     'stroked chevron, round caps — Tabler house style');
   const icon = rulesFor('.nav-caret svg');
   assert.ok(px(icon.width) >= 14, `chevron glyph must be >= 14px, got ${icon.width}`);
+
+  // The reference chevron is a hairline, not the 2px chrome stroke.
+  const weight = Number(decl.match(/'stroke-width': '([\d.]+)'/)?.[1]);
+  assert.ok(weight > 0 && weight <= 1.5, `chevron stroke must be <= 1.5, got ${weight}`);
+  // It points right at rest; rotation — not a second path — supplies "open".
+  assert.match(decl, /d: 'M9 6l6 6l-6 6'/, 'the resting chevron points right');
 });
 
-test('the caret leads the space label', () => {
+test('the caret trails the space label and rotates to open', () => {
   const fn = APP.slice(APP.indexOf('function renderNav'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
   const row = body.indexOf("class: 'nav-space-row'");
-  assert.ok(body.indexOf('nav-caret', row) < body.indexOf("class: 'nav-space'", row),
-    'the caret is appended before the space link — disclosure controls lead');
+  assert.ok(body.indexOf('nav-caret', row) > body.indexOf("class: 'nav-space'", row),
+    'the caret is appended after the space link — it trails the label ("Routines ›")');
+
+  // Resting = right (no transform). Open = down. If the folded state carried
+  // the rotation instead, a collapsed nav would show a row of down-chevrons.
+  const caret = rulesFor('.nav-caret');
+  assert.ok(!caret.transform || caret.transform === 'none',
+    `the resting caret must not be rotated, got ${caret.transform}`);
+  assert.match(rulesFor('.nav-caret.open').transform, /rotate\(90deg\)/,
+    'the expanded caret rotates the right-pointing glyph down');
 });
 
 /* ---------- rail load shift (Kyle, 2026-08-16) ----------
