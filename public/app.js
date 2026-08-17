@@ -1067,6 +1067,34 @@ function fieldMenuButton(db, f) {
   return btn;
 }
 
+/* A field definition can name the value a new row starts with. The engine's
+   DEFAULTABLE_TYPES is the authority — it refuses the rest — so the dialogs
+   offer the input for exactly those types. A workflow is absent because its
+   default is one of its states. */
+const DEFAULTABLE_FIELD_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
+
+function defaultValueInput(type, value) {
+  if (!DEFAULTABLE_FIELD_TYPES.includes(type)) return null;
+  return el('input', {
+    name: 'default', class: 'form-control full', style: 'width:100%',
+    value: Array.isArray(value) ? value.join(', ') : (value ?? ''),
+    placeholder: type === 'checkbox' ? 'Default for new rows: true / false' : 'Default value for new rows (optional)',
+  });
+}
+
+/* Empty means no default — which is also how one is removed, since the engine
+   reads null as the clear. The form only ever hands back strings, so the value
+   is put back into its own type before it is sent. */
+function defaultValueFromForm(fd, type) {
+  if (!DEFAULTABLE_FIELD_TYPES.includes(type)) return undefined;
+  const raw = String(fd.get('default') ?? '').trim();
+  if (!raw) return null;
+  if (type === 'checkbox') return ['true', 'yes', '1'].includes(raw.toLowerCase());
+  if (type === 'number') return Number(raw);
+  if (type === 'multiselect') return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return raw;
+}
+
 /* Edit, not replace: the engine patches a field in place, so options and
    states can change without the column's values going anywhere. Type itself
    is not editable here — that is a data coercion, and it stays refused until
@@ -1093,6 +1121,8 @@ function editFieldDialog(db, f) {
       value: f.expression ?? '', placeholder: 'e.g. if(Estimate > 5, "big", "small")',
     }));
   }
+  const dflt = defaultValueInput(f.type, f.default);
+  if (dflt) fields.push(dflt);
   fields.push(el('div', { class: 'full modal-note' }, `${f.type} field — the type cannot be changed here`));
 
   modal(`Edit ${f.name}`, fields, async (fd) => {
@@ -1110,6 +1140,10 @@ function editFieldDialog(db, f) {
     } else if (f.type === 'formula') {
       patch.config = { expression: fd.get('expression') };
     }
+    // Merged, not assigned: a type's own config and its default are edited in
+    // the same dialog and must not overwrite each other.
+    const nextDefault = defaultValueFromForm(fd, f.type);
+    if (nextDefault !== undefined) patch.config = { ...(patch.config ?? {}), default: nextDefault };
     await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, patch);
     await loadSchema();
     showDatabase(db.id);
@@ -1902,6 +1936,13 @@ function addFieldDialog(db) {
     } else if (t === 'formula') {
       extra.append(el('input', { name: 'expression', class: 'form-control', placeholder: 'e.g. if(Estimate > 5, "big", "small")', style: 'width:100%' }));
     }
+    // Redrawn with the rest of the type's config, so switching type to one that
+    // cannot default takes the input away with it.
+    const dflt = defaultValueInput(t);
+    if (dflt) {
+      dflt.style.marginTop = '6px';
+      extra.append(dflt);
+    }
   };
   typeSel.addEventListener('change', drawExtra);
   drawExtra();
@@ -1925,6 +1966,8 @@ function addFieldDialog(db) {
     } else if (type === 'formula') {
       config.expression = fd.get('expression');
     }
+    const dflt = defaultValueFromForm(fd, type);
+    if (dflt !== undefined && dflt !== null) config.default = dflt;
     await api('POST', `/tables/${db.id}/fields`, { name: fd.get('name'), type, config });
     await loadSchema();
     openSchemaEditor(allTables().find((d) => d.id === db.id));

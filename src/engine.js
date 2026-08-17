@@ -41,6 +41,10 @@ export function parseCSV(text) {
 
 const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field'];
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
+/* Types whose definition can name the value a new row starts with. Workflow is
+   absent on purpose: its default is one of its states, which is where it has
+   always lived. */
+const DEFAULTABLE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 /* What a document edit actually did, in the terms a reader of the feed needs:
    where it landed, how much text came and went, and the first line that
@@ -434,6 +438,9 @@ export class Weave {
       if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
       field.config = { expression: config.expression };
     }
+    if (config.default !== undefined && config.default !== null) {
+      field.config.default = this.#validateDefault(field, config.default);
+    }
 
     db.fields[field.id] = field;
     db.fieldOrder.push(field.id);
@@ -487,6 +494,12 @@ export class Weave {
         else if (typeof width !== 'number' || !Number.isFinite(width) || width < MIN_COLUMN_WIDTH) {
           throw new WeaveError(`Column width must be a number of at least ${MIN_COLUMN_WIDTH}px`, 'invalid');
         } else field.config.width = Math.round(width);
+      }
+      // The default rides alongside the type config for the same reason width
+      // does: editing one must not clobber the other. null clears it.
+      if ('default' in patch.config) {
+        if (patch.config.default === null) delete field.config.default;
+        else field.config.default = this.#validateDefault(field, patch.config.default);
       }
       if (field.type === 'select' || field.type === 'multiselect') {
         if (patch.config.options) {
@@ -652,10 +665,19 @@ export class Weave {
       const f = this.#resolveDocField(db, fieldName);
       e.docs[f.id] = String(md);
     }
-    // Default workflow states.
+    /* Where a new row starts: a workflow's default state, and every other
+       field's configured default — but only for fields this create did not
+       name. Naming a field is a choice, including naming it empty. */
+    const named = new Set();
+    for (const key of Object.keys(values)) {
+      const f = this.findField(db, key);
+      if (f) named.add(f.id);
+    }
     for (const f of Object.values(db.fields)) {
       if (f.type === 'workflow') {
         e.values[f.id] = f.config.states.find((s) => s.default)?.id ?? f.config.states[0].id;
+      } else if (f.config?.default !== undefined && !named.has(f.id)) {
+        e.values[f.id] = f.config.default;
       }
     }
     this.state.entities[e.id] = e;
@@ -719,6 +741,18 @@ export class Weave {
       if (!isCreate) this.#logActivity(e, 'field-updated', { field: field.name, from: old ?? null, to: val });
       this.#runAutomations(db, e, { type: 'field-updated', fieldId: field.id }, depth);
     }
+  }
+
+  /* A default is a value, so it is validated by the field that will hold it —
+     the same call the row itself goes through, at definition time instead of
+     write time. Types with nothing to default say so: a computed field has no
+     value of its own, a document starts empty, a relation points at rows that
+     do not exist yet, and a workflow already has a default state. */
+  #validateDefault(field, raw) {
+    if (!DEFAULTABLE_TYPES.includes(field.type)) {
+      throw new WeaveError(`A ${field.type} field cannot carry a default value`, 'invalid');
+    }
+    return this.#validateValue(field, raw);
   }
 
   #validateValue(field, raw) {
@@ -1659,6 +1693,7 @@ export class Weave {
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
           }
           if (f.type === 'formula') out.expression = f.config.expression;
+          if (f.config?.default !== undefined) out.default = f.config.default;
           return out;
         }),
       })),

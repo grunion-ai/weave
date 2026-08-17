@@ -127,7 +127,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_field',
-    description: 'Add a field. Types: text, number, date, daterange, checkbox, url, email, select, multiselect, workflow, lookup, rollup, formula. config: {options:[...]} for selects; {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count,sum,avg,min,max,join); {expression} for formula.',
+    description: 'Add a field. Types: text, number, date, daterange, checkbox, url, email, select, multiselect, workflow, lookup, rollup, formula. config: {options:[...]} for selects; {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count,sum,avg,min,max,join); {expression} for formula. Any of text, number, date, daterange, checkbox, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead).',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },

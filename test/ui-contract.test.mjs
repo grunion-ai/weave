@@ -894,3 +894,27 @@ test('a document event reads as what changed, not that something changed', () =>
     assert.match(sum, new RegExp(`d\\.${part}`), `the summary uses the enriched ${part}`);
   }
 });
+
+/* ---------- a field definition can name what a new row starts with ----------
+   The engine takes `config.default` on the defaultable types and rejects it on
+   the rest, so the dialogs must offer the input for exactly those types, and
+   an emptied input must CLEAR the default rather than leave it in place. */
+
+test('the field dialogs offer a default value for the types that can hold one', () => {
+  assert.match(APP, /const DEFAULTABLE_FIELD_TYPES = \[([^\]]*)\]/, 'the client knows which types default');
+  const listed = APP.match(/const DEFAULTABLE_FIELD_TYPES = \[([^\]]*)\]/)[1];
+  for (const t of ['text', 'number', 'date', 'checkbox', 'url', 'email', 'select', 'multiselect']) {
+    assert.ok(listed.includes(`'${t}'`), `${t} takes a default`);
+  }
+  for (const t of ['workflow', 'document', 'formula', 'rollup', 'lookup', 'relation']) {
+    assert.ok(!listed.includes(`'${t}'`), `${t} must not offer one — the engine refuses it`);
+  }
+  for (const fn of ['addFieldDialog', 'editFieldDialog']) {
+    assert.match(fnBody(fn), /defaultValueInput\(/, `${fn}() shows the input`);
+    assert.match(fnBody(fn), /defaultValueFromForm\(/, `${fn}() reads it back`);
+  }
+  const read = fnBody('defaultValueFromForm');
+  assert.match(read, /return null/, 'an emptied input clears the default');
+  assert.match(read, /checkbox/, 'a checkbox default is a boolean, not the string "true"');
+  assert.match(read, /Number\(/, 'a number default is a number');
+});

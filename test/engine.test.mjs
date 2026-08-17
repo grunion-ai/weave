@@ -517,3 +517,56 @@ test('createEntity accepts values at the top level', () => {
   // A misspelled field is now loud instead of silently dropped.
   assert.throws(() => w.createEntity(tasks, { Nmae: 'typo' }), /not found/);
 });
+
+/* A field definition can carry the value a new row starts with. Validated when
+   the field is defined, so a definition can never hold a value the same field
+   would reject on a row. */
+test('field defaults: defined once, applied to every new row', () => {
+  const { w, tasks } = buildWorkspace();
+  w.addField(tasks, { name: 'Effort', type: 'number', config: { default: 3 } });
+  w.addField(tasks, { name: 'Lane', type: 'select', config: { options: ['Now', 'Next'], default: 'Next' } });
+  w.addField(tasks, { name: 'Blocked', type: 'checkbox', config: { default: true } });
+
+  const fresh = w.readEntity(w.createEntity(tasks, { name: 'Fresh' }).id);
+  assert.equal(fresh.fields.Effort, 3);
+  assert.equal(fresh.fields.Lane, 'Next');
+  assert.equal(fresh.fields.Blocked, true);
+
+  // Naming the field wins, including naming it empty.
+  const named = w.readEntity(w.createEntity(tasks, { name: 'Named', values: { Effort: 8, Lane: 'Now' } }).id);
+  assert.equal(named.fields.Effort, 8);
+  assert.equal(named.fields.Lane, 'Now');
+  const cleared = w.readEntity(w.createEntity(tasks, { name: 'Cleared', values: { Effort: null } }).id);
+  assert.equal(cleared.fields.Effort, null, 'an explicit empty is a choice, not an omission');
+
+  // Existing rows are untouched by a default added later.
+  w.addField(tasks, { name: 'Later', type: 'text', config: { default: 'x' } });
+  assert.equal(w.readEntity(fresh.id).fields.Later, null);
+
+  // The default is validated against its own field.
+  assert.throws(() => w.addField(tasks, { name: 'Bad', type: 'number', config: { default: 'nope' } }), /number/i);
+  assert.throws(() => w.addField(tasks, { name: 'BadPick', type: 'select', config: { options: ['a'], default: 'z' } }), /option/i);
+  // Types with nothing to default say so rather than silently dropping it.
+  assert.throws(() => w.addField(tasks, { name: 'Doc2', type: 'document', config: { default: 'hi' } }), /cannot carry a default/);
+  assert.throws(() => w.addField(tasks, { name: 'Calc', type: 'formula', config: { expression: '1 + 1', default: 2 } }), /cannot carry a default/);
+
+  // Editing a field can set or clear the default.
+  w.updateField(tasks, 'Effort', { config: { default: 5 } });
+  assert.equal(w.readEntity(w.createEntity(tasks, { name: 'After' }).id).fields.Effort, 5);
+  w.updateField(tasks, 'Effort', { config: { default: null } });
+  assert.equal(w.readEntity(w.createEntity(tasks, { name: 'Cleared default' }).id).fields.Effort, null);
+  assert.throws(() => w.updateField(tasks, 'Effort', { config: { default: 'nope' } }), /number/i);
+
+  // A workflow keeps its default state — one default mechanism per field.
+  assert.equal(w.readEntity(w.createEntity(tasks, { name: 'State check' }).id).fields.State, 'Open');
+  assert.throws(() => w.addField(tasks, {
+    name: 'Stage', type: 'workflow',
+    config: { states: [{ name: 'A', category: 'not-started' }], default: 'A' },
+  }), /cannot carry a default/);
+
+  // Defaults survive an export/import round trip.
+  const copy = new Weave();
+  copy.importJSON(w.exportJSON());
+  const copied = copy.getField(copy.getTable('Product/Task').id, 'Lane');
+  assert.equal(copied.config.default, w.getField(tasks.id ?? tasks, 'Lane').config.default);
+});
