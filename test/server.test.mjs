@@ -156,3 +156,30 @@ test('export/import roundtrip preserves workspace', async () => {
   const q = await api('POST', '/api/tables/Task/query', {});
   assert.ok(q.data.total >= 2);
 });
+
+test('the workspace activity feed is served, filtered and paged', async () => {
+  const made = await api('POST', '/api/tables/Task/entities', { values: { Name: 'Feed subject' } });
+  assert.equal(made.status, 201);
+  const id = made.data.id;
+  await api('PUT', `/api/entities/${id}/doc`, { markdown: 'first draft' });
+
+  const all = await api('GET', '/api/activity');
+  assert.equal(all.status, 200);
+  assert.ok(all.data.total >= 2, 'the feed spans every entity in the workspace');
+  const ts = all.data.items.map((i) => i.ts);
+  assert.deepEqual([...ts].sort().reverse(), ts, 'newest first');
+
+  const mine = await api('GET', `/api/activity?entity=${id}`);
+  assert.ok(mine.data.items.every((i) => i.entityId === id));
+  const doc = mine.data.items.find((i) => i.kind === 'doc-updated');
+  assert.equal(doc.detail.field, 'Description');
+  assert.equal(doc.detail.delta, 'first draft'.length, 'the entry carries the size of the edit');
+  assert.equal(doc.entityName, 'Feed subject');
+
+  assert.equal((await api('GET', '/api/activity?limit=1')).data.items.length, 1);
+  assert.equal((await api('GET', '/api/activity?kind=doc-updated')).data.items.every((i) => i.kind === 'doc-updated'), true);
+  const one = await api('GET', `/api/activity/${encodeURIComponent(doc.id)}`);
+  assert.equal(one.status, 200);
+  assert.equal(one.data.kind, 'doc-updated');
+  assert.equal((await api('GET', '/api/activity/nope:1')).status, 404);
+});

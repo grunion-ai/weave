@@ -430,6 +430,23 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
           if (req.method === 'DELETE') { weave.deleteAutomation(m[1]); return send(200, { ok: true }); }
         }
 
+        /* The Activity system table. Read-only by construction: there is no
+           POST here, because an event is something that happened, not
+           something anyone declares. */
+        if (route === 'GET /api/activity') {
+          return send(200, weave.activityFeed({
+            entityId: url.searchParams.get('entity'),
+            tableRef: url.searchParams.get('table'),
+            kinds: url.searchParams.getAll('kind'),
+            since: url.searchParams.get('since'),
+            limit: url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : null,
+            offset: Number(url.searchParams.get('offset') ?? 0),
+          }));
+        }
+        if ((m = path.match(/^\/api\/activity\/(.+)$/)) && req.method === 'GET') {
+          return send(200, weave.getActivity(decodeURIComponent(m[1])));
+        }
+
         if (route === 'GET /api/search') {
           const q = url.searchParams.get('q') ?? '';
           const limit = Number(url.searchParams.get('limit') ?? 25);

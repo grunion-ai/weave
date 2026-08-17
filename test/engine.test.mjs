@@ -416,3 +416,73 @@ test('a resized column survives a reload', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/* Every document write is an event in its own right: "Description updated"
+   says nothing about whether a word or a chapter changed, so the entry carries
+   the shape of the edit — where it landed, how much came and went, and the
+   first line that differs. */
+test('a document change is logged with what actually changed', () => {
+  const { w, tasks } = buildWorkspace();
+  const t = w.createEntity(tasks, { name: 'T', doc: 'alpha\nbeta\n' });
+  const docs = () => w.getEntity(t.id).activity.filter((a) => a.kind.startsWith('doc-'));
+
+  w.setDoc(t.id, 'alpha\nBETA rewritten\ngamma\n');
+  const [first] = docs();
+  assert.equal(docs().length, 1, 'creating the entity with a doc is not a separate change');
+  assert.equal(first.detail.field, 'Description');
+  assert.equal(first.detail.prevLength, 'alpha\nbeta\n'.length);
+  assert.equal(first.detail.length, 'alpha\nBETA rewritten\ngamma\n'.length);
+  assert.equal(first.detail.delta, first.detail.length - first.detail.prevLength);
+  assert.equal(first.detail.linesRemoved, 1, 'the beta line went');
+  assert.equal(first.detail.linesAdded, 2, 'two lines took its place');
+  assert.equal(first.detail.line, 2, '1-based line where the edit starts');
+  assert.match(first.detail.preview, /BETA rewritten/, 'the first changed line is quoted');
+
+  // Writing the same markdown back is not a change, so it is not an event.
+  w.setDoc(t.id, 'alpha\nBETA rewritten\ngamma\n');
+  assert.equal(docs().length, 1, 'an identical write logs nothing');
+
+  w.appendDoc(t.id, 'delta');
+  const appended = docs().at(-1);
+  assert.equal(appended.kind, 'doc-appended');
+  assert.equal(appended.detail.linesRemoved, 0, 'an append takes nothing away');
+  assert.equal(appended.detail.linesAdded, 1, 'one new line of text arrived');
+  assert.ok(appended.detail.delta > 0);
+  assert.match(appended.detail.preview, /delta/);
+
+  // The same enrichment when a document is written through the values path.
+  w.updateEntity(t.id, { Description: 'wholly new\n' });
+  const patched = docs().at(-1);
+  assert.equal(patched.kind, 'doc-updated');
+  assert.equal(patched.detail.line, 1);
+  assert.ok(patched.detail.delta < 0, 'a shorter document reports a negative delta');
+});
+
+/* The workspace-level Activity table: one protected, non-user-definable feed
+   of everything that happened anywhere, newest first. */
+test('activityFeed reads every event across the workspace', () => {
+  const { w, tasks } = buildWorkspace();
+  const a = w.createEntity(tasks, { name: 'A' });
+  const b = w.createEntity(tasks, { name: 'B' });
+  w.setDoc(a.id, 'hello');
+  w.addComment(b.id, { author: 'kyle', text: 'hi' });
+
+  const feed = w.activityFeed();
+  assert.ok(feed.total >= 4, 'created ×2, doc-updated, comment-added');
+  assert.equal(feed.items.length, feed.total);
+  const ts = feed.items.map((i) => i.ts);
+  assert.deepEqual([...ts].sort().reverse(), ts, 'newest first');
+
+  const one = feed.items.find((i) => i.kind === 'doc-updated');
+  assert.equal(one.entityId, a.id);
+  assert.equal(one.entityName, 'A');
+  assert.equal(one.db, 'Product/Task');
+  assert.ok(one.id.startsWith(a.id), 'a stable per-event id, addressable from a link');
+  assert.equal(w.getActivity(one.id).kind, 'doc-updated', 'and readable back by that id');
+
+  // Filters: one entity's own feed is the same rows, narrowed.
+  assert.ok(w.activityFeed({ entityId: b.id }).items.every((i) => i.entityId === b.id));
+  assert.deepEqual(w.activityFeed({ kinds: ['comment-added'] }).items.map((i) => i.entityId), [b.id]);
+  assert.equal(w.activityFeed({ limit: 2 }).items.length, 2);
+  assert.equal(w.activityFeed({ limit: 2 }).total, feed.total, 'total counts the feed, not the page');
+});

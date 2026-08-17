@@ -267,8 +267,20 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .comment:first-child { border-top: none; }
 .comment .who { font-weight: 600; font-size: 12.5px; }
 .comment .when { color: var(--tblr-secondary); font-size: 11.5px; margin-left: 6px; }
-.activity-item { font-size: 12px; color: var(--tblr-secondary); padding: 3px 0; border-top: 1px solid var(--tblr-border-color); }
+/* Each entry is a row of the Activity table seen through this entity, so it
+   behaves like one: a link into that table, not a line of printed log. */
+.activity-item { display: block; font-size: 12px; color: var(--tblr-secondary); padding: 3px 0; border-top: 1px solid var(--tblr-border-color); text-decoration: none; }
 .activity-item:first-child { border-top: none; }
+.activity-item:hover { color: var(--tblr-primary); }
+.panel-link { margin-left: auto; font-size: 12px; text-decoration: none; }
+/* A system table is weave's own: the label says so before anyone tries to add
+   a column to it. */
+.system-tables { margin-top: 14px; }
+.system-chip, .activity-kind { font-size: 11px; padding: 1px 7px; color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); }
+.wv-note { color: var(--tblr-secondary); font-size: 12px; margin: 0 0 10px; }
+.activity-when { white-space: nowrap; color: var(--tblr-secondary); }
+.activity-row { cursor: pointer; }
+.activity-focus > td { background: var(--tblr-bg-surface-secondary); box-shadow: inset 3px 0 0 var(--tblr-primary); }
 
 /* ---------- inline document editor (tabs across document fields) ---------- */
 .doc-inline-wrap { padding: 10px 6px; }
@@ -363,8 +375,17 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
    get out of its way: a quiet line of text, not a card header. Controls stay
    invisible until the section is hovered — the document is the content, the
    title is a label. */
+/* The computed-field glyph on a field NAME: an annotation, so it never
+   competes with the name it hangs off. */
+.field-mark { font-size: .72em; font-weight: 400; color: var(--tblr-secondary); margin-left: 2px; cursor: help; }
+
 .doc-section { margin: 0 0 26px; }
-.doc-section-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; }
+/* The whole head — field name, caret, permalink, downloads, save state — is
+   chrome ABOUT the document, so it stays out of sight until the section is
+   hovered or holds focus. It keeps its space in the flow: display:none would
+   jump the document up by a line the moment the pointer crossed it. */
+.doc-section-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; opacity: 0; transition: opacity .12s ease; }
+.doc-section:hover .doc-section-head, .doc-section:focus-within .doc-section-head { opacity: 1; }
 .doc-section-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
 .doc-caret { border: 0; background: none; padding: 0 2px; cursor: pointer; color: var(--tblr-secondary); line-height: 1; }
 .doc-caret::before { content: "▾"; display: inline-block; transition: transform .12s ease; }
@@ -386,6 +407,46 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
    the document keeps sitting on a slab lighter than the page in dark mode. */
 .doc-editor .vditor-ir pre.vditor-reset { padding: 0; font-size: 15px; background: transparent; }
 .doc-editor .vditor-ir { background: transparent; }
+/* Vditor prints the heading level in the left gutter of every heading. The
+   heading itself already says how big it is; the badge only tells the writer
+   that they are inside an editor. */
+.doc-editor .vditor-ir .vditor-reset > h1::before,
+.doc-editor .vditor-ir .vditor-reset > h2::before,
+.doc-editor .vditor-ir .vditor-reset > h3::before,
+.doc-editor .vditor-ir .vditor-reset > h4::before,
+.doc-editor .vditor-ir .vditor-reset > h5::before,
+.doc-editor .vditor-ir .vditor-reset > h6::before { content: none; }
+/* ---------- code blocks ----------
+   Expanding an IR node turns every marker inline, and a code block's editable
+   source is a <pre> carrying that marker class: inline, its slab paints out of
+   the line box and smears over the language tag. Block puts it back in place.
+   Its rendered twin steps aside while the source is on screen, so a focused
+   code block is one block rather than two copies of the same code. */
+.doc-editor .vditor-ir__node--expand pre.vditor-ir__marker--pre { display: block; }
+/* One surface for code in both states and both themes. Three stylesheets have
+   an opinion here — Tabler paints every <pre> dark, highlight.js gives <code>
+   a light chip, and vditor greys anything carrying a marker class — and the
+   collision left the source text unreadable while editing and a blue band
+   across the rendered block in dark mode. weave settles it: the slab is the
+   slab, the ink is light, and <code> adds no surface of its own. */
+.doc-editor .vditor-ir pre.vditor-ir__preview,
+.doc-editor .vditor-ir pre.vditor-ir__marker--pre {
+  color: var(--tblr-light);
+  background: var(--tblr-bg-surface-dark);
+  /* In dark mode that surface IS the page, so the slab needs an edge to be a
+     slab at all. */
+  border: 1px solid rgba(127, 127, 127, .22);
+}
+.doc-editor .vditor-ir pre.vditor-ir__preview > code,
+.doc-editor .vditor-ir pre.vditor-ir__marker--pre > code { background: transparent; color: inherit; }
+.doc-editor .vditor-ir__node--expand[data-type="code-block"] .vditor-ir__preview { display: none; }
+/* Vditor hides the copy button until the block is hovered, which leaves it
+   undiscoverable and unreachable by touch. It is always there, upper right,
+   quiet until you go for it. */
+.doc-editor .vditor-copy { display: block; }
+.doc-editor .vditor-copy span { top: 8px; right: 10px; opacity: .45; transition: opacity .12s ease; border-radius: 4px; padding: 3px; }
+.doc-editor .vditor-copy span:hover { opacity: 1; background: rgba(127, 127, 127, .18); }
+.doc-editor .vditor-copy svg { color: currentColor; }
 /* The slash menu is the only route to markdown blocks now, so it reads as a
    list of names rather than a strip of syntax. */
 .vditor-hint .slash-item b { font-weight: 500; }

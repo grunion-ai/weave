@@ -593,8 +593,12 @@ test('column reorder is persisted as fieldOrder, not page state', () => {
   assert.match(move, /fieldOrder/, 'reorder writes the schema…');
   assert.match(move, /'PATCH'/, '…through PATCH /tables/:id');
   assert.match(move, /loadSchema\(\)/, 'and reloads the schema so every view sees the new order');
+  // Drag-and-drop is the reorder control, and it is verified against the same
+  // schema write. The menu's move rows were a second way to do the one thing
+  // the header already does directly, so they are gone.
   const menu = fnBody('fieldMenuButton');
-  assert.match(menu, /reorderField\(/, 'the menu offers move-left / move-right for keyboard users');
+  assert.doesNotMatch(menu, /Move left|Move right/, 'no duplicate reorder path in the field menu');
+  assert.doesNotMatch(menu, /reorderField\(/, 'and no wiring left behind for one');
 });
 
 test('a column header is a drag handle for reorder', () => {
@@ -775,4 +779,118 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   const call = APP.match(/\{ title: 'Entity actions'[^}]*\}/);
   assert.ok(call, 'the entity menu call site should be findable');
   assert.match(call[0], /align: 'right'/, 'a right-edge menu must drop its panel to the left');
+});
+
+/* ---------- defect: the document editor showed its own scaffolding ----------
+   Vditor's IR mode labels every heading with its level in the left gutter
+   (`.vditor-ir .vditor-reset > h2:before { content: 'H2' }`, floated into a
+   -29px margin), and weave printed the field name above each document as a
+   section head. Both are chrome about the document rather than the document.
+   The heading badges go entirely; the section head — which also carries the
+   collapse caret, the permalink and the downloads — stays in the layout but
+   only paints when the section is hovered or holds focus. */
+
+test('heading levels are not labelled in the document gutter', () => {
+  for (const h of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) {
+    assert.equal(rulesFor(`.doc-editor .vditor-ir .vditor-reset > ${h}::before`).content, 'none',
+      `the ${h.toUpperCase()} gutter badge must be removed, not merely recoloured`);
+  }
+});
+
+test('the document section head is quiet until it is reached for', () => {
+  const head = rulesFor('.doc-section-head');
+  assert.equal(head.opacity, '0', 'at rest the head shows nothing above the document');
+  assert.ok(head.transition, 'it fades rather than snapping');
+  // Still in the layout: hiding it with display:none would shift the document
+  // up on hover, and take the caret / permalink / downloads with it.
+  assert.notEqual(head.display, 'none', 'the head keeps its space in the flow');
+  assert.equal(rulesFor('.doc-section:hover .doc-section-head').opacity, '1');
+  assert.equal(rulesFor('.doc-section:focus-within .doc-section-head').opacity, '1');
+});
+
+/* ---------- defect: a code block under the caret rendered as a smear ----------
+   Expanding an IR node sets EVERY marker to `display: inline`
+   (`.vditor-ir__node--expand .vditor-ir__marker`), and the editable source of
+   a code block is a <pre> carrying that class. An inline <pre> with a slab
+   background paints outside its line box: measured live at 1200px, the source
+   pre sat at y=154 h=55 inside a node starting at y=167, so its dark slab
+   smeared up over the language tag. The rendered preview stayed visible below
+   it, so the same code showed twice. Editing shows the source alone. */
+
+test('an expanded code block is one block, not a smear over a duplicate', () => {
+  assert.equal(rulesFor('.doc-editor .vditor-ir__node--expand pre.vditor-ir__marker--pre').display, 'block',
+    'the editable source must be a block box, or its slab paints out of line');
+  assert.equal(rulesFor('.doc-editor .vditor-ir__node--expand[data-type="code-block"] .vditor-ir__preview').display, 'none',
+    'the rendered copy steps aside while its source is being edited');
+});
+
+test('every code block carries a copy button in its upper right', () => {
+  // Vditor ships the button hidden (`.vditor-copy { display: none }`) and
+  // reveals it on `pre:hover` only — invisible to touch and to anyone who has
+  // not already found it.
+  assert.equal(rulesFor('.doc-editor .vditor-copy').display, 'block',
+    'the copy button is always present, not hover-only');
+  const btn = rulesFor('.doc-editor .vditor-copy span');
+  assert.ok(btn.top !== undefined && btn.right !== undefined,
+    'pinned to the upper right of the block');
+  assert.equal(btn.left, undefined, 'never anchored from the left');
+});
+
+/* ---------- a computed field is not editable, and its NAME should say so ----
+   computedMark() marked the values (ƒ formula, Σ rollup, ↗ lookup) but not the
+   column they sit in, so the first thing a writer learned about a formula
+   field was that clicking its cell did nothing. The same glyph now rides the
+   field name as a superscript, everywhere a field name is printed. */
+
+test('a computed field carries its glyph next to the name, not only in cells', () => {
+  const label = fnBody('fieldNameLabel');
+  assert.match(label, /computedMark\(/, 'one glyph vocabulary for names and values');
+  assert.match(label, /'sup'/, 'the mark is a superscript on the name');
+  assert.match(APP, /COMPUTED_NAME_MARKS = \{[^}]*formula/,
+    'formula fields are the case this exists for');
+
+  // Every surface that prints a field name uses it — a column marked in the
+  // grid but bare on the entity page is worse than not marking it at all.
+  for (const fn of ['renderTable', 'renderBoard', 'renderListView', 'showEntity', 'openSchemaEditor']) {
+    assert.match(fnBody(fn), /fieldNameLabel\(/, `${fn}() must label field names through the helper`);
+  }
+  const mark = rulesFor('.field-mark');
+  assert.ok(mark['font-size'], 'the mark is smaller than the name it annotates');
+  assert.ok(mark.color, 'and quieter than it');
+});
+
+/* ---------- Activity is a table, not a log ----------
+   The entity pane printed up to 20 lines of history into a card, and that was
+   the only place any of it could be seen: no way to read the workspace's
+   activity as a whole, and no way to link to a single event. Activity is now
+   a system table — weave's own rows, fixed shape, nothing anyone can type —
+   and the pane is that table filtered to one entity, ten rows deep. */
+
+test('the entity activity pane shows ten rows, each linking into the Activity table', () => {
+  const body = fnBody('showEntity');
+  assert.match(APP, /const ACTIVITY_PANE_ROWS = 10;/, 'the pane is capped at ten');
+  assert.match(body, /slice\(0, ACTIVITY_PANE_ROWS\)/, 'and takes the ten most recent');
+  assert.match(body, /href: `#\/activity\/\$\{id\}:\$\{firstIndex - n\}`/,
+    'each row addresses its own event in the Activity table');
+  assert.match(body, /href: `#\/activity\/\$\{id\}`/, 'and the pane header opens the filtered table');
+  assert.match(body, /activitySummary\(a\)/, 'one summary function serves the pane and the table');
+});
+
+test('the Activity table is routed, read-only and reachable from the workspace page', () => {
+  assert.match(fnBody('renderRoute'), /#\\\/activity|#\/activity/, 'the router knows #/activity');
+  assert.match(APP, /hash\.match\(\/\^#\\\/activity/, 'with an optional entity/event parameter');
+  const view = fnBody('showActivity');
+  assert.match(view, /api\('GET', `\/activity/, 'the view reads the feed endpoint');
+  assert.doesNotMatch(view, /'POST'|'PATCH'|'DELETE'/, 'nothing in this table can be written from the UI');
+  assert.match(view, /system table/i, 'and it says so on the page');
+  assert.match(view, /activity-focus/, 'a linked event is highlighted when it is opened');
+  assert.match(fnBody('showHome'), /#\/activity/, 'the workspace page links to it');
+  assert.match(fnBody('showHome'), /system/, 'marked as weave\'s table rather than the user\'s');
+});
+
+test('a document event reads as what changed, not that something changed', () => {
+  const sum = fnBody('activitySummary');
+  for (const part of ['delta', 'line', 'preview']) {
+    assert.match(sum, new RegExp(`d\\.${part}`), `the summary uses the enriched ${part}`);
+  }
 });

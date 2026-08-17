@@ -325,8 +325,14 @@ a.mention { background: var(--soft); border: 1px solid var(--line); border-radiu
 .mention-space::before { content: "◇"; }
 .mention-workspace::before { content: "⬡"; }
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-pre { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; }
+pre { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; position: relative; }
 pre code { background: none; padding: 0; }
+/* Code is there to be taken, so the button is always on the block rather than
+   waiting for a hover that a touch screen never sends. */
+.code-copy { position: absolute; top: 8px; right: 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--muted); font: 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  padding: 5px 7px; cursor: pointer; opacity: .6; }
+.code-copy:hover { opacity: 1; color: var(--fg); }
 blockquote { border-left: 3px solid var(--line); margin: 1em 0; padding: 2px 0 2px 16px; color: var(--muted); }
 table { border-collapse: collapse; width: 100%; margin: 1em 0; }
 th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
@@ -334,12 +340,27 @@ th { background: var(--soft); }
 hr { border: none; border-top: 1px solid var(--line); margin: 2em 0; }
 img { max-width: 100%; }
 pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align: center; }
-@media print { .pagebreak { page-break-after: always; break-after: page; } }
+@media print { .pagebreak { page-break-after: always; break-after: page; } .code-copy { display: none; } }
 </style>
 </head>
 <body>
 <div class="doc-meta">${escapeHtml(subtitle)}</div>
 ${body}
+<script>
+for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
+  const btn = document.createElement('button');
+  btn.className = 'code-copy';
+  btn.type = 'button';
+  btn.textContent = 'Copy';
+  btn.onclick = async () => {
+    const code = pre.querySelector('code') ?? pre;
+    try { await navigator.clipboard.writeText(code.textContent); btn.textContent = 'Copied'; }
+    catch { btn.textContent = 'Press ⌘C'; getSelection().selectAllChildren(code); }
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+  };
+  pre.append(btn);
+}
+</script>
 ${body.includes('class="mermaid"') ? `<script src="/vendor/mermaid.min.js" onerror="document.querySelectorAll('pre.mermaid').forEach(p=>p.style.textAlign='left')"></script>
 <script>if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });</script>` : ''}
 </body>

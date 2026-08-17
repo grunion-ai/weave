@@ -42,6 +42,31 @@ export function parseCSV(text) {
 const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field'];
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
+/* What a document edit actually did, in the terms a reader of the feed needs:
+   where it landed, how much text came and went, and the first line that
+   differs. Trimming the common head and tail is the shape of a single edit —
+   which is what an autosave almost always is — and degrades honestly to "the
+   whole document changed" when the edit was not local. */
+function docChange(field, before, after) {
+  const a = before.split('\n');
+  const b = after.split('\n');
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head
+    && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  return {
+    field,
+    length: after.length,
+    prevLength: before.length,
+    delta: after.length - before.length,
+    line: head + 1,
+    linesAdded: b.length - head - tail,
+    linesRemoved: a.length - head - tail,
+    preview: (b[head] ?? a[head] ?? '').trim().slice(0, 120),
+  };
+}
+
 const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
 const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
 const MAX_COMPUTE_DEPTH = 8;
@@ -666,10 +691,11 @@ export class Weave {
       }
       if (field.type === 'document') {
         const md = String(raw ?? '');
-        if ((e.docs[field.id] ?? '') === md) continue;
+        const before = e.docs[field.id] ?? '';
+        if (before === md) continue;
         e.docs[field.id] = md;
         e.updatedAt = nowISO();
-        if (!isCreate) this.#logActivity(e, 'doc-updated', { field: field.name, length: md.length });
+        if (!isCreate) this.#logActivity(e, 'doc-updated', docChange(field.name, before, md));
         continue;
       }
       const val = this.#validateValue(field, raw);
@@ -1156,9 +1182,14 @@ export class Weave {
     const db = this.state.tables[e.dbId];
     const f = this.#resolveDocField(db, fieldRef);
     e.docs = e.docs ?? {};
-    e.docs[f.id] = String(markdown ?? '');
+    const before = e.docs[f.id] ?? '';
+    const after = String(markdown ?? '');
+    // Autosave writes on every pause, so identical text arrives often. Nothing
+    // changed, nothing happened: no timestamp bump and no entry in the feed.
+    if (before === after) return e;
+    e.docs[f.id] = after;
     e.updatedAt = nowISO();
-    this.#logActivity(e, 'doc-updated', { field: f.name, length: e.docs[f.id].length });
+    this.#logActivity(e, 'doc-updated', docChange(f.name, before, after));
     this.save();
     return e;
   }
@@ -1168,10 +1199,12 @@ export class Weave {
     const db = this.state.tables[e.dbId];
     const f = this.#resolveDocField(db, fieldRef);
     e.docs = e.docs ?? {};
-    const cur = e.docs[f.id] ?? '';
-    e.docs[f.id] = (cur ? cur.replace(/\n*$/, '\n\n') : '') + String(markdown ?? '');
+    const before = e.docs[f.id] ?? '';
+    const after = (before ? before.replace(/\n*$/, '\n\n') : '') + String(markdown ?? '');
+    if (before === after) return e;
+    e.docs[f.id] = after;
     e.updatedAt = nowISO();
-    this.#logActivity(e, 'doc-appended', { field: f.name, length: e.docs[f.id].length });
+    this.#logActivity(e, 'doc-appended', docChange(f.name, before, after));
     this.save();
     return e;
   }
@@ -1193,6 +1226,57 @@ export class Weave {
     e.comments = e.comments.filter((c) => c.id !== commentId);
     this.#mark(e);
     this.save();
+  }
+
+  /* ---------------- the workspace Activity table ----------------
+     Activity is a SYSTEM table: a fixed shape nobody can redefine, no rows
+     anyone writes by hand. It is a read over the history every entity already
+     carries, so the workspace feed and an entity's own list can never drift
+     apart — they are the same rows, filtered differently. The id is
+     `<entityId>:<index>`, which makes a single event addressable as a link. */
+  activityFeed({ entityId = null, tableRef = null, kinds = null, since = null, limit = null, offset = 0 } = {}) {
+    const wanted = kinds?.length ? new Set(kinds) : null;
+    const dbId = tableRef ? this.getTable(tableRef).id : null;
+    const rows = [];
+    for (const e of Object.values(this.state.entities)) {
+      if (entityId && e.id !== entityId) continue;
+      if (dbId && e.dbId !== dbId) continue;
+      const db = this.state.tables[e.dbId];
+      (e.activity ?? []).forEach((a, i) => {
+        if (wanted && !wanted.has(a.kind)) return;
+        if (since && a.ts < since) return;
+        rows.push({
+          id: `${e.id}:${i}`,
+          ts: a.ts,
+          kind: a.kind,
+          detail: a.detail ?? {},
+          entityId: e.id,
+          entityName: this.entityName(e),
+          publicId: e.publicId,
+          dbId: e.dbId,
+          db: db ? this.qualifiedName(db) : null,
+          space: db?.space ?? null,
+          deleted: !!e.deletedAt,
+        });
+      });
+    }
+    // Same-millisecond events (an entity created with a document writes two)
+    // fall back to the index, so the later one still reads as the later one.
+    rows.sort((x, y) => (x.ts === y.ts ? y.id.localeCompare(x.id) : (x.ts < y.ts ? 1 : -1)));
+    return {
+      total: rows.length,
+      items: limit == null ? rows.slice(offset) : rows.slice(offset, offset + limit),
+    };
+  }
+
+  getActivity(id) {
+    const at = String(id).lastIndexOf(':');
+    const entityId = String(id).slice(0, at);
+    const index = Number(String(id).slice(at + 1));
+    const e = this.state.entities[entityId];
+    const a = e?.activity?.[index];
+    if (!a) throw new WeaveError(`Activity '${id}' not found`, 'not-found');
+    return this.activityFeed({ entityId }).items.find((r) => r.id === `${entityId}:${index}`);
   }
 
   #logActivity(e, kind, detail) {

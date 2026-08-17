@@ -75,3 +75,13 @@ test('full document page renders standalone html', () => {
   assert.match(page, /<h1>Hi<\/h1>/);
   assert.match(page, /Task #4/);
 });
+
+test('a rendered document page gives every code block a copy button', () => {
+  const page = renderDocumentPage({ title: 'D', subtitle: '', markdown: '```js\nconst x = 1;\n```' });
+  assert.match(page, /code-copy/, 'the page builds a copy control for its code blocks');
+  assert.match(page, /pre:not\(\.mermaid\)/, 'a mermaid diagram is a picture, not code to copy');
+  assert.match(page, /position: absolute/, 'the button is pinned rather than pushed into the flow');
+  assert.match(page, /@media print \{[\s\S]*?\.code-copy \{ display: none/,
+    'a printed page (and every PDF export) must not carry a button');
+  assert.match(page, /navigator\.clipboard/, 'copying uses the clipboard API');
+});

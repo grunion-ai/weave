@@ -445,6 +445,19 @@ function computedMark(type) {
   return { formula: 'ƒ', rollup: 'Σ', lookup: '↗', document: '¶', field: '⌗' }[type] ?? '·';
 }
 
+/* The same glyph, riding the field NAME. A formula column is not typeable, and
+   that fact belongs on its heading rather than being discovered by clicking a
+   cell that does not respond. Returns children for el(), which flattens. */
+const COMPUTED_NAME_MARKS = { formula: 'formula', rollup: 'rollup', lookup: 'lookup' };
+function fieldNameLabel(f, text = f?.name) {
+  const kind = COMPUTED_NAME_MARKS[f?.type];
+  if (!kind) return [text];
+  return [text, el('sup', {
+    class: 'field-mark',
+    title: `${kind} — computed from other values, not editable`,
+  }, computedMark(f.type))];
+}
+
 /* A click landed on a picker cell's padding rather than its control: forward
    it to the control. Chip pickers open on click; a native <select> opens its
    own dropdown (showPicker where supported, focus as the fallback). */
@@ -949,8 +962,10 @@ function renderTable(main, db, items, onSaved) {
             if (from && from !== c) reorderField(db, from, c, { after: cols.indexOf(from) < i });
           },
         },
-          el('span', { class: 'col-label' }, c + (sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : '')),
-          fieldMenuButton(db, colField(db, c), cols, i),
+          el('span', { class: 'col-label' },
+            fieldNameLabel(colField(db, c), c),
+            sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : ''),
+          fieldMenuButton(db, colField(db, c)),
           columnResizeGrip(db, colField(db, c)))),
         el('th', { title: documentFields(db).map((f) => f.name).join(', ') },
           `Docs (${documentFields(db).length})`),
@@ -1019,7 +1034,7 @@ async function setColumnWidth(db, f, width) {
    edit, move, insert, delete — on the header it belongs to, reusing the chip
    popover so it matches every other picker in the grid. */
 
-function fieldMenuButton(db, f, cols, i) {
+function fieldMenuButton(db, f) {
   const btn = el('button', {
     class: 'field-menu', type: 'button',
     title: `Configure ${f.name}`, 'aria-label': `Configure field ${f.name}`,
@@ -1030,10 +1045,13 @@ function fieldMenuButton(db, f, cols, i) {
       class: 'chip-pop-row', type: 'button',
       onclick: () => { document.querySelector('.chip-pop')?.remove(); run(); },
     }, label);
-    const rows = [row('✎ Edit field…', () => editFieldDialog(db, f))];
-    if (i > 0) rows.push(row('← Move left', () => reorderField(db, f.name, cols[i - 1])));
-    if (i < cols.length - 1) rows.push(row('→ Move right', () => reorderField(db, f.name, cols[i + 1], { after: true })));
-    rows.push(row('+ Insert field…', () => addFieldDialog(db)));
+    // No move rows: the header itself is the reorder control, and a dragged
+    // column lands where the gap opened. Two ways to do one thing is one too
+    // many when the direct one is the one people reach for.
+    const rows = [
+      row('✎ Edit field…', () => editFieldDialog(db, f)),
+      row('+ Insert field…', () => addFieldDialog(db)),
+    ];
     if (f.name !== 'Name') {
       rows.push(holdToConfirm('🗑 Delete field', async () => {
         document.querySelector('.chip-pop')?.remove();
@@ -1189,7 +1207,7 @@ function renderBoard(main, db, items, onSaved) {
           for (const f of db.fields) {
             if (f.name === 'Name' || f.type === 'document' || f.id === groupField.id) continue;
             fieldsBox.append(el('div', { class: 'fieldrow compact' },
-              el('label', {}, f.name), editorFor(f, item, db, onSaved, { compact: true })));
+              el('label', {}, fieldNameLabel(f)), editorFor(f, item, db, onSaved, { compact: true })));
           }
           card.append(fieldsBox, docsEditor(item, db, onSaved));
         }
@@ -1263,7 +1281,7 @@ function renderListView(main, db, items, onSaved) {
       for (const f of db.fields) {
         if (f.name === 'Name' || f.type === 'document') continue;
         fieldsBox.append(el('div', { class: 'fieldrow compact' },
-          el('label', {}, f.name), editorFor(f, item, db, onSaved, { compact: true })));
+          el('label', {}, fieldNameLabel(f)), editorFor(f, item, db, onSaved, { compact: true })));
       }
       detail.append(fieldsBox, docsEditor(item, db, onSaved));
       rows.append(detail);
@@ -1655,17 +1673,24 @@ async function showEntity(id) {
     catch (err) { toast(err.message, true); }
   });
 
-  const actBody = el('div', { class: 'card-body' });
-  for (const a of [...entity.activity].reverse().slice(0, 20)) {
-    const what = a.kind === 'state-changed' ? `${a.detail.field}: ${a.detail.from ?? '—'} → ${a.detail.to}`
-      : a.kind === 'field-updated' ? `${a.detail.field} updated`
-      : a.kind === 'relation-updated' ? `${a.detail.field} changed`
-      : a.kind === 'doc-updated' || a.kind === 'doc-appended' ? `${a.detail.field ?? 'Description'} document updated`
-      : a.kind;
-    actBody.append(el('div', { class: 'activity-item' }, `${new Date(a.ts).toLocaleString()} — ${what}`));
-  }
+  /* Activity is a system relation, not a log printed into the page: these are
+     the entity's own rows of the workspace Activity table, so each one links
+     into that table the way any related record would. Ten of them — the pane
+     answers "what just happened here", and the table answers everything
+     else. */
+  const recent = [...entity.activity].reverse().slice(0, ACTIVITY_PANE_ROWS);
+  const firstIndex = entity.activity.length - 1;
+  const actBody = el('div', { class: 'card-body' },
+    ...recent.map((a, n) => el('a', {
+      class: 'activity-item', href: `#/activity/${id}:${firstIndex - n}`,
+      title: 'Open in the Activity table',
+    }, `${new Date(a.ts).toLocaleString()} — ${activitySummary(a)}`)),
+    recent.length ? null : el('span', { class: 'wv-empty' }, 'Nothing has happened here yet.'));
   const actPanel = el('div', { class: 'card panel' },
-    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Activity')),
+    el('div', { class: 'card-header' },
+      el('h3', { class: 'card-title' }, 'Activity'),
+      el('a', { class: 'panel-link', href: `#/activity/${id}` },
+        entity.activity.length > recent.length ? `All ${entity.activity.length} →` : 'Open table →')),
     actBody);
 
   // Upper-left ⋯ menu: whole-entity downloads + delete (with confirmation).
@@ -1798,7 +1823,7 @@ async function showEntity(id) {
   for (const f of db.fields) {
     if (f.name === 'Name' || f.type === 'document') continue;
     fieldsBody.append(el('div', { class: 'fieldrow' },
-      el('label', {}, f.name), editorFor(f, entity, db, () => refresh())));
+      el('label', {}, fieldNameLabel(f)), editorFor(f, entity, db, () => refresh())));
   }
   // The side column reads top-down as metadata about the entity: what it is
   // (Fields), what people said (Comments), what happened (Activity). That
@@ -1830,7 +1855,7 @@ function openSchemaEditor(db) {
   const table = el('table', { class: 'table table-sm table-vcenter schema-table' },
     el('thead', {}, el('tr', {}, el('th', {}, 'Field'), el('th', {}, 'Type'), el('th', {}, 'Details'), el('th', {}, ''))),
     el('tbody', {}, ...db.fields.map((f) => el('tr', {},
-      el('td', {}, f.name),
+      el('td', {}, fieldNameLabel(f)),
       el('td', { class: 'type' }, f.type),
       el('td', { class: 'type' },
         f.options ? f.options.join(', ')
@@ -1926,6 +1951,84 @@ function addRelationDialog(db) {
   });
 }
 
+/* ---------- the Activity system table ----------
+   Activity is a table weave owns: every event in the workspace, one row each,
+   with a fixed shape nobody can redefine and no row anyone can type. It reads
+   like any other table view, and the entity pane is the same rows filtered to
+   one entity — a related table, not a second implementation of the log. */
+
+const ACTIVITY_PANE_ROWS = 10;
+
+function activitySummary(a) {
+  const d = a.detail ?? {};
+  switch (a.kind) {
+    case 'state-changed': return `${d.field}: ${d.from ?? '—'} → ${d.to}`;
+    case 'field-updated': return `${d.field}: ${fmtValue(d.from)} → ${fmtValue(d.to)}`;
+    case 'relation-updated': return `${d.field} changed`;
+    case 'comment-added': return `comment by ${d.author ?? 'someone'}`;
+    case 'file-attached': return `attached ${d.name}`;
+    case 'automation-ran': return `automation “${d.name}” ran`;
+    case 'doc-updated':
+    case 'doc-appended': {
+      // The enriched detail is the point of the row: how much moved, where.
+      const size = d.delta == null ? '' : ` ${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)} chars`;
+      const where = d.line ? ` at line ${d.line}` : '';
+      const verb = a.kind === 'doc-appended' ? 'appended to' : 'edited';
+      const quote = d.preview ? ` — “${d.preview}”` : '';
+      return `${d.field ?? 'Description'} ${verb}${size}${where}${quote}`;
+    }
+    default: return a.kind;
+  }
+}
+
+const fmtValue = (v) => (v == null || v === '' ? '—' : Array.isArray(v) ? v.join(', ') : String(v));
+
+/* `#/activity` is the whole table; `#/activity/<entityId>` narrows it to one
+   entity; `#/activity/<entityId>:<n>` narrows it and lands on one event. */
+async function showActivity(param) {
+  state.route = { page: 'activity' };
+  renderNav();
+  const main = $('#main');
+  const [entityId] = (param ?? '').split(':');
+  const focusId = param && param.includes(':') ? param : null;
+  const qs = entityId ? `?entity=${encodeURIComponent(entityId)}` : '';
+  let feed = { total: 0, items: [] };
+  try { feed = await api('GET', `/activity${qs}`); } catch (err) { toast(err.message, true); }
+  const subject = entityId ? feed.items[0] : null;
+
+  const rows = feed.items.map((a) => el('tr', {
+    class: 'activity-row' + (a.id === focusId ? ' activity-focus' : ''),
+    onclick: () => openEntity(a.entityId),
+  },
+    el('td', { class: 'activity-when', title: a.ts }, new Date(a.ts).toLocaleString()),
+    el('td', {}, el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind)),
+    el('td', {}, activitySummary(a)),
+    el('td', {}, `${a.db ?? '—'} #${a.publicId}`),
+    el('td', {}, a.entityName ?? '—')));
+
+  main.replaceChildren(
+    viewHeader({
+      crumbs: entityId && subject
+        ? [{ label: 'Activity', href: '#/activity' }, { label: subject.db, href: `#/table/${subject.dbId}` }]
+        : [],
+      permalink: `${location.origin}${WS_PREFIX}/#/activity${entityId ? `/${entityId}` : ''}`,
+      title: entityId && subject ? `Activity — ${subject.entityName}` : 'Activity',
+    }),
+    el('div', { class: 'wv-note' },
+      'A system table: weave writes these rows, so they cannot be added, edited or deleted. ',
+      el('b', {}, `${feed.total}`), ' events.'),
+    feed.items.length
+      ? el('div', { class: 'card' },
+        el('table', { class: 'table table-sm table-vcenter card-table table-hover wv-grid' },
+          el('thead', {}, el('tr', {},
+            el('th', {}, 'When'), el('th', {}, 'Event'), el('th', {}, 'Detail'),
+            el('th', {}, 'Record'), el('th', {}, 'Name'))),
+          el('tbody', {}, ...rows)))
+      : el('div', { class: 'wv-empty' }, 'No activity yet.'));
+
+  document.querySelector('.activity-focus')?.scrollIntoView({ block: 'center' });
+}
+
 /* ---------- home ---------- */
 
 async function showHome() {
@@ -1952,7 +2055,15 @@ async function showHome() {
         el('div', { class: 'list-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
           el('span', {}, d.qualified), el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, `${d.entityCount} entities`))))
-      : el('div', { class: 'wv-empty' }, 'Welcome to Weave. Create a space and a table to get started.'));
+      : el('div', { class: 'wv-empty' }, 'Welcome to Weave. Create a space and a table to get started.'),
+    /* The system tables live below the workspace's own, marked as weave's
+       rather than the user's — they are reached from here because they belong
+       to no space. */
+    el('div', { class: 'card list-rows system-tables' },
+      el('div', { class: 'list-row', onclick: () => { location.hash = '#/activity'; } },
+        el('span', {}, 'Activity'), el('span', { class: 'chip system-chip' }, 'system'),
+        el('span', { class: 'spacer' }),
+        el('span', { class: 'pid' }, 'every event in this workspace'))));
 }
 
 /* ---------- universal search (sidebar + ⌘K palette) ---------- */
@@ -2153,6 +2264,7 @@ function renderRoute() {
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
   if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)/))) return showDatabase(m[1]);
   if ((m = hash.match(/^#\/space\/([^/?]+)/))) return showSpace(m[1]);
+  if ((m = hash.match(/^#\/activity(?:\/([^/?]+))?/))) return showActivity(m[1] ?? null);
   if (hash.startsWith('#/map')) return showMap();
   if ((m = hash.match(/^#\/entity\/([^/?]+)/))) return showEntity(m[1]);
   return showHome();
