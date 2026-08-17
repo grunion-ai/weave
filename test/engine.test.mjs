@@ -477,6 +477,7 @@ test('activityFeed reads every event across the workspace', () => {
   assert.equal(one.entityId, a.id);
   assert.equal(one.entityName, 'A');
   assert.equal(one.db, 'Product/Task');
+  assert.equal(one.space, 'Product', 'the row names its space, not an internal id');
   assert.ok(one.id.startsWith(a.id), 'a stable per-event id, addressable from a link');
   assert.equal(w.getActivity(one.id).kind, 'doc-updated', 'and readable back by that id');
 

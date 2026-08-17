@@ -1255,7 +1255,7 @@ export class Weave {
           publicId: e.publicId,
           dbId: e.dbId,
           db: db ? this.qualifiedName(db) : null,
-          space: db?.space ?? null,
+          space: db ? (this.state.spaces[db.spaceId]?.name ?? null) : null,
           deleted: !!e.deletedAt,
         });
       });
