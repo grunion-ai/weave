@@ -1434,6 +1434,146 @@ async function showMap() {
   main.append(wrap, legend);
 }
 
+/* ---------- the embedded document editor (Feature #45) ----------
+   Vditor in `ir` mode: the rendered document is the editing surface, so there
+   is no mode to switch, nothing to preview and nothing to save by hand. The
+   toolbar is hidden — every markdown block is reachable from the slash menu
+   below, which keeps the document the only chrome on the page. */
+
+const DOC_SAVE_DEBOUNCE = 600;
+const liveEditors = new Set();
+const pendingDocSaves = new Map();
+
+/* The block set. With the toolbar hidden this list is the ONLY way to reach a
+   markdown construct, so anything missing here is unreachable. `insert` is
+   what replaces the typed "/query" — Vditor swaps the trigger for the value. */
+function slashItems() {
+  return [
+    { label: 'Heading 1', insert: '# ' },
+    { label: 'Heading 2', insert: '## ' },
+    { label: 'Heading 3', insert: '### ' },
+    { label: 'Bold', insert: '**text**' },
+    { label: 'Italic', insert: '*text*' },
+    { label: 'Strikethrough', insert: '~~text~~' },
+    { label: 'Inline code', insert: '`code`' },
+    { label: 'Code block', insert: '```\n\n```' },
+    { label: 'Quote', insert: '> ' },
+    { label: 'Bulleted list', insert: '- ' },
+    { label: 'Numbered list', insert: '1. ' },
+    { label: 'Task list', insert: '- [ ] ' },
+    { label: 'Table', insert: '| Column | Column |\n| --- | --- |\n|  |  |' },
+    { label: 'Divider', insert: '\n---\n' },
+    { label: 'Link', insert: '[text](url)' },
+    { label: 'Image', insert: '![alt](url)' },
+    { label: 'Mermaid diagram', insert: '```mermaid\ngraph TD\n  A --> B\n```' },
+    { label: 'Entity link', insert: '[[Table#1]]' },
+  ];
+}
+
+function slashHint(query) {
+  const q = String(query ?? '').toLowerCase();
+  return slashItems()
+    .filter((i) => i.label.toLowerCase().includes(q))
+    .map((i) => ({
+      value: i.insert,
+      html: `<span class="slash-item"><b>${i.label}</b></span>`,
+    }));
+}
+
+// Editor chrome, document content and code highlighting each take a theme;
+// all three follow weave's data-bs-theme so a toggle does not leave a light
+// document sitting inside a dark page.
+function vditorTheme() {
+  const dark = document.documentElement.dataset.bsTheme === 'dark';
+  return { ui: dark ? 'dark' : 'classic', content: dark ? 'dark' : 'light', hljs: dark ? 'github-dark' : 'github' };
+}
+
+function mountDocEditor(host, { value, placeholder, onInput }) {
+  const t = vditorTheme();
+  const editor = new Vditor(host, {
+    mode: 'ir',
+    // Vendored, not the public CDN default: a weave instance with no internet
+    // still has to render its own documents.
+    cdn: '/vendor/vditor',
+    value,
+    placeholder,
+    lang: 'en_US',
+    icon: 'ant',
+    theme: t.ui,
+    minHeight: 160,
+    // weave saves server-side on every pause; a localStorage draft would only
+    // compete with that and resurrect stale text.
+    cache: { enable: false },
+    counter: { enable: false },
+    toolbar: [],
+    toolbarConfig: { hide: true, pin: false },
+    // The outline lives outside the editor (the dash rail), so Vditor's own
+    // panel stays off rather than fighting it for the left gutter.
+    outline: { enable: false, position: 'left' },
+    preview: {
+      hljs: { enable: true, style: t.hljs, lineNumber: false },
+      theme: { current: t.content, path: '/vendor/vditor/dist/css/content-theme' },
+    },
+    hint: { emoji: {}, extend: [{ key: '/', hint: slashHint }] },
+    input: (v) => onInput(v),
+  });
+  liveEditors.add(editor);
+  return editor;
+}
+
+function retheme() {
+  const t = vditorTheme();
+  for (const ed of liveEditors) {
+    try { ed.setTheme(t.ui, t.content, t.hljs); } catch { /* editor not ready yet */ }
+  }
+}
+
+/* A pause in typing is the save. Keyed per entity+field so two document
+   sections on one page cannot cancel each other's writes. */
+function scheduleDocSave(entityId, field, value, statusEl) {
+  const key = `${entityId}::${field}`;
+  clearTimeout(pendingDocSaves.get(key)?.timer);
+  if (statusEl) statusEl.textContent = '·';
+  const write = async () => {
+    pendingDocSaves.delete(key);
+    try {
+      await api('PUT', `/entities/${entityId}/doc`, { field, doc: value });
+      if (!statusEl) return;
+      statusEl.textContent = '✓';
+      setTimeout(() => { if (statusEl.textContent === '✓') statusEl.textContent = ''; }, 1500);
+    } catch (err) {
+      if (statusEl) statusEl.textContent = '!';
+      toast(err.message, true);
+    }
+  };
+  pendingDocSaves.set(key, { timer: setTimeout(write, DOC_SAVE_DEBOUNCE), write });
+}
+
+// Leaving the page must not cost the last few keystrokes.
+function flushDocSaves() {
+  for (const { timer, write } of [...pendingDocSaves.values()]) {
+    clearTimeout(timer);
+    write();
+  }
+}
+window.addEventListener('beforeunload', flushDocSaves);
+
+function teardownDocEditors() {
+  flushDocSaves();
+  for (const ed of liveEditors) {
+    try { ed.destroy(); } catch { /* already gone with the DOM */ }
+  }
+  liveEditors.clear();
+}
+
+// Collapse state per entity+field: read with two args, write with three.
+function docSectionCollapse(entityId, field, next) {
+  const key = `weave-doc-collapsed:${entityId}:${field}`;
+  if (next === undefined) return localStorage.getItem(key) === '1';
+  localStorage.setItem(key, next ? '1' : '');
+  return next;
+}
+
 /* ---------- entity page ---------- */
 
 async function showEntity(id) {
@@ -1520,59 +1660,54 @@ async function showEntity(id) {
   const right = el('div');
   grid.append(left, right);
 
-  /* One document panel per document field: rendered doc.html in a navigable
-     same-origin frame (mention links work in-frame, with back/refresh). */
+  /* One document section per document field. The rendered document IS the
+     editor — no edit mode, no preview toggle, no save button. The section
+     title is a quiet collapsible line rather than a card header, so nothing
+     competes with the document for attention. */
   for (const f of documentFields(db)) {
     const fmtBase = `${WS_PREFIX}/e/${id}/doc/${encodeURIComponent(f.name)}`;
-    // Same-origin frame: mention links navigate inside it; back/refresh work.
-    const frame = el('iframe', { class: 'doc-frame', src: `${fmtBase}.html`, title: `${f.name} document` });
-    // Full-size preview: grow the frame to its content on every load
-    // (initial, in-frame navigation, refresh) — no inner scrolling.
-    frame.addEventListener('load', () => {
-      const size = () => {
-        const h = frame.contentDocument?.documentElement?.scrollHeight;
-        if (h) frame.style.height = Math.max(h + 4, 120) + 'px';
-      };
-      size();
-      setTimeout(size, 350); // after mermaid/diagram render settles
-    });
-    const editorWrap = el('div', { class: 'hidden' });
-    const singleFieldDb = { ...db, fields: [f] }; // editor scoped to this field
-    editorWrap.append(docsEditor(entity, singleFieldDb, () => refresh()));
-    const editBtn = el('button', {
-      class: 'btn btn-sm',
-      onclick: () => {
-        const editing = !editorWrap.classList.contains('hidden');
-        editorWrap.classList.toggle('hidden', editing);
-        frame.classList.toggle('hidden', !editing);
-        editBtn.textContent = editing ? 'Edit' : 'Preview';
-        if (editing) frame.contentWindow?.location.reload(); // show saved edits
-      },
-    }, 'Edit');
-    // View switcher: the frame shows the chosen native format in place.
-    const viewBtns = {};
-    const setView = (ext) => {
-      frame.src = ext === 'view' ? `${fmtBase}.html` : `${fmtBase}.${ext}`;
-      for (const [k, b] of Object.entries(viewBtns)) b.classList.toggle('active', k === ext);
-    };
-    const viewGroup = el('div', { class: 'btn-group' },
-      ...[['view', 'View'], ['md', 'MD'], ['mmd', 'MMD'], ['pdf', 'PDF']].map(([ext, label]) => {
-        const b = el('button', { class: 'btn btn-sm' + (ext === 'view' ? ' active' : ''), onclick: () => setView(ext) }, label);
-        viewBtns[ext] = b;
-        return b;
-      }));
+    const host = el('div', { class: 'doc-editor' });
+    const status = el('span', { class: 'doc-status', title: 'Saved automatically' });
 
-    const panel = el('div', { class: 'card panel' },
-      el('div', { class: 'card-header' },
-        el('h3', { class: 'card-title' }, f.name),
-        el('div', { class: 'card-actions' },
-          el('div', { class: 'btn-group' },
-            el('button', { class: 'btn btn-sm', title: 'Back', onclick: () => frame.contentWindow?.history.back() }, '◀'),
-            el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => frame.contentWindow?.location.reload() }, '⟳')), ' ',
-          editBtn, ' ',
-          viewGroup)),
-      el('div', { class: 'card-body doc-frame-body' }, frame, editorWrap));
-    left.append(panel);
+    // MD / MMD / PDF survive as downloads. They were view modes when the frame
+    // could swap its source; with the editor always live they are exports.
+    const dl = dotsMenu(
+      ['md', 'mmd', 'pdf', 'html'].map((ext) => ({
+        label: `Download .${ext}`, href: `${fmtBase}.${ext}`,
+        download: `${entity.name || 'document'}-${f.name}.${ext}`,
+      })),
+      { title: `${f.name} downloads`, extraClass: 'doc-dl' });
+
+    const body = el('div', { class: 'doc-section-body' }, host);
+    const caret = el('button', {
+      class: 'doc-caret', type: 'button', title: 'Collapse section',
+      onclick: () => {
+        const open = body.classList.toggle('hidden');
+        caret.classList.toggle('closed', open);
+        docSectionCollapse(id, f.name, open);
+      },
+    });
+    const section = el('section', { class: 'doc-section' },
+      el('div', { class: 'doc-section-head' },
+        caret,
+        el('span', { class: 'doc-section-name' }, f.name),
+        el('span', {
+          class: 'doc-anchor', title: 'Copy link to this document',
+          onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
+        }, '🔗'),
+        status, dl),
+      body);
+    left.append(section);
+
+    if (docSectionCollapse(id, f.name)) {
+      body.classList.add('hidden');
+      caret.classList.add('closed');
+    }
+    mountDocEditor(host, {
+      value: entity.docs?.[f.name] ?? '',
+      placeholder: `Write ${f.name}… press / for blocks`,
+      onInput: (value) => scheduleDocSave(id, f.name, value, status),
+    });
   }
 
   /* Comments panel */
@@ -1937,6 +2072,9 @@ async function withPageLoader(work) {
 /* ---------- boot ---------- */
 
 function renderRoute() {
+  // Every render replaces #main, which would strand live document editors and
+  // whatever they have not written yet. Flush and destroy before the DOM goes.
+  teardownDocEditors();
   const hash = location.hash || '#/';
   let m;
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
@@ -2077,6 +2215,7 @@ function wireThemeToggle() {
     else document.documentElement.dataset.theme = pref;
     btn.textContent = icons[pref];
     btn.title = `Theme: ${pref} (click to switch)`;
+    retheme(); // live document editors follow the page, not their birth theme
   };
   media.addEventListener('change', () => { if (pref === 'auto') apply(); });
   apply();
@@ -2096,8 +2235,10 @@ window.addEventListener('focus', async () => {
     await loadSchema();
   } catch { return; }
   if (JSON.stringify(state.schema) === before) return;
-  if (document.querySelector('textarea.doc-inline')) {
-    toast('Schema changed elsewhere — close the doc editor and reopen to see new fields');
+  // A re-render destroys live editors. Never do that over text that has not
+  // reached the server yet, and never mid-edit in a grid row's textarea.
+  if (document.querySelector('textarea.doc-inline') || pendingDocSaves.size) {
+    toast('Schema changed elsewhere — reopen this entity to see new fields');
     return;
   }
   route();
@@ -2105,9 +2246,13 @@ window.addEventListener('focus', async () => {
 
 // The loader is fetched before the first route so boot's own wait can use it.
 initPageLoader();
+/* Theme first: the first render must not paint an unthemed frame. Anything
+   that reads the theme when it is built rather than on every paint — the
+   document editors, and the mermaid diagrams they render once — would
+   otherwise be born light and stay light under a dark page. */
+wireThemeToggle();
 withPageLoader(() => loadSchema().then(renderRoute));
 wireSearchButton();
 buildWsRail();
 wireWsNew();
 wireNavCollapse();
-wireThemeToggle();

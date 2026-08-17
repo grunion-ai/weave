@@ -453,7 +453,12 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
       }
 
       // ---------- static UI ----------
-      const file = path === '/' ? '/index.html' : path;
+      /* Vditor lazy-loads mermaid from inside its own dist tree. weave already
+         vendors a mermaid build for document pages, so that path is aliased
+         onto it rather than shipping a second 3.5MB copy of the same library. */
+      const file = path === '/' ? '/index.html'
+        : path === '/vendor/vditor/dist/js/mermaid/mermaid.min.js' ? '/vendor/mermaid.min.js'
+        : path;
       const full = join(PUBLIC_DIR, file.replace(/\.\./g, ''));
       if (existsSync(full) && !full.endsWith('/')) {
         // no-cache, not no-store: the browser may keep a copy but must

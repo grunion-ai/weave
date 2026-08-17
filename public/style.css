@@ -354,9 +354,37 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .map-legend { display: flex; gap: 18px; color: var(--tblr-secondary); font-size: 12px; margin-top: 8px; flex-wrap: wrap; }
 
 /* Navigable document frame (entity page) */
-.doc-frame { width: 100%; min-height: 120px; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: #fff; }
-[data-bs-theme="dark"] .doc-frame { background: #101216; }
-.doc-frame-body { padding: 8px; }
+/* ---------- document sections (Feature #45) ----------
+   The rendered document is the editing surface, so the section title has to
+   get out of its way: a quiet line of text, not a card header. Controls stay
+   invisible until the section is hovered — the document is the content, the
+   title is a label. */
+.doc-section { margin: 0 0 26px; }
+.doc-section-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; }
+.doc-section-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
+.doc-caret { border: 0; background: none; padding: 0 2px; cursor: pointer; color: var(--tblr-secondary); line-height: 1; }
+.doc-caret::before { content: "▾"; display: inline-block; transition: transform .12s ease; }
+.doc-caret.closed::before { transform: rotate(-90deg); }
+.doc-anchor, .doc-section .doc-dl { opacity: 0; transition: opacity .12s ease; }
+.doc-section:hover .doc-anchor, .doc-section:hover .doc-dl,
+.doc-section:focus-within .doc-anchor, .doc-section:focus-within .doc-dl { opacity: .7; }
+.doc-anchor { cursor: pointer; font-size: 11px; }
+.doc-anchor:hover { opacity: 1; }
+/* Save state is a single glyph, because "saved" is the normal case and should
+   not need a sentence — · pending, ✓ written, ! failed. */
+.doc-status { margin-left: auto; font-size: 11px; color: var(--tblr-secondary); min-width: 10px; text-align: right; }
+.doc-editor { border: 0; }
+.doc-editor .vditor { border: 0; background: transparent; }
+/* toolbar: [] still leaves an empty 5px strip above the document. */
+.doc-editor .vditor-toolbar { display: none; }
+/* Vditor's content themes paint their own surface — and do it from
+   `.vditor-ir pre.vditor-reset`, so the element selector has to be matched or
+   the document keeps sitting on a slab lighter than the page in dark mode. */
+.doc-editor .vditor-ir pre.vditor-reset { padding: 0; font-size: 15px; background: transparent; }
+.doc-editor .vditor-ir { background: transparent; }
+/* The slash menu is the only route to markdown blocks now, so it reads as a
+   list of names rather than a strip of syntax. */
+.vditor-hint .slash-item b { font-weight: 500; }
 .activity-pop { max-width: 560px; }
 .dl-wrap { position: relative; margin-right: 6px; }
 .dl-menu { position: absolute; top: 100%; left: 0; z-index: 30; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-shadow-dropdown, 0 2px 8px rgba(0,0,0,.15)); min-width: 150px; padding: 4px 0; }
