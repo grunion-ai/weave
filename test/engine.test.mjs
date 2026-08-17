@@ -391,3 +391,28 @@ test('a field carries a column width', () => {
   assert.throws(() => w.updateField(tasks, 'Due', { config: { width: 4 } }), /width/i);
   assert.throws(() => w.updateField(tasks, 'Due', { config: { width: 'wide' } }), /width/i);
 });
+
+/* A width the grid forgets on reload is not a width — it is a 300ms animation.
+   The in-memory case above passes without the field config ever reaching the
+   store, so the round-trip needs its own reopen, exactly like fieldOrder. */
+test('a resized column survives a reload', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'weave-width-'));
+  try {
+    const path = join(dir, 'ws.db');
+    const w1 = new Weave({ path });
+    w1.createSpace({ name: 'S' });
+    const db = w1.createTable({ space: 'S', name: 'Item' });
+    w1.addField(db, { name: 'A', type: 'text' });
+    w1.updateField(db, 'A', { config: { width: 173 } });
+
+    const widthOf = (w) => w.describeSchema()[0].tables[0].fields.find((f) => f.name === 'A').width;
+    assert.equal(widthOf(w1), 173, 'the width is set in memory');
+    assert.equal(widthOf(new Weave({ path })), 173, 'width is persisted schema, not view state');
+
+    // And clearing it must persist too, or auto-fit silently re-widens on reload.
+    w1.updateField(db, 'A', { config: { width: null } });
+    assert.equal(widthOf(new Weave({ path })), undefined, 'auto-fit persists as auto');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
