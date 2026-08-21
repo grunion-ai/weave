@@ -7,6 +7,9 @@ import { renderDocumentPage, renderMarkdown } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
+// Process start, not server start: module load is close enough and survives
+// multiple startServer calls in one process (tests, workspace hubs).
+const STARTED_AT = new Date().toISOString();
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -261,7 +264,9 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
         const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req) : {};
         const route = `${req.method} ${path}`;
 
-        if (route === 'GET /api/health') return send(200, { ok: true, name: 'weave', version: '0.3.0', workspace: weave.state.meta.name });
+        // startedAt + uptime let callers spot a stale server (process start
+        // time vs commit/package version) instead of assuming "up" = "current".
+        if (route === 'GET /api/health') return send(200, { ok: true, name: 'weave', version: '0.3.0', workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(process.uptime()) });
         if (route === 'GET /api/schema') return send(200, weave.describeSchema());
 
         if (route === 'GET /api/workspaces') return send(200, hub.list());

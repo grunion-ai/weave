@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Weave CLI — full workspace access from the terminal (and for agents).
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
@@ -62,6 +64,12 @@ Usage: weave <command> [args] [--data path]
 Server
   serve [--port 4400]                 Start the web app + REST API
   mcp                                 Start the MCP stdio server (for agents)
+
+Service (macOS launchd — auto-start on login, restart on crash)
+  service install [--port 4400] [--data path] [--label ai.grunion.weave.<port>]
+                                      Write + load the launch agent; logs to ~/Library/Logs/weave/
+  service uninstall [--label name]    Stop the agent and remove its plist
+  service status [--port 4400]        Plist, launchctl state, live /api/health probe
 
 Schema
   schema                              Describe spaces, tables, fields
@@ -132,6 +140,49 @@ async function main() {
     const w = new Weave({ path: dataPath });
     startMcpServer(w);
     return; // stays alive on stdin
+  }
+
+  if (command === 'service') {
+    // Never opens the workspace — install/status must work while another
+    // process owns the data file, and must not create one as a side effect.
+    const { serviceOptions, buildPlist, parseLaunchctlPrint, buildStatus, probeHealth } = await import('../src/service.js');
+    const [sub] = args;
+    const opts = serviceOptions({ ...flags, data: flags.data ?? process.env.WEAVE_DATA });
+    const domain = `gui/${process.getuid()}`;
+    const launchctl = (...a) => spawnSync('launchctl', a, { encoding: 'utf8' });
+
+    if (sub === 'install') {
+      mkdirSync(dirname(opts.plistPath), { recursive: true });
+      mkdirSync(dirname(opts.logPath), { recursive: true });
+      writeFileSync(opts.plistPath, buildPlist(opts));
+      launchctl('bootout', `${domain}/${opts.label}`); // re-install replaces; errors expected on first install
+      const boot = launchctl('bootstrap', domain, opts.plistPath);
+      if (boot.status !== 0) {
+        // Older launchctl (or an already-bootstrapped edge): legacy load path.
+        const load = launchctl('load', '-w', opts.plistPath);
+        if (load.status !== 0) throw new WeaveError(`launchctl failed: ${(boot.stderr || load.stderr || '').trim() || 'unknown error'}`);
+      }
+      return out({ ok: true, label: opts.label, plist: opts.plistPath, log: opts.logPath, url: `http://127.0.0.1:${opts.port}` });
+    }
+    if (sub === 'uninstall') {
+      launchctl('bootout', `${domain}/${opts.label}`); // best effort — plist removal is the point
+      rmSync(opts.plistPath, { force: true });
+      return out({ ok: true, label: opts.label, removed: opts.plistPath });
+    }
+    if (sub === 'status') {
+      const print = launchctl('print', `${domain}/${opts.label}`);
+      const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'));
+      return out(buildStatus({
+        label: opts.label,
+        port: opts.port,
+        plistPath: opts.plistPath,
+        plistInstalled: existsSync(opts.plistPath),
+        launchctl: parseLaunchctlPrint(print.status === 0 ? print.stdout : ''),
+        health: await probeHealth(opts.port),
+        localVersion: pkg.version,
+      }));
+    }
+    throw new WeaveError(`Unknown service subcommand '${sub}'. Try: install, uninstall, status`);
   }
 
   const w = new Weave({ path: dataPath });
