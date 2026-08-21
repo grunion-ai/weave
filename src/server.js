@@ -164,6 +164,28 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
       res.writeHead(code, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error, code: code === 401 ? 'unauthorized' : 'forbidden' }));
     };
+    // A share link is its own authorization (Feature #17): the token names
+    // exactly one view, rendered read-only, before any auth wall applies.
+    {
+      const shareM = path.match(/^\/view\/([A-Za-z0-9_-]+)$/);
+      if (shareM && req.method === 'GET') {
+        const v = weave.viewByShareToken(shareM[1]);
+        if (!v) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          return res.end('This share link is not (or no longer) valid.');
+        }
+        const resolved = weave.resolveView(v.id);
+        const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const block = (b) => `<h2>${esc(b.table)}</h2><table><thead><tr>${
+          Object.keys(b.items[0]?.fields ?? { '—': 1 }).map((k) => `<th>${esc(k)}</th>`).join('')
+        }</tr></thead><tbody>${
+          b.items.map((e) => `<tr>${Object.values(e.fields).map((val) => `<td>${esc(Array.isArray(val) ? val.map((x) => x?.name ?? x).join(', ') : (val && typeof val === 'object' ? val.name ?? '' : val ?? ''))}</td>`).join('')}</tr>`).join('')
+        }</tbody></table>`;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+        return res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(resolved.name)}</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:960px;margin:2rem auto;padding:0 16px;color:#1a1d21}table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0 0 24px}th,td{border:1px solid #d9dde3;padding:5px 9px;text-align:left}th{background:#f4f6f8}h1{font-size:22px}h2{font-size:15px;margin:20px 0 6px}footer{color:#6b7280;font-size:12px;margin-top:32px}</style><h1>${esc(resolved.name)}</h1>${resolved.blocks.map(block).join('')}<footer>Shared read-only from a weave workspace.</footer>`);
+      }
+    }
+
     let role = null;
     const authz = req.headers['authorization'];
     if (authz && /^Bearer /i.test(authz)) {
@@ -358,6 +380,22 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
             dryRun: !!body?.dryRun,
             allowDestructive: !!body?.allowDestructive,
           }));
+        }
+        if (route === 'GET /api/relation-map.mmd') {
+          res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+          return res.end(weave.relationMapMmd());
+        }
+        if (route === 'GET /api/views') return send(200, weave.listViews());
+        if (route === 'POST /api/views') return send(201, weave.createView(body ?? {}));
+        if ((m = path.match(/^\/api\/views\/([^/]+)$/))) {
+          if (req.method === 'GET') return send(200, weave.resolveView(m[1]));
+          if (req.method === 'DELETE') return send(200, weave.deleteView(m[1]));
+        }
+        if ((m = path.match(/^\/api\/views\/([^/]+)\/share$/)) && req.method === 'POST') {
+          return send(201, weave.shareView(m[1]));
+        }
+        if ((m = path.match(/^\/api\/views\/([^/]+)\/share$/)) && req.method === 'DELETE') {
+          return send(200, weave.unshareView(m[1]));
         }
         if (route === 'GET /api/audit') {
           return send(200, weave.listAudit({

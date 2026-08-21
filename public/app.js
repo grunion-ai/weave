@@ -933,6 +933,30 @@ function drawDatabase(db, items, trashCount = 0) {
       dotsMenu([
         { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
         'divider',
+        // A saved view is this table + these filters, named (Feature #17).
+        {
+          label: 'Save as view…',
+          run: () => modal('Save view', [
+            el('input', { name: 'name', placeholder: 'View name', class: 'form-control full' }),
+          ], async (fd) => {
+            const where = filterWhere(db);
+            await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
+            toast('View saved — find it on the workspace page');
+          }, 'Save'),
+        },
+        'divider',
+        // What a row is called (Feature #40): "+ New invoice", not "entity".
+        {
+          label: `Record noun${db.noun ? ` (${db.noun})` : ''}…`,
+          run: () => modal(`What is one ${db.name} row?`, [
+            el('input', { name: 'noun', placeholder: 'e.g. invoice — empty clears', class: 'form-control full', value: db.noun ?? '' }),
+          ], async (fd) => {
+            await api('PATCH', `/tables/${db.id}`, { noun: String(fd.get('noun') ?? '') });
+            await loadSchema();
+            showDatabase(db.id, state.route.view);
+          }, 'Save'),
+        },
+        'divider',
         // System columns (Feature #65): per-table show/hide, persisted schema.
         ...Object.keys(SYSTEM_COLS).map((n) => ({
           label: `${(db.systemFields ?? []).includes(n) ? '✓ ' : ''}${n}`,
@@ -2024,7 +2048,7 @@ async function showEntity(id) {
 /* ---------- create & schema dialogs ---------- */
 
 function quickCreate(db) {
-  modal(`New ${db.name}`, [
+  modal(`New ${db.noun ?? db.name}`, [
     el('input', { name: 'name', placeholder: 'Name', class: 'form-control full', style: 'width:100%' }),
   ], async (fd) => {
     const e = await api('POST', `/tables/${db.id}/entities`, { name: fd.get('name') });
@@ -2328,6 +2352,40 @@ async function showActivity(param) {
 
 /* ---------- home ---------- */
 
+async function showView(id) {
+  state.route = { page: 'view', id };
+  renderNav();
+  const main = $('#main');
+  let v;
+  try { v = await api('GET', `/views/${id}`); } catch { return showHome(); }
+  const meta = (await api('GET', '/views')).find((x) => x.id === id);
+  main.replaceChildren(el('div', { class: 'wv-toolbar' },
+    el('h1', {}, v.name),
+    el('span', { style: 'flex:1' }),
+    el('button', {
+      class: 'btn btn-sm', onclick: async () => {
+        if (meta?.shared) { await api('DELETE', `/views/${id}/share`); toast('Share link revoked'); return showView(id); }
+        const { url } = await api('POST', `/views/${id}/share`);
+        await navigator.clipboard?.writeText(location.origin + WS_PREFIX + url).catch(() => {});
+        toast('Share link copied');
+        showView(id);
+      },
+    }, meta?.shared ? 'Revoke share' : 'Share…'),
+    dotsMenu([{ hold: 'Delete view', holdingLabel: 'Hold to delete…', run: async () => { await api('DELETE', `/views/${id}`); toast('View deleted'); showHome(); } }], { align: 'right' })));
+  for (const b of v.blocks) {
+    const cols = Object.keys(b.items[0]?.fields ?? {});
+    main.append(el('div', { class: 'card panel' },
+      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, b.table)),
+      el('div', { class: 'table-wrap' }, el('table', { class: 'table table-sm wv-grid' },
+        el('thead', {}, el('tr', {}, ...cols.map((c) => el('th', {}, c)))),
+        el('tbody', {}, ...b.items.map((e) => el('tr', { onclick: () => openEntity(e.id), style: 'cursor:pointer' },
+          ...cols.map((c) => {
+            const val = e.fields[c];
+            return el('td', {}, Array.isArray(val) ? val.map((x) => x?.name ?? x).join(', ') : (val && typeof val === 'object' ? val.name ?? '' : String(val ?? '')));
+          }))))))));
+  }
+}
+
 async function showHome() {
   state.route = { page: 'home' };
   renderNav();
@@ -2361,6 +2419,32 @@ async function showHome() {
         el('span', {}, 'Activity'), el('span', { class: 'chip system-chip' }, 'system'),
         el('span', { class: 'spacer' }),
         el('span', { class: 'pid' }, 'every event in this workspace'))));
+  // Saved views (Feature #17): named cross-table slices; share mints a
+  // read-only capability URL that outlives the auth wall until revoked.
+  try {
+    const views = await api('GET', '/views');
+    if (views.length) {
+      main.append(el('div', { class: 'card list-rows' },
+        ...views.map((v) => el('div', { class: 'list-row', onclick: () => { location.hash = `#/view/${v.id}`; } },
+          el('span', {}, v.name),
+          v.shared ? el('span', { class: 'chip system-chip' }, 'shared') : null,
+          el('span', { class: 'spacer' }),
+          el('span', { class: 'pid' }, `${v.blocks.length} block${v.blocks.length === 1 ? '' : 's'}`)))));
+    }
+  } catch { /* older server */ }
+  // The workspace's shape, read-only (Feature #51): the same .mmd any doc can
+  // reference, rendered here through the vendored mermaid.
+  if (dbs.some((d) => !d.system)) {
+    const mapCard = el('div', { class: 'card panel home-map' },
+      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Relation map')),
+      el('div', { class: 'card-body' }, '…'));
+    main.append(mapCard);
+    fetch(`${WS_PREFIX}/api/relation-map.mmd`).then((r) => r.text()).then((mmd) => {
+      const body = mapCard.querySelector('.card-body');
+      body.replaceChildren(el('pre', { class: 'mermaid' }, mmd));
+      renderMermaidIn(body);
+    }).catch(() => mapCard.remove());
+  }
 }
 
 /* ---------- universal search (sidebar + ⌘K palette) ---------- */
@@ -2563,6 +2647,7 @@ function renderRoute() {
   if ((m = hash.match(/^#\/space\/([^/?]+)/))) return showSpace(m[1]);
   if ((m = hash.match(/^#\/activity(?:\/([^/?]+))?/))) return showActivity(m[1] ?? null);
   if (hash.startsWith('#/map')) return showMap();
+  if ((m = hash.match(/^#\/view\/([^/?]+)/))) return showView(m[1]);
   if ((m = hash.match(/^#\/entity\/([^/?]+)/))) return showEntity(m[1]);
   return showHome();
 }

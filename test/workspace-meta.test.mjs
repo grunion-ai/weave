@@ -71,3 +71,33 @@ test('API responses carry no CORS allow-origin header (same-origin only)', async
     server.close();
   }
 });
+
+/* Feature #40 — per-table entity noun. A table of invoices holds invoices,
+   not "entities": the noun is table schema, lands in describeSchema, and the
+   UI's create affordances speak it. */
+test('a table can name what its rows are', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Sales' });
+  w.createTable({ space: 'Sales', name: 'Invoices' });
+  w.updateTable('Invoices', { noun: 'invoice' });
+  const t = w.describeSchema().find((sp) => sp.space === 'Sales').tables[0];
+  assert.equal(t.noun, 'invoice');
+  assert.throws(() => w.updateTable('Invoices', { noun: 42 }), /noun/i);
+});
+
+/* Feature #51 — the workspace's shape as a read-only .mmd. One generator in
+   the engine; the home page and any doc that wants the map consume the same
+   source. User structure only — the registry describes itself. */
+test('relationMapMmd draws spaces, tables and relations', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Dev' });
+  w.createTable({ space: 'Dev', name: 'Task' });
+  w.createTable({ space: 'Dev', name: 'Project' });
+  w.addRelation('Task', { name: 'Project', targetDb: 'Project', cardinality: 'many-to-one' });
+  const mmd = w.relationMapMmd();
+  assert.match(mmd, /^graph LR/);
+  assert.match(mmd, /subgraph "Dev"/);
+  assert.match(mmd, /\["Task"\]/);
+  assert.match(mmd, /-- "Project" -->/);
+  assert.ok(!mmd.includes('Spaces'), 'the registry stays out of the picture');
+});

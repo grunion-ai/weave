@@ -366,6 +366,10 @@ export class Weave {
     if (patch.name != null) db.name = patch.name;
     if (patch.description != null) db.description = patch.description;
     if (patch.icon != null) db.icon = patch.icon;
+    if (patch.noun != null) {
+      if (typeof patch.noun !== 'string') throw new WeaveError('A noun is a short string (e.g. "invoice")', 'invalid');
+      if (patch.noun.trim()) db.noun = patch.noun.trim(); else delete db.noun;
+    }
     if (patch.systemFields != null) {
       const known = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
       for (const n of patch.systemFields) {
@@ -416,6 +420,109 @@ export class Weave {
   }
 
   // ---------------- fields ----------------
+
+  /* The workspace's shape as mermaid source (Feature #51): one generator,
+     consumed by the home page and any document that wants the map. User
+     structure only — the registry describes itself and would double every
+     edge with bookkeeping. */
+  relationMapMmd() {
+    const lines = ['graph LR'];
+    const nid = (db) => 'T' + db.id.replaceAll('-', '').slice(0, 8);
+    for (const sp of this.listSpaces()) {
+      if (sp.system) continue;
+      const tables = this.listTables(sp.id).filter((t) => !t.system);
+      if (!tables.length) continue;
+      lines.push(`  subgraph ${JSON.stringify(sp.name)}`);
+      for (const t of tables) lines.push(`    ${nid(t)}[${JSON.stringify(t.name)}]`);
+      lines.push('  end');
+    }
+    const seen = new Set();
+    for (const db of Object.values(this.state.tables)) {
+      if (db.system) continue;
+      for (const f of Object.values(db.fields)) {
+        if (f.type !== 'relation' || seen.has(f.id)) continue;
+        seen.add(f.id);
+        seen.add(f.config.inverseFieldId);
+        const target = this.state.tables[f.config.targetDb];
+        if (!target || target.system) continue;
+        lines.push(`  ${nid(db)} -- ${JSON.stringify(f.name)} --> ${nid(target)}`);
+      }
+    }
+    return lines.join('\n') + '\n';
+  }
+
+  // ---------------- saved views (Feature #17) ----------------
+  /* A view is a named list of blocks — each a table plus an optional where —
+     stored in workspace meta. Sharing mints a capability token: the /view/
+     URL renders that view read-only and nothing else, even when the
+     workspace requires auth. Tables are resolved at creation so a broken
+     block fails the author, not the reader. */
+  createView({ name, blocks = [] } = {}) {
+    if (!name) throw new WeaveError('View name is required', 'invalid');
+    const views = (this.state.meta.views ??= {});
+    const resolved = blocks.map((b) => {
+      const db = this.getTable(b.table);
+      return { dbId: db.id, where: b.where ?? null, view: b.view ?? 'table' };
+    });
+    const v = { id: uuid(), name, blocks: resolved, createdAt: nowISO(), createdBy: this.actor };
+    views[v.id] = v;
+    this.save();
+    this.#audit('view-created', { name });
+    return v;
+  }
+
+  listViews() {
+    return Object.values(this.state.meta.views ?? {}).map(({ shareToken, ...pub }) => ({ ...pub, shared: !!shareToken }));
+  }
+
+  getView(id) {
+    const v = (this.state.meta.views ?? {})[id];
+    if (!v) throw new WeaveError(`View '${id}' not found`, 'not-found');
+    return v;
+  }
+
+  deleteView(id) {
+    const v = this.getView(id);
+    delete this.state.meta.views[v.id];
+    this.save();
+    this.#audit('view-deleted', { name: v.name });
+    return { id: v.id, deleted: true };
+  }
+
+  resolveView(id) {
+    const v = this.getView(id);
+    return {
+      id: v.id,
+      name: v.name,
+      blocks: v.blocks.map((b) => {
+        const db = this.state.tables[b.dbId];
+        if (!db) return { table: '(deleted table)', items: [] };
+        const { items } = this.query(db.id, { where: b.where ?? undefined });
+        return { table: this.qualifiedName(db), view: b.view, items: items.map((e) => this.readEntity(e.id)) };
+      }),
+    };
+  }
+
+  shareView(id) {
+    const v = this.getView(id);
+    v.shareToken ??= 'wvv_' + randomBytes(18).toString('base64url');
+    this.save();
+    this.#audit('view-shared', { name: v.name });
+    return { url: `/view/${v.shareToken}`, token: v.shareToken };
+  }
+
+  unshareView(id) {
+    const v = this.getView(id);
+    delete v.shareToken;
+    this.save();
+    this.#audit('view-unshared', { name: v.name });
+    return { id: v.id, shared: false };
+  }
+
+  viewByShareToken(token) {
+    if (!token) return null;
+    return Object.values(this.state.meta.views ?? {}).find((v) => v.shareToken === token) ?? null;
+  }
 
   // ---------------- schema as a document (Feature #13) ----------------
   /* describeSchema() is the read half; this is the write half. Hand back an
@@ -2283,6 +2390,7 @@ export class Weave {
         description: db.description ?? '',
         ...(db.system ? { system: db.system } : {}),
         ...(db.systemFields?.length ? { systemFields: [...db.systemFields] } : {}),
+        ...(db.noun ? { noun: db.noun } : {}),
         qualified: this.qualifiedName(db),
         entityCount: this.listEntities(db.id).length,
         fields: db.fieldOrder.map((fid) => {
