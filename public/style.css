@@ -536,3 +536,10 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .fielddef-edit { display: inline-flex; align-items: center; gap: 4px; }
 .nav-health { font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); padding: 6px 8px 0; }
 .wv-grid td.sys-cell { color: var(--tblr-secondary); font-size: 12.5px; white-space: nowrap; }
+/* ---------- filter strip (Feature #38) ---------- */
+.filter-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
+.filter-group { display: inline-flex; align-items: center; gap: 4px; }
+.filter-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); margin-right: 2px; }
+.filter-chip { font-size: 12px; padding: 2px 9px; border-radius: 5px; border: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); color: var(--tblr-secondary); cursor: pointer; }
+.filter-chip:hover { border-color: var(--tblr-primary); color: var(--tblr-body-color); }
+.filter-chip.on { border-color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .10); color: var(--tblr-primary); font-weight: 600; }

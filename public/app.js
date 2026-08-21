@@ -809,6 +809,62 @@ async function showTrash(dbId) {
 
 /* ---------- table views ---------- */
 
+
+/* ---------- filters (Feature #38) ----------
+   Per-table workflow-state filters, persisted per browser. The selection
+   drives the ENGINE's where-language over POST /query — the grid never
+   filters client-side, so board/list/table all obey the same truth. */
+const FILTERS_KEY = 'weave-filters';
+function tableFilters(dbId) {
+  try { return JSON.parse(localStorage.getItem(FILTERS_KEY) ?? '{}')[dbId] ?? {}; } catch { return {}; }
+}
+function setTableFilters(dbId, filters) {
+  let all = {};
+  try { all = JSON.parse(localStorage.getItem(FILTERS_KEY) ?? '{}'); } catch { /* fresh */ }
+  if (Object.keys(filters).length) all[dbId] = filters;
+  else delete all[dbId];
+  localStorage.setItem(FILTERS_KEY, JSON.stringify(all));
+}
+function filterWhere(db) {
+  const active = tableFilters(db.id);
+  const conds = Object.entries(active)
+    .filter(([field, states]) => states?.length && db.fields.some((f) => f.name === field && f.type === 'workflow'))
+    .map(([field, states]) => [field, 'in', states]);
+  return conds.length ? conds : undefined;
+}
+function filterStrip(db, onChange) {
+  const wfFields = db.fields.filter((f) => f.type === 'workflow');
+  if (!wfFields.length) return null;
+  const active = tableFilters(db.id);
+  const strip = el('div', { class: 'filter-strip' });
+  for (const f of wfFields) {
+    const row = el('span', { class: 'filter-group' },
+      el('span', { class: 'filter-label' }, f.name));
+    for (const st of f.states) {
+      const on = (active[f.name] ?? []).includes(st.name);
+      row.append(el('button', {
+        class: `filter-chip cat-${st.category}${on ? ' on' : ''}`,
+        onclick: () => {
+          const cur = new Set(active[f.name] ?? []);
+          cur.has(st.name) ? cur.delete(st.name) : cur.add(st.name);
+          const next = { ...active };
+          if (cur.size) next[f.name] = [...cur]; else delete next[f.name];
+          setTableFilters(db.id, next);
+          onChange();
+        },
+      }, st.name));
+    }
+    strip.append(row);
+  }
+  if (Object.keys(active).length) {
+    strip.append(el('button', {
+      class: 'btn btn-sm btn-ghost-secondary tiny',
+      onclick: () => { setTableFilters(db.id, {}); onChange(); },
+    }, 'Clear'));
+  }
+  return strip;
+}
+
 async function showDatabase(dbId, view) {
   const db = allTables().find((d) => d.id === dbId);
   if (!db) return showHome();
@@ -818,8 +874,9 @@ async function showDatabase(dbId, view) {
   // public/ is served from disk while the server process is long-lived, so a
   // page can be newer than the routes behind it (git pull without a restart).
   // The trash badge is decoration — it must never keep the table from opening.
+  const where = filterWhere(db);
   const [result, trash] = await Promise.all([
-    api('POST', `/tables/${db.id}/query`, {}),
+    api('POST', `/tables/${db.id}/query`, where ? { where } : {}),
     api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0 })),
   ]);
   drawDatabase(db, result.items, trash.total);
@@ -905,8 +962,12 @@ function drawDatabase(db, items, trashCount = 0) {
     ],
   }));
 
+  const strip = filterStrip(db, () => showDatabase(db.id, state.route.view));
+  if (strip) main.append(strip);
+
   const onSaved = async () => {
-    const fresh = await api('POST', `/tables/${db.id}/query`, {});
+    const w2 = filterWhere(db);
+    const fresh = await api('POST', `/tables/${db.id}/query`, w2 ? { where: w2 } : {});
     drawDatabase(db, fresh.items);
     restoreGridFocus();
   };

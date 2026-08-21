@@ -974,3 +974,15 @@ test('vendored mermaid is at or past the 11.9.0 security release (Issue #8)', ()
   assert.ok(versions.some((v) => atLeast(v, '11.9.0')),
     `mermaid must be ≥ 11.9.0 (XSS advisories fixed there); saw ${versions.join(', ')}`);
 });
+
+test('the filter strip drives the engine where-language, not a client sort (Feature #38)', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  assert.ok(app.includes("function filterWhere(db)"), 'filters compile to a where clause');
+  assert.ok(app.includes("['in', states]") || app.includes("'in', states]"), 'workflow states use the in operator');
+  // Both the initial load and every refresh must apply the same filters.
+  const loads = app.match(/query`, w(here)?2? \? \{ where/g) ?? app.match(/\{ where \}/g) ?? [];
+  assert.ok(app.includes('where ? { where } : {}'), 'showDatabase queries through the filters');
+  assert.ok(app.includes('w2 ? { where: w2 } : {}'), 'onSaved refreshes through the filters');
+  const chips = rulesFor('.filter-chip');
+  assert.ok(chips['cursor'] === 'pointer');
+});
