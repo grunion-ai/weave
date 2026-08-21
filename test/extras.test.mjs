@@ -127,8 +127,10 @@ test('webhook automation fires on state change', async () => {
     });
     const e = w.createEntity(db, { name: 'Deploy' });
     w.setState(e.id, 'State', 'Done');
-    // fire-and-forget: give the event loop a beat
-    await new Promise((r) => setTimeout(r, 150));
+    // fire-and-forget: poll to a deadline rather than one fixed beat — a busy
+    // machine can hold the fetch past any single sleep (Issue #27).
+    const deadline = Date.now() + 5000;
+    while (!received.length && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
     assert.equal(received.length, 1);
     assert.equal(received[0].event, 'state-changed');
     assert.equal(received[0].entity.name, 'Deploy');
