@@ -273,6 +273,16 @@ function renderNav() {
         await loadSchema();
       })),
     }, '+ New space'));
+  // Instance status (Feature #54): version + uptime from /api/health, so a
+  // stale server is visible at a glance instead of masquerading as a broken
+  // feature. startedAt arrives with the same payload for tooling to compare.
+  const status = el('div', { class: 'nav-health', title: 'This weave instance' }, '…');
+  api('GET', '/health').then((h) => {
+    const up = h.uptime == null ? '' : ` · up ${h.uptime < 3600 ? Math.round(h.uptime / 60) + 'm' : Math.round(h.uptime / 3600) + 'h'}`;
+    status.textContent = `v${h.version}${up}`;
+    if (h.startedAt) status.title = `This weave instance — started ${h.startedAt}`;
+  }).catch(() => { status.textContent = 'offline'; });
+  foot.append(status);
   nav.append(foot);
 }
 
