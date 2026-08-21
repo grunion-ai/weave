@@ -75,6 +75,9 @@ Service (macOS launchd — auto-start on login, restart on crash)
 
 Schema
   schema                              Describe spaces, tables, fields
+  schema export [--out file]          The schema as an editable JSON document
+  schema apply --file doc.json [--dry-run] [--allow-destructive]
+                                      Grow the workspace to match the document
   space create <name>
   table create <space> <name>
   field add <table> <name> <type> [--config '{json}']
@@ -98,6 +101,10 @@ default is the table's first document field, usually "Description")
   doc append <ref> (--content 'md' | --file path) [--field Name]
   doc export <ref> --format md|html|pdf [--out path] [--field Name]
 
+Keys (Feature #64 — secrets live in ~/.weave/keystore.json, never in data)
+  key set <name> (--value <secret> | reads stdin)
+  key list
+  key delete <name>
 Accounts & audit (Feature #14)
   account create <name> [--role admin|writer|reader]
   account list
@@ -195,14 +202,35 @@ async function main() {
   const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
 
   switch (command) {
-    case 'schema':
+    case 'schema': {
+      const [sub] = args;
+      if (sub === 'apply') {
+        const doc = JSON.parse(readFileSync(flags.file, 'utf8'));
+        return out(w.applySchema(doc, { dryRun: !!flags['dry-run'], allowDestructive: !!flags['allow-destructive'] }));
+      }
+      if (sub === 'export') {
+        const json = JSON.stringify(w.describeSchema(), null, 2);
+        if (flags.out) { writeFileSync(flags.out, json); return out({ ok: true, out: flags.out }); }
+        return out(json);
+      }
       return out(w.describeSchema());
+    }
     case 'account': {
       const [sub, ref] = args;
       if (sub === 'create') return out(w.createAccount({ name: ref, role: flags.role ?? 'writer' }));
       if (sub === 'delete') return out(w.deleteAccount(ref));
       if (sub === 'list' || !sub) return out(w.listAccounts());
       throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete`);
+    }
+    case 'key': {
+      const [sub, name] = args;
+      if (sub === 'set') {
+        const value = flags.value ?? readFileSync(0, 'utf8').trim();
+        return out(w.setKey(name, value));
+      }
+      if (sub === 'delete') return out(w.deleteKey(name));
+      if (sub === 'list' || !sub) return out(w.listKeys());
+      throw new WeaveError(`Unknown key subcommand '${sub}'. Try: set, list, delete`);
     }
     case 'audit':
       return out(w.listAudit({ limit: Number(flags.limit ?? 50) }));

@@ -40,7 +40,7 @@ export function parseCSV(text) {
   return rows.filter((r) => !(r.length === 1 && r[0] === ''));
 }
 
-const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field'];
+const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key'];
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
 /* Types whose definition can name the value a new row starts with. Workflow is
    absent on purpose: its default is one of its states, which is where it has
@@ -89,7 +89,7 @@ const MAX_COMPUTE_DEPTH = 8;
    materialise it. */
 export const DEFINABLE_TYPES = [
   'text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email',
-  'select', 'multiselect', 'workflow', 'document', 'field',
+  'select', 'multiselect', 'workflow', 'document', 'field', 'key',
 ];
 const MAX_DEFINITION_DEPTH = 4;
 
@@ -168,8 +168,9 @@ export class Weave {
   #dirty = new Set();
   #dirtyAll = false;
 
-  constructor({ path = null, actor = 'local' } = {}) {
+  constructor({ path = null, actor = 'local', keystorePath = null } = {}) {
     this.actor = actor;
+    this.keystorePath = keystorePath ?? process.env.WEAVE_KEYSTORE ?? join(process.env.HOME ?? '.', '.weave', 'keystore.json');
     this.store = new Store(path);
     const loaded = this.store.load();
     // A pre-existing file must actually be a workspace — never adopt (and
@@ -366,7 +367,7 @@ export class Weave {
     if (patch.description != null) db.description = patch.description;
     if (patch.icon != null) db.icon = patch.icon;
     if (patch.systemFields != null) {
-      const known = ['Created At', 'Modified At', 'Created By', 'Modified By'];
+      const known = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
       for (const n of patch.systemFields) {
         if (!known.includes(n)) throw new WeaveError(`'${n}' is not a system field (${known.join(', ')})`, 'invalid');
       }
@@ -415,6 +416,168 @@ export class Weave {
   }
 
   // ---------------- fields ----------------
+
+  // ---------------- schema as a document (Feature #13) ----------------
+  /* describeSchema() is the read half; this is the write half. Hand back an
+     edited copy of that JSON and the workspace grows to match. Additive by
+     design: creations and config updates apply freely; an omission is a
+     deletion and needs allowDestructive; a type change is never applied —
+     the document cannot mean that, delete and recreate is the honest
+     spelling. Names are identity here, so renames belong to the registry
+     rows (#12/#52), not this surface. System spaces/tables are not the
+     document's business in either direction. */
+  applySchema(doc, { dryRun = false, allowDestructive = false } = {}) {
+    if (!Array.isArray(doc)) throw new WeaveError('A schema document is the array describeSchema() returns', 'invalid');
+    const plan = [];
+    const act = (action, subject, fn) => {
+      plan.push({ action, subject });
+      if (!dryRun) fn();
+    };
+    const configFromDescriptor = (f) => {
+      const config = {};
+      if (f.options) config.options = f.options;
+      if (f.states) config.states = f.states;
+      if (f.expression) config.expression = f.expression;
+      if (f.via) config.relationField = f.via;
+      if (f.targetField) config.targetField = f.targetField;
+      if (f.aggregate) config.aggregate = f.aggregate;
+      if (f.default !== undefined) config.default = f.default;
+      if (f.types || f.depth) config.depth = f.depth;
+      return config;
+    };
+    const wanted = doc.filter((sp) => !sp.system);
+
+    for (const spDoc of wanted) {
+      let sp = this.findSpace(spDoc.space);
+      if (!sp) {
+        act('create-space', spDoc.space, () => { sp = this.createSpace({ name: spDoc.space, description: spDoc.description ?? '' }); });
+        if (dryRun) continue;
+      } else if (spDoc.description != null && spDoc.description !== (sp.description ?? '')) {
+        act('update-space', spDoc.space, () => this.updateSpace(sp.id, { description: spDoc.description }));
+      }
+      for (const tDoc of spDoc.tables ?? []) {
+        const qualified = `${spDoc.space}/${tDoc.name}`;
+        let db = this.findTable(qualified);
+        if (db?.system) continue;
+        if (!db) {
+          act('create-table', qualified, () => {
+            db = this.createTable({ space: spDoc.space, name: tDoc.name, description: tDoc.description ?? '' });
+            for (const f of tDoc.fields ?? []) {
+              if (['Name', 'Description'].includes(f.name)) continue;
+              this.addField(db.id, { name: f.name, type: f.type, config: configFromDescriptor(f) });
+            }
+          });
+          continue;
+        }
+        if (tDoc.description != null && tDoc.description !== (db.description ?? '')) {
+          act('update-table', qualified, () => this.updateTable(db.id, { description: tDoc.description }));
+        }
+        for (const fDoc of tDoc.fields ?? []) {
+          const existing = Object.values(db.fields).find((x) => x.name === fDoc.name);
+          if (!existing) {
+            if (fDoc.type === 'relation') {
+              act('create-relation', `${qualified}.${fDoc.name}`, () => this.addRelation(db.id, {
+                name: fDoc.name, targetDb: fDoc.targetDb,
+                cardinality: fDoc.many ? 'one-to-many' : 'many-to-one',
+                inverseName: fDoc.inverseField ?? undefined,
+              }));
+            } else {
+              act('create-field', `${qualified}.${fDoc.name}`, () => this.addField(db.id, { name: fDoc.name, type: fDoc.type, config: configFromDescriptor(fDoc) }));
+            }
+            continue;
+          }
+          if (existing.type !== fDoc.type) {
+            throw new WeaveError(`'${qualified}.${fDoc.name}' cannot change type ('${existing.type}' → '${fDoc.type}') — delete the field and create it anew`, 'invalid');
+          }
+          const nextCfg = configFromDescriptor(fDoc);
+          const cfgChanged = (fDoc.options && JSON.stringify(fDoc.options) !== JSON.stringify(existing.config.options?.map((o) => o.name)))
+            || (fDoc.states && JSON.stringify(fDoc.states) !== JSON.stringify(existing.config.states?.map((st) => ({ name: st.name, category: st.category, default: !!st.default }))))
+            || (fDoc.expression && fDoc.expression !== existing.config.expression);
+          if (cfgChanged) {
+            act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, existing.id, { config: nextCfg }));
+          }
+        }
+        // Omitted fields are deletions.
+        for (const existing of Object.values(db.fields)) {
+          if (existing.system || existing.id === db.nameFieldId) continue;
+          if (existing.type === 'relation' && existing.inverseOf) continue;
+          const still = (tDoc.fields ?? []).some((f) => f.name === existing.name);
+          if (!still) {
+            if (!allowDestructive) throw new WeaveError(`Applying this document would delete '${qualified}.${existing.name}' — a destructive change needs allowDestructive`, 'invalid');
+            act('delete-field', `${qualified}.${existing.name}`, () => this.deleteField(db.id, existing.id));
+          }
+        }
+      }
+      // Omitted tables are deletions.
+      if (sp && !dryRun || sp) {
+        for (const db of this.listTables(sp?.id)) {
+          if (db.system) continue;
+          const still = (spDoc.tables ?? []).some((t) => t.name === db.name);
+          if (!still) {
+            if (!allowDestructive) throw new WeaveError(`Applying this document would delete table '${spDoc.space}/${db.name}' — a destructive change needs allowDestructive`, 'invalid');
+            act('delete-table', `${spDoc.space}/${db.name}`, () => this.deleteTable(db.id));
+          }
+        }
+      }
+    }
+    // Omitted spaces are deletions.
+    for (const sp of this.listSpaces()) {
+      if (sp.system) continue;
+      const still = wanted.some((d) => d.space === sp.name);
+      if (!still) {
+        if (!allowDestructive) throw new WeaveError(`Applying this document would delete space '${sp.name}' — a destructive change needs allowDestructive`, 'invalid');
+        act('delete-space', sp.name, () => this.deleteSpace(sp.id));
+      }
+    }
+    if (!dryRun && plan.length) this.#audit('schema-applied', { changes: plan.length });
+    return plan;
+  }
+
+  // ---------------- keystore (Feature #64) ----------------
+  /* Secrets never enter workspace data: a key field's value is a NAME, and
+     the name resolves here — a chmod-600 file beside no workspace. There is
+     deliberately no way to read a secret over HTTP; resolveKey exists for
+     the engine's own consumers (automations, integrations). */
+  #readKeystore() {
+    try { return JSON.parse(readFileSync(this.keystorePath, 'utf8')); } catch { return {}; }
+  }
+
+  #writeKeystore(data) {
+    mkdirSync(dirname(this.keystorePath), { recursive: true });
+    writeFileSync(this.keystorePath, JSON.stringify(data, null, 1), { mode: 0o600 });
+  }
+
+  setKey(name, secret) {
+    if (!name) throw new WeaveError('Key name is required', 'invalid');
+    const data = this.#readKeystore();
+    data[name] = String(secret ?? '');
+    this.#writeKeystore(data);
+    this.#audit('key-set', { name });
+    return { name, set: true };
+  }
+
+  deleteKey(name) {
+    const data = this.#readKeystore();
+    if (!(name in data)) throw new WeaveError(`Key '${name}' not found`, 'not-found');
+    delete data[name];
+    this.#writeKeystore(data);
+    this.#audit('key-deleted', { name });
+    return { name, deleted: true };
+  }
+
+  hasKey(name) {
+    return name in this.#readKeystore();
+  }
+
+  listKeys() {
+    return Object.keys(this.#readKeystore()).sort().map((name) => ({ name, set: true }));
+  }
+
+  resolveKey(name) {
+    const data = this.#readKeystore();
+    if (!(name in data)) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
+    return data[name];
+  }
 
   // ---------------- accounts & audit (Feature #14) ----------------
   /* Accounts are how a hosted instance (#84, v0.5) knows its callers. The
@@ -1215,6 +1378,11 @@ export class Weave {
         // The value IS a field definition. Validated by the same normaliser
         // addField uses, so it can only ever describe a creatable field.
         return normalizeDefinition(raw, field.config.depth ?? 1);
+      case 'key':
+        // Only the NAME is a value; the secret stays in the keystore (#64).
+        // An unknown name is storable on purpose — set the secret before or
+        // after, the cell shows which state you are in.
+        return String(raw);
       default:
         throw new WeaveError(`Cannot write field type '${field.type}'`, 'invalid');
     }
@@ -1472,6 +1640,9 @@ export class Weave {
         const unit = resolved.config?.states ? 'state' : 'option';
         return n ? `${resolved.type} · ${n} ${unit}${n === 1 ? '' : 's'}` : resolved.type;
       }
+      case 'key':
+        // The name and whether the keystore holds it — never the secret.
+        return `🔑 ${resolved}${this.hasKey(resolved) ? '' : ' (unset)'}`;
       case 'relation': {
         const names = resolved.map((id) => {
           const t = this.state.entities[id];

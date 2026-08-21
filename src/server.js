@@ -183,6 +183,7 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
         || /^\/api\/tables$/.test(path)
         || (/^\/api\/tables\/[^/]+$/.test(path) && (m2 === 'PATCH' || m2 === 'DELETE'))
         || /^\/api\/tables\/[^/]+\/fields/.test(path)
+        || (/^\/api\/schema$/.test(path))
         || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH'));
       // Registry rows ARE structure: writing Spaces/Tables/Fields rows through
       // the entity door is a schema change wearing entity clothes.
@@ -338,6 +339,25 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
         if (route === 'POST /api/accounts') return send(201, weave.createAccount(body ?? {}));
         if ((m = path.match(/^\/api\/accounts\/(.+)$/)) && req.method === 'DELETE') {
           return send(200, weave.deleteAccount(decodeURIComponent(m[1])));
+        }
+        // Keystore (Feature #64): set, list, delete — never read back. The
+        // same admin gate as accounts once any account exists.
+        if (path.startsWith('/api/keys')) {
+          if (weave.listAccounts().length && role !== 'admin') {
+            return deny(role ? 403 : 401, 'Managing keys needs an admin token');
+          }
+          if (route === 'GET /api/keys') return send(200, weave.listKeys());
+          if (route === 'POST /api/keys') return send(201, weave.setKey(body?.name, body?.value));
+          if ((m = path.match(/^\/api\/keys\/(.+)$/))) {
+            if (req.method === 'DELETE') return send(200, weave.deleteKey(decodeURIComponent(m[1])));
+            return send(404, { error: 'Secrets cannot be read back', code: 'not-found' });
+          }
+        }
+        if (route === 'PUT /api/schema') {
+          return send(200, weave.applySchema(body?.schema ?? body, {
+            dryRun: !!body?.dryRun,
+            allowDestructive: !!body?.allowDestructive,
+          }));
         }
         if (route === 'GET /api/audit') {
           return send(200, weave.listAudit({

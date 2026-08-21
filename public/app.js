@@ -1052,6 +1052,8 @@ const SYSTEM_COLS = {
   'Modified At': (e) => (e.updatedAt ?? '').slice(0, 16).replace('T', ' '),
   'Created By': (e) => e.createdBy ?? '',
   'Modified By': (e) => e.modifiedBy ?? '',
+  // The count links the row to its history; the panel is the full treatment.
+  'Activity': (e) => `${(e.activity ?? []).length}⚡`,
 };
 
 const colField = (db, name) => db.fields.find((f) => f.name === name);

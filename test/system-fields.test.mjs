@@ -85,3 +85,18 @@ test('the server names its caller from X-Weave-Actor', async () => {
     server.close();
   }
 });
+
+/* Feature #95 — Activity joins the system columns: auto-present on every
+   table, hidden by default like the timestamps, showing how much history an
+   entity carries. The full related-table treatment converges with the side
+   panel (#48); the column is the per-table surface. */
+test('Activity is a system column with a count', () => {
+  const w = fresh('ada');
+  w.updateTable('Task', { systemFields: ['Activity'] });
+  const task = w.describeSchema().find((sp) => !sp.system).tables.find((t) => t.name === 'Task');
+  assert.deepEqual(task.systemFields, ['Activity']);
+  const t = w.createEntity('Task', { name: 'T' });
+  w.setDoc(t.id, 'hello');
+  const read = w.readEntity(t.id);
+  assert.ok(read.activity.length >= 2, 'created + doc-updated');
+});
