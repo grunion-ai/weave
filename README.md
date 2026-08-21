@@ -133,7 +133,7 @@ mature plugin ecosystem — see [what weave is not](#what-weave-is-not).
 | --- | --- |
 | Data model | Spaces → tables → entities. Field types: text, number, date, date range, checkbox, url, email, select, multiselect, workflow states, bidirectional relations, lookups, rollups, formulas, and any number of markdown document fields per entity. |
 | Views | Table, board, list, entity pages, a relation map with the automation layer drawn in, and per-space/table filtering. Inline editing everywhere. |
-| Documents | Every doc is a native URL: `.md`, `.mmd`, `.html`, `.pdf`. Mermaid diagrams and raw HTML render in place; `[[Table#12]]` mentions resolve to links. Whole-entity export paginates one page per document. |
+| Documents | Every doc is a native URL: `.md`, `.mmd`, `.html`, `.pdf`. Mermaid diagrams, raw HTML and math render in place; `[[Table#12]]` mentions resolve to links. Whole-entity export paginates one page per document. Math is KaTeX only (`$…$` / `$$…$$`, vendored + offline); the other fence engines Vditor knows (graphviz, echarts, plantuml, mindmap, abc, flowchart) are deliberately not vendored, so those fences stay plain code blocks. |
 | Automations | Triggers (created / field changed / state changed) → set field, append doc, add comment, outgoing webhook. |
 | Search | Universal ⌘K across workspaces with copyable permalinks, backed by a SQLite FTS5 index. |
 | Storage | One workspace = one `.db` file (WAL, row-level writes, crash-safe). Legacy JSON workspaces migrate automatically; `exportJSON`/`importJSON` remain the human-readable interchange. CLI, server, and MCP can run concurrently. |
@@ -335,6 +335,8 @@ README screenshots are regenerated with `node scripts/screenshots.mjs`.
 
 - [mermaid](https://github.com/mermaid-js/mermaid) 11.4.1 — MIT © Knut Sveidqvist & contributors
 - [@tabler/core](https://github.com/tabler/tabler) 1.4.0 — MIT © Paweł Kuna & The Tabler Authors
+- [Vditor](https://github.com/Vanessa219/vditor) 3.11.3 (pruned: only the assets weave loads) — MIT © Vanessa219
+- [KaTeX](https://github.com/KaTeX/KaTeX) 0.16.47 (js + css + woff2 fonts + mhchem) — MIT © Khan Academy & contributors
 
 ## Security
 

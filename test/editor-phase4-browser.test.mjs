@@ -353,6 +353,30 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
+  /* ---------- Issue #90: math via vendored KaTeX ---------- */
+
+  test('$$…$$ and $…$ render through the vendored KaTeX', async () => {
+    const id = entityWithDoc('Math', 'inline $a^2 + b^2$ here\n\n$$\n\\frac{x}{y}\n$$\n');
+    const page = await openEntity(id);
+    const failed = [];
+    page.on('response', (r) => { if (r.status() >= 400) failed.push(r.url()); });
+    try {
+      await page.waitForFunction(() => document.querySelectorAll('.katex').length >= 1,
+        null, { timeout: 20000 });
+      const r = await page.evaluate(() => ({
+        rendered: document.querySelectorAll('.katex').length,
+        katexSrc: [...document.querySelectorAll('script[src*="katex"]')].map((s) => s.src),
+        value: window.__weaveEditors.values().next().value.getValue(),
+      }));
+      assert.ok(r.rendered >= 1, 'KaTeX output must appear in the editor');
+      assert.ok(r.katexSrc.every((s) => s.includes('/vendor/vditor/')),
+        `katex must load from the vendored tree, got ${r.katexSrc}`);
+      assert.match(r.value, /\$\$/, 'the stored markdown keeps the math source');
+      const vendorFails = failed.filter((u) => u.includes('/katex/') && u.match(/\.(js|css|woff2)/));
+      assert.deepEqual(vendorFails, [], 'no vendored katex asset may 404');
+    } finally { await page.close(); }
+  });
+
   test('the rendered document page tokenizes the same block', async () => {
     const id = entityWithDoc('PageHl', '```js\nconst x = 1;\n```\n');
     const page = await browser.newPage();

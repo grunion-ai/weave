@@ -1881,6 +1881,12 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }
     preview: {
       hljs: { enable: true, style: t.hljs, lineNumber: false },
       theme: { current: t.content, path: '/vendor/vditor/dist/css/content-theme' },
+      // KaTeX is Vditor's default engine, but the default is not a decision:
+      // naming it here is what makes "only KaTeX is vendored" a choice.
+      // $…$ / $$…$$ load katex + mhchem from the vendored tree; the other
+      // fence engines (graphviz, echarts, plantuml, mindmap, abc, flowchart)
+      // are NOT vendored and those fences degrade to plain code blocks.
+      math: { engine: 'KaTeX' },
     },
     hint: { emoji: {}, extend: [{ key: '/', hint: slashHint }] },
     // Every decoration pass on this host starts once the editor is actually
