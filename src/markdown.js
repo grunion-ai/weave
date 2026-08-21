@@ -327,6 +327,9 @@ a.mention { background: var(--soft); border: 1px solid var(--line); border-radiu
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 pre { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; position: relative; }
 pre code { background: none; padding: 0; }
+/* hljs contributes token colours only; the block chrome (background, border,
+   padding, copy button) stays the page's own. */
+pre code.hljs { background: none; padding: 0; }
 /* Code is there to be taken, so the button is always on the block rather than
    waiting for a hover that a touch screen never sends. */
 .code-copy { position: absolute; top: 8px; right: 8px; border: 1px solid var(--line); border-radius: 6px;
@@ -363,6 +366,18 @@ for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
 </script>
 ${body.includes('class="mermaid"') ? `<script src="/vendor/mermaid.min.js" onerror="document.querySelectorAll('pre.mermaid').forEach(p=>p.style.textAlign='left')"></script>
 <script>if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });</script>` : ''}
+${/* Same vendored highlight.js the editor loads (Issue #35). Only pages that
+      actually carry a language-tagged block pay for it, and unlabeled blocks
+      stay plaintext on purpose — auto-detection would guess a different
+      language per visit. Diagram/math fences belong to their own renderers. */
+  body.includes('<code class="language-') ? `<link rel="stylesheet" href="/vendor/vditor/dist/js/highlight.js/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="/vendor/vditor/dist/js/highlight.js/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+<script src="/vendor/vditor/dist/js/highlight.js/highlight.min.js"></script>
+<script>
+if (window.hljs) for (const code of document.querySelectorAll('pre > code[class*="language-"]')) {
+  if (!/language-(mermaid|mmd|math|graphviz|plantuml|echarts|mindmap|abc|flowchart)\\b/.test(code.className)) hljs.highlightElement(code);
+}
+</script>` : ''}
 </body>
 </html>`;
 }

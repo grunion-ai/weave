@@ -1802,7 +1802,9 @@ function slashItems() {
     { label: 'Italic', insert: '*text*' },
     { label: 'Strikethrough', insert: '~~text~~' },
     { label: 'Inline code', insert: '`code`' },
-    { label: 'Code block', insert: '```\ncode\n```' },
+    // The language is a placeholder like the text ones: a bare ``` fence is
+    // plaintext to hljs — zero token spans, one colour, forever (Issue #35).
+    { label: 'Code block', insert: '```js\ncode\n```' },
     { label: 'Quote', insert: '> Quote' },
     { label: 'Bulleted list', insert: '- List item' },
     { label: 'Numbered list', insert: '1. List item' },
