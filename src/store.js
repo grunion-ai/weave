@@ -138,6 +138,26 @@ export class Store {
   // reconcile (migration / importJSON). Schema-side rows (meta, spaces,
   // tables, automations) never grow with data volume, so they are synced by
   // cheap string comparison on every save.
+  /* Durable audit trail (Feature #14). SQLite-backed when there is a file;
+     an in-memory workspace keeps a plain array so the API is uniform. */
+  #memAudit = [];
+
+  audit(entry) {
+    if (!this.#db) { this.#memAudit.push({ seq: this.#memAudit.length + 1, ...entry }); return; }
+    this.#db.prepare('INSERT INTO audit_log (at, actor, action, detail) VALUES (?, ?, ?, ?)')
+      .run(entry.at, entry.actor, entry.action, JSON.stringify(entry.detail ?? {}));
+  }
+
+  listAudit({ limit = 100, offset = 0 } = {}) {
+    if (!this.#db) {
+      return this.#memAudit.slice().reverse().slice(offset, offset + limit)
+        .map((r) => ({ ...r, detail: r.detail ?? {} }));
+    }
+    return this.#db.prepare('SELECT seq, at, actor, action, detail FROM audit_log ORDER BY seq DESC LIMIT ? OFFSET ?')
+      .all(limit, offset)
+      .map((r) => ({ ...r, detail: JSON.parse(r.detail ?? '{}') }));
+  }
+
   save(state, { dirty = null, all = false } = {}) {
     if (!this.path) return;
     if (!this.#db) this.#open();

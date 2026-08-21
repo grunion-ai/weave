@@ -156,6 +156,49 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
     // actor from the last request would misattribute this one.
     weave.actor = String(req.headers['x-weave-actor'] || 'web').slice(0, 120);
 
+    // Accounts & roles (Feature #14). A Bearer token names the account and
+    // caps what it may do; a bad token is a 401, never an anonymous
+    // fallthrough. With requireAuth on, anonymous API calls are refused —
+    // /api/health stays open so a monitor can still see the instance.
+    const deny = (code, error) => {
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error, code: code === 401 ? 'unauthorized' : 'forbidden' }));
+    };
+    let role = null;
+    const authz = req.headers['authorization'];
+    if (authz && /^Bearer /i.test(authz)) {
+      const account = weave.verifyToken(authz.slice(7).trim());
+      if (!account) return deny(401, 'Invalid token');
+      weave.actor = account.name;
+      role = account.role;
+    } else if (weave.state.meta.requireAuth && path.startsWith('/api/') && path !== '/api/health') {
+      return deny(401, 'This workspace requires authentication');
+    }
+    if (role && role !== 'admin' && path.startsWith('/api/')) {
+      const m2 = req.method;
+      const read = m2 === 'GET' || m2 === 'HEAD'
+        || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'));
+      const schemaWrite = !read && (
+        /^\/api\/(spaces|automations|accounts)/.test(path)
+        || /^\/api\/tables$/.test(path)
+        || (/^\/api\/tables\/[^/]+$/.test(path) && (m2 === 'PATCH' || m2 === 'DELETE'))
+        || /^\/api\/tables\/[^/]+\/fields/.test(path)
+        || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH'));
+      // Registry rows ARE structure: writing Spaces/Tables/Fields rows through
+      // the entity door is a schema change wearing entity clothes.
+      const sysM = !read && (path.match(/^\/api\/tables\/([^/]+)\/entities/) ?? path.match(/^\/api\/entities\/([^/]+)/));
+      const sysTouch = sysM && (() => {
+        try {
+          const ref = sysM[0].startsWith('/api/entities/')
+            ? weave.state.tables[weave.getEntity(sysM[1]).dbId]
+            : weave.findTable(decodeURIComponent(sysM[1]));
+          return !!ref?.system;
+        } catch { return false; }
+      })();
+      if (role === 'reader' && !read) return deny(403, 'This token is read-only');
+      if (role === 'writer' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
+    }
+
     // Resolves [[Table#12]] mentions in rendered documents (active workspace).
     // The one place that knows how each reference kind is addressed and what
     // it links to. Returns null for a miss, which renders as a broken chip.
@@ -281,7 +324,30 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
         }
 
         if (route === 'GET /api/workspace') {
-          return send(200, { name: weave.state.meta.name, description: weave.state.meta.description ?? '', logo: !!weave.state.meta.logo });
+          return send(200, { name: weave.state.meta.name, description: weave.state.meta.description ?? '', logo: !!weave.state.meta.logo, requireAuth: !!weave.state.meta.requireAuth });
+        }
+
+        // Accounts (Feature #14). Once any account exists, only an admin
+        // token manages them — the anonymous door closes behind the first key.
+        if (path.startsWith('/api/accounts') || (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {}))) {
+          if (weave.listAccounts().length && role !== 'admin') {
+            return deny(role ? 403 : 401, 'Managing accounts needs an admin token');
+          }
+        }
+        if (route === 'GET /api/accounts') return send(200, weave.listAccounts());
+        if (route === 'POST /api/accounts') return send(201, weave.createAccount(body ?? {}));
+        if ((m = path.match(/^\/api\/accounts\/(.+)$/)) && req.method === 'DELETE') {
+          return send(200, weave.deleteAccount(decodeURIComponent(m[1])));
+        }
+        if (route === 'GET /api/audit') {
+          return send(200, weave.listAudit({
+            limit: Number(url.searchParams.get('limit') ?? 100),
+            offset: Number(url.searchParams.get('offset') ?? 0),
+          }));
+        }
+        if (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {})) {
+          weave.setRequireAuth(!!body.requireAuth);
+          if (Object.keys(body).length === 1) return send(200, { requireAuth: weave.state.meta.requireAuth });
         }
         if (route === 'PATCH /api/workspace') {
           if (body.description != null) weave.state.meta.description = String(body.description);

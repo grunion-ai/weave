@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
 import { Store, WeaveError } from './store.js';
@@ -260,6 +261,7 @@ export class Weave {
     this.state.spaces[space.id] = space;
     this.save();
     this.#syncSpaceRow(space);
+    if (!space.system) this.#audit('space-created', { name: space.name });
     return space;
   }
 
@@ -281,6 +283,7 @@ export class Weave {
 
   updateSpace(ref, patch) {
     const s = this.getSpace(ref);
+    this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) });
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
     this.#syncSpaceRow(s);
@@ -294,6 +297,7 @@ export class Weave {
     for (const db of this.listTables(s.id)) this.deleteTable(db.id);
     delete this.state.spaces[s.id];
     this.#dropSysRow('spaces', s.id);
+    this.#audit('space-deleted', { name: s.name });
     this.save();
   }
 
@@ -322,6 +326,7 @@ export class Weave {
     this.save();
     this.#syncTableRow(db);
     for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
+    if (!db.system) this.#audit('table-created', { space: sp.name, name: db.name });
     return db;
   }
 
@@ -405,10 +410,70 @@ export class Weave {
     for (const f of Object.values(db.fields)) this.#dropFieldRow(f.id);
     delete this.state.tables[db.id];
     this.#dropSysRow('tables', db.id);
+    this.#audit('table-deleted', { name: db.name });
     this.save();
   }
 
   // ---------------- fields ----------------
+
+  // ---------------- accounts & audit (Feature #14) ----------------
+  /* Accounts are how a hosted instance (#84, v0.5) knows its callers. The
+     token is handed out exactly once; only its sha256 lands at rest. Roles:
+     admin (everything), writer (entity work, no schema), reader (reads).
+     Enforcement lives at the surfaces — the engine keeps the facts. */
+  static ROLES = ['admin', 'writer', 'reader'];
+
+  #audit(action, detail = {}) {
+    this.store.audit({ at: nowISO(), actor: this.actor, action, detail });
+  }
+
+  listAudit(opts) {
+    return this.store.listAudit(opts);
+  }
+
+  createAccount({ name, role = 'writer' } = {}) {
+    if (!name) throw new WeaveError('Account name is required', 'invalid');
+    if (!Weave.ROLES.includes(role)) throw new WeaveError(`Invalid role '${role}' (${Weave.ROLES.join(', ')})`, 'invalid');
+    const accounts = (this.state.meta.accounts ??= {});
+    if (Object.values(accounts).some((a) => a.name === name)) throw new WeaveError(`Account '${name}' already exists`, 'conflict');
+    const token = 'wv_' + randomBytes(24).toString('base64url');
+    const account = { id: uuid(), name, role, tokenHash: createHash('sha256').update(token).digest('hex'), createdAt: nowISO() };
+    accounts[account.id] = account;
+    this.save();
+    this.#audit('account-created', { name, role });
+    const { tokenHash, ...pub } = account;
+    return { account: pub, token };
+  }
+
+  verifyToken(token) {
+    if (!token) return null;
+    const h = createHash('sha256').update(String(token)).digest('hex');
+    const a = Object.values(this.state.meta.accounts ?? {}).find((x) => x.tokenHash === h);
+    if (!a) return null;
+    const { tokenHash, ...pub } = a;
+    return pub;
+  }
+
+  listAccounts() {
+    return Object.values(this.state.meta.accounts ?? {}).map(({ tokenHash, ...pub }) => pub);
+  }
+
+  deleteAccount(ref) {
+    const accounts = this.state.meta.accounts ?? {};
+    const a = accounts[ref] ?? Object.values(accounts).find((x) => x.name === ref);
+    if (!a) throw new WeaveError(`Account '${ref}' not found`, 'not-found');
+    delete accounts[a.id];
+    this.save();
+    this.#audit('account-deleted', { name: a.name });
+    return { id: a.id, deleted: true };
+  }
+
+  setRequireAuth(on) {
+    this.state.meta.requireAuth = !!on;
+    this.save();
+    this.#audit(on ? 'auth-required-on' : 'auth-required-off');
+    return this.state.meta.requireAuth;
+  }
 
   // ---------------- meta-model (Feature #12) ----------------
   /* The workspace's structure, as rows. A Workspace system space holds
@@ -762,6 +827,7 @@ export class Weave {
     db.fieldOrder.push(field.id);
     this.save();
     this.#syncFieldRow(db, field);
+    if (!db.system) this.#audit('field-added', { table: db.name, name: field.name, type: field.type });
     return field;
   }
 
@@ -792,6 +858,7 @@ export class Weave {
     this.save();
     this.#syncFieldRow(db, a);
     this.#syncFieldRow(target, b);
+    if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, target: target.name });
     return { field: a, inverse: b };
   }
 
@@ -839,6 +906,7 @@ export class Weave {
     }
     this.#syncFieldRow(db, field);
     this.save();
+    if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) });
     return field;
   }
 
@@ -865,6 +933,7 @@ export class Weave {
     this.#dropFieldRow(field.id);
     if (field.type === 'relation' && field.config.inverseFieldId) this.#dropFieldRow(field.config.inverseFieldId);
     this.save();
+    if (!db.system) this.#audit('field-deleted', { table: db.name, name: field.name });
   }
 
   #removeFieldRaw(db, fieldId) {

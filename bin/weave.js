@@ -98,6 +98,11 @@ default is the table's first document field, usually "Description")
   doc append <ref> (--content 'md' | --file path) [--field Name]
   doc export <ref> --format md|html|pdf [--out path] [--field Name]
 
+Accounts & audit (Feature #14)
+  account create <name> [--role admin|writer|reader]
+  account list
+  account delete <ref>
+  audit [--limit 50]
 Collaboration & data
   comment <ref> <text> [--author name]
   search <text>
@@ -192,6 +197,15 @@ async function main() {
   switch (command) {
     case 'schema':
       return out(w.describeSchema());
+    case 'account': {
+      const [sub, ref] = args;
+      if (sub === 'create') return out(w.createAccount({ name: ref, role: flags.role ?? 'writer' }));
+      if (sub === 'delete') return out(w.deleteAccount(ref));
+      if (sub === 'list' || !sub) return out(w.listAccounts());
+      throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete`);
+    }
+    case 'audit':
+      return out(w.listAudit({ limit: Number(flags.limit ?? 50) }));
     case 'space': {
       const [sub, name] = args;
       if (sub === 'create') return out(w.createSpace({ name }));
