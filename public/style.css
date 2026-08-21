@@ -285,6 +285,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* ---------- inline document editor (tabs across document fields) ---------- */
 .doc-inline-wrap { padding: 10px 6px; }
 textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-font-monospace); font-size: 12.5px; }
+/* The shared Vditor mounted over a focused row cell (Issue #89): the same
+   footprint the textarea had, boxed so the cell reads as a field. */
+.doc-inline-editor { min-height: 170px; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); padding: 6px 10px; position: relative; }
+.doc-inline-editor .vditor { border: 0; background: transparent; }
+.doc-inline-editor .vditor-toolbar { display: none; }
 .doc-tabs { border-bottom: none; flex-wrap: nowrap; }
 .doc-tabs .nav-link.doc-tab { padding: 4px 12px; font-size: 12.5px; }
 .doc-label { color: var(--tblr-secondary); font-size: 12px; }

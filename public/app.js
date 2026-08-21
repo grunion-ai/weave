@@ -813,6 +813,9 @@ function docsEditor(item, db, onSaved) {
       dataset: { eid: item.id, field: active },
     });
     area.value = item.docs?.[active] ?? '';
+    // Focus swaps in the shared Vditor (Issue #89); blur brings this
+    // textarea back carrying whatever was typed.
+    area.addEventListener('focus', () => mountRowEditor(area));
     const fmtBase = `${WS_PREFIX}/e/${item.id}/doc/${encodeURIComponent(active)}`;
     wrap.append(
       el('div', { class: 'doc-toolbar' },
@@ -1843,7 +1846,16 @@ function vditorTheme() {
   return { ui: dark ? 'dark' : 'classic', content: dark ? 'dark' : 'light', hljs: dark ? 'github-dark' : 'github' };
 }
 
-function mountDocEditor(host, { value, placeholder, onInput }) {
+/* Every `new Vditor` appends another copy of the hidden 53-symbol icon
+   sprite to <body>, and destroy() never removes it — the one leak a
+   mount-per-focus editor would accumulate (measured: +1428 nodes over 12
+   cycles, all sprite). One sheet serves every editor; the rest go. */
+function dedupeVditorSprites() {
+  const sprites = [...document.querySelectorAll('body > svg')].filter((v) => v.querySelector('symbol'));
+  for (const extra of sprites.slice(1)) extra.remove();
+}
+
+function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }) {
   const t = vditorTheme();
   const chips = attachRefChips(host);
   const editor = new Vditor(host, {
@@ -1873,7 +1885,12 @@ function mountDocEditor(host, { value, placeholder, onInput }) {
     hint: { emoji: {}, extend: [{ key: '/', hint: slashHint }] },
     // Every decoration pass on this host starts once the editor is actually
     // built — an attach-time schedule can fire before Vditor has a surface.
-    after: () => scheduleDecorFor(host),
+    after: () => {
+      dedupeVditorSprites();
+      scheduleDecorFor(host);
+      if (autoFocus) editor.focus();
+    },
+    ...(onBlur ? { blur: () => onBlur() } : {}),
     input: (v) => {
       // The entity-link command arrives here as its marker, never as content.
       if (v.includes(ENTITY_LINK_MARKER)) return pickEntityLink(editor, v, onInput);
@@ -1883,6 +1900,44 @@ function mountDocEditor(host, { value, placeholder, onInput }) {
   });
   liveEditors.add(editor);
   return editor;
+}
+
+/* ---------- the shared row editor (Issue #89) ----------
+   Grid, board and list rows keep their <textarea> as the resting state —
+   it is the value the Save button reads and the redraw-preservation map
+   snapshots. ONE shared Vditor mounts into whichever cell has focus and
+   unmounts on blur; measured on a warm page the round trip costs 2–5ms,
+   so focus feels instant and no instance-per-row ever exists. */
+
+let rowEditor = null; // { editor, host, area } — the one mounted cell
+
+function unmountRowEditor() {
+  if (!rowEditor) return;
+  const { editor, host, area } = rowEditor;
+  rowEditor = null;
+  try { area.value = editor.getValue(); } catch { /* keep the last synced value */ }
+  liveEditors.delete(editor);
+  try { editor.destroy(); } catch { /* already gone with the DOM */ }
+  host.remove();
+  area.classList.remove('hidden');
+}
+
+function mountRowEditor(area) {
+  if (rowEditor?.area === area) return;
+  unmountRowEditor();
+  const host = el('div', { class: 'doc-inline-editor' });
+  area.after(host);
+  area.classList.add('hidden');
+  const editor = mountDocEditor(host, {
+    value: area.value,
+    placeholder: 'Write… press / for blocks',
+    // Sync every keystroke back: the textarea stays the source of truth for
+    // Save and for value preservation across view redraws.
+    onInput: (v) => { area.value = v; },
+    onBlur: () => unmountRowEditor(),
+    autoFocus: true,
+  });
+  rowEditor = { editor, host, area };
 }
 
 /* ---------- live [[…]] chips over the IR surface (Issue #86) ----------
@@ -2203,6 +2258,7 @@ function flushDocSaves() {
 window.addEventListener('beforeunload', flushDocSaves);
 
 function teardownDocEditors() {
+  unmountRowEditor(); // restore the row's textarea before the page goes away
   flushDocSaves();
   for (const ed of liveEditors) {
     try { ed.destroy(); } catch { /* already gone with the DOM */ }

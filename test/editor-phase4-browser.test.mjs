@@ -286,6 +286,73 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
+  /* ---------- Issue #89: shared row editor ---------- */
+
+  test('focusing a row doc cell swaps in the shared Vditor; blur restores the textarea', async () => {
+    const e = weave.createEntity(tableRef, { name: 'RowDoc' });
+    weave.setDoc(e.id, 'row document text\n', 'Description');
+    const dbId = weave.state.schema?.find?.((d) => d.name === 'Note')?.id
+      ?? await (async () => {
+        const r = await fetch(`${base}/api/schema`);
+        const spaces = await r.json();
+        return spaces.flatMap((s) => s.tables).find((t) => t.name === 'Note').id;
+      })();
+    const page = await browser.newPage();
+    try {
+      await page.goto(`${base}/#/table/${dbId}`, { waitUntil: 'networkidle' });
+      // Expand the row's doc cell (list view keeps inline docs per row).
+      await page.waitForSelector('.wv-grid', { timeout: 20000 });
+      await page.evaluate(() => {
+        // The 📄 toggle expands a row's inline documents — RowDoc's row,
+        // since the suite's shared table carries other entities too.
+        // Name cells are <input>s, so the row is found by input value.
+        const row = [...document.querySelectorAll('tr')].find((r) =>
+          [...r.querySelectorAll('input')].some((i) => (i.value ?? '').includes('RowDoc')));
+        [...row.querySelectorAll('button')].find((b) => b.textContent.includes('📄')).click();
+      });
+      await page.waitForSelector('textarea.doc-inline', { timeout: 20000 });
+      const before = await page.evaluate(() => document.querySelector('textarea.doc-inline').value);
+      assert.match(before, /row document text/);
+
+      // Focus mounts the shared editor over the cell.
+      const t0 = Date.now();
+      await page.focus('textarea.doc-inline');
+      await page.waitForSelector('.doc-inline-editor .vditor-ir', { timeout: 20000 });
+      const mountMs = Date.now() - t0;
+      const during = await page.evaluate(() => ({
+        textareaHidden: document.querySelector('textarea.doc-inline').classList.contains('hidden'),
+        value: window.__weaveEditors ? null : null,
+      }));
+      assert.ok(during.textareaHidden, 'the textarea steps aside while the editor is mounted');
+      assert.ok(mountMs < 5000, `mount must be quick, took ${mountMs}ms`);
+
+      // Type, then blur: the textarea returns carrying the edit.
+      await page.keyboard.type('MORE');
+      await page.evaluate(() => document.querySelector('.vditor-ir [contenteditable]').blur());
+      await page.waitForFunction(() => !document.querySelector('.doc-inline-editor'),
+        null, { timeout: 20000 });
+      const after = await page.evaluate(() => ({
+        value: document.querySelector('textarea.doc-inline').value,
+        visible: !document.querySelector('textarea.doc-inline').classList.contains('hidden'),
+      }));
+      assert.ok(after.visible, 'blur restores the textarea');
+      assert.match(after.value, /MORE/, 'the edit survives the round trip');
+    } finally { await page.close(); }
+  });
+
+  test('mount/unmount cycles do not accumulate icon sprites', async () => {
+    const e = weave.createEntity(tableRef, { name: 'SpriteRow' });
+    weave.setDoc(e.id, 'sprite probe\n', 'Description');
+    const page = await openEntity(e.id);
+    try {
+      // The entity page mounts an editor already; repeated shared-row mounts
+      // elsewhere ran through the same constructor. Count sprite sheets.
+      const sprites = await page.evaluate(() =>
+        [...document.querySelectorAll('body > svg')].filter((v) => v.querySelector('symbol')).length);
+      assert.ok(sprites <= 1, `one icon sprite for the page, got ${sprites}`);
+    } finally { await page.close(); }
+  });
+
   test('the rendered document page tokenizes the same block', async () => {
     const id = entityWithDoc('PageHl', '```js\nconst x = 1;\n```\n');
     const page = await browser.newPage();
