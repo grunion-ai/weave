@@ -162,9 +162,61 @@ test('a field cell is not rendered as an editable text box', async () => {
   assert.match(APP, /if \(f\.type === 'field'\) \{/,
     'the grid must special-case `field`, or the text fallback claims it');
   const at = APP.indexOf("if (f.type === 'field') {");
-  const body = APP.slice(at, at + 500);
+  const body = APP.slice(at, APP.indexOf('const input = el(', at));
   assert.match(body, /class: 'computed'/,
     'a structured value must not look editable in a cell — same treatment as document');
   assert.doesNotMatch(body, /addEventListener\('change'/, 'no free-text patching of a definition');
   assert.match(APP, /field: '⌗'/, 'the type needs its own computed mark');
+});
+
+test('describeSchema exposes the definable types on a field field', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  w.createTable({ space: 'S', name: 'Fields' });
+  w.addField('Fields', { name: 'Definition', type: 'field' });
+  const f = w.describeSchema()[0].tables[0].fields.find((x) => x.name === 'Definition');
+  assert.ok(Array.isArray(f.types) && f.types.includes('select'), 'a UI must never hard-code the type list');
+  assert.equal(f.depth, 1);
+});
+
+/* Materialisation: a stored definition becomes a real column through the
+   same path addField uses — the shared normaliser makes divergence impossible,
+   so the verb is thin by design. The binding (how a Fields row names the
+   table it lands on) is Feature #52's question, not this one's. */
+test('materializeField turns a definition value into a working column', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  w.createTable({ space: 'S', name: 'Fields' });
+  w.createTable({ space: 'S', name: 'Task' });
+  w.addField('Fields', { name: 'Definition', type: 'field' });
+  const row = w.createEntity('Fields', {
+    name: 'Priority',
+    values: { Definition: { type: 'select', config: { options: [{ name: 'P0' }, { name: 'P1' }] } } },
+  });
+  const def = w.getEntity(row.id).values[Object.values(w.getTable('Fields').fields).find((f) => f.name === 'Definition').id];
+  const made = w.materializeField('Task', 'Priority', def);
+  assert.equal(made.type, 'select');
+  const t = w.createEntity('Task', { name: 'T', values: { Priority: 'P1' } });
+  assert.equal(w.getEntity(t.id).values[made.id], 'p1');
+  assert.throws(() => w.materializeField('Task', 'Empty', null), /definition/i);
+});
+
+/* ---------- UI half of Feature #85: the entity page is the control surface ---------- */
+import { readFileSync as readUi } from 'node:fs';
+
+test('field cells show the engine sentence, and the entity page edits the raw definition', () => {
+  const app = readUi(new URL('../public/app.js', import.meta.url), 'utf8');
+  const start = app.indexOf("if (f.type === 'field')");
+  const branch = app.slice(start, app.indexOf('const input = el(', start));
+  // Display is the engine's sentence (item.fields); the editor works on the
+  // definition itself (item.raw) — never on the display string.
+  assert.ok(branch.includes('item.raw?.[f.name]'), 'the editor reads the raw definition');
+  assert.ok(branch.includes('String(val)'), 'the chip prints the engine display sentence');
+  // Compact surfaces stay read-only; the entity page opens the editor and its
+  // type choices come from config.types, never a hard-coded list.
+  assert.ok(branch.includes('if (compact) return chip'));
+  assert.ok(branch.includes('f.types'), 'type choices come from the schema payload');
+  // Validation failures keep the dialog open: the save path must throw through
+  // the modal, not go through patch() which swallows errors into a toast.
+  assert.ok(branch.includes("await api('PATCH'"));
 });

@@ -630,12 +630,51 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
       text ? text.slice(0, 60).replace(/\n/g, ' ') + (text.length > 60 ? '…' : '') : '—');
   }
   if (f.type === 'field') {
-    // A field definition, edited on the entity page — same reason as document:
-    // the value is structured, so the generic text fallback would render an
-    // editable box that can only ever produce an invalid definition.
-    return el('span', { class: 'computed', title: 'field definition — edit on the entity page' },
+    // A field definition. In compact surfaces (grid, board, list) the value
+    // reads as a sentence and editing happens on the entity page — same
+    // reason as document: the generic text fallback would render an editable
+    // box that can only ever produce an invalid definition. On the entity
+    // page the chip opens the definition editor: the entity page IS the
+    // control surface (Feature #85, design option D).
+    // `val` (item.fields) is the engine's display sentence — 'select · 3
+    // options'; the definition itself rides in item.raw.
+    const def = item.raw?.[f.name] ?? null;
+    const chip = el('span', { class: 'computed', title: compact ? 'field definition — edit on the entity page' : 'field definition — click to edit' },
       el('span', { class: 'computed-mark' }, computedMark('field')),
-      val == null ? '—' : String(val));
+      def == null ? '—' : String(val));
+    if (compact) return chip;
+    chip.style.cursor = 'pointer';
+    chip.onclick = () => {
+      const types = f.types ?? [];
+      const typeSel = el('select', { name: 'type', class: 'form-select form-select-sm' },
+        ...types.map((t) => el('option', { value: t, selected: def?.type === t ? '' : undefined }, t)));
+      const cfgArea = el('textarea', {
+        name: 'config', class: 'form-control', rows: 6, spellcheck: 'false',
+        placeholder: '{} — config as JSON (options, states, depth…)',
+      });
+      cfgArea.value = JSON.stringify(def?.config ?? {}, null, 2);
+      modal(`${f.name} — field definition`, [
+        el('label', { class: 'form-label' }, 'Type'), typeSel,
+        el('label', { class: 'form-label', style: 'margin-top:8px' }, 'Config'), cfgArea,
+      ], async (fd) => {
+        let config;
+        try { config = JSON.parse(String(fd.get('config') || '{}')); }
+        catch { throw new Error('Config is not valid JSON'); }
+        // The server validates through the same normaliser addField uses, so
+        // an invalid definition is refused with its real reason — and the
+        // dialog stays open to fix it (patch() would swallow the throw).
+        await api('PATCH', `/entities/${id}`, { values: { [f.name]: { type: String(fd.get('type')), config } } });
+        await saved();
+      }, 'Save');
+    };
+    const box = el('span', { class: 'fielddef-edit' }, chip);
+    if (def != null) {
+      box.append(el('button', {
+        class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Clear the definition',
+        onclick: () => patch(null),
+      }, '×'));
+    }
+    return box;
   }
   const input = el('input', {
     class: 'form-control form-control-sm inline-edit',

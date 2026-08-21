@@ -402,6 +402,18 @@ export class Weave {
     return f;
   }
 
+  /* A stored `field` definition becomes a real column. Thin by design: the
+     definition was validated by the same normaliser addField runs, so this
+     cannot be asked to create a field addField would refuse. The binding —
+     how a Fields row names the table it lands on — is the caller's business
+     (Feature #52); this is only the act. */
+  materializeField(dbRef, name, def) {
+    if (!def || typeof def !== 'object' || !def.type) {
+      throw new WeaveError(`'${name}' has no definition to materialize`, 'invalid');
+    }
+    return this.addField(dbRef, { name, type: def.type, config: def.config ?? {} });
+  }
+
   addField(dbRef, { name, type, config = {} }) {
     const db = this.getTable(dbRef);
     if (!name) throw new WeaveError('Field name is required', 'invalid');
@@ -1722,6 +1734,7 @@ export class Weave {
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
           }
           if (f.type === 'formula') out.expression = f.config.expression;
+          if (f.type === 'field') { out.types = [...f.config.types]; out.depth = f.config.depth; }
           if (f.config?.default !== undefined) out.default = f.config.default;
           return out;
         }),

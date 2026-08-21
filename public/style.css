@@ -533,3 +533,4 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 /* The rope's own motion is the loading signal; the wash fading in is not.
    Honour a reduced-motion request by dropping the fade, not the loader. */
 @media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }
+.fielddef-edit { display: inline-flex; align-items: center; gap: 4px; }
