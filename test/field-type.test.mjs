@@ -148,7 +148,7 @@ test('definitions survive an export/import round-trip', () => {
   } });
   const w2 = new Weave();
   w2.importJSON(JSON.parse(JSON.stringify(w.exportJSON())));
-  const row = w2.listEntities(w2.getTable('Fields').id).find((e) => w2.entityName(e) === 'Priority');
+  const row = w2.listEntities(w2.getTable('Product/Fields').id).find((e) => w2.entityName(e) === 'Priority');
   const back = w2.readEntity(row.id).raw.Definition;
   assert.equal(back.type, 'select');
   assert.deepEqual(back.config.options.map((o) => o.name), ['P0', 'P1']);
@@ -173,7 +173,7 @@ test('describeSchema exposes the definable types on a field field', () => {
   const w = new Weave();
   w.createSpace({ name: 'S' });
   w.createTable({ space: 'S', name: 'Fields' });
-  w.addField('Fields', { name: 'Definition', type: 'field' });
+  w.addField('S/Fields', { name: 'Definition', type: 'field' });
   const f = w.describeSchema().find((sp) => !sp.system).tables[0].fields.find((x) => x.name === 'Definition');
   assert.ok(Array.isArray(f.types) && f.types.includes('select'), 'a UI must never hard-code the type list');
   assert.equal(f.depth, 1);
@@ -188,12 +188,12 @@ test('materializeField turns a definition value into a working column', () => {
   w.createSpace({ name: 'S' });
   w.createTable({ space: 'S', name: 'Fields' });
   w.createTable({ space: 'S', name: 'Task' });
-  w.addField('Fields', { name: 'Definition', type: 'field' });
-  const row = w.createEntity('Fields', {
+  w.addField('S/Fields', { name: 'Definition', type: 'field' });
+  const row = w.createEntity('S/Fields', {
     name: 'Priority',
     values: { Definition: { type: 'select', config: { options: [{ name: 'P0' }, { name: 'P1' }] } } },
   });
-  const def = w.getEntity(row.id).values[Object.values(w.getTable('Fields').fields).find((f) => f.name === 'Definition').id];
+  const def = w.getEntity(row.id).values[Object.values(w.getTable('S/Fields').fields).find((f) => f.name === 'Definition').id];
   const made = w.materializeField('Task', 'Priority', def);
   assert.equal(made.type, 'select');
   const t = w.createEntity('Task', { name: 'T', values: { Priority: 'P1' } });

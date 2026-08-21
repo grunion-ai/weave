@@ -320,6 +320,7 @@ export class Weave {
     this.state.tables[db.id] = db;
     this.save();
     this.#syncTableRow(db);
+    for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
     return db;
   }
 
@@ -393,6 +394,7 @@ export class Weave {
     for (const [id, auto] of Object.entries(this.state.automations)) {
       if (auto.dbId === db.id) delete this.state.automations[id];
     }
+    for (const f of Object.values(db.fields)) this.#dropFieldRow(f.id);
     delete this.state.tables[db.id];
     this.#dropSysRow('tables', db.id);
     this.save();
@@ -460,8 +462,24 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
+    const fieldsT = this.#sysTable('fields')
+      ?? mkTable('Fields', 'fields', 'Every field of every table, as a row related to its table and carrying its definition. Creating a row creates the column; renaming it renames the column; editing its Definition changes the config; hard-deleting it deletes the column.');
+    if (!this.#sysField(fieldsT, 'Table')) {
+      const { field, inverse } = this.addRelation(fieldsT.id, { name: 'Table', targetDb: tablesT.id, cardinality: 'many-to-one', inverseName: 'Fields' });
+      field.system = true;
+      inverse.system = true;
+    }
+    if (!this.#sysField(fieldsT, 'Type')) this.addField(fieldsT.id, { name: 'Type', type: 'text' }).system = true;
+    // Depth 4 (the cap): the registry must describe field-type columns, which
+    // are themselves definitions one level down. A depth-4 field column is the
+    // one shape the registry cannot hold — #syncFieldRow leaves it empty.
+    if (!this.#sysField(fieldsT, 'Definition')) this.addField(fieldsT.id, { name: 'Definition', type: 'field', config: { depth: 4 } }).system = true;
     for (const sp of Object.values(s.spaces)) this.#syncSpaceRow(sp);
     for (const t of Object.values(s.tables)) this.#syncTableRow(t);
+    for (const t of Object.values(s.tables)) {
+      if (t.system) continue;
+      for (const f of Object.values(t.fields)) this.#syncFieldRow(t, f);
+    }
   }
 
   #syncSpaceRow(space) {
@@ -508,6 +526,49 @@ export class Weave {
     return row;
   }
 
+  /* One row per field of every user table (Feature #52). DEFINABLE types
+     carry their shape as a `field` value; relations and computed fields are
+     rows too — the registry is complete — but their Definition stays empty
+     and their shape belongs to the schema verbs that understand them. */
+  #syncFieldRow(db, f) {
+    if (db.system) return undefined;
+    const t = this.#sysTable('fields');
+    if (!t) return undefined;
+    const tableRow = this.#sysRow('tables', db.id);
+    if (!tableRow) return undefined;
+    const definable = DEFINABLE_TYPES.includes(f.type) && !(f.type === 'field' && (f.config.depth ?? 1) >= 4);
+    let row = this.#sysRow('fields', f.id);
+    if (!row) {
+      row = this.#metaSync(() => this.createEntity(t.id, {
+        name: f.name,
+        values: {
+          Table: tableRow.id,
+          Type: f.type,
+          ...(definable ? { Definition: { type: f.type, config: f.config } } : {}),
+        },
+      }));
+      row.sysId = f.id;
+      this.#mark(row);
+      this.save();
+      return row;
+    }
+    const patch = {};
+    if (this.entityName(row) !== f.name) patch.Name = f.name;
+    if (definable) patch.Definition = { type: f.type, config: f.config };
+    if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
+    return row;
+  }
+
+  #dropFieldRow(fieldId) {
+    const row = this.#sysRow('fields', fieldId);
+    if (row) this.#metaSync(() => this.deleteEntity(row.id, { hard: true }));
+  }
+
+  /* The table a field id belongs to — the registry's way back to the schema. */
+  #fieldOwner(fieldId) {
+    return Object.values(this.state.tables).find((t) => t.fields[fieldId]);
+  }
+
   #dropSysRow(kind, sysId) {
     const row = this.#sysRow(kind, sysId);
     if (row) this.#metaSync(() => this.deleteEntity(row.id, { hard: true }));
@@ -528,13 +589,27 @@ export class Weave {
     let made;
     if (db.system === 'spaces') {
       made = this.#sysRow('spaces', this.createSpace({ name, description }).id);
-    } else {
+    } else if (db.system === 'tables') {
       const spaceRef = values.Space;
       delete values.Space;
       if (spaceRef == null) throw new WeaveError(`A Tables row needs its 'Space' — which space the table lives in`, 'invalid');
       const spaceRow = this.findEntity(this.#sysTable('spaces').id, spaceRef);
       if (!spaceRow) throw new WeaveError(`Space row '${spaceRef}' not found`, 'not-found');
       made = this.#sysRow('tables', this.createTable({ space: spaceRow.sysId, name, description }).id);
+    } else if (db.system === 'fields') {
+      const tableRef = values.Table;
+      const def = values.Definition;
+      delete values.Table;
+      delete values.Definition;
+      delete values.Type; // derived from the definition, never written directly
+      if (tableRef == null) throw new WeaveError(`A Fields row needs its 'Table' — which table the column lands on`, 'invalid');
+      if (!def || typeof def !== 'object' || !def.type) throw new WeaveError(`A Fields row needs its 'Definition' — the column's shape`, 'invalid');
+      const tableRow = this.findEntity(this.#sysTable('tables').id, tableRef);
+      if (!tableRow) throw new WeaveError(`Table row '${tableRef}' not found`, 'not-found');
+      const f = this.addField(tableRow.sysId, { name, type: def.type, config: def.config ?? {} });
+      made = this.#sysRow('fields', f.id);
+    } else {
+      return undefined;
     }
     if (Object.keys(values).length) this.#metaSync(() => this.updateEntity(made.id, values));
     return this.getEntity(made.id);
@@ -543,20 +618,47 @@ export class Weave {
   #interceptUpdate(e, db, valuesByName) {
     if (!db.system || this.#inMetaSync) return undefined;
     const patch = { ...valuesByName };
-    if (db.system === 'tables' && 'Space' in patch) {
-      const spaceF = this.#sysField(db, 'Space');
-      const next = patch.Space == null ? null : this.findEntity(this.#sysTable('spaces').id, patch.Space)?.id;
-      if (next !== (e.values[spaceF.id] ?? null)) {
-        throw new WeaveError('A table cannot move between spaces yet', 'invalid');
+    if (db.system === 'fields') {
+      const owner = this.#fieldOwner(e.sysId);
+      const f = owner?.fields[e.sysId];
+      if ('Type' in patch) throw new WeaveError(`'Type' follows the Definition — change the definition, not the label`, 'invalid');
+      if ('Table' in patch) {
+        const next = patch.Table == null ? null : this.findEntity(this.#sysTable('tables').id, patch.Table)?.id;
+        const cur = e.values[this.#sysField(db, 'Table').id] ?? null;
+        if (next !== cur) throw new WeaveError('A field cannot move between tables', 'invalid');
+        delete patch.Table;
       }
-      delete patch.Space;
-    }
-    const structural = {};
-    if ('Name' in patch) { structural.name = patch.Name; delete patch.Name; }
-    if ('Description' in patch) { structural.description = patch.Description; delete patch.Description; }
-    if (Object.keys(structural).length) {
-      if (db.system === 'spaces') this.updateSpace(e.sysId, structural);
-      else this.updateTable(e.sysId, structural);
+      if ('Name' in patch) {
+        this.updateField(owner.id, f.id, { name: patch.Name });
+        delete patch.Name;
+      }
+      if ('Definition' in patch) {
+        const def = patch.Definition;
+        if (!DEFINABLE_TYPES.includes(f.type)) {
+          throw new WeaveError(`A ${f.type} field's shape is edited through the schema verbs, not its Definition`, 'invalid');
+        }
+        if (!def || def.type !== f.type) {
+          throw new WeaveError(`A definition cannot change its type ('${f.type}' → '${def?.type}') — delete the column and create it anew`, 'invalid');
+        }
+        this.updateField(owner.id, f.id, { config: def.config ?? {} });
+        delete patch.Definition;
+      }
+    } else {
+      if (db.system === 'tables' && 'Space' in patch) {
+        const spaceF = this.#sysField(db, 'Space');
+        const next = patch.Space == null ? null : this.findEntity(this.#sysTable('spaces').id, patch.Space)?.id;
+        if (next !== (e.values[spaceF.id] ?? null)) {
+          throw new WeaveError('A table cannot move between spaces yet', 'invalid');
+        }
+        delete patch.Space;
+      }
+      const structural = {};
+      if ('Name' in patch) { structural.name = patch.Name; delete patch.Name; }
+      if ('Description' in patch) { structural.description = patch.Description; delete patch.Description; }
+      if (Object.keys(structural).length) {
+        if (db.system === 'spaces') this.updateSpace(e.sysId, structural);
+        else this.updateTable(e.sysId, structural);
+      }
     }
     if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(e.id, patch));
     return this.getEntity(e.id);
@@ -564,11 +666,20 @@ export class Weave {
 
   #interceptDelete(e, db, hard) {
     if (!db.system || this.#inMetaSync) return undefined;
+    const noun = { spaces: 'space', tables: 'table', fields: 'column' }[db.system];
     if (!hard) {
-      throw new WeaveError(`Deleting a ${db.system === 'spaces' ? 'space' : 'table'} is not recoverable — pass hard to confirm`, 'invalid');
+      throw new WeaveError(`Deleting a ${noun} is not recoverable — pass hard to confirm`, 'invalid');
     }
     if (db.system === 'spaces') this.deleteSpace(e.sysId);
-    else this.deleteTable(e.sysId);
+    else if (db.system === 'tables') this.deleteTable(e.sysId);
+    else {
+      const owner = this.#fieldOwner(e.sysId);
+      if (owner && owner.nameFieldId === e.sysId) {
+        throw new WeaveError('Cannot delete the Name field', 'invalid');
+      }
+      if (owner) this.deleteField(owner.id, e.sysId);
+      else this.#metaSync(() => this.deleteEntity(e.id, { hard: true })); // orphaned row
+    }
     return { id: e.id, purged: true };
   }
 
@@ -642,6 +753,7 @@ export class Weave {
     db.fields[field.id] = field;
     db.fieldOrder.push(field.id);
     this.save();
+    this.#syncFieldRow(db, field);
     return field;
   }
 
@@ -670,6 +782,8 @@ export class Weave {
     target.fields[b.id] = b;
     target.fieldOrder.push(b.id);
     this.save();
+    this.#syncFieldRow(db, a);
+    this.#syncFieldRow(target, b);
     return { field: a, inverse: b };
   }
 
@@ -715,6 +829,7 @@ export class Weave {
         }
       }
     }
+    this.#syncFieldRow(db, field);
     this.save();
     return field;
   }
@@ -739,6 +854,8 @@ export class Weave {
       }
     }
     this.#removeFieldRaw(db, field.id);
+    this.#dropFieldRow(field.id);
+    if (field.type === 'relation' && field.config.inverseFieldId) this.#dropFieldRow(field.config.inverseFieldId);
     this.save();
   }
 
