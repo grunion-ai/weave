@@ -686,13 +686,25 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     }
     return box;
   }
+  const rawVal = item.raw?.[f.name] ?? val;
   const input = el('input', {
     class: 'form-control form-control-sm inline-edit',
     type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text',
-    value: val ?? '',
+    value: rawVal ?? '',
     onclick: (e) => e.stopPropagation(),
   });
   input.addEventListener('change', () => patch(input.value === '' ? null : f.type === 'number' ? Number(input.value) : input.value));
+  // A formatted number (#97) shows its costume at rest — '30 days' — and
+  // hands over the raw number the moment it is clicked.
+  if (f.type === 'number' && val != null && String(val) !== String(rawVal)) {
+    const dressed = el('span', { class: 'num-dressed', tabindex: 0, onclick: (e) => {
+      e.stopPropagation();
+      dressed.replaceWith(input);
+      input.focus();
+    } }, String(val));
+    input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
+    return dressed;
+  }
   return input;
 }
 
@@ -1278,6 +1290,15 @@ function editFieldDialog(db, f) {
       value: (f.states ?? []).map((s) => `${s.name}:${s.category}`).join(', '),
       placeholder: 'States: Open:not-started, Doing:in-progress, Done:done',
     }));
+  } else if (f.type === 'number') {
+    fields.push(el('select', { name: 'format', class: 'form-select full' },
+      ...['number', 'currency', 'percent'].map((o) =>
+        el('option', { value: o, selected: (f.format ?? 'number') === o ? '' : undefined }, o))));
+    fields.push(el('input', { name: 'unit', class: 'form-control full', value: f.unit ?? '', placeholder: 'Unit (days, kg, $ …)' }));
+    fields.push(el('input', { name: 'decimals', type: 'number', min: 0, max: 6, class: 'form-control full', value: f.decimals ?? '', placeholder: 'Decimal places (auto)' }));
+    fields.push(el('label', { class: 'form-check', style: 'margin:4px 0 0' },
+      el('input', { name: 'separator', type: 'checkbox', class: 'form-check-input', checked: f.separator ? '' : undefined }),
+      el('span', { class: 'form-check-label' }, 'Add 1,000 separator')));
   } else if (f.type === 'formula') {
     fields.push(el('input', {
       name: 'expression', class: 'form-control full', style: 'width:100%',
@@ -1291,6 +1312,14 @@ function editFieldDialog(db, f) {
   modal(`Edit ${f.name}`, fields, async (fd) => {
     const patch = {};
     if (fd.get('name') && fd.get('name') !== f.name) patch.name = fd.get('name');
+    if (f.type === 'number') {
+      patch.config = {
+        format: String(fd.get('format') ?? 'number'),
+        unit: String(fd.get('unit') ?? '').trim() || null,
+        decimals: fd.get('decimals') === '' || fd.get('decimals') == null ? null : Number(fd.get('decimals')),
+        separator: fd.get('separator') != null,
+      };
+    }
     if (f.type === 'select' || f.type === 'multiselect') {
       patch.config = { options: String(fd.get('options') ?? '').split(',').map((s) => s.trim()).filter(Boolean) };
     } else if (f.type === 'workflow') {

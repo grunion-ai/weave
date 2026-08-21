@@ -116,6 +116,24 @@ function normalizeSelfContainedConfig(type, config = {}) {
     }
     return { states };
   }
+  if (type === 'number') {
+    const out = {};
+    if (config.format != null) {
+      if (!['number', 'currency', 'percent'].includes(config.format)) {
+        throw new WeaveError(`Invalid number format '${config.format}' (number, currency, percent)`, 'invalid');
+      }
+      if (config.format !== 'number') out.format = config.format;
+    }
+    if (config.unit != null && String(config.unit).trim()) out.unit = String(config.unit).trim();
+    if (config.decimals != null) {
+      if (!Number.isInteger(config.decimals) || config.decimals < 0 || config.decimals > 6) {
+        throw new WeaveError(`Decimals must be 0..6, got '${config.decimals}'`, 'invalid');
+      }
+      out.decimals = config.decimals;
+    }
+    if (config.separator != null) out.separator = !!config.separator;
+    return out;
+  }
   if (type === 'field') {
     const depth = config.depth ?? 1;
     if (!Number.isInteger(depth) || depth < 1 || depth > MAX_DEFINITION_DEPTH) {
@@ -1061,7 +1079,7 @@ export class Weave {
     if (type === 'relation') throw new WeaveError(`Use addRelation() to create relation fields`, 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
-    if (type === 'select' || type === 'multiselect' || type === 'workflow' || type === 'field') {
+    if (type === 'select' || type === 'multiselect' || type === 'workflow' || type === 'field' || type === 'number') {
       // One normaliser, shared with `field` value validation — see the note on
       // normalizeSelfContainedConfig. If these drift, a definition can describe
       // a field addField would reject.
@@ -1156,6 +1174,17 @@ export class Weave {
       if ('default' in patch.config) {
         if (patch.config.default === null) delete field.config.default;
         else field.config.default = this.#validateDefault(field, patch.config.default);
+      }
+      if (field.type === 'number') {
+        // Merge the costume keys through the same validation addField runs;
+        // absent keys keep their value, width/default ride their own lanes.
+        const costume = normalizeSelfContainedConfig('number', { ...field.config, ...patch.config });
+        for (const k of ['format', 'unit', 'decimals', 'separator']) {
+          if (k in patch.config || k in costume) {
+            if (costume[k] == null) delete field.config[k];
+            else field.config[k] = costume[k];
+          }
+        }
       }
       if (field.type === 'select' || field.type === 'multiselect') {
         if (patch.config.options) {
@@ -1718,7 +1747,10 @@ export class Weave {
               throw new WeaveError(`Formula references unknown field '${name}'`, 'invalid');
             }
             const v = this.#resolve(e, db, f, depth + 1);
-            return this.#displayValue(db, f, v);
+            // Numbers stay numbers in formulas — the display costume (#97)
+            // would turn '$1,200.50' * 2 into NaN. Everything else keeps its
+            // display form (state and option names, joined relations).
+            return typeof v === 'number' ? v : this.#displayValue(db, f, v);
           });
         } catch (err) {
           return `#ERR: ${err.message}`;
@@ -1750,6 +1782,19 @@ export class Weave {
       case 'key':
         // The name and whether the keystore holds it — never the secret.
         return `🔑 ${resolved}${this.hasKey(resolved) ? '' : ' (unset)'}`;
+      case 'number': {
+        const c = field.config;
+        if (c.format == null && c.unit == null && c.decimals == null && !c.separator) return resolved;
+        let n = Number(resolved);
+        let text = c.decimals != null ? n.toFixed(c.decimals) : String(n);
+        if (c.separator) {
+          const [int, frac] = text.split('.');
+          text = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (frac ? '.' + frac : '');
+        }
+        if (c.format === 'percent') return `${text}%`;
+        if (c.format === 'currency') return `${c.unit ?? '$'}${text}`;
+        return c.unit ? `${text} ${c.unit}` : text;
+      }
       case 'relation': {
         const names = resolved.map((id) => {
           const t = this.state.entities[id];
@@ -2415,6 +2460,11 @@ export class Weave {
               out.targetField = tdb.fields[f.config.targetField]?.name;
             }
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
+          }
+          if (f.type === 'number') {
+            for (const k of ['format', 'unit', 'decimals', 'separator']) {
+              if (f.config[k] != null) out[k] = f.config[k];
+            }
           }
           if (f.type === 'formula') out.expression = f.config.expression;
           if (f.type === 'field') { out.types = [...f.config.types]; out.depth = f.config.depth; }
