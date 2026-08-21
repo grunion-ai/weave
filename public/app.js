@@ -1871,7 +1871,9 @@ function mountDocEditor(host, { value, placeholder, onInput }) {
       theme: { current: t.content, path: '/vendor/vditor/dist/css/content-theme' },
     },
     hint: { emoji: {}, extend: [{ key: '/', hint: slashHint }] },
-    after: () => chips.schedule(),
+    // Every decoration pass on this host starts once the editor is actually
+    // built — an attach-time schedule can fire before Vditor has a surface.
+    after: () => scheduleDecorFor(host),
     input: (v) => {
       // The entity-link command arrives here as its marker, never as content.
       if (v.includes(ENTITY_LINK_MARKER)) return pickEntityLink(editor, v, onInput);
@@ -1894,6 +1896,13 @@ function mountDocEditor(host, { value, placeholder, onInput }) {
 const REF_CHIP_DEBOUNCE = 250;
 const refChipLayers = new Set();
 const refResolveCache = new Map(); // ref → { href, label, kind } | null (miss)
+
+// Kick every decoration pass attached to one editor host (chips, rail, folds).
+function scheduleDecorFor(host) {
+  for (const s of [...refChipLayers, ...docRails, ...docFolds]) {
+    if (s.host === host) s.schedule();
+  }
+}
 
 function attachRefChips(host) {
   const st = { host, layer: el('div', { class: 'doc-ref-layer' }), timer: 0 };
@@ -1995,19 +2004,24 @@ function attachDashRail(section, host) {
   return st;
 }
 
+// A heading's textContent includes Vditor's "# " marker span; chrome about
+// the heading (rail tooltips, fold keys) wants the words, not the syntax.
+function headText(h) {
+  return [...h.childNodes]
+    .filter((n) => !(n.nodeType === 1 && n.classList.contains('vditor-ir__marker')))
+    .map((n) => n.textContent).join('').trim();
+}
+
 function refreshDashRail(st) {
   if (!document.body.contains(st.section)) { docRails.delete(st); return; }
   const root = st.host.querySelector('.vditor-ir .vditor-reset');
   if (!root) return;
   // Block headings only — direct children of the surface, never something a
-  // preview rendered inside a code block.
-  const heads = [...root.querySelectorAll(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6')];
+  // preview rendered inside a code block. Headings hidden inside a fold
+  // (display:none, so no offsetParent) leave the map with their section.
+  const heads = [...root.querySelectorAll(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6')]
+    .filter((h) => h.offsetParent !== null);
   const lib = globalThis.WeaveEditorLib;
-  // A heading's textContent includes Vditor's "# " marker span; the dash
-  // tooltip wants the words, not the syntax.
-  const headText = (h) => [...h.childNodes]
-    .filter((n) => !(n.nodeType === 1 && n.classList.contains('vditor-ir__marker')))
-    .map((n) => n.textContent).join('').trim();
   const spec = lib.railSpec(heads.map((h) => ({ level: +h.tagName[1], text: headText(h) })));
   if (!spec.length) { st.rail.remove(); return; } // < 3 headings: no rail
   if (!st.rail.isConnected) st.section.append(st.rail);
@@ -2021,6 +2035,81 @@ function refreshDashRail(st) {
     // frames a smooth scroll rides on, and the jump is the point anyway.
     onclick: () => heads[i].scrollIntoView({ block: 'start' }),
   })));
+}
+
+/* ---------- collapsible headings (Issue #88) ----------
+   Folding a heading hides every block until the next heading of the same or
+   a higher level. The caret lives in an overlay gutter layer — never inside
+   the contenteditable — and the fold itself is a class on the hidden blocks,
+   which Lute ignores when it reads the DOM back, so the stored markdown
+   never changes. State persists per entity+field, keyed by level+text (two
+   identical headings fold together — the key is the identity we have). */
+
+const docFolds = new Set();
+
+// Fold state per entity+field: read with two args, write with three.
+function docFoldState(entityId, field, next) {
+  const key = `weave-doc-folds:${entityId}:${field}`;
+  if (next === undefined) {
+    try { return new Set(JSON.parse(localStorage.getItem(key)) ?? []); }
+    catch { return new Set(); }
+  }
+  localStorage.setItem(key, JSON.stringify([...next]));
+  return next;
+}
+
+function attachHeadingFolds(host, entityId, field) {
+  const st = { host, entityId, field, layer: el('div', { class: 'doc-fold-layer' }), timer: 0 };
+  st.schedule = () => {
+    clearTimeout(st.timer);
+    st.timer = setTimeout(() => refreshHeadingFolds(st), REF_CHIP_DEBOUNCE);
+  };
+  docFolds.add(st);
+  st.schedule();
+  return st;
+}
+
+function refreshHeadingFolds(st) {
+  if (!document.body.contains(st.host)) { docFolds.delete(st); return; }
+  const root = st.host.querySelector('.vditor-ir .vditor-reset');
+  if (!root) return;
+  if (!st.layer.isConnected) st.host.append(st.layer);
+  const lib = globalThis.WeaveEditorLib;
+  const blocks = [...root.children];
+  const levels = blocks.map((b) => (/^H[1-6]$/.test(b.tagName) ? +b.tagName[1] : null));
+  const folded = docFoldState(st.entityId, st.field);
+  const headKey = (h) => `${h.tagName[1]}:${headText(h)}`;
+
+  // Apply the folds first (layout settles), then place carets on whatever
+  // headings are still visible.
+  for (const b of blocks) b.classList.remove('wv-folded');
+  levels.forEach((lvl, i) => {
+    if (lvl == null || !folded.has(headKey(blocks[i]))) return;
+    for (const j of lib.foldRange(levels, i)) blocks[j].classList.add('wv-folded');
+  });
+
+  const base = st.layer.getBoundingClientRect();
+  const carets = [];
+  levels.forEach((lvl, i) => {
+    if (lvl == null || blocks[i].offsetParent === null) return;
+    const key = headKey(blocks[i]);
+    const isFolded = folded.has(key);
+    const r = blocks[i].getBoundingClientRect();
+    carets.push(el('button', {
+      class: 'doc-fold' + (isFolded ? ' folded' : ''),
+      type: 'button',
+      title: isFolded ? 'Unfold section' : 'Fold section',
+      style: `top:${r.top - base.top}px; height:${r.height}px;`,
+      onclick: () => {
+        const next = docFoldState(st.entityId, st.field);
+        next.has(key) ? next.delete(key) : next.add(key);
+        docFoldState(st.entityId, st.field, next);
+        refreshHeadingFolds(st);
+        for (const rail of docRails) rail.schedule(); // hidden headings leave the rail
+      },
+    }));
+  });
+  st.layer.replaceChildren(...carets);
 }
 
 /* One resolver for every reference kind: the same POST /api/markdown the
@@ -2129,6 +2218,11 @@ function teardownDocEditors() {
     st.rail.remove();
   }
   docRails.clear();
+  for (const st of docFolds) {
+    clearTimeout(st.timer);
+    st.layer.remove();
+  }
+  docFolds.clear();
 }
 
 // Collapse state per entity+field: read with two args, write with three.
@@ -2276,12 +2370,14 @@ async function showEntity(id) {
       caret.classList.add('closed');
     }
     const rail = attachDashRail(section, host);
+    const folds = attachHeadingFolds(host, id, f.name);
     mountDocEditor(host, {
       value: entity.docs?.[f.name] ?? '',
       placeholder: `Write ${f.name}… press / for blocks`,
       onInput: (value) => {
         scheduleDocSave(id, f.name, value, status);
         rail.schedule(); // headings may have changed
+        folds.schedule(); // a re-render drops the fold classes; re-apply
       },
     });
   }

@@ -414,11 +414,27 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
    A minimap in the gutter #main's own padding provides: one dash per
    heading, longer for higher levels; the active dash is the section under
    the reading line. Narrow screens have no gutter, so no rail. */
-.doc-rail { position: absolute; left: -24px; top: 34px; display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+.doc-rail { position: absolute; left: -26px; top: 34px; display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
 .doc-rail-dash { height: 3px; border: 0; padding: 0; border-radius: 2px; background: var(--tblr-border-color); cursor: pointer; display: block; }
 .doc-rail-dash:hover { background: var(--tblr-secondary); }
 .doc-rail-dash.active { background: var(--tblr-primary); }
 @media (max-width: 900px) { .doc-rail { display: none; } }
+
+/* ---------- collapsible headings (Issue #88) ----------
+   Carets sit between the rail (left: -26, dashes ≤ 12px wide) and the text,
+   one per visible heading. Hover chrome like the section head — except a
+   FOLDED caret stays visible, or the hidden content would be unfindable. */
+.doc-fold-layer { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.doc-fold { position: absolute; left: -13px; width: 13px; pointer-events: auto; border: 0; background: none;
+  padding: 0; cursor: pointer; color: var(--tblr-secondary); display: flex; align-items: center;
+  opacity: 0; transition: opacity .12s ease; }
+.doc-fold::before { content: "▾"; font-size: 11px; display: inline-block; transition: transform .12s ease; }
+.doc-fold.folded::before { transform: rotate(-90deg); }
+.doc-section:hover .doc-fold { opacity: .6; }
+.doc-fold:hover { opacity: 1; }
+.doc-fold.folded { opacity: 1; color: var(--tblr-primary); }
+.wv-folded { display: none; }
+@media (max-width: 900px) { .doc-fold-layer { display: none; } }
 /* The whole head — field name, caret, permalink, downloads, save state — is
    chrome ABOUT the document, so it stays out of sight until the section is
    hovered or holds focus. It keeps its space in the flow: display:none would

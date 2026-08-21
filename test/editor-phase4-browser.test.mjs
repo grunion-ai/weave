@@ -234,6 +234,58 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
+  /* ---------- Issue #88: collapsible headings ---------- */
+
+  const FOLD_DOC = '# Top\n\nintro\n\n## Fold me\n\nhidden one\n\nhidden two\n\n### Deeper\n\nalso hidden\n\n## After\n\nvisible\n';
+
+  test('folding a heading hides its blocks up to the next same-level heading', async () => {
+    const id = entityWithDoc('Folds', FOLD_DOC);
+    const page = await openEntity(id);
+    try {
+      await page.waitForSelector('.doc-fold-layer .doc-fold', { timeout: 20000 });
+      const before = await page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
+      // Fold "Fold me" (second caret: Top, Fold me, Deeper, After).
+      await page.evaluate(() => document.querySelectorAll('.doc-fold')[1].click());
+      await page.waitForFunction(() => document.querySelectorAll('.wv-folded').length > 0,
+        null, { timeout: 20000 });
+      const r = await page.evaluate(() => {
+        const root = document.querySelector('.vditor-ir .vditor-reset');
+        const hidden = [...root.querySelectorAll('.wv-folded')].map((b) => b.textContent.trim());
+        const visible = (t) => [...root.children].some(
+          (b) => b.textContent.includes(t) && !b.classList.contains('wv-folded'));
+        return {
+          hidden,
+          topVisible: visible('intro'),
+          afterVisible: visible('After'),
+          value: window.__weaveEditors.values().next().value.getValue(),
+        };
+      });
+      assert.ok(r.hidden.some((t) => t.includes('hidden one')), 'the section body folds');
+      assert.ok(r.hidden.some((t) => t.includes('Deeper')), 'a deeper heading folds along');
+      assert.ok(r.topVisible, 'blocks above the fold stay visible');
+      assert.ok(r.afterVisible, 'the next same-level heading stays visible');
+      assert.equal(r.value, before, 'folding never touches the stored markdown');
+    } finally { await page.close(); }
+  });
+
+  test('a fold survives a reload via localStorage, and unfolding restores', async () => {
+    const id = entityWithDoc('FoldPersist', FOLD_DOC);
+    const page = await openEntity(id);
+    try {
+      await page.waitForSelector('.doc-fold-layer .doc-fold', { timeout: 20000 });
+      await page.evaluate(() => document.querySelectorAll('.doc-fold')[1].click());
+      await page.waitForFunction(() => document.querySelectorAll('.wv-folded').length > 0,
+        null, { timeout: 20000 });
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForFunction(() => document.querySelectorAll('.wv-folded').length > 0,
+        null, { timeout: 20000 });
+      // Unfold: the folded caret is the one carrying the folded class.
+      await page.evaluate(() => document.querySelector('.doc-fold.folded').click());
+      await page.waitForFunction(() => document.querySelectorAll('.wv-folded').length === 0,
+        null, { timeout: 20000 });
+    } finally { await page.close(); }
+  });
+
   test('the rendered document page tokenizes the same block', async () => {
     const id = entityWithDoc('PageHl', '```js\nconst x = 1;\n```\n');
     const page = await browser.newPage();
