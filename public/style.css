@@ -184,7 +184,7 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 .card-top { display: flex; align-items: center; margin-bottom: 2px; }
 .card-top .pid { text-decoration: none; color: var(--tblr-secondary); font-size: 11px; }
 .card-top .pid:hover { color: var(--tblr-primary); }
-.card-name { width: 100%; border: none; background: none; font: inherit; color: inherit; padding: 2px 3px; }
+.card-name { width: 100%; border: none; background: none; font: inherit; color: inherit; padding: 2px 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-name:hover, .card-name:focus { background: var(--tblr-bg-surface-secondary); border-radius: 5px; outline: none; }
 .card-fields { border-top: 1px solid var(--tblr-border-color); margin-top: 7px; padding-top: 6px; }
 

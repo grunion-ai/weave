@@ -954,3 +954,23 @@ test('an embedded grid can add a record and link it in one step', () => {
   assert.ok(rulesFor('.unlink-btn').opacity === '0', 'unlink is quiet until the row is hovered');
   assert.equal(rulesFor('.entity-row:hover .unlink-btn').opacity, '.7');
 });
+
+test('board card titles truncate with an ellipsis, not a mid-word clip (Issue #20)', () => {
+  const name = rulesFor('.card-name');
+  assert.equal(name['overflow'], 'hidden');
+  assert.equal(name['text-overflow'], 'ellipsis');
+  assert.equal(name['white-space'], 'nowrap');
+});
+
+test('vendored mermaid is at or past the 11.9.0 security release (Issue #8)', () => {
+  const src = readFileSync(join(ROOT, 'public/vendor/mermaid.min.js'), 'utf8');
+  const versions = [...src.matchAll(/version[:=]"(11\.\d+\.\d+)"/g)].map((m) => m[1]);
+  assert.ok(versions.length, 'the bundle declares its version');
+  const atLeast = (v, floor) => {
+    const a = v.split('.').map(Number), b = floor.split('.').map(Number);
+    for (let i = 0; i < 3; i++) { if (a[i] !== b[i]) return a[i] > b[i]; }
+    return true;
+  };
+  assert.ok(versions.some((v) => atLeast(v, '11.9.0')),
+    `mermaid must be ≥ 11.9.0 (XSS advisories fixed there); saw ${versions.join(', ')}`);
+});
