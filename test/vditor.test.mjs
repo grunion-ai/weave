@@ -64,7 +64,7 @@ test('the vendored build is the pinned version', () => {
 });
 
 test('mermaid is vendored once, not twice', () => {
-  // Vditor ships its own 3.5MB mermaid. weave already vendors 11.4.1, so the
+  // Vditor ships its own 3.5MB mermaid. weave already vendors its own mermaid (≥ 11.9.0, Issue #8), so the
   // editor is pointed at that copy through a server alias instead.
   assert.ok(!existsSync(join(ROOT, VENDOR, 'dist/js/mermaid/mermaid.min.js')),
     'a second mermaid build must not be vendored under vditor/');
