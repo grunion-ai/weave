@@ -124,11 +124,11 @@ test('picker-type cells are tagged so the row handler can route clicks', () => {
 
 test('row click on a picker cell opens the picker instead of the entity', () => {
   // Every clickable row surface (grid <tr>, list-row, board card) routes
-  // through rowClickTarget before it may navigate.
-  const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*openEntity\(/g)];
+  // through rowClickTarget before it may open the side peek (Feature #39).
+  const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*peekEntity\(/g)];
   assert.equal(routed.length, 4, 'grid, list, board and embedded related rows must all route clicks');
-  assert.equal((APP.match(/openEntity\(item\.id\)/g) ?? []).length, routed.length,
-    'no row surface may call openEntity without routing first');
+  assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, routed.length,
+    'no row surface may open the peek without routing first');
   assert.match(APP, /function rowClickTarget/);
   assert.match(APP, /function openCellPicker/);
   const fn = APP.slice(APP.indexOf('function openCellPicker'));
@@ -934,7 +934,7 @@ test('a collection relation renders as the target table grid, in the body', () =
   assert.match(grid, /editorFor\(/, 'cells are the same editors the table view uses');
   assert.match(grid, /PICKER_FIELD_TYPES\.includes/, 'and carry the same picker/computed cell classes');
   assert.match(grid, /rowClickTarget\(e\)/, 'so a click on a picker opens the picker, not the entity');
-  assert.match(grid, /openEntity\(item\.id\)/, 'and a click elsewhere opens the row');
+  assert.match(grid, /peekEntity\(item\.id\)/, 'and a click elsewhere peeks the row (Feature #39)');
   assert.match(grid, /\['id', 'in', linked\.map/, 'the rows are fetched whole, by id');
   assert.match(grid, /c\.name !== f\.inverseField/, 'the column pointing back at this record is dropped');
 

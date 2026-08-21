@@ -548,3 +548,15 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .date-cell .date-text { min-width: 90px; }
 .date-cell .date-pick { width: 22px; height: 24px; padding: 0; border: 0; background: none; color: var(--tblr-secondary); cursor: pointer; }
 .date-cell .date-pick::-webkit-calendar-picker-indicator { cursor: pointer; }
+/* ---------- side peek (Features #39, #48) ---------- */
+#peek-back { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 80; }
+#peek { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 92vw); background: var(--tblr-bg-surface); border-left: 1px solid var(--tblr-border-color); box-shadow: -8px 0 24px rgba(0,0,0,.12); overflow-y: auto; animation: peek-in .16s ease; }
+@keyframes peek-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.peek-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.peek-head { display: flex; align-items: center; gap: 8px; }
+.peek-head h2 { font-size: 17px; margin: 0; }
+.peek-fields { display: flex; flex-direction: column; gap: 6px; }
+.peek-doc { border-top: 1px solid var(--tblr-border-color); padding-top: 10px; font-size: 14px; }
+.peek-activity h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); margin: 0 0 6px; }
+.peek-act-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 2px 0; }
+.peek-act-when, .peek-act-actor { color: var(--tblr-secondary); }

@@ -117,6 +117,65 @@ const state = { schema: [], route: null, expanded: new Set(), refocus: null };
 // Single entry point for opening an entity (future: side-peek drawer).
 function openEntity(id) { location.hash = `#/entity/${id}`; }
 
+/* ---------- side peek (Features #39, #48) ----------
+   A row opens here first: the entity's fields, editable, in a slide-over —
+   the page stays where it is. The breadcrumb # and 'Open' go to the full
+   page. One panel at a time; Esc or the backdrop closes it. */
+function peekEntity(id) {
+  document.querySelector('#peek-back')?.remove();
+  const back = el('div', { id: 'peek-back', onclick: (e) => { if (e.target === back) back.remove(); } });
+  const panel = el('aside', { id: 'peek' }, el('div', { class: 'peek-body' }, '…'));
+  back.append(panel);
+  document.body.append(back);
+  addEventListener('keydown', function esc(e) {
+    if (!back.isConnected) return removeEventListener('keydown', esc);
+    if (e.key === 'Escape') { back.remove(); removeEventListener('keydown', esc); }
+  });
+  const draw = async () => {
+    let entity;
+    try { entity = await api('GET', `/entities/${id}`); } catch (err) { back.remove(); return toast(err.message, true); }
+    const db = allTables().find((d) => d.id === entity.dbId);
+    const body = el('div', { class: 'peek-body' });
+    body.append(el('div', { class: 'peek-head' },
+      el('a', { class: 'pid', href: `#/entity/${id}`, onclick: () => back.remove() }, `#${entity.publicId} ↗`),
+      el('h2', {}, entity.name || '(unnamed)'),
+      el('span', { style: 'flex:1' }),
+      el('button', { class: 'btn btn-sm btn-ghost-secondary', onclick: () => { back.remove(); openEntity(id); } }, 'Open'),
+      el('button', { class: 'btn btn-sm btn-ghost-secondary', title: 'Close', onclick: () => back.remove() }, '✕')));
+    const fieldsBox = el('div', { class: 'peek-fields' });
+    for (const f of db?.fields ?? []) {
+      if (f.name === 'Name' || f.type === 'document') continue;
+      if (f.type === 'relation' && f.many) continue;
+      fieldsBox.append(el('div', { class: 'fieldrow' },
+        el('label', {}, fieldNameLabel(f)), editorFor(f, entity, db, draw)));
+    }
+    body.append(fieldsBox);
+    const docs = Object.entries(entity.docs ?? {}).filter(([, md]) => md?.trim());
+    for (const [name, md] of docs.slice(0, 1)) {
+      const docBox = el('div', { class: 'peek-doc' }, '…');
+      body.append(docBox);
+      api('POST', '/markdown', { markdown: md }).then((r) => {
+        docBox.innerHTML = r.html;
+        renderMermaidIn(docBox);
+      }).catch(() => docBox.remove());
+    }
+    // What happened, newest first — each entry names its actor (#65).
+    const act = (entity.activity ?? []).slice(-8).reverse();
+    if (act.length) {
+      body.append(el('div', { class: 'peek-activity' },
+        el('h3', {}, 'Activity'),
+        ...act.map((a) => el('div', { class: 'peek-act-row', title: a.ts },
+          el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind),
+          el('span', { class: 'peek-act-when' }, new Date(a.ts).toLocaleDateString()),
+          a.actor ? el('span', { class: 'peek-act-actor' }, a.actor) : null))));
+    }
+    panel.replaceChildren(body);
+  };
+  draw();
+}
+
+
+
 function allTables() {
   return state.schema.flatMap((s) => s.tables.map((d) => ({ ...d, space: s.space, spaceId: s.spaceId })));
 }
@@ -1084,7 +1143,7 @@ function renderTable(main, db, items, onSaved) {
           const pick = rowClickTarget(e);
           if (pick === 'ignore') return;
           if (pick) return openCellPicker(pick);
-          openEntity(item.id);
+          peekEntity(item.id);
         },
       },
         el('td', { class: 'pid-cell' },
@@ -1434,7 +1493,7 @@ function renderBoard(main, db, items, onSaved) {
             const pick = rowClickTarget(e);
             if (pick === 'ignore') return;
             if (pick) return openCellPicker(pick);
-            openEntity(item.id);
+            peekEntity(item.id);
           },
         },
           el('div', { class: 'card-top' },
@@ -1508,7 +1567,7 @@ function renderListView(main, db, items, onSaved) {
         const pick = rowClickTarget(e);
         if (pick === 'ignore') return;
         if (pick) return openCellPicker(pick);
-        openEntity(item.id);
+        peekEntity(item.id);
       },
     },
       el('a', { class: 'pid', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`),
@@ -2261,7 +2320,7 @@ async function relatedGrid(entity, f, onSaved) {
         const pick = rowClickTarget(e);
         if (pick === 'ignore') return;
         if (pick) return openCellPicker(pick);
-        openEntity(item.id);
+        peekEntity(item.id);
       },
     },
       el('td', { class: 'pid-cell' },
@@ -2372,7 +2431,7 @@ async function showActivity(param) {
 
   const rows = feed.items.map((a) => el('tr', {
     class: 'activity-row' + (a.id === focusId ? ' activity-focus' : ''),
-    onclick: () => openEntity(a.entityId),
+    onclick: () => peekEntity(a.entityId),
   },
     el('td', { class: 'activity-when', title: a.ts }, new Date(a.ts).toLocaleString()),
     el('td', {}, el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind)),
