@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
+import { readFileSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
 import { startMcpServer, TOOLS, dispatchTool } from '../src/mcp.js';
 
@@ -45,6 +46,8 @@ test('MCP handshake and tool listing', async () => {
   const { call } = makeSession();
   const init = await call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '1' } });
   assert.equal(init.result.serverInfo.name, 'weave');
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(init.result.serverInfo.version, pkg.version);
   assert.ok(init.result.capabilities.tools);
 
   const list = await call('tools/list', {});

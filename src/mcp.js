@@ -1,7 +1,9 @@
 // MCP (Model Context Protocol) stdio server: newline-delimited JSON-RPC 2.0.
 // Gives any MCP-capable agent full access to a Weave workspace.
 
+import { readFileSync } from 'node:fs';
 const PROTOCOL_VERSION = '2024-11-05';
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 function textResult(data) {
   return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 1) }] };
@@ -265,7 +267,7 @@ export function startMcpServer(weave, { input = process.stdin, output = process.
           return reply({
             protocolVersion: params?.protocolVersion ?? PROTOCOL_VERSION,
             capabilities: { tools: {} },
-            serverInfo: { name: 'weave', version: '0.1.0' },
+            serverInfo: { name: 'weave', version: VERSION },
           });
         case 'notifications/initialized':
         case 'initialized':
