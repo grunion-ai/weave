@@ -1905,13 +1905,15 @@ function attachRefChips(host) {
   return st;
 }
 
-/* Caret and scroll re-evaluate every live layer. Registered once — the set
-   empties on teardown, so idle listeners cost nothing. */
+/* Caret and scroll re-evaluate every live decoration (chips and rails).
+   Registered once — the sets empty on teardown, so idle listeners cost
+   nothing. */
 document.addEventListener('selectionchange', () => {
   for (const st of refChipLayers) st.schedule();
 });
 window.addEventListener('scroll', () => {
   for (const st of refChipLayers) st.schedule();
+  for (const st of docRails) st.schedule();
 }, true);
 
 async function refreshRefChips(st) {
@@ -1971,6 +1973,54 @@ async function refreshRefChips(st) {
       style: `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px; height:${r.height}px;`,
     }, s.label ?? hit.label));
   }
+}
+
+/* ---------- document outline dash rail (Issue #87) ----------
+   A minimap in the left gutter of the entity page's document panels: one
+   dash per heading (longer for higher levels), a tracker that follows the
+   scroll, click to jump. Vditor's own outline stays disabled — it wants the
+   same gutter and a tree; the rail says "where am I" without one. */
+
+const DASH_READING_LINE = 80; // px below the viewport top: past the header
+const docRails = new Set();
+
+function attachDashRail(section, host) {
+  const st = { section, host, rail: el('nav', { class: 'doc-rail', title: 'Document outline' }), timer: 0 };
+  st.schedule = () => {
+    clearTimeout(st.timer);
+    st.timer = setTimeout(() => refreshDashRail(st), REF_CHIP_DEBOUNCE);
+  };
+  docRails.add(st);
+  st.schedule();
+  return st;
+}
+
+function refreshDashRail(st) {
+  if (!document.body.contains(st.section)) { docRails.delete(st); return; }
+  const root = st.host.querySelector('.vditor-ir .vditor-reset');
+  if (!root) return;
+  // Block headings only — direct children of the surface, never something a
+  // preview rendered inside a code block.
+  const heads = [...root.querySelectorAll(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6')];
+  const lib = globalThis.WeaveEditorLib;
+  // A heading's textContent includes Vditor's "# " marker span; the dash
+  // tooltip wants the words, not the syntax.
+  const headText = (h) => [...h.childNodes]
+    .filter((n) => !(n.nodeType === 1 && n.classList.contains('vditor-ir__marker')))
+    .map((n) => n.textContent).join('').trim();
+  const spec = lib.railSpec(heads.map((h) => ({ level: +h.tagName[1], text: headText(h) })));
+  if (!spec.length) { st.rail.remove(); return; } // < 3 headings: no rail
+  if (!st.rail.isConnected) st.section.append(st.rail);
+  const current = lib.currentSection(heads.map((h) => h.getBoundingClientRect().top), DASH_READING_LINE);
+  st.rail.replaceChildren(...spec.map((d, i) => el('button', {
+    class: 'doc-rail-dash' + (i === current ? ' active' : ''),
+    type: 'button',
+    title: d.text,
+    style: `width:${d.width}px`,
+    // Instant, not smooth: a backgrounded tab never runs the animation
+    // frames a smooth scroll rides on, and the jump is the point anyway.
+    onclick: () => heads[i].scrollIntoView({ block: 'start' }),
+  })));
 }
 
 /* One resolver for every reference kind: the same POST /api/markdown the
@@ -2074,6 +2124,11 @@ function teardownDocEditors() {
     st.layer.remove();
   }
   refChipLayers.clear();
+  for (const st of docRails) {
+    clearTimeout(st.timer);
+    st.rail.remove();
+  }
+  docRails.clear();
 }
 
 // Collapse state per entity+field: read with two args, write with three.
@@ -2220,10 +2275,14 @@ async function showEntity(id) {
       body.classList.add('hidden');
       caret.classList.add('closed');
     }
+    const rail = attachDashRail(section, host);
     mountDocEditor(host, {
       value: entity.docs?.[f.name] ?? '',
       placeholder: `Write ${f.name}… press / for blocks`,
-      onInput: (value) => scheduleDocSave(id, f.name, value, status),
+      onInput: (value) => {
+        scheduleDocSave(id, f.name, value, status);
+        rail.schedule(); // headings may have changed
+      },
     });
   }
 

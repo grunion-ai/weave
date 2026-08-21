@@ -177,6 +177,63 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
+  /* ---------- Issue #87: outline dash rail ---------- */
+
+  const RAIL_DOC = '# One\n\ntext\n\n## Two\n\n' + 'filler\n\n'.repeat(40) + '## Three\n\nmore\n\n### Four\n\nend\n';
+
+  test('a document with 3+ headings grows a dash rail, longer dashes higher up', async () => {
+    const id = entityWithDoc('Rail', RAIL_DOC);
+    const page = await openEntity(id);
+    try {
+      await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
+      const r = await page.evaluate(() => {
+        const dashes = [...document.querySelectorAll('.doc-rail .doc-rail-dash')];
+        return {
+          count: dashes.length,
+          widths: dashes.map((d) => d.getBoundingClientRect().width),
+          titles: dashes.map((d) => d.title),
+          active: dashes.findIndex((d) => d.classList.contains('active')),
+        };
+      });
+      assert.equal(r.count, 4, 'one dash per heading');
+      assert.ok(r.widths[0] > r.widths[1], 'the h1 dash outreaches the h2 dash');
+      assert.ok(r.widths[2] > r.widths[3], 'the h2 dash outreaches the h3 dash');
+      assert.equal(r.titles[0], 'One', 'a dash names its heading');
+      assert.equal(r.active, 0, 'the tracker starts on the first section');
+    } finally { await page.close(); }
+  });
+
+  test('clicking a dash scrolls its section into view and moves the tracker', async () => {
+    const id = entityWithDoc('RailJump', RAIL_DOC);
+    const page = await openEntity(id);
+    try {
+      await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
+      // Jump to "Two" — the one heading with enough document below it to
+      // actually reach the top ("Three"/"Four" sit inside the last viewport,
+      // where no scroll position can bring them there).
+      await page.evaluate(() => document.querySelectorAll('.doc-rail-dash')[1].click());
+      await page.waitForFunction(() => {
+        const h = [...document.querySelectorAll('.vditor-ir .vditor-reset h2')]
+          .find((x) => x.textContent.includes('Two'));
+        const t = h.getBoundingClientRect().top;
+        return t > -10 && t < 200;
+      }, null, { timeout: 20000 });
+      await page.waitForFunction(() =>
+        [...document.querySelectorAll('.doc-rail-dash')]
+          .findIndex((d) => d.classList.contains('active')) === 1,
+      null, { timeout: 20000 });
+    } finally { await page.close(); }
+  });
+
+  test('a two-heading document stays rail-free', async () => {
+    const id = entityWithDoc('NoRail', '# A\n\ntext\n\n## B\n\nmore\n');
+    const page = await openEntity(id);
+    try {
+      await page.waitForTimeout(1200);
+      assert.equal(await page.evaluate(() => document.querySelectorAll('.doc-rail-dash').length), 0);
+    } finally { await page.close(); }
+  });
+
   test('the rendered document page tokenizes the same block', async () => {
     const id = entityWithDoc('PageHl', '```js\nconst x = 1;\n```\n');
     const page = await browser.newPage();

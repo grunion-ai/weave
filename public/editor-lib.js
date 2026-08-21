@@ -27,4 +27,24 @@ globalThis.WeaveEditorLib = {
   /* Where a chip must never paint: code is literal text by definition, and
      Vditor's own marker/preview copies are not the writing surface. */
   REF_SKIP_SELECTOR: 'pre, code, .vditor-ir__marker, .vditor-ir__preview',
+
+  /* One dash per heading, length by level — a minimap, not a tree. Below 3
+     headings a map explains nothing, so there is no rail at all (Issue #87). */
+  railSpec(headings) {
+    if (!Array.isArray(headings) || headings.length < 3) return [];
+    return headings.map((h) => ({
+      level: h.level,
+      text: h.text,
+      width: Math.max(4, 26 - h.level * 4),
+    }));
+  },
+
+  /* The tracker: index of the last heading at or above the reading line
+     (viewport-relative tops), the first section before any heading passes it,
+     -1 when there are no headings. */
+  currentSection(tops, line) {
+    let current = tops.length ? 0 : -1;
+    tops.forEach((top, i) => { if (top <= line) current = i; });
+    return current;
+  },
 };
