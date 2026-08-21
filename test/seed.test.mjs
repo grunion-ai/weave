@@ -27,5 +27,7 @@ test('demo seed builds a coherent workspace', () => {
 
   // Mentions resolve in HTML.
   const schema = w.describeSchema();
-  assert.equal(schema.length, 2);
+  // Demo spaces + the Workspace system space (Feature #12).
+  assert.equal(schema.filter((sp) => !sp.system).length, 2);
+  assert.equal(schema.filter((sp) => sp.system).length, 1);
 });

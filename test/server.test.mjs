@@ -54,8 +54,9 @@ test('health and schema bootstrap', async () => {
   });
 
   const schema = await api('GET', '/api/schema');
-  assert.equal(schema.data[0].space, 'Product');
-  assert.equal(schema.data[0].tables.length, 2);
+  const product = schema.data.find((sp) => !sp.system);
+  assert.equal(product.space, 'Product');
+  assert.equal(product.tables.length, 2);
 });
 
 let projectId, taskId;

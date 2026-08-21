@@ -46,7 +46,7 @@ test('markdown: mermaid fences and raw HTML blocks', () => {
 test('weaver seed: docs, wiki, quality mirror, issues + roadmap', () => {
   const w = seedWeaver(new Weave());
   assert.equal(w.state.meta.name, 'weave');
-  const spaces = w.listSpaces().map((s) => s.name).sort();
+  const spaces = w.listSpaces().filter((s) => !s.system).map((s) => s.name).sort();
   assert.deepEqual(spaces, ['Development', 'Handbook', 'Quality', 'Wiki']);
 
   // Quality mirrors the real test suites with rollup counts.

@@ -184,6 +184,7 @@ export class Weave {
       automations: {},
     };
     this.#migrate();
+    this.#ensureMetaTables();
   }
 
   // Upgrade v1 workspaces in place: `databases` state key → `tables`, and the
@@ -197,6 +198,10 @@ export class Weave {
     s.tables = s.tables ?? {};
     let changed = false;
     for (const db of Object.values(s.tables)) {
+      // System registry tables (Feature #12) carry a TEXT Description that
+      // syncs with the real space/table description — backfilling a document
+      // field here would give them a second, colliding 'Description'.
+      if (db.system) continue;
       let docField = Object.values(db.fields).find((f) => f.type === 'document');
       if (!docField) {
         docField = { id: uuid(), name: 'Description', type: 'document', config: {} };
@@ -253,6 +258,7 @@ export class Weave {
     const space = { id: uuid(), name, description, createdAt: nowISO() };
     this.state.spaces[space.id] = space;
     this.save();
+    this.#syncSpaceRow(space);
     return space;
   }
 
@@ -276,14 +282,17 @@ export class Weave {
     const s = this.getSpace(ref);
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
+    this.#syncSpaceRow(s);
     this.save();
     return s;
   }
 
   deleteSpace(ref) {
     const s = this.getSpace(ref);
+    if (s.system) throw new WeaveError(`Space '${s.name}' is part of the system registry`, 'invalid');
     for (const db of this.listTables(s.id)) this.deleteTable(db.id);
     delete this.state.spaces[s.id];
+    this.#dropSysRow('spaces', s.id);
     this.save();
   }
 
@@ -310,6 +319,7 @@ export class Weave {
     };
     this.state.tables[db.id] = db;
     this.save();
+    this.#syncTableRow(db);
     return db;
   }
 
@@ -359,12 +369,14 @@ export class Weave {
       }
       db.fieldOrder = ids;
     }
+    this.#syncTableRow(db);
     this.save();
     return db;
   }
 
   deleteTable(ref) {
     const db = this.getTable(ref);
+    if (db.system) throw new WeaveError(`Table '${db.name}' is part of the system registry`, 'invalid');
     // Purge, not trash: the table itself is going away, so a soft-deleted row
     // would be left pointing at a table that no longer exists — unrestorable
     // and fatal to any read of the trash. Trashed rows go too.
@@ -382,10 +394,183 @@ export class Weave {
       if (auto.dbId === db.id) delete this.state.automations[id];
     }
     delete this.state.tables[db.id];
+    this.#dropSysRow('tables', db.id);
     this.save();
   }
 
   // ---------------- fields ----------------
+
+  // ---------------- meta-model (Feature #12) ----------------
+  /* The workspace's structure, as rows. A Workspace system space holds
+     `Spaces` (rows = the spaces) and `Tables` (rows = the tables, each
+     related to its space's row). The rows are REAL entities, so relations,
+     automations and custom fields work on structure for free. The engine's
+     own verbs keep both directions in step: a structural verb writes its row,
+     a row verb on a system table translates into the structural verb —
+     #inMetaSync marks which side started it, so the loop terminates. */
+  #inMetaSync = false;
+
+  #metaSync(fn) {
+    const was = this.#inMetaSync;
+    this.#inMetaSync = true;
+    try { return fn(); } finally { this.#inMetaSync = was; }
+  }
+
+  #sysTable(kind) {
+    return Object.values(this.state.tables).find((t) => t.system === kind);
+  }
+
+  #sysRow(kind, sysId) {
+    const t = this.#sysTable(kind);
+    if (!t) return undefined;
+    return Object.values(this.state.entities).find((e) => e.dbId === t.id && e.sysId === sysId && !e.deletedAt);
+  }
+
+  #sysField(table, name) {
+    return Object.values(table.fields).find((f) => f.name === name);
+  }
+
+  /* Idempotent bootstrap: runs on every load and import, so a legacy
+     workspace grows its registry the first time a new engine opens it. */
+  #ensureMetaTables() {
+    const s = this.state;
+    let ws = Object.values(s.spaces).find((x) => x.system === 'workspace');
+    if (!ws) {
+      ws = { id: uuid(), name: 'Workspace', description: 'The workspace itself: its spaces and tables, as rows.', system: 'workspace', createdAt: nowISO() };
+      s.spaces[ws.id] = ws;
+    }
+    const mkTable = (name, kind, description) => {
+      const nameF = { id: uuid(), name: 'Name', type: 'text', config: {}, system: true };
+      const descF = { id: uuid(), name: 'Description', type: 'text', config: {}, system: true };
+      const t = {
+        id: uuid(), spaceId: ws.id, name, description, icon: '', system: kind,
+        publicIdCounter: 0, nameFieldId: nameF.id,
+        fields: { [nameF.id]: nameF, [descF.id]: descF },
+        fieldOrder: [nameF.id, descF.id], createdAt: nowISO(),
+      };
+      s.tables[t.id] = t;
+      return t;
+    };
+    const spacesT = this.#sysTable('spaces')
+      ?? mkTable('Spaces', 'spaces', 'Every space in this workspace, as a row. Creating a row creates the space; renaming it renames the space; hard-deleting it deletes the space and everything in it.');
+    const tablesT = this.#sysTable('tables')
+      ?? mkTable('Tables', 'tables', 'Every table in this workspace, as a row related to its space. Creating a row creates the table; renaming it renames the table; hard-deleting it deletes the table and its rows.');
+    if (!this.#sysField(tablesT, 'Space')) {
+      const { field, inverse } = this.addRelation(tablesT.id, { name: 'Space', targetDb: spacesT.id, cardinality: 'many-to-one', inverseName: 'Tables' });
+      field.system = true;
+      inverse.system = true;
+    }
+    for (const sp of Object.values(s.spaces)) this.#syncSpaceRow(sp);
+    for (const t of Object.values(s.tables)) this.#syncTableRow(t);
+  }
+
+  #syncSpaceRow(space) {
+    if (space.system) return undefined;
+    const t = this.#sysTable('spaces');
+    if (!t) return undefined; // mid-bootstrap
+    let row = this.#sysRow('spaces', space.id);
+    if (!row) {
+      row = this.#metaSync(() => this.createEntity(t.id, { name: space.name, values: { Description: space.description ?? '' } }));
+      row.sysId = space.id;
+      this.#mark(row);
+      this.save();
+      return row;
+    }
+    const patch = {};
+    if (this.entityName(row) !== space.name) patch.Name = space.name;
+    const descF = this.#sysField(t, 'Description');
+    if ((row.values[descF.id] ?? '') !== (space.description ?? '')) patch.Description = space.description ?? '';
+    if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
+    return row;
+  }
+
+  #syncTableRow(db) {
+    if (db.system) return undefined;
+    const t = this.#sysTable('tables');
+    if (!t) return undefined;
+    const spaceRow = this.#sysRow('spaces', db.spaceId);
+    let row = this.#sysRow('tables', db.id);
+    if (!row) {
+      row = this.#metaSync(() => this.createEntity(t.id, {
+        name: db.name,
+        values: { Description: db.description ?? '', ...(spaceRow ? { Space: spaceRow.id } : {}) },
+      }));
+      row.sysId = db.id;
+      this.#mark(row);
+      this.save();
+      return row;
+    }
+    const patch = {};
+    if (this.entityName(row) !== db.name) patch.Name = db.name;
+    const descF = this.#sysField(t, 'Description');
+    if ((row.values[descF.id] ?? '') !== (db.description ?? '')) patch.Description = db.description ?? '';
+    if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
+    return row;
+  }
+
+  #dropSysRow(kind, sysId) {
+    const row = this.#sysRow(kind, sysId);
+    if (row) this.#metaSync(() => this.deleteEntity(row.id, { hard: true }));
+  }
+
+  /* Row-side verbs arriving at a system table translate into the structural
+     verb; that verb's own sync writes the row, so both directions share one
+     path. Returns undefined when the call should proceed as a plain row op. */
+  #interceptCreate(db, input) {
+    if (!db.system || this.#inMetaSync) return undefined;
+    const flat = Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !['name', 'values', 'doc', 'docs'].includes(k)));
+    const values = { ...flat, ...(input?.values ?? {}) };
+    const name = input?.name ?? values.Name;
+    if (!name) throw new WeaveError('Name is required', 'invalid');
+    const description = values.Description ?? '';
+    delete values.Name;
+    delete values.Description;
+    let made;
+    if (db.system === 'spaces') {
+      made = this.#sysRow('spaces', this.createSpace({ name, description }).id);
+    } else {
+      const spaceRef = values.Space;
+      delete values.Space;
+      if (spaceRef == null) throw new WeaveError(`A Tables row needs its 'Space' — which space the table lives in`, 'invalid');
+      const spaceRow = this.findEntity(this.#sysTable('spaces').id, spaceRef);
+      if (!spaceRow) throw new WeaveError(`Space row '${spaceRef}' not found`, 'not-found');
+      made = this.#sysRow('tables', this.createTable({ space: spaceRow.sysId, name, description }).id);
+    }
+    if (Object.keys(values).length) this.#metaSync(() => this.updateEntity(made.id, values));
+    return this.getEntity(made.id);
+  }
+
+  #interceptUpdate(e, db, valuesByName) {
+    if (!db.system || this.#inMetaSync) return undefined;
+    const patch = { ...valuesByName };
+    if (db.system === 'tables' && 'Space' in patch) {
+      const spaceF = this.#sysField(db, 'Space');
+      const next = patch.Space == null ? null : this.findEntity(this.#sysTable('spaces').id, patch.Space)?.id;
+      if (next !== (e.values[spaceF.id] ?? null)) {
+        throw new WeaveError('A table cannot move between spaces yet', 'invalid');
+      }
+      delete patch.Space;
+    }
+    const structural = {};
+    if ('Name' in patch) { structural.name = patch.Name; delete patch.Name; }
+    if ('Description' in patch) { structural.description = patch.Description; delete patch.Description; }
+    if (Object.keys(structural).length) {
+      if (db.system === 'spaces') this.updateSpace(e.sysId, structural);
+      else this.updateTable(e.sysId, structural);
+    }
+    if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(e.id, patch));
+    return this.getEntity(e.id);
+  }
+
+  #interceptDelete(e, db, hard) {
+    if (!db.system || this.#inMetaSync) return undefined;
+    if (!hard) {
+      throw new WeaveError(`Deleting a ${db.system === 'spaces' ? 'space' : 'table'} is not recoverable — pass hard to confirm`, 'invalid');
+    }
+    if (db.system === 'spaces') this.deleteSpace(e.sysId);
+    else this.deleteTable(e.sysId);
+    return { id: e.id, purged: true };
+  }
 
   findField(db, ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
@@ -538,6 +723,7 @@ export class Weave {
     const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
     if (field.id === db.nameFieldId) throw new WeaveError('Cannot delete the Name field', 'invalid');
+    if (field.system) throw new WeaveError(`Field '${field.name}' is part of the system registry`, 'invalid');
     if (field.type === 'relation') {
       // Unlink all values first so inverse sides stay consistent, then drop both ends.
       for (const e of this.listEntities(db.id)) {
@@ -656,6 +842,8 @@ export class Weave {
 
   createEntity(dbRef, input = {}, { depth = 0 } = {}) {
     const db = this.getTable(dbRef);
+    const meta = this.#interceptCreate(db, input);
+    if (meta) return meta;
     // Create must be as forgiving as update (Issue #33). updateEntity takes
     // values by name and the REST layer hands it `body.values ?? body`, so a
     // flat {Name, Estimate} object is the shape callers reach for first.
@@ -727,6 +915,8 @@ export class Weave {
   updateEntity(id, valuesByName, { depth = 0 } = {}) {
     const e = this.getEntity(id);
     const db = this.state.tables[e.dbId];
+    const meta = this.#interceptUpdate(e, db, valuesByName);
+    if (meta) return meta;
     this.#applyValues(e, db, valuesByName, { depth });
     this.save();
     return e;
@@ -957,6 +1147,11 @@ export class Weave {
      exactly what was deleted. */
   deleteEntity(id, { hard = false } = {}) {
     const e = this.getEntity(id);
+    {
+      const db = this.state.tables[e.dbId];
+      const meta = this.#interceptDelete(e, db, hard);
+      if (meta) return meta;
+    }
     const db = this.state.tables[e.dbId];
     if (!hard) {
       if (e.deletedAt) return this.readEntity(id); // already in the trash
@@ -1704,10 +1899,12 @@ export class Weave {
       space: sp.name,
       spaceId: sp.id,
       description: sp.description ?? '',
+      ...(sp.system ? { system: sp.system } : {}),
       tables: this.listTables(sp.id).map((db) => ({
         id: db.id,
         name: db.name,
         description: db.description ?? '',
+        ...(db.system ? { system: db.system } : {}),
         qualified: this.qualifiedName(db),
         entityCount: this.listEntities(db.id).length,
         fields: db.fieldOrder.map((fid) => {
@@ -1750,6 +1947,7 @@ export class Weave {
     if (!state || ![1, 2].includes(state.version)) throw new WeaveError('Unsupported workspace format', 'invalid');
     this.state = JSON.parse(JSON.stringify(state));
     this.#migrate();
+    this.#ensureMetaTables();
     this.#dirtyAll = true;
     this.save();
   }

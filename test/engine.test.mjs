@@ -32,8 +32,9 @@ function buildWorkspace() {
 
 test('spaces and tables', () => {
   const { w } = buildWorkspace();
-  assert.equal(w.listSpaces().length, 1);
-  assert.equal(w.listTables().length, 2);
+  // +1/+2: the Workspace system space and its Spaces/Tables registry (Feature #12).
+  assert.equal(w.listSpaces().length, 2);
+  assert.equal(w.listTables().length, 4);
   assert.equal(w.getTable('Product/Task').name, 'Task');
   assert.equal(w.getTable('task').name, 'Task');
   assert.throws(() => w.getTable('Nope'), /not found/);
@@ -281,8 +282,8 @@ test('CSV export and schema description', () => {
   assert.match(csv, /^Public Id,Name,Description,Estimate/);
   assert.match(csv, /"Comma, task"/);
   const schema = w.describeSchema();
-  assert.equal(schema[0].space, 'Product');
-  const taskDb = schema[0].tables.find((d) => d.name === 'Task');
+  assert.equal(schema.find((sp) => !sp.system).space, 'Product');
+  const taskDb = schema.find((sp) => !sp.system).tables.find((d) => d.name === 'Task');
   assert.ok(taskDb.fields.some((f) => f.type === 'workflow' && f.states.length === 4));
 });
 
@@ -322,7 +323,7 @@ test('import/export JSON roundtrip', () => {
 test('a table reorders its fields', () => {
   const { w, tasks } = buildWorkspace();
   const before = w.getTable(tasks).fieldOrder.slice();
-  const names = () => w.describeSchema()[0].tables.find((t) => t.name === 'Task').fields.map((f) => f.name);
+  const names = () => w.describeSchema().find((sp) => !sp.system).tables.find((t) => t.name === 'Task').fields.map((f) => f.name);
   const original = names();
 
   // Accepts names, not just ids — the UI holds column labels.
@@ -349,13 +350,13 @@ test('a reordered table survives a reload', () => {
     w1.addField(db, { name: 'B', type: 'text' });
     // Derived, not hard-coded: a fresh table ships with its own fields
     // (Name, Description) and the order must stay a full permutation.
-    const start = w1.describeSchema()[0].tables[0].fields.map((f) => f.name);
+    const start = w1.describeSchema().find((sp) => !sp.system).tables[0].fields.map((f) => f.name);
     const want = ['B', 'A', ...start.filter((n) => n !== 'A' && n !== 'B')];
     w1.updateTable(db, { fieldOrder: want });
 
     const w2 = new Weave({ path });
     assert.deepEqual(
-      w2.describeSchema()[0].tables[0].fields.map((f) => f.name),
+      w2.describeSchema().find((sp) => !sp.system).tables[0].fields.map((f) => f.name),
       want,
       'fieldOrder is persisted schema, not view state');
   } finally {
@@ -371,7 +372,7 @@ test('a reordered table survives a reload', () => {
 
 test('a field carries a column width', () => {
   const { w, tasks } = buildWorkspace();
-  const fieldOf = (name) => w.describeSchema()[0].tables.find((t) => t.name === 'Task').fields.find((f) => f.name === name);
+  const fieldOf = (name) => w.describeSchema().find((sp) => !sp.system).tables.find((t) => t.name === 'Task').fields.find((f) => f.name === name);
   assert.equal(fieldOf('Due').width, undefined, 'no width until one is set');
 
   w.updateField(tasks, 'Due', { config: { width: 180 } });
@@ -405,7 +406,7 @@ test('a resized column survives a reload', () => {
     w1.addField(db, { name: 'A', type: 'text' });
     w1.updateField(db, 'A', { config: { width: 173 } });
 
-    const widthOf = (w) => w.describeSchema()[0].tables[0].fields.find((f) => f.name === 'A').width;
+    const widthOf = (w) => w.describeSchema().find((sp) => !sp.system).tables[0].fields.find((f) => f.name === 'A').width;
     assert.equal(widthOf(w1), 173, 'the width is set in memory');
     assert.equal(widthOf(new Weave({ path })), 173, 'width is persisted schema, not view state');
 

@@ -64,7 +64,7 @@ test('CLI end-to-end flow', () => {
   assert.match(csv, /Design it/);
 
   const schema = JSON.parse(cli('schema'));
-  assert.equal(schema[0].space, 'Work');
+  assert.equal(schema.find((sp) => !sp.system).space, 'Work');
 
   // errors exit non-zero
   assert.throws(() => cli('get', 'Task#999'));

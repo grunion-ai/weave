@@ -174,7 +174,7 @@ test('describeSchema exposes the definable types on a field field', () => {
   w.createSpace({ name: 'S' });
   w.createTable({ space: 'S', name: 'Fields' });
   w.addField('Fields', { name: 'Definition', type: 'field' });
-  const f = w.describeSchema()[0].tables[0].fields.find((x) => x.name === 'Definition');
+  const f = w.describeSchema().find((sp) => !sp.system).tables[0].fields.find((x) => x.name === 'Definition');
   assert.ok(Array.isArray(f.types) && f.types.includes('select'), 'a UI must never hard-code the type list');
   assert.equal(f.depth, 1);
 });

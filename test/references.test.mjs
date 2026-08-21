@@ -233,7 +233,7 @@ test('a broken chip escapes its contents as well', () => {
 test('the server resolves every kind to a real, working URL', async () => {
   const { w, t } = buildWorkspace();
   await withServer(w, async ({ render }) => {
-    const space = w.listSpaces()[0];
+    const space = w.getSpace('Product');
     const table = w.getTable('Product/Task');
 
     assert.match(await render('[[Task#1]]'), new RegExp(`href="/e/${t.id}`));

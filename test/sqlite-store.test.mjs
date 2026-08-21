@@ -35,7 +35,7 @@ test('fresh .db workspace: persistence roundtrip, file is real SQLite', () => {
   assert.ok(magic.startsWith('SQLite format 3'), `not a SQLite file: ${magic}`);
 
   const w2 = new Weave({ path: dbPath });
-  assert.equal(w2.listSpaces().length, 1);
+  assert.equal(w2.listSpaces().filter((sp) => !sp.system).length, 1);
   const e = w2.findEntity('Task', '#1');
   assert.equal(w2.entityName(e), 'First');
   assert.equal(w2.getDoc(e.id), 'alpha bravo searchable');

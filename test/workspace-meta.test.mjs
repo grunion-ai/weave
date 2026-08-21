@@ -8,8 +8,9 @@ test('describeSchema carries space and table descriptions', () => {
   w.createSpace({ name: 'Ops', description: 'Operations space' });
   w.createTable({ space: 'Ops', name: 'Runbook', description: 'How we run things' });
   const schema = w.describeSchema();
-  assert.equal(schema[0].description, 'Operations space');
-  assert.equal(schema[0].tables[0].description, 'How we run things');
+  const ops = schema.find((sp) => sp.space === 'Ops');
+  assert.equal(ops.description, 'Operations space');
+  assert.equal(ops.tables[0].description, 'How we run things');
 });
 
 test('GET/PATCH /api/workspace: name + description, hub re-keys on rename', async () => {
