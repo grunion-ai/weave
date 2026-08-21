@@ -296,13 +296,24 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .doc-preview pre { background: var(--tblr-bg-surface-secondary); padding: 10px; border-radius: var(--tblr-border-radius); overflow-x: auto; }
 .doc-preview blockquote { border-left: 3px solid var(--tblr-border-color); margin-left: 0; padding-left: 14px; color: var(--tblr-secondary); }
 .doc-preview table { border-collapse: collapse; } .doc-preview th, .doc-preview td { border: 1px solid var(--tblr-border-color); padding: 4px 9px; }
-.doc-preview a.mention { background: rgba(var(--tblr-primary-rgb), .08); border-radius: 4px; padding: 0 4px; text-decoration: none; color: var(--tblr-primary); }
+.doc-preview a.mention, .doc-ref-layer a.mention { background: rgba(var(--tblr-primary-rgb), .08); border-radius: 4px; padding: 0 4px; text-decoration: none; color: var(--tblr-primary); }
 /* Kind glyphs match the standalone document page (src/markdown.js). */
-.doc-preview a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
-.doc-preview .mention-entity::before { content: "#"; }
-.doc-preview .mention-table::before { content: "▦"; }
-.doc-preview .mention-space::before { content: "◇"; }
-.doc-preview .mention-workspace::before { content: "⬡"; }
+.doc-preview a.mention::before, .doc-ref-layer a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
+.doc-preview .mention-entity::before, .doc-ref-layer .mention-entity::before { content: "#"; }
+.doc-preview .mention-table::before, .doc-ref-layer .mention-table::before { content: "▦"; }
+.doc-preview .mention-space::before, .doc-ref-layer .mention-space::before { content: "◇"; }
+.doc-preview .mention-workspace::before, .doc-ref-layer .mention-workspace::before { content: "⬡"; }
+
+/* ---------- live [[…]] chips over the IR editor (Issue #86) ----------
+   The layer never eats a click meant for the text — only the chips are
+   interactive. A chip covers its literal reference exactly (the pass sizes
+   it to the text's rect), so the chip needs an opaque ground under the
+   mention tint or the literal shows through. */
+.doc-editor { position: relative; }
+.doc-ref-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 4; }
+.doc-ref-layer .doc-ref-chip { position: absolute; pointer-events: auto; box-sizing: border-box;
+  display: inline-flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--tblr-bg-surface); box-shadow: inset 0 0 0 100vmax rgba(var(--tblr-primary-rgb), .08); }
 
 /* ---------- schema editor ---------- */
 .schema-table .type { color: var(--tblr-secondary); font-size: 12px; }

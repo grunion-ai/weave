@@ -1845,6 +1845,7 @@ function vditorTheme() {
 
 function mountDocEditor(host, { value, placeholder, onInput }) {
   const t = vditorTheme();
+  const chips = attachRefChips(host);
   const editor = new Vditor(host, {
     mode: 'ir',
     // Vendored, not the public CDN default: a weave instance with no internet
@@ -1870,14 +1871,131 @@ function mountDocEditor(host, { value, placeholder, onInput }) {
       theme: { current: t.content, path: '/vendor/vditor/dist/css/content-theme' },
     },
     hint: { emoji: {}, extend: [{ key: '/', hint: slashHint }] },
+    after: () => chips.schedule(),
     input: (v) => {
       // The entity-link command arrives here as its marker, never as content.
       if (v.includes(ENTITY_LINK_MARKER)) return pickEntityLink(editor, v, onInput);
       onInput(v);
+      chips.schedule();
     },
   });
   liveEditors.add(editor);
   return editor;
+}
+
+/* ---------- live [[…]] chips over the IR surface (Issue #86) ----------
+   Lute is compiled Go and cannot learn weave's reference syntax, so the
+   chips are a decoration pass OVER the editing surface, never a rewrite of
+   it: the contenteditable DOM belongs to Lute's serializer, and anything
+   injected there would leak into the stored markdown. Each editor gets a
+   click-transparent sibling layer; resolved chips paint on top of the
+   literal text and step aside while the caret sits inside a reference. */
+
+const REF_CHIP_DEBOUNCE = 250;
+const refChipLayers = new Set();
+const refResolveCache = new Map(); // ref → { href, label, kind } | null (miss)
+
+function attachRefChips(host) {
+  const st = { host, layer: el('div', { class: 'doc-ref-layer' }), timer: 0 };
+  st.schedule = () => {
+    clearTimeout(st.timer);
+    st.timer = setTimeout(() => refreshRefChips(st), REF_CHIP_DEBOUNCE);
+  };
+  refChipLayers.add(st);
+  return st;
+}
+
+/* Caret and scroll re-evaluate every live layer. Registered once — the set
+   empties on teardown, so idle listeners cost nothing. */
+document.addEventListener('selectionchange', () => {
+  for (const st of refChipLayers) st.schedule();
+});
+window.addEventListener('scroll', () => {
+  for (const st of refChipLayers) st.schedule();
+}, true);
+
+async function refreshRefChips(st) {
+  if (!document.body.contains(st.host)) { refChipLayers.delete(st); return; }
+  // The IR surface specifically: the host also carries Vditor's outline and
+  // preview containers, each with an (empty) .vditor-reset of its own.
+  const root = st.host.querySelector('.vditor-ir .vditor-reset');
+  if (!root) return;
+  // Vditor owns the host and clears it when it builds (and rebuilds), so the
+  // layer re-attaches itself instead of trusting any earlier append.
+  if (!st.layer.isConnected) st.host.append(st.layer);
+  const lib = globalThis.WeaveEditorLib;
+
+  // The caret splits text nodes as it moves ("edit [[N" + "ote#1]] live"),
+  // and a reference cut in two is invisible to a per-node scan. normalize()
+  // merges the pieces without changing content — the DOM spec adjusts live
+  // ranges (the selection included) across the merge.
+  root.normalize();
+
+  // Gather spans first: only visible paragraphs pay for geometry, and code
+  // contexts never decorate (code is literal text by definition).
+  const spans = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    // The IR surface is itself a <pre contenteditable>, so the root never
+    // counts as a code context — only something nearer does.
+    const codeCtx = n.parentElement?.closest(lib.REF_SKIP_SELECTOR);
+    if (codeCtx && codeCtx !== root) continue;
+    const found = lib.findRefSpans(n.nodeValue);
+    if (!found.length) continue;
+    const box = n.parentElement.getBoundingClientRect();
+    if (box.bottom < 0 || box.top > innerHeight) continue;
+    for (const s of found) spans.push({ node: n, ...s });
+  }
+
+  await resolveRefs(spans.map((s) => s.ref));
+  if (!document.body.contains(st.layer)) return; // torn down mid-flight
+
+  const sel = getSelection();
+  const caret = sel?.rangeCount ? sel.getRangeAt(0) : null;
+  const base = st.layer.getBoundingClientRect();
+  st.layer.replaceChildren();
+  for (const s of spans) {
+    const hit = refResolveCache.get(s.ref);
+    if (!hit) continue; // a broken reference stays literal — nothing to open
+    // The writer is inside this reference: editing stays plain text.
+    if (caret?.startContainer === s.node && caret.startOffset >= s.start && caret.startOffset <= s.end) continue;
+    const range = document.createRange();
+    range.setStart(s.node, s.start);
+    range.setEnd(s.node, s.end);
+    const rects = range.getClientRects();
+    if (rects.length !== 1) continue; // wrapped across lines: leave literal
+    const r = rects[0];
+    st.layer.append(el('a', {
+      class: `mention mention-${hit.kind} doc-ref-chip`,
+      href: hit.href,
+      style: `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px; height:${r.height}px;`,
+    }, s.label ?? hit.label));
+  }
+}
+
+/* One resolver for every reference kind: the same POST /api/markdown the
+   previews render through, batched (one paragraph per reference) and cached.
+   Misses cache as null so a dead reference is not re-asked on every pass. */
+async function resolveRefs(refs) {
+  const missing = [...new Set(refs)].filter((r) => !refResolveCache.has(r));
+  if (!missing.length) return;
+  try {
+    const { html } = await api('POST', '/markdown', { md: missing.map((r) => `[[${r}]]`).join('\n\n') });
+    const box = document.createElement('div');
+    box.innerHTML = html;
+    const paras = [...box.children];
+    missing.forEach((ref, i) => {
+      const a = paras[i]?.querySelector('a.mention');
+      if (!a) return refResolveCache.set(ref, null);
+      // The API's canonical entity href targets the standalone document page
+      // (right for exported HTML); inside the app the chip means the entity.
+      let href = a.getAttribute('href');
+      const ent = href.match(/\/e\/([^/]+)\/doc\.html$/);
+      if (ent) href = `#/entity/${ent[1]}`;
+      const kind = [...a.classList].find((c) => c.startsWith('mention-'))?.slice('mention-'.length) ?? 'entity';
+      refResolveCache.set(ref, { href, label: a.textContent, kind });
+    });
+  } catch { /* resolution is decoration; a failed fetch leaves literals */ }
 }
 
 /* Hands off to the same search the ⌘K palette runs, so one search surface
@@ -1951,6 +2069,11 @@ function teardownDocEditors() {
     try { ed.destroy(); } catch { /* already gone with the DOM */ }
   }
   liveEditors.clear();
+  for (const st of refChipLayers) {
+    clearTimeout(st.timer);
+    st.layer.remove();
+  }
+  refChipLayers.clear();
 }
 
 // Collapse state per entity+field: read with two args, write with three.

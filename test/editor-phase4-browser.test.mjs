@@ -90,6 +90,93 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
+  /* ---------- Issue #86: live [[…]] chips over the IR editor ---------- */
+
+  test('a [[…]] reference paints a resolved chip over the literal text', async () => {
+    const target = weave.createEntity(tableRef, { name: 'Chip target' });
+    const id = entityWithDoc('Chips', `points at [[Note#${target.publicId}]] here\n`);
+    const page = await openEntity(id);
+    try {
+      await page.waitForSelector('.doc-ref-layer a.mention', { timeout: 20000 });
+      const r = await page.evaluate(() => {
+        const chip = document.querySelector('.doc-ref-layer a.mention');
+        const chipRect = chip.getBoundingClientRect();
+        // The literal [[Note#N]] text node the chip must cover.
+        const walker = document.createTreeWalker(
+          document.querySelector('.vditor-ir .vditor-reset'), NodeFilter.SHOW_TEXT);
+        let textRect = null;
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const at = n.nodeValue.indexOf('[[');
+          if (at < 0) continue;
+          const range = document.createRange();
+          range.setStart(n, at); range.setEnd(n, n.nodeValue.indexOf(']]') + 2);
+          textRect = range.getBoundingClientRect();
+        }
+        return {
+          label: chip.textContent,
+          href: chip.getAttribute('href'),
+          covered: textRect && Math.abs(chipRect.left - textRect.left) < 2
+            && chipRect.width >= textRect.width - 2,
+          value: window.__weaveEditors.values().next().value.getValue(),
+        };
+      });
+      assert.ok(r.label.includes('Chip target'), `chip must carry the resolved name, got "${r.label}"`);
+      assert.match(r.href, /#\/entity\//, 'an entity chip opens the entity page in-app');
+      assert.ok(r.covered, 'the chip must sit over the literal reference');
+      assert.match(r.value, /\[\[Note#\d+\]\]/, 'the stored markdown keeps the literal reference');
+    } finally { await page.close(); }
+  });
+
+  test('the caret inside a reference degrades the chip to literal text', async () => {
+    const target = weave.createEntity(tableRef, { name: 'Caret target' });
+    const id = entityWithDoc('CaretChip', `edit [[Note#${target.publicId}]] live\n`);
+    const page = await openEntity(id);
+    try {
+      // Generous waits: the suite runs many browser files in parallel, and
+      // the decoration pass is debounced behind a resolver round-trip.
+      await page.waitForSelector('.doc-ref-layer a.mention', { timeout: 20000 });
+      await page.evaluate(() => {
+        const walker = document.createTreeWalker(
+          document.querySelector('.vditor-ir .vditor-reset'), NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const at = n.nodeValue.indexOf('[[');
+          if (at < 0) continue;
+          const sel = getSelection();
+          const range = document.createRange();
+          range.setStart(n, at + 3); range.collapse(true);
+          sel.removeAllRanges(); sel.addRange(range);
+        }
+      });
+      await page.waitForFunction(() => !document.querySelector('.doc-ref-layer a.mention'),
+        null, { timeout: 20000 });
+      // Move the caret OUT of the reference (start of the paragraph): the
+      // chip returns. Dropping the selection entirely would race Vditor's
+      // own selection restoration, which can put the caret straight back.
+      await page.evaluate(() => {
+        const walker = document.createTreeWalker(
+          document.querySelector('.vditor-ir .vditor-reset'), NodeFilter.SHOW_TEXT);
+        const n = walker.nextNode();
+        const sel = getSelection();
+        const range = document.createRange();
+        range.setStart(n, 0); range.collapse(true);
+        sel.removeAllRanges(); sel.addRange(range);
+      });
+      await page.waitForSelector('.doc-ref-layer a.mention', { timeout: 20000 });
+    } finally { await page.close(); }
+  });
+
+  test('a reference inside a code block stays literal', async () => {
+    const target = weave.createEntity(tableRef, { name: 'Code target' });
+    const id = entityWithDoc('CodeChip', '```\n[[Note#' + target.publicId + ']]\n```\n');
+    const page = await openEntity(id);
+    try {
+      await page.waitForTimeout(1200); // give the decoration pass every chance
+      const chips = await page.evaluate(() =>
+        document.querySelectorAll('.doc-ref-layer a.mention').length);
+      assert.equal(chips, 0, 'code is literal text by definition');
+    } finally { await page.close(); }
+  });
+
   test('the rendered document page tokenizes the same block', async () => {
     const id = entityWithDoc('PageHl', '```js\nconst x = 1;\n```\n');
     const page = await browser.newPage();
