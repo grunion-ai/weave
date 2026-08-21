@@ -28,6 +28,9 @@ test('health and schema bootstrap', async () => {
   const health = await api('GET', '/api/health');
   assert.equal(health.status, 200);
   assert.equal(health.data.ok, true);
+  const { readFileSync } = await import('node:fs');
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(health.data.version, pkg.version, 'health reports the version weave actually is (Issue #19 class)');
 
   assert.equal((await api('POST', '/api/spaces', { name: 'Product' })).status, 201);
   assert.equal((await api('POST', '/api/tables', { space: 'Product', name: 'Project' })).status, 201);
