@@ -686,6 +686,30 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     }
     return box;
   }
+  // Type-or-pick dates (Feature #44): one control that is both a text input
+  // ('next friday', 'jun 21' — parsed by nl-date.js) and a native calendar.
+  if (f.type === 'date') {
+    const rawIso = item.raw?.[f.name] ?? '';
+    const text = el('input', {
+      class: 'form-control form-control-sm inline-edit date-text',
+      value: val ?? '', placeholder: 'today, next fri, jun 21…',
+      onclick: (e) => e.stopPropagation(),
+    });
+    text.addEventListener('change', () => {
+      if (text.value === '') return patch(null);
+      const parsed = window.parseNaturalDate?.(text.value);
+      if (!parsed) return toast(`Could not read '${text.value}' as a date`, true);
+      // A typed phrase names a day; an existing time of day survives it.
+      const time = f.time && String(rawIso).includes('T') ? 'T' + String(rawIso).split('T')[1] : '';
+      patch(parsed + time);
+    });
+    const pick = el('input', {
+      type: f.time ? 'datetime-local' : 'date', class: 'date-pick', title: 'Pick from the calendar',
+      value: rawIso, onclick: (e) => e.stopPropagation(),
+    });
+    pick.addEventListener('change', () => patch(pick.value || null));
+    return el('span', { class: 'date-cell' }, text, pick);
+  }
   const rawVal = item.raw?.[f.name] ?? val;
   const input = el('input', {
     class: 'form-control form-control-sm inline-edit',

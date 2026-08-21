@@ -68,3 +68,46 @@ test('updateField edits the costume without touching width or default', () => {
   assert.equal(f.config.unit, 'lbs');
   assert.equal(f.config.decimals, 1);
 });
+
+/* Feature #44 — the date system's engine half: a display costume for date
+   fields (format + optional time) and date math in formulas. Values store as
+   ISO strings; the costume is display-only, exactly like numbers (#97). */
+test('date fields wear a format costume', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Dev' });
+  w.createTable({ space: 'Dev', name: 'Task' });
+  w.addField('Task', { name: 'Due', type: 'date', config: { format: 'long' } });
+  w.addField('Task', { name: 'DueUS', type: 'date', config: { format: 'us' } });
+  w.addField('Task', { name: 'DueEU', type: 'date', config: { format: 'eu' } });
+  const e = w.createEntity('Task', { name: 'T', values: { Due: '2026-08-21', DueUS: '2026-08-21', DueEU: '2026-08-21' } });
+  const read = w.readEntity(e.id);
+  assert.equal(read.fields.Due, 'Aug 21, 2026');
+  assert.equal(read.fields.DueUS, '8/21/2026');
+  assert.equal(read.fields.DueEU, '21.8.2026');
+  assert.equal(w.getEntity(e.id).values[Object.values(w.getTable('Task').fields).find((f) => f.name === 'Due').id], '2026-08-21', 'ISO in storage');
+  assert.throws(() => w.addField('Task', { name: 'Bad', type: 'date', config: { format: 'stardate' } }), /format/i);
+});
+
+test('a datetime keeps its time and shows it', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Dev' });
+  w.createTable({ space: 'Dev', name: 'Task' });
+  w.addField('Task', { name: 'At', type: 'date', config: { time: true, format: 'long' } });
+  const e = w.createEntity('Task', { name: 'T', values: { At: '2026-08-21T14:30' } });
+  assert.match(String(w.readEntity(e.id).fields.At), /Aug 21, 2026.*14:30/);
+});
+
+test('formulas do date math', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Dev' });
+  w.createTable({ space: 'Dev', name: 'Task' });
+  w.addField('Task', { name: 'Due', type: 'date' });
+  w.addField('Task', { name: 'Grace', type: 'formula', config: { expression: 'dateadd(Due, 14, "days")' } });
+  w.addField('Task', { name: 'Age', type: 'formula', config: { expression: 'datediff(Due, "2026-09-04", "days")' } });
+  w.addField('Task', { name: 'Y', type: 'formula', config: { expression: 'year(Due)' } });
+  const e = w.createEntity('Task', { name: 'T', values: { Due: '2026-08-21' } });
+  const read = w.readEntity(e.id);
+  assert.equal(read.fields.Grace, '2026-09-04');
+  assert.equal(read.fields.Age, 14);
+  assert.equal(read.fields.Y, 2026);
+});

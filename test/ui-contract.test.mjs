@@ -986,3 +986,12 @@ test('the filter strip drives the engine where-language, not a client sort (Feat
   const chips = rulesFor('.filter-chip');
   assert.ok(chips['cursor'] === 'pointer');
 });
+
+test('a date cell is type-or-pick: parsed text beside a native calendar (Feature #44)', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  assert.ok(html.includes('nl-date.js'), 'the parser loads before the app');
+  assert.ok(app.includes('window.parseNaturalDate'), 'typed phrases go through the parser');
+  assert.ok(app.includes("f.time ? 'datetime-local' : 'date'"), 'the calendar respects the time costume');
+  assert.ok(app.includes("'T' + String(rawIso).split('T')[1]"), 'a typed phrase keeps the existing time of day');
+});

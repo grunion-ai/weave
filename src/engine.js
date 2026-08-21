@@ -134,6 +134,17 @@ function normalizeSelfContainedConfig(type, config = {}) {
     if (config.separator != null) out.separator = !!config.separator;
     return out;
   }
+  if (type === 'date') {
+    const out = {};
+    if (config.format != null) {
+      if (!['iso', 'us', 'eu', 'long'].includes(config.format)) {
+        throw new WeaveError(`Invalid date format '${config.format}' (iso, us, eu, long)`, 'invalid');
+      }
+      if (config.format !== 'iso') out.format = config.format;
+    }
+    if (config.time != null) out.time = !!config.time;
+    return out;
+  }
   if (type === 'field') {
     const depth = config.depth ?? 1;
     if (!Number.isInteger(depth) || depth < 1 || depth > MAX_DEFINITION_DEPTH) {
@@ -1079,7 +1090,7 @@ export class Weave {
     if (type === 'relation') throw new WeaveError(`Use addRelation() to create relation fields`, 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
-    if (type === 'select' || type === 'multiselect' || type === 'workflow' || type === 'field' || type === 'number') {
+    if (type === 'select' || type === 'multiselect' || type === 'workflow' || type === 'field' || type === 'number' || type === 'date') {
       // One normaliser, shared with `field` value validation — see the note on
       // normalizeSelfContainedConfig. If these drift, a definition can describe
       // a field addField would reject.
@@ -1782,6 +1793,23 @@ export class Weave {
       case 'key':
         // The name and whether the keystore holds it — never the secret.
         return `🔑 ${resolved}${this.hasKey(resolved) ? '' : ' (unset)'}`;
+      case 'date': {
+        const c = field.config;
+        if (!c.format && !c.time) return resolved;
+        const d = new Date(resolved);
+        if (Number.isNaN(d.getTime())) return resolved;
+        const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        // Format on the stored wall-clock parts, not the local zone's reading
+        // of them — '2026-08-21' must never render as Aug 20.
+        const [datePart, timePart] = String(resolved).split('T');
+        const [y, mo, day] = datePart.split('-').map(Number);
+        const dateText = c.format === 'us' ? `${mo}/${day}/${y}`
+          : c.format === 'eu' ? `${day}.${mo}.${y}`
+          : c.format === 'long' ? `${MONTHS[mo - 1]} ${day}, ${y}`
+          : datePart;
+        const timeText = c.time && timePart ? ' ' + timePart.slice(0, 5) : '';
+        return dateText + timeText;
+      }
       case 'number': {
         const c = field.config;
         if (c.format == null && c.unit == null && c.decimals == null && !c.separator) return resolved;
@@ -2465,6 +2493,10 @@ export class Weave {
             for (const k of ['format', 'unit', 'decimals', 'separator']) {
               if (f.config[k] != null) out[k] = f.config[k];
             }
+          }
+          if (f.type === 'date') {
+            if (f.config.format) out.format = f.config.format;
+            if (f.config.time) out.time = true;
           }
           if (f.type === 'formula') out.expression = f.config.expression;
           if (f.type === 'field') { out.types = [...f.config.types]; out.depth = f.config.depth; }

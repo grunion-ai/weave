@@ -35,7 +35,33 @@ const FUNCS = {
       : String(hay ?? '').toLowerCase().includes(String(needle ?? '').toLowerCase()),
   empty: (x) => x == null || x === '' || (Array.isArray(x) && x.length === 0),
   today: () => new Date().toISOString().slice(0, 10),
+  now: () => new Date().toISOString(),
   days: (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000),
+  // Date math (Feature #44). Units: days, weeks, months, years. dateadd
+  // returns the value's own shape — a date in, a date out.
+  dateadd: (date, n, unit = 'days') => {
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return null;
+    const u = String(unit).replace(/s$/, '');
+    if (u === 'day') d.setUTCDate(d.getUTCDate() + Number(n));
+    else if (u === 'week') d.setUTCDate(d.getUTCDate() + Number(n) * 7);
+    else if (u === 'month') d.setUTCMonth(d.getUTCMonth() + Number(n));
+    else if (u === 'year') d.setUTCFullYear(d.getUTCFullYear() + Number(n));
+    else throw new Error(`Unknown date unit '${unit}'`);
+    const iso = d.toISOString();
+    return String(date).includes('T') ? iso : iso.slice(0, 10);
+  },
+  datediff: (a, b, unit = 'days') => {
+    const ms = Date.parse(b) - Date.parse(a);
+    if (Number.isNaN(ms)) return null;
+    const u = String(unit).replace(/s$/, '');
+    const per = { day: 86400000, week: 604800000, hour: 3600000, minute: 60000 }[u];
+    if (!per) throw new Error(`Unknown date unit '${unit}'`);
+    return Math.round(ms / per);
+  },
+  year: (d) => (d ? new Date(d).getUTCFullYear() : null),
+  month: (d) => (d ? new Date(d).getUTCMonth() + 1 : null),
+  day: (d) => (d ? new Date(d).getUTCDate() : null),
   number: (x) => Number(x),
   text: (x) => (x == null ? '' : String(x)),
 };
