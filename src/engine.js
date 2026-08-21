@@ -616,6 +616,18 @@ export class Weave {
     if (this.state.entities[ref]) return this.state.entities[ref];
     const db = this.getTable(dbRef);
     const list = this.listEntities(db.id);
+    // Qualified 'Table#12' / 'Space/Table#12' refs resolve everywhere else
+    // (getEntity, REST, mentions); relation targets must match (Issue #21).
+    // The named table must BE the target table — 'Task#1' offered to an Issue
+    // relation falls through to name matching rather than resolving by pid.
+    const q = /^(.+)#(\d+)$/.exec(String(ref));
+    if (q) {
+      const qt = this.findTable(q[1]);
+      if (qt && qt.id === db.id) {
+        const byPid = list.find((e) => String(e.publicId) === q[2]);
+        if (byPid) return byPid;
+      }
+    }
     const pid = String(ref).replace(/^#/, '');
     if (/^\d+$/.test(pid)) {
       const byPid = list.find((e) => String(e.publicId) === pid);
@@ -1330,6 +1342,20 @@ export class Weave {
   }
 
   #logActivity(e, kind, detail) {
+    // One editing session is one entry: autosave flushes every pause, and a
+    // row per pause is a keystroke log (Issue #32). A doc-updated landing
+    // right after another doc-updated for the same field folds into it,
+    // keeping the session's starting length so delta spans the whole session.
+    // Mutating in place (not pop+push) preserves entityId:index activity ids.
+    const last = e.activity[e.activity.length - 1];
+    if (kind === 'doc-updated' && last?.kind === 'doc-updated'
+      && last.detail?.field === detail.field
+      && Date.now() - Date.parse(last.ts) < 10 * 60 * 1000) {
+      last.ts = nowISO();
+      last.detail = { ...detail, prevLength: last.detail.prevLength, delta: detail.length - last.detail.prevLength };
+      this.#mark(e);
+      return;
+    }
     e.activity.push({ ts: nowISO(), kind, detail });
     if (e.activity.length > 500) e.activity = e.activity.slice(-500);
     this.#mark(e);

@@ -587,3 +587,27 @@ test('a query can filter on entity id', () => {
   // The rows come back whole, because the grid renders every column.
   assert.ok('Estimate' in picked.items[0].fields, 'a filtered row is a full row');
 });
+
+/* Autosave flushes every pause, so one editing session used to write one
+   doc-updated row per pause — a keystroke log, not a history (Issue #32).
+   Consecutive updates to the same document within a short window merge into
+   one entry measured from the session start. */
+test('consecutive autosaves of one document coalesce into a single activity entry', () => {
+  const { w, tasks } = buildWorkspace();
+  const t = w.createEntity(tasks, { name: 'T', doc: 'v1' });
+  const docs = () => w.getEntity(t.id).activity.filter((a) => a.kind === 'doc-updated');
+
+  w.setDoc(t.id, 'v1 plus');
+  w.setDoc(t.id, 'v1 plus more');
+  w.setDoc(t.id, 'v1 plus more still');
+  assert.equal(docs().length, 1, 'one editing session, one entry');
+  const [one] = docs();
+  assert.equal(one.detail.prevLength, 'v1'.length, 'measured from the session start');
+  assert.equal(one.detail.length, 'v1 plus more still'.length);
+  assert.equal(one.detail.delta, 'v1 plus more still'.length - 'v1'.length);
+
+  // A stale last entry is a different session — no coalescing across the window.
+  one.ts = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  w.setDoc(t.id, 'v2');
+  assert.equal(docs().length, 2, 'a new session starts a new entry');
+});

@@ -45,3 +45,19 @@ test('REST /api/entities/:ref and /e/:ref accept Table#pid refs', async () => {
     server.close();
   }
 });
+
+test('findEntity (relation targets) accepts qualified Table#pid refs', () => {
+  const w = seed();
+  w.createTable({ space: 'Dev', name: 'Task' });
+  w.createEntity('Task', { name: 'Fix it' });
+  w.addRelation('Task', { name: 'Issue', targetDb: 'Issue', cardinality: 'many-to-one' });
+  // Bare pid and uuid already work; the qualified form must too (Issue #21).
+  assert.equal(w.entityName(w.findEntity('Issue', 'Issue#1')), 'Crash on save');
+  assert.equal(w.entityName(w.findEntity('Issue', 'Dev/Issue#1')), 'Crash on save');
+  // A qualified ref naming a DIFFERENT table must not resolve by pid.
+  assert.equal(w.findEntity('Issue', 'Task#1'), undefined);
+  // And the link path (relation target normalization) takes the qualified form.
+  w.link('Task#1', 'Issue', 'Issue#1');
+  const rel = Object.values(w.getTable('Task').fields).find((f) => f.name === 'Issue');
+  assert.equal(w.getEntity('Task#1').values[rel.id], w.getEntity('Issue#1').id);
+});
