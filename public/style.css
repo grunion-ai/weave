@@ -535,3 +535,4 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 @media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }
 .fielddef-edit { display: inline-flex; align-items: center; gap: 4px; }
 .nav-health { font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); padding: 6px 8px 0; }
+.wv-grid td.sys-cell { color: var(--tblr-secondary); font-size: 12.5px; white-space: nowrap; }

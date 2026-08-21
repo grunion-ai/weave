@@ -876,6 +876,20 @@ function drawDatabase(db, items, trashCount = 0) {
       dotsMenu([
         { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
         'divider',
+        // System columns (Feature #65): per-table show/hide, persisted schema.
+        ...Object.keys(SYSTEM_COLS).map((n) => ({
+          label: `${(db.systemFields ?? []).includes(n) ? '✓ ' : ''}${n}`,
+          run: async () => {
+            const cur = db.systemFields ?? [];
+            const next = cur.includes(n) ? cur.filter((x) => x !== n) : [...cur, n];
+            try {
+              await api('PATCH', `/tables/${db.id}`, { systemFields: next });
+              await loadSchema();
+              showDatabase(db.id, state.route.view);
+            } catch (err) { toast(err.message, true); }
+          },
+        })),
+        'divider',
         {
           hold: 'Delete table', holdingLabel: 'Hold to delete table…',
           run: async () => {
@@ -965,6 +979,7 @@ function renderTable(main, db, items, onSaved) {
             style: f.width ? `max-width:${f.width}px` : null,
           }, editorFor(f, item, db, onSaved, { compact: true }));
         }),
+        ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')),
         el('td', {}, el('button', {
           class: 'btn btn-sm btn-ghost-secondary tiny' + (state.expanded.has(item.id) ? ' active-toggle' : ''),
           title: 'Edit documents',
@@ -1016,6 +1031,8 @@ function renderTable(main, db, items, onSaved) {
             sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : ''),
           fieldMenuButton(db, colField(db, c)),
           columnResizeGrip(db, colField(db, c)))),
+        ...(db.systemFields ?? []).map((n) => el('th', { class: 'sys-head', title: `${n} — system field, read-only` },
+          el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·')))),
         el('th', { title: documentFields(db).map((f) => f.name).join(', ') },
           `Docs (${documentFields(db).length})`),
         // Adding a field lives where the fields are: the end of the header bar.
@@ -1026,6 +1043,16 @@ function renderTable(main, db, items, onSaved) {
   draw();
   main.append(wrap);
 }
+
+
+/* System columns (Feature #65): read-only, engine-maintained, shown per
+   table via db.systemFields. Values ride the entity payload, not fields. */
+const SYSTEM_COLS = {
+  'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),
+  'Modified At': (e) => (e.updatedAt ?? '').slice(0, 16).replace('T', ' '),
+  'Created By': (e) => e.createdBy ?? '',
+  'Modified By': (e) => e.modifiedBy ?? '',
+};
 
 const colField = (db, name) => db.fields.find((f) => f.name === name);
 

@@ -264,6 +264,8 @@ export function startMcpServer(weave, { input = process.stdin, output = process.
     try {
       switch (method) {
         case 'initialize':
+          // The MCP client names itself in the handshake; mutations carry it.
+          weave.actor = 'mcp:' + (params?.clientInfo?.name ?? 'client');
           return reply({
             protocolVersion: params?.protocolVersion ?? PROTOCOL_VERSION,
             capabilities: { tools: {} },

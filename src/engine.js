@@ -167,7 +167,8 @@ export class Weave {
   #dirty = new Set();
   #dirtyAll = false;
 
-  constructor({ path = null } = {}) {
+  constructor({ path = null, actor = 'local' } = {}) {
+    this.actor = actor;
     this.store = new Store(path);
     const loaded = this.store.load();
     // A pre-existing file must actually be a workspace — never adopt (and
@@ -359,6 +360,13 @@ export class Weave {
     if (patch.name != null) db.name = patch.name;
     if (patch.description != null) db.description = patch.description;
     if (patch.icon != null) db.icon = patch.icon;
+    if (patch.systemFields != null) {
+      const known = ['Created At', 'Modified At', 'Created By', 'Modified By'];
+      for (const n of patch.systemFields) {
+        if (!known.includes(n)) throw new WeaveError(`'${n}' is not a system field (${known.join(', ')})`, 'invalid');
+      }
+      db.systemFields = [...patch.systemFields];
+    }
     // Column order is fieldOrder — describeSchema() reads it — so a reorder is
     // a schema write. Demand a full permutation: a short list would silently
     // drop columns off the grid, which reads exactly like data loss.
@@ -983,6 +991,8 @@ export class Weave {
       files: [],
       createdAt: nowISO(),
       updatedAt: nowISO(),
+      createdBy: this.actor,
+      modifiedBy: this.actor,
     };
     // Initial documents: input.doc fills the default document field;
     // input.docs maps document field names to markdown.
@@ -1061,6 +1071,7 @@ export class Weave {
         if (before === md) continue;
         e.docs[field.id] = md;
         e.updatedAt = nowISO();
+    e.modifiedBy = this.actor;
         if (!isCreate) this.#logActivity(e, 'doc-updated', docChange(field.name, before, md));
         continue;
       }
@@ -1069,6 +1080,7 @@ export class Weave {
       if (JSON.stringify(old) === JSON.stringify(val)) continue;
       e.values[field.id] = val;
       e.updatedAt = nowISO();
+    e.modifiedBy = this.actor;
       if (!isCreate) this.#logActivity(e, 'field-updated', { field: field.name, from: old ?? null, to: val });
       this.#runAutomations(db, e, { type: 'field-updated', fieldId: field.id }, depth);
     }
@@ -1189,6 +1201,7 @@ export class Weave {
     }
     e.values[field.id] = field.config.many ? newIds : (newIds[0] ?? null);
     e.updatedAt = nowISO();
+    e.modifiedBy = this.actor;
     this.#logActivity(e, 'relation-updated', {
       field: field.name,
       added: added.map((id) => this.entityName(this.state.entities[id])),
@@ -1253,6 +1266,7 @@ export class Weave {
     if (old === state.id) return;
     e.values[field.id] = state.id;
     e.updatedAt = nowISO();
+    e.modifiedBy = this.actor;
     const oldName = field.config.states.find((s) => s.id === old)?.name ?? null;
     this.#logActivity(e, 'state-changed', { field: field.name, from: oldName, to: state.name });
     this.#runAutomations(db, e, { type: 'state-changed', fieldId: field.id, toStateId: state.id }, depth);
@@ -1296,6 +1310,7 @@ export class Weave {
     if (!e.deletedAt) return this.readEntity(id);
     e.deletedAt = null;
     e.updatedAt = nowISO();
+    e.modifiedBy = this.actor;
     e.activity.push({ ts: e.updatedAt, kind: 'restored', detail: {} });
     this.#mark(e);
     this.save();
@@ -1435,6 +1450,8 @@ export class Weave {
       files: e.files,
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
+      createdBy: e.createdBy ?? null,
+      modifiedBy: e.modifiedBy ?? null,
       deletedAt: e.deletedAt ?? null,
     };
   }
@@ -1575,6 +1592,7 @@ export class Weave {
     if (before === after) return e;
     e.docs[f.id] = after;
     e.updatedAt = nowISO();
+    e.modifiedBy = this.actor;
     this.#logActivity(e, 'doc-updated', docChange(f.name, before, after));
     this.save();
     return e;
@@ -1590,6 +1608,7 @@ export class Weave {
     if (before === after) return e;
     e.docs[f.id] = after;
     e.updatedAt = nowISO();
+    e.modifiedBy = this.actor;
     this.#logActivity(e, 'doc-appended', docChange(f.name, before, after));
     this.save();
     return e;
@@ -1680,7 +1699,7 @@ export class Weave {
       this.#mark(e);
       return;
     }
-    e.activity.push({ ts: nowISO(), kind, detail });
+    e.activity.push({ ts: nowISO(), kind, detail, actor: this.actor });
     if (e.activity.length > 500) e.activity = e.activity.slice(-500);
     this.#mark(e);
   }
@@ -1795,6 +1814,7 @@ export class Weave {
             const cur = e.docs[docField.id] ?? '';
             e.docs[docField.id] = (cur ? cur.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
             e.updatedAt = nowISO();
+    e.modifiedBy = this.actor;
           }
         } else if (action.type === 'add-comment') {
           e.comments.push({ id: uuid(), author: action.author, text: this.#template(action.text, e, db), createdAt: nowISO() });
@@ -2022,6 +2042,7 @@ export class Weave {
         name: db.name,
         description: db.description ?? '',
         ...(db.system ? { system: db.system } : {}),
+        ...(db.systemFields?.length ? { systemFields: [...db.systemFields] } : {}),
         qualified: this.qualifiedName(db),
         entityCount: this.listEntities(db.id).length,
         fields: db.fieldOrder.map((fid) => {

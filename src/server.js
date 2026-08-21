@@ -151,6 +151,11 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
     // serving anything from this workspace.
     weave.maybeRefresh();
 
+    // Who is calling (Feature #65): callers name themselves per request;
+    // without a header every mutation is 'web'. Set each request — a sticky
+    // actor from the last request would misattribute this one.
+    weave.actor = String(req.headers['x-weave-actor'] || 'web').slice(0, 120);
+
     // Resolves [[Table#12]] mentions in rendered documents (active workspace).
     // The one place that knows how each reference kind is addressed and what
     // it links to. Returns null for a miss, which renders as a broken chip.

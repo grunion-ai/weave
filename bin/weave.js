@@ -6,6 +6,8 @@ import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { userInfo } from 'node:os';
+const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
 import { Weave, WeaveError } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
@@ -110,7 +112,7 @@ async function main() {
   if (!command || command === 'help' || flags.help) return out(HELP);
 
   if (command === 'serve') {
-    const w = new Weave({ path: dataPath });
+    const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
     // Workspace name = data file basename (unless already named).
     const base = dataPath.split('/').pop().replace(/\.(json|db)$/, '');
     if (!w.state.meta.name || w.state.meta.name === 'Weave Workspace') {
@@ -126,7 +128,7 @@ async function main() {
       if (!present) {
         const { seedWeaver } = await import('../src/weaver-seed.js');
         const weavePath = join(dir, 'weave.db');
-        seedWeaver(new Weave({ path: weavePath }));
+        seedWeaver(new Weave({ path: weavePath, actor: CLI_ACTOR }));
         console.log(`Created docs workspace at ${weavePath}`);
       }
     }
@@ -137,7 +139,7 @@ async function main() {
     return;
   }
   if (command === 'mcp') {
-    const w = new Weave({ path: dataPath });
+    const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
     startMcpServer(w);
     return; // stays alive on stdin
   }
@@ -185,7 +187,7 @@ async function main() {
     throw new WeaveError(`Unknown service subcommand '${sub}'. Try: install, uninstall, status`);
   }
 
-  const w = new Weave({ path: dataPath });
+  const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
 
   switch (command) {
     case 'schema':
