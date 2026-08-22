@@ -4,6 +4,12 @@
 name = "weave"
 main = "src/worker.js"
 compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+DEFAULT_WORKSPACE = "weave"
+# Set to the deployed version so /api/health tells the truth (Issue #19 class).
+WEAVE_VERSION = "0.0.0-set-me"
 
 # One Durable Object per workspace, SQLite-backed.
 [[durable_objects.bindings]]
