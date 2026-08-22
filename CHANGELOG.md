@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.1 — 2026-08-21
+
+- **Skeleton loading** (#49, inspired by 0xGF/boneyard): navigation paints a skeleton of the real destination — natively, the library being framework-bound.
+- **Share QR codes** (#50, inspired by p2r3/ha.mr): sharing a view shows a scannable code beside the copied link (lean-qr 2.7.3 vendored; `.mjs` MIME fix included).
+- **Simultaneous boots survive** (Issue #39): `busy_timeout` now precedes the WAL switch.
+
 ## v0.4.0 — 2026-08-21
 
 ### The agent-native meta-model
