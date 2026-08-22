@@ -456,7 +456,7 @@ function openWhiteboard(mmdSource, title = 'Whiteboard') {
       const fg = dark ? '#e5e7eb' : '#1a1d21';
       const box = dark ? '#2b3038' : '#f4f6f8';
       const line = dark ? '#4b5563' : '#9ca3af';
-      window.cytoscape({
+      const cy = window.cytoscape({
         container: body,
         elements: [
           ...g.nodes.map((n) => ({ data: { id: n.id, label: n.label }, classes: n.shape })),
@@ -471,6 +471,10 @@ function openWhiteboard(mmdSource, title = 'Whiteboard') {
         ],
         wheelSensitivity: 0.2,
       });
+      // The dialog was appended this frame: cytoscape measured a container
+      // the layout engine had not sized yet, and drew into a corner. One
+      // frame later the box is real — measure again, then frame the graph.
+      requestAnimationFrame(() => { cy.resize(); cy.fit(undefined, 80); });
     }),
   });
 }
