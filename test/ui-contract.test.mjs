@@ -1018,3 +1018,14 @@ test('a share link comes with its QR code (Feature #50)', async () => {
   const code = leanQR.generate('https://example.com/view/wvv_abc');
   assert.ok(code.size >= 21, 'a real QR matrix comes back');
 });
+
+test('docs go fullscreen and diagrams become whiteboards (Features #47, #46)', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  assert.ok(app.includes('function fullscreenViewer('), 'the in-tree dialog exists');
+  assert.ok(app.includes('history.back()'), 'the frame has its own back');
+  assert.ok(app.includes('function openWhiteboard('), 'the whiteboard exists');
+  assert.ok(html.includes('graph-parse.js'), 'the parser loads with the app');
+  assert.ok(app.includes("src = '/vendor/cytoscape.min.js'"), 'cytoscape is lazy — 434KB only when a whiteboard opens');
+  assert.ok(app.includes('pre.dataset.mmd'), 'the mermaid source survives its own rendering');
+});

@@ -625,3 +625,10 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .share-url { font-size: 11.5px; word-break: break-all; color: var(--tblr-secondary); }
 .share-hint { font-size: 12.5px; color: var(--tblr-secondary); text-align: center; }
 .attach-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; } .attach-item { display: inline-flex; align-items: center; gap: 1px; font-size: 12.5px; background: var(--tblr-bg-surface-secondary); border-radius: 5px; padding: 1px 3px 1px 7px; }
+/* ---------- fullscreen viewer + whiteboard (Features #47, #46) ---------- */
+#fsv-back { position: fixed; inset: 0; z-index: 90; background: var(--tblr-bg-surface); display: flex; flex-direction: column; }
+.fsv-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--tblr-border-color); }
+.fsv-title { font-weight: 600; font-size: 14px; margin-left: 6px; }
+.fsv-frame { flex: 1; border: 0; width: 100%; background: #fff; }
+.fsv-body { flex: 1; }
+.mmd-tools { display: block; text-align: right; margin-bottom: -26px; position: relative; z-index: 2; }

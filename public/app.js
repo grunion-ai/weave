@@ -406,6 +406,75 @@ function docPreview(md, max = 120) {
 
 // Lazy mermaid: load the vendored lib only when a preview contains a diagram.
 let mermaidLoading = null;
+
+/* ---------- fullscreen viewer (Feature #47) ----------
+   Any URL weave serves, full-viewport, without leaving the app: an in-tree
+   dialog hosting an iframe with its own back/refresh — mention links inside
+   keep navigating in-frame (#27), and Esc brings you home. Also the host for
+   the whiteboard (#46), which fills the frame slot with a canvas instead. */
+function fullscreenViewer(title, { url = null, mount = null } = {}) {
+  document.querySelector('#fsv-back')?.remove();
+  const frame = url ? el('iframe', { class: 'fsv-frame', src: url }) : null;
+  const back = el('div', { id: 'fsv-back' },
+    el('div', { class: 'fsv-bar' },
+      url ? el('button', { class: 'btn btn-sm', title: 'Back', onclick: () => frame.contentWindow?.history.back() }, '‹') : null,
+      url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, '⟳') : null,
+      el('span', { class: 'fsv-title' }, title),
+      el('span', { style: 'flex:1' }),
+      url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, '↗') : null,
+      el('button', { class: 'btn btn-sm', title: 'Close', onclick: () => back.remove() }, '✕')),
+    frame ?? el('div', { class: 'fsv-body' }));
+  document.body.append(back);
+  addEventListener('keydown', function esc(e) {
+    if (!back.isConnected) return removeEventListener('keydown', esc);
+    if (e.key === 'Escape') { back.remove(); removeEventListener('keydown', esc); }
+  });
+  if (mount) mount(back.querySelector('.fsv-body'));
+  return back;
+}
+
+/* ---------- whiteboard (Feature #46) ----------
+   A mermaid diagram, but alive: parsed to nodes/edges (graph-parse.js) and
+   handed to vendored cytoscape — pan, zoom, drag the nodes around. View
+   state only: nothing writes back to the document. */
+let cytoscapeLoading = null;
+function openWhiteboard(mmdSource, title = 'Whiteboard') {
+  cytoscapeLoading ??= new Promise((resolve) => {
+    if (window.cytoscape) return resolve();
+    const sc = document.createElement('script');
+    sc.src = '/vendor/cytoscape.min.js';
+    sc.onload = resolve;
+    sc.onerror = () => resolve();
+    document.head.append(sc);
+  });
+  fullscreenViewer(title, {
+    mount: (body) => cytoscapeLoading.then(() => {
+      if (!window.cytoscape) { body.textContent = 'cytoscape failed to load'; return; }
+      const g = window.parseMermaidGraph?.(mmdSource) ?? { nodes: [], edges: [] };
+      if (!g.nodes.length) { body.textContent = 'Nothing drawable in this diagram.'; return; }
+      const dark = document.documentElement.dataset.bsTheme === 'dark';
+      const fg = dark ? '#e5e7eb' : '#1a1d21';
+      const box = dark ? '#2b3038' : '#f4f6f8';
+      const line = dark ? '#4b5563' : '#9ca3af';
+      window.cytoscape({
+        container: body,
+        elements: [
+          ...g.nodes.map((n) => ({ data: { id: n.id, label: n.label }, classes: n.shape })),
+          ...g.edges.map((e2, i) => ({ data: { id: 'e' + i, source: e2.from, target: e2.to, label: e2.label } })),
+        ],
+        layout: { name: 'breadthfirst', directed: true, spacingFactor: 1.2 },
+        style: [
+          { selector: 'node', style: { label: 'data(label)', shape: 'round-rectangle', 'background-color': box, 'border-color': line, 'border-width': 1, color: fg, 'font-size': 13, 'text-valign': 'center', 'text-halign': 'center', width: 'label', height: 'label', padding: '10px' } },
+          { selector: 'node.diamond', style: { shape: 'diamond', padding: '18px' } },
+          { selector: 'node.circle', style: { shape: 'ellipse', padding: '14px' } },
+          { selector: 'edge', style: { label: 'data(label)', 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'line-color': line, 'target-arrow-color': line, color: fg, 'font-size': 11, width: 1.5 } },
+        ],
+        wheelSensitivity: 0.2,
+      });
+    }),
+  });
+}
+
 function renderMermaidIn(container) {
   const nodes = container.querySelectorAll('pre.mermaid');
   if (!nodes.length) return;
@@ -423,6 +492,17 @@ function renderMermaidIn(container) {
     s.onerror = () => resolve(); // fall back to visible source
     document.head.append(s);
   });
+  for (const pre of nodes) {
+    // The source dies when mermaid replaces it — stash it, and give every
+    // diagram its whiteboard handle (#46).
+    if (!pre.dataset.mmd) pre.dataset.mmd = pre.textContent;
+    const holder = el('span', { class: 'mmd-tools' },
+      el('button', {
+        class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Open as a whiteboard',
+        onclick: () => openWhiteboard(pre.dataset.mmd, 'Whiteboard'),
+      }, '⛶'));
+    if (!pre.previousElementSibling?.classList?.contains('mmd-tools')) pre.before(holder);
+  }
   mermaidLoading.then(() => window.mermaid?.run({ nodes }));
 }
 
@@ -2485,6 +2565,10 @@ async function showEntity(id) {
       el('div', { class: 'doc-section-head' },
         caret,
         el('span', { class: 'doc-section-name' }, f.name),
+        el('span', {
+          class: 'doc-anchor', title: 'View fullscreen',
+          onclick: () => fullscreenViewer(`${entity.name || 'Document'} — ${f.name}`, { url: `${fmtBase}.html` }),
+        }, '⛶'),
         el('span', {
           class: 'doc-anchor', title: 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
