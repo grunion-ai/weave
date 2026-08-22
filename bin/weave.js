@@ -110,6 +110,9 @@ Accounts & audit (Feature #14)
   account list
   account delete <ref>
   audit [--limit 50]
+Undo (entity mutations only — schema work is not undoable)
+  undo [--steps n]                    Revert the last n entity mutations
+  undo --list [--limit 20]           Show what undo would revert, newest first
 Collaboration & data
   comment <ref> <text> [--author name]
   search <text>
@@ -234,6 +237,10 @@ async function main() {
     }
     case 'audit':
       return out(w.listAudit({ limit: Number(flags.limit ?? 50) }));
+    case 'undo': {
+      if (flags.list) return out(w.listUndo({ limit: Number(flags.limit ?? 20) }));
+      return out(w.undo({ steps: Math.max(1, Number(flags.steps ?? 1)) }));
+    }
     case 'space': {
       const [sub, name] = args;
       if (sub === 'create') return out(w.createSpace({ name }));

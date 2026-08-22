@@ -406,6 +406,12 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
             offset: Number(url.searchParams.get('offset') ?? 0),
           }));
         }
+        if (route === 'GET /api/undo') {
+          return send(200, weave.listUndo({ limit: Number(url.searchParams.get('limit') ?? 20) }));
+        }
+        if (route === 'POST /api/undo') {
+          return send(200, weave.undo({ steps: Math.max(1, Number(body?.steps ?? 1)) }));
+        }
         if (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {})) {
           weave.setRequireAuth(!!body.requireAuth);
           if (Object.keys(body).length === 1) return send(200, { requireAuth: weave.state.meta.requireAuth });

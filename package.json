@@ -1,6 +1,6 @@
 {
   "name": "weave",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Open-source, self-hosted alternative to Airtable, Fibery, Notion databases and ClickUp, built so AI agents are first-class users. Connected tables, relations, workflows, lookups, rollups, formulas and per-entity markdown documents (MD/HTML/PDF) in one SQLite file \u2014 web UI, REST API, CLI and MCP server. Zero dependencies, no build step.",
   "license": "MIT",
   "type": "module",

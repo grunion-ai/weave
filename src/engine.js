@@ -790,6 +790,123 @@ export class Weave {
     try { return fn(); } finally { this.#inMetaSync = was; }
   }
 
+  /* ---------------- undo ----------------
+     Every entity mutation verb records an inverse-operation entry before it
+     returns; undo() pops entries and replays the inverse. Deliberate limits:
+     structural work (spaces, tables, fields, registry rows — everything the
+     audit log covers) is not undoable, hard deletes and file deletions are
+     gone for real, and undo itself fires no automations — stepping back must
+     not cascade forward. */
+  #inUndo = false;
+
+  #recordUndo(kind, e, data = {}) {
+    if (this.#inMetaSync || this.#inUndo) return;
+    const db = this.state.tables[e.dbId];
+    if (!db || db.system) return;
+    this.store.pushUndo({
+      ts: nowISO(),
+      actor: this.actor,
+      kind,
+      entityId: e.id,
+      table: this.qualifiedName(db),
+      publicId: e.publicId,
+      name: String(e.values[db.nameFieldId] ?? ''),
+      data,
+    });
+  }
+
+  // Sparse before-image of exactly the fields a mutation names.
+  #undoBefore(e, db, fieldRefs) {
+    const before = { values: {}, docs: {} };
+    for (const ref of fieldRefs) {
+      const f = typeof ref === 'object' ? ref : this.findField(db, ref);
+      if (!f || COMPUTED_TYPES.includes(f.type)) continue;
+      if (f.type === 'document') before.docs[f.id] = e.docs?.[f.id] ?? '';
+      else before.values[f.id] = structuredClone(e.values[f.id] ?? null);
+    }
+    return before;
+  }
+
+  #undoChanged(e, before) {
+    for (const [fid, prev] of Object.entries(before.values)) {
+      if (JSON.stringify(e.values[fid] ?? null) !== JSON.stringify(prev)) return true;
+    }
+    for (const [fid, prev] of Object.entries(before.docs)) {
+      if ((e.docs?.[fid] ?? '') !== prev) return true;
+    }
+    return false;
+  }
+
+  undo({ steps = 1 } = {}) {
+    const undone = [];
+    this.#inUndo = true;
+    try {
+      for (let i = 0; i < steps; i++) {
+        const entry = this.store.popUndo();
+        if (!entry) break;
+        const summary = { kind: entry.kind, entity: `${entry.table}#${entry.publicId}`, name: entry.name, ts: entry.ts };
+        const e = this.state.entities[entry.entityId];
+        if (!e) { undone.push({ ...summary, skipped: 'entity purged' }); continue; }
+        const db = this.state.tables[e.dbId];
+        switch (entry.kind) {
+          case 'create':
+          case 'restore':
+            this.deleteEntity(e.id);
+            break;
+          case 'delete':
+            this.restoreEntity(e.id);
+            break;
+          case 'update': {
+            const before = entry.data.before ?? { values: {}, docs: {} };
+            const fields = [];
+            for (const [fid, prev] of Object.entries(before.values)) {
+              const f = db.fields[fid];
+              if (!f) continue;
+              fields.push(f.name);
+              if (f.type === 'relation') {
+                const ids = prev == null ? [] : Array.isArray(prev) ? prev : [prev];
+                this.#setRelationValue(e, db, f, ids.filter((id) => this.state.entities[id]));
+              } else {
+                e.values[fid] = structuredClone(prev);
+              }
+            }
+            for (const [fid, text] of Object.entries(before.docs)) {
+              if (db.fields[fid]) { fields.push(db.fields[fid].name); e.docs[fid] = text; }
+            }
+            e.updatedAt = nowISO();
+            e.modifiedBy = this.actor;
+            this.#logActivity(e, 'undo', { fields });
+            this.#mark(e);
+            this.save();
+            break;
+          }
+          case 'comment-add':
+            e.comments = e.comments.filter((c) => c.id !== entry.data.commentId);
+            this.#mark(e);
+            this.save();
+            break;
+          case 'comment-delete':
+            e.comments.push(entry.data.comment);
+            this.#mark(e);
+            this.save();
+            break;
+          case 'file-attach':
+            this.deleteFile(e.id, entry.data.fileId);
+            break;
+        }
+        undone.push(summary);
+      }
+    } finally {
+      this.#inUndo = false;
+    }
+    return { undone };
+  }
+
+  listUndo({ limit = 20 } = {}) {
+    return this.store.listUndo({ limit })
+      .map(({ data, ...summary }) => ({ ...summary, entity: `${summary.table}#${summary.publicId}` }));
+  }
+
   #sysTable(kind) {
     return Object.values(this.state.tables).find((t) => t.system === kind);
   }
@@ -1413,6 +1530,9 @@ export class Weave {
       db.publicIdCounter--;
       throw err;
     }
+    // Recorded before automations run, so their edits sit above the create on
+    // the undo stack and step back first.
+    this.#recordUndo('create', e);
     this.#runAutomations(db, e, { type: 'entity-created' }, depth);
     this.save();
     return e;
@@ -1423,7 +1543,9 @@ export class Weave {
     const db = this.state.tables[e.dbId];
     const meta = this.#interceptUpdate(e, db, valuesByName);
     if (meta) return meta;
+    const before = this.#undoBefore(e, db, Object.keys(valuesByName));
     this.#applyValues(e, db, valuesByName, { depth });
+    if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
     this.save();
     return e;
   }
@@ -1614,7 +1736,9 @@ export class Weave {
     const addIds = this.#normalizeRelationInput(field, targetRefs);
     const cur = this.#relationIds(e, field);
     const next = field.config.many ? [...new Set([...cur, ...addIds])] : addIds.slice(-1);
+    const before = this.#undoBefore(e, db, [field]);
     this.#setRelationValue(e, db, field, next);
+    if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
     this.save();
     return e;
   }
@@ -1626,7 +1750,9 @@ export class Weave {
     if (field.type !== 'relation') throw new WeaveError(`Field '${field.name}' is not a relation`, 'invalid');
     const removeIds = this.#normalizeRelationInput(field, targetRefs);
     const next = this.#relationIds(e, field).filter((id) => !removeIds.includes(id));
+    const before = this.#undoBefore(e, db, [field]);
     this.#setRelationValue(e, db, field, next);
+    if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
     this.save();
     return e;
   }
@@ -1636,7 +1762,9 @@ export class Weave {
     const db = this.state.tables[e.dbId];
     const field = this.getField(db.id, fieldRef);
     if (field.type !== 'workflow') throw new WeaveError(`Field '${field.name}' is not a workflow`, 'invalid');
+    const before = this.#undoBefore(e, db, [field]);
     this.#setStateInternal(e, db, field, stateRef, depth);
+    if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
     this.save();
     return e;
   }
@@ -1673,6 +1801,7 @@ export class Weave {
       e.deletedAt = nowISO();
       e.updatedAt = e.deletedAt;
       e.activity.push({ ts: e.deletedAt, kind: 'deleted', detail: {} });
+      this.#recordUndo('delete', e);
       this.#mark(e);
       this.save();
       return this.readEntity(id);
@@ -1696,6 +1825,7 @@ export class Weave {
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
     e.activity.push({ ts: e.updatedAt, kind: 'restored', detail: {} });
+    this.#recordUndo('restore', e);
     this.#mark(e);
     this.save();
     return this.readEntity(id);
@@ -2014,6 +2144,7 @@ export class Weave {
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
     this.#logActivity(e, 'doc-updated', docChange(f.name, before, after));
+    this.#recordUndo('update', e, { before: { values: {}, docs: { [f.id]: before } } });
     this.save();
     return e;
   }
@@ -2030,6 +2161,7 @@ export class Weave {
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
     this.#logActivity(e, 'doc-appended', docChange(f.name, before, after));
+    this.#recordUndo('update', e, { before: { values: {}, docs: { [f.id]: before } } });
     this.save();
     return e;
   }
@@ -2042,13 +2174,16 @@ export class Weave {
     const comment = { id: uuid(), author, text, createdAt: nowISO() };
     e.comments.push(comment);
     this.#logActivity(e, 'comment-added', { author });
+    this.#recordUndo('comment-add', e, { commentId: comment.id });
     this.save();
     return comment;
   }
 
   deleteComment(entityId, commentId) {
     const e = this.getEntity(entityId);
+    const removed = e.comments.find((c) => c.id === commentId);
     e.comments = e.comments.filter((c) => c.id !== commentId);
+    if (removed) this.#recordUndo('comment-delete', e, { comment: removed });
     this.#mark(e);
     this.save();
   }
@@ -2226,18 +2361,25 @@ export class Weave {
       for (const action of auto.actions) {
         if (action.type === 'set-field') {
           const f = db.fields[action.fieldId];
-          if (f) this.#applyValues(e, db, { [f.name]: action.value }, { depth: depth + 1 });
+          if (f) {
+            const before = this.#undoBefore(e, db, [f]);
+            this.#applyValues(e, db, { [f.name]: action.value }, { depth: depth + 1 });
+            if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
+          }
         } else if (action.type === 'append-doc') {
           const docField = db.fields[action.fieldId] ?? this.documentFields(db)[0];
           if (docField) {
             e.docs = e.docs ?? {};
             const cur = e.docs[docField.id] ?? '';
+            this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: cur } } });
             e.docs[docField.id] = (cur ? cur.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
             e.updatedAt = nowISO();
-    e.modifiedBy = this.actor;
+            e.modifiedBy = this.actor;
           }
         } else if (action.type === 'add-comment') {
-          e.comments.push({ id: uuid(), author: action.author, text: this.#template(action.text, e, db), createdAt: nowISO() });
+          const comment = { id: uuid(), author: action.author, text: this.#template(action.text, e, db), createdAt: nowISO() };
+          e.comments.push(comment);
+          this.#recordUndo('comment-add', e, { commentId: comment.id });
         } else if (action.type === 'webhook') {
           // Fire and forget; a dead endpoint must never block a mutation.
           const payload = {
@@ -2341,6 +2483,7 @@ export class Weave {
     }
     e.files.push(file);
     this.#logActivity(e, 'file-attached', { name: file.name });
+    this.#recordUndo('file-attach', e, { fileId: file.id });
     this.save();
     return file;
   }

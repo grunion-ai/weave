@@ -30,7 +30,13 @@ CREATE TABLE IF NOT EXISTS automations (id TEXT PRIMARY KEY, json TEXT NOT NULL)
 CREATE TABLE IF NOT EXISTS audit_log (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL,
   actor TEXT, action TEXT, detail TEXT);
+CREATE TABLE IF NOT EXISTS undo_log (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL);
 `;
+
+// The undo stack is bounded: it is a working set, not an archive (the audit
+// log is the archive). 200 steps of full before-images stays small.
+const UNDO_CAP = 200;
 
 function isWorkspaceShape(data) {
   return data && typeof data === 'object' && data.meta && (data.tables != null || data.databases != null);
@@ -149,6 +155,35 @@ export class Store {
     if (!this.#db) { this.#memAudit.push({ seq: this.#memAudit.length + 1, ...entry }); return; }
     this.#db.prepare('INSERT INTO audit_log (at, actor, action, detail) VALUES (?, ?, ?, ?)')
       .run(entry.at, entry.actor, entry.action, JSON.stringify(entry.detail ?? {}));
+  }
+
+  /* Undo stack (same dual backing as the audit trail): SQLite when there is a
+     file, a plain array in memory otherwise. Rows are inverse-operation
+     payloads owned by the engine; the store only pushes, pops, and caps. */
+  #memUndo = [];
+
+  pushUndo(entry) {
+    if (!this.#db) {
+      this.#memUndo.push(entry);
+      if (this.#memUndo.length > UNDO_CAP) this.#memUndo = this.#memUndo.slice(-UNDO_CAP);
+      return;
+    }
+    this.#db.prepare('INSERT INTO undo_log (json) VALUES (?)').run(JSON.stringify(entry));
+    this.#db.prepare('DELETE FROM undo_log WHERE seq <= (SELECT MAX(seq) FROM undo_log) - ?').run(UNDO_CAP);
+  }
+
+  popUndo() {
+    if (!this.#db) return this.#memUndo.pop() ?? null;
+    const row = this.#db.prepare('SELECT seq, json FROM undo_log ORDER BY seq DESC LIMIT 1').get();
+    if (!row) return null;
+    this.#db.prepare('DELETE FROM undo_log WHERE seq = ?').run(row.seq);
+    return JSON.parse(row.json);
+  }
+
+  listUndo({ limit = 20 } = {}) {
+    if (!this.#db) return this.#memUndo.slice(-limit).reverse();
+    return this.#db.prepare('SELECT json FROM undo_log ORDER BY seq DESC LIMIT ?').all(limit)
+      .map((r) => JSON.parse(r.json));
   }
 
   listAudit({ limit = 100, offset = 0 } = {}) {

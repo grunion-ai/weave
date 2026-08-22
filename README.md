@@ -65,6 +65,9 @@ file on your disk. No accounts, no cloud, no telemetry.
 - **Agent-native** — an MCP server, a scriptable CLI, `Table#12` refs
   everywhere, and markdown documents addressable as plain URLs
   (`/e/Task#12/doc.md`, `.html`, `.pdf`).
+- **Undoable** — every entity mutation (edits, creates, deletes, links,
+  comments) can be stepped back with `weave undo`, `POST /api/undo`, or the
+  `weave_undo` MCP tool; agents get to make mistakes without making a mess.
 
 ## Quickstart
 

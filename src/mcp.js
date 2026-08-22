@@ -83,6 +83,11 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { table: { type: 'string' } } },
   },
   {
+    name: 'weave_undo',
+    description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting.',
+    inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' } } },
+  },
+  {
     name: 'weave_set_state',
     description: 'Move an entity to a workflow state (multistate field).',
     inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, state: { type: 'string' } }, required: ['entity', 'field', 'state'] },
@@ -204,6 +209,9 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.restoreEntity(resolveEntity(weave, args.entity));
     case 'weave_trash':
       return { items: weave.listTrash(args.table ?? null) };
+    case 'weave_undo':
+      if (args.list) return { history: weave.listUndo({ limit: Number(args.limit ?? 20) }) };
+      return weave.undo({ steps: Math.max(1, Number(args.steps ?? 1)) });
     case 'weave_set_state': {
       const id = resolveEntity(weave, args.entity);
       weave.setState(id, args.field, args.state);
