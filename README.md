@@ -340,6 +340,7 @@ README screenshots are regenerated with `node scripts/screenshots.mjs`.
 - [@tabler/core](https://github.com/tabler/tabler) 1.4.0 — MIT © Paweł Kuna & The Tabler Authors
 - [Vditor](https://github.com/Vanessa219/vditor) 3.11.3 (pruned: only the assets weave loads) — MIT © Vanessa219
 - [KaTeX](https://github.com/KaTeX/KaTeX) 0.16.47 (js + css + woff2 fonts + mhchem) — MIT © Khan Academy & contributors
+- [DejaVu Sans](https://dejavu-fonts.github.io/) 2.37 (`DejaVuSans.ttf`, PDF export Unicode fallback) — Bitstream Vera license © Bitstream, Inc.; DejaVu changes public domain; Arev glyphs © Tavmjong Bah (full text in `public/vendor/fonts/DejaVuSans-LICENSE.txt`)
 
 ## Security
 

@@ -1,7 +1,16 @@
 // Zero-dependency PDF generator: renders an entity's markdown document to a
-// valid, viewable PDF (US Letter). Uses the 14 standard PDF fonts, so no font
-// embedding is needed. Text is wrapped with real Helvetica AFM metrics.
+// valid, viewable PDF (US Letter). Pure-Latin text uses the 14 standard PDF
+// fonts (no embedding, real Helvetica AFM metrics). A line containing glyphs
+// outside WinAnsi (Cyrillic, Greek, arrows, box drawing, …) switches whole to
+// vendored DejaVu Sans, embedded as a CIDFontType2 with Identity-H encoding
+// and a ToUnicode CMap — so ASCII docs stay small and Unicode docs stay
+// copy/paste-able. DejaVu is monochrome: color emoji and anything else it
+// lacks a glyph for render as a visible □, never '?'.
 
+import { readFileSync } from 'node:fs';
+import { deflateSync } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { parseBlocks } from './markdown.js';
 
 // AFM widths (1/1000 em) for chars 32..126.
@@ -14,6 +23,132 @@ const FONTS = {
   F3: { base: 'Helvetica-Oblique', widths: HELV },
   F4: { base: 'Courier', widths: null }, // fixed 600
 };
+
+// --- Embedded Unicode fallback font (DejaVu Sans, vendored) ---------------
+// Minimal TTF reader: only the tables needed for CID embedding — cmap
+// (codepoint→gid), hmtx/hhea (advance widths), head (unitsPerEm, bbox),
+// maxp (glyph count), OS/2 (cap height). No libraries.
+
+const TTF_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'vendor', 'fonts', 'DejaVuSans.ttf');
+const MISSING_GLYPH_CP = 0x25a1; // □ — visible stand-in for glyphs the font lacks
+
+function parseTtf(buf) {
+  const tables = {};
+  const numTables = buf.readUInt16BE(4);
+  for (let i = 0; i < numTables; i++) {
+    const o = 12 + i * 16;
+    tables[buf.toString('ascii', o, o + 4)] = { off: buf.readUInt32BE(o + 8), len: buf.readUInt32BE(o + 12) };
+  }
+  for (const t of ['head', 'hhea', 'maxp', 'cmap', 'hmtx']) {
+    if (!tables[t]) throw new Error(`font missing required table: ${t}`);
+  }
+
+  const head = tables.head.off;
+  const unitsPerEm = buf.readUInt16BE(head + 18);
+  const scale = (v) => Math.round(v * 1000 / unitsPerEm);
+  const bbox = [buf.readInt16BE(head + 36), buf.readInt16BE(head + 38), buf.readInt16BE(head + 40), buf.readInt16BE(head + 42)].map(scale);
+
+  const hhea = tables.hhea.off;
+  const ascent = scale(buf.readInt16BE(hhea + 4));
+  const descent = scale(buf.readInt16BE(hhea + 6));
+  const numHMetrics = buf.readUInt16BE(hhea + 34);
+
+  const numGlyphs = buf.readUInt16BE(tables.maxp.off + 4);
+
+  let capHeight = ascent;
+  if (tables['OS/2'] && buf.readUInt16BE(tables['OS/2'].off) >= 2) {
+    capHeight = scale(buf.readInt16BE(tables['OS/2'].off + 88));
+  }
+
+  // cmap: prefer format 12 (full Unicode) then format 4 (BMP).
+  const cmap = tables.cmap.off;
+  let f4 = 0, f12 = 0;
+  const subCount = buf.readUInt16BE(cmap + 2);
+  for (let i = 0; i < subCount; i++) {
+    const o = cmap + 4 + i * 8;
+    const pid = buf.readUInt16BE(o), eid = buf.readUInt16BE(o + 2);
+    const sub = cmap + buf.readUInt32BE(o + 4);
+    const fmt = buf.readUInt16BE(sub);
+    if (fmt === 4 && (pid === 3 && eid === 1 || pid === 0)) f4 = sub;
+    if (fmt === 12 && (pid === 3 && eid === 10 || pid === 0)) f12 = sub;
+  }
+  if (!f4 && !f12) throw new Error('font has no usable Unicode cmap subtable');
+
+  const gidCache = new Map();
+  const gidFor = (cp) => {
+    if (gidCache.has(cp)) return gidCache.get(cp);
+    let gid = 0;
+    if (f12) {
+      let lo = 0, hi = buf.readUInt32BE(f12 + 12) - 1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const g = f12 + 16 + mid * 12;
+        const start = buf.readUInt32BE(g), end = buf.readUInt32BE(g + 4);
+        if (cp < start) hi = mid - 1;
+        else if (cp > end) lo = mid + 1;
+        else { gid = buf.readUInt32BE(g + 8) + (cp - start); break; }
+      }
+    }
+    if (!gid && f4 && cp <= 0xffff) {
+      const segCount = buf.readUInt16BE(f4 + 6) / 2;
+      const ends = f4 + 14, starts = ends + segCount * 2 + 2;
+      const deltas = starts + segCount * 2, ranges = deltas + segCount * 2;
+      for (let s = 0; s < segCount; s++) {
+        if (cp > buf.readUInt16BE(ends + s * 2)) continue;
+        const start = buf.readUInt16BE(starts + s * 2);
+        if (cp < start) break;
+        const rangeOff = buf.readUInt16BE(ranges + s * 2);
+        if (rangeOff === 0) {
+          gid = (cp + buf.readInt16BE(deltas + s * 2)) & 0xffff;
+        } else {
+          const g = buf.readUInt16BE(ranges + s * 2 + rangeOff + (cp - start) * 2);
+          gid = g === 0 ? 0 : (g + buf.readInt16BE(deltas + s * 2)) & 0xffff;
+        }
+        break;
+      }
+    }
+    gidCache.set(cp, gid);
+    return gid;
+  };
+
+  const hmtx = tables.hmtx.off;
+  const widthFor = (gid) => {
+    const i = Math.min(gid, numHMetrics - 1);
+    return scale(buf.readUInt16BE(hmtx + i * 4));
+  };
+
+  return { data: buf, unitsPerEm, bbox, ascent, descent, capHeight, numGlyphs, gidFor, widthFor };
+}
+
+let UNI = null;
+export function unicodeFont() {
+  if (!UNI) UNI = parseTtf(readFileSync(TTF_PATH));
+  return UNI;
+}
+
+// A string needs the embedded font when any codepoint has no WinAnsi byte.
+function needsUnicode(text) {
+  for (const ch of String(text)) {
+    const cp = ch.codePointAt(0);
+    if (cp > 255 && !WINANSI_EXTRA[cp]) return true;
+  }
+  return false;
+}
+
+// Identity-H text: hex string of glyph ids; records gid→codepoint for the
+// /W widths array and the ToUnicode CMap. Missing glyphs become □.
+function encodeUnicodeHex(text, used) {
+  const uni = unicodeFont();
+  let hex = '';
+  for (const ch of String(text)) {
+    let cp = ch.codePointAt(0);
+    let gid = uni.gidFor(cp);
+    if (!gid) { cp = MISSING_GLYPH_CP; gid = uni.gidFor(cp); }
+    if (!used.has(gid)) used.set(gid, cp);
+    hex += gid.toString(16).padStart(4, '0');
+  }
+  return hex;
+}
 
 const PAGE_W = 612; // US Letter
 const PAGE_H = 792;
@@ -28,6 +163,16 @@ function charWidth(font, code, size) {
 }
 
 function textWidth(font, text, size) {
+  if (needsUnicode(text)) {
+    // The whole line will render in DejaVu — measure it with DejaVu advances.
+    const uni = unicodeFont();
+    let w = 0;
+    for (const ch of String(text)) {
+      const gid = uni.gidFor(ch.codePointAt(0)) || uni.gidFor(MISSING_GLYPH_CP);
+      w += uni.widthFor(gid) * size / 1000;
+    }
+    return w;
+  }
   let w = 0;
   for (let i = 0; i < text.length; i++) w += charWidth(font, text.charCodeAt(i), size);
   return w;
@@ -85,7 +230,7 @@ function escapePdfText(text) {
     else if (code >= 32 && code <= 126) out += ch;
     else if (WINANSI_EXTRA[code]) out += '\\' + WINANSI_EXTRA[code].toString(8).padStart(3, '0');
     else if (code <= 255) out += '\\' + code.toString(8).padStart(3, '0');
-    else out += '?'; // no WinAnsi glyph
+    else out += '?'; // unreachable: non-WinAnsi text routes to the embedded font
   }
   return out;
 }
@@ -93,7 +238,19 @@ function escapePdfText(text) {
 class PdfBuilder {
   constructor() {
     this.pages = []; // arrays of content-stream ops
+    this.used = new Map(); // gid → codepoint, for the embedded font objects
     this.newPage();
+  }
+
+  // One text-showing op. Lines with non-WinAnsi glyphs switch whole to the
+  // embedded DejaVu font (/FU) — bold/italic runs in such lines render in
+  // DejaVu regular; simpler than per-run splitting and fine at body sizes.
+  tj(str, font, size, x, y, rg) {
+    const pos = `1 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)} Tm`;
+    if (needsUnicode(str)) {
+      return `BT ${rg}/FU ${size} Tf ${pos} <${encodeUnicodeHex(str, this.used)}> Tj ET`;
+    }
+    return `BT ${rg}/${font} ${size} Tf ${pos} (${escapePdfText(str)}) Tj ET`;
   }
 
   newPage() {
@@ -111,7 +268,7 @@ class PdfBuilder {
     this.ensure(lh);
     this.y -= lh;
     const rg = color ? `${color.join(' ')} rg ` : '0 0 0 rg ';
-    this.ops.push(`BT ${rg}/${font} ${size} Tf 1 0 0 1 ${x.toFixed(1)} ${this.y.toFixed(1)} Tm (${escapePdfText(str)}) Tj ET`);
+    this.ops.push(this.tj(str, font, size, x, this.y, rg));
   }
 
   paragraph(str, { font = 'F1', size = 11, indent = 0, color = null, gapAfter = 6 } = {}) {
@@ -214,7 +371,7 @@ export function markdownToPdf(markdown, { title = 'Document', subtitle = '' } = 
             let text = stripInline(cell ?? '');
             const maxW = widths[c] * scale - 6;
             while (text.length > 1 && textWidth(font, text, 9.5) > maxW) text = text.slice(0, -1);
-            b.ops.push(`BT 0 0 0 rg /${font} 9.5 Tf 1 0 0 1 ${x.toFixed(1)} ${b.y.toFixed(1)} Tm (${escapePdfText(text)}) Tj ET`);
+            b.ops.push(b.tj(text, font, 9.5, x, b.y, '0 0 0 rg '));
             x += widths[c] * scale;
           });
           if (ri === 0) {
@@ -228,10 +385,43 @@ export function markdownToPdf(markdown, { title = 'Document', subtitle = '' } = 
     }
   }
 
-  return assemble(b.pages);
+  return assemble(b.pages, b.used);
 }
 
-function assemble(pages) {
+// ToUnicode CMap stream body for the used gid→codepoint pairs.
+function toUnicodeCMap(used) {
+  const pairs = [...used.entries()].sort((a, b) => a[0] - b[0]);
+  const chunks = [];
+  for (let i = 0; i < pairs.length; i += 100) {
+    const slice = pairs.slice(i, i + 100);
+    const rows = slice.map(([gid, cp]) => {
+      // UTF-16BE units of the codepoint (surrogate pair above the BMP).
+      const s = String.fromCodePoint(cp);
+      let units = '';
+      for (let j = 0; j < s.length; j++) units += s.charCodeAt(j).toString(16).padStart(4, '0');
+      return `<${gid.toString(16).padStart(4, '0')}> <${units}>`;
+    });
+    chunks.push(`${slice.length} beginbfchar\n${rows.join('\n')}\nendbfchar`);
+  }
+  return [
+    '/CIDInit /ProcSet findresource begin',
+    '12 dict begin',
+    'begincmap',
+    '/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def',
+    '/CMapName /Adobe-Identity-UCS def',
+    '/CMapType 2 def',
+    '1 begincodespacerange',
+    '<0000> <ffff>',
+    'endcodespacerange',
+    chunks.join('\n'),
+    'endcmap',
+    'CMapName currentdict /CMap defineresource pop',
+    'end',
+    'end',
+  ].join('\n');
+}
+
+function assemble(pages, used = new Map()) {
   const objects = []; // 1-indexed strings (without "N 0 obj" wrapper)
   const addObj = (body) => objects.push(body) && objects.length;
 
@@ -239,7 +429,22 @@ function assemble(pages) {
   for (const [key, font] of Object.entries(FONTS)) {
     fontIds[key] = addObj(`<< /Type /Font /Subtype /Type1 /BaseFont /${font.base} /Encoding /WinAnsiEncoding >>`);
   }
-  const fontRes = Object.entries(fontIds).map(([k, id]) => `/${k} ${id} 0 R`).join(' ');
+  let fontRes = Object.entries(fontIds).map(([k, id]) => `/${k} ${id} 0 R`).join(' ');
+
+  if (used.size) {
+    // Embed the whole vendored TTF (no subsetting — ~750KB, flate-compressed)
+    // as a Type0/CIDFontType2 with Identity-H, only when a doc needed it.
+    const uni = unicodeFont();
+    const fontData = deflateSync(uni.data).toString('latin1');
+    const fileId = addObj(`<< /Length ${fontData.length} /Filter /FlateDecode /Length1 ${uni.data.length} >>\nstream\n${fontData}\nendstream`);
+    const descId = addObj(`<< /Type /FontDescriptor /FontName /DejaVuSans /Flags 32 /FontBBox [${uni.bbox.join(' ')}] /ItalicAngle 0 /Ascent ${uni.ascent} /Descent ${uni.descent} /CapHeight ${uni.capHeight} /StemV 80 /FontFile2 ${fileId} 0 R >>`);
+    const wArr = [...used.keys()].sort((a, b) => a - b).map((gid) => `${gid} [${uni.widthFor(gid)}]`).join(' ');
+    const cidId = addObj(`<< /Type /Font /Subtype /CIDFontType2 /BaseFont /DejaVuSans /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ${descId} 0 R /DW 600 /W [${wArr}] /CIDToGIDMap /Identity >>`);
+    const cmapStream = toUnicodeCMap(used);
+    const tuId = addObj(`<< /Length ${Buffer.byteLength(cmapStream, 'latin1')} >>\nstream\n${cmapStream}\nendstream`);
+    const type0Id = addObj(`<< /Type /Font /Subtype /Type0 /BaseFont /DejaVuSans /Encoding /Identity-H /DescendantFonts [${cidId} 0 R] /ToUnicode ${tuId} 0 R >>`);
+    fontRes += ` /FU ${type0Id} 0 R`;
+  }
 
   const pageIds = [];
   const pagesId = objects.length + pages.length * 2 + 1; // reserved: content+page per page, then Pages
