@@ -1048,3 +1048,18 @@ test('every selector speaks the one dialect: search bar first, list under it', (
   const list = rulesFor('.picker-list');
   assert.ok(list['max-height'], 'the list is small and scrolls');
 });
+
+test('multi pickers edit in place: selections listed with ×, saved on Enter', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const picker = app.slice(app.indexOf('function searchPicker('), app.indexOf('function pickerSelect('));
+  assert.ok(picker.includes('multi'), 'the dialect has a multi mode');
+  assert.ok(picker.includes('drawChosen'), 'current selections render inside the picker');
+  assert.ok(picker.includes("'Remove'"), 'each selection carries its ×');
+  assert.ok(picker.includes('await commit()'), 'Enter on an empty search saves');
+  assert.ok(picker.includes('if (multi && pop.isConnected) { commit('), 'outside click saves, never discards');
+  // Multiselect cells and both relation-link surfaces stage through it.
+  assert.ok(app.includes('function chipPickerMulti('));
+  const links = [...app.matchAll(/multi: \{\s*\n\s*selected:/g)];
+  assert.ok(links.length >= 2, `both link surfaces edit through multi (saw ${links.length})`);
+  assert.ok(app.includes('unlink'), 'removals commit as unlinks');
+});

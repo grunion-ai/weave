@@ -606,13 +606,27 @@ function restoreGridFocus() {
    with the cursor already in a search bar, a small scrollable list under it,
    ↑↓ to move, Enter to pick, Esc to close. Anchored to its trigger when it
    has one, centered otherwise. */
-function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick }) {
+function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null }) {
+  // multi: { selected: [{id, label, cls?}], onCommit(ids) } — the picker
+  // becomes the editor: current picks listed with an ×, additions staged from
+  // the list, and Enter on an empty search saves the lot (Kyle, 2026-08-22).
   document.querySelector('.chip-pop')?.remove();
   const input = el('input', { class: 'picker-search', placeholder, type: 'text' });
   const list = el('div', { class: 'picker-list' });
+  const chosen = el('div', { class: 'picker-chosen' });
+  const staged = multi ? new Map(multi.selected.map((x) => [x.id, x])) : null;
+  const byId = new Map(options.map((o) => [o.id, o]));
+  const drawChosen = () => {
+    if (!multi) return;
+    chosen.replaceChildren(...[...staged.values()].map((x) => el('span', { class: `chip ${x.cls ?? ''}` }, x.label,
+      el('span', { class: 'x', title: 'Remove', onclick: (ev) => { ev.stopPropagation(); staged.delete(x.id); drawChosen(); draw(); input.focus(); } }, '×'))));
+    if (!staged.size) chosen.append(el('span', { class: 'picker-empty' }, 'Nothing selected yet'));
+  };
   const pop = el('div', { class: 'chip-pop picker-pop' },
     title ? el('div', { class: 'picker-title' }, title) : null,
+    multi ? chosen : null,
     input, list);
+  const commit = async () => { pop.remove(); await multi.onCommit([...staged.keys()]); };
   let active = -1;
   let visible = [];
   const draw = () => {
@@ -620,11 +634,19 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     visible = options.filter((o) => !q || `${o.label} ${o.hint ?? ''}`.toLowerCase().includes(q));
     list.replaceChildren(...visible.map((o, i) => el('button', {
       class: 'chip-pop-row picker-row' + (i === active ? ' active' : ''), type: 'button',
-      onclick: async () => { pop.remove(); await onPick(o); },
+      onclick: async () => {
+        if (multi) {
+          staged.has(o.id) ? staged.delete(o.id) : staged.set(o.id, o);
+          drawChosen(); draw(); input.focus();
+          return;
+        }
+        pop.remove();
+        await onPick(o);
+      },
     },
       o.chip ? el('span', { class: `chip ${o.cls ?? ''}` }, o.label) : el('span', { class: 'picker-label' }, o.label),
       o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
-      o.id === currentId ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
+      (multi ? staged.has(o.id) : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
     if (!visible.length) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
   };
   input.addEventListener('input', () => { active = -1; draw(); });
@@ -633,6 +655,19 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     else if (ev.key === 'ArrowUp') { ev.preventDefault(); active = Math.max(active - 1, 0); draw(); }
     else if (ev.key === 'Enter') {
       ev.preventDefault();
+      if (multi) {
+        // Enter with a match toggles it; Enter on an empty search SAVES.
+        const pick = visible[active] ?? (input.value.trim() ? visible[0] : null);
+        if (pick) {
+          staged.has(pick.id) ? staged.delete(pick.id) : staged.set(pick.id, pick);
+          input.value = '';
+          active = -1;
+          drawChosen(); draw();
+        } else {
+          await commit();
+        }
+        return;
+      }
       const pick = visible[active] ?? visible[0];
       if (pick) { pop.remove(); await onPick(pick); }
     } else if (ev.key === 'Escape') { ev.preventDefault(); pop.remove(); anchor?.focus?.(); }
@@ -645,10 +680,16 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   } else {
     pop.classList.add('picker-centered');
   }
-  const close = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); removeEventListener('click', close, true); } };
+  const close = (ev) => {
+    if (pop.contains(ev.target)) return;
+    removeEventListener('click', close, true);
+    if (multi && pop.isConnected) { commit(); return; }
+    pop.remove();
+  };
   addEventListener('click', close, true);
   // The mandate: the cursor is already in the search bar.
   input.focus();
+  drawChosen();
   const cur = options.findIndex((o) => o.id === currentId);
   if (cur >= 0) { active = cur; }
   draw();
@@ -691,6 +732,22 @@ function chipPicker({ trigger, options, current, onPick }) {
       options: options.map((o) => ({ id: o.name, label: o.name, cls: o.cls, chip: true })),
       currentId: current,
       onPick: async (o) => { if (o.id !== current) await onPick(o.id); },
+    });
+  });
+  return trigger;
+}
+
+function chipPickerMulti({ trigger, options, selected, onCommit }) {
+  trigger.classList.add('chip-trigger');
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const cell = trigger.closest('td');
+    state.refocus = cell
+      ? { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell) }
+      : null;
+    searchPicker({
+      anchor: trigger, options,
+      multi: { selected, onCommit },
     });
   });
   return trigger;
@@ -829,24 +886,16 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     });
   }
   if (f.type === 'multiselect') {
-    const box = el('span', { class: 'ms-box' });
     const current = Array.isArray(val) ? val : [];
-    for (const v of current) {
-      box.append(el('span', { class: 'chip' }, v, el('span', {
-        class: 'x', onclick: () => patch(current.filter((x) => x !== v)),
-      }, '×')), ' ');
-    }
-    const remaining = f.options.filter((o) => !current.includes(o));
-    if (remaining.length) {
-      const add = el('button', { class: 'chip chip-add', type: 'button', title: 'Add an option' }, '+');
-      chipPicker({
-        trigger: add,
-        options: remaining.map((o) => ({ name: o })),
-        current: null,
-        onPick: (name) => patch([...current, name]),
-      });
-      box.append(add);
-    }
+    const box = el('span', { class: 'ms-box', title: 'Edit selections' });
+    for (const v of current) box.append(el('span', { class: 'chip' }, v), ' ');
+    if (!current.length) box.append(el('span', { class: 'chip chip-add' }, '+'));
+    chipPickerMulti({
+      trigger: box,
+      options: f.options.map((o) => ({ id: o, label: o, chip: true })),
+      selected: current.map((v) => ({ id: v, label: v })),
+      onCommit: (ids) => patch(ids),
+    });
     return box;
   }
   if (f.type === 'checkbox') {
@@ -873,17 +922,23 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     box.append(el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny',
       onclick: async (e2) => {
+        const btn = e2?.currentTarget ?? null;
         const target = allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb);
         const list = await api('POST', `/tables/${target.id}/query`, { select: ['Name'] });
-        const linked = new Set(current.map((s) => s.id));
-        const options = list.items.filter((i) => !linked.has(i.id));
-        if (!options.length) return toast('Nothing left to link');
+        const before = current.map((sm) => sm.id);
         searchPicker({
-          anchor: e2?.currentTarget ?? null, title: `Link ${f.name}`, placeholder: 'Search records…',
-          options: options.map((o) => ({ id: o.id, label: o.name || '(unnamed)', hint: `#${o.publicId}` })),
-          onPick: async (o) => {
-            await api('POST', `/entities/${id}/link`, { field: f.name, targets: [o.id] });
-            await saved();
+          anchor: btn, title: `${f.name}`, placeholder: 'Search records…',
+          options: list.items.map((o) => ({ id: o.id, label: o.name || '(unnamed)', hint: `#${o.publicId}` })),
+          multi: {
+            selected: current.map((sm) => ({ id: sm.id, label: sm.name || '(unnamed)' })),
+            onCommit: async (ids) => {
+              const add = ids.filter((x) => !before.includes(x));
+              const drop = before.filter((x) => !ids.includes(x));
+              if (!add.length && !drop.length) return;
+              if (add.length) await api('POST', `/entities/${id}/link`, { field: f.name, targets: add });
+              if (drop.length) await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: drop });
+              await saved();
+            },
           },
         });
       },
@@ -2936,17 +2991,22 @@ async function relatedGrid(entity, f, onSaved) {
         }, `+ New ${target.name}`),
         el('button', {
           class: 'add-entity-btn', type: 'button',
-          onclick: async () => {
+          onclick: async (e2) => {
             const list = await api('POST', `/tables/${target.id}/query`, { select: ['Name'] });
-            const already = new Set(linked.map((s) => s.id));
-            const options = list.items.filter((i) => !already.has(i.id));
-            if (!options.length) return toast('Nothing left to link');
+            const before = linked.map((sm) => sm.id);
             searchPicker({
-              anchor: null, title: `Link ${f.name}`, placeholder: 'Search records…',
-              options: options.map((o) => ({ id: o.id, label: o.name || '(unnamed)', hint: `#${o.publicId}` })),
-              onPick: async (o) => {
-                await api('POST', `/entities/${item.id}/link`, { field: f.name, targets: [o.id] });
-                await onSaved();
+              anchor: e2?.currentTarget ?? null, title: `${f.name}`, placeholder: 'Search records…',
+              options: list.items.map((o) => ({ id: o.id, label: o.name || '(unnamed)', hint: `#${o.publicId}` })),
+              multi: {
+                selected: linked.map((sm) => ({ id: sm.id, label: sm.name || '(unnamed)' })),
+                onCommit: async (ids) => {
+                  const add = ids.filter((x) => !before.includes(x));
+                  const drop = before.filter((x) => !ids.includes(x));
+                  if (!add.length && !drop.length) return;
+                  if (add.length) await api('POST', `/entities/${item.id}/link`, { field: f.name, targets: add });
+                  if (drop.length) await api('POST', `/entities/${item.id}/unlink`, { field: f.name, targets: drop });
+                  await onSaved();
+                },
               },
             });
           },
