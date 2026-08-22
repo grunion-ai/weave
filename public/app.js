@@ -599,16 +599,99 @@ function restoreGridFocus() {
   });
 }
 
+
+/* ---------- the one selection dialect (Kyle, 2026-08-22) ----------
+   Everything that picks from a list — workflow states, select options, field
+   types, relation targets, formats — opens the SAME surface: a compact panel
+   with the cursor already in a search bar, a small scrollable list under it,
+   ↑↓ to move, Enter to pick, Esc to close. Anchored to its trigger when it
+   has one, centered otherwise. */
+function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick }) {
+  document.querySelector('.chip-pop')?.remove();
+  const input = el('input', { class: 'picker-search', placeholder, type: 'text' });
+  const list = el('div', { class: 'picker-list' });
+  const pop = el('div', { class: 'chip-pop picker-pop' },
+    title ? el('div', { class: 'picker-title' }, title) : null,
+    input, list);
+  let active = -1;
+  let visible = [];
+  const draw = () => {
+    const q = input.value.trim().toLowerCase();
+    visible = options.filter((o) => !q || `${o.label} ${o.hint ?? ''}`.toLowerCase().includes(q));
+    list.replaceChildren(...visible.map((o, i) => el('button', {
+      class: 'chip-pop-row picker-row' + (i === active ? ' active' : ''), type: 'button',
+      onclick: async () => { pop.remove(); await onPick(o); },
+    },
+      o.chip ? el('span', { class: `chip ${o.cls ?? ''}` }, o.label) : el('span', { class: 'picker-label' }, o.label),
+      o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
+      o.id === currentId ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
+    if (!visible.length) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
+  };
+  input.addEventListener('input', () => { active = -1; draw(); });
+  input.addEventListener('keydown', async (ev) => {
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); active = Math.min(active + 1, visible.length - 1); draw(); }
+    else if (ev.key === 'ArrowUp') { ev.preventDefault(); active = Math.max(active - 1, 0); draw(); }
+    else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      const pick = visible[active] ?? visible[0];
+      if (pick) { pop.remove(); await onPick(pick); }
+    } else if (ev.key === 'Escape') { ev.preventDefault(); pop.remove(); anchor?.focus?.(); }
+  });
+  document.body.append(pop);
+  if (anchor?.getBoundingClientRect) {
+    const r = anchor.getBoundingClientRect();
+    pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
+    pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? Math.max(8, r.top - pop.offsetHeight - 4) : r.bottom + 4) + 'px';
+  } else {
+    pop.classList.add('picker-centered');
+  }
+  const close = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); removeEventListener('click', close, true); } };
+  addEventListener('click', close, true);
+  // The mandate: the cursor is already in the search bar.
+  input.focus();
+  const cur = options.findIndex((o) => o.id === currentId);
+  if (cur >= 0) { active = cur; }
+  draw();
+  return pop;
+}
+
+/* The same dialect as a FORM control: looks like a select, opens the picker,
+   carries its value in a hidden input so FormData and change listeners keep
+   working. Returns the wrapper; `.input` is the hidden input to read/listen. */
+function pickerSelect({ name, options, value = null, placeholder = 'Choose…', title = '' }) {
+  const input = el('input', { type: 'hidden', name, value: value ?? '' });
+  const face = el('button', { class: 'form-select picker-face', type: 'button' },
+    options.find((o) => o.id === value)?.label ?? placeholder);
+  face.addEventListener('click', (e) => {
+    e.stopPropagation();
+    searchPicker({
+      anchor: face, title, options, currentId: input.value || null,
+      onPick: (o) => {
+        input.value = o.id;
+        face.textContent = o.label;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      },
+    });
+  });
+  const wrap = el('span', { class: 'picker-wrap' }, input, face);
+  wrap.input = input;
+  return wrap;
+}
+
 function chipPicker({ trigger, options, current, onPick }) {
   trigger.classList.add('chip-trigger');
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
-    const pop = showPopover(trigger, options.map((o) => el('button', {
-      class: 'chip-pop-row', type: 'button',
-      onclick: async () => { pop.remove(); if (o.name !== current) await onPick(o.name); },
-    },
-      el('span', { class: `chip ${o.cls ?? ''}` }, o.name),
-      o.name === current ? el('span', { class: 'chip-pop-check' }, '✓') : '')));
+    const cell = trigger.closest('td');
+    state.refocus = cell
+      ? { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell) }
+      : null;
+    searchPicker({
+      anchor: trigger,
+      options: options.map((o) => ({ id: o.name, label: o.name, cls: o.cls, chip: true })),
+      currentId: current,
+      onPick: async (o) => { if (o.id !== current) await onPick(o.id); },
+    });
   });
   return trigger;
 }
@@ -755,9 +838,14 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     }
     const remaining = f.options.filter((o) => !current.includes(o));
     if (remaining.length) {
-      const sel = el('select', { class: 'form-select form-select-sm inline-edit ghost-select', onchange: (e) => e.target.value && patch([...current, e.target.value]) },
-        el('option', { value: '' }, '+'), ...remaining.map((o) => el('option', {}, o)));
-      box.append(sel);
+      const add = el('button', { class: 'chip chip-add', type: 'button', title: 'Add an option' }, '+');
+      chipPicker({
+        trigger: add,
+        options: remaining.map((o) => ({ name: o })),
+        current: null,
+        onPick: (name) => patch([...current, name]),
+      });
+      box.append(add);
     }
     return box;
   }
@@ -784,19 +872,20 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     }
     box.append(el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny',
-      onclick: async () => {
+      onclick: async (e2) => {
         const target = allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb);
         const list = await api('POST', `/tables/${target.id}/query`, { select: ['Name'] });
         const linked = new Set(current.map((s) => s.id));
         const options = list.items.filter((i) => !linked.has(i.id));
         if (!options.length) return toast('Nothing left to link');
-        modal(`Link ${f.name}`, [
-          el('select', { name: 'target', class: 'form-select full', style: 'width:100%' },
-            ...options.map((o) => el('option', { value: o.id }, `#${o.publicId} ${o.name}`))),
-        ], async (fd) => {
-          await api('POST', `/entities/${id}/link`, { field: f.name, targets: [fd.get('target')] });
-          await saved();
-        }, 'Link');
+        searchPicker({
+          anchor: e2?.currentTarget ?? null, title: `Link ${f.name}`, placeholder: 'Search records…',
+          options: options.map((o) => ({ id: o.id, label: o.name || '(unnamed)', hint: `#${o.publicId}` })),
+          onPick: async (o) => {
+            await api('POST', `/entities/${id}/link`, { field: f.name, targets: [o.id] });
+            await saved();
+          },
+        });
       },
     }, '+ link'));
     return box;
@@ -825,8 +914,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     chip.style.cursor = 'pointer';
     chip.onclick = () => {
       const types = f.types ?? [];
-      const typeSel = el('select', { name: 'type', class: 'form-select form-select-sm' },
-        ...types.map((t) => el('option', { value: t, selected: def?.type === t ? '' : undefined }, t)));
+      const typeSel = pickerSelect({ name: 'type', title: 'Field type', options: types.map((t) => ({ id: t, label: t })), value: def?.type ?? types[0] });
       const cfgArea = el('textarea', {
         name: 'config', class: 'form-control', rows: 6, spellcheck: 'false',
         placeholder: '{} — config as JSON (options, states, depth…)',
@@ -1527,9 +1615,7 @@ function editFieldDialog(db, f) {
       placeholder: 'States: Open:not-started, Doing:in-progress, Done:done',
     }));
   } else if (f.type === 'number') {
-    fields.push(el('select', { name: 'format', class: 'form-select full' },
-      ...['number', 'currency', 'percent'].map((o) =>
-        el('option', { value: o, selected: (f.format ?? 'number') === o ? '' : undefined }, o))));
+    fields.push(pickerSelect({ name: 'format', title: 'Format', options: ['number', 'currency', 'percent'].map((o) => ({ id: o, label: o })), value: f.format ?? 'number' }));
     fields.push(el('input', { name: 'unit', class: 'form-control full', value: f.unit ?? '', placeholder: 'Unit (days, kg, $ …)' }));
     fields.push(el('input', { name: 'decimals', type: 'number', min: 0, max: 6, class: 'form-control full', value: f.decimals ?? '', placeholder: 'Decimal places (auto)' }));
     fields.push(el('label', { class: 'form-check', style: 'margin:4px 0 0' },
@@ -2701,12 +2787,14 @@ function openSchemaEditor(db) {
 }
 
 function addFieldDialog(db) {
-  const typeSel = el('select', { name: 'type', class: 'form-select full', style: 'width:100%' },
-    ...['text', 'number', 'date', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'document', 'lookup', 'rollup', 'formula']
-      .map((t) => el('option', {}, t)));
+  const typeSel = pickerSelect({
+    name: 'type', title: 'Field type', value: 'text',
+    options: ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'document', 'key', 'attachments', 'lookup', 'rollup', 'formula']
+      .map((t) => ({ id: t, label: t })),
+  });
   const extra = el('div', { class: 'full' });
   const drawExtra = () => {
-    const t = typeSel.value;
+    const t = typeSel.input.value;
     extra.replaceChildren();
     if (t === 'select' || t === 'multiselect') {
       extra.append(el('input', { name: 'options', class: 'form-control', placeholder: 'Options (comma-separated)', style: 'width:100%' }));
@@ -2715,11 +2803,10 @@ function addFieldDialog(db) {
     } else if (t === 'lookup' || t === 'rollup') {
       const rels = db.fields.filter((f) => f.type === 'relation');
       extra.append(
-        el('select', { name: 'relationField', class: 'form-select', style: 'width:100%' }, ...rels.map((r) => el('option', {}, r.name))),
+        pickerSelect({ name: 'relationField', title: 'Relation', options: rels.map((r) => ({ id: r.name, label: r.name })), value: rels[0]?.name ?? null }),
         el('input', { name: 'targetField', class: 'form-control', placeholder: 'Target field name', style: 'width:100%; margin-top:6px' }));
       if (t === 'rollup') {
-        extra.append(el('select', { name: 'aggregate', class: 'form-select', style: 'width:100%; margin-top:6px' },
-          ...['count', 'sum', 'avg', 'min', 'max', 'join'].map((a) => el('option', {}, a))));
+        extra.append(pickerSelect({ name: 'aggregate', title: 'Aggregate', options: ['count', 'sum', 'avg', 'min', 'max', 'join'].map((a) => ({ id: a, label: a })), value: 'count' }));
       }
     } else if (t === 'formula') {
       extra.append(el('input', { name: 'expression', class: 'form-control', placeholder: 'e.g. if(Estimate > 5, "big", "small")', style: 'width:100%' }));
@@ -2732,7 +2819,7 @@ function addFieldDialog(db) {
       extra.append(dflt);
     }
   };
-  typeSel.addEventListener('change', drawExtra);
+  typeSel.input.addEventListener('change', drawExtra);
   drawExtra();
   modal('Add field', [
     el('input', { name: 'name', placeholder: 'Field name', class: 'form-control full', style: 'width:100%' }),
@@ -2765,10 +2852,8 @@ function addFieldDialog(db) {
 function addRelationDialog(db) {
   modal('Add relation', [
     el('input', { name: 'name', placeholder: 'Field name (e.g. Project)', class: 'form-control full', style: 'width:100%' }),
-    el('select', { name: 'targetDb', class: 'form-select full', style: 'width:100%' },
-      ...allTables().map((d) => el('option', { value: d.id }, d.qualified))),
-    el('select', { name: 'cardinality', class: 'form-select full', style: 'width:100%' },
-      ...['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'].map((c) => el('option', {}, c))),
+    pickerSelect({ name: 'targetDb', title: 'Target table', placeholder: 'Choose a table…', options: allTables().map((d) => ({ id: d.id, label: d.qualified })), value: allTables()[0]?.id ?? null }),
+    pickerSelect({ name: 'cardinality', title: 'Cardinality', value: 'many-to-one', options: ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'].map((c) => ({ id: c, label: c })) }),
     el('input', { name: 'inverseName', placeholder: 'Inverse field name (optional)', class: 'form-control full', style: 'width:100%' }),
   ], async (fd) => {
     await api('POST', `/tables/${db.id}/relations`, {
@@ -2856,10 +2941,14 @@ async function relatedGrid(entity, f, onSaved) {
             const already = new Set(linked.map((s) => s.id));
             const options = list.items.filter((i) => !already.has(i.id));
             if (!options.length) return toast('Nothing left to link');
-            modal(`Link ${f.name}`, [
-              el('select', { name: 'target', class: 'form-select full', style: 'width:100%' },
-                ...options.map((o) => el('option', { value: o.id }, `#${o.publicId} ${o.name}`))),
-            ], async (fd) => link([fd.get('target')]), 'Link');
+            searchPicker({
+              anchor: null, title: `Link ${f.name}`, placeholder: 'Search records…',
+              options: options.map((o) => ({ id: o.id, label: o.name || '(unnamed)', hint: `#${o.publicId}` })),
+              onPick: async (o) => {
+                await api('POST', `/entities/${item.id}/link`, { field: f.name, targets: [o.id] });
+                await onSaved();
+              },
+            });
           },
         }, '+ Link existing'))));
 

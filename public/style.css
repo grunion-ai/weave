@@ -632,3 +632,17 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .fsv-frame { flex: 1; border: 0; width: 100%; background: #fff; }
 .fsv-body { flex: 1; }
 .mmd-tools { display: block; text-align: right; margin-bottom: -26px; position: relative; z-index: 2; }
+/* ---------- the one selection dialect ---------- */
+.picker-pop { padding: 6px; min-width: 220px; }
+.picker-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); padding: 2px 4px 6px; }
+.picker-search { width: 100%; border: 1px solid var(--tblr-border-color); border-radius: 5px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 13px; padding: 5px 8px; margin-bottom: 6px; outline: none; }
+.picker-search:focus { border-color: var(--tblr-primary); }
+.picker-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
+.picker-row { display: flex; align-items: center; gap: 8px; }
+.picker-row.active { background: rgba(var(--tblr-primary-rgb), .10); border-radius: 5px; }
+.picker-hint { color: var(--tblr-secondary); font-size: 11.5px; margin-left: auto; }
+.picker-empty { color: var(--tblr-secondary); font-size: 12.5px; padding: 8px 6px; }
+.picker-face { text-align: left; cursor: pointer; width: 100%; }
+.picker-wrap { display: block; width: 100%; }
+.picker-centered { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); min-width: 320px; }
+.chip-add { cursor: pointer; border: 1px dashed var(--tblr-border-color); background: none; color: var(--tblr-secondary); }

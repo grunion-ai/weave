@@ -1029,3 +1029,22 @@ test('docs go fullscreen and diagrams become whiteboards (Features #47, #46)', (
   assert.ok(app.includes("src = '/vendor/cytoscape.min.js'"), 'cytoscape is lazy — 434KB only when a whiteboard opens');
   assert.ok(app.includes('pre.dataset.mmd'), 'the mermaid source survives its own rendering');
 });
+
+test('every selector speaks the one dialect: search bar first, list under it', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  assert.ok(app.includes('function searchPicker('), 'the dialect exists');
+  assert.ok(app.includes('function pickerSelect('), 'and its form-control face');
+  // The mandate: the cursor is already in the search bar.
+  const picker = app.slice(app.indexOf('function searchPicker('), app.indexOf('function pickerSelect('));
+  assert.ok(picker.includes('input.focus()'), 'the search bar takes focus on open');
+  assert.ok(picker.includes("key === 'ArrowDown'") && picker.includes("key === 'Enter'"), 'arrows move, Enter picks');
+  // No native <select> may remain anywhere in the app.
+  assert.equal((app.match(/el\('select'/g) ?? []).length, 0, 'native selects are gone — everything routes through the picker');
+  // Chip cells route through the same dialect.
+  const chips = app.slice(app.indexOf('function chipPicker('), app.indexOf('const PICKER_FIELD_TYPES'));
+  assert.ok(chips.includes('searchPicker('), 'workflow/select chips open the dialect too');
+  const search = rulesFor('.picker-search');
+  assert.equal(search['width'], '100%');
+  const list = rulesFor('.picker-list');
+  assert.ok(list['max-height'], 'the list is small and scrolls');
+});
