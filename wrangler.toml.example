@@ -1,0 +1,27 @@
+# Template for Feature #84 (Cloudflare-hosted private instance).
+# Copy to wrangler.toml and fill in your own values — the real file is
+# gitignored on purpose: account ids, routes, and binding names stay private.
+name = "weave"
+main = "src/worker.js"
+compatibility_date = "2026-08-01"
+
+# One Durable Object per workspace, SQLite-backed.
+[[durable_objects.bindings]]
+name = "WORKSPACE"
+class_name = "WeaveWorkspace"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WeaveWorkspace"]
+
+# Attachments (files/) live in R2 on the hosted instance.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "<your-bucket>"
+
+# Vendored UI assets are served as Static Assets, not bundled.
+[assets]
+directory = "./public"
+
+# Route / custom domain: keep the real hostname out of the committed template.
+# routes = [{ pattern = "<your-host>", custom_domain = true }]
