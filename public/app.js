@@ -121,6 +121,32 @@ function openEntity(id) { location.hash = `#/entity/${id}`; }
    A row opens here first: the entity's fields, editable, in a slide-over —
    the page stays where it is. The breadcrumb # and 'Open' go to the full
    page. One panel at a time; Esc or the backdrop closes it. */
+
+/* ---------- share QR (Feature #50, ha.mr-inspired) ----------
+   A share link's natural destination is a phone. lean-qr (the generator
+   ha.mr credits) is vendored as an ES module; drawing on a canvas keeps the
+   page self-contained. ha.mr's URL compression half is not needed — weave
+   has a server, and the wvv_ token IS the short link. */
+function qrCanvas(text, scale = 5) {
+  const code = window.leanQR?.generate?.(text);
+  if (!code) return null;
+  const canvas = el('canvas', { class: 'share-qr' });
+  const quiet = 4;
+  const px = (code.size + quiet * 2) * scale;
+  canvas.width = px;
+  canvas.height = px;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, px, px);
+  ctx.fillStyle = '#000';
+  for (let y = 0; y < code.size; y++) {
+    for (let x = 0; x < code.size; x++) {
+      if (code.get(x, y)) ctx.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale);
+    }
+  }
+  return canvas;
+}
+
 function peekEntity(id) {
   document.querySelector('#peek-back')?.remove();
   const back = el('div', { id: 'peek-back', onclick: (e) => { if (e.target === back) back.remove(); } });
@@ -2820,8 +2846,15 @@ async function showView(id) {
       class: 'btn btn-sm', onclick: async () => {
         if (meta?.shared) { await api('DELETE', `/views/${id}/share`); toast('Share link revoked'); return showView(id); }
         const { url } = await api('POST', `/views/${id}/share`);
-        await navigator.clipboard?.writeText(location.origin + WS_PREFIX + url).catch(() => {});
-        toast('Share link copied');
+        const full = location.origin + WS_PREFIX + url;
+        await navigator.clipboard?.writeText(full).catch(() => {});
+        const qr = qrCanvas(full);
+        modal('Share link', [
+          el('div', { class: 'share-box' },
+            qr ?? el('span', {}, ''),
+            el('code', { class: 'share-url' }, full),
+            el('span', { class: 'share-hint' }, 'Copied to the clipboard — or scan it. Anyone with this link sees this view, read-only, until you revoke it.')),
+        ], async () => {}, 'Done');
         showView(id);
       },
     }, meta?.shared ? 'Revoke share' : 'Share…'),
@@ -3090,11 +3123,45 @@ async function withPageLoader(work) {
 
 /* ---------- boot ---------- */
 
+
+/* ---------- skeleton loading (Feature #49, boneyard-inspired) ----------
+   The route paints a skeleton of the REAL destination the instant navigation
+   starts — grid rows at grid rhythm, an entity page's two columns — so the
+   wait looks like the thing being waited for (0xGF/boneyard's idea; the
+   library itself is framework+build-time and cannot ride a vanilla no-build
+   UI). The route's own render replaces it; the rope overlay still covers
+   loads long enough to earn animation. */
+function paintSkeleton(kind) {
+  const main = $('#main');
+  if (!main) return;
+  const line = (w, h = 12) => el('div', { class: 'sk sk-line', style: `width:${w};height:${h}px` });
+  const bar = () => el('div', { class: 'sk-row' }, line('28px'), line('34%', 14), line('12%'), line('10%'), line('8%'));
+  if (kind === 'db') {
+    main.replaceChildren(
+      el('div', { class: 'sk-toolbar' }, line('180px', 22), line('120px', 22)),
+      el('div', { class: 'card panel sk-card' },
+        el('div', { class: 'sk-row sk-head' }, line('30px'), line('20%', 13), line('14%', 13), line('12%', 13), line('10%', 13)),
+        ...Array.from({ length: 8 }, bar)));
+  } else if (kind === 'entity') {
+    main.replaceChildren(el('div', { class: 'sk-entity' },
+      el('div', { class: 'sk-main' }, line('40%', 22), el('div', { class: 'sk sk-block' }), el('div', { class: 'sk sk-block short' })),
+      el('div', { class: 'sk-side' }, line('30%', 13),
+        ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row' }, line('30%'), line('50%'))))));
+  } else {
+    main.replaceChildren(
+      el('div', { class: 'sk-toolbar' }, line('220px', 22)),
+      el('div', { class: 'card list-rows sk-card' },
+        ...Array.from({ length: 5 }, () => el('div', { class: 'sk-row sk-listrow' }, line('30%'), line('10%')))));
+  }
+}
+
 function renderRoute() {
   // Every render replaces #main, which would strand live document editors and
   // whatever they have not written yet. Flush and destroy before the DOM goes.
   teardownDocEditors();
   const hash = location.hash || '#/';
+  // The skeleton of where we're going, painted before we go (Feature #49).
+  paintSkeleton(/^#\/(?:table|db)\//.test(hash) ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list');
   let m;
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
   if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)/))) return showDatabase(m[1]);

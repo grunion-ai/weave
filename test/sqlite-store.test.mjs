@@ -242,3 +242,28 @@ test('in-memory engine (no path) still works with no sqlite side effects', () =>
   w.attachFile(e.id, { name: 'a.txt', mime: 'text/plain', bytes: Buffer.from('hi').toString('base64') });
   assert.equal(w.readFile(e.files[0].id).bytes.toString(), 'hi');
 });
+
+/* Two processes booting on the same workspace at the same instant must both
+   come up — the 2026-08-21 incident: the second boot died with "database is
+   locked" because busy_timeout was set AFTER the WAL switch, and the WAL
+   switch is exactly the statement that needs to wait. */
+test('simultaneous boots on one workspace both survive', async () => {
+  const dir = tmp();
+  const dbPath = join(dir, 'race.db');
+  seed(new Weave({ path: dbPath })); // the file exists; both boots open it
+  const boot = `
+    import { Weave } from '${new URL('../src/engine.js', import.meta.url).pathname}';
+    const w = new Weave({ path: '${dbPath}' });
+    w.createEntity('Task', { name: 'from-' + process.argv[2] });
+    console.log('ok');
+  `;
+  const { execFile } = await import('node:child_process');
+  const run = (tag) => new Promise((res, rej) => {
+    execFile(process.execPath, ['--input-type=module', '-e', boot, tag, tag],
+      (err, stdout, stderr) => err ? rej(new Error(stderr || err.message)) : res(stdout.trim()));
+  });
+  const results = await Promise.all([run('a'), run('b'), run('c')]);
+  assert.deepEqual(results, ['ok', 'ok', 'ok']);
+  const w = new Weave({ path: dbPath });
+  assert.equal(w.query('Task', {}).total >= 4, true, 'all three writes landed');
+});

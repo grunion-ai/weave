@@ -602,3 +602,25 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .peek-activity h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); margin: 0 0 6px; }
 .peek-act-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 2px 0; }
 .peek-act-when, .peek-act-actor { color: var(--tblr-secondary); }
+/* ---------- skeletons (Feature #49, boneyard-inspired) ---------- */
+.sk { background: var(--tblr-bg-surface-secondary); border-radius: 4px; position: relative; overflow: hidden; }
+.sk::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); animation: sk-shimmer 1.1s infinite; }
+[data-bs-theme="dark"] .sk::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.07), transparent); }
+@keyframes sk-shimmer { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .sk::after { animation: none; } }
+.sk-toolbar { display: flex; gap: 12px; align-items: center; margin: 2px 0 14px; }
+.sk-card { padding: 10px 12px; }
+.sk-row { display: flex; gap: 14px; align-items: center; padding: 9px 2px; border-bottom: 1px solid var(--tblr-border-color-translucent, rgba(0,0,0,.04)); }
+.sk-row:last-child { border-bottom: 0; }
+.sk-head .sk { opacity: .7; }
+.sk-listrow { padding: 12px 2px; justify-content: space-between; }
+.sk-entity { display: flex; gap: 24px; }
+.sk-entity .sk-main { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+.sk-entity .sk-side { width: 300px; display: flex; flex-direction: column; gap: 10px; }
+.sk-block { height: 120px; width: 100%; }
+.sk-block.short { height: 60px; width: 80%; }
+/* ---------- share QR (Feature #50) ---------- */
+.share-box { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.share-qr { width: 180px; height: 180px; image-rendering: pixelated; border-radius: 6px; }
+.share-url { font-size: 11.5px; word-break: break-all; color: var(--tblr-secondary); }
+.share-hint { font-size: 12.5px; color: var(--tblr-secondary); text-align: center; }

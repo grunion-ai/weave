@@ -995,3 +995,26 @@ test('a date cell is type-or-pick: parsed text beside a native calendar (Feature
   assert.ok(app.includes("f.time ? 'datetime-local' : 'date'"), 'the calendar respects the time costume');
   assert.ok(app.includes("'T' + String(rawIso).split('T')[1]"), 'a typed phrase keeps the existing time of day');
 });
+
+test('navigation paints a skeleton of the destination first (Feature #49)', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  assert.ok(app.includes('function paintSkeleton('));
+  const route = app.slice(app.indexOf('function renderRoute()'), app.indexOf('function route()'));
+  assert.ok(route.includes('paintSkeleton('), 'renderRoute paints before it dispatches');
+  const sk = rulesFor('.sk');
+  assert.equal(sk['border-radius'], '4px');
+  assert.ok(readFileSync(join(ROOT, 'public/style.css'), 'utf8').includes('prefers-reduced-motion'), 'shimmer respects reduced motion');
+});
+
+test('a share link comes with its QR code (Feature #50)', async () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  assert.ok(html.includes('lean-qr.mjs'), 'lean-qr is vendored and loaded as a module');
+  assert.ok(app.includes('function qrCanvas('), 'the QR renderer exists');
+  const share = app.slice(app.indexOf("'Share link'"), app.indexOf("'Revoke share'"));
+  assert.ok(app.includes('qrCanvas(full)'), 'sharing shows the code, not only a silent copy');
+  // The vendored module actually generates: same file, imported under node.
+  const leanQR = await import('../public/vendor/lean-qr.mjs');
+  const code = leanQR.generate('https://example.com/view/wvv_abc');
+  assert.ok(code.size >= 21, 'a real QR matrix comes back');
+});

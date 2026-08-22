@@ -84,9 +84,12 @@ export class Store {
     let db;
     try {
       db = new DatabaseSync(this.path);
+      // busy_timeout FIRST: the WAL switch below needs a lock another process
+      // may briefly hold during its own boot — without the timeout in place
+      // yet, a simultaneous boot dies with "database is locked" (2026-08-21).
+      db.exec('PRAGMA busy_timeout = 5000');
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA synchronous = FULL');
-      db.exec('PRAGMA busy_timeout = 5000');
     } catch (err) {
       throw new WeaveError(`'${this.path}' is not a SQLite database (${err.message})`, 'invalid');
     }
