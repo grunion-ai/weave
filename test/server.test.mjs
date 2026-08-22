@@ -212,3 +212,16 @@ test('POST /entities accepts a flat body, like PATCH does', async () => {
   const badPatch = await api('PATCH', `/api/entities/${created.data.id}`, { Nmae: 'typo' });
   assert.equal(badPatch.status, 404, 'create and update answer a bad field the same way');
 });
+
+test('vendored ES modules are served with a script MIME type', async () => {
+  const w = new Weave();
+  const { server } = await startServer(w, { port: 0 });
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/vendor/lean-qr.mjs`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /javascript/,
+      'strict module MIME: anything else and the browser refuses the import');
+  } finally {
+    server.close();
+  }
+});
