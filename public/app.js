@@ -771,6 +771,46 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     }
     return box;
   }
+  // Attachments (Feature #16): the value is file ids; the cell shows names,
+  // the entity page manages the list — upload lands blob and column together.
+  if (f.type === 'attachments') {
+    const ids = item.raw?.[f.name] ?? [];
+    const chip = el('span', { class: 'computed', title: 'attachments' },
+      el('span', { class: 'computed-mark' }, '📎'),
+      ids.length ? String(val ?? `${ids.length}`) : '—');
+    if (compact) return chip;
+    const box = el('span', { class: 'attach-box' });
+    const files = (item.files ?? []).filter((x) => ids.includes(x.id));
+    for (const file of files) {
+      box.append(el('span', { class: 'attach-item' },
+        el('a', { href: `${WS_PREFIX}/api/files/${file.id}`, target: '_blank' }, file.name),
+        el('button', {
+          class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
+          onclick: () => patch(ids.filter((x) => x !== file.id)),
+        }, '×')));
+    }
+    const input = el('input', { type: 'file', style: 'display:none' });
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          await api('POST', `/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, {
+            name: file.name, mime: file.type || 'application/octet-stream',
+            bytes: String(reader.result).split(',')[1],
+          });
+          await saved();
+        } catch (err) { toast(err.message, true); }
+      };
+      reader.readAsDataURL(file);
+    });
+    box.append(input, el('button', {
+      class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Upload a file into this field',
+      onclick: () => input.click(),
+    }, '+ file'));
+    return box;
+  }
   // Type-or-pick dates (Feature #44): one control that is both a text input
   // ('next friday', 'jun 21' — parsed by nl-date.js) and a native calendar.
   if (f.type === 'date') {

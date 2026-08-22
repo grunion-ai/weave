@@ -539,6 +539,9 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
           if (req.method === 'POST') { weave.appendDoc(m[1], body.doc ?? body.markdown ?? '', fieldRef); return send(200, { ok: true }); }
         }
 
+        if ((m = path.match(/^\/api\/entities\/([^/]+)\/fields\/([^/]+)\/files$/)) && req.method === 'POST') {
+          return send(201, weave.attachToField(m[1], decodeURIComponent(m[2]), { name: body.name, mime: body.mime, bytes: body.bytes ?? body.contentBase64 }));
+        }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/files$/)) && req.method === 'POST') {
           return send(201, weave.attachFile(m[1], { name: body.name, mime: body.mime, bytes: body.contentBase64 }));
         }

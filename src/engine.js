@@ -40,7 +40,7 @@ export function parseCSV(text) {
   return rows.filter((r) => !(r.length === 1 && r[0] === ''));
 }
 
-const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key'];
+const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments'];
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
 /* Types whose definition can name the value a new row starts with. Workflow is
    absent on purpose: its default is one of its states, which is where it has
@@ -89,7 +89,7 @@ const MAX_COMPUTE_DEPTH = 8;
    materialise it. */
 export const DEFINABLE_TYPES = [
   'text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email',
-  'select', 'multiselect', 'workflow', 'document', 'field', 'key',
+  'select', 'multiselect', 'workflow', 'document', 'field', 'key', 'attachments',
 ];
 const MAX_DEFINITION_DEPTH = 4;
 
@@ -1572,16 +1572,25 @@ export class Weave {
         if (before === md) continue;
         e.docs[field.id] = md;
         e.updatedAt = nowISO();
-    e.modifiedBy = this.actor;
+        e.modifiedBy = this.actor;
         if (!isCreate) this.#logActivity(e, 'doc-updated', docChange(field.name, before, md));
         continue;
       }
       const val = this.#validateValue(field, raw);
+      if (field.type === 'attachments') {
+        // A column can only name the entity's OWN files — a foreign id would
+        // be a pointer nobody can follow from here.
+        for (const id of val) {
+          if (!e.files.some((x) => x.id === id)) {
+            throw new WeaveError(`'${id}' is not a file on this entity — upload it here first`, 'invalid');
+          }
+        }
+      }
       const old = e.values[field.id];
       if (JSON.stringify(old) === JSON.stringify(val)) continue;
       e.values[field.id] = val;
       e.updatedAt = nowISO();
-    e.modifiedBy = this.actor;
+      e.modifiedBy = this.actor;
       if (!isCreate) this.#logActivity(e, 'field-updated', { field: field.name, from: old ?? null, to: val });
       this.#runAutomations(db, e, { type: 'field-updated', fieldId: field.id }, depth);
     }
@@ -1652,6 +1661,12 @@ export class Weave {
         // An unknown name is storable on purpose — set the secret before or
         // after, the cell shows which state you are in.
         return String(raw);
+      case 'attachments': {
+        // An array of file ids. Whose files they are is checked at apply
+        // time, where the entity is known (#applyValues).
+        const arr = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
+        return arr.map((r) => String(r && typeof r === 'object' ? r.id : r));
+      }
       default:
         throw new WeaveError(`Cannot write field type '${field.type}'`, 'invalid');
     }
@@ -1891,7 +1906,7 @@ export class Weave {
             // Numbers stay numbers in formulas — the display costume (#97)
             // would turn '$1,200.50' * 2 into NaN. Everything else keeps its
             // display form (state and option names, joined relations).
-            return typeof v === 'number' ? v : this.#displayValue(db, f, v);
+            return typeof v === 'number' ? v : this.#displayValue(db, f, v, e);
           });
         } catch (err) {
           return `#ERR: ${err.message}`;
@@ -1905,7 +1920,7 @@ export class Weave {
   }
 
   // Human-readable value: option/state names, entity names for relations.
-  #displayValue(db, field, resolved) {
+  #displayValue(db, field, resolved, e = null) {
     if (resolved == null) return null;
     switch (field.type) {
       case 'select':
@@ -1923,6 +1938,11 @@ export class Weave {
       case 'key':
         // The name and whether the keystore holds it — never the secret.
         return `🔑 ${resolved}${this.hasKey(resolved) ? '' : ' (unset)'}`;
+      case 'attachments': {
+        if (!Array.isArray(resolved) || !resolved.length) return null;
+        const names = resolved.map((id) => e?.files?.find((x) => x.id === id)?.name ?? '(missing)');
+        return names.join(', ');
+      }
       case 'date': {
         const c = field.config;
         if (!c.format && !c.time) return resolved;
@@ -1979,7 +1999,7 @@ export class Weave {
         const summaries = resolved.map((rid) => this.#summary(rid)).filter(Boolean);
         fields[f.name] = f.config.many ? summaries : (summaries[0] ?? null);
       } else {
-        fields[f.name] = this.#displayValue(db, f, resolved);
+        fields[f.name] = this.#displayValue(db, f, resolved, e);
       }
     }
     const docs = {};
@@ -2407,7 +2427,7 @@ export class Weave {
       if (key === 'Today') return new Date().toISOString().slice(0, 10);
       const f = this.findField(db, key);
       if (!f) return '';
-      const v = this.#displayValue(db, f, this.#resolve(e, db, f, 0));
+      const v = this.#displayValue(db, f, this.#resolve(e, db, f, 0), e);
       return v == null ? '' : Array.isArray(v) ? v.join(', ') : String(v);
     });
   }
@@ -2488,6 +2508,19 @@ export class Weave {
     return file;
   }
 
+  /* Upload a file and put it in an attachments column in one motion —
+     the flow every surface actually wants (Feature #16). */
+  attachToField(entityId, fieldRef, fileInput) {
+    const e = this.getEntity(entityId);
+    const db = this.state.tables[e.dbId];
+    const field = this.getField(db.id, fieldRef);
+    if (field.type !== 'attachments') throw new WeaveError(`Field '${field.name}' is not an attachments field`, 'invalid');
+    const file = this.attachFile(e.id, fileInput);
+    const cur = Array.isArray(e.values[field.id]) ? e.values[field.id] : [];
+    this.updateEntity(e.id, { [field.name]: [...cur, file.id] });
+    return file;
+  }
+
   readFile(fileId) {
     for (const e of Object.values(this.state.entities)) {
       const meta = e.files.find((f) => f.id === fileId);
@@ -2548,6 +2581,13 @@ export class Weave {
   deleteFile(entityId, fileId) {
     const e = this.getEntity(entityId);
     e.files = e.files.filter((f) => f.id !== fileId);
+    // No ghost pointers: an attachments column loses the file with the file.
+    const db = this.state.tables[e.dbId];
+    for (const f of Object.values(db.fields)) {
+      if (f.type === 'attachments' && Array.isArray(e.values[f.id]) && e.values[f.id].includes(fileId)) {
+        e.values[f.id] = e.values[f.id].filter((id) => id !== fileId);
+      }
+    }
     if (this.state.fileBlobs) delete this.state.fileBlobs[fileId];
     this.#mark(e);
     this.save();
