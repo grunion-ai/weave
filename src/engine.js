@@ -197,10 +197,12 @@ export class Weave {
   #dirty = new Set();
   #dirtyAll = false;
 
-  constructor({ path = null, actor = 'local', keystorePath = null } = {}) {
+  // `store` injects an alternate Store implementation (same interface) — the
+  // Cloudflare Worker port (Feature #84) passes a Durable Object-backed one.
+  constructor({ path = null, actor = 'local', keystorePath = null, store = null } = {}) {
     this.actor = actor;
     this.keystorePath = keystorePath ?? process.env.WEAVE_KEYSTORE ?? join(process.env.HOME ?? '.', '.weave', 'keystore.json');
-    this.store = new Store(path);
+    this.store = store ?? new Store(path);
     const loaded = this.store.load();
     // A pre-existing file must actually be a workspace — never adopt (and
     // never migrate-write!) arbitrary JSON like a package.json.

@@ -1,14 +1,14 @@
 import { readFileSync, existsSync } from 'node:fs';
 
 // node:sqlite is the storage engine (zero runtime deps — it ships inside Node).
+// The missing-module throw is deferred to first file-backed use: an in-memory
+// Store (and therefore the engine itself) must stay importable on runtimes
+// without node:sqlite — the Cloudflare Worker port (Feature #84) bundles the
+// engine and brings its own Store implementation.
 let DatabaseSync = null;
 try {
   ({ DatabaseSync } = await import('node:sqlite'));
-} catch {
-  throw new Error(
-    `weave requires Node >= 22.16 — node:sqlite is missing in ${process.version}. `
-    + 'Upgrade Node (24 LTS recommended) and retry.');
-}
+} catch { /* checked in #open() */ }
 
 export class WeaveError extends Error {
   constructor(message, code = 'weave-error') {
@@ -86,6 +86,11 @@ export class Store {
   }
 
   #open() {
+    if (!DatabaseSync) {
+      throw new WeaveError(
+        `weave requires Node >= 22.16 — node:sqlite is missing in ${process.version}. `
+        + 'Upgrade Node (24 LTS recommended) and retry.', 'invalid');
+    }
     const existed = existsSync(this.path);
     let db;
     try {
