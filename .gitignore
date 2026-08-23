@@ -19,3 +19,10 @@ wrangler.toml
 wrangler.jsonc
 .dev.vars
 .wrangler/
+
+# Merge-tool debris and throwaway browser probes: an .orig is a byte copy of
+# the file beside it (194KB of duplicated app.js the last one), and the probes
+# are one-off Playwright scripts, not tests.
+*.orig
+.*-probe.mjs
+.*-shot.mjs
