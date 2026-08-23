@@ -152,7 +152,7 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
 const state = { schema: [], route: null, expanded: new Set(), refocus: null, trail: [], showDeleted: new Set() };
 
 // Single entry point for opening an entity. The page IS the destination
-// (Feature #116): a row click lands here; the side peek below is kept for
+// (Feature #117): a row click lands here; the side peek below is kept for
 // callers that want a slide-over on top of a page, not as a row target.
 function openEntity(id) { location.hash = `#/entity/${id}`; }
 
@@ -3457,7 +3457,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   });
   commentsBody.append(el('div', { style: 'margin-top:8px' }, commentInput));
 
-  /* Fields block (Feature #116) — the first thing in the body, Fibery-style
+  /* Fields block (Feature #117) — the first thing in the body, Fibery-style
      label/value rows, because the fields are what the record IS; documents
      and collections follow. Order is the table's fieldOrder: drag ⠿ and the
      table view's columns follow, through the one reorderField writer. Rows

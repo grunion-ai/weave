@@ -124,14 +124,14 @@ test('picker-type cells are tagged so the row handler can route clicks', () => {
 
 test('row click on a picker cell opens the picker instead of the entity', () => {
   // Every clickable row surface (grid <tr>, list-row, board card) routes
-  // through rowClickTarget before it may open the entity page (Feature #116:
+  // through rowClickTarget before it may open the entity page (Feature #117:
   // the page is the destination; the side peek of #39 is no longer a row's
   // click target).
   const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*openEntity\(/g)];
   assert.equal(routed.length, 3, 'grid, board and embedded related rows must all route clicks (list view removed 2026-08-22)');
   assert.equal((APP.match(/openEntity\(item\.id\)/g) ?? []).length, routed.length,
     'no row surface may open the entity without routing first');
-  assert.doesNotMatch(APP, /peekEntity\(item\.id\)/, 'no row surface opens the side peek any more (Feature #116)');
+  assert.doesNotMatch(APP, /peekEntity\(item\.id\)/, 'no row surface opens the side peek any more (Feature #117)');
   assert.match(APP, /function rowClickTarget/);
   assert.match(APP, /function openCellPicker/);
   const fn = APP.slice(APP.indexOf('function openCellPicker'));
@@ -449,7 +449,7 @@ test('only one overflow menu is open at a time', () => {
 });
 
 /* ---------- entity side column (Kyle, 2026-08-16; fields moved into the
-   body by Feature #116, 2026-08-23) ---------- */
+   body by Feature #117, 2026-08-23) ---------- */
 
 test('comments and activity make up the side column; fields lead the body', () => {
   assert.match(APP, /right\.append\(commentsPanel, actPanel\)/,
@@ -982,7 +982,7 @@ test('a collection relation renders as the target table grid, in the body', () =
   assert.match(grid, /editorFor\(/, 'cells are the same editors the table view uses');
   assert.match(grid, /PICKER_FIELD_TYPES\.includes/, 'and carry the same picker/computed cell classes');
   assert.match(grid, /rowClickTarget\(e\)/, 'so a click on a picker opens the picker, not the entity');
-  assert.match(grid, /openEntity\(item\.id\)/, 'and a click elsewhere opens the row\'s page (Feature #116)');
+  assert.match(grid, /openEntity\(item\.id\)/, 'and a click elsewhere opens the row\'s page (Feature #117)');
   assert.match(grid, /\['id', 'in', linked\.map/, 'the rows are fetched whole, by id');
   assert.match(grid, /c\.name !== f\.inverseField/, 'the column pointing back at this record is dropped');
 
@@ -994,7 +994,7 @@ test('a collection relation renders as the target table grid, in the body', () =
     'and are not repeated as chips in the fields block');
 });
 
-/* Feature #116 — the entity page is the destination. Fields are the first
+/* Feature #117 — the entity page is the destination. Fields are the first
    thing on the page (Fibery-style label/value block at the top of the body,
    not a card in the side column), and their order is the table's fieldOrder:
    drag ⠿ on a row and the column order in the table view follows, because

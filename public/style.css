@@ -309,7 +309,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .fieldrow { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: center; padding: 4px 0; }
 .fieldrow label { color: var(--tblr-secondary); font-size: 12.5px; }
 .fieldrow.compact { grid-template-columns: 92px 1fr; font-size: 12.5px; padding: 2px 0; }
-/* ---------- entity fields block (Feature #116) ----------
+/* ---------- entity fields block (Feature #117) ----------
    The first thing in the body: label / value rows, a ⠿ grip that only shows
    on hover so the block reads as a form, not a list of handles. A drop moves
    the row in place and writes fieldOrder (the table's columns follow). */
