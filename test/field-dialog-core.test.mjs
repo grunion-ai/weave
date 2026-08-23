@@ -23,8 +23,11 @@ const FORMULA = readFileSync(join(ROOT, 'src/formula.js'), 'utf8');
 test('type catalog matches the engine DEFINABLE_TYPES exactly', () => {
   const literal = ENGINE.match(/export const DEFINABLE_TYPES = \[([\s\S]*?)\];/)[1];
   const engineTypes = [...literal.matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
-  const gridTypes = core.FIELD_TYPES.filter((t) => !t.computed).map((t) => t.id);
+  // relation is a grid tile too (Kyle, 2026-08-23) but is created through
+  // addRelation, not addField — it sits outside DEFINABLE_TYPES.
+  const gridTypes = core.FIELD_TYPES.filter((t) => !t.computed && t.id !== 'relation').map((t) => t.id);
   assert.deepEqual(gridTypes.sort(), [...engineTypes].sort());
+  assert.ok(core.FIELD_TYPES.some((t) => t.id === 'relation'), 'relation is a type of field');
 });
 
 test('computed catalog entries are lookup and rollup (formula is the toggle)', () => {
@@ -156,9 +159,9 @@ test('parseDefinition: malformed JSON fails with a message, never throws', () =>
 });
 
 test('parseDefinition rejects unknown types, naming the allowed set', () => {
-  const r = core.parseDefinition('{ "type": "relation", "config": {} }');
+  const r = core.parseDefinition('{ "type": "portal", "config": {} }');
   assert.equal(r.ok, false);
-  assert.match(r.error, /relation/);
+  assert.match(r.error, /portal/);
 });
 
 test('parseDefinition mirrors engine bounds: decimals 0..6, depth 1..4', () => {
@@ -208,6 +211,7 @@ test('typeChoices: a new field sees the whole grid; an existing one sees itself 
   assert.deepEqual(core.typeChoices('select').map((t) => t.id), ['select', 'multiselect', 'workflow', 'text']);
   assert.deepEqual(core.typeChoices('formula').map((t) => t.id), []);
   assert.deepEqual(core.typeChoices('document').map((t) => t.id), ['document']);
+  assert.deepEqual(core.typeChoices('relation').map((t) => t.id), ['relation'], 'a relation keeps its type');
 });
 
 test('migrateState carries config across a compatible move so the form can be adjusted before saving', () => {
@@ -246,4 +250,31 @@ test('CURRENCIES lists ISO codes the engine will accept, USD first', () => {
   assert.equal(core.CURRENCIES[0].id, 'USD');
   assert.ok(core.CURRENCIES.length >= 12);
   for (const c of core.CURRENCIES) assert.match(c.id, /^[A-Z]{3}$/);
+});
+
+test('the currency list leads with USD, EUR, MXN, CNY, JPY, RUB, CAD (Kyle, 2026-08-23)', () => {
+  assert.deepEqual(core.CURRENCIES.slice(0, 7).map((c) => c.id), ['USD', 'EUR', 'MXN', 'CNY', 'JPY', 'RUB', 'CAD']);
+});
+
+
+/* ---------- relation as a field type; files vs documents (2026-08-23) ---------- */
+
+test('relation state produces the addRelation payload; files carry multiple; documents carry kind', () => {
+  const rel = core.definitionFromState({ type: 'relation', relation: { targetDb: 'tbl-1', cardinality: 'many-to-many', inverseName: 'Tasks' } });
+  assert.deepEqual(rel, { type: 'relation', config: { targetDb: 'tbl-1', cardinality: 'many-to-many', inverseName: 'Tasks' } });
+  assert.deepEqual(core.definitionFromState({ type: 'attachments', multiple: false }).config, { multiple: false });
+  assert.deepEqual(core.definitionFromState({ type: 'attachments', multiple: true }).config, {});
+  assert.deepEqual(core.definitionFromState({ type: 'document', kind: 'html' }).config, { kind: 'html' });
+  assert.deepEqual(core.definitionFromState({ type: 'document', kind: 'markdown' }).config, {});
+  const back = core.stateFromDefinition({ type: 'attachments', config: { multiple: false } });
+  assert.equal(back.multiple, false);
+  assert.equal(core.stateFromDefinition({ type: 'document', config: { kind: 'code' } }).kind, 'code');
+  assert.deepEqual(core.DOCUMENT_KINDS, ['markdown', 'html', 'code']);
+});
+
+test('select and files wear distinct icons from multiselect and document', () => {
+  const icon = (id) => core.FIELD_TYPES.find((t) => t.id === id).icon;
+  assert.notEqual(icon('select'), icon('multiselect'));
+  assert.notEqual(icon('attachments'), icon('document'));
+  assert.equal(icon('select'), '▾');
 });

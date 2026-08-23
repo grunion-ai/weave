@@ -46,6 +46,7 @@ const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
    absent on purpose: its default is one of its states, which is where it has
    always lived. */
 const DYNAMIC_DATE_DEFAULTS = ['today()', 'now()'];
+const DOCUMENT_KINDS = ['markdown', 'html', 'code'];
 const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator'];
 const DEFAULTABLE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
@@ -117,6 +118,8 @@ export const TYPE_MIGRATIONS = {
    free-text unit appended ('12 days'). Used by number fields and by
    formulas whose result is a number. */
 function dressNumber(c, value) {
+  // No costume at all: the raw number, untouched (formulas, sorting, the
+  // API all rely on it). Any costume: decimals default to 0, currency to 2.
   if (c.format == null && c.unit == null && c.currency == null && c.decimals == null && !c.separator) return value;
   const n = Number(value);
   if (!Number.isFinite(n)) return value;
@@ -127,7 +130,8 @@ function dressNumber(c, value) {
       return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
     } catch { return `${currency} ${n.toFixed(digits)}`; }
   }
-  let text = c.decimals != null ? n.toFixed(c.decimals) : String(n);
+  // Zero decimals unless the field says otherwise (currency above: two).
+  let text = n.toFixed(c.decimals ?? 0);
   if (c.separator) {
     const [int, frac] = text.split('.');
     text = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (frac ? '.' + frac : '');
@@ -203,6 +207,16 @@ function normalizeSelfContainedConfig(type, config = {}) {
       throw new WeaveError(`Definition depth must be 1..${MAX_DEFINITION_DEPTH}, got '${depth}'`, 'invalid');
     }
     return { types: [...DEFINABLE_TYPES], depth };
+  }
+  // Files: one or many (Kyle, 2026-08-23 — files are not documents).
+  if (type === 'attachments') return { multiple: config.multiple == null ? true : !!config.multiple };
+  // Documents: what kind of document. markdown is the unmarked default.
+  if (type === 'document') {
+    if (config.kind != null && config.kind !== 'markdown') {
+      if (!DOCUMENT_KINDS.includes(config.kind)) throw new WeaveError(`Invalid document kind '${config.kind}' (${DOCUMENT_KINDS.join(', ')})`, 'invalid');
+      return { kind: config.kind };
+    }
+    return {};
   }
   return {};
 }
@@ -460,6 +474,16 @@ export class Weave {
         if (!known.includes(n)) throw new WeaveError(`'${n}' is not a system field (${known.join(', ')})`, 'invalid');
       }
       db.systemFields = [...patch.systemFields];
+    }
+    // Hidden fields (Feature #114): a per-table view setting, by name, over
+    // the table's own fields and the system columns. Nothing else changes.
+    if (patch.hiddenFields != null) {
+      if (!Array.isArray(patch.hiddenFields)) throw new WeaveError('hiddenFields is a list of field names', 'invalid');
+      const system = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
+      for (const n of patch.hiddenFields) {
+        if (!system.includes(n) && !this.findField(db, n)) throw new WeaveError(`'${n}' is not a field of ${db.name}`, 'invalid');
+      }
+      if (patch.hiddenFields.length) db.hiddenFields = [...patch.hiddenFields]; else delete db.hiddenFields;
     }
     // Column order is fieldOrder — describeSchema() reads it — so a reorder is
     // a schema write. Demand a full permutation: a short list would silently
@@ -1262,7 +1286,7 @@ export class Weave {
     if (type === 'relation') throw new WeaveError(`Use addRelation() to create relation fields`, 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
-    if (type === 'select' || type === 'multiselect' || type === 'workflow' || type === 'field' || type === 'number' || type === 'date') {
+    if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'attachments', 'document'].includes(type)) {
       // One normaliser, shared with `field` value validation — see the note on
       // normalizeSelfContainedConfig. If these drift, a definition can describe
       // a field addField would reject.
@@ -1376,6 +1400,13 @@ export class Weave {
             else field.config[k] = costume[k];
           }
         }
+      }
+      if (field.type === 'attachments' && 'multiple' in patch.config) {
+        field.config.multiple = normalizeSelfContainedConfig('attachments', patch.config).multiple;
+      }
+      if (field.type === 'document' && 'kind' in patch.config) {
+        const kind = normalizeSelfContainedConfig('document', patch.config).kind;
+        if (kind) field.config.kind = kind; else delete field.config.kind;
       }
       if (field.type === 'date') {
         const costume = normalizeSelfContainedConfig('date', { ...field.config, ...patch.config });
@@ -1823,6 +1854,7 @@ export class Weave {
         // An array of file ids. Whose files they are is checked at apply
         // time, where the entity is known (#applyValues).
         const arr = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
+        if (field.config.multiple === false && arr.length > 1) throw new WeaveError(`'${field.name}' holds one file`, 'invalid');
         return arr.map((r) => String(r && typeof r === 'object' ? r.id : r));
       }
       default:
@@ -2800,6 +2832,7 @@ export class Weave {
         ...(db.system ? { system: db.system } : {}),
         ...(db.icon ? { icon: db.icon } : {}),
         ...(db.systemFields?.length ? { systemFields: [...db.systemFields] } : {}),
+        ...(db.hiddenFields?.length ? { hiddenFields: [...db.hiddenFields] } : {}),
         ...(db.noun ? { noun: db.noun } : {}),
         qualified: this.qualifiedName(db),
         entityCount: this.listEntities(db.id).length,
@@ -2837,6 +2870,8 @@ export class Weave {
               if (f.config[k] != null) out[k] = f.config[k];
             }
           }
+          if (f.type === 'attachments') out.multiple = f.config.multiple !== false;
+          if (f.type === 'document' && f.config.kind) out.kind = f.config.kind;
           if (f.type === 'date') {
             if (f.config.format) out.format = f.config.format;
             if (f.config.time) out.time = true;

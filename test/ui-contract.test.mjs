@@ -90,7 +90,7 @@ test('the first rail chip is centred on the sidebar wordmark', () => {
 /* The trash badge is decoration on a long-lived server that serves public/
    straight from disk — a page newer than its routes must still open. */
 test('an unavailable trash count cannot stop a table from rendering', () => {
-  assert.match(APP, /api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)\.catch\(\(\) => \(\{ total: 0 \}\)\)/);
+  assert.match(APP, /api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)\.catch\(\(\) => \(\{ total: 0, items: \[\] \}\)\)/);
 });
 
 test('.hidden beats id-selector display rules', () => {
@@ -194,14 +194,13 @@ test('table view moves both create controls into the grid', () => {
   assert.doesNotMatch(CSS, /add-row-bar/);
 });
 
-test('the field "+" keeps relations and field management reachable', () => {
-  // It replaces "⚙ Fields" in table view, so a bare add-field dialog would
-  // strand relation creation and field deletion.
+test('the field "+" opens the add tray directly — relation is a grid tile, Manage fields is the eyeball', () => {
+  // Superseded 2026-08-23 (Kyle): nothing is stranded — relation is a type
+  // in the tray and show/hide is the eyeball, so the menu went away.
   const fn = APP.slice(APP.indexOf('function addFieldMenuButton'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
-  for (const target of ['addFieldDialog', 'addRelationDialog', 'openSchemaEditor']) {
-    assert.match(body, new RegExp(`${target}\\(db\\)`), `field menu must reach ${target}`);
-  }
+  assert.match(body, /addFieldDialog\(db\)/);
+  assert.doesNotMatch(body, /showPopover/);
 });
 
 test('full-width grid rows derive their span from one column count', () => {
@@ -1139,7 +1138,7 @@ test('field dialogs are the unified fieldDialog, not the old string forms', () =
   // Both entry points route through one implementation so add and edit can
   // never drift apart again (the old pair disagreed on number clearing).
   assert.match(APP, /function fieldDialog\(db, existing, after\)/);
-  assert.match(APP, /function addFieldDialog\(db\) \{\s*fieldDialog\(db, null,/);
+  assert.match(APP, /function addFieldDialog\(db\) \{[\s\S]{0,200}?fieldDialog\(db, null,/);
   assert.match(APP, /function editFieldDialog\(db, f\) \{\s*fieldDialog\(db, f,/);
   // The comma-separated options input is gone from the dialogs.
   assert.doesNotMatch(APP, /Options \(comma-separated\)/);
@@ -1266,4 +1265,28 @@ test('number costume controls: unit for plain numbers, an ISO-code picker for cu
 test('Enter in the date popover commits and closes, time kept', () => {
   const pop = fnBody('datePopover');
   assert.match(pop, /commit\(dc\.joinIso\(day, time \? clock : ''\), true\)/);
+});
+
+/* Kyle, 2026-08-23: the eyeball replaces Manage fields; the header + opens
+   the add tray directly; relation is a type in the grid; files carry a
+   multiple checkbox and documents a kind. */
+test('the eyeball: hidden fields, system columns and deleted rows from one popover; Manage fields is gone', () => {
+  const eye = fnBody('fieldVisibilityPopover');
+  assert.match(eye, /hiddenFields: \[\.\.\.next\]/, 'hidden fields persist on the table');
+  assert.match(eye, /systemFields: \[\.\.\.next\]/, 'system columns toggle from the same list');
+  assert.match(eye, /state\.showDeleted/, 'deleted rows are a session switch');
+  assert.match(fnBody('renderTable'), /const cols = visibleCols\(db\)/, 'the grid honours the hidden set');
+  assert.match(fnBody('reorderField'), /const cols = visibleCols\(db\)/, 'reorder mirrors the same columns');
+  assert.doesNotMatch(APP, /row\('⚙ Manage fields'/, 'the Manage fields row is gone');
+  assert.doesNotMatch(fnBody('addFieldMenuButton'), /showPopover/, 'the + opens the tray, not a menu');
+  assert.match(fnBody('addFieldMenuButton'), /addFieldDialog\(db\)/);
+});
+
+test('relation is a tile in the add tray and posts to /relations; files and documents carry their options', () => {
+  const dlg = fnBody('fieldDialog');
+  assert.match(dlg, /def\.type === 'relation'\) \{\s*await api\('POST', `\/tables\/\$\{db\.id\}\/relations`/, 'a relation tile creates through addRelation');
+  assert.match(dlg, /dsection\('Target table', target\)/);
+  assert.match(dlg, /fdc\.CARDINALITIES/);
+  assert.match(dlg, /'Allow multiple files'/);
+  assert.match(dlg, /dsection\('Kind', segCtl\(fdc\.DOCUMENT_KINDS/);
 });

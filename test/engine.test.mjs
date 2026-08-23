@@ -804,3 +804,64 @@ test('an unknown currency code is refused at definition time', () => {
   const { w, tasks } = buildWorkspace();
   assert.throws(() => w.addField(tasks, { name: 'X', type: 'number', config: { format: 'currency', currency: 'DOLLARS' } }), /currency/i);
 });
+
+test('decimals default: currency 2, every other number 0 (Kyle, 2026-08-23)', () => {
+  const { w, tasks } = buildWorkspace();
+  w.addField(tasks, { name: 'Plain', type: 'number' });
+  w.addField(tasks, { name: 'Days', type: 'number', config: { unit: 'days' } });
+  w.addField(tasks, { name: 'Pct', type: 'number', config: { format: 'percent' } });
+  w.addField(tasks, { name: 'Cash', type: 'number', config: { format: 'currency', currency: 'CAD' } });
+  w.addField(tasks, { name: 'Fine', type: 'number', config: { decimals: 2 } });
+  const e = w.createEntity(tasks, { name: 'A', values: { Plain: 2.6, Days: 2.6, Pct: 32.49, Cash: 2.6, Fine: 2.6 } });
+  const r = w.readEntity(e.id).fields;
+  assert.equal(r.Plain, 2.6, 'no costume: the raw number, for formulas and the API');
+  assert.equal(r.Days, '3 days');
+  assert.equal(r.Pct, '32%');
+  assert.equal(r.Cash, 'CA$2.60');
+  assert.equal(r.Fine, '2.60');
+});
+
+/* ---------- hidden fields (Feature #114, 2026-08-23) ----------
+   The table's eyeball hides fields (system columns included) per table,
+   persisted on the table like systemFields. Hidden is a view concern: the
+   field, its values and its API stay exactly as they are. */
+test('hiddenFields persists on the table and rides describeSchema; unknown names are refused', () => {
+  const { w, tasks } = buildWorkspace();
+  w.updateTable(tasks, { hiddenFields: ['Estimate', 'Created At'] });
+  const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id);
+  assert.deepEqual(view.hiddenFields, ['Estimate', 'Created At']);
+  assert.ok(view.fields.some((f) => f.name === 'Estimate'), 'the field itself is untouched');
+  assert.throws(() => w.updateTable(tasks, { hiddenFields: ['Nope'] }), /Nope/);
+  w.updateTable(tasks, { hiddenFields: [] });
+  assert.equal(w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id).hiddenFields, undefined);
+});
+
+/* ---------- files vs documents (Kyle, 2026-08-23) ----------
+   An attachments field says whether it holds one file or many; a document
+   field says what kind of document it is. */
+test('attachments: multiple defaults on; a single-file field refuses a second file', () => {
+  const { w, tasks } = buildWorkspace();
+  const many = w.addField(tasks, { name: 'Files', type: 'attachments' });
+  assert.equal(many.config.multiple, true);
+  const one = w.addField(tasks, { name: 'Cover', type: 'attachments', config: { multiple: false } });
+  assert.equal(one.config.multiple, false);
+  const e = w.createEntity(tasks, { name: 'A' });
+  assert.throws(() => w.updateEntity(e.id, { Cover: ['f1', 'f2'] }), /one file/);
+  const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id);
+  assert.equal(view.fields.find((f) => f.name === 'Cover').multiple, false);
+});
+
+test('document: kind is markdown by default; html and code are the other kinds', () => {
+  const { w, tasks } = buildWorkspace();
+  const md = w.addField(tasks, { name: 'Notes', type: 'document' });
+  assert.equal(md.config.kind, undefined, 'markdown is the unmarked default');
+  const html = w.addField(tasks, { name: 'Page', type: 'document', config: { kind: 'html' } });
+  assert.equal(html.config.kind, 'html');
+  assert.throws(() => w.addField(tasks, { name: 'X', type: 'document', config: { kind: 'pdf' } }), /markdown, html, code/);
+  const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id);
+  assert.equal(view.fields.find((f) => f.name === 'Page').kind, 'html');
+  w.updateField(tasks, html.id, { config: { kind: 'markdown' } });
+  assert.equal(w.getField(tasks, html.id).config.kind, undefined, 'back to the unmarked default');
+  w.updateField(tasks, md.id, { config: { kind: 'code' } });
+  assert.equal(w.getField(tasks, md.id).config.kind, 'code');
+});

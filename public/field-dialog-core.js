@@ -18,13 +18,14 @@
     { id: 'checkbox', label: 'checkbox', icon: '☑' },
     { id: 'url', label: 'url', icon: '⌘' },
     { id: 'email', label: 'email', icon: '@' },
-    { id: 'select', label: 'select', icon: '◉' },
+    { id: 'select', label: 'select', icon: '▾' },
     { id: 'multiselect', label: 'multi', icon: '☰' },
     { id: 'workflow', label: 'workflow', icon: '⟳' },
     { id: 'document', label: 'document', icon: '¶' },
     { id: 'field', label: 'field', icon: '⧉' },
     { id: 'key', label: 'key', icon: '⌗' },
-    { id: 'attachments', label: 'files', icon: '📎' },
+    { id: 'attachments', label: 'files', icon: '🗂' },
+    { id: 'relation', label: 'relation', icon: '⇄', relation: true },
     { id: 'lookup', label: 'lookup', icon: '↗', computed: true },
     { id: 'rollup', label: 'rollup', icon: 'Σ', computed: true },
   ];
@@ -80,6 +81,7 @@
     const byId = Object.fromEntries(FIELD_TYPES.map((t) => [t.id, t]));
     const self = byId[existingType];
     if (!self || self.computed) return [];
+    if (self.relation) return [self];
     return [self, ...(TYPE_MIGRATIONS[existingType] ?? []).map((id) => byId[id]).filter(Boolean)];
   }
 
@@ -106,11 +108,13 @@
   const NUMBER_FORMATS = ['number', 'currency', 'percent'];
   // ISO 4217 codes offered in the picker (any valid code types in too).
   const CURRENCIES = [
-    ['USD', 'US dollar'], ['EUR', 'Euro'], ['GBP', 'British pound'], ['CAD', 'Canadian dollar'], ['AUD', 'Australian dollar'],
-    ['JPY', 'Japanese yen'], ['CHF', 'Swiss franc'], ['CNY', 'Chinese yuan'], ['INR', 'Indian rupee'], ['MXN', 'Mexican peso'],
-    ['BRL', 'Brazilian real'], ['SGD', 'Singapore dollar'], ['HKD', 'Hong Kong dollar'], ['SEK', 'Swedish krona'], ['NZD', 'New Zealand dollar'],
+    ['USD', 'US dollar'], ['EUR', 'Euro'], ['MXN', 'Mexican peso'], ['CNY', 'Chinese yuan'], ['JPY', 'Japanese yen'],
+    ['RUB', 'Russian ruble'], ['CAD', 'Canadian dollar'], ['GBP', 'British pound'], ['AUD', 'Australian dollar'], ['CHF', 'Swiss franc'],
+    ['INR', 'Indian rupee'], ['BRL', 'Brazilian real'], ['SGD', 'Singapore dollar'], ['HKD', 'Hong Kong dollar'], ['SEK', 'Swedish krona'],
   ].map(([id, name]) => ({ id, label: `${id} — ${name}` }));
   const DATE_FORMATS = ['iso', 'us', 'eu', 'long'];
+  const DOCUMENT_KINDS = ['markdown', 'html', 'code'];
+  const CARDINALITIES = ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'];
   const MAX_DEPTH = 4;
   const DEFAULTABLE = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
   // Radix-soft swatches for select/multiselect options; '' = neutral chip.
@@ -125,6 +129,9 @@
     number: { format: 'number', unit: '', currency: 'USD', decimals: null, separator: false },
     date: { format: 'iso', time: false },
     depth: 1,
+    multiple: true,           // attachments: one file or many
+    kind: 'markdown',         // document: markdown | html | code
+    relation: { targetDb: '', cardinality: 'many-to-one', inverseName: '' },
     relationField: '',
     targetField: '',
     aggregate: 'count',
@@ -174,6 +181,15 @@
       if (d.time) config.time = true;
     } else if (t === 'field') {
       config.depth = state.depth ?? 1;
+    } else if (t === 'attachments') {
+      if (state.multiple === false) config.multiple = false;
+    } else if (t === 'document') {
+      if (state.kind && state.kind !== 'markdown') config.kind = state.kind;
+    } else if (t === 'relation') {
+      // Not an addField config: the addRelation payload, sent to /relations.
+      config.targetDb = state.relation?.targetDb ?? '';
+      config.cardinality = state.relation?.cardinality ?? 'many-to-one';
+      if (state.relation?.inverseName) config.inverseName = state.relation.inverseName;
     } else if (t === 'lookup') {
       config.relationField = state.relationField;
       config.targetField = state.targetField;
@@ -211,6 +227,12 @@
       state.date = { format: c.format ?? 'iso', time: !!c.time };
     } else if (def.type === 'field') {
       state.depth = c.depth ?? 1;
+    } else if (def.type === 'attachments') {
+      state.multiple = c.multiple !== false;
+    } else if (def.type === 'document') {
+      state.kind = c.kind ?? 'markdown';
+    } else if (def.type === 'relation') {
+      state.relation = { targetDb: c.targetDb ?? '', cardinality: c.cardinality ?? 'many-to-one', inverseName: c.inverseName ?? '' };
     } else if (def.type === 'lookup' || def.type === 'rollup') {
       state.relationField = c.relationField ?? '';
       state.targetField = c.targetField ?? '';
@@ -272,7 +294,7 @@
 
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, AGGREGATES, TYPE_MIGRATIONS, typeChoices, migrateState,
-    NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
+    NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     blankState, definitionFromState, stateFromDefinition,
     serializeDefinition, parseDefinition,
   };

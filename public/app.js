@@ -149,7 +149,7 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   return back;
 }
 
-const state = { schema: [], route: null, expanded: new Set(), refocus: null, trail: [] };
+const state = { schema: [], route: null, expanded: new Set(), refocus: null, trail: [], showDeleted: new Set() };
 
 // Single entry point for opening an entity (future: side-peek drawer).
 function openEntity(id) { location.hash = `#/entity/${id}`; }
@@ -1340,9 +1340,13 @@ async function showDatabase(dbId, view) {
   const where = filterWhere(db);
   const [result, trash] = await Promise.all([
     api('POST', `/tables/${db.id}/query`, where ? { where } : {}),
-    api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0 })),
+    api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0, items: [] })),
   ]);
-  drawDatabase(db, result.items, trash.total);
+  // The eyeball's "show deleted": trashed rows ride along, dimmed, in place.
+  const items = state.showDeleted.has(db.id)
+    ? [...result.items, ...(trash.items ?? []).map((e) => ({ ...e, deleted: true }))]
+    : result.items;
+  drawDatabase(db, items, trash.total);
 }
 
 function drawDatabase(db, items, trashCount = 0) {
@@ -1390,6 +1394,13 @@ function drawDatabase(db, items, trashCount = 0) {
       trashCount
         ? el('a', { class: 'btn btn-sm', href: `#/trash/${db.id}`, title: 'Deleted entities' }, `🗑 ${trashCount}`)
         : null,
+      // The eyeball (Feature #114): show / hide fields, system columns and
+      // deleted rows — replaces "Manage fields".
+      state.route.view === 'table' ? (() => {
+        const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields and deleted rows', 'aria-label': 'Show or hide fields' }, '👁');
+        eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, trashCount); });
+        return eye;
+      })() : null,
       // Table view carries both affordances inside the grid itself — a "+"
       // in the header bar for fields, a "+ New" row at the foot for entities.
       // Board and list have no grid to host them, so they keep the buttons.
@@ -1491,8 +1502,59 @@ function drawDatabase(db, items, trashCount = 0) {
   }
 }
 
+/* Show / hide, one list: the table's fields, then the system columns, then
+   the deleted rows. A tick toggles and the list reopens; hidden fields and
+   shown system columns persist on the table (PATCH), deleted-row display
+   is a session switch. */
+function fieldVisibilityPopover(anchor, db, trashCount = 0) {
+  const hidden = new Set(db.hiddenFields ?? []);
+  const sysOn = new Set(db.systemFields ?? []);
+  const save = async (patch) => {
+    try {
+      await api('PATCH', `/tables/${db.id}`, patch);
+      await loadSchema();
+      const fresh = allTables().find((d) => d.id === db.id);
+      await keepScroll(() => showDatabase(db.id, state.route.view));
+      const again = document.querySelector('.eye-btn');
+      if (again) fieldVisibilityPopover(again, fresh, trashCount);
+    } catch (err) { toast(err.message, true); }
+  };
+  const row = (on, label, run) => el('button', {
+    class: 'chip-pop-row eye-row', type: 'button',
+    onclick: (e) => { e.stopPropagation(); run(); },
+  }, el('span', { class: 'eye-mark' + (on ? ' on' : '') }, on ? '●' : '○'), label);
+  const rows = [
+    el('div', { class: 'eye-head' }, 'Fields'),
+    ...db.fields.filter((f) => f.type !== 'document').map((f) => row(!hidden.has(f.name), f.name, () => {
+      const next = new Set(hidden);
+      if (next.has(f.name)) next.delete(f.name); else next.add(f.name);
+      save({ hiddenFields: [...next] });
+    })),
+    el('div', { class: 'eye-head' }, 'System'),
+    ...Object.keys(SYSTEM_COLS).map((n) => row(sysOn.has(n), n, () => {
+      const next = new Set(sysOn);
+      if (next.has(n)) next.delete(n); else next.add(n);
+      save({ systemFields: [...next] });
+    })),
+    el('div', { class: 'eye-head' }, 'Rows'),
+    row(state.showDeleted.has(db.id), `Deleted entities${trashCount ? ` (${trashCount})` : ''}`, () => {
+      if (state.showDeleted.has(db.id)) state.showDeleted.delete(db.id); else state.showDeleted.add(db.id);
+      document.querySelector('.chip-pop')?.remove();
+      keepScroll(() => showDatabase(db.id, state.route.view));
+    }),
+  ];
+  showPopover(anchor, rows);
+}
+
+/* The columns a table shows: every non-document field minus the table's
+   hidden set (the eyeball, Feature #114). reorderField mirrors this. */
+function visibleCols(db) {
+  const hidden = new Set(db.hiddenFields ?? []);
+  return db.fields.filter((f) => f.type !== 'document' && !hidden.has(f.name)).map((f) => f.name);
+}
+
 function renderTable(main, db, items, onSaved) {
-  const cols = db.fields.filter((f) => f.type !== 'document').map((f) => f.name);
+  const cols = visibleCols(db);
   // Header bar = id + one per field + docs + the "+" field control. Full-width
   // rows span it, so it is derived once rather than restated per call site.
   const colCount = cols.length + 3;
@@ -1512,7 +1574,7 @@ function renderTable(main, db, items, onSaved) {
     const tbody = el('tbody');
     for (const item of sorted) {
       const row = el('tr', {
-        class: 'entity-row',
+        class: 'entity-row' + (item.deleted ? ' row-deleted' : ''),
         dataset: { eid: item.id },
         onclick: (e) => {
           const pick = rowClickTarget(e);
@@ -2038,7 +2100,7 @@ function numberCostumeControls(state, redraw, changed, { label = 'Format' } = {}
     kids.push(dsection('Currency', pick, el('div', { class: 'hintnote' }, 'Formatted by code — $149.50, €1,200 — separate from units')));
   }
   kids.push(dsection('Decimals', el('input', {
-    type: 'number', min: 0, max: 6, class: 'form-control dlg-narrow', value: n.decimals ?? '', placeholder: n.format === 'currency' ? '2' : 'auto',
+    type: 'number', min: 0, max: 6, class: 'form-control dlg-narrow', value: n.decimals ?? '', placeholder: n.format === 'currency' ? '2' : '0',
     oninput: (e) => { n.decimals = e.target.value === '' ? null : Number(e.target.value); changed(); },
   })));
   if (n.format !== 'currency') {
@@ -2061,6 +2123,8 @@ function fieldDialog(db, existing, after) {
     if (f.type === 'date') { if (f.format) c.format = f.format; if (f.time) c.time = true; }
     if (f.type === 'formula') c.expression = f.expression ?? '';
     if (f.type === 'field') c.depth = f.depth ?? 1;
+    if (f.type === 'attachments') c.multiple = f.multiple !== false;
+    if (f.type === 'document' && f.kind) c.kind = f.kind;
     if (f.type === 'lookup' || f.type === 'rollup') { c.relationField = f.via ?? ''; c.targetField = f.targetField ?? ''; c.aggregate = f.aggregate; }
     if (f.default !== undefined) c.default = f.default;
     return { type: f.type, config: c };
@@ -2154,6 +2218,25 @@ function fieldDialog(db, existing, after) {
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.date.time ? '' : undefined, onchange: (e) => { state.date.time = e.target.checked; drawCfg(); changed(); } }),
           el('span', { class: 'form-check-label' }, 'Include time of day ', el('span', { class: 'date-format-eg' }, dc.formatDate(today + 'T14:30', { format: state.date.format ?? 'iso', time: true })))));
+      } else if (t === 'relation') {
+        if (isEdit) {
+          kids.push(el('div', { class: 'modal-note full' }, `→ ${existing.targetDb}${existing.many ? ' (many)' : ''} — repoint by deleting and recreating`));
+        } else {
+          const r = state.relation;
+          const tables = allTables();
+          r.targetDb = r.targetDb || (tables[0]?.id ?? '');
+          const target = pickerSelect({ name: 'targetDb', placeholder: 'Choose a table…', options: tables.map((d) => ({ id: d.id, label: d.qualified })), value: r.targetDb });
+          target.input.addEventListener('change', () => { r.targetDb = target.input.value; changed(); });
+          kids.push(dsection('Target table', target));
+          kids.push(dsection('Cardinality', segCtl(fdc.CARDINALITIES.map((c) => ({ id: c, label: c.replace('-to-', ' → ') })), r.cardinality ?? 'many-to-one', (v) => { r.cardinality = v; changed(); })));
+          kids.push(dsection('Inverse field', el('input', { class: 'form-control', value: r.inverseName ?? '', placeholder: 'Name on the target table (optional)', oninput: (e) => { r.inverseName = e.target.value; changed(); } })));
+        }
+      } else if (t === 'attachments') {
+        kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
+          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.multiple !== false ? '' : undefined, onchange: (e) => { state.multiple = e.target.checked; changed(); } }),
+          el('span', { class: 'form-check-label' }, 'Allow multiple files')));
+      } else if (t === 'document') {
+        kids.push(dsection('Kind', segCtl(fdc.DOCUMENT_KINDS, state.kind ?? 'markdown', (v) => { state.kind = v; changed(); })));
       } else if (t === 'field') {
         kids.push(dsection('Definition depth', el('input', {
           type: 'number', min: 1, max: fdc.MAX_DEPTH, class: 'form-control dlg-narrow', value: state.depth ?? 1,
@@ -2217,7 +2300,9 @@ function fieldDialog(db, existing, after) {
   ], async () => {
     const def = fdc.definitionFromState(state);
     const name = nameInput.value.trim();
-    if (!isEdit) {
+    if (!isEdit && def.type === 'relation') {
+      await api('POST', `/tables/${db.id}/relations`, { name, ...def.config });
+    } else if (!isEdit) {
       await api('POST', `/tables/${db.id}/fields`, { name, type: def.type, config: def.config });
     } else {
       const patch = {};
@@ -2259,6 +2344,8 @@ function editPatchConfig(existing, def, state) {
     patch.states = (c.states ?? []).filter((s) => s.name && s.name.trim());
   }
   if (existing.type === 'formula' && state.expression) patch.expression = state.expression;
+  if (existing.type === 'attachments') patch.multiple = state.multiple !== false;
+  if (existing.type === 'document') patch.kind = state.kind ?? 'markdown';
   if (fieldDialogCore.DEFAULTABLE.includes(existing.type)) {
     patch.default = c.default ?? null;
   }
@@ -2297,7 +2384,7 @@ async function reorderField(db, fromName, toName, { after = false } = {}) {
   // The schema write happens behind the move; if it fails, redraw to truth.
   // Must mirror drawDatabase's cols selection or the in-place move lands on
   // the wrong cell index.
-  const cols = db.fields.filter((f) => f.type !== 'document').map((f) => f.name);
+  const cols = visibleCols(db);
   const fromIdx = cols.indexOf(fromName);
   const toIdx = cols.indexOf(toName);
   const table = document.querySelector('.wv-grid');
@@ -2326,20 +2413,12 @@ async function reorderField(db, fromName, toName, { after = false } = {}) {
 /* The "+" that closes the grid's header bar. A menu rather than a straight
    dialog because it replaces the "⚙ Fields" button in table view, so it has
    to keep relations and field management reachable — not just adding. */
+/* The header "+" opens the add-field tray directly (Kyle, 2026-08-23):
+   relation is a type in the grid and Manage fields is gone, so there is
+   nothing left for a menu to offer. */
 function addFieldMenuButton(db) {
-  const btn = el('button', { class: 'add-field-btn', type: 'button', title: 'Add or manage fields' }, '+');
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const row = (label, run) => el('button', {
-      class: 'chip-pop-row', type: 'button',
-      onclick: () => { document.querySelector('.chip-pop')?.remove(); run(); },
-    }, label);
-    showPopover(btn, [
-      row('+ Field', () => addFieldDialog(db)),
-      row('+ Relation', () => addRelationDialog(db)),
-      row('⚙ Manage fields', () => openSchemaEditor(db)),
-    ]);
-  });
+  const btn = el('button', { class: 'add-field-btn', type: 'button', title: 'Add a field' }, '+');
+  btn.addEventListener('click', (e) => { e.stopPropagation(); addFieldDialog(db); });
   return btn;
 }
 
@@ -3417,7 +3496,11 @@ function openSchemaEditor(db) {
 }
 
 function addFieldDialog(db) {
-  fieldDialog(db, null, () => openSchemaEditor(allTables().find((d) => d.id === db.id)));
+  // Back to wherever the add started: the table keeps its scroll, the
+  // schema editor redraws itself.
+  fieldDialog(db, null, () => (state.route?.page === 'db'
+    ? keepScroll(() => showDatabase(db.id, state.route.view))
+    : openSchemaEditor(allTables().find((d) => d.id === db.id))));
 }
 
 function addRelationDialog(db) {

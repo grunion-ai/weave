@@ -839,3 +839,11 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .fx-summary { display: flex; align-items: center; gap: 10px; }
 .fx-summary-expr { flex: 1; min-width: 0; font-size: 12px; white-space: pre-wrap; word-break: break-word; color: var(--tblr-body-color); }
 .hintnote { font-size: 11.5px; color: var(--tblr-secondary); margin-top: 4px; }
+
+/* ---------- the eyeball: show / hide (Feature #114) ---------- */
+.eye-head { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--tblr-secondary); padding: 6px 8px 2px; font-weight: 600; }
+.eye-row { display: flex; align-items: center; gap: 8px; }
+.eye-mark { color: var(--tblr-secondary); font-size: 10px; }
+.eye-mark.on { color: var(--tblr-primary); }
+.row-deleted { opacity: .5; }
+.row-deleted .open-link { text-decoration: line-through; }
