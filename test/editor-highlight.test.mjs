@@ -29,19 +29,31 @@ import { renderDocumentPage } from '../src/markdown.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 
+/* The `insert` string of one slash-menu item, found by its label. The
+   catalogue is one item per line, so the line IS the object literal. */
+function slashInsert(label) {
+  const line = APP.split('\n').find((l) => l.includes(`label: '${label}'`));
+  assert.ok(line, `the ${label} slash item must exist`);
+  const insert = line.match(/insert:\s*'((?:[^'\\]|\\.)*)'/);
+  assert.ok(insert, `the ${label} slash item must declare an insert`);
+  return insert[1];
+}
+
 /* ---------- the slash menu births highlightable blocks ---------- */
 
 test('slash Code block inserts a language placeholder, not a bare fence', () => {
   // A bare ``` block is plaintext to hljs — zero token spans, one colour.
   // The placeholder language makes the block highlightable from birth; the
   // writer edits the info line like any other placeholder text.
-  const item = APP.match(/label:\s*'Code block',\s*insert:\s*'([^']*)'/);
-  assert.ok(item, 'the Code block slash item must exist');
-  assert.match(item[1], /^```\w+\\n/, 'the fence must open with a language');
+  // Read the catalogue by label rather than by field order: the item carries
+  // icon/group/hint/aliases too, and a test that assumes their order breaks on
+  // every catalogue edit without a single behaviour having changed.
+  assert.match(slashInsert('Code block'), /^```\w+\\n/, 'the fence must open with a language');
 });
 
 test('the mermaid slash item keeps its own language untouched', () => {
-  assert.match(APP, /label: 'Mermaid diagram', insert: '```mermaid/);
+  assert.match(slashInsert('Mermaid diagram'), /^```mermaid\\n/,
+    'the mermaid fence names mermaid, not a highlight language');
 });
 
 /* ---------- rendered document pages highlight code ---------- */
