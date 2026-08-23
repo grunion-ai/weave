@@ -3304,7 +3304,7 @@ async function showActivity(param) {
     el('td', { class: 'activity-when', title: a.ts }, new Date(a.ts).toLocaleString()),
     el('td', {}, el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind)),
     el('td', {}, activitySummary(a)),
-    el('td', {}, `${a.db ?? '—'} #${a.publicId}`),
+    el('td', {}, recordChip(a)),
     el('td', {}, a.entityName ?? '—')));
 
   main.replaceChildren(
@@ -3328,10 +3328,22 @@ async function showActivity(param) {
       : el('div', { class: 'wv-empty' }, 'No activity yet.'));
 }
 
-/* One event's own page. The event is the entity here — its `entityId:index`
-   id is a real address — so the record it references is a link out, not the
-   click-through destination: one event can involve several records (a
-   relation change names two) and the record may since have been deleted. */
+/* The record an event refers to, as the same relation chip any entity page
+   uses: a permalink to the entity, swallowing the click so the row or page
+   around it keeps its own destination. */
+function recordChip(a) {
+  return el('span', { class: 'chip rel' + (a.deleted ? ' deleted' : '') },
+    el('a', { href: `#/entity/${a.entityId}`, onclick: (e) => e.stopPropagation() },
+      `${a.db ?? '—'} #${a.publicId}${a.deleted ? ' (deleted)' : ''}`));
+}
+
+/* One event's own page, laid out like any entity page: the crumb carries its
+   table (Activity) and a copyable permalink, the title is the summary, and the
+   values are label/value field rows. The event is the entity here — its
+   `entityId:index` id is a real address — so the record it references is one
+   field among the others, a relation chip linking out, not the click-through
+   destination: one event can involve several records (a relation change
+   names two) and the record may since have been deleted. */
 async function showActivityDetail(id) {
   state.route = { page: 'activity' };
   renderNav();
@@ -3340,37 +3352,29 @@ async function showActivityDetail(id) {
   try { a = await api('GET', `/activity/${encodeURIComponent(id)}`); }
   catch (err) { toast(err.message, true); return showActivity(null); }
 
-  const rows = [
-    ['When', el('span', { title: a.ts }, new Date(a.ts).toLocaleString())],
-    ['Event', el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind)],
-    ['Actor', a.actor ?? '—'],
-    ['Summary', activitySummary(a)],
-    ...Object.entries(a.detail ?? {}).map(([k, v]) => [k, fmtValue(v)]),
-  ];
+  const row = (label, value) => el('div', { class: 'fieldrow' }, el('label', {}, label), el('span', {}, value));
+  const fieldsBody = el('div', { class: 'card-body' },
+    row('Record', recordChip(a)),
+    row('Table', a.db ? el('a', { href: `#/table/${a.dbId}` }, a.db) : '—'),
+    row('Event', el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind)),
+    row('When', el('span', { title: a.ts }, new Date(a.ts).toLocaleString())),
+    row('Actor', a.actor ?? '—'),
+    ...Object.entries(a.detail ?? {}).map(([k, v]) => row(k, fmtValue(v))),
+    row('History', el('a', { href: `#/activity/${a.entityId}` }, `All activity for ${a.entityName ?? 'this record'} →`)));
+
   main.replaceChildren(
-    viewHeader({
-      crumbs: [
-        { label: 'Activity', href: '#/activity' },
-        { label: a.entityName ?? a.entityId, href: `#/activity/${a.entityId}` },
-      ],
-      permalink: `${location.origin}${WS_PREFIX}/#/activity/${a.id}`,
-      title: `${a.kind} — ${a.entityName ?? a.entityId}`,
-    }),
+    el('div', { class: 'view-header' },
+      el('div', { class: 'crumb' },
+        el('a', { href: '#/activity' }, 'Activity'), ' › ',
+        el('span', {
+          class: 'permalink-copy', title: 'Copy permalink',
+          onclick: () => copyText(`${location.origin}${WS_PREFIX}/#/activity/${a.id}`, 'Permalink copied'),
+        }, `#${a.id} ⧉`)),
+      el('div', { class: 'wv-toolbar entity-head' },
+        el('span', { class: 'name-edit activity-title' }, activitySummary(a)))),
     el('div', { class: 'card panel' },
-      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Event')),
-      el('table', { class: 'table table-sm wv-grid' }, el('tbody', {},
-        ...rows.map(([k, v]) => el('tr', {},
-          el('td', { class: 'activity-detail-key' }, k),
-          el('td', {}, v)))))),
-    el('div', { class: 'card panel' },
-      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Record')),
-      el('div', { class: 'card-body' },
-        el('a', {
-          href: `#/activity/${a.id}`,
-          onclick: (ev) => { ev.preventDefault(); peekEntity(a.entityId); },
-        }, `${a.db ?? '—'} #${a.publicId} — ${a.entityName ?? ''}${a.deleted ? ' (deleted)' : ''}`),
-        ' · ',
-        el('a', { href: `#/activity/${a.entityId}` }, 'all activity for this record'))));
+      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Fields')),
+      fieldsBody));
 }
 
 /* ---------- home ---------- */

@@ -327,7 +327,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-note { color: var(--tblr-secondary); font-size: 12px; margin: 0 0 10px; }
 .activity-when { white-space: nowrap; color: var(--tblr-secondary); }
 .activity-row { cursor: pointer; }
-.activity-detail-key { width: 160px; color: var(--tblr-secondary); }
+.entity-head .activity-title { font-size: 20px; font-weight: 700; padding: 2px 4px; flex: 1; min-width: 0; }
+.chip.rel.deleted a { text-decoration: line-through; color: var(--tblr-secondary); }
 
 /* ---------- inline document editor (tabs across document fields) ---------- */
 .doc-inline-wrap { padding: 10px 6px; }

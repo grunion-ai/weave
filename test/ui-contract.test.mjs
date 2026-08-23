@@ -908,14 +908,25 @@ test('an activity row opens the event itself, not the record it references', () 
   assert.match(view, /showActivityDetail/, 'the `entityId:index` route lands on the detail page');
 });
 
-test('the event detail page reads one event and links out to its record', () => {
+test('the event detail page reads one event and is laid out like any entity page', () => {
   const view = fnBody('showActivityDetail');
   assert.match(view, /api\('GET', `\/activity\/\$\{encodeURIComponent\(/, 'it reads the single-event endpoint');
   assert.doesNotMatch(view, /'POST'|'PATCH'|'DELETE'/, 'and writes nothing');
-  assert.match(view, /peekEntity\(a\.entityId\)/, 'the referenced record is a link out');
-  assert.match(view, /#\/activity\/\$\{a\.entityId\}/, 'as is the record\'s own filtered feed');
+  assert.match(view, /class: 'view-header'/, 'the same header shell as an entity');
+  assert.match(view, /permalink-copy/, 'with a copyable permalink in the crumb');
+  assert.match(view, /class: 'fieldrow'/, 'values read as label/value field rows');
+  assert.match(view, /recordChip\(a\)/, 'the referenced record is the shared relation chip');
+  assert.match(view, /#\/activity\/\$\{a\.entityId\}/, 'and the record\'s own filtered feed is reachable');
   assert.match(view, /a\.actor/, 'the page says who did it');
   assert.match(view, /activitySummary\(a\)/, 'and reuses the one summary function');
+});
+
+test('the Activity table permalinks each row\'s record without hijacking the row', () => {
+  assert.match(fnBody('showActivity'), /recordChip\(a\)/, 'the record cell is the same chip as the detail page');
+  const chip = fnBody('recordChip');
+  assert.match(chip, /class: 'chip rel/, 'a relation chip, as on any entity page');
+  assert.match(chip, /href: `#\/entity\/\$\{a\.entityId\}`/, 'permalinking the entity');
+  assert.match(chip, /stopPropagation/, 'without also opening the event around it');
 });
 
 test('a document event reads as what changed, not that something changed', () => {
