@@ -47,7 +47,7 @@ test('weaver seed: docs, wiki, quality mirror, issues + roadmap', () => {
   const w = seedWeaver(new Weave());
   assert.equal(w.state.meta.name, 'weave');
   const spaces = w.listSpaces().filter((s) => !s.system).map((s) => s.name).sort();
-  assert.deepEqual(spaces, ['Development', 'Handbook', 'Quality', 'Wiki']);
+  assert.deepEqual(spaces, ['Development', 'Handbook', 'Quality', 'Showcase', 'Wiki']);
 
   // Quality mirrors the real test suites with rollup counts.
   const suites = w.query('Suite', { where: [['Name', '=', 'Engine']] });

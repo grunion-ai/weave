@@ -630,3 +630,94 @@ test('client schema exposes optionsFull with ids/colors and state ids', () => {
   const state = view.fields.find((f) => f.name === 'State');
   for (const s of state.states) assert.equal(typeof s.id, 'string');
 });
+
+/* ---------- field type migration (2026-08-23) ----------
+   An existing field may change type along a compatibility matrix — the
+   values are coerced in place, never dropped. TYPE_MIGRATIONS is exported so
+   the field tray can offer exactly the moves the engine will accept. */
+import { TYPE_MIGRATIONS } from '../src/engine.js';
+
+test('TYPE_MIGRATIONS names the compatible moves Kyle asked for', () => {
+  assert.ok(TYPE_MIGRATIONS.text.includes('number'));
+  assert.ok(TYPE_MIGRATIONS.text.includes('key'));
+  assert.ok(TYPE_MIGRATIONS.select.includes('multiselect'));
+  assert.ok(TYPE_MIGRATIONS.select.includes('workflow'));
+  assert.ok(!TYPE_MIGRATIONS.number.includes('workflow'));
+});
+
+test('text -> number keeps numeric strings, blanks the rest', () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.addField(tasks, { name: 'Size', type: 'text' });
+  const a = w.createEntity(tasks, { name: 'A', values: { Size: '12.5' } });
+  const b = w.createEntity(tasks, { name: 'B', values: { Size: 'large' } });
+  w.updateField(tasks, f.id, { type: 'number', config: { decimals: 1 } });
+  assert.equal(w.getField(tasks, f.id).type, 'number');
+  assert.equal(w.getField(tasks, f.id).config.decimals, 1);
+  assert.equal(w.getEntity(a.id).values[f.id], 12.5);
+  assert.equal(w.getEntity(b.id).values[f.id], null);
+});
+
+test('select -> multiselect wraps values and keeps option ids', () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.findField(tasks, 'Priority');
+  const a = w.createEntity(tasks, { name: 'A', values: { Priority: 'High' } });
+  const before = f.config.options.map((o) => o.id);
+  w.updateField(tasks, f.id, { type: 'multiselect' });
+  assert.equal(w.getField(tasks, f.id).type, 'multiselect');
+  assert.deepEqual(w.getField(tasks, f.id).config.options.map((o) => o.id), before);
+  assert.deepEqual(w.getEntity(a.id).values[f.id], ['high']);
+});
+
+test('select -> workflow turns options into states; empties land on the default', () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.findField(tasks, 'Priority');
+  const a = w.createEntity(tasks, { name: 'A', values: { Priority: 'Medium' } });
+  const b = w.createEntity(tasks, { name: 'B' });
+  w.updateField(tasks, f.id, { type: 'workflow' });
+  const wf = w.getField(tasks, f.id);
+  assert.equal(wf.type, 'workflow');
+  assert.deepEqual(wf.config.states.map((s) => s.name), ['Low', 'Medium', 'High']);
+  assert.equal(wf.config.states.filter((s) => s.default).length, 1);
+  assert.equal(w.getEntity(a.id).values[f.id], 'medium');
+  assert.equal(w.getEntity(b.id).values[f.id], 'low');
+});
+
+test('text -> select builds options from the distinct values present', () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.addField(tasks, { name: 'Team', type: 'text' });
+  w.createEntity(tasks, { name: 'A', values: { Team: 'Core' } });
+  w.createEntity(tasks, { name: 'B', values: { Team: 'Growth' } });
+  const c = w.createEntity(tasks, { name: 'C', values: { Team: 'Core' } });
+  w.updateField(tasks, f.id, { type: 'select' });
+  const sel = w.getField(tasks, f.id);
+  assert.deepEqual(sel.config.options.map((o) => o.name).sort(), ['Core', 'Growth']);
+  assert.equal(w.getEntity(c.id).values[f.id], 'core');
+});
+
+test('multiselect -> text joins option names; checkbox -> text spells the boolean', () => {
+  const { w, tasks } = buildWorkspace();
+  const tags = w.findField(tasks, 'Tags');
+  const a = w.createEntity(tasks, { name: 'A', values: { Tags: ['bug', 'chore'] } });
+  w.updateField(tasks, tags.id, { type: 'text' });
+  assert.equal(w.getEntity(a.id).values[tags.id], 'bug, chore');
+  const done = w.addField(tasks, { name: 'Flag', type: 'checkbox' });
+  const b = w.createEntity(tasks, { name: 'B', values: { Flag: true } });
+  w.updateField(tasks, done.id, { type: 'text' });
+  assert.equal(w.getEntity(b.id).values[done.id], 'true');
+});
+
+test('an incompatible migration is refused naming the allowed targets', () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.findField(tasks, 'Estimate');
+  assert.throws(() => w.updateField(tasks, f.id, { type: 'workflow' }), /number.*can become.*text/);
+  assert.equal(w.getField(tasks, f.id).type, 'number');
+});
+
+test('a migration is audited and mirrored into the Fields registry', () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.addField(tasks, { name: 'Code', type: 'text' });
+  w.updateField(tasks, f.id, { type: 'key' });
+  const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id);
+  assert.equal(view.fields.find((x) => x.id === f.id).type, 'key');
+  assert.ok(w.listAudit().some((a) => a.action === 'field-migrated'), 'audited');
+});

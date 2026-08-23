@@ -568,13 +568,18 @@ function fnBody(name) {
   return rest.slice(0, rest.indexOf('\n}\n') + 2);
 }
 
-test('every column header carries a field menu', () => {
+test('every column header carries a field menu; a header click edits, sorting lives in the menu', () => {
+  // Kyle, 2026-08-23: clicking a column opens its editor in the tray. Sort
+  // moved into the ⋮ menu (asc / desc / clear) so it is still one click away.
   const head = fnBody('renderTable');
   assert.match(head, /fieldMenuButton\(/, 'each column th mounts the field menu');
-  assert.match(head, /sortKey = c/, 'the label still sorts — the menu is additive, not a replacement');
+  assert.match(head, /onclick: \(\) => editFieldDialog\(db, colField\(db, c\)\)/, 'the header click opens the field editor');
+  assert.match(head, /onSort: \(dir\) =>/, 'the menu is handed the sort control');
   const menu = fnBody('fieldMenuButton');
   assert.match(menu, /showPopover\(/, 'the menu reuses the chip popover, not a new overlay');
-  assert.match(menu, /stopPropagation/, 'opening the menu must not also sort the column');
+  assert.match(menu, /stopPropagation/, 'opening the menu must not also open the editor');
+  assert.match(menu, /Sort ascending/, 'sort ascending is in the menu');
+  assert.match(menu, /Sort descending/, 'sort descending is in the menu');
 });
 
 test('the field menu edits a field rather than dropping and rebuilding it', () => {
@@ -1146,9 +1151,22 @@ test('app.js consumes the tested core, loaded before it', () => {
   assert.ok(core > -1 && core < app, 'field-dialog-core.js must load before app.js');
 });
 
-test('the code pane exists and refuses type changes on existing fields', () => {
+test('the code pane exists and only allows compatible type moves on existing fields', () => {
   assert.match(APP, /parseDefinition\(codeTa\.value\)/);
-  assert.match(APP, /The type cannot be changed on an existing field/);
+  assert.match(APP, /choices\.some\(\(t\) => t\.id === r\.def\.type\)/, 'a pasted type is checked against typeChoices');
+  const dlg = fnBody('fieldDialog');
+  assert.match(dlg, /fdc\.typeChoices\(isEdit \? existing\.type : null\)/, 'existing fields see self + migrations only');
+  assert.match(dlg, /patch\.type = def\.type/, 'a changed type is sent as a migration');
+});
+
+test('field dialogs open in the right-hand tray and popovers stack above it', () => {
+  const dlg = fnBody('fieldDialog');
+  assert.match(dlg, /\n  tray\(/, 'the field dialog is a tray, not a centered modal');
+  assert.match(fnBody('addRelationDialog'), /\n  tray\(/, 'the relation dialog shares the tray');
+  const back = rulesFor('#tray-back');
+  const pop = rulesFor('.chip-pop');
+  assert.ok(px(pop['z-index']) > px(back['z-index']), 'a picker opened inside the tray must render above it');
+  assert.ok(px(pop['z-index']) > px(rulesFor('#modal-back')['z-index']), 'and above the modal backdrop (the old nesting bug)');
 });
 
 test('type grid and code pane have both-theme styling via tabler tokens', () => {

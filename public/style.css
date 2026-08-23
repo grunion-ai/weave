@@ -148,7 +148,7 @@ a.nav-space:hover { color: var(--tblr-primary); }
 
 /* ---------- chip picker popover (replaces native selects) ---------- */
 button.chip-trigger { cursor: pointer; font: inherit; }
-.chip-pop { position: fixed; z-index: 200; min-width: 140px; padding: 4px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg, 8px); box-shadow: 0 8px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px; }
+.chip-pop { position: fixed; z-index: 1200; min-width: 140px; padding: 4px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg, 8px); box-shadow: 0 8px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px; }
 .chip-pop-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: none; border: 0; border-radius: var(--tblr-border-radius); cursor: pointer; text-align: left; color: var(--tblr-body-color); }
 .chip-pop-row:hover, .chip-pop-row:focus { background: var(--tblr-active-bg, rgba(0,0,0,.05)); outline: none; }
 /* Keyboard focus needs to be as loud as hover — arrows move focus, not hover. */
@@ -769,3 +769,21 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .icon-btn:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
 .icon-ghost { color: var(--tblr-secondary); opacity: .6; }
 .picker-iconly { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ---------- right-hand tray (2026-08-23) ----------
+   Schema dialogs slide in from the right over a light backdrop so the table
+   stays visible while its fields are edited. Form body scrolls; the action
+   row is pinned. Popovers stack above it (.chip-pop z-index 1200). */
+#tray-back { position: fixed; inset: 0; background: rgba(0,0,0,.22); z-index: 1040; }
+#tray { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 94vw); background: var(--tblr-bg-surface); border-left: 1px solid var(--tblr-border-color); box-shadow: -8px 0 24px rgba(0,0,0,.12); display: flex; flex-direction: column; animation: peek-in .16s ease; }
+.tray-head { display: flex; align-items: center; gap: 8px; padding: 14px 18px 10px; border-bottom: 1px solid var(--tblr-border-color); }
+.tray-head h2 { font-size: 16px; margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tray-close { background: none; border: none; color: var(--tblr-secondary); font-size: 14px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.tray-close:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); }
+.tray-form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.tray-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
+.tray-body input, .tray-body select { margin-bottom: 0; }
+.tray-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); }
+.type-grid.editing .type-tile { opacity: 1; }
+.type-tile.current:not(.sel) { border-style: dashed; }
+.migrate-note { color: var(--tblr-warning, #f59f00); }

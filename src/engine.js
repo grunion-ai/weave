@@ -92,6 +92,23 @@ export const DEFINABLE_TYPES = [
   'select', 'multiselect', 'workflow', 'document', 'field', 'key', 'attachments',
 ];
 const MAX_DEFINITION_DEPTH = 4;
+/* Which type an existing field may become, with its values coerced in place
+   (#migrateFieldType). Anything absent is refused — a move that would need
+   to invent data (number -> workflow) is not a migration, it is a new field.
+   Exported so the field tray offers exactly these and nothing the engine
+   would then refuse. */
+export const TYPE_MIGRATIONS = {
+  text: ['number', 'key', 'url', 'email', 'select', 'multiselect', 'date'],
+  number: ['text'],
+  url: ['text'],
+  email: ['text'],
+  key: ['text'],
+  date: ['text'],
+  checkbox: ['text'],
+  select: ['multiselect', 'workflow', 'text'],
+  multiselect: ['select', 'text'],
+  workflow: ['select'],
+};
 
 /* The single normaliser for every type whose config is self-contained. Used
    by addField AND by `field` value validation, so a definition can never
@@ -1288,6 +1305,13 @@ export class Weave {
       if (field.id === db.nameFieldId) throw new WeaveError('Cannot rename the Name field', 'invalid');
       field.name = patch.name;
     }
+    if (patch.type != null && patch.type !== field.type) {
+      this.#migrateFieldType(db, field, patch.type, patch.config ?? {});
+      // The new type's config is fully set by the migration; the rest of the
+      // patch (width, default) still applies below on the new shape.
+      patch = { ...patch, config: Object.fromEntries(Object.entries(patch.config ?? {}).filter(([k]) => ['width', 'default'].includes(k))) };
+      if (!Object.keys(patch.config).length) delete patch.config;
+    }
     if (patch.config) {
       // Column width belongs to every field type, so it is handled before the
       // type switch — and independently of it, so a resize cannot clobber a
@@ -1347,6 +1371,80 @@ export class Weave {
     this.save();
     if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) });
     return field;
+  }
+
+  /* Change a field's type along TYPE_MIGRATIONS, coercing every row's value
+     into the new shape. Options/states are derived from the old config or,
+     for text sources, from the distinct values present — so nothing that is
+     in a cell today is lost, it just wears a new type. */
+  #migrateFieldType(db, field, toType, config) {
+    const allowed = TYPE_MIGRATIONS[field.type] ?? [];
+    if (!allowed.includes(toType)) {
+      throw new WeaveError(`A ${field.type} field can become ${allowed.length ? allowed.join(', ') : 'nothing else'} — not ${toType}`, 'invalid');
+    }
+    if (field.id === db.nameFieldId) throw new WeaveError('Cannot change the type of the Name field', 'invalid');
+    const from = field.type;
+    const rows = this.listEntities(db.id, { includeDeleted: true });
+    const optName = (opts, id) => opts.find((o) => o.id === id)?.name ?? null;
+    let nextConfig;
+    if (toType === 'select' || toType === 'multiselect') {
+      let options;
+      if (from === 'select' || from === 'multiselect') options = field.config.options.map((o) => ({ ...o }));
+      else if (from === 'workflow') options = field.config.states.map((s) => ({ id: s.id, name: s.name, color: '' }));
+      else {
+        // text: every distinct value becomes an option, in first-seen order
+        const seen = new Map();
+        for (const e of rows) {
+          const raw = e.values[field.id];
+          const parts = toType === 'multiselect' ? String(raw ?? '').split(',') : [raw];
+          for (const p of parts) {
+            const v = String(p ?? '').trim();
+            if (v && !seen.has(v.toLowerCase())) seen.set(v.toLowerCase(), v);
+          }
+        }
+        options = [...seen.values()];
+      }
+      if (config.options?.length) options = config.options;
+      nextConfig = normalizeSelfContainedConfig(toType, { options });
+    } else if (toType === 'workflow') {
+      const states = (from === 'select' ? field.config.options : []).map((o, i) => ({ id: o.id, name: o.name, category: 'in-progress', default: i === 0 }));
+      nextConfig = normalizeSelfContainedConfig('workflow', { states: config.states?.length ? config.states : states });
+    } else {
+      nextConfig = normalizeSelfContainedConfig(toType, config);
+    }
+    const coerce = (raw) => {
+      if (raw == null || raw === '') return toType === 'workflow' ? nextConfig.states.find((s) => s.default).id : null;
+      switch (toType) {
+        case 'text': {
+          if (from === 'select') return optName(field.config.options, raw);
+          if (from === 'multiselect') return (Array.isArray(raw) ? raw : [raw]).map((id) => optName(field.config.options, id)).filter(Boolean).join(', ');
+          if (from === 'workflow') return field.config.states.find((s) => s.id === raw)?.name ?? null;
+          return String(raw);
+        }
+        case 'number': { const n = Number(raw); return Number.isFinite(n) ? n : null; }
+        case 'date': return Number.isNaN(Date.parse(raw)) ? null : String(raw);
+        case 'email': return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(raw)) ? String(raw) : null;
+        case 'key':
+        case 'url': return String(raw);
+        case 'select': {
+          if (from === 'multiselect') return (Array.isArray(raw) ? raw[0] : raw) ?? null;
+          if (from === 'workflow') return raw;
+          return this.#findOption(nextConfig.options, String(raw).trim())?.id ?? null;
+        }
+        case 'multiselect': {
+          if (from === 'select') return [raw];
+          return String(raw).split(',').map((v) => this.#findOption(nextConfig.options, v.trim())?.id).filter(Boolean);
+        }
+        case 'workflow': return nextConfig.states.some((s) => s.id === raw) ? raw : nextConfig.states.find((s) => s.default).id;
+        default: return null;
+      }
+    };
+    for (const e of rows) e.values[field.id] = coerce(e.values[field.id]);
+    field.type = toType;
+    const width = field.config.width;
+    field.config = nextConfig;
+    if (width) field.config.width = width;
+    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from, to: toType, rows: rows.length });
   }
 
   deleteField(dbRef, fieldRef) {

@@ -2,6 +2,117 @@
 // how-to, wiki, test-suite mirror, and public issue/roadmap tracker — stored
 // in Weave itself (like the.fibery.io), not an off-the-shelf docs engine.
 
+import { DEFINABLE_TYPES } from './engine.js';
+export { DEFINABLE_TYPES };
+
+/* ---------- Showcase ----------
+   One table with every field type, and several configurations of the same
+   type beside each other (number as plain / currency / percent / unit;
+   date as iso / us / long+time; a colored and a plain select; a full
+   lifecycle workflow and a two-state gate; rollups by count / avg / join;
+   numeric, text and date formulas; a depth-1 and a nested field
+   definition). A People table carries the relations the computed fields
+   hang off. Idempotent: skipped when the space already exists, so it can be
+   applied to a workspace seeded before it existed. */
+export function seedFieldShowcase(w) {
+  if (w.listSpaces().some((sp) => sp.name === 'Showcase')) return w;
+  w.createSpace({ name: 'Showcase', description: 'Every field type, in several configurations — the range of what a field can be, visible in one grid' });
+
+  const people = w.createTable({ space: 'Showcase', name: 'People', noun: 'person' });
+  w.addField(people, { name: 'Email', type: 'email' });
+  w.addField(people, { name: 'Age', type: 'number' });
+
+  const ft = w.createTable({ space: 'Showcase', name: 'Field Types', noun: 'example' });
+  // --- text family
+  w.addField(ft, { name: 'Notes', type: 'text', config: { default: 'n/a' } });
+  w.addField(ft, { name: 'Site', type: 'url' });
+  w.addField(ft, { name: 'Contact', type: 'email' });
+  // --- number: four configurations
+  w.addField(ft, { name: 'Count', type: 'number' });
+  w.addField(ft, { name: 'Price', type: 'number', config: { format: 'currency', unit: 'USD', decimals: 2, separator: true } });
+  w.addField(ft, { name: 'Share', type: 'number', config: { format: 'percent', decimals: 1 } });
+  w.addField(ft, { name: 'Weight', type: 'number', config: { unit: 'kg', decimals: 0 } });
+  // --- dates: three configurations + a range
+  w.addField(ft, { name: 'Due', type: 'date' });
+  w.addField(ft, { name: 'Start', type: 'date', config: { format: 'us' } });
+  w.addField(ft, { name: 'Published', type: 'date', config: { format: 'long', time: true } });
+  w.addField(ft, { name: 'Window', type: 'daterange' });
+  // --- booleans
+  w.addField(ft, { name: 'Done', type: 'checkbox', config: { default: false } });
+  // --- choices: colored select, plain select, multiselect
+  w.addField(ft, { name: 'Priority', type: 'select', config: { options: [
+    { name: 'Low', color: '#2ea043' }, { name: 'Medium', color: '#f59f00' }, { name: 'High', color: '#e5484d' }] } });
+  w.addField(ft, { name: 'Category', type: 'select', config: { options: ['Hardware', 'Software', 'Service'] } });
+  w.addField(ft, { name: 'Tags', type: 'multiselect', config: { options: [
+    { name: 'alpha', color: '#4769eb' }, { name: 'beta', color: '#8e4ec6' }, { name: 'stable', color: '#2ea043' }, { name: 'legacy', color: '' }] } });
+  // --- workflows: a lifecycle and a gate
+  w.addField(ft, { name: 'Stage', type: 'workflow', config: { states: [
+    { name: 'Backlog', category: 'not-started', default: true },
+    { name: 'Building', category: 'in-progress' },
+    { name: 'Shipped', category: 'done' },
+    { name: 'Dropped', category: 'canceled' }] } });
+  w.addField(ft, { name: 'Review', type: 'workflow', config: { states: [
+    { name: 'Pending', category: 'not-started', default: true },
+    { name: 'Approved', category: 'done' }] } });
+  // --- documents (a second one beside the built-in Description)
+  w.addField(ft, { name: 'Brief', type: 'document' });
+  // --- meta: a field whose value is a field definition, flat and nested
+  w.addField(ft, { name: 'Definition', type: 'field' });
+  w.addField(ft, { name: 'Nested definition', type: 'field', config: { depth: 2 } });
+  // --- secrets and files
+  w.addField(ft, { name: 'API key', type: 'key' });
+  w.addField(ft, { name: 'Files', type: 'attachments' });
+  // --- relations: one and many
+  w.addRelation(ft, { name: 'Owner', targetDb: people, cardinality: 'many-to-one', inverseName: 'Owns' });
+  w.addRelation(ft, { name: 'Peers', targetDb: people, cardinality: 'many-to-many', inverseName: 'Peer of' });
+  // --- computed: lookup, three rollups, three formulas
+  w.addField(ft, { name: 'Owner email', type: 'lookup', config: { relationField: 'Owner', targetField: 'Email' } });
+  w.addField(ft, { name: 'Peer count', type: 'rollup', config: { relationField: 'Peers', aggregate: 'count' } });
+  w.addField(ft, { name: 'Peer age', type: 'rollup', config: { relationField: 'Peers', aggregate: 'avg', targetField: 'Age' } });
+  w.addField(ft, { name: 'Peer names', type: 'rollup', config: { relationField: 'Peers', aggregate: 'join', targetField: 'Name' } });
+  w.addField(ft, { name: 'Total', type: 'formula', config: { expression: 'Price * Count' } });
+  w.addField(ft, { name: 'Label', type: 'formula', config: { expression: 'concat(upper(Category), " · ", Priority)' } });
+  w.addField(ft, { name: 'Days left', type: 'formula', config: { expression: 'if(empty(Due), "", days(today(), Due))' } });
+
+  // --- rows
+  const ada = w.createEntity(people, { name: 'Ada Chen', values: { Email: 'ada@example.com', Age: 34 } });
+  const leo = w.createEntity(people, { name: 'Leo Marsh', values: { Email: 'leo@example.com', Age: 41 } });
+  const mia = w.createEntity(people, { name: 'Mia Okafor', values: { Email: 'mia@example.com', Age: 29 } });
+  const rows = [
+    { name: 'Sensor board', values: {
+      Notes: 'Rev C, lead-free', Site: 'https://example.com/sensor', Contact: 'sales@example.com',
+      Count: 12, Price: 149.5, Share: 32.5, Weight: 2,
+      Due: '2026-09-15', Start: '2026-08-01', Published: '2026-08-20T14:30:00Z', Window: { start: '2026-08-01', end: '2026-09-15' },
+      Done: false, Priority: 'High', Category: 'Hardware', Tags: ['alpha', 'stable'],
+      Definition: { type: 'number', config: { format: 'currency', unit: 'EUR', decimals: 2 } },
+      'Nested definition': { type: 'field', config: { depth: 1 } },
+      'API key': 'vendor-portal', Owner: ada.id, Peers: [leo.id, mia.id],
+    }, stage: 'Building', review: 'Approved' },
+    { name: 'Sync service', values: {
+      Notes: 'Runs hourly', Site: 'https://example.com/sync', Contact: 'ops@example.com',
+      Count: 3, Price: 1200, Share: 50, Weight: 0,
+      Due: '2026-08-10', Start: '2026-07-12', Published: '2026-07-30T09:00:00Z', Window: { start: '2026-07-12', end: '2026-08-10' },
+      Done: true, Priority: 'Medium', Category: 'Software', Tags: ['beta'],
+      Definition: { type: 'select', config: { options: ['on', 'off'] } },
+      Owner: leo.id, Peers: [ada.id],
+    }, stage: 'Shipped', review: 'Approved' },
+    { name: 'Onboarding call', values: {
+      Count: 1, Price: 0, Share: 0, Weight: 0,
+      Due: '2026-10-01', Priority: 'Low', Category: 'Service', Tags: ['legacy'],
+      Definition: { type: 'checkbox', config: {} },
+      Owner: mia.id, Peers: [ada.id, leo.id, mia.id],
+    }, stage: 'Backlog', review: 'Pending' },
+    { name: 'Blank row', values: {} , stage: 'Dropped', review: 'Pending' },
+  ];
+  for (const r of rows) {
+    const e = w.createEntity(ft, { name: r.name, values: r.values });
+    w.setState(e.id, 'Stage', r.stage);
+    w.setState(e.id, 'Review', r.review);
+  }
+  w.save();
+  return w;
+}
+
 export function seedWeaver(w) {
   w.state.meta.name = 'weave';
 
@@ -178,6 +289,7 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
     if (st !== 'Open') w.setState(e.id, 'Status', st);
   }
 
+  seedFieldShowcase(w);
   w.save();
   return w;
 }

@@ -56,6 +56,51 @@
     { name: 'text', sig: 'text(x)' },
   ];
 
+  // Mirror of the engine's TYPE_MIGRATIONS (contract-tested): what an
+  // existing field may become. The tray shows the field's own type plus
+  // these — never a move the engine would refuse.
+  const TYPE_MIGRATIONS = {
+    text: ['number', 'key', 'url', 'email', 'select', 'multiselect', 'date'],
+    number: ['text'],
+    url: ['text'],
+    email: ['text'],
+    key: ['text'],
+    date: ['text'],
+    checkbox: ['text'],
+    select: ['multiselect', 'workflow', 'text'],
+    multiselect: ['select', 'text'],
+    workflow: ['select'],
+  };
+  /* Grid tiles to offer: every type for a new field; for an existing one its
+     current type first, then the compatible migrations in matrix order.
+     Computed types (formula/lookup/rollup/relation) have no tile set — their
+     type is fixed. */
+  function typeChoices(existingType) {
+    if (!existingType) return FIELD_TYPES.slice();
+    const byId = Object.fromEntries(FIELD_TYPES.map((t) => [t.id, t]));
+    const self = byId[existingType];
+    if (!self || self.computed) return [];
+    return [self, ...(TYPE_MIGRATIONS[existingType] ?? []).map((id) => byId[id]).filter(Boolean)];
+  }
+
+  /* The form's state after picking a migration target: whatever config can
+     carry over does (options <-> states), so the categories/colors can be
+     tuned before the save; the old default is dropped — it was a value of
+     the old type. The engine derives anything left empty (text -> select
+     builds its options from the values present). */
+  function migrateState(state, toType) {
+    const next = { ...blankState(toType), options: [], states: [] };
+    const from = state.type;
+    if ((toType === 'select' || toType === 'multiselect') && (from === 'select' || from === 'multiselect')) {
+      next.options = (state.options ?? []).map((o) => ({ ...o }));
+    } else if ((toType === 'select' || toType === 'multiselect') && from === 'workflow') {
+      next.options = (state.states ?? []).map((s) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, color: '' }));
+    } else if (toType === 'workflow' && from === 'select') {
+      next.states = (state.options ?? []).map((o, i) => ({ ...(o.id ? { id: o.id } : {}), name: o.name, category: 'in-progress', default: i === 0 }));
+    }
+    return next;
+  }
+
   const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
   const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
   const NUMBER_FORMATS = ['number', 'currency', 'percent'];
@@ -209,7 +254,7 @@
   }
 
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, AGGREGATES,
+    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, AGGREGATES, TYPE_MIGRATIONS, typeChoices, migrateState,
     NUMBER_FORMATS, DATE_FORMATS, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     blankState, definitionFromState, stateFromDefinition,
     serializeDefinition, parseDefinition,

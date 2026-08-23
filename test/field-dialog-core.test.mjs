@@ -195,3 +195,31 @@ test('option and state ids survive the round trip when present', () => {
   const wfBack = core.definitionFromState(core.stateFromDefinition(wf));
   assert.equal(wfBack.config.states[0].id, 'open');
 });
+
+/* ---------- type migration offer (2026-08-23) ---------- */
+
+test('TYPE_MIGRATIONS mirrors the engine export exactly', async () => {
+  const { TYPE_MIGRATIONS } = await import('../src/engine.js');
+  assert.deepEqual(core.TYPE_MIGRATIONS, TYPE_MIGRATIONS);
+});
+
+test('typeChoices: a new field sees the whole grid; an existing one sees itself plus compatible moves', () => {
+  assert.deepEqual(core.typeChoices(null).map((t) => t.id), core.FIELD_TYPES.map((t) => t.id));
+  assert.deepEqual(core.typeChoices('select').map((t) => t.id), ['select', 'multiselect', 'workflow', 'text']);
+  assert.deepEqual(core.typeChoices('formula').map((t) => t.id), []);
+  assert.deepEqual(core.typeChoices('document').map((t) => t.id), ['document']);
+});
+
+test('migrateState carries config across a compatible move so the form can be adjusted before saving', () => {
+  const sel = core.stateFromDefinition({ type: 'select', config: { options: [{ id: 'lo', name: 'Low', color: '#2ea043' }, { id: 'hi', name: 'High', color: '' }] } });
+  const wf = core.migrateState(sel, 'workflow');
+  assert.equal(wf.type, 'workflow');
+  assert.deepEqual(wf.states.map((s) => [s.id, s.name, s.category, s.default]), [['lo', 'Low', 'in-progress', true], ['hi', 'High', 'in-progress', false]]);
+  const multi = core.migrateState(sel, 'multiselect');
+  assert.deepEqual(multi.options, sel.options);
+  const back = core.migrateState(wf, 'select');
+  assert.deepEqual(back.options.map((o) => o.name), ['Low', 'High']);
+  const num = core.migrateState(core.stateFromDefinition({ type: 'text', config: { default: 'x' } }), 'number');
+  assert.equal(num.type, 'number');
+  assert.equal(num.default, '', 'a default of the old type does not survive');
+});

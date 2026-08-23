@@ -112,6 +112,43 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   if (first) first.focus();
 }
 
+/* The right-hand tray: the same form contract as modal() (body nodes, an
+   onSubmit over FormData, a submit label) in a slide-over that leaves the
+   table visible behind it — schema edits are made while looking at the
+   data they shape. One tray at a time; Esc or the backdrop closes it.
+   Popovers opened from inside it stack above it (.chip-pop z-index). */
+function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
+  document.querySelector('#tray-back')?.remove();
+  document.querySelector('#modal-back')?.remove();
+  const back = el('div', { id: 'tray-back', onclick: (e) => { if (e.target === back) back.remove(); } });
+  const form = el('form', { class: 'tray-form' },
+    el('div', { class: 'tray-body' }, ...bodyNodes),
+    el('div', { class: 'tray-actions' },
+      el('button', { class: 'btn', type: 'button', onclick: () => back.remove() }, 'Cancel'),
+      el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await onSubmit(new FormData(form));
+      back.remove();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+  back.append(el('div', { id: 'tray' },
+    el('div', { class: 'tray-head' }, el('h2', {}, title),
+      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: () => back.remove() }, '✕')),
+    form));
+  document.body.append(back);
+  addEventListener('keydown', function esc(e) {
+    if (!back.isConnected) return removeEventListener('keydown', esc);
+    if (e.key === 'Escape' && !document.querySelector('.chip-pop')) { back.remove(); removeEventListener('keydown', esc); }
+  });
+  const first = form.querySelector('input:not([type=hidden]),select,textarea');
+  if (first) first.focus();
+  return back;
+}
+
 const state = { schema: [], route: null, expanded: new Set(), refocus: null };
 
 // Single entry point for opening an entity (future: side-peek drawer).
@@ -1545,7 +1582,9 @@ function renderTable(main, db, items, onSaved) {
           class: 'col-head',
           draggable: 'true',
           style: colField(db, c).width ? `width:${colField(db, c).width}px` : null,
-          onclick: () => { sortDir = sortKey === c ? -sortDir : 1; sortKey = c; draw(); },
+          // Click opens the field in the tray (Kyle, 2026-08-23: editing is
+          // what a header click should mean); sorting lives in the ⋮ menu.
+          onclick: () => editFieldDialog(db, colField(db, c)),
           // Dragging a header moves the column. The drop lands before the
           // target when the column travels left, after it when it travels
           // right — the same "insert where the gap opened" reading as a
@@ -1563,7 +1602,10 @@ function renderTable(main, db, items, onSaved) {
           el('span', { class: 'col-label' },
             fieldNameLabel(colField(db, c), c),
             sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : ''),
-          fieldMenuButton(db, colField(db, c)),
+          fieldMenuButton(db, colField(db, c), {
+            sorted: sortKey === c ? sortDir : 0,
+            onSort: (dir) => { sortKey = dir ? c : null; sortDir = dir || 1; draw(); },
+          }),
           columnResizeGrip(db, colField(db, c)))),
         ...(db.systemFields ?? []).map((n) => el('th', { class: 'sys-head', title: `${n} — system field, read-only` },
           el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·')))),
@@ -1656,7 +1698,7 @@ async function setColumnWidth(db, f, width, th = null) {
    edit, move, insert, delete — on the header it belongs to, reusing the chip
    popover so it matches every other picker in the grid. */
 
-function fieldMenuButton(db, f) {
+function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
   const btn = el('button', {
     class: 'field-menu', type: 'button',
     title: `Configure ${f.name}`, 'aria-label': `Configure field ${f.name}`,
@@ -1674,6 +1716,12 @@ function fieldMenuButton(db, f) {
       row('✎ Edit field…', () => editFieldDialog(db, f)),
       row('+ Insert field…', () => addFieldDialog(db)),
     ];
+    if (onSort) {
+      rows.push(
+        row((sorted > 0 ? '✓ ' : '') + '↑ Sort ascending', () => onSort(1)),
+        row((sorted < 0 ? '✓ ' : '') + '↓ Sort descending', () => onSort(-1)));
+      if (sorted) rows.push(row('Clear sort', () => onSort(0)));
+    }
     if (f.name !== 'Name') {
       rows.push(holdToConfirm('🗑 Delete field', async () => {
         document.querySelector('.chip-pop')?.remove();
@@ -1848,8 +1896,8 @@ function fieldDialog(db, existing, after) {
     const r = fdc.parseDefinition(codeTa.value);
     if (!r.ok) { codeErr.textContent = r.error; return; }
     codeErr.textContent = '';
-    if (isEdit && r.def.type !== fdc.definitionFromState(state).type) {
-      codeErr.textContent = 'The type cannot be changed on an existing field';
+    if (isEdit && r.def.type !== existing.type && !choices.some((t) => t.id === r.def.type)) {
+      codeErr.textContent = `A ${existing.type} field can become ${choices.length > 1 ? choices.slice(1).map((t) => t.id).join(', ') : 'nothing else'} — not ${r.def.type}`;
       return;
     }
     syncingFromCode = true;
@@ -1861,13 +1909,26 @@ function fieldDialog(db, existing, after) {
 
   const changed = () => syncCode();
 
+  // An existing field sees its own type plus the compatible migrations —
+  // nothing the engine would refuse. Picking one carries the config across
+  // (options <-> states) so it can be adjusted before the save migrates the
+  // column's values in place.
+  const choices = fdc.typeChoices(isEdit ? existing.type : null);
+  const migratable = isEdit && choices.length > 1;
+  function pickType(id) {
+    state.computed = false;
+    if (isEdit && id !== state.type) Object.assign(state, fdc.migrateState(state, id));
+    else state.type = id;
+    drawGrid(); drawCfg(); changed();
+  }
   function drawGrid() {
-    const tiles = fdc.FIELD_TYPES.map((t) => el('button', {
+    const tiles = choices.map((t) => el('button', {
       type: 'button',
-      class: 'type-tile' + (state.type === t.id && !state.computed ? ' sel' : '') + (t.computed ? ' computed' : ''),
-      disabled: isEdit ? '' : undefined,
-      title: t.computed ? `${t.id} (computed)` : t.id,
-      onclick: () => { state.computed = false; state.type = t.id; drawGrid(); drawCfg(); changed(); },
+      class: 'type-tile' + (state.type === t.id && !state.computed ? ' sel' : '') + (t.computed ? ' computed' : '')
+        + (isEdit && t.id === existing.type ? ' current' : ''),
+      disabled: isEdit && choices.length <= 1 ? '' : undefined,
+      title: isEdit && t.id !== existing.type ? `Convert to ${t.id} — values are migrated in place` : (t.computed ? `${t.id} (computed)` : t.id),
+      onclick: () => pickType(t.id),
     }, el('span', { class: 'type-ic' }, t.icon), t.label));
     const fx = el('button', {
       type: 'button',
@@ -1876,9 +1937,18 @@ function fieldDialog(db, existing, after) {
       onclick: () => { state.computed = state.computed ? false : 'formula'; drawGrid(); drawCfg(); changed(); },
     }, el('span', { class: 'fx-mark' }, 'ƒ'), 'Computed by formula',
     el('span', { class: 'fx-hint' }, 'any field can be one'));
+    let note = '';
+    if (isEdit && state.type !== existing.type && !state.computed) {
+      note = el('div', { class: 'modal-note migrate-note' }, `Saving converts this ${existing.type} field to ${state.type}; every row's value is migrated in place.`);
+    } else if (isEdit && !migratable) {
+      note = el('div', { class: 'modal-note' }, `${existing.type} field — the type is fixed`);
+    } else if (isEdit) {
+      note = el('div', { class: 'modal-note' }, `${existing.type} field — it can also become ${choices.slice(1).map((t) => t.id).join(', ')}`);
+    }
     gridWrap.replaceChildren(
-      dsection('Type', el('div', { class: 'type-grid' + (isEdit ? ' locked' : '') }, ...tiles), fx),
-      isEdit ? el('div', { class: 'modal-note' }, `${existing.type} field — the type cannot be changed here`) : '');
+      tiles.length ? dsection(isEdit ? 'Type' : 'Type', el('div', { class: 'type-grid' + (isEdit ? ' editing' : '') }, ...tiles)) : '',
+      (!isEdit || existing.type === 'formula') ? fx : '',
+      note);
   }
 
   function drawCfg() {
@@ -1951,7 +2021,7 @@ function fieldDialog(db, existing, after) {
   drawGrid();
   drawCfg();
 
-  modal(isEdit ? `Edit ${existing.name}` : 'Add field', [
+  tray(isEdit ? `Edit ${existing.name}` : 'Add field', [
     dsection('Name', nameInput),
     gridWrap, cfgWrap,
     el('div', { class: 'def-row full' }, codeToggle),
@@ -1964,7 +2034,14 @@ function fieldDialog(db, existing, after) {
     } else {
       const patch = {};
       if (name && name !== existing.name) patch.name = name;
-      patch.config = editPatchConfig(existing, def, state);
+      if (def.type !== existing.type) {
+        // A migration: the engine coerces every row, then the rest of the
+        // config (default) applies on the new shape.
+        patch.type = def.type;
+        patch.config = def.config;
+      } else {
+        patch.config = editPatchConfig(existing, def, state);
+      }
       await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(existing.id)}`, patch);
     }
     await loadSchema();
@@ -3128,7 +3205,7 @@ function addFieldDialog(db) {
 }
 
 function addRelationDialog(db) {
-  modal('Add relation', [
+  tray('Add relation', [
     dsection('Name', el('input', { name: 'name', placeholder: 'Field name (e.g. Project)', class: 'form-control' })),
     dsection('Target table', pickerSelect({ name: 'targetDb', placeholder: 'Choose a table…', options: allTables().map((d) => ({ id: d.id, label: d.qualified })), value: allTables()[0]?.id ?? null })),
     dsection('Cardinality', pickerSelect({ name: 'cardinality', value: 'many-to-one', options: ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'].map((c) => ({ id: c, label: c })) })),
