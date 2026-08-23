@@ -11,23 +11,27 @@
   const pad = (n) => String(n).padStart(2, '0');
   const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-  function parseNaturalDate(input, now = new Date()) {
-    const t = String(input ?? '').trim().toLowerCase();
+  /* opts.dayFirst: how to read an ambiguous numeric like 3/4 — true for
+     eu-format fields. A day above 12 settles it on its own either way. */
+  function parseNaturalDate(input, now = new Date(), { dayFirst = false } = {}) {
+    let t = String(input ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
     if (!t) return null;
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
+    // A pasted datetime names its day; the time of day is the cell's business.
+    t = t.replace(/^(\d{4}-\d{1,2}-\d{1,2})[t ]\d{1,2}:\d{2}.*$/, '$1');
+    const year = (y) => (y == null ? today.getFullYear() : String(y).length === 2 ? 2000 + Number(y) : Number(y));
     // ISO and unambiguous numerics first — typed dates beat phrases.
     let m;
-    if ((m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
-    if ((m = t.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/))) {
-      const y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : today.getFullYear();
-      return iso(new Date(y, Number(m[1]) - 1, Number(m[2])));
+    if ((m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))) return iso(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    // a/b[/c] with any of / - . as the separator: month-first unless the
+    // first number cannot be a month, or the field reads day-first. Dots
+    // are the European habit and read day-first by default.
+    if ((m = t.match(/^(\d{1,2})([-/.])(\d{1,2})(?:\2(\d{2,4}))?$/))) {
+      const a = Number(m[1]); const b = Number(m[3]);
+      const dayFirstHere = m[2] === '.' ? true : (dayFirst ? true : a > 12);
+      const [mo, d] = dayFirstHere && b <= 12 ? [b, a] : [a, b];
+      return iso(new Date(year(m[4]), mo - 1, d));
     }
-    if ((m = t.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?$/))) {
-      const y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : today.getFullYear();
-      return iso(new Date(y, Number(m[2]) - 1, Number(m[1])));
-    }
-
     if (t === 'today') return iso(today);
     if (t === 'tomorrow' || t === 'tmrw') return iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1));
     if (t === 'yesterday') return iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1));
@@ -55,7 +59,12 @@
     }
 
     // jun 21 / june 21 2027 / 21 jun / 21 june 2027
-    const monthIdx = (w) => MONTHS.findIndex((mo) => mo.startsWith(w));
+    // …plus commas, ordinals (15th), 4-letter abbreviations (sept),
+    // year-first, and a bare month + year (the 1st).
+    t = t.replace(/,/g, ' ').replace(/(\d)(st|nd|rd|th)\b/g, '$1').replace(/\s+/g, ' ').trim();
+    const monthIdx = (w) => MONTHS.findIndex((mo) => mo.startsWith(w.slice(0, 3)));
+    if ((m = t.match(/^([a-z]{3,9}) (\d{4})$/)) && monthIdx(m[1]) >= 0) return iso(new Date(Number(m[2]), monthIdx(m[1]), 1));
+    if ((m = t.match(/^(\d{4}) ([a-z]{3,9}) (\d{1,2})$/)) && monthIdx(m[2]) >= 0) return iso(new Date(Number(m[1]), monthIdx(m[2]), Number(m[3])));
     if ((m = t.match(/^([a-z]{3,}) (\d{1,2})(?:,? (\d{4}))?$/)) && monthIdx(m[1]) >= 0) {
       return iso(new Date(m[3] ? Number(m[3]) : today.getFullYear(), monthIdx(m[1]), Number(m[2])));
     }

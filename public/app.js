@@ -1129,26 +1129,10 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   // Type-or-pick dates (Feature #44): one control that is both a text input
   // ('next friday', 'jun 21' — parsed by nl-date.js) and a native calendar.
   if (f.type === 'date') {
-    const rawIso = item.raw?.[f.name] ?? '';
-    const text = el('input', {
-      class: 'form-control form-control-sm inline-edit date-text',
-      value: val ?? '', placeholder: 'today, next fri, jun 21…',
-      onclick: (e) => e.stopPropagation(),
+    return dateControl({
+      value: item.raw?.[f.name] ?? '', time: !!f.time, format: f.format ?? 'iso',
+      placeholder: 'today, 15 sep, 9/15/26…', onChange: (iso) => patch(iso),
     });
-    text.addEventListener('change', () => {
-      if (text.value === '') return patch(null);
-      const parsed = window.parseNaturalDate?.(text.value);
-      if (!parsed) return toast(`Could not read '${text.value}' as a date`, true);
-      // A typed phrase names a day; an existing time of day survives it.
-      const time = f.time && String(rawIso).includes('T') ? 'T' + String(rawIso).split('T')[1] : '';
-      patch(parsed + time);
-    });
-    const pick = el('input', {
-      type: f.time ? 'datetime-local' : 'date', class: 'date-pick', title: 'Pick from the calendar',
-      value: rawIso, onclick: (e) => e.stopPropagation(),
-    });
-    pick.addEventListener('change', () => patch(pick.value || null));
-    return el('span', { class: 'date-cell' }, text, pick);
   }
   const rawVal = item.raw?.[f.name] ?? val;
   const input = el('input', {
@@ -1642,33 +1626,61 @@ const MIN_COLUMN_WIDTH = 60;
 /* Drag the edge to size a column, double-click it to hand the column back to
    the browser. The width is per-field schema, so it is the grid's width for
    everyone — one write on release, never one per pointermove. */
+/* The widest content in the column, measured on the cells themselves:
+   double-clicking the grip fits the column to it so nothing is cut off
+   (Kyle, 2026-08-23). scrollWidth reads the full content even when the
+   cell clips it. */
+function fitColumnWidth(th) {
+  const table = th.closest('table');
+  const idx = [...th.parentElement.children].indexOf(th);
+  let widest = 0;
+  for (const row of table.querySelectorAll('tr')) {
+    const cell = row.children[idx];
+    if (!cell) continue;
+    const inner = cell.firstElementChild;
+    widest = Math.max(widest, (inner ? inner.scrollWidth : 0), cell.scrollWidth);
+  }
+  return Math.max(MIN_COLUMN_WIDTH, Math.ceil(widest) + 18);
+}
+
 function columnResizeGrip(db, f) {
-  const grip = el('span', { class: 'col-resize', title: 'Drag to resize — double-click to auto-fit' });
-  grip.addEventListener('click', (e) => e.stopPropagation());        // resizing is not sorting
-  grip.addEventListener('dblclick', (e) => { e.stopPropagation(); setColumnWidth(db, f, null, grip.closest('th')); });
+  const grip = el('span', { class: 'col-resize', title: 'Drag to resize — double-click to fit the content' });
+  grip.addEventListener('click', (e) => e.stopPropagation());        // resizing is not opening the editor
+  grip.addEventListener('dblclick', (e) => { e.stopPropagation(); const th = grip.closest('th'); setColumnWidth(db, f, fitColumnWidth(th), th); });
   grip.addEventListener('dragstart', (e) => { e.preventDefault(); e.stopPropagation(); });
   grip.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
-    e.preventDefault();   // the th is draggable; a grab on the edge is a resize
+    e.preventDefault();
     const th = grip.closest('th');
+    // The th is draggable for column reorder; Safari and Firefox start
+    // that native drag a few pixels into a resize and the pointer stream
+    // dies — the "stuck" resize. Suspend draggable for the duration and
+    // capture the pointer on the grip so every move reaches us.
+    const wasDraggable = th.draggable;
+    th.draggable = false;
+    try { grip.setPointerCapture(e.pointerId); } catch { /* older engines */ }
     const startX = e.clientX;
     const base = th.getBoundingClientRect().width;
     let width = base;
-    // Tracked on the window, not the grip: a resize drag routinely outruns a
-    // 6px target, and the pointer must keep steering the column anyway.
     const move = (ev) => {
       width = Math.max(MIN_COLUMN_WIDTH, Math.round(base + ev.clientX - startX));
       th.style.width = `${width}px`;
     };
+    let done = false;
     const up = () => {
-      removeEventListener('pointermove', move);
-      removeEventListener('pointerup', up);
-      removeEventListener('pointercancel', up);
+      if (done) return;
+      done = true;
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+      grip.removeEventListener('lostpointercapture', up);
+      th.draggable = wasDraggable;
       if (Math.round(width) !== Math.round(base)) setColumnWidth(db, f, width, th);
     };
-    addEventListener('pointermove', move);
-    addEventListener('pointerup', up);
-    addEventListener('pointercancel', up);
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+    grip.addEventListener('lostpointercapture', up);
   });
   return grip;
 }
@@ -1744,6 +1756,144 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
 /* Which types take a default, and how a string becomes one, live in
    field-dialog-core.js (DEFAULTABLE / definitionFromState) — tested there. */
 
+/* ---------- dates: smart input + calendar popover (2026-08-23) ----------
+   One control everywhere a date is edited (cells, entity rows, the tray's
+   default): a text input that reads any format a person types — '9/15/26',
+   '15 sep 2026', 'next friday' (nl-date.js) — beside a calendar button that
+   opens a small popover laid out like the native picker Kyle liked:
+   month ▾ / year ▾ (each a grid), ↑ ↓ months, Sunday-first days, a time row
+   when the field carries time, Clear / Today. */
+function dateControl({ value = '', time = false, format = 'iso', placeholder = 'type a date…', onChange, compact = true }) {
+  const dc = weaveDateCore;
+  let current = value ?? '';
+  const text = el('input', {
+    class: 'form-control form-control-sm inline-edit date-text' + (compact ? '' : ' date-text-wide'),
+    value: dc.formatDate(current, { format, time }), placeholder,
+    onclick: (e) => e.stopPropagation(),
+  });
+  const set = (iso) => { current = iso ?? ''; text.value = dc.formatDate(current, { format, time }); onChange(current || null); };
+  text.addEventListener('change', () => {
+    const typed = text.value.trim();
+    if (!typed) return set('');
+    const day = parseNaturalDate(typed, new Date(), { dayFirst: format === 'eu' });
+    if (!day) { toast(`Could not read '${typed}' as a date`, true); text.value = dc.formatDate(current, { format, time }); return; }
+    // A typed day keeps the existing time of day; a typed datetime brings its own.
+    const typedTime = (typed.match(/[t ](\d{1,2}:\d{2})/i) || [])[1];
+    set(dc.joinIso(day, time ? (typedTime ?? dc.splitIso(current).time) : ''));
+  });
+  text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } });
+  const btn = el('button', {
+    type: 'button', class: 'date-pick-btn', title: 'Pick from the calendar', 'aria-label': 'Open calendar',
+    onclick: (e) => { e.stopPropagation(); datePopover({ anchor: btn, value: current, time, format, onPick: set }); },
+  }, calendarGlyph());
+  const wrap = el('span', { class: 'date-cell' }, text, btn);
+  wrap.setValue = (iso) => { current = iso ?? ''; text.value = dc.formatDate(current, { format, time }); };
+  return wrap;
+}
+
+function calendarGlyph() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('width', '14'); svg.setAttribute('height', '14');
+  svg.innerHTML = '<rect x="1.5" y="2.5" width="13" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 6h13" stroke="currentColor" stroke-width="1.3"/><path d="M5 1v3M11 1v3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
+  return svg;
+}
+
+function datePopover({ anchor, value, time, format, onPick }) {
+  const dc = weaveDateCore;
+  document.querySelector('.date-pop')?.remove();
+  const todayIso = dc.todayIso();
+  let { date: selected, time: clock } = dc.splitIso(value || '');
+  let [y, m] = (selected || todayIso).split('-').map(Number);
+  let view = 'days';                     // days | months | years
+  let decadeBase = y;
+  const pop = el('div', { class: 'date-pop', role: 'dialog', onclick: (e) => e.stopPropagation() });
+  const commit = (iso, close) => {
+    onPick(iso);
+    if (close) pop.remove();
+    else draw();
+  };
+  const smart = el('input', {
+    class: 'form-control form-control-sm date-smart', placeholder: 'today, 15 sep, 9/15/26…',
+    value: dc.formatDate(selected, { format }),
+  });
+  const preview = el('div', { class: 'date-smart-preview' });
+  smart.addEventListener('input', () => {
+    const day = parseNaturalDate(smart.value, new Date(), { dayFirst: format === 'eu' });
+    preview.textContent = smart.value.trim() ? (day ? `→ ${dc.formatDate(day, { format: 'long' })}` : '…') : '';
+  });
+  smart.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const day = parseNaturalDate(smart.value, new Date(), { dayFirst: format === 'eu' });
+    if (!day) return toast(`Could not read '${smart.value}' as a date`, true);
+    selected = day; [y, m] = day.split('-').map(Number);
+    commit(dc.joinIso(day, time ? clock : ''), !time);
+  });
+  const body = el('div', { class: 'date-pop-body' });
+  function draw() {
+    body.replaceChildren();
+    if (view === 'days') {
+      body.append(el('div', { class: 'date-pop-head' },
+        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, `${dc.MONTHS_LONG[m - 1]} ▾`),
+        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, `${y} ▾`),
+        el('span', { class: 'date-pop-spacer' }),
+        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '↑'),
+        el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '↓')));
+      const grid = el('div', { class: 'date-grid' }, ...dc.WEEKDAYS.map((d) => el('span', { class: 'date-wd' }, d)));
+      for (const week of dc.calendarMonth(y, m)) {
+        for (const c of week) {
+          grid.append(el('button', {
+            type: 'button',
+            class: 'date-day' + (c.inMonth ? '' : ' out') + (c.iso === todayIso ? ' today' : '') + (c.iso === selected ? ' sel' : ''),
+            onclick: () => { selected = c.iso; [y, m] = c.iso.split('-').map(Number); commit(dc.joinIso(c.iso, time ? clock : ''), !time); },
+          }, String(c.day)));
+        }
+      }
+      body.append(grid);
+      if (time) {
+        const t = el('input', { type: 'time', class: 'form-control form-control-sm date-time', value: clock });
+        t.addEventListener('change', () => { clock = t.value; if (selected) commit(dc.joinIso(selected, clock), false); });
+        body.append(el('div', { class: 'date-pop-time' }, el('span', {}, 'Time'), t));
+      }
+      body.append(el('div', { class: 'date-pop-foot' },
+        el('button', { type: 'button', class: 'date-pop-link', onclick: () => { selected = ''; commit(null, true); } }, 'Clear'),
+        el('button', { type: 'button', class: 'date-pop-link', onclick: () => { selected = todayIso; [y, m] = todayIso.split('-').map(Number); commit(dc.joinIso(todayIso, time ? clock : ''), !time); } }, 'Today')));
+    } else if (view === 'months') {
+      body.append(el('div', { class: 'date-pop-head' },
+        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'days'; draw(); } }, `${y}`),
+        el('span', { class: 'date-pop-spacer' }),
+        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, '↑'),
+        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y++; draw(); } }, '↓')));
+      body.append(el('div', { class: 'date-pick-grid' }, ...dc.MONTHS.map((name, i) => el('button', {
+        type: 'button', class: 'date-pick-cell' + (i + 1 === m ? ' sel' : ''),
+        onclick: () => { m = i + 1; view = 'days'; draw(); },
+      }, name))));
+    } else {
+      const years = dc.decade(decadeBase);
+      body.append(el('div', { class: 'date-pop-head' },
+        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'days'; draw(); } }, `${years[0]}–${years[years.length - 1]}`),
+        el('span', { class: 'date-pop-spacer' }),
+        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase -= 10; draw(); } }, '↑'),
+        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase += 10; draw(); } }, '↓')));
+      body.append(el('div', { class: 'date-pick-grid' }, ...years.map((yr) => el('button', {
+        type: 'button', class: 'date-pick-cell' + (yr === y ? ' sel' : ''),
+        onclick: () => { y = yr; view = 'months'; draw(); },
+      }, String(yr)))));
+    }
+  }
+  draw();
+  pop.append(el('div', { class: 'date-pop-smart' }, smart, preview), body);
+  document.body.append(pop);
+  const r = anchor.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = (r.bottom + 6 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
+  const close = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); removeEventListener('click', close, true); } };
+  addEventListener('click', close, true);
+  pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); pop.remove(); anchor.focus(); } });
+  smart.focus();
+  return pop;
+}
+
 /* ---------- unified field dialog (design review 2026-08-22, A+E) ----------
    One dialog for add and edit: a type grid with per-type config editors
    (direction A) plus a form ⇄ code pane over the canonical {type, config}
@@ -1758,11 +1908,12 @@ function dsection(label, ...kids) {
 
 function segCtl(options, value, onPick) {
   const wrap = el('div', { class: 'seg-ctl', role: 'group' });
+  const norm = options.map((o) => (typeof o === 'string' ? { id: o, label: o } : o));
   const draw = (current) => {
-    wrap.replaceChildren(...options.map((o) => el('button', {
-      type: 'button', class: 'seg-opt' + (o === current ? ' on' : ''),
-      onclick: () => { draw(o); onPick(o); },
-    }, o)));
+    wrap.replaceChildren(...norm.map((o) => el('button', {
+      type: 'button', class: 'seg-opt' + (o.id === current ? ' on' : ''), title: o.title ?? null,
+      onclick: () => { draw(o.id); onPick(o.id); },
+    }, o.label)));
   };
   draw(value);
   return wrap;
@@ -1854,6 +2005,19 @@ function formulaBuilder(db, state, onChange) {
       el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'functions'), ...fnChips)));
 }
 
+/* The formula script, in its own dialog above the tray: the expression
+   with insertable field/function chips. Saving writes state.expression. */
+function formulaScriptDialog(db, state, onSave) {
+  const draft = { expression: state.expression ?? '' };
+  modal('Formula script', [
+    el('div', { class: 'full' }, formulaBuilder(db, draft, () => {})),
+  ], async () => {
+    if (!draft.expression.trim()) throw new Error('A formula needs an expression');
+    state.expression = draft.expression;
+    onSave();
+  }, 'Save script');
+}
+
 function fieldDialog(db, existing, after) {
   const fdc = fieldDialogCore;
   const isEdit = !!existing;
@@ -1881,33 +2045,7 @@ function fieldDialog(db, existing, after) {
 
   const gridWrap = el('div', { class: 'full' });
   const cfgWrap = el('div', { class: 'full' });
-  const codeWrap = el('div', { class: 'def-pane full' });
-  let codeOpen = false;
-  let syncingFromCode = false;
-
-  const codeTa = el('textarea', { class: 'def-code', rows: 9, spellcheck: 'false' });
-  const codeErr = el('div', { class: 'def-err' });
-  const syncCode = () => {
-    if (!codeOpen || syncingFromCode) return;
-    codeTa.value = fdc.serializeDefinition(state);
-    codeErr.textContent = '';
-  };
-  codeTa.addEventListener('input', () => {
-    const r = fdc.parseDefinition(codeTa.value);
-    if (!r.ok) { codeErr.textContent = r.error; return; }
-    codeErr.textContent = '';
-    if (isEdit && r.def.type !== existing.type && !choices.some((t) => t.id === r.def.type)) {
-      codeErr.textContent = `A ${existing.type} field can become ${choices.length > 1 ? choices.slice(1).map((t) => t.id).join(', ') : 'nothing else'} — not ${r.def.type}`;
-      return;
-    }
-    syncingFromCode = true;
-    Object.assign(state, fdc.stateFromDefinition(r.def));
-    drawGrid();
-    drawCfg();
-    syncingFromCode = false;
-  });
-
-  const changed = () => syncCode();
+  const changed = () => {};
 
   // An existing field sees its own type plus the compatible migrations —
   // nothing the engine would refuse. Picking one carries the config across
@@ -1930,13 +2068,19 @@ function fieldDialog(db, existing, after) {
       title: isEdit && t.id !== existing.type ? `Convert to ${t.id} — values are migrated in place` : (t.computed ? `${t.id} (computed)` : t.id),
       onclick: () => pickType(t.id),
     }, el('span', { class: 'type-ic' }, t.icon), t.label));
-    const fx = el('button', {
-      type: 'button',
-      class: 'fx-toggle' + (state.computed ? ' on' : ''),
-      disabled: isEdit ? '' : undefined,
-      onclick: () => { state.computed = state.computed ? false : 'formula'; drawGrid(); drawCfg(); changed(); },
-    }, el('span', { class: 'fx-mark' }, 'ƒ'), 'Computed by formula',
-    el('span', { class: 'fx-hint' }, 'any field can be one'));
+    // Formula is a checkbox (Kyle, 2026-08-23): ticking it opens the script
+    // dialog; the tray then shows the expression with an edit link.
+    const fx = el('label', { class: 'fx-toggle' + (state.computed ? ' on' : '') },
+      el('input', {
+        type: 'checkbox', class: 'form-check-input', checked: state.computed ? '' : undefined, disabled: isEdit ? '' : undefined,
+        onchange: (e) => {
+          state.computed = e.target.checked ? 'formula' : false;
+          drawGrid(); drawCfg(); changed();
+          if (state.computed) formulaScriptDialog(db, state, () => { drawCfg(); changed(); });
+        },
+      }),
+      el('span', { class: 'fx-mark' }, 'ƒ'), 'Formula',
+      el('span', { class: 'fx-hint' }, 'any field can be computed'));
     let note = '';
     if (isEdit && state.type !== existing.type && !state.computed) {
       note = el('div', { class: 'modal-note migrate-note' }, `Saving converts this ${existing.type} field to ${state.type}; every row's value is migrated in place.`);
@@ -1954,7 +2098,9 @@ function fieldDialog(db, existing, after) {
   function drawCfg() {
     const kids = [];
     if (state.computed === 'formula') {
-      kids.push(dsection('Formula', formulaBuilder(db, state, changed)));
+      kids.push(dsection('Script', el('div', { class: 'fx-summary' },
+        el('code', { class: 'fx-summary-expr' }, state.expression || '— no script yet —'),
+        el('button', { type: 'button', class: 'btn btn-sm', onclick: () => formulaScriptDialog(db, state, () => { drawCfg(); changed(); }) }, state.expression ? 'Edit script…' : 'Write script…'))));
     } else {
       const t = state.type;
       if (t === 'select' || t === 'multiselect') {
@@ -1972,10 +2118,17 @@ function fieldDialog(db, existing, after) {
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.number.separator ? '' : undefined, onchange: (e) => { state.number.separator = e.target.checked; changed(); } }),
           el('span', { class: 'form-check-label' }, 'Add 1,000 separator')));
       } else if (t === 'date') {
-        kids.push(dsection('Format', segCtl(fdc.DATE_FORMATS, state.date.format ?? 'iso', (v) => { state.date.format = v; changed(); })));
+        // Each format shown as today's date would render in it — the
+        // example IS the label. The time toggle shows its own example.
+        const dc = weaveDateCore;
+        const today = dc.todayIso();
+        kids.push(dsection('Format', el('div', { class: 'date-format-list' }, ...fdc.DATE_FORMATS.map((fmt) => el('button', {
+          type: 'button', class: 'date-format-opt' + ((state.date.format ?? 'iso') === fmt ? ' on' : ''),
+          onclick: () => { state.date.format = fmt; drawCfg(); changed(); },
+        }, el('span', { class: 'date-format-id' }, fmt), el('span', { class: 'date-format-eg' }, dc.formatDate(today, { format: fmt })))))));
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
-          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.date.time ? '' : undefined, onchange: (e) => { state.date.time = e.target.checked; changed(); } }),
-          el('span', { class: 'form-check-label' }, 'Include time of day')));
+          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.date.time ? '' : undefined, onchange: (e) => { state.date.time = e.target.checked; drawCfg(); changed(); } }),
+          el('span', { class: 'form-check-label' }, 'Include time of day ', el('span', { class: 'date-format-eg' }, dc.formatDate(today + 'T14:30', { format: state.date.format ?? 'iso', time: true })))));
       } else if (t === 'field') {
         kids.push(dsection('Definition depth', el('input', {
           type: 'number', min: 1, max: fdc.MAX_DEPTH, class: 'form-control dlg-narrow', value: state.depth ?? 1,
@@ -1996,7 +2149,30 @@ function fieldDialog(db, existing, after) {
           }
         }
       }
-      if (fdc.DEFAULTABLE.includes(t)) {
+      if (t === 'date') {
+        // A date default is none, the day/moment the row is created
+        // (today() / now(), resolved by the engine), or a specific date.
+        const dc = weaveDateCore;
+        const kind = dc.defaultKind(state.default);
+        const dyn = state.date.time ? 'now()' : 'today()';
+        const body = el('div', { class: 'date-default' });
+        const seg = segCtl([
+          { id: 'none', label: 'None' },
+          { id: 'today', label: dyn, title: 'The day the row is created' },
+          { id: 'specific', label: 'Specific…' },
+        ], kind, (k) => {
+          state.default = k === 'none' ? '' : k === 'today' ? dyn : (kind === 'specific' ? state.default : dc.todayIso());
+          drawCfg(); changed();
+        });
+        body.append(seg);
+        if (kind === 'specific') {
+          body.append(dateControl({
+            value: state.default, time: state.date.time, format: state.date.format ?? 'iso', compact: false,
+            onChange: (iso) => { state.default = iso ?? ''; changed(); },
+          }));
+        }
+        kids.push(dsection('Default', body));
+      } else if (fdc.DEFAULTABLE.includes(t)) {
         kids.push(dsection('Default', el('input', {
           class: 'form-control', value: state.default ?? '',
           placeholder: t === 'checkbox' ? 'true / false' : 'Default value for new rows (optional)',
@@ -2007,25 +2183,12 @@ function fieldDialog(db, existing, after) {
     cfgWrap.replaceChildren(...kids);
   }
 
-  const codeToggle = el('button', {
-    type: 'button', class: 'def-toggle',
-    onclick: () => {
-      codeOpen = !codeOpen;
-      codeWrap.classList.toggle('open', codeOpen);
-      codeToggle.classList.toggle('on', codeOpen);
-      if (codeOpen) syncCode();
-    },
-  }, '{ } definition');
-  codeWrap.append(codeTa, codeErr);
-
   drawGrid();
   drawCfg();
 
   tray(isEdit ? `Edit ${existing.name}` : 'Add field', [
     dsection('Name', nameInput),
     gridWrap, cfgWrap,
-    el('div', { class: 'def-row full' }, codeToggle),
-    codeWrap,
   ], async () => {
     const def = fdc.definitionFromState(state);
     const name = nameInput.value.trim();
@@ -2076,8 +2239,22 @@ function editPatchConfig(existing, def, state) {
   return patch;
 }
 
+/* A field edit redraws the table; the page and the grid must not snap back
+   to the top-left (Kyle, 2026-08-23). */
+async function keepScroll(redraw) {
+  const grid = document.querySelector('.wv-grid');
+  const scroller = grid?.parentElement;
+  const x = window.scrollX, y = window.scrollY, left = scroller?.scrollLeft ?? 0;
+  await redraw();
+  requestAnimationFrame(() => {
+    window.scrollTo(x, y);
+    const again = document.querySelector('.wv-grid')?.parentElement;
+    if (again) again.scrollLeft = left;
+  });
+}
+
 function editFieldDialog(db, f) {
-  fieldDialog(db, f, () => showDatabase(db.id));
+  fieldDialog(db, f, () => keepScroll(() => showDatabase(db.id)));
 }
 
 /* Column order IS fieldOrder, so a move is a schema write — drag a column and

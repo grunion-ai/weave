@@ -681,10 +681,12 @@ test('a resize grip commits once, on release', () => {
   assert.match(grip, /stopPropagation/, 'grabbing the grip must not sort the column');
 });
 
-test('auto-fit clears the width rather than writing a measured number', () => {
+test('double-click fits the column to its content (measured), a schema write like any resize', () => {
+  // Superseded 2026-08-23 (Kyle): the browser's auto width still cut text
+  // off; fit is now measured on the cells and written like a drag.
   const grip = fnBody('columnResizeGrip');
-  assert.match(grip, /setColumnWidth\(db, f, null, grip\.closest\('th'\)\)/,
-    'auto-fit hands the column back to the browser — null, not a pixel guess');
+  assert.match(grip, /setColumnWidth\(db, f, fitColumnWidth\(th\), th\)/,
+    'double-click writes the measured fit');
   const writer = fnBody('setColumnWidth');
   assert.match(writer, /'PATCH'/, 'width is a schema write');
   assert.match(writer, /config: \{ width/, 'through the field config');
@@ -1032,13 +1034,14 @@ test('the filter strip drives the engine where-language, not a client sort (Feat
   assert.ok(chips['cursor'] === 'pointer');
 });
 
-test('a date cell is type-or-pick: parsed text beside a native calendar (Feature #44)', () => {
+test('a date cell is type-or-pick: parsed text beside a calendar (Feature #44, popover since 2026-08-23)', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.ok(html.includes('nl-date.js'), 'the parser loads before the app');
-  assert.ok(app.includes('window.parseNaturalDate'), 'typed phrases go through the parser');
-  assert.ok(app.includes("f.time ? 'datetime-local' : 'date'"), 'the calendar respects the time costume');
-  assert.ok(app.includes("'T' + String(rawIso).split('T')[1]"), 'a typed phrase keeps the existing time of day');
+  assert.ok(app.includes('parseNaturalDate('), 'typed phrases go through the parser');
+  const ctl = fnBody('dateControl');
+  assert.ok(ctl.includes('datePopover({'), 'the calendar button opens the popover');
+  assert.ok(ctl.includes('dc.splitIso(current).time'), 'a typed day keeps the existing time of day');
 });
 
 test('navigation paints a skeleton of the destination first (Feature #49)', () => {
@@ -1127,7 +1130,7 @@ test('resize and reorder commit in place — the grid never tears down mid-gestu
   assert.ok(reorder.includes('showDatabase(db.id); // the move did not hold'), 'failure falls back to truth');
   // The resize grip hands its th through so the local commit can find cells.
   assert.ok(app.includes('setColumnWidth(db, f, width, th)'));
-  assert.ok(app.includes("setColumnWidth(db, f, null, grip.closest('th'))"));
+  assert.ok(app.includes('setColumnWidth(db, f, fitColumnWidth(th), th)'));
 });
 
 /* ---------- unified field dialog (A+E, 2026-08-22) ---------- */
@@ -1151,12 +1154,31 @@ test('app.js consumes the tested core, loaded before it', () => {
   assert.ok(core > -1 && core < app, 'field-dialog-core.js must load before app.js');
 });
 
-test('the code pane exists and only allows compatible type moves on existing fields', () => {
-  assert.match(APP, /parseDefinition\(codeTa\.value\)/);
-  assert.match(APP, /choices\.some\(\(t\) => t\.id === r\.def\.type\)/, 'a pasted type is checked against typeChoices');
+test('formula is a checkbox that opens the script dialog; the code pane is gone (Kyle, 2026-08-23)', () => {
   const dlg = fnBody('fieldDialog');
+  assert.doesNotMatch(dlg, /def-code|\{ \} definition/, 'no definition pane');
+  assert.match(dlg, /formulaScriptDialog\(db, state/, 'ticking Formula opens the script dialog');
+  assert.match(fnBody('formulaScriptDialog'), /\n  modal\('Formula script'/, 'the script is its own dialog above the tray');
   assert.match(dlg, /fdc\.typeChoices\(isEdit \? existing\.type : null\)/, 'existing fields see self + migrations only');
   assert.match(dlg, /patch\.type = def\.type/, 'a changed type is sent as a migration');
+});
+
+test('dates: one smart control everywhere, a calendar popover with month/year grids, format examples and a today() default', () => {
+  const cell = fnBody('editorFor');
+  assert.match(cell, /dateControl\(\{/, 'the cell is the shared date control');
+  assert.doesNotMatch(cell, /type: f\.time \? 'datetime-local' : 'date'/, 'the native picker is gone');
+  const ctl = fnBody('dateControl');
+  assert.match(ctl, /parseNaturalDate\(typed, new Date\(\), \{ dayFirst: format === 'eu' \}\)/, 'typed text is autodetected, day-first for eu fields');
+  const pop = fnBody('datePopover');
+  for (const need of ["view = 'months'", "view = 'years'", 'dc.calendarMonth(y, m)', "'Clear'", "'Today'", "type: 'time'"]) {
+    assert.ok(pop.includes(need), `popover has ${need}`);
+  }
+  const dlg = fnBody('fieldDialog');
+  assert.match(dlg, /dc\.formatDate\(today, \{ format: fmt \}\)/, 'each format is shown as an example');
+  assert.match(dlg, /dc\.defaultKind\(state\.default\)/, 'the default chooser: none / today() / specific');
+  const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  assert.ok(HTML.indexOf('date-core.js') < HTML.indexOf('"/app.js"'));
+  assert.ok(px(rulesFor('.date-pop')['z-index']) >= px(rulesFor('.chip-pop')['z-index']), 'the popover stacks with the other popovers');
 });
 
 test('field dialogs open in the right-hand tray and popovers stack above it', () => {
@@ -1204,4 +1226,27 @@ test('entity crumbs carry the navigation trail (breadcrumbs.js), loaded before a
   assert.match(APP, /weaveBreadcrumbs\.entityCrumbs\(/, 'the full page crumb is the path taken');
   const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.ok(HTML.indexOf('breadcrumbs.js') < HTML.indexOf('"/app.js"'));
+});
+
+/* Kyle, 2026-08-23: "resize field is stuck in some browsers" — the th is
+   draggable (column reorder) and Safari/Firefox start that native drag a
+   few pixels into a resize, ending the pointer stream. "double click
+   resize handle to autofit content without cutoff" — fit to the widest
+   cell, not the engine's auto width. "editing a table field snaps me back
+   to the beginning of the table" — the redraw keeps the scroll. */
+test('column resize captures the pointer and suspends the drag; double-click fits content', () => {
+  const grip = fnBody('columnResizeGrip');
+  assert.match(grip, /setPointerCapture\(e\.pointerId\)/, 'moves reach the grip even when the pointer leaves it');
+  assert.match(grip, /th\.draggable = false/, 'column reorder cannot hijack a resize');
+  assert.match(grip, /lostpointercapture/, 'a lost capture ends the resize cleanly');
+  assert.match(grip, /fitColumnWidth\(th\)/, 'double-click fits the content');
+  assert.match(fnBody('fitColumnWidth'), /scrollWidth/, 'fit is measured on the cells, clipped or not');
+  assert.equal(rulesFor('.col-resize')['touch-action'], 'none');
+});
+
+test('a field edit keeps the page and grid scroll across the redraw', () => {
+  assert.match(fnBody('editFieldDialog'), /keepScroll\(\(\) => showDatabase\(db\.id\)\)/);
+  const keep = fnBody('keepScroll');
+  assert.match(keep, /window\.scrollTo\(x, y\)/);
+  assert.match(keep, /scrollLeft = left/);
 });

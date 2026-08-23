@@ -45,6 +45,7 @@ const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
 /* Types whose definition can name the value a new row starts with. Workflow is
    absent on purpose: its default is one of its states, which is where it has
    always lived. */
+const DYNAMIC_DATE_DEFAULTS = ['today()', 'now()'];
 const DEFAULTABLE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 /* What a document edit actually did, in the terms a reader of the feed needs:
@@ -1622,7 +1623,7 @@ export class Weave {
       if (f.type === 'workflow') {
         e.values[f.id] = f.config.states.find((s) => s.default)?.id ?? f.config.states[0].id;
       } else if (f.config?.default !== undefined && !named.has(f.id)) {
-        e.values[f.id] = f.config.default;
+        e.values[f.id] = this.#resolveDefault(f);
       }
     }
     this.state.entities[e.id] = e;
@@ -1715,7 +1716,19 @@ export class Weave {
     if (!DEFAULTABLE_TYPES.includes(field.type)) {
       throw new WeaveError(`A ${field.type} field cannot carry a default value`, 'invalid');
     }
+    // A date default may be dynamic: today() / now() are stored verbatim
+    // and resolved when the row is created (#resolveDefault).
+    if (field.type === 'date' && DYNAMIC_DATE_DEFAULTS.includes(String(raw).trim())) return String(raw).trim();
     return this.#validateValue(field, raw);
+  }
+
+  #resolveDefault(field) {
+    const d = field.config.default;
+    if (field.type === 'date' && DYNAMIC_DATE_DEFAULTS.includes(d)) {
+      const iso = new Date().toISOString();
+      return d === 'now()' && field.config.time ? iso.slice(0, 16) : iso.slice(0, 10);
+    }
+    return d;
   }
 
   #validateValue(field, raw) {

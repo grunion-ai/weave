@@ -721,3 +721,33 @@ test('a migration is audited and mirrored into the Fields registry', () => {
   assert.equal(view.fields.find((x) => x.id === f.id).type, 'key');
   assert.ok(w.listAudit().some((a) => a.action === 'field-migrated'), 'audited');
 });
+
+/* ---------- dynamic date defaults (2026-08-23) ----------
+   A date field's default may be a specific date(time) or the token
+   today() / now(), resolved when the row is created — a 'Logged' column
+   that stamps itself. The token is stored verbatim and shown as such. */
+test('a date default of today() stamps each new row with the day it was created', () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.addField(tasks, { name: 'Logged', type: 'date', config: { default: 'today()' } });
+  assert.equal(f.config.default, 'today()');
+  const e = w.createEntity(tasks, { name: 'A' });
+  assert.equal(w.getEntity(e.id).values[f.id], new Date().toISOString().slice(0, 10));
+  // Naming the field wins over the default, empty included.
+  const b = w.createEntity(tasks, { name: 'B', values: { Logged: '2026-01-01' } });
+  assert.equal(w.getEntity(b.id).values[f.id], '2026-01-01');
+});
+
+test('now() on a field with time keeps the time; a specific datetime default stays literal', () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.addField(tasks, { name: 'Stamp', type: 'date', config: { time: true, default: 'now()' } });
+  const e = w.createEntity(tasks, { name: 'A' });
+  assert.match(w.getEntity(e.id).values[f.id], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+  const g = w.addField(tasks, { name: 'Fixed', type: 'date', config: { time: true, default: '2026-12-24T18:00' } });
+  const b = w.createEntity(tasks, { name: 'B' });
+  assert.equal(w.getEntity(b.id).values[g.id], '2026-12-24T18:00');
+});
+
+test('only today() and now() are dynamic — other tokens are refused as dates', () => {
+  const { w, tasks } = buildWorkspace();
+  assert.throws(() => w.addField(tasks, { name: 'X', type: 'date', config: { default: 'yesterday()' } }), /not a valid date/);
+});
