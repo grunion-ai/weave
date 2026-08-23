@@ -2628,7 +2628,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const actBody = el('div', { class: 'card-body' },
     ...recent.map((a, n) => el('a', {
       class: 'activity-item', href: `#/activity/${id}:${firstIndex - n}`,
-      title: 'Open in the Activity table',
+      title: 'Open this event',
     }, `${new Date(a.ts).toLocaleString()} — ${activitySummary(a)}`)),
     recent.length ? null : el('span', { class: 'wv-empty' }, 'Nothing has happened here yet.'));
   const actPanel = el('div', { class: 'card panel' },
@@ -3072,21 +3072,21 @@ function activitySummary(a) {
 const fmtValue = (v) => (v == null || v === '' ? '—' : Array.isArray(v) ? v.join(', ') : String(v));
 
 /* `#/activity` is the whole table; `#/activity/<entityId>` narrows it to one
-   entity; `#/activity/<entityId>:<n>` narrows it and lands on one event. */
+   entity; `#/activity/<entityId>:<n>` is one event's own page. */
 async function showActivity(param) {
+  if (param && param.includes(':')) return showActivityDetail(param);
   state.route = { page: 'activity' };
   renderNav();
   const main = $('#main');
-  const [entityId] = (param ?? '').split(':');
-  const focusId = param && param.includes(':') ? param : null;
+  const entityId = param || null;
   const qs = entityId ? `?entity=${encodeURIComponent(entityId)}` : '';
   let feed = { total: 0, items: [] };
   try { feed = await api('GET', `/activity${qs}`); } catch (err) { toast(err.message, true); }
   const subject = entityId ? feed.items[0] : null;
 
   const rows = feed.items.map((a) => el('tr', {
-    class: 'activity-row' + (a.id === focusId ? ' activity-focus' : ''),
-    onclick: () => peekEntity(a.entityId),
+    class: 'activity-row',
+    onclick: () => { location.hash = `#/activity/${a.id}`; },
   },
     el('td', { class: 'activity-when', title: a.ts }, new Date(a.ts).toLocaleString()),
     el('td', {}, el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind)),
@@ -3113,8 +3113,51 @@ async function showActivity(param) {
             el('th', {}, 'Record'), el('th', {}, 'Name'))),
           el('tbody', {}, ...rows)))
       : el('div', { class: 'wv-empty' }, 'No activity yet.'));
+}
 
-  document.querySelector('.activity-focus')?.scrollIntoView({ block: 'center' });
+/* One event's own page. The event is the entity here — its `entityId:index`
+   id is a real address — so the record it references is a link out, not the
+   click-through destination: one event can involve several records (a
+   relation change names two) and the record may since have been deleted. */
+async function showActivityDetail(id) {
+  state.route = { page: 'activity' };
+  renderNav();
+  const main = $('#main');
+  let a;
+  try { a = await api('GET', `/activity/${encodeURIComponent(id)}`); }
+  catch (err) { toast(err.message, true); return showActivity(null); }
+
+  const rows = [
+    ['When', el('span', { title: a.ts }, new Date(a.ts).toLocaleString())],
+    ['Event', el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind)],
+    ['Actor', a.actor ?? '—'],
+    ['Summary', activitySummary(a)],
+    ...Object.entries(a.detail ?? {}).map(([k, v]) => [k, fmtValue(v)]),
+  ];
+  main.replaceChildren(
+    viewHeader({
+      crumbs: [
+        { label: 'Activity', href: '#/activity' },
+        { label: a.entityName ?? a.entityId, href: `#/activity/${a.entityId}` },
+      ],
+      permalink: `${location.origin}${WS_PREFIX}/#/activity/${a.id}`,
+      title: `${a.kind} — ${a.entityName ?? a.entityId}`,
+    }),
+    el('div', { class: 'card panel' },
+      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Event')),
+      el('table', { class: 'table table-sm wv-grid' }, el('tbody', {},
+        ...rows.map(([k, v]) => el('tr', {},
+          el('td', { class: 'activity-detail-key' }, k),
+          el('td', {}, v)))))),
+    el('div', { class: 'card panel' },
+      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Record')),
+      el('div', { class: 'card-body' },
+        el('a', {
+          href: `#/activity/${a.id}`,
+          onclick: (ev) => { ev.preventDefault(); peekEntity(a.entityId); },
+        }, `${a.db ?? '—'} #${a.publicId} — ${a.entityName ?? ''}${a.deleted ? ' (deleted)' : ''}`),
+        ' · ',
+        el('a', { href: `#/activity/${a.entityId}` }, 'all activity for this record'))));
 }
 
 /* ---------- home ---------- */

@@ -2231,6 +2231,7 @@ export class Weave {
           id: `${e.id}:${i}`,
           ts: a.ts,
           kind: a.kind,
+          actor: a.actor ?? null,
           detail: a.detail ?? {},
           entityId: e.id,
           entityName: this.entityName(e),

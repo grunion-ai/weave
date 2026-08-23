@@ -182,9 +182,11 @@ test('the workspace activity feed is served, filtered and paged', async () => {
 
   assert.equal((await api('GET', '/api/activity?limit=1')).data.items.length, 1);
   assert.equal((await api('GET', '/api/activity?kind=doc-updated')).data.items.every((i) => i.kind === 'doc-updated'), true);
+  assert.ok('actor' in doc, 'every event carries who did it');
   const one = await api('GET', `/api/activity/${encodeURIComponent(doc.id)}`);
   assert.equal(one.status, 200);
   assert.equal(one.data.kind, 'doc-updated');
+  assert.equal(one.data.actor, doc.actor, 'the single event reads the same as its feed row');
   assert.equal((await api('GET', '/api/activity/nope:1')).status, 404);
 });
 

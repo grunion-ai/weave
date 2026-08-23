@@ -280,7 +280,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-note { color: var(--tblr-secondary); font-size: 12px; margin: 0 0 10px; }
 .activity-when { white-space: nowrap; color: var(--tblr-secondary); }
 .activity-row { cursor: pointer; }
-.activity-focus > td { background: var(--tblr-bg-surface-secondary); box-shadow: inset 3px 0 0 var(--tblr-primary); }
+.activity-detail-key { width: 160px; color: var(--tblr-secondary); }
 
 /* ---------- inline document editor (tabs across document fields) ---------- */
 .doc-inline-wrap { padding: 10px 6px; }

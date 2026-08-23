@@ -885,9 +885,32 @@ test('the Activity table is routed, read-only and reachable from the workspace p
   assert.match(view, /api\('GET', `\/activity/, 'the view reads the feed endpoint');
   assert.doesNotMatch(view, /'POST'|'PATCH'|'DELETE'/, 'nothing in this table can be written from the UI');
   assert.match(view, /system table/i, 'and it says so on the page');
-  assert.match(view, /activity-focus/, 'a linked event is highlighted when it is opened');
   assert.match(fnBody('showHome'), /#\/activity/, 'the workspace page links to it');
   assert.match(fnBody('showHome'), /system/, 'marked as weave\'s table rather than the user\'s');
+});
+
+/* ---------- an event is a row with its own page ----------
+   Clicking an activity row used to peek the record it references — but an
+   event can reference several things (a relation change names two entities)
+   and the record may since be deleted. The event itself is the entity here:
+   its `entityId:index` id is a real address, so the row opens the event's own
+   detail page and the record becomes a link out from there. */
+
+test('an activity row opens the event itself, not the record it references', () => {
+  const view = fnBody('showActivity');
+  assert.match(view, /#\/activity\/\$\{a\.id\}/, 'a row navigates to the event\'s own page');
+  assert.doesNotMatch(view, /peekEntity/, 'the table never short-circuits to the record');
+  assert.match(view, /showActivityDetail/, 'the `entityId:index` route lands on the detail page');
+});
+
+test('the event detail page reads one event and links out to its record', () => {
+  const view = fnBody('showActivityDetail');
+  assert.match(view, /api\('GET', `\/activity\/\$\{encodeURIComponent\(/, 'it reads the single-event endpoint');
+  assert.doesNotMatch(view, /'POST'|'PATCH'|'DELETE'/, 'and writes nothing');
+  assert.match(view, /peekEntity\(a\.entityId\)/, 'the referenced record is a link out');
+  assert.match(view, /#\/activity\/\$\{a\.entityId\}/, 'as is the record\'s own filtered feed');
+  assert.match(view, /a\.actor/, 'the page says who did it');
+  assert.match(view, /activitySummary\(a\)/, 'and reuses the one summary function');
 });
 
 test('a document event reads as what changed, not that something changed', () => {
