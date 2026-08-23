@@ -578,10 +578,15 @@ test('every column header carries a field menu', () => {
 });
 
 test('the field menu edits a field rather than dropping and rebuilding it', () => {
-  const dlg = fnBody('editFieldDialog');
+  // The edit path lives in the unified fieldDialog (A+E, 2026-08-22); the
+  // contract is unchanged: edit is a PATCH, never delete-and-recreate.
+  const dlg = fnBody('fieldDialog');
   assert.match(dlg, /'PATCH'/, 'F1: editing a field is a PATCH to /fields/:id');
   assert.doesNotMatch(dlg, /'DELETE'/, 'never delete-and-recreate — that drops the column data');
-  assert.match(dlg, /options|states|expression/, 'the editor reaches the type config, not just the name');
+  const patchCfg = fnBody('editPatchConfig');
+  assert.match(patchCfg, /options/, 'the editor reaches the type config, not just the name');
+  assert.match(patchCfg, /states/, 'workflow states are editable');
+  assert.match(patchCfg, /expression/, 'formula expressions are editable');
 });
 
 test('deleting a field from the header is guarded and never offered for Name', () => {
@@ -631,8 +636,8 @@ test('the field menu affordance does not squeeze the column label', () => {
    modal() default — on a form that renames an existing field. modal() already
    takes a submit label; the editor has to pass one. */
 test('the field editor commits with a save label, not Create', () => {
-  const dlg = fnBody('editFieldDialog');
-  assert.match(dlg, /\}, '(Save|Save changes)'\)/, 'editFieldDialog must pass modal() a save label');
+  const dlg = fnBody('fieldDialog');
+  assert.match(dlg, /isEdit \? 'Save changes' : 'Create'/, 'the unified dialog must label edit submits as a save');
 });
 
 /* Live check (2026-08-16): the ⋮ paints at its column's right edge, which is
@@ -926,20 +931,21 @@ test('a document event reads as what changed, not that something changed', () =>
    an emptied input must CLEAR the default rather than leave it in place. */
 
 test('the field dialogs offer a default value for the types that can hold one', () => {
-  assert.match(APP, /const DEFAULTABLE_FIELD_TYPES = \[([^\]]*)\]/, 'the client knows which types default');
-  const listed = APP.match(/const DEFAULTABLE_FIELD_TYPES = \[([^\]]*)\]/)[1];
+  // The list and the string→typed conversion moved to field-dialog-core.js
+  // (DEFAULTABLE / typedDefault, tested in field-dialog-core.test.mjs); the
+  // dialog contract here: it consults that list and an emptied input CLEARS
+  // the stored default on edit instead of silently keeping it.
+  const CORE = readFileSync(join(ROOT, 'public/field-dialog-core.js'), 'utf8');
+  const listed = CORE.match(/const DEFAULTABLE = \[([^\]]*)\]/)[1];
   for (const t of ['text', 'number', 'date', 'checkbox', 'url', 'email', 'select', 'multiselect']) {
     assert.ok(listed.includes(`'${t}'`), `${t} takes a default`);
   }
   for (const t of ['workflow', 'document', 'formula', 'rollup', 'lookup', 'relation']) {
     assert.ok(!listed.includes(`'${t}'`), `${t} must not offer one — the engine refuses it`);
   }
-  for (const fn of ['addFieldDialog', 'editFieldDialog']) {
-    assert.match(fnBody(fn), /defaultValueInput\(/, `${fn}() shows the input`);
-    assert.match(fnBody(fn), /defaultValueFromForm\(/, `${fn}() reads it back`);
-  }
-  const read = fnBody('defaultValueFromForm');
-  assert.match(read, /return null/, 'an emptied input clears the default');
+  assert.match(fnBody('fieldDialog'), /DEFAULTABLE\.includes/, 'the dialog consults the core list');
+  assert.match(fnBody('editPatchConfig'), /default = c\.default \?\? null/, 'an emptied input clears the default');
+  const read = CORE.slice(CORE.indexOf('function typedDefault'), CORE.indexOf('\n  }', CORE.indexOf('function typedDefault')));
   assert.match(read, /checkbox/, 'a checkbox default is a boolean, not the string "true"');
   assert.match(read, /Number\(/, 'a number default is a number');
 });
@@ -1101,4 +1107,49 @@ test('resize and reorder commit in place — the grid never tears down mid-gestu
   // The resize grip hands its th through so the local commit can find cells.
   assert.ok(app.includes('setColumnWidth(db, f, width, th)'));
   assert.ok(app.includes("setColumnWidth(db, f, null, grip.closest('th'))"));
+});
+
+/* ---------- unified field dialog (A+E, 2026-08-22) ---------- */
+
+test('field dialogs are the unified fieldDialog, not the old string forms', () => {
+  // Both entry points route through one implementation so add and edit can
+  // never drift apart again (the old pair disagreed on number clearing).
+  assert.match(APP, /function fieldDialog\(db, existing, after\)/);
+  assert.match(APP, /function addFieldDialog\(db\) \{\s*fieldDialog\(db, null,/);
+  assert.match(APP, /function editFieldDialog\(db, f\) \{\s*fieldDialog\(db, f,/);
+  // The comma-separated options input is gone from the dialogs.
+  assert.doesNotMatch(APP, /Options \(comma-separated\)/);
+});
+
+test('app.js consumes the tested core, loaded before it', () => {
+  assert.match(APP, /fieldDialogCore\./, 'the dialog reads the core global');
+  assert.match(APP, /definitionFromState\(state\)/, 'submits go through the canonical definition');
+  const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  const core = HTML.indexOf('field-dialog-core.js');
+  const app = HTML.indexOf('"/app.js"');
+  assert.ok(core > -1 && core < app, 'field-dialog-core.js must load before app.js');
+});
+
+test('the code pane exists and refuses type changes on existing fields', () => {
+  assert.match(APP, /parseDefinition\(codeTa\.value\)/);
+  assert.match(APP, /The type cannot be changed on an existing field/);
+});
+
+test('type grid and code pane have both-theme styling via tabler tokens', () => {
+  const tile = rulesFor('.type-tile.sel');
+  assert.ok(tile['border-color']?.includes('--tblr-primary'), 'selected tile uses the primary token');
+  const code = rulesFor('.def-code');
+  assert.ok(code['font-family']?.includes('--tblr-font-monospace'), 'code pane is monospace');
+});
+
+test('spaces and tables wear Iconly flat icons, picked beside their name (Feature #101)', async () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  assert.ok(html.includes('vendor/iconly-flat.js'), 'the flat set is vendored and loaded');
+  assert.ok(app.includes('function iconEl(') && app.includes('function iconButton('));
+  assert.ok(app.includes("searchPicker({") && app.includes("Search icons…"), 'the icon picker speaks the one dialect');
+  assert.ok(app.includes("iconEl(space.icon") && app.includes("iconEl(db.icon"), 'nav renders both');
+  const icons = (await import('../public/vendor/iconly-flat.js'), globalThis.ICONLY_FLAT);
+  assert.ok(Object.keys(icons).length >= 90, 'the whole free set rides along');
+  assert.ok(Object.values(icons).every((v) => !/#[0-9A-Fa-f]{6}/.test(v)), 'no hardcoded fills — icons inherit currentColor');
 });

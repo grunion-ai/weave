@@ -318,6 +318,7 @@ export class Weave {
     this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) });
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
+    if (patch.icon != null) { if (String(patch.icon).trim()) s.icon = String(patch.icon).trim(); else delete s.icon; }
     this.#syncSpaceRow(s);
     this.save();
     return s;
@@ -2652,11 +2653,13 @@ export class Weave {
       spaceId: sp.id,
       description: sp.description ?? '',
       ...(sp.system ? { system: sp.system } : {}),
+      ...(sp.icon ? { icon: sp.icon } : {}),
       tables: this.listTables(sp.id).map((db) => ({
         id: db.id,
         name: db.name,
         description: db.description ?? '',
         ...(db.system ? { system: db.system } : {}),
+        ...(db.icon ? { icon: db.icon } : {}),
         ...(db.systemFields?.length ? { systemFields: [...db.systemFields] } : {}),
         ...(db.noun ? { noun: db.noun } : {}),
         qualified: this.qualifiedName(db),

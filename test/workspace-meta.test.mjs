@@ -101,3 +101,17 @@ test('relationMapMmd draws spaces, tables and relations', () => {
   assert.match(mmd, /-- "Project" -->/);
   assert.ok(!mmd.includes('Spaces'), 'the registry stays out of the picture');
 });
+
+/* Feature #101 — spaces and tables carry an icon, edited beside their name. */
+test('spaces and tables carry an icon through the schema', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Ops' });
+  w.createTable({ space: 'Ops', name: 'Runbook' });
+  w.updateSpace('Ops', { icon: 'iconly:setting' });
+  w.updateTable('Runbook', { icon: 'iconly:document' });
+  const sch = w.describeSchema().find((sp) => sp.space === 'Ops');
+  assert.equal(sch.icon, 'iconly:setting');
+  assert.equal(sch.tables[0].icon, 'iconly:document');
+  w.updateSpace('Ops', { icon: '' });
+  assert.equal(w.describeSchema().find((sp) => sp.space === 'Ops').icon, undefined, 'empty clears');
+});

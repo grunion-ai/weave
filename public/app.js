@@ -238,7 +238,42 @@ function inlineNameInput(placeholder, onCommit) {
 /* Shared view header: breadcrumb with a copyable permalink, an editable
    title, and a markdown description editable in place. Every page uses it
    (entity pages carry the same crumb pattern natively). */
-function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [] }) {
+
+/* An icon value on a space or table: 'iconly:<name>' renders the vendored
+   flat set inline (currentColor — it inherits text color); anything else is
+   text, which keeps old emoji icons working (Feature #101). */
+function iconEl(icon, cls = 'wv-icon') {
+  if (!icon) return null;
+  const m = String(icon).match(/^iconly:(.+)$/);
+  if (m && window.ICONLY_FLAT?.[m[1]]) {
+    const span = el('span', { class: cls });
+    span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${window.ICONLY_FLAT[m[1]]}</svg>`;
+    return span;
+  }
+  return el('span', { class: cls }, String(icon));
+}
+
+/* The icon half of a naming edit: the current icon (or a ghost ring) beside
+   the title, opening the one selection dialect over the flat set. */
+function iconButton(current, onPick) {
+  const btn = el('button', { class: 'icon-btn', type: 'button', title: 'Set icon' },
+    iconEl(current) ?? el('span', { class: 'wv-icon icon-ghost' }, '◌'));
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    searchPicker({
+      anchor: btn, title: 'Icon', placeholder: 'Search icons…',
+      options: [
+        { id: '', label: 'No icon' },
+        ...Object.keys(window.ICONLY_FLAT ?? {}).map((n) => ({ id: `iconly:${n}`, label: n, iconly: n })),
+      ],
+      currentId: current ?? '',
+      onPick: (o) => onPick(o.id || null),
+    });
+  });
+  return btn;
+}
+
+function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null }) {
   const box = el('div', { class: 'view-header' });
   const crumbKids = [];
   for (const c of crumbs) {
@@ -260,7 +295,9 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
   } else {
     titleInput.readOnly = true;
   }
-  box.append(el('div', { class: 'wv-toolbar view-title-row' }, titleInput, ...actions.filter(Boolean)));
+  box.append(el('div', { class: 'wv-toolbar view-title-row' },
+    onSetIcon ? iconButton(icon, onSetIcon) : (icon ? iconEl(icon) : null),
+    titleInput, ...actions.filter(Boolean)));
 
   if (onSaveDescription) {
     const descBox = el('div', { class: 'view-desc' });
@@ -320,7 +357,7 @@ function renderNav() {
   for (const space of state.schema) {
     const isFolded = folded.has(space.spaceId);
     const spaceRow = el('div', { class: 'nav-space-row' },
-      el('a', { class: 'nav-space', href: `#/space/${space.spaceId}` }, space.space),
+      el('a', { class: 'nav-space', href: `#/space/${space.spaceId}` }, iconEl(space.icon, 'wv-icon nav-icon'), space.space),
       // Trails the label, "Routines ›" — the caret reads as part of the space
       // name, not as a gutter control. Open is a rotation of the same glyph.
       el('button', {
@@ -348,7 +385,7 @@ function renderNav() {
       nav.append(el('a', {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
         href: `#/table/${db.id}`,
-      }, db.name, el('span', { class: 'count' }, String(db.entityCount))));
+      }, iconEl(db.icon, 'wv-icon nav-icon'), db.name, el('span', { class: 'count' }, String(db.entityCount))));
     }
   }
   const foot = el('div', { class: 'nav-foot' },
@@ -649,7 +686,9 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
         await onPick(o);
       },
     },
-      o.chip ? el('span', { class: `chip ${o.cls ?? ''}` }, o.label) : el('span', { class: 'picker-label' }, o.label),
+      o.chip ? el('span', { class: `chip ${o.cls ?? ''}` }, o.label)
+        : o.iconly ? el('span', { class: 'picker-label picker-iconly' }, iconEl(`iconly:${o.iconly}`), o.label)
+        : el('span', { class: 'picker-label' }, o.label),
       o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
       (multi ? staged.has(o.id) : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
     if (!visible.length) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
@@ -861,6 +900,13 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     } catch (err) { toast(err.message, true); }
   };
 
+  // Option colors come from the field dialog's swatches; a soft alpha tint
+  // in the option's own hue, readable in both themes (Radix-style).
+  function optionChipStyle(field, name) {
+    const hex = (field.optionsFull ?? []).find((o) => o.name === name)?.color;
+    return hex ? `background:${hex}1f;border-color:${hex}66;color:${hex}` : undefined;
+  }
+
   if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
     // Read-only: the glyph says "computed, not editable" at a glance so these
     // are not mistaken for the chips and inputs beside them.
@@ -884,7 +930,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   }
   if (f.type === 'select') {
     return chipPicker({
-      trigger: el('button', { class: 'chip', type: 'button', title: f.name }, val ?? '—'),
+      trigger: el('button', { class: 'chip', type: 'button', title: f.name, style: optionChipStyle(f, val) }, val ?? '—'),
       options: [{ name: '—' }, ...f.options.map((o) => ({ name: o }))],
       current: val ?? '—',
       onPick: (name) => patch(name === '—' ? null : name),
@@ -893,7 +939,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   if (f.type === 'multiselect') {
     const current = Array.isArray(val) ? val : [];
     const box = el('span', { class: 'ms-box', title: 'Edit selections' });
-    for (const v of current) box.append(el('span', { class: 'chip' }, v), ' ');
+    for (const v of current) box.append(el('span', { class: 'chip', style: optionChipStyle(f, v) }, v), ' ');
     if (!current.length) box.append(el('span', { class: 'chip chip-add' }, '+'));
     chipPickerMulti({
       trigger: box,
@@ -1300,6 +1346,12 @@ function drawDatabase(db, items, trashCount = 0) {
     ],
     permalink: `${location.origin}${WS_PREFIX}/#/table/${db.id}`,
     title: db.name,
+    icon: db.icon,
+    onSetIcon: async (icon) => {
+      await api('PATCH', `/tables/${db.id}`, { icon: icon ?? '' });
+      await loadSchema();
+      showDatabase(db.id, state.route.view);
+    },
     onRename: async (name) => {
       await api('PATCH', `/tables/${db.id}`, { name });
       await loadSchema();
@@ -1641,98 +1693,314 @@ function fieldMenuButton(db, f) {
    DEFAULTABLE_TYPES is the authority — it refuses the rest — so the dialogs
    offer the input for exactly those types. A workflow is absent because its
    default is one of its states. */
-const DEFAULTABLE_FIELD_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
+/* Which types take a default, and how a string becomes one, live in
+   field-dialog-core.js (DEFAULTABLE / definitionFromState) — tested there. */
 
-function defaultValueInput(type, value) {
-  if (!DEFAULTABLE_FIELD_TYPES.includes(type)) return null;
-  return el('input', {
-    name: 'default', class: 'form-control full', style: 'width:100%',
-    value: Array.isArray(value) ? value.join(', ') : (value ?? ''),
-    placeholder: type === 'checkbox' ? 'Default for new rows: true / false' : 'Default value for new rows (optional)',
+/* ---------- unified field dialog (design review 2026-08-22, A+E) ----------
+   One dialog for add and edit: a type grid with per-type config editors
+   (direction A) plus a form ⇄ code pane over the canonical {type, config}
+   definition (direction E), both views of the same state object in
+   field-dialog-core.js. Any field can be a formula: ƒ is a toggle, not a
+   grid tile. The section/grid/list-editor pieces are the house dialog
+   framework — addRelationDialog composes from the same parts. */
+
+function dsection(label, ...kids) {
+  return el('div', { class: 'dlg-sec full' }, el('div', { class: 'dlg-lbl' }, label), ...kids);
+}
+
+function segCtl(options, value, onPick) {
+  const wrap = el('div', { class: 'seg-ctl', role: 'group' });
+  const draw = (current) => {
+    wrap.replaceChildren(...options.map((o) => el('button', {
+      type: 'button', class: 'seg-opt' + (o === current ? ' on' : ''),
+      onclick: () => { draw(o); onPick(o); },
+    }, o)));
+  };
+  draw(value);
+  return wrap;
+}
+
+function optionSwatchStyle(hex) {
+  return hex ? `background:${hex}` : '';
+}
+
+/* Rows of {name, color} with a cycling color swatch — replaces the
+   comma-separated string that couldn't hold a color and choked on commas. */
+function optionListEditor(state, onChange) {
+  const colors = fieldDialogCore.OPTION_COLORS;
+  const wrap = el('div', { class: 'opt-list' });
+  const draw = () => {
+    wrap.replaceChildren(
+      ...state.options.map((o, i) => el('div', { class: 'opt-row' },
+        el('button', {
+          type: 'button', class: 'opt-color' + (o.color ? '' : ' neutral'), title: 'Cycle color',
+          style: optionSwatchStyle(o.color),
+          onclick: () => { o.color = colors[(colors.indexOf(o.color ?? '') + 1) % colors.length]; draw(); onChange(); },
+        }),
+        el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; onChange(); } }),
+        el('button', { type: 'button', class: 'opt-del', title: 'Remove option', onclick: () => { state.options.splice(i, 1); draw(); onChange(); } }, '✕'))),
+      el('button', {
+        type: 'button', class: 'opt-add',
+        onclick: () => { state.options.push({ name: '', color: '' }); draw(); onChange(); wrap.querySelectorAll('.opt-name')[state.options.length - 1]?.focus(); },
+      }, '+ Add option'));
+  };
+  draw();
+  return wrap;
+}
+
+function stateListEditor(state, onChange) {
+  const cats = fieldDialogCore.STATE_CATEGORIES;
+  const wrap = el('div', { class: 'opt-list' });
+  const draw = () => {
+    wrap.replaceChildren(
+      ...state.states.map((s, i) => el('div', { class: 'opt-row' },
+        el('input', {
+          type: 'radio', name: 'wf-default', class: 'opt-default', title: 'Default state for new rows',
+          checked: s.default ? '' : undefined,
+          onchange: () => { state.states.forEach((x, j) => { x.default = j === i; }); onChange(); },
+        }),
+        el('input', { class: 'opt-name', value: s.name, placeholder: 'State', oninput: (e) => { s.name = e.target.value; onChange(); } }),
+        (() => {
+          // Category goes through the house picker dialect, never a native
+          // <select> (ui-contract: one selector dialect everywhere).
+          const cat = pickerSelect({ name: `wf-cat-${i}`, options: cats.map((c) => ({ id: c, label: c })), value: s.category ?? 'in-progress' });
+          cat.classList.add('opt-cat');
+          cat.input.addEventListener('change', () => { s.category = cat.input.value; onChange(); });
+          return cat;
+        })(),
+        el('button', { type: 'button', class: 'opt-del', title: 'Remove state', onclick: () => { state.states.splice(i, 1); draw(); onChange(); } }, '✕'))),
+      el('button', {
+        type: 'button', class: 'opt-add',
+        onclick: () => { state.states.push({ name: '', category: 'in-progress', default: state.states.length === 0 }); draw(); onChange(); wrap.querySelectorAll('.opt-name')[state.states.length - 1]?.focus(); },
+      }, '+ Add state'));
+  };
+  draw();
+  return wrap;
+}
+
+/* The formula builder: expression plus insertable chips for this table's
+   fields and the engine's functions — the two vocabularies a formula has. */
+function formulaBuilder(db, state, onChange) {
+  const ta = el('textarea', {
+    class: 'fx-expr', rows: 3, spellcheck: 'false',
+    placeholder: 'e.g. if(Estimate > 5, "big", "small")',
   });
+  ta.value = state.expression ?? '';
+  ta.addEventListener('input', () => { state.expression = ta.value; onChange(); });
+  const insert = (text) => {
+    const at = ta.selectionStart ?? ta.value.length;
+    ta.setRangeText(text, at, ta.selectionEnd ?? at, 'end');
+    state.expression = ta.value;
+    ta.focus();
+    onChange();
+  };
+  const fieldChips = db.fields
+    .filter((x) => !['document', 'attachments'].includes(x.type))
+    .map((x) => el('button', { type: 'button', class: 'fx-chip', title: x.type, onclick: () => insert(x.name) }, x.name));
+  const fnChips = fieldDialogCore.FORMULA_FUNCTIONS
+    .map((fn) => el('button', { type: 'button', class: 'fx-chip fn', title: fn.sig, onclick: () => insert(`${fn.name}(`) }, `${fn.name}()`));
+  return el('div', {},
+    ta,
+    el('div', { class: 'fx-chip-rows' },
+      el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'fields'), ...fieldChips),
+      el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'functions'), ...fnChips)));
 }
 
-/* Empty means no default — which is also how one is removed, since the engine
-   reads null as the clear. The form only ever hands back strings, so the value
-   is put back into its own type before it is sent. */
-function defaultValueFromForm(fd, type) {
-  if (!DEFAULTABLE_FIELD_TYPES.includes(type)) return undefined;
-  const raw = String(fd.get('default') ?? '').trim();
-  if (!raw) return null;
-  if (type === 'checkbox') return ['true', 'yes', '1'].includes(raw.toLowerCase());
-  if (type === 'number') return Number(raw);
-  if (type === 'multiselect') return raw.split(',').map((s) => s.trim()).filter(Boolean);
-  return raw;
-}
+function fieldDialog(db, existing, after) {
+  const fdc = fieldDialogCore;
+  const isEdit = !!existing;
 
-/* Edit, not replace: the engine patches a field in place, so options and
-   states can change without the column's values going anywhere. Type itself
-   is not editable here — that is a data coercion, and it stays refused until
-   the dry-run migration exists (design review, open question 2). */
-function editFieldDialog(db, f) {
-  const fields = [];
-  if (f.name !== 'Name') {
-    fields.push(el('input', { name: 'name', value: f.name, class: 'form-control full', style: 'width:100%' }));
-  }
-  if (f.type === 'select' || f.type === 'multiselect') {
-    fields.push(el('input', {
-      name: 'options', class: 'form-control full', style: 'width:100%',
-      value: (f.options ?? []).join(', '), placeholder: 'Options (comma-separated)',
-    }));
-  } else if (f.type === 'workflow') {
-    fields.push(el('input', {
-      name: 'states', class: 'form-control full', style: 'width:100%',
-      value: (f.states ?? []).map((s) => `${s.name}:${s.category}`).join(', '),
-      placeholder: 'States: Open:not-started, Doing:in-progress, Done:done',
-    }));
-  } else if (f.type === 'number') {
-    fields.push(pickerSelect({ name: 'format', title: 'Format', options: ['number', 'currency', 'percent'].map((o) => ({ id: o, label: o })), value: f.format ?? 'number' }));
-    fields.push(el('input', { name: 'unit', class: 'form-control full', value: f.unit ?? '', placeholder: 'Unit (days, kg, $ …)' }));
-    fields.push(el('input', { name: 'decimals', type: 'number', min: 0, max: 6, class: 'form-control full', value: f.decimals ?? '', placeholder: 'Decimal places (auto)' }));
-    fields.push(el('label', { class: 'form-check', style: 'margin:4px 0 0' },
-      el('input', { name: 'separator', type: 'checkbox', class: 'form-check-input', checked: f.separator ? '' : undefined }),
-      el('span', { class: 'form-check-label' }, 'Add 1,000 separator')));
-  } else if (f.type === 'formula') {
-    fields.push(el('input', {
-      name: 'expression', class: 'form-control full', style: 'width:100%',
-      value: f.expression ?? '', placeholder: 'e.g. if(Estimate > 5, "big", "small")',
-    }));
-  }
-  const dflt = defaultValueInput(f.type, f.default);
-  if (dflt) fields.push(dflt);
-  fields.push(el('div', { class: 'full modal-note' }, `${f.type} field — the type cannot be changed here`));
+  const defFromFieldView = (f) => {
+    const c = {};
+    if (f.type === 'select' || f.type === 'multiselect') c.options = f.optionsFull ?? (f.options ?? []).map((n) => ({ name: n, color: '' }));
+    if (f.type === 'workflow') c.states = f.states ?? [];
+    if (f.type === 'number') for (const k of ['format', 'unit', 'decimals', 'separator']) { if (f[k] != null) c[k] = f[k]; }
+    if (f.type === 'date') { if (f.format) c.format = f.format; if (f.time) c.time = true; }
+    if (f.type === 'formula') c.expression = f.expression ?? '';
+    if (f.type === 'field') c.depth = f.depth ?? 1;
+    if (f.type === 'lookup' || f.type === 'rollup') { c.relationField = f.via ?? ''; c.targetField = f.targetField ?? ''; c.aggregate = f.aggregate; }
+    if (f.default !== undefined) c.default = f.default;
+    return { type: f.type, config: c };
+  };
+  const state = isEdit ? fdc.stateFromDefinition(defFromFieldView(existing)) : fdc.blankState('text');
+  if (isEdit && existing.type === 'formula') state.computed = 'formula';
 
-  modal(`Edit ${f.name}`, fields, async (fd) => {
-    const patch = {};
-    if (fd.get('name') && fd.get('name') !== f.name) patch.name = fd.get('name');
-    if (f.type === 'number') {
-      patch.config = {
-        format: String(fd.get('format') ?? 'number'),
-        unit: String(fd.get('unit') ?? '').trim() || null,
-        decimals: fd.get('decimals') === '' || fd.get('decimals') == null ? null : Number(fd.get('decimals')),
-        separator: fd.get('separator') != null,
-      };
+  const nameInput = el('input', {
+    name: 'name', placeholder: 'Field name', class: 'form-control',
+    value: existing?.name ?? '',
+    disabled: isEdit && existing.name === 'Name' ? '' : undefined,
+  });
+
+  const gridWrap = el('div', { class: 'full' });
+  const cfgWrap = el('div', { class: 'full' });
+  const codeWrap = el('div', { class: 'def-pane full' });
+  let codeOpen = false;
+  let syncingFromCode = false;
+
+  const codeTa = el('textarea', { class: 'def-code', rows: 9, spellcheck: 'false' });
+  const codeErr = el('div', { class: 'def-err' });
+  const syncCode = () => {
+    if (!codeOpen || syncingFromCode) return;
+    codeTa.value = fdc.serializeDefinition(state);
+    codeErr.textContent = '';
+  };
+  codeTa.addEventListener('input', () => {
+    const r = fdc.parseDefinition(codeTa.value);
+    if (!r.ok) { codeErr.textContent = r.error; return; }
+    codeErr.textContent = '';
+    if (isEdit && r.def.type !== fdc.definitionFromState(state).type) {
+      codeErr.textContent = 'The type cannot be changed on an existing field';
+      return;
     }
-    if (f.type === 'select' || f.type === 'multiselect') {
-      patch.config = { options: String(fd.get('options') ?? '').split(',').map((s) => s.trim()).filter(Boolean) };
-    } else if (f.type === 'workflow') {
-      patch.config = {
-        states: String(fd.get('states') ?? '').split(',').map((s) => {
-          const [name, category] = s.split(':').map((x) => x.trim());
-          return { name, category: category ?? 'in-progress' };
-        }).filter((s) => s.name),
-      };
-    } else if (f.type === 'formula') {
-      patch.config = { expression: fd.get('expression') };
+    syncingFromCode = true;
+    Object.assign(state, fdc.stateFromDefinition(r.def));
+    drawGrid();
+    drawCfg();
+    syncingFromCode = false;
+  });
+
+  const changed = () => syncCode();
+
+  function drawGrid() {
+    const tiles = fdc.FIELD_TYPES.map((t) => el('button', {
+      type: 'button',
+      class: 'type-tile' + (state.type === t.id && !state.computed ? ' sel' : '') + (t.computed ? ' computed' : ''),
+      disabled: isEdit ? '' : undefined,
+      title: t.computed ? `${t.id} (computed)` : t.id,
+      onclick: () => { state.computed = false; state.type = t.id; drawGrid(); drawCfg(); changed(); },
+    }, el('span', { class: 'type-ic' }, t.icon), t.label));
+    const fx = el('button', {
+      type: 'button',
+      class: 'fx-toggle' + (state.computed ? ' on' : ''),
+      disabled: isEdit ? '' : undefined,
+      onclick: () => { state.computed = state.computed ? false : 'formula'; drawGrid(); drawCfg(); changed(); },
+    }, el('span', { class: 'fx-mark' }, 'ƒ'), 'Computed by formula',
+    el('span', { class: 'fx-hint' }, 'any field can be one'));
+    gridWrap.replaceChildren(
+      dsection('Type', el('div', { class: 'type-grid' + (isEdit ? ' locked' : '') }, ...tiles), fx),
+      isEdit ? el('div', { class: 'modal-note' }, `${existing.type} field — the type cannot be changed here`) : '');
+  }
+
+  function drawCfg() {
+    const kids = [];
+    if (state.computed === 'formula') {
+      kids.push(dsection('Formula', formulaBuilder(db, state, changed)));
+    } else {
+      const t = state.type;
+      if (t === 'select' || t === 'multiselect') {
+        kids.push(dsection('Options', optionListEditor(state, changed)));
+      } else if (t === 'workflow') {
+        kids.push(dsection('States', stateListEditor(state, changed)));
+      } else if (t === 'number') {
+        kids.push(dsection('Format', segCtl(fdc.NUMBER_FORMATS, state.number.format ?? 'number', (v) => { state.number.format = v; changed(); })));
+        kids.push(dsection('Unit', el('input', { class: 'form-control', value: state.number.unit ?? '', placeholder: 'days, kg, $ …', oninput: (e) => { state.number.unit = e.target.value; changed(); } })));
+        kids.push(dsection('Decimals', el('input', {
+          type: 'number', min: 0, max: 6, class: 'form-control dlg-narrow', value: state.number.decimals ?? '', placeholder: 'auto',
+          oninput: (e) => { state.number.decimals = e.target.value === '' ? null : Number(e.target.value); changed(); },
+        })));
+        kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
+          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.number.separator ? '' : undefined, onchange: (e) => { state.number.separator = e.target.checked; changed(); } }),
+          el('span', { class: 'form-check-label' }, 'Add 1,000 separator')));
+      } else if (t === 'date') {
+        kids.push(dsection('Format', segCtl(fdc.DATE_FORMATS, state.date.format ?? 'iso', (v) => { state.date.format = v; changed(); })));
+        kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
+          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.date.time ? '' : undefined, onchange: (e) => { state.date.time = e.target.checked; changed(); } }),
+          el('span', { class: 'form-check-label' }, 'Include time of day')));
+      } else if (t === 'field') {
+        kids.push(dsection('Definition depth', el('input', {
+          type: 'number', min: 1, max: fdc.MAX_DEPTH, class: 'form-control dlg-narrow', value: state.depth ?? 1,
+          oninput: (e) => { state.depth = Number(e.target.value) || 1; changed(); },
+        })));
+      } else if (t === 'lookup' || t === 'rollup') {
+        if (isEdit) {
+          kids.push(el('div', { class: 'modal-note full' }, 'Computed config is not editable — delete and recreate to repoint it'));
+        } else {
+          const rels = db.fields.filter((x) => x.type === 'relation');
+          const relSel = pickerSelect({ name: 'relationField', title: 'Relation', options: rels.map((r) => ({ id: r.name, label: r.name })), value: state.relationField || (rels[0]?.name ?? null) });
+          state.relationField = state.relationField || (rels[0]?.name ?? '');
+          relSel.input.addEventListener('change', () => { state.relationField = relSel.input.value; changed(); });
+          kids.push(dsection('Relation', relSel));
+          kids.push(dsection('Target field', el('input', { class: 'form-control', value: state.targetField ?? '', placeholder: 'Field on the target table', oninput: (e) => { state.targetField = e.target.value; changed(); } })));
+          if (t === 'rollup') {
+            kids.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; changed(); })));
+          }
+        }
+      }
+      if (fdc.DEFAULTABLE.includes(t)) {
+        kids.push(dsection('Default', el('input', {
+          class: 'form-control', value: state.default ?? '',
+          placeholder: t === 'checkbox' ? 'true / false' : 'Default value for new rows (optional)',
+          oninput: (e) => { state.default = e.target.value; changed(); },
+        })));
+      }
     }
-    // Merged, not assigned: a type's own config and its default are edited in
-    // the same dialog and must not overwrite each other.
-    const nextDefault = defaultValueFromForm(fd, f.type);
-    if (nextDefault !== undefined) patch.config = { ...(patch.config ?? {}), default: nextDefault };
-    await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, patch);
+    cfgWrap.replaceChildren(...kids);
+  }
+
+  const codeToggle = el('button', {
+    type: 'button', class: 'def-toggle',
+    onclick: () => {
+      codeOpen = !codeOpen;
+      codeWrap.classList.toggle('open', codeOpen);
+      codeToggle.classList.toggle('on', codeOpen);
+      if (codeOpen) syncCode();
+    },
+  }, '{ } definition');
+  codeWrap.append(codeTa, codeErr);
+
+  drawGrid();
+  drawCfg();
+
+  modal(isEdit ? `Edit ${existing.name}` : 'Add field', [
+    dsection('Name', nameInput),
+    gridWrap, cfgWrap,
+    el('div', { class: 'def-row full' }, codeToggle),
+    codeWrap,
+  ], async () => {
+    const def = fdc.definitionFromState(state);
+    const name = nameInput.value.trim();
+    if (!isEdit) {
+      await api('POST', `/tables/${db.id}/fields`, { name, type: def.type, config: def.config });
+    } else {
+      const patch = {};
+      if (name && name !== existing.name) patch.name = name;
+      patch.config = editPatchConfig(existing, def, state);
+      await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(existing.id)}`, patch);
+    }
     await loadSchema();
-    showDatabase(db.id);
-  }, 'Save changes');
+    after();
+  }, isEdit ? 'Save changes' : 'Create');
+}
+
+/* The PATCH body per type. The engine merges config keys, so clearing a
+   number/date costume key means sending an explicit null — the canonical
+   minimal def omits defaults, which would silently keep the old value. */
+function editPatchConfig(existing, def, state) {
+  const c = def.config;
+  const patch = {};
+  if (existing.type === 'number') {
+    patch.format = c.format ?? null;
+    patch.unit = c.unit ?? null;
+    patch.decimals = c.decimals ?? null;
+    patch.separator = c.separator ?? null;
+  } else if (existing.type === 'date') {
+    patch.format = c.format ?? null;
+    patch.time = c.time ?? null;
+  } else if (existing.type === 'select' || existing.type === 'multiselect') {
+    patch.options = (c.options ?? []).filter((o) => o.name && o.name.trim());
+  } else if (existing.type === 'workflow') {
+    patch.states = (c.states ?? []).filter((s) => s.name && s.name.trim());
+  } else if (existing.type === 'formula') {
+    if (state.expression) patch.expression = state.expression;
+  }
+  if (fieldDialogCore.DEFAULTABLE.includes(existing.type)) {
+    patch.default = c.default ?? null;
+  }
+  return patch;
+}
+
+function editFieldDialog(db, f) {
+  fieldDialog(db, f, () => showDatabase(db.id));
 }
 
 /* Column order IS fieldOrder, so a move is a schema write — drag a column and
@@ -1900,6 +2168,12 @@ async function showSpace(spaceId) {
         await loadSchema();
         showSpace(spaceId);
       },
+      icon: space.icon,
+      onSetIcon: async (icon) => {
+        await api('PATCH', `/spaces/${spaceId}`, { icon: icon ?? '' });
+        await loadSchema();
+        showSpace(spaceId);
+      },
       description: space.description,
       onSaveDescription: async (md) => {
         await api('PATCH', `/spaces/${spaceId}`, { description: md });
@@ -1944,7 +2218,7 @@ async function showSpace(spaceId) {
       ];
       return el('div', { class: 'list-row space-table-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
         el('span', { class: 'space-table-main' },
-          el('span', { class: 'space-table-name' }, d.icon ? `${d.icon} ${d.name}` : d.name),
+          el('span', { class: 'space-table-name' }, iconEl(d.icon, 'wv-icon'), d.name),
           d.description ? el('span', { class: 'space-table-desc' }, d.description.replace(/[#*_`\[\]]/g, '').slice(0, 90)) : null),
         el('span', { class: 'spacer' }),
         el('span', { class: 'pid' }, bits.join(' · ')));
@@ -2850,74 +3124,15 @@ function openSchemaEditor(db) {
 }
 
 function addFieldDialog(db) {
-  const typeSel = pickerSelect({
-    name: 'type', title: 'Field type', value: 'text',
-    options: ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'document', 'key', 'attachments', 'lookup', 'rollup', 'formula']
-      .map((t) => ({ id: t, label: t })),
-  });
-  const extra = el('div', { class: 'full' });
-  const drawExtra = () => {
-    const t = typeSel.input.value;
-    extra.replaceChildren();
-    if (t === 'select' || t === 'multiselect') {
-      extra.append(el('input', { name: 'options', class: 'form-control', placeholder: 'Options (comma-separated)', style: 'width:100%' }));
-    } else if (t === 'workflow') {
-      extra.append(el('input', { name: 'states', class: 'form-control', placeholder: 'States: Open:not-started, Doing:in-progress, Done:done', style: 'width:100%' }));
-    } else if (t === 'lookup' || t === 'rollup') {
-      const rels = db.fields.filter((f) => f.type === 'relation');
-      extra.append(
-        pickerSelect({ name: 'relationField', title: 'Relation', options: rels.map((r) => ({ id: r.name, label: r.name })), value: rels[0]?.name ?? null }),
-        el('input', { name: 'targetField', class: 'form-control', placeholder: 'Target field name', style: 'width:100%; margin-top:6px' }));
-      if (t === 'rollup') {
-        extra.append(pickerSelect({ name: 'aggregate', title: 'Aggregate', options: ['count', 'sum', 'avg', 'min', 'max', 'join'].map((a) => ({ id: a, label: a })), value: 'count' }));
-      }
-    } else if (t === 'formula') {
-      extra.append(el('input', { name: 'expression', class: 'form-control', placeholder: 'e.g. if(Estimate > 5, "big", "small")', style: 'width:100%' }));
-    }
-    // Redrawn with the rest of the type's config, so switching type to one that
-    // cannot default takes the input away with it.
-    const dflt = defaultValueInput(t);
-    if (dflt) {
-      dflt.style.marginTop = '6px';
-      extra.append(dflt);
-    }
-  };
-  typeSel.input.addEventListener('change', drawExtra);
-  drawExtra();
-  modal('Add field', [
-    el('input', { name: 'name', placeholder: 'Field name', class: 'form-control full', style: 'width:100%' }),
-    typeSel, extra,
-  ], async (fd) => {
-    const type = fd.get('type');
-    const config = {};
-    if (type === 'select' || type === 'multiselect') {
-      config.options = String(fd.get('options') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-    } else if (type === 'workflow') {
-      config.states = String(fd.get('states') ?? '').split(',').map((s) => {
-        const [name, category] = s.split(':').map((x) => x.trim());
-        return { name, category: category ?? 'in-progress' };
-      }).filter((s) => s.name);
-    } else if (type === 'lookup' || type === 'rollup') {
-      config.relationField = fd.get('relationField');
-      config.aggregate = fd.get('aggregate') ?? undefined;
-      if (fd.get('targetField')) config.targetField = fd.get('targetField');
-    } else if (type === 'formula') {
-      config.expression = fd.get('expression');
-    }
-    const dflt = defaultValueFromForm(fd, type);
-    if (dflt !== undefined && dflt !== null) config.default = dflt;
-    await api('POST', `/tables/${db.id}/fields`, { name: fd.get('name'), type, config });
-    await loadSchema();
-    openSchemaEditor(allTables().find((d) => d.id === db.id));
-  });
+  fieldDialog(db, null, () => openSchemaEditor(allTables().find((d) => d.id === db.id)));
 }
 
 function addRelationDialog(db) {
   modal('Add relation', [
-    el('input', { name: 'name', placeholder: 'Field name (e.g. Project)', class: 'form-control full', style: 'width:100%' }),
-    pickerSelect({ name: 'targetDb', title: 'Target table', placeholder: 'Choose a table…', options: allTables().map((d) => ({ id: d.id, label: d.qualified })), value: allTables()[0]?.id ?? null }),
-    pickerSelect({ name: 'cardinality', title: 'Cardinality', value: 'many-to-one', options: ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'].map((c) => ({ id: c, label: c })) }),
-    el('input', { name: 'inverseName', placeholder: 'Inverse field name (optional)', class: 'form-control full', style: 'width:100%' }),
+    dsection('Name', el('input', { name: 'name', placeholder: 'Field name (e.g. Project)', class: 'form-control' })),
+    dsection('Target table', pickerSelect({ name: 'targetDb', placeholder: 'Choose a table…', options: allTables().map((d) => ({ id: d.id, label: d.qualified })), value: allTables()[0]?.id ?? null })),
+    dsection('Cardinality', pickerSelect({ name: 'cardinality', value: 'many-to-one', options: ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'].map((c) => ({ id: c, label: c })) })),
+    dsection('Inverse field', el('input', { name: 'inverseName', placeholder: 'Inverse field name (optional)', class: 'form-control' })),
   ], async (fd) => {
     await api('POST', `/tables/${db.id}/relations`, {
       name: fd.get('name'),
