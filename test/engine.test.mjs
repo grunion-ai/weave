@@ -612,3 +612,21 @@ test('consecutive autosaves of one document coalesce into a single activity entr
   w.setDoc(t.id, 'v2');
   assert.equal(docs().length, 2, 'a new session starts a new entry');
 });
+
+/* The unified field dialog (A+E, 2026-08-22) edits option colors and needs
+   stable ids to round-trip renames without regenerating identities. The
+   flattened client view keeps `options` as plain names (existing consumers),
+   and adds `optionsFull` + state ids alongside. */
+test('client schema exposes optionsFull with ids/colors and state ids', () => {
+  const { w, tasks } = buildWorkspace();
+  const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id);
+  const priority = view.fields.find((f) => f.name === 'Priority');
+  assert.deepEqual(priority.options, ['Low', 'Medium', 'High']);
+  assert.deepEqual(priority.optionsFull.map((o) => o.name), ['Low', 'Medium', 'High']);
+  for (const o of priority.optionsFull) {
+    assert.equal(typeof o.id, 'string');
+    assert.equal(typeof o.color, 'string');
+  }
+  const state = view.fields.find((f) => f.name === 'State');
+  for (const s of state.states) assert.equal(typeof s.id, 'string');
+});

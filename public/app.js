@@ -362,14 +362,18 @@ function renderNav() {
   // Instance status (Feature #54): version + uptime from /api/health, so a
   // stale server is visible at a glance instead of masquerading as a broken
   // feature. startedAt arrives with the same payload for tooling to compare.
-  const status = el('div', { class: 'nav-health', title: 'This weave instance' }, '…');
-  api('GET', '/health').then((h) => {
-    const up = h.uptime == null ? '' : ` · up ${h.uptime < 3600 ? Math.round(h.uptime / 60) + 'm' : Math.round(h.uptime / 3600) + 'h'}`;
-    status.textContent = `v${h.version}${up}`;
-    if (h.startedAt) status.title = `This weave instance — started ${h.startedAt}`;
-  }).catch(() => { status.textContent = 'offline'; });
-  foot.append(status);
   nav.append(foot);
+  // The instance chip lives in the bottom-right corner of the pane (Kyle,
+  // 2026-08-22) — out of the nav, always visible, never in the way.
+  if (!document.querySelector('.nav-health')) {
+    const status = el('div', { class: 'nav-health', title: 'This weave instance' }, '…');
+    api('GET', '/health').then((h) => {
+      const up = h.uptime == null ? '' : ` · up ${h.uptime < 3600 ? Math.round(h.uptime / 60) + 'm' : Math.round(h.uptime / 3600) + 'h'}`;
+      status.textContent = `v${h.version}${up}`;
+      if (h.startedAt) status.title = `This weave instance — started ${h.startedAt}`;
+    }).catch(() => { status.textContent = 'offline'; });
+    document.body.append(status);
+  }
 }
 
 /* ---------- shared value rendering ---------- */
@@ -1283,7 +1287,7 @@ function drawDatabase(db, items, trashCount = 0) {
   main.replaceChildren();
 
   const switcher = el('div', { class: 'btn-group view-switch' },
-    ...['table', 'board', 'list'].map((v) =>
+    ...['table', 'board'].map((v) =>
       el('button', {
         class: 'btn btn-sm' + (state.route.view === v ? ' active' : ''),
         onclick: () => showDatabase(db.id, v),
@@ -1403,9 +1407,10 @@ function drawDatabase(db, items, trashCount = 0) {
     return;
   }
 
-  if (state.route.view === 'table') renderTable(main, db, items, onSaved);
-  else if (state.route.view === 'board') renderBoard(main, db, items, onSaved);
-  else renderListView(main, db, items, onSaved);
+  // The list view is gone (Kyle, 2026-08-22): table and board carry it all;
+  // stale #/… routes and saved views that said 'list' land on the table.
+  if (state.route.view === 'board') renderBoard(main, db, items, onSaved);
+  else renderTable(main, db, items, onSaved);
 
   for (const area of main.querySelectorAll('textarea.doc-inline[data-eid]')) {
     const key = `${area.dataset.eid}::${area.dataset.field}`;
@@ -1546,7 +1551,7 @@ const MIN_COLUMN_WIDTH = 60;
 function columnResizeGrip(db, f) {
   const grip = el('span', { class: 'col-resize', title: 'Drag to resize — double-click to auto-fit' });
   grip.addEventListener('click', (e) => e.stopPropagation());        // resizing is not sorting
-  grip.addEventListener('dblclick', (e) => { e.stopPropagation(); setColumnWidth(db, f, null); });
+  grip.addEventListener('dblclick', (e) => { e.stopPropagation(); setColumnWidth(db, f, null, grip.closest('th')); });
   grip.addEventListener('dragstart', (e) => { e.preventDefault(); e.stopPropagation(); });
   grip.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
@@ -1565,7 +1570,7 @@ function columnResizeGrip(db, f) {
       removeEventListener('pointermove', move);
       removeEventListener('pointerup', up);
       removeEventListener('pointercancel', up);
-      if (Math.round(width) !== Math.round(base)) setColumnWidth(db, f, width);
+      if (Math.round(width) !== Math.round(base)) setColumnWidth(db, f, width, th);
     };
     addEventListener('pointermove', move);
     addEventListener('pointerup', up);
@@ -1574,12 +1579,22 @@ function columnResizeGrip(db, f) {
   return grip;
 }
 
-async function setColumnWidth(db, f, width) {
+async function setColumnWidth(db, f, width, th = null) {
   try {
     await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, { config: { width } });
-    await loadSchema();
-    showDatabase(db.id);
-  } catch (err) { toast(err.message, true); }
+    // Commit in place: the header keeps (or sheds) its width and the cells
+    // follow, without tearing the grid down mid-gesture (Kyle, 2026-08-22).
+    f.width = width ?? undefined;
+    if (th) {
+      th.style.width = width ? `${width}px` : '';
+      const idx = [...th.parentElement.children].indexOf(th);
+      for (const row of th.closest('table')?.querySelectorAll('tbody tr') ?? []) {
+        const cell = row.children[idx];
+        if (cell) cell.style.maxWidth = width ? `${width}px` : '';
+      }
+    }
+    loadSchema().catch(() => {}); // background truth refresh, no repaint
+  } catch (err) { toast(err.message, true); showDatabase(db.id); }
 }
 
 /* ---------- the column header as a control (Feature #41, option A) ----------
@@ -1729,12 +1744,36 @@ async function reorderField(db, fromName, toName, { after = false } = {}) {
   const at = order.indexOf(toName);
   if (at < 0) return;
   order.splice(after ? at + 1 : at, 0, fromName);
+  // The columns move IN PLACE — cells relocate, nothing repaints, scroll and
+  // focus stay put (Kyle, 2026-08-22: the full redraw read as clunky flicker).
+  // The schema write happens behind the move; if it fails, redraw to truth.
+  // Must mirror drawDatabase's cols selection or the in-place move lands on
+  // the wrong cell index.
+  const cols = db.fields.filter((f) => f.type !== 'document').map((f) => f.name);
+  const fromIdx = cols.indexOf(fromName);
+  const toIdx = cols.indexOf(toName);
+  const table = document.querySelector('.wv-grid');
+  if (table && fromIdx >= 0 && toIdx >= 0) {
+    for (const row of table.querySelectorAll('tr')) {
+      const cells = row.children;
+      const from = cells[1 + fromIdx];
+      const to = cells[1 + toIdx];
+      if (from && to) to.insertAdjacentElement(after || fromIdx < toIdx ? 'afterend' : 'beforebegin', from);
+    }
+  }
+  const fi = db.fields.findIndex((f) => f.name === fromName);
+  const [moved] = db.fields.splice(fi, 1);
+  const ti = db.fields.findIndex((f) => f.name === toName);
+  db.fields.splice(after ? ti + 1 : ti, 0, moved);
   try {
     await api('PATCH', `/tables/${db.id}`, { fieldOrder: order });
     await loadSchema();
-    showDatabase(db.id);
-  } catch (err) { toast(err.message, true); }
+  } catch (err) {
+    toast(err.message, true);
+    showDatabase(db.id); // the move did not hold — show the truth
+  }
 }
+
 
 /* The "+" that closes the grid's header bar. A menu rather than a straight
    dialog because it replaces the "⚙ Fields" button in table view, so it has
@@ -1842,57 +1881,6 @@ function renderBoard(main, db, items, onSaved) {
   main.append(board);
 }
 
-function renderListView(main, db, items, onSaved) {
-  const wf = db.fields.find((f) => f.type === 'workflow');
-  const rows = el('div', { class: 'card list-rows' });
-  const redraw = () => drawDatabase(db, items);
-  for (const item of items) {
-    const expanded = state.expanded.has(item.id);
-    const nameInput = el('input', { class: 'row-name', value: item.name || '' });
-    nameInput.addEventListener('change', async () => {
-      try {
-        await api('PATCH', `/entities/${item.id}`, { values: { Name: nameInput.value } });
-        toast('Saved');
-        onSaved();
-      } catch (err) { toast(err.message, true); }
-    });
-    rows.append(el('div', {
-      class: 'list-row entity-row',
-      onclick: (e) => {
-        const pick = rowClickTarget(e);
-        if (pick === 'ignore') return;
-        if (pick) return openCellPicker(pick);
-        peekEntity(item.id);
-      },
-    },
-      el('a', { class: 'pid', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`),
-      nameInput,
-      item.doc ? el('span', { class: 'doc-preview' }, docPreview(item.doc, 80)) : null,
-      el('span', { class: 'spacer' }),
-      wf ? editorFor(wf, item, db, onSaved, { compact: true }) : null,
-      el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny' + (expanded ? ' active-toggle' : ''),
-        title: 'Edit fields & documents',
-        onclick: () => {
-          if (expanded) state.expanded.delete(item.id);
-          else state.expanded.add(item.id);
-          redraw();
-        },
-      }, expanded ? '▴' : '▾')));
-    if (expanded) {
-      const detail = el('div', { class: 'list-detail' });
-      const fieldsBox = el('div', { class: 'detail-fields' });
-      for (const f of db.fields) {
-        if (f.name === 'Name' || f.type === 'document') continue;
-        fieldsBox.append(el('div', { class: 'fieldrow compact' },
-          el('label', {}, fieldNameLabel(f)), editorFor(f, item, db, onSaved, { compact: true })));
-      }
-      detail.append(fieldsBox, docsEditor(item, db, onSaved));
-      rows.append(detail);
-    }
-  }
-  main.append(rows);
-}
 
 /* ---------- space page ---------- */
 
@@ -1946,11 +1934,21 @@ async function showSpace(spaceId) {
         ], { title: 'Space actions', align: 'right' }),
       ],
     }),
-    el('div', { class: 'card list-rows' }, ...space.tables.map((d) =>
-      el('div', { class: 'list-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
-        el('span', {}, d.name),
+    el('div', { class: 'card list-rows' }, ...space.tables.map((d) => {
+      const wf = d.fields.find((x) => x.type === 'workflow');
+      const bits = [
+        `${d.entityCount} ${d.noun ? d.noun + (d.entityCount === 1 ? '' : 's') : (d.entityCount === 1 ? 'entity' : 'entities')}`,
+        `${d.fields.length} fields`,
+        ...(wf ? [`${wf.states.length}-state ${wf.name.toLowerCase()}`] : []),
+        ...(d.fields.some((x) => x.type === 'relation') ? ['linked'] : []),
+      ];
+      return el('div', { class: 'list-row space-table-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
+        el('span', { class: 'space-table-main' },
+          el('span', { class: 'space-table-name' }, d.icon ? `${d.icon} ${d.name}` : d.name),
+          d.description ? el('span', { class: 'space-table-desc' }, d.description.replace(/[#*_`\[\]]/g, '').slice(0, 90)) : null),
         el('span', { class: 'spacer' }),
-        el('span', { class: 'pid' }, `${d.entityCount} entities`)))));
+        el('span', { class: 'pid' }, bits.join(' · ')));
+    })));
 }
 
 /* ---------- relation map (tables, relations, automations) ---------- */
@@ -2737,7 +2735,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     }
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name);
-    mountDocEditor(host, {
+    const ed = mountDocEditor(host, {
       value: entity.docs?.[f.name] ?? '',
       placeholder: `Write ${f.name}… press / for blocks`,
       onInput: (value) => {

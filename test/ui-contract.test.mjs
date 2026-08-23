@@ -126,7 +126,7 @@ test('row click on a picker cell opens the picker instead of the entity', () => 
   // Every clickable row surface (grid <tr>, list-row, board card) routes
   // through rowClickTarget before it may open the side peek (Feature #39).
   const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*peekEntity\(/g)];
-  assert.equal(routed.length, 4, 'grid, list, board and embedded related rows must all route clicks');
+  assert.equal(routed.length, 3, 'grid, board and embedded related rows must all route clicks (list view removed 2026-08-22)');
   assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, routed.length,
     'no row surface may open the peek without routing first');
   assert.match(APP, /function rowClickTarget/);
@@ -673,7 +673,7 @@ test('a resize grip commits once, on release', () => {
 
 test('auto-fit clears the width rather than writing a measured number', () => {
   const grip = fnBody('columnResizeGrip');
-  assert.match(grip, /setColumnWidth\(db, f, null\)/,
+  assert.match(grip, /setColumnWidth\(db, f, null, grip\.closest\('th'\)\)/,
     'auto-fit hands the column back to the browser — null, not a pixel guess');
   const writer = fnBody('setColumnWidth');
   assert.match(writer, /'PATCH'/, 'width is a schema write');
@@ -1085,4 +1085,19 @@ test('multi pickers edit in place: selections listed with ×, saved on Enter', (
   const links = [...app.matchAll(/multi: \{\s*\n\s*selected:/g)];
   assert.ok(links.length >= 2, `both link surfaces edit through multi (saw ${links.length})`);
   assert.ok(app.includes('unlink'), 'removals commit as unlinks');
+});
+
+test('resize and reorder commit in place — the grid never tears down mid-gesture', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const resize = app.slice(app.indexOf('async function setColumnWidth'), app.indexOf('function fieldMenuButton'));
+  assert.ok(!resize.includes('showDatabase(db.id);\n') || resize.includes('catch'), 'redraw only on failure');
+  assert.ok(resize.includes('th.style.width'), 'the header keeps its width locally');
+  assert.ok(resize.includes('cell.style.maxWidth'), 'cells follow without a repaint');
+  const reorder = app.slice(app.indexOf('async function reorderField'), app.indexOf('async function setColumnWidth'));
+  assert.ok(reorder.includes('insertAdjacentElement'), 'columns move as DOM cells, not a redraw');
+  assert.ok(reorder.includes('db.fields.splice'), 'the local schema order follows the move');
+  assert.ok(reorder.includes('showDatabase(db.id); // the move did not hold'), 'failure falls back to truth');
+  // The resize grip hands its th through so the local commit can find cells.
+  assert.ok(app.includes('setColumnWidth(db, f, width, th)'));
+  assert.ok(app.includes("setColumnWidth(db, f, null, grip.closest('th'))"));
 });

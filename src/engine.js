@@ -1316,6 +1316,15 @@ export class Weave {
           }
         }
       }
+      if (field.type === 'date') {
+        const costume = normalizeSelfContainedConfig('date', { ...field.config, ...patch.config });
+        for (const k of ['format', 'time']) {
+          if (k in patch.config || k in costume) {
+            if (costume[k] == null) delete field.config[k];
+            else field.config[k] = costume[k];
+          }
+        }
+      }
       if (field.type === 'select' || field.type === 'multiselect') {
         if (patch.config.options) {
           field.config.options = patch.config.options.map((o) =>
@@ -2656,8 +2665,14 @@ export class Weave {
           const f = db.fields[fid];
           const out = { id: f.id, name: f.name, type: f.type };
           if (f.config.width) out.width = f.config.width;
-          if (f.type === 'select' || f.type === 'multiselect') out.options = f.config.options.map((o) => o.name);
-          if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ name: s.name, category: s.category, default: !!s.default }));
+          if (f.type === 'select' || f.type === 'multiselect') {
+            out.options = f.config.options.map((o) => o.name);
+            // The field dialog edits colors and must round-trip ids so a
+            // rename keeps the option's identity. `options` stays plain
+            // names for every existing consumer.
+            out.optionsFull = f.config.options.map((o) => ({ id: o.id, name: o.name, color: o.color ?? '' }));
+          }
+          if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default }));
           if (f.type === 'relation') {
             const target = this.state.tables[f.config.targetDb];
             out.targetDb = this.qualifiedName(target);

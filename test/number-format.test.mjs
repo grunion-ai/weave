@@ -111,3 +111,16 @@ test('formulas do date math', () => {
   assert.equal(read.fields.Age, 14);
   assert.equal(read.fields.Y, 2026);
 });
+
+test('updateField edits the date costume too', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Dev' });
+  w.createTable({ space: 'Dev', name: 'Task' });
+  w.addField('Task', { name: 'Due', type: 'date' });
+  w.updateField('Task', 'Due', { config: { format: 'long', time: true } });
+  const f = Object.values(w.getTable('Task').fields).find((x) => x.name === 'Due');
+  assert.equal(f.config.format, 'long');
+  assert.equal(f.config.time, true);
+  w.updateField('Task', 'Due', { config: { width: 140 } });
+  assert.equal(f.config.format, 'long', 'width edits never clobber the costume');
+});
