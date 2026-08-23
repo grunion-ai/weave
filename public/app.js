@@ -149,53 +149,54 @@ function qrCanvas(text, scale = 5) {
 
 function peekEntity(id) {
   document.querySelector('#peek-back')?.remove();
-  const back = el('div', { id: 'peek-back', onclick: (e) => { if (e.target === back) back.remove(); } });
+  const editors = [];
+  // Scoped teardown: only what THIS panel mounted. The page underneath may
+  // hold its own live editors and decoration layers — a global teardown here
+  // would destroy them mid-edit.
+  const releasePanel = () => {
+    flushDocSaves();
+    for (const ed of editors.splice(0)) {
+      try { ed.destroy(); } catch { /* already gone with the DOM */ }
+      liveEditors.delete(ed);
+    }
+    for (const set of [refChipLayers, docRails, docFolds]) {
+      for (const st of [...set]) {
+        if (panel.contains(st.host)) {
+          clearTimeout(st.timer);
+          (st.layer ?? st.rail)?.remove();
+          set.delete(st);
+        }
+      }
+    }
+  };
+  const close = () => { releasePanel(); back.remove(); };
+  const back = el('div', { id: 'peek-back', onclick: (e) => { if (e.target === back) close(); } });
   const panel = el('aside', { id: 'peek' }, el('div', { class: 'peek-body' }, '…'));
   back.append(panel);
   document.body.append(back);
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape') { back.remove(); removeEventListener('keydown', esc); }
+    if (e.key === 'Escape') { close(); removeEventListener('keydown', esc); }
   });
   const draw = async () => {
     let entity;
-    try { entity = await api('GET', `/entities/${id}`); } catch (err) { back.remove(); return toast(err.message, true); }
-    const db = allTables().find((d) => d.id === entity.dbId);
+    try { entity = await api('GET', `/entities/${id}`); } catch (err) { close(); return toast(err.message, true); }
+    releasePanel(); // a redraw replaces everything the last pass mounted
     const body = el('div', { class: 'peek-body' });
     body.append(el('div', { class: 'peek-head' },
-      el('a', { class: 'pid', href: `#/entity/${id}`, onclick: () => back.remove() }, `#${entity.publicId} ↗`),
-      el('h2', {}, entity.name || '(unnamed)'),
       el('span', { style: 'flex:1' }),
-      el('button', { class: 'btn btn-sm btn-ghost-secondary', onclick: () => { back.remove(); openEntity(id); } }, 'Open'),
-      el('button', { class: 'btn btn-sm btn-ghost-secondary', title: 'Close', onclick: () => back.remove() }, '✕')));
-    const fieldsBox = el('div', { class: 'peek-fields' });
-    for (const f of db?.fields ?? []) {
-      if (f.name === 'Name' || f.type === 'document') continue;
-      if (f.type === 'relation' && f.many) continue;
-      fieldsBox.append(el('div', { class: 'fieldrow' },
-        el('label', {}, fieldNameLabel(f)), editorFor(f, entity, db, draw)));
-    }
-    body.append(fieldsBox);
-    const docs = Object.entries(entity.docs ?? {}).filter(([, md]) => md?.trim());
-    for (const [name, md] of docs.slice(0, 1)) {
-      const docBox = el('div', { class: 'peek-doc' }, '…');
-      body.append(docBox);
-      api('POST', '/markdown', { markdown: md }).then((r) => {
-        docBox.innerHTML = r.html;
-        renderMermaidIn(docBox);
-      }).catch(() => docBox.remove());
-    }
-    // What happened, newest first — each entry names its actor (#65).
-    const act = (entity.activity ?? []).slice(-8).reverse();
-    if (act.length) {
-      body.append(el('div', { class: 'peek-activity' },
-        el('h3', {}, 'Activity'),
-        ...act.map((a) => el('div', { class: 'peek-act-row', title: a.ts },
-          el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind),
-          el('span', { class: 'peek-act-when' }, new Date(a.ts).toLocaleDateString()),
-          a.actor ? el('span', { class: 'peek-act-actor' }, a.actor) : null))));
-    }
-    panel.replaceChildren(body);
+      el('button', { class: 'btn btn-sm btn-ghost-secondary', onclick: () => { close(); openEntity(id); } }, 'Open'),
+      el('button', { class: 'btn btn-sm btn-ghost-secondary', title: 'Close', onclick: () => close() }, '✕')));
+    const host = el('div', { class: 'peek-entity' });
+    // Any in-panel navigation (crumb, related rows, activity links) moves the
+    // page underneath — the panel must not linger over it.
+    host.addEventListener('click', (e) => {
+      if (e.target.closest('a[href^="#/"], a[href^="#"]:not([href="#"])')) close();
+    });
+    body.append(host);
+    panel.replaceChildren(body); // in the DOM before editors mount
+    // The full entity view — the peek is the entity, not a preview of it.
+    await renderEntityView(entity, { mount: host, refresh: draw, inPeek: true, onClose: close, editors });
   };
   draw();
 }
@@ -2595,13 +2596,21 @@ async function showEntity(id) {
   } catch {
     return showHome();
   }
-  const db = allTables().find((d) => d.id === entity.dbId);
   state.route = { page: 'entity', id, dbId: entity.dbId };
   renderNav();
   const main = $('#main');
   main.replaceChildren();
+  await renderEntityView(entity, { mount: main, refresh: () => showEntity(id) });
+}
 
-  const refresh = () => showEntity(id);
+/* The one entity rendering. The full page and the side peek (Feature #39)
+   mount the SAME view — the peek is not a preview, it is the entity. Peek
+   mode changes only what must change: no route/nav writes, refresh redraws
+   the panel, deleting closes it instead of navigating, and mounted editors
+   are handed back for scoped teardown when the panel goes. */
+async function renderEntityView(entity, { mount, refresh, inPeek = false, onClose = null, editors = null }) {
+  const id = entity.id;
+  const db = allTables().find((d) => d.id === entity.dbId);
 
   const nameInput = el('input', { class: 'name-edit', value: entity.name });
   nameInput.addEventListener('change', async () => {
@@ -2645,12 +2654,12 @@ async function showEntity(id) {
         try {
           await api('DELETE', `/entities/${id}`);
           await loadSchema();
-          location.hash = `#/table/${entity.dbId}`;
+          if (inPeek) onClose?.(); else location.hash = `#/table/${entity.dbId}`;
           toast('Moved to trash', false, {
             label: 'Undo',
             run: async () => {
               await api('POST', `/entities/${id}/restore`);
-              location.hash = `#/entity/${id}`;
+              if (!inPeek) location.hash = `#/entity/${id}`;
               toast('Restored');
             },
           });
@@ -2662,7 +2671,7 @@ async function showEntity(id) {
   /* Crumb row, then a title row that ends in the ⋮ — the same two-row shape
      viewHeader() builds for tables, boards, lists and spaces, so the menu is
      in one place across the app. */
-  main.append(
+  mount.append(
     el('div', { class: 'view-header' },
       el('div', { class: 'crumb' },
         el('a', { href: `#/table/${entity.dbId}` }, entity.db), ' › ',
@@ -2674,7 +2683,7 @@ async function showEntity(id) {
   );
 
   const grid = el('div', { class: 'entity-grid' });
-  main.append(grid);
+  mount.append(grid);
   const left = el('div');
   const right = el('div');
   grid.append(left, right);
@@ -2737,6 +2746,7 @@ async function showEntity(id) {
         folds.schedule(); // a re-render drops the fold classes; re-apply
       },
     });
+    editors?.push(ed);
   }
 
   /* Collections of related records go under the documents, in the body rather

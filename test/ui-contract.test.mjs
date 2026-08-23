@@ -853,7 +853,7 @@ test('a computed field carries its glyph next to the name, not only in cells', (
 
   // Every surface that prints a field name uses it — a column marked in the
   // grid but bare on the entity page is worse than not marking it at all.
-  for (const fn of ['renderTable', 'renderBoard', 'renderListView', 'showEntity', 'openSchemaEditor']) {
+  for (const fn of ['renderTable', 'renderBoard', 'renderEntityView', 'openSchemaEditor']) {
     assert.match(fnBody(fn), /fieldNameLabel\(/, `${fn}() must label field names through the helper`);
   }
   const mark = rulesFor('.field-mark');
@@ -869,7 +869,7 @@ test('a computed field carries its glyph next to the name, not only in cells', (
    and the pane is that table filtered to one entity, ten rows deep. */
 
 test('the entity activity pane shows ten rows, each linking into the Activity table', () => {
-  const body = fnBody('showEntity');
+  const body = fnBody('renderEntityView'); // the one entity rendering — page and peek both mount it
   assert.match(APP, /const ACTIVITY_PANE_ROWS = 10;/, 'the pane is capped at ten');
   assert.match(body, /slice\(0, ACTIVITY_PANE_ROWS\)/, 'and takes the ten most recent');
   assert.match(body, /href: `#\/activity\/\$\{id\}:\$\{firstIndex - n\}`/,
@@ -938,7 +938,7 @@ test('a collection relation renders as the target table grid, in the body', () =
   assert.match(grid, /\['id', 'in', linked\.map/, 'the rows are fetched whole, by id');
   assert.match(grid, /c\.name !== f\.inverseField/, 'the column pointing back at this record is dropped');
 
-  const body = fnBody('showEntity');
+  const body = fnBody('renderEntityView'); // the one entity rendering — page and peek both mount it
   assert.match(body, /relatedGrid\(entity, f, refresh\)/, 'the entity page mounts one per collection relation');
   assert.match(body, /x\.type === 'relation' && x\.many/, 'collections only — a single link stays a chip');
   assert.match(body, /left\.append\(slot\)/, 'they live in the main body, under the documents');

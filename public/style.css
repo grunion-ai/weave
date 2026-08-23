@@ -646,3 +646,14 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .picker-wrap { display: block; width: 100%; }
 .picker-centered { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); min-width: 320px; }
 .chip-add { cursor: pointer; border: 1px dashed var(--tblr-border-color); background: none; color: var(--tblr-secondary); }
+
+/* ---------- full entity in the side peek (Feature #39, upgraded) ----------
+   The panel hosts the real entity view, so it earns real width; the two-column
+   entity grid collapses to one inside it. The slim head keeps only the
+   open/close affordances — the view brings its own header. */
+#peek { width: min(920px, 94vw); }
+#peek .peek-entity .entity-grid { grid-template-columns: 1fr; }
+#peek .peek-entity .view-header { position: static; }
+.space-table-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.space-table-name { font-weight: 500; }
+.space-table-desc { color: var(--tblr-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 48ch; }
