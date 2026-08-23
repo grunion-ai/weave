@@ -151,7 +151,9 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
 
 const state = { schema: [], route: null, expanded: new Set(), refocus: null, trail: [], showDeleted: new Set() };
 
-// Single entry point for opening an entity (future: side-peek drawer).
+// Single entry point for opening an entity. The page IS the destination
+// (Feature #116): a row click lands here; the side peek below is kept for
+// callers that want a slide-over on top of a page, not as a row target.
 function openEntity(id) { location.hash = `#/entity/${id}`; }
 
 /* ---------- side peek (Features #39, #48) ----------
@@ -1585,7 +1587,7 @@ function renderTable(main, db, items, onSaved) {
           const pick = rowClickTarget(e);
           if (pick === 'ignore') return;
           if (pick) return openCellPicker(pick);
-          peekEntity(item.id);
+          openEntity(item.id);
         },
       },
         el('td', { class: 'pid-cell' },
@@ -2403,7 +2405,7 @@ function editFieldDialog(db, f) {
    it is still there tomorrow. The order sent covers every field, document
    columns included, because the engine refuses a partial order rather than
    silently dropping what the grid cannot see. */
-async function reorderField(db, fromName, toName, { after = false } = {}) {
+async function reorderField(db, fromName, toName, { after = false, onFail = () => showDatabase(db.id) } = {}) {
   const order = db.fields.map((f) => f.name).filter((n) => n !== fromName);
   const at = order.indexOf(toName);
   if (at < 0) return;
@@ -2434,7 +2436,7 @@ async function reorderField(db, fromName, toName, { after = false } = {}) {
     await loadSchema();
   } catch (err) {
     toast(err.message, true);
-    showDatabase(db.id); // the move did not hold — show the truth
+    onFail(); // the move did not hold — show the truth
   }
 }
 
@@ -2483,7 +2485,7 @@ function renderBoard(main, db, items, onSaved) {
             const pick = rowClickTarget(e);
             if (pick === 'ignore') return;
             if (pick) return openCellPicker(pick);
-            peekEntity(item.id);
+            openEntity(item.id);
           },
         },
           el('div', { class: 'card-top' },
@@ -3455,26 +3457,49 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   });
   commentsBody.append(el('div', { style: 'margin-top:8px' }, commentInput));
 
-  /* Fields panel */
-  const fieldsBody = el('div', { class: 'card-body' });
-  const fieldsPanel = el('div', { class: 'card panel' },
-    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Fields')),
-    fieldsBody);
-  for (const f of db.fields) {
+  /* Fields block (Feature #116) — the first thing in the body, Fibery-style
+     label/value rows, because the fields are what the record IS; documents
+     and collections follow. Order is the table's fieldOrder: drag ⠿ and the
+     table view's columns follow, through the one reorderField writer. Rows
+     move in place on drop; the schema write happens behind the move. */
+  const fields = el('div', { class: 'entity-fields' });
+  let dragFrom = null;
+  const shown = db.fields.filter((f) => !(f.name === 'Name' || f.type === 'document' || (f.type === 'relation' && f.many)));
+  for (const f of shown) {
     if (f.name === 'Name' || f.type === 'document') continue;
     // A collection relation is the grid in the body; a row of chips repeating
     // it here would be the same links twice, one of them worse.
     if (f.type === 'relation' && f.many) continue;
-    fieldsBody.append(el('div', { class: 'fieldrow' },
-      el('label', {}, fieldNameLabel(f)), editorFor(f, entity, db, () => refresh())));
+    const row = el('div', {
+      class: 'fieldrow', draggable: 'true', dataset: { field: f.name },
+      ondragstart: (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); },
+      ondragend: () => row.classList.remove('dragging'),
+      ondragover: (e) => { e.preventDefault(); row.classList.add('drop-target'); },
+      ondragleave: () => row.classList.remove('drop-target'),
+      ondrop: (e) => {
+        e.preventDefault(); row.classList.remove('drop-target');
+        const from = dragFrom; dragFrom = null;
+        if (!from || from === f.name) return;
+        const fromRow = fields.querySelector(`[data-field="${CSS.escape(from)}"]`);
+        const after = shown.findIndex((x) => x.name === from) < shown.findIndex((x) => x.name === f.name);
+        if (fromRow) row.insertAdjacentElement(after ? 'afterend' : 'beforebegin', fromRow);
+        reorderField(db, from, f.name, { after, onFail: refresh });
+      },
+    },
+      el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
+      el('label', {}, fieldNameLabel(f)),
+      editorFor(f, entity, db, () => refresh()));
+    // Editors inside a draggable row must keep their own mouse events.
+    for (const ctl of row.querySelectorAll('input,button,textarea,select,.picker-wrap,[contenteditable]')) ctl.addEventListener('mousedown', (e) => e.stopPropagation());
+    fields.append(row);
   }
-  if (!fieldsBody.childElementCount) {
-    fieldsBody.append(el('span', { class: 'wv-empty' }, 'This table has no fields beyond its name.'));
+  if (!fields.childElementCount) {
+    fields.append(el('span', { class: 'wv-empty' }, 'This table has no fields beyond its name.'));
   }
-  // The side column reads top-down as metadata about the entity: what it is
-  // (Fields), what people said (Comments), what happened (Activity). That
-  // leaves the main column to the documents, which are the reason to be here.
-  right.append(fieldsPanel, commentsPanel, actPanel); // delete lives in the ⋮ menu
+  left.prepend(fields);
+  // The side column reads top-down as what people said (Comments) and what
+  // happened (Activity); the body holds what the record is and carries.
+  right.append(commentsPanel, actPanel); // delete lives in the ⋮ menu
 }
 
 /* ---------- create & schema dialogs ---------- */
@@ -3584,7 +3609,7 @@ async function relatedGrid(entity, f, onSaved) {
         const pick = rowClickTarget(e);
         if (pick === 'ignore') return;
         if (pick) return openCellPicker(pick);
-        peekEntity(item.id);
+        openEntity(item.id);
       },
     },
       el('td', { class: 'pid-cell' },

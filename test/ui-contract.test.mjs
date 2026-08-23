@@ -124,11 +124,14 @@ test('picker-type cells are tagged so the row handler can route clicks', () => {
 
 test('row click on a picker cell opens the picker instead of the entity', () => {
   // Every clickable row surface (grid <tr>, list-row, board card) routes
-  // through rowClickTarget before it may open the side peek (Feature #39).
-  const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*peekEntity\(/g)];
+  // through rowClickTarget before it may open the entity page (Feature #116:
+  // the page is the destination; the side peek of #39 is no longer a row's
+  // click target).
+  const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*openEntity\(/g)];
   assert.equal(routed.length, 3, 'grid, board and embedded related rows must all route clicks (list view removed 2026-08-22)');
-  assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, routed.length,
-    'no row surface may open the peek without routing first');
+  assert.equal((APP.match(/openEntity\(item\.id\)/g) ?? []).length, routed.length,
+    'no row surface may open the entity without routing first');
+  assert.doesNotMatch(APP, /peekEntity\(item\.id\)/, 'no row surface opens the side peek any more (Feature #116)');
   assert.match(APP, /function rowClickTarget/);
   assert.match(APP, /function openCellPicker/);
   const fn = APP.slice(APP.indexOf('function openCellPicker'));
@@ -445,11 +448,12 @@ test('only one overflow menu is open at a time', () => {
   assert.match(body, /addEventListener\('click', function away/, 'clicking away must close it');
 });
 
-/* ---------- entity side column (Kyle, 2026-08-16) ---------- */
+/* ---------- entity side column (Kyle, 2026-08-16; fields moved into the
+   body by Feature #116, 2026-08-23) ---------- */
 
-test('comments and activity sit under fields in the side column', () => {
-  assert.match(APP, /right\.append\(fieldsPanel, commentsPanel, actPanel\)/,
-    'the side column reads Fields → Comments → Activity');
+test('comments and activity make up the side column; fields lead the body', () => {
+  assert.match(APP, /right\.append\(commentsPanel, actPanel\)/,
+    'the side column reads Comments → Activity');
   assert.doesNotMatch(APP, /left\.append\(commentsPanel\)/, 'comments must leave the main column');
   assert.doesNotMatch(APP, /left\.append\(actPanel\)/, 'activity must leave the main column');
 });
@@ -978,7 +982,7 @@ test('a collection relation renders as the target table grid, in the body', () =
   assert.match(grid, /editorFor\(/, 'cells are the same editors the table view uses');
   assert.match(grid, /PICKER_FIELD_TYPES\.includes/, 'and carry the same picker/computed cell classes');
   assert.match(grid, /rowClickTarget\(e\)/, 'so a click on a picker opens the picker, not the entity');
-  assert.match(grid, /peekEntity\(item\.id\)/, 'and a click elsewhere peeks the row (Feature #39)');
+  assert.match(grid, /openEntity\(item\.id\)/, 'and a click elsewhere opens the row\'s page (Feature #116)');
   assert.match(grid, /\['id', 'in', linked\.map/, 'the rows are fetched whole, by id');
   assert.match(grid, /c\.name !== f\.inverseField/, 'the column pointing back at this record is dropped');
 
@@ -987,7 +991,29 @@ test('a collection relation renders as the target table grid, in the body', () =
   assert.match(body, /x\.type === 'relation' && x\.many/, 'collections only — a single link stays a chip');
   assert.match(body, /left\.append\(slot\)/, 'they live in the main body, under the documents');
   assert.match(body, /if \(f\.type === 'relation' && f\.many\) continue;/,
-    'and are not repeated as chips in the Fields panel');
+    'and are not repeated as chips in the fields block');
+});
+
+/* Feature #116 — the entity page is the destination. Fields are the first
+   thing on the page (Fibery-style label/value block at the top of the body,
+   not a card in the side column), and their order is the table's fieldOrder:
+   drag ⠿ on a row and the column order in the table view follows, because
+   reorderField is the one writer for both. */
+test('the entity page heads its body with a draggable fields block that writes fieldOrder', () => {
+  const body = fnBody('renderEntityView');
+  assert.match(body, /class: 'entity-fields'/, 'fields render as one block');
+  assert.match(body, /left\.prepend\(fields\)|left\.append\(fields\)/, 'in the main column');
+  assert.match(body, /left\.prepend\(fields\)/, 'above the documents');
+  assert.doesNotMatch(body, /card-title' \}, 'Fields'/, 'and no longer as a side card (Feature #82 superseded)');
+  assert.match(body, /class: 'fieldrow', draggable: 'true'/, 'each row is draggable');
+  assert.match(body, /class: 'opt-grip'/, 'wearing the same ⠿ grip the states editor uses');
+  assert.match(body, /reorderField\(db, /, 'a drop is a fieldOrder write through the one reorder function');
+  assert.match(body, /onFail/, 'and a failed write redraws the entity, not the table');
+  const rf = fnBody('reorderField');
+  assert.match(rf, /onFail = \(\) => showDatabase\(db\.id\)/, 'reorderField defaults its failure redraw to the table view');
+  assert.match(rf, /onFail\(\)/, 'and calls whatever the caller gave it');
+  assert.match(CSS, /\.entity-fields \.fieldrow\.dragging/, 'a dragged row is ghosted');
+  assert.match(CSS, /\.entity-fields \.fieldrow\.drop-target/, 'and the drop target is marked');
 });
 
 test('an embedded grid can add a record and link it in one step', () => {
@@ -1124,7 +1150,7 @@ test('resize and reorder commit in place — the grid never tears down mid-gestu
   const reorder = app.slice(rStart, rStart + 2600);
   assert.ok(reorder.includes('insertAdjacentElement'), 'columns move as DOM cells, not a redraw');
   assert.ok(reorder.includes('db.fields.splice'), 'the local schema order follows the move');
-  assert.ok(reorder.includes('showDatabase(db.id); // the move did not hold'), 'failure falls back to truth');
+  assert.ok(reorder.includes('onFail(); // the move did not hold'), 'failure falls back to truth');
   // The resize grip hands its th through so the local commit can find cells.
   assert.ok(app.includes('setColumnWidth(db, f, width, th)'));
   assert.ok(app.includes('setColumnWidth(db, f, fitColumnWidth(th), th)'));
