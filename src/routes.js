@@ -7,6 +7,7 @@
 import { WeaveError } from './engine.js';
 import { renderDocumentPage, renderMarkdown } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
+import { handleMcpMessage } from './mcp.js';
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
@@ -105,6 +106,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'));
       const schemaWrite = !read && (
         /^\/api\/(spaces|automations|accounts)/.test(path)
+        // MCP carries every tool, schema tools included — a capped token must
+        // not widen itself through the tunnel. Admin (or the edge gate) only.
+        || path === '/api/mcp'
         || /^\/api\/tables$/.test(path)
         || (/^\/api\/tables\/[^/]+$/.test(path) && (m2 === 'PATCH' || m2 === 'DELETE'))
         || /^\/api\/tables\/[^/]+\/fields/.test(path)
@@ -289,6 +293,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             limit: Number(rx.searchParams.get('limit') ?? 100),
             offset: Number(rx.searchParams.get('offset') ?? 0),
           }));
+        }
+        /* MCP over HTTP (Feature #99): stateless streamable-HTTP, JSON mode —
+           one JSON-RPC message (or a batch array) per POST, the response in
+           the body, 202 for notifications. The same handler as stdio, so the
+           hosted instance speaks exactly what a local agent already speaks. */
+        if (route === 'POST /api/mcp') {
+          const msgs = Array.isArray(body) ? body : [body];
+          const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version })).filter(Boolean);
+          if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
+          return out(200, Array.isArray(body) ? replies : replies[0]);
         }
         if (route === 'GET /api/undo') {
           return out(200, weave.listUndo({ limit: Number(rx.searchParams.get('limit') ?? 20) }));

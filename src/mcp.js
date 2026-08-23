@@ -1,9 +1,16 @@
-// MCP (Model Context Protocol) stdio server: newline-delimited JSON-RPC 2.0.
-// Gives any MCP-capable agent full access to a Weave workspace.
+// MCP (Model Context Protocol) server core: JSON-RPC 2.0 messages over two
+// transports — newline-delimited stdio (local agents) and POST /api/mcp
+// (Feature #99, the hosted instance). One handler serves both.
 
 import { readFileSync } from 'node:fs';
 const PROTOCOL_VERSION = '2024-11-05';
-const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+// Lazy-tolerant, same reason as pdf.js's font path: module-top file reads
+// crash the workerd bundle at cold start. The HTTP transport passes the real
+// version in; 'dev' is only ever the stdio fallback on a broken checkout.
+let VERSION = 'dev';
+try {
+  VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+} catch { /* bundled runtime — version arrives via handleMcpMessage opts */ }
 
 function textResult(data) {
   return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 1) }] };
@@ -260,46 +267,55 @@ export function dispatchTool(weave, name, args = {}) {
   }
 }
 
+/* One JSON-RPC message in, one response (or null for notifications) out —
+   transport-free, so stdio and POST /api/mcp (Feature #99) cannot drift.
+   HTTP note: requests are stateless, so the actor set by `initialize` lasts
+   one request; HTTP clients name themselves per call with x-weave-actor. */
+export function handleMcpMessage(weave, msg, { version = VERSION } = {}) {
+  const { id, method, params } = msg ?? {};
+  const reply = (result) => (id !== undefined ? { jsonrpc: '2.0', id, result } : null);
+  const fail = (code, message) => (id !== undefined ? { jsonrpc: '2.0', id, error: { code, message } } : null);
+  try {
+    switch (method) {
+      case 'initialize':
+        // The MCP client names itself in the handshake; mutations carry it.
+        weave.actor = 'mcp:' + (params?.clientInfo?.name ?? 'client');
+        return reply({
+          protocolVersion: params?.protocolVersion ?? PROTOCOL_VERSION,
+          capabilities: { tools: {} },
+          serverInfo: { name: 'weave', version },
+        });
+      case 'notifications/initialized':
+      case 'initialized':
+        return null; // notification, no response
+      case 'ping':
+        return reply({});
+      case 'tools/list':
+        return reply({ tools: TOOLS });
+      case 'tools/call': {
+        try {
+          const result = dispatchTool(weave, params.name, params.arguments ?? {});
+          return reply(textResult(result));
+        } catch (err) {
+          return reply({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
+        }
+      }
+      default:
+        return fail(-32601, `Method not found: ${method}`);
+    }
+  } catch (err) {
+    return fail(-32603, err.message);
+  }
+}
+
 export function startMcpServer(weave, { input = process.stdin, output = process.stdout } = {}) {
   let buffer = '';
 
   const send = (msg) => output.write(JSON.stringify(msg) + '\n');
 
   const handle = (msg) => {
-    const { id, method, params } = msg;
-    const reply = (result) => id !== undefined && send({ jsonrpc: '2.0', id, result });
-    const fail = (code, message) => id !== undefined && send({ jsonrpc: '2.0', id, error: { code, message } });
-    try {
-      switch (method) {
-        case 'initialize':
-          // The MCP client names itself in the handshake; mutations carry it.
-          weave.actor = 'mcp:' + (params?.clientInfo?.name ?? 'client');
-          return reply({
-            protocolVersion: params?.protocolVersion ?? PROTOCOL_VERSION,
-            capabilities: { tools: {} },
-            serverInfo: { name: 'weave', version: VERSION },
-          });
-        case 'notifications/initialized':
-        case 'initialized':
-          return; // notification, no response
-        case 'ping':
-          return reply({});
-        case 'tools/list':
-          return reply({ tools: TOOLS });
-        case 'tools/call': {
-          try {
-            const result = dispatchTool(weave, params.name, params.arguments ?? {});
-            return reply(textResult(result));
-          } catch (err) {
-            return reply({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
-          }
-        }
-        default:
-          return fail(-32601, `Method not found: ${method}`);
-      }
-    } catch (err) {
-      return fail(-32603, err.message);
-    }
+    const response = handleMcpMessage(weave, msg);
+    if (response) send(response);
   };
 
   input.setEncoding('utf8');
