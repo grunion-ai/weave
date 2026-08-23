@@ -787,3 +787,9 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .type-grid.editing .type-tile { opacity: 1; }
 .type-tile.current:not(.sel) { border-style: dashed; }
 .migrate-note { color: var(--tblr-warning, #f59f00); }
+
+/* An embedded related grid can be wider than the column it sits in (the
+   Showcase Field Types table has 33 columns) — it scrolls inside its card
+   instead of running under the Fields/Comments column. */
+.related-section .card { overflow-x: auto; }
+.related-section .wv-grid { min-width: max-content; }

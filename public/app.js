@@ -149,7 +149,7 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   return back;
 }
 
-const state = { schema: [], route: null, expanded: new Set(), refocus: null };
+const state = { schema: [], route: null, expanded: new Set(), refocus: null, trail: [] };
 
 // Single entry point for opening an entity (future: side-peek drawer).
 function openEntity(id) { location.hash = `#/entity/${id}`; }
@@ -2945,11 +2945,21 @@ async function showEntity(id) {
   } catch {
     return showHome();
   }
-  state.route = { page: 'entity', id, dbId: entity.dbId };
+  // The crumb is the path taken: an entity reached from another entity
+  // keeps that entity in the trail (breadcrumbs.js); any other origin
+  // starts it fresh.
+  const hop = entityHop(entity);
+  state.trail = weaveBreadcrumbs.pushTrail(state.trail, state.route, hop);
+  state.route = { page: 'entity', id, dbId: entity.dbId, entity: hop };
   renderNav();
   const main = $('#main');
   main.replaceChildren();
   await renderEntityView(entity, { mount: main, refresh: () => showEntity(id) });
+}
+
+function entityHop(entity) {
+  const db = allTables().find((d) => d.id === entity.dbId);
+  return { id: entity.id, name: entity.name, space: db?.space ?? '', spaceId: db?.spaceId ?? '', table: db?.name ?? entity.db, tableId: entity.dbId };
 }
 
 /* The one entity rendering. The full page and the side peek (Feature #39)
@@ -3023,7 +3033,10 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   mount.append(
     el('div', { class: 'view-header' },
       el('div', { class: 'crumb' },
-        el('a', { href: `#/table/${entity.dbId}` }, entity.db), ' › ',
+        ...(inPeek
+          ? [el('a', { href: `#/table/${entity.dbId}` }, entity.db), ' › ']
+          : weaveBreadcrumbs.entityCrumbs($('#ws-name').textContent || 'workspace', state.trail, entityHop(entity))
+            .map((c, i) => i === 0 ? [el('a', { href: wsHomeHref() }, c.label), ' › '] : [el('a', { href: c.href }, c.label), ' › ']).flat()),
         el('span', {
           class: 'permalink-copy', title: 'Copy permalink',
           onclick: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied'),

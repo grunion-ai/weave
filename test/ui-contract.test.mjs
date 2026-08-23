@@ -1187,3 +1187,21 @@ test('spaces and tables wear Iconly flat icons, picked beside their name (Featur
   assert.ok(Object.keys(icons).length >= 90, 'the whole free set rides along');
   assert.ok(Object.values(icons).every((v) => !/#[0-9A-Fa-f]{6}/.test(v)), 'no hardcoded fills — icons inherit currentColor');
 });
+
+/* UAT (Kyle, 2026-08-23, Showcase/People → Ada Chen): the Owns / Peer of
+   grids embed the 33-column Field Types table and ran under the right-hand
+   Fields/Comments column. A wide embedded grid scrolls inside its own card;
+   the page never widens. */
+test('an embedded related grid scrolls horizontally inside its card', () => {
+  const card = rulesFor('.related-section .card');
+  assert.equal(card['overflow-x'], 'auto', 'the card is the scroll container');
+  // rulesFor merges the @media override in; the base rule is read directly.
+  assert.match(CSS, /\n\.entity-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/, 'the left column may shrink below its content');
+});
+
+test('entity crumbs carry the navigation trail (breadcrumbs.js), loaded before app.js', () => {
+  assert.match(fnBody('showEntity'), /weaveBreadcrumbs\.pushTrail\(state\.trail, state\.route, hop\)/, 'every entity visit updates the trail from the route being left');
+  assert.match(APP, /weaveBreadcrumbs\.entityCrumbs\(/, 'the full page crumb is the path taken');
+  const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  assert.ok(HTML.indexOf('breadcrumbs.js') < HTML.indexOf('"/app.js"'));
+});
