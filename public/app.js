@@ -1443,20 +1443,7 @@ function drawDatabase(db, items, trashCount = 0) {
             showDatabase(db.id, state.route.view);
           }, 'Save'),
         },
-        'divider',
-        // System columns (Feature #65): per-table show/hide, persisted schema.
-        ...Object.keys(SYSTEM_COLS).map((n) => ({
-          label: `${(db.systemFields ?? []).includes(n) ? '✓ ' : ''}${n}`,
-          run: async () => {
-            const cur = db.systemFields ?? [];
-            const next = cur.includes(n) ? cur.filter((x) => x !== n) : [...cur, n];
-            try {
-              await api('PATCH', `/tables/${db.id}`, { systemFields: next });
-              await loadSchema();
-              showDatabase(db.id, state.route.view);
-            } catch (err) { toast(err.message, true); }
-          },
-        })),
+        // System columns live behind the eye (Feature #114), not here.
         'divider',
         {
           hold: 'Delete table', holdingLabel: 'Hold to delete table…',

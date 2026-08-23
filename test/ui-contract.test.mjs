@@ -1323,3 +1323,9 @@ test('the view controls sit on the crumb line; the eyeball is a flat glyph with 
   assert.match(APP, /eye-btn', title: 'Show \/ hide fields and deleted rows', 'aria-label': 'Show or hide fields' \}, eyeGlyph\(\)\)/, 'a flat inline glyph, not an emoji');
   assert.ok(rulesFor('.switch.on').background?.includes('--tblr-primary'));
 });
+
+test('system columns are toggled only from the eye — not from the table ⋮ menu (Kyle, 2026-08-23)', () => {
+  const draw = fnBody('drawDatabase');
+  assert.doesNotMatch(draw, /Object\.keys\(SYSTEM_COLS\)\.map/, 'no Created At / Modified At rows in the table menu');
+  assert.match(fnBody('fieldVisibilityPopover'), /Object\.keys\(SYSTEM_COLS\)\.map/);
+});
