@@ -1527,3 +1527,46 @@ test('# searches entities inline, and a heading is still a heading', () => {
   assert.match(hint, /entityReference\(hit\)/, 'picking one writes the same reference the menu writes');
   assert.match(hint, /entityHintCache/, 'a keystroke that was already asked is not asked again');
 });
+
+/* ---------- editor: line break, table keys, editable fullscreen
+   (Kyle, 2026-08-23) ---------- */
+
+test('the slash menu has a Line break that inserts a hard break, not a code block', () => {
+  const items = APP.slice(APP.indexOf('function slashItems'), APP.indexOf('function slashScore'));
+  assert.match(items, /label: 'Line break'/, '/line finds it by name');
+  assert.match(items, /aliases: \['br', 'newline', 'return'\]/, 'and by its aliases');
+  const item = items.match(/label: 'Line break'.*insert: '((?:[^'\\]|\\.)*)'/);
+  assert.ok(item, 'it inserts');
+  assert.equal(item[1], '\\\\\\n', 'the insert is a backslash hard break — markdown, not HTML, not a fence');
+});
+
+test('table keys: Enter adds a row, Shift+Enter removes an empty one, Tab at the end grows the table', () => {
+  // Vditor already owns cell navigation (Tab/Shift+Tab) and the chorded ops
+  // (⌘= row, ⇧⌘= column, ⌘- / ⇧⌘- delete). weave adds the unchorded flow on
+  // top by REPLAYING the chords, so there is exactly one implementation of
+  // every table operation — Vditor's.
+  assert.match(APP, /function tableCellOf/, 'one caret-in-table test');
+  const fn = fnBody('attachTableKeys');
+  assert.match(fn, /e\.key === 'Enter' && !e\.shiftKey/, 'Enter…');
+  assert.match(fn, /replayChord\(host, '='\)/, '…replays ⌘= (row below)');
+  assert.match(fn, /e\.key === 'Enter' && e\.shiftKey/, 'Shift+Enter…');
+  assert.match(fn, /rowIsEmpty\(/, '…only on an empty row…');
+  assert.match(fn, /replayChord\(host, '-'\)/, '…replays ⌘- (delete row)');
+  assert.match(fn, /e\.key === 'Tab' && !e\.shiftKey/, 'Tab…');
+  assert.match(fn, /lastCell/, '…in the last cell grows the table before Vditor moves the caret');
+  assert.match(fn, /\{ capture: true \}/, 'ahead of Vditor\'s own handler');
+  assert.match(APP, /metaKey: mac, ctrlKey: !mac/,
+    'the replayed chord sets exactly the platform modifier — Vditor rejects meta+ctrl together');
+  assert.match(fnBody('mountDocEditor'), /attachTableKeys\(host\)/, 'wired wherever a document editor mounts');
+});
+
+test('fullscreen edits: a markdown document expands as its own live editor, not a rendered frame', () => {
+  const fn = fnBody('expandDocument');
+  assert.match(fn, /\{ node = null \} = \{\}/, 'the expander accepts the live editor node');
+  assert.match(fn, /node \?\? frame/, 'the node takes the frame\'s place');
+  assert.match(fn, /origin\.append\(node\)/, 'and goes home on collapse — same editor, nothing to sync');
+  assert.match(fn, /node \? null :/, 'frame-only chrome (reload, open-in-tab) hides for a live editor');
+  const body = fnBody('renderEntityView');
+  assert.match(body, /expandDocument\(grid, `\$\{fmtBase\}\.html`, f\.name, isApp \? \{\} : \{ node: host \}\)/,
+    'the ⛶ hands the editor over for markdown; an HTML app keeps its frame');
+});

@@ -740,6 +740,13 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .fsv-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--tblr-border-color); }
 .fsv-title { font-weight: 600; font-size: 14px; margin-left: 6px; }
 .fsv-frame { flex: 1; border: 0; width: 100%; background: #fff; }
+
+/* ---------- expand a document in place (Feature #47, editable) ---------- */
+.doc-expand { display: flex; flex-direction: column; height: calc(100vh - 150px); min-height: 420px; }
+.doc-expand-bar { display: flex; align-items: center; gap: 6px; padding: 0 0 8px; }
+.doc-expand-frame { flex: 1; border: 0; border-radius: 8px; background: #fff; }
+/* Expanded markdown: the live editor fills the overlay and scrolls itself. */
+.doc-expand-edit > .doc-editor { flex: 1; overflow-y: auto; border: 1px solid var(--tblr-border-color); border-radius: 8px; background: var(--tblr-bg-surface); }
 .fsv-body { flex: 1; }
 .mmd-tools { display: block; text-align: right; margin-bottom: -26px; position: relative; z-index: 2; }
 /* ---------- the one selection dialect ---------- */

@@ -15,7 +15,10 @@ function escapeHtml(s) {
 function renderInline(text, resolveMention) {
   let out = '';
   let i = 0;
-  const src = String(text);
+  /* Hard breaks first, on the raw source: a line ending in two spaces or a
+     backslash is a <br> (both CommonMark spellings). Trailing whitespace on
+     the last line is noise, not a break. */
+  const src = String(text).replace(/[ \t]*$/, '').replace(/(?: {2,}|\\)\n/g, '\u0000\n');
   while (i < src.length) {
     /* Reference: [[Table#12]] (entity), [[table:Space/Name]], [[space:Name]],
        [[workspace]] — any of them with |label. The parser only splits kind
@@ -109,7 +112,7 @@ function renderInline(text, resolveMention) {
     out += escapeHtml(src[i]);
     i++;
   }
-  return out;
+  return out.replace(/\u0000/g, '<br>');
 }
 
 // Parse markdown into a flat block list (also consumed by the PDF renderer).

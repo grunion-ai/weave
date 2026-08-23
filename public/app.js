@@ -524,6 +524,32 @@ function fullscreenViewer(title, { url = null, mount = null } = {}) {
   return back;
 }
 
+/* ---------- expand a document (Feature #47, editable — Kyle, 2026-08-23) ----------
+   A markdown document expands as ITSELF: the live editor node moves into the
+   overlay and moves home on collapse — one editor, nothing to sync, still
+   saving as you type. Only an HTML app document keeps a rendered frame,
+   because the frame IS that document. */
+function expandDocument(grid, url, title, { node = null } = {}) {
+  grid.parentElement?.querySelector('.doc-expand')?.remove();
+  const origin = node?.parentElement ?? null;
+  const frame = node ? null : el('iframe', { class: 'doc-expand-frame', src: url, allowfullscreen: '', allow: 'fullscreen', title });
+  const collapse = () => { if (node && origin) origin.append(node); wrap.remove(); grid.classList.remove('hidden'); };
+  const wrap = el('div', { class: 'doc-expand' + (node ? ' doc-expand-edit' : '') },
+    el('div', { class: 'doc-expand-bar' },
+      el('button', { class: 'btn btn-sm', title: 'Collapse (Esc)', onclick: collapse }, '‹ Collapse'),
+      el('span', { class: 'fsv-title' }, title),
+      el('span', { style: 'flex:1' }),
+      node ? null : el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, '⟳'),
+      node ? null : el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, '↗')),
+    node ?? frame);
+  grid.classList.add('hidden');
+  grid.after(wrap);
+  addEventListener('keydown', function esc(e) {
+    if (!wrap.isConnected) return removeEventListener('keydown', esc);
+    if (e.key === 'Escape') collapse();
+  });
+}
+
 /* ---------- whiteboard (Feature #46) ----------
    A mermaid diagram, but alive: parsed to nodes/edges (graph-parse.js) and
    handed to vendored cytoscape — pan, zoom, drag the nodes around. View
@@ -2823,6 +2849,10 @@ function slashItems() {
     { label: 'Mermaid diagram', icon: '◈', flat: 'graph', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
     { label: 'Table', icon: '▦', flat: 'category', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
     { label: 'Divider', icon: '—', group: 'all', hint: '---', aliases: ['hr', 'rule', 'separator'], insert: '\n---\n' },
+    /* A hard break, the markdown way (backslash-newline). Before this item,
+       "/line break" matched nothing and Enter took whatever row was first —
+       usually a code block (Kyle, 2026-08-23). */
+    { label: 'Line break', icon: '↵', group: 'all', hint: '\\ + ⏎', aliases: ['br', 'newline', 'return'], insert: '\\\n' },
     { label: 'Image', icon: '▤', flat: 'image', group: 'all', hint: '![](…)', aliases: ['picture', 'photo'], insert: '![alt](url)' },
     // Raw HTML is a block Lute passes through untouched: the escape hatch for
     // anything markdown has no syntax for.
@@ -2975,10 +3005,59 @@ function dedupeVditorSprites() {
   for (const extra of sprites.slice(1)) extra.remove();
 }
 
+/* ---------- table keys (Kyle, 2026-08-23) ----------
+   Vditor already owns every table operation: Tab/⇧Tab walk cells, ⌘= adds a
+   row below, ⇧⌘F above, ⇧⌘= a column, ⌘-/⇧⌘- delete. What writers reach for
+   first is plain Enter and Tab, so those are added ON TOP by replaying the
+   chord — one implementation of each operation, Vditor's own.
+   Enter: row below. Shift+Enter on an all-empty row: delete it. Tab in the
+   very last cell: grow the table by a row, then Vditor's own Tab moves the
+   caret into it. */
+function tableCellOf(node) {
+  for (let n = node instanceof Element ? node : node?.parentElement; n; n = n.parentElement) {
+    if (n.tagName === 'TD' || n.tagName === 'TH') return n;
+  }
+  return null;
+}
+function rowIsEmpty(cell) {
+  return [...cell.parentElement.children].every((c) => !c.textContent.trim());
+}
+function replayChord(host, key, shift = false) {
+  // Dispatched on the IR element Vditor listens on — an event targeted at the
+  // host never reaches a descendant's listener. Vditor's modifier check is
+  // exclusive (mac: metaKey && !ctrlKey; elsewhere the reverse), so the
+  // replay sets exactly the platform's own modifier.
+  const mac = /Mac|iPhone/.test(navigator.platform);
+  const ir = host.querySelector('.vditor-ir .vditor-reset') ?? host;
+  ir.dispatchEvent(new KeyboardEvent('keydown', { key, metaKey: mac, ctrlKey: !mac, shiftKey: shift, bubbles: true, cancelable: true }));
+}
+function attachTableKeys(host) {
+  host.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.isComposing) return;
+    const cell = tableCellOf(document.getSelection()?.anchorNode);
+    if (!cell || !host.contains(cell)) return;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      replayChord(host, '='); // row below
+    } else if (e.key === 'Enter' && e.shiftKey) {
+      if (!rowIsEmpty(cell)) return; // a full row is never deleted from a key
+      e.preventDefault(); e.stopImmediatePropagation();
+      replayChord(host, '-'); // delete row
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      const table = cell.closest('table');
+      const cells = table.querySelectorAll('td, th');
+      const lastCell = cells[cells.length - 1];
+      if (cell !== lastCell) return; // mid-table Tab is Vditor's cell walk
+      replayChord(host, '='); // grow first; Vditor's Tab then enters the new row
+    }
+  }, { capture: true });
+}
+
 function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }) {
   const t = vditorTheme();
   const chips = attachRefChips(host);
   attachCodeAuto(host);
+  attachTableKeys(host);
   const editor = new Vditor(host, {
     mode: 'ir',
     // Vendored, not the public CDN default: a weave instance with no internet
@@ -3664,7 +3743,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         sourceToggle,
         el('span', {
           class: 'doc-anchor', title: 'Expand',
-          onclick: () => expandDocument(grid, `${fmtBase}.html`, f.name),
+          onclick: () => expandDocument(grid, `${fmtBase}.html`, f.name, isApp ? {} : { node: host }),
         }, '⛶'),
         el('span', {
           class: 'doc-anchor permalink-copy', title: 'Copy link to this document',
