@@ -291,4 +291,88 @@ if (!chromium) {
     assert.doesNotMatch(html, /class="mention broken"/);
     await page.close();
   });
+
+  /* ---------- # is the entity search ----------
+     Two steps became one: the caret is already where the reference goes, so
+     the document is the search box. */
+
+  test('# searches records under the caret and Enter drops the reference in', async () => {
+    const page = await browser.newPage();
+    const id = freshEntity('Hash search case');
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.evaluate(() => {
+      const ed = window.__weaveEditors.values().next().value;
+      ed.setValue('');
+      ed.focus();
+    });
+    await page.click('.vditor-ir [contenteditable="true"]');
+    await page.keyboard.type('Blocked by #zeb');
+    await page.waitForSelector('.vditor-hint button', { state: 'visible', timeout: 10000 });
+    const labels = await page.evaluate(() =>
+      [...document.querySelectorAll('.vditor-hint .slash-item b')].map((b) => b.textContent));
+    assert.ok(labels.some((l) => /Zebrafish/.test(l)), `expected the fixture record, got ${labels.join(' | ')}`);
+
+    // Arrow keys move the highlight, exactly as they do in the command menu.
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(100);
+    const highlighted = await page.evaluate(() =>
+      document.querySelector('.vditor-hint--current .slash-item b')?.textContent);
+    assert.ok(highlighted && labels.includes(highlighted), 'the highlight moved to another row');
+
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(250);
+    const markdown = await page.evaluate(() =>
+      window.__weaveEditors.values().next().value.getValue());
+    assert.match(markdown, /^Blocked by \[\[[^\]]+#\d+\|[^\]]+\]\]/,
+      `the reference lands inline, got ${JSON.stringify(markdown)}`);
+
+    // And the chip layer turns the literal into a chip that covers it.
+    await page.waitForTimeout(600);
+    const chips = await page.evaluate(() =>
+      [...document.querySelectorAll('.doc-ref-chip')].map((c) => getComputedStyle(c).backgroundColor));
+    assert.equal(chips.length, 1, 'the reference renders as one chip');
+    assert.doesNotMatch(chips[0], /rgba\(.*0\.0?\d+\)$/, 'an see-through chip shows the literal underneath');
+    await page.close();
+  });
+
+  test('a heading is still a heading — # alone never opens a search', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/entity/${freshEntity('Heading case')}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.click('.vditor-ir [contenteditable="true"]');
+    await page.keyboard.type('# Heading');
+    await page.waitForTimeout(500);
+    const open = await page.evaluate(() =>
+      [...document.querySelectorAll('.vditor-hint')].some((n) => getComputedStyle(n).display !== 'none'));
+    assert.equal(open, false, 'the search must not hijack a heading');
+    await page.close();
+  });
+
+  /* ---------- an unlabelled code block colours itself ---------- */
+
+  test('a fence with no language is detected, and a diagram source is not', async () => {
+    const page = await browser.newPage();
+    const id = freshEntity('Detect case');
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.evaluate(() => {
+      const ed = window.__weaveEditors.values().next().value;
+      ed.setValue('```\n{ "a": 1, "b": [true, null] }\n```\n\n```\ngraph TD\n  A --> B\n```\n');
+      ed.focus();
+    });
+    // The detector waits for Vditor to fetch highlight.js, so poll for it.
+    let blocks = [];
+    for (let i = 0; i < 40; i++) {
+      blocks = await page.evaluate(() => [...document.querySelectorAll('.vditor-ir__preview > code')]
+        .map((c) => ({ cls: c.className, spans: c.querySelectorAll('span').length })));
+      if (blocks.some((b) => b.spans > 0)) break;
+      await page.waitForTimeout(100);
+    }
+    assert.equal(blocks.length, 2, 'both fences render');
+    assert.match(blocks[0].cls, /language-json/, 'JSON that parses is JSON');
+    assert.ok(blocks[0].spans > 0, 'and it is tokenised');
+    assert.equal(blocks[1].spans, 0, 'a mermaid source in a plain fence stays plain text');
+    await page.close();
+  });
 }

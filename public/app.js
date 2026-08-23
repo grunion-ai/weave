@@ -198,7 +198,7 @@ function peekEntity(id) {
       try { ed.destroy(); } catch { /* already gone with the DOM */ }
       liveEditors.delete(ed);
     }
-    for (const set of [refChipLayers, docRails, docFolds]) {
+    for (const set of [refChipLayers, docRails, docFolds, docCodeAuto]) {
       for (const st of [...set]) {
         if (panel.contains(st.host)) {
           clearTimeout(st.timer);
@@ -395,7 +395,7 @@ function renderNav() {
   nav.append(el('a', {
     class: 'nav-db nav-map' + (state.route?.page === 'map' ? ' active' : ''),
     href: '#/map',
-  }, '🗺 Relation map'));
+  }, iconEl('iconly:discovery', 'wv-icon nav-icon'), ' Relation map'));
   const folded = new Set(JSON.parse(localStorage.getItem('weave-folded-spaces') ?? '[]'));
   for (const space of state.schema) {
     const isFolded = folded.has(space.spaceId);
@@ -1103,7 +1103,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   if (f.type === 'attachments') {
     const ids = item.raw?.[f.name] ?? [];
     const chip = el('span', { class: 'computed', title: 'attachments' },
-      el('span', { class: 'computed-mark' }, '📎'),
+      el('span', { class: 'computed-mark' }, iconEl('iconly:paper', 'wv-icon')),
       ids.length ? String(val ?? `${ids.length}`) : '—');
     if (compact) return chip;
     const box = el('span', { class: 'attach-box' });
@@ -1414,7 +1414,7 @@ function drawDatabase(db, items, trashCount = 0) {
       // in the header bar for fields, a "+ New" row at the foot for entities.
       // Board and list have no grid to host them, so they keep the buttons.
       state.route.view === 'table' ? null
-        : el('button', { class: 'btn btn-sm', onclick: () => openSchemaEditor(db) }, '⚙ Fields'),
+        : el('button', { class: 'btn btn-sm', onclick: () => openSchemaEditor(db) }, iconEl('iconly:setting', 'wv-icon'), ' Fields'),
       state.route.view === 'table' ? null
         : el('button', { class: 'btn btn-sm btn-primary', onclick: () => quickCreate(db) }, '+ New'),
       // Export and delete are occasional and one of them is irreversible, so
@@ -1618,7 +1618,7 @@ function renderTable(main, db, items, onSaved) {
             else state.expanded.add(item.id);
             draw();
           },
-        }, state.expanded.has(item.id) ? '📄▾' : '📄')));
+        }, iconEl('iconly:document', 'wv-icon'), state.expanded.has(item.id) ? '▾' : '')));
       tbody.append(row);
       if (state.expanded.has(item.id)) {
         tbody.append(el('tr', { class: 'doc-row' },
@@ -1810,7 +1810,7 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
       if (sorted) rows.push(row('Clear sort', () => onSort(0)));
     }
     if (f.name !== 'Name') {
-      rows.push(holdToConfirm('🗑 Delete field', async () => {
+      rows.push(holdToConfirm('Delete field', async () => {
         document.querySelector('.chip-pop')?.remove();
         try {
           await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
@@ -2576,7 +2576,7 @@ async function showSpace(spaceId) {
         await loadSchema();
       },
       actions: [
-        el('a', { class: 'btn btn-sm', href: '#/map' }, '🗺 Map'),
+        el('a', { class: 'btn btn-sm', href: '#/map' }, iconEl('iconly:discovery', 'wv-icon'), ' Map'),
         // A space has no CSV of its own — it is a container — so the menu
         // offers one export per table it holds, then the destructive act.
         dotsMenu([
@@ -2687,7 +2687,7 @@ async function showMap() {
   // External webhook node.
   if (hasWebhook) {
     svg.append(svgEl('rect', { x: W - 130, y: 16, width: 112, height: 34, rx: 8, class: 'ext-node' }));
-    svg.append(svgEl('text', { x: W - 74, y: 37, 'text-anchor': 'middle', class: 'node-title' }, '🌐 webhooks'));
+    svg.append(svgEl('text', { x: W - 74, y: 37, 'text-anchor': 'middle', class: 'node-title' }, 'webhooks'));
   }
 
   // Table nodes + automation pills.
@@ -2808,33 +2808,35 @@ function slashItems() {
     insert: `${'#'.repeat(n)} Heading`,
   }));
   return [
-    { label: 'Text', icon: '¶', group: 'all', hint: '—', aliases: ['paragraph', 'plain'], insert: 'Text' },
+    { label: 'Text', icon: '¶', flat: 'document', group: 'all', hint: '—', aliases: ['paragraph', 'plain'], insert: 'Text' },
     { label: 'Heading 1–6', icon: 'H', group: 'all', hint: '#…######', aliases: ['title'], insert: '# Heading' },
     ...headings,
     { label: 'Bulleted list', icon: '•', group: 'all', hint: '-', aliases: ['ul', 'unordered'], insert: '- List item' },
     { label: 'Numbered list', icon: '1.', group: 'all', hint: '1.', aliases: ['ol', 'ordered'], insert: '1. List item' },
-    { label: 'Task list', icon: '☑', group: 'all', hint: '- [ ]', aliases: ['todo', 'checkbox'], insert: '- [ ] To do' },
+    { label: 'Task list', icon: '☑', flat: 'ticksquare', group: 'all', hint: '- [ ]', aliases: ['todo', 'checkbox'], insert: '- [ ] To do' },
     { label: 'Quote', icon: '❝', group: 'all', hint: '>', aliases: ['blockquote'], insert: '> Quote' },
-    // The language is a placeholder like the text ones: a bare ``` fence is
-    // plaintext to hljs — zero token spans, one colour, forever (Issue #35).
-    { label: 'Code block', icon: '#', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '```js\ncode\n```' },
-    { label: 'Mermaid diagram', icon: '◈', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
-    { label: 'Table', icon: '▦', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
+    /* No language on the fence: the content decides. An unlabelled block is
+       auto-detected and highlighted as what it actually is — json, html, a
+       mermaid source, a shell session — and anything unrecognised stays plain
+       text. Naming a language on the fence still wins (Issue #35). */
+    { label: 'Code block', icon: '#', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '```\ncode\n```' },
+    { label: 'Mermaid diagram', icon: '◈', flat: 'graph', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
+    { label: 'Table', icon: '▦', flat: 'category', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
     { label: 'Divider', icon: '—', group: 'all', hint: '---', aliases: ['hr', 'rule', 'separator'], insert: '\n---\n' },
-    { label: 'Image', icon: '🖼', group: 'all', hint: '![](…)', aliases: ['picture', 'photo'], insert: '![alt](url)' },
+    { label: 'Image', icon: '▤', flat: 'image', group: 'all', hint: '![](…)', aliases: ['picture', 'photo'], insert: '![alt](url)' },
     // Raw HTML is a block Lute passes through untouched: the escape hatch for
     // anything markdown has no syntax for.
     { label: 'Raw HTML', icon: '</>', group: 'all', hint: '<div>', aliases: ['embed', 'html'], insert: '⁣raw-html⁣' },
 
     { label: 'Entity', icon: '#', group: 'reference', hint: '[[Task#12]]', aliases: ['record', 'row', 'link entity', 'mention'], insert: refMarker('entity') },
-    { label: 'Table', icon: '▦', group: 'reference', hint: '[[table:…]]', aliases: ['database', 'link table'], insert: refMarker('table') },
+    { label: 'Table', icon: '▦', flat: 'category', group: 'reference', hint: '[[table:…]]', aliases: ['database', 'link table'], insert: refMarker('table') },
     { label: 'Space / workspace', icon: '◇', group: 'reference', hint: '[[space:…]]', aliases: ['link space'], insert: refMarker('space') },
 
     { label: 'Bold', icon: 'B', group: 'format', hint: '**…**', aliases: ['strong'], insert: wrap('**') },
     { label: 'Italic', icon: 'I', group: 'format', hint: '*…*', aliases: ['emphasis', 'em'], insert: wrap('*') },
     { label: 'Strikethrough', icon: 'S', group: 'format', hint: '~~…~~', aliases: ['strike', 'delete'], insert: wrap('~~') },
     { label: 'Inline code', icon: '`', group: 'format', hint: '`…`', aliases: ['monospace'], insert: wrap('`') },
-    { label: 'Link', icon: '🔗', group: 'format', hint: '[…](…)', aliases: ['url', 'href'], insert: `[${selectionForFormat() || 'text'}](url)` },
+    { label: 'Link', icon: '⛓', flat: 'link', group: 'format', hint: '[…](…)', aliases: ['url', 'href'], insert: `[${selectionForFormat() || 'text'}](url)` },
   ];
 }
 
@@ -2896,14 +2898,58 @@ function slashRows(query) {
   return rows;
 }
 
+/* `#` IS the entity search. Picking a reference used to be two steps — the
+   /entity command, then a dialog to search in — and the dialog is the part
+   nobody wants: the caret is already where the reference goes, and the
+   document is a perfectly good search box. Type # and the workspace's records
+   filter under the caret; ↑/↓ move, Enter drops the reference in, and the chip
+   layer turns it into a chip. Two characters minimum, so "# Heading" is still
+   a heading and never a search. */
+const ENTITY_HINT_MIN = 2;
+const entityHintCache = new Map();
+
+async function entityHint(query) {
+  const q = String(query ?? '').trim();
+  if (q.length < ENTITY_HINT_MIN) return [];
+  let hits = entityHintCache.get(q);
+  if (!hits) {
+    try {
+      hits = (await api('GET', `/search?q=${encodeURIComponent(q)}&limit=12`))
+        .filter((h) => h.kind === 'entity');
+    } catch { return []; } // a search that fails is a menu that does not open
+    entityHintCache.set(q, hits);
+  }
+  return hits.map((hit) => ({
+    value: entityReference(hit),
+    html: '<span class="slash-item"><span class="slash-icon">#</span>'
+      + `<b>${escapeHtmlText(hit.name || `#${hit.publicId}`)}</b>`
+      + `<code class="slash-syntax">${escapeHtmlText(hit.db)} #${hit.publicId}</code></span>`,
+  }));
+}
+
 function slashHint(query) {
   return slashRows(query).map(({ item, group }) => ({
     value: item.insert,
     html: (group ? `<span class="slash-group">${escapeHtmlText(group)}</span>` : '')
-      + `<span class="slash-item"><span class="slash-icon">${escapeHtmlText(item.icon)}</span>`
+      + `<span class="slash-item"><span class="slash-icon">${slashGlyph(item)}</span>`
       + `<b>${escapeHtmlText(item.label)}</b>`
       + `<code class="slash-syntax">${escapeHtmlText(item.hint)}</code></span>`,
   }));
+}
+
+/* A row's glyph: the vendored flat icon when the row names one, otherwise the
+   typographic mark, which for B / I / S / ` / H IS the icon. Never an emoji —
+   a colour picture in a monochrome menu ignores the text colour and the
+   theme. `link` is drawn here because the Iconly free set has no chain. */
+const SLASH_LINK_GLYPH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'
+  + '<path d="M10 13.5a4 4 0 0 0 5.7.4l2.6-2.6a4 4 0 0 0-5.7-5.7l-1.3 1.3"/>'
+  + '<path d="M14 10.5a4 4 0 0 0-5.7-.4l-2.6 2.6a4 4 0 0 0 5.7 5.7l1.3-1.3"/></svg>';
+function slashGlyph(item) {
+  if (item.flat === 'link') return SLASH_LINK_GLYPH;
+  const flat = item.flat && window.ICONLY_FLAT?.[item.flat];
+  return flat
+    ? `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${flat}</svg>`
+    : escapeHtmlText(item.icon);
 }
 
 // The catalogue is weave's own text, but it reaches the menu as innerHTML and
@@ -2932,6 +2978,7 @@ function dedupeVditorSprites() {
 function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }) {
   const t = vditorTheme();
   const chips = attachRefChips(host);
+  attachCodeAuto(host);
   const editor = new Vditor(host, {
     mode: 'ir',
     // Vendored, not the public CDN default: a weave instance with no internet
@@ -2962,7 +3009,7 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }
       // are NOT vendored and those fences degrade to plain code blocks.
       math: { engine: 'KaTeX' },
     },
-    hint: { emoji: {}, extend: [{ key: '/', hint: slashHint }] },
+    hint: { emoji: {}, extend: [{ key: '/', hint: slashHint }, { key: '#', hint: entityHint }] },
     // Every decoration pass on this host starts once the editor is actually
     // built — an attach-time schedule can fire before Vditor has a surface.
     after: () => {
@@ -3004,7 +3051,7 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }
         return;
       }
       onInput(v);
-      chips.schedule();
+      scheduleDecorFor(host); // chips, rail, folds and code detection
     },
   });
   liveEditors.add(editor);
@@ -3063,8 +3110,52 @@ const refResolveCache = new Map(); // ref → { href, label, kind } | null (miss
 
 // Kick every decoration pass attached to one editor host (chips, rail, folds).
 function scheduleDecorFor(host) {
-  for (const s of [...refChipLayers, ...docRails, ...docFolds]) {
+  for (const s of [...refChipLayers, ...docRails, ...docFolds, ...docCodeAuto]) {
     if (s.host === host) s.schedule();
+  }
+}
+
+/* ---------- unlabelled code blocks colour themselves ----------
+   A fence with no language is plaintext to highlight.js: zero token spans,
+   one colour, forever. Naming a language for the writer was the old answer
+   (the slash command inserted ```js); detecting it is the better one — the
+   block is highlighted as whatever it turns out to be, and content that is
+   not recognisably code stays plain text rather than being coloured as a
+   guess. Only the rendered half of the block is touched: the markdown lives
+   in the editable <pre> beside it, so nothing here can change the document.
+   Diagram and math fences belong to their own renderers and are left alone. */
+const docCodeAuto = new Set();
+
+function attachCodeAuto(host) {
+  const st = { host, timer: 0 };
+  st.schedule = () => {
+    clearTimeout(st.timer);
+    st.timer = setTimeout(() => refreshCodeAuto(st), REF_CHIP_DEBOUNCE);
+  };
+  docCodeAuto.add(st);
+  return st;
+}
+
+function refreshCodeAuto(st) {
+  if (!document.body.contains(st.host)) { docCodeAuto.delete(st); return; }
+  const hljs = window.hljs;
+  if (!hljs?.highlightAuto) {
+    // Vditor fetches highlight.js when it renders the first code block, which
+    // can land after this pass. Wait for it rather than never colouring.
+    if ((st.tries = (st.tries ?? 0) + 1) < 20) st.schedule();
+    return;
+  }
+  for (const code of st.host.querySelectorAll('.vditor-ir__preview > code')) {
+    if (/language-\S/.test(code.className)) continue; // the fence named a language
+    const text = code.textContent ?? '';
+    if (code.dataset.autoFor === text) continue;       // already answered for this text
+    code.dataset.autoFor = text;
+    const lang = globalThis.WeaveEditorLib?.detectCodeLanguage(text);
+    if (!lang) continue; // prose, a note, a diagram source — plain text
+    try {
+      code.innerHTML = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+      code.classList.add('hljs', `language-${lang}`);
+    } catch { /* the language is not in the vendored bundle */ }
   }
 }
 
@@ -3737,7 +3828,7 @@ function openSchemaEditor(db) {
           : f.targetDb ? `→ ${f.targetDb}${f.many ? ' (many)' : ''}`
           : f.via ? `via ${f.via}${f.targetField ? ` . ${f.targetField}` : ''}${f.aggregate ? ` (${f.aggregate})` : ''}`
           : f.expression ?? ''),
-      el('td', {}, f.name === 'Name' ? '' : holdToConfirm('🗑', async () => {
+      el('td', {}, f.name === 'Name' ? '' : holdToConfirm('Delete', async () => {
         try {
           await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
           await loadSchema();

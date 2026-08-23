@@ -41,19 +41,37 @@ function slashInsert(label) {
 
 /* ---------- the slash menu births highlightable blocks ---------- */
 
-test('slash Code block inserts a language placeholder, not a bare fence', () => {
-  // A bare ``` block is plaintext to hljs — zero token spans, one colour.
-  // The placeholder language makes the block highlightable from birth; the
-  // writer edits the info line like any other placeholder text.
-  // Read the catalogue by label rather than by field order: the item carries
-  // icon/group/hint/aliases too, and a test that assumes their order breaks on
-  // every catalogue edit without a single behaviour having changed.
-  assert.match(slashInsert('Code block'), /^```\w+\\n/, 'the fence must open with a language');
+test('the slash Code block leaves the language to the content', () => {
+  /* The old answer to "a bare fence is plaintext to hljs" was to name a
+     language for the writer (```js on every block, whatever they pasted). The
+     block now detects what it holds, so the fence stays bare and the writer is
+     never handed a lie about their own code. */
+  assert.equal(slashInsert('Code block'), '```\\ncode\\n```', 'no language is guessed at insert time');
+  assert.match(APP, /detectCodeLanguage\(text\)/, 'something has to do the detecting');
 });
 
-test('the mermaid slash item keeps its own language untouched', () => {
-  assert.match(slashInsert('Mermaid diagram'), /^```mermaid\\n/,
-    'the mermaid fence names mermaid, not a highlight language');
+test('one detector serves the editor and the page', () => {
+  /* The rules themselves live in public/editor-lib.js and are unit-tested in
+     test/code-detect.test.mjs — including WHY they are rules rather than a
+     call to hljs.highlightAuto(). What matters here is that both surfaces ask
+     the same question of the same code: a block must not be JSON in the
+     editor and plain text on its own page. */
+  const lib = readFileSync(join(ROOT, 'public/editor-lib.js'), 'utf8');
+  assert.match(lib, /detectCodeLanguage\(text\) \{/, 'the shared rules are in the shared library');
+
+  const fn = APP.slice(APP.indexOf('function refreshCodeAuto'));
+  const decorator = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  assert.match(decorator, /WeaveEditorLib\?\.detectCodeLanguage/, 'the editor asks the library');
+  assert.match(decorator, /language-\\S\/\.test\(code\.className\)/, 'a fence that names a language keeps it');
+  assert.match(decorator, /vditor-ir__preview > code/,
+    'only the rendered copy is touched — the markdown lives in the editable pre beside it');
+
+  const page = readFileSync(join(ROOT, 'src/markdown.js'), 'utf8');
+  assert.ok(page.includes('/editor-lib.js'), 'the page loads the same library');
+  assert.ok(page.includes('WeaveEditorLib.detectCodeLanguage'), 'and asks it the same question');
+  assert.ok(page.includes('highlightElement'), 'a tagged fence is still highlighted as tagged');
+  assert.ok(page.includes("body.includes('<pre><code')"),
+    'any page with a code block pays for the script, not only a tagged one');
 });
 
 /* ---------- rendered document pages highlight code ---------- */
@@ -70,12 +88,15 @@ test('a page with language-tagged code carries the vendored hljs assets', () => 
   assert.match(page, /github-dark\.min\.css"[^>]*media="\(prefers-color-scheme: dark\)"/);
 });
 
-test('the page highlights only language-tagged code', () => {
-  // An unlabeled block is plaintext on purpose — auto-detection would guess
-  // a different language per visit. The selector must say so.
+test('the page highlights every code block, tagged or detected', () => {
+  // An unlabeled block used to stay plaintext on purpose. It is now detected
+  // the same way the editor detects it — same rules, same result on both
+  // surfaces — so the selector reaches every block and the SCRIPT decides.
   const page = renderDocumentPage({ title: 't', markdown: JS_DOC });
-  assert.ok(page.includes('code[class*="language-"]'),
-    'highlighting must be scoped to language-tagged blocks');
+  assert.ok(page.includes("querySelectorAll('pre > code')"),
+    'every code block is considered');
+  assert.ok(page.includes('WeaveEditorLib.detectCodeLanguage'),
+    'and an untagged one is detected, not skipped');
   assert.match(page, /language-(\(mermaid|.*mermaid)/,
     'diagram/math languages must be excluded from hljs');
 });
@@ -86,10 +107,12 @@ test('a page without code blocks stays free of hljs', () => {
   assert.ok(!page.includes('github.min.css'), 'no code, no palette');
 });
 
-test('an unlabeled code block also stays free of hljs', () => {
+test('an unlabeled code block brings the highlighter with it', () => {
   const page = renderDocumentPage({ title: 't', markdown: '```\nplain\n```\n' });
-  assert.ok(!page.includes('highlight.min.js'),
-    'plaintext blocks have nothing to tokenize');
+  assert.ok(page.includes('highlight.min.js'),
+    'an untagged block can still be JSON, markup or a shell session');
+  // …and the script is what decides it is none of those: three words of prose
+  // score nothing, so they stay plain text on the page as in the editor.
 });
 
 test('hljs keeps token colours but the page keeps the block chrome', () => {

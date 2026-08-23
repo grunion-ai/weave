@@ -1474,3 +1474,56 @@ test('a command that Vditor cannot insert finishes itself', () => {
     'not a timer or a frame — both are throttled in a backgrounded page');
   assert.match(APP, /REF_MARKER_RE/, 'references travel the same way, through their own marker');
 });
+
+/* ---------- the editor stops indenting the document ----------
+   Vditor writes `padding: 10px 35px` inline on the writing surface — a gutter
+   it reserves for the heading-level badges weave removes — so every document
+   sat 35px in from its own section head. Measured before the fix: section head
+   at x=320, first paragraph at x=355. Inline styles only yield to !important. */
+
+test('a document starts where its section starts', () => {
+  assert.match(rulesFor('.doc-editor .vditor-ir pre.vditor-reset').padding ?? '', /0\s*!important/,
+    'the reserved gutter has to be overridden, not merely set');
+});
+
+/* ---------- flat icons, never emoji ----------
+   An emoji is a colour picture: it ignores the text colour, ignores the theme,
+   and renders differently on every platform. weave has a vendored flat set
+   that inherits currentColor, and the chrome uses it. */
+
+test('the chrome carries flat icons rather than emoji', () => {
+  const emoji = /[\u{1F300}-\u{1FAFF}\u{FE0F}]/u;
+  const offenders = APP.split('\n')
+    .map((line, i) => [i + 1, line])
+    .filter(([, line]) => emoji.test(line));
+  assert.deepEqual(offenders, [], `emoji left in the UI: ${offenders.map(([n]) => n).join(', ')}`);
+  assert.match(fnBody('slashGlyph'), /ICONLY_FLAT/, 'the slash menu draws the vendored flat set');
+  assert.match(APP, /SLASH_LINK_GLYPH/, 'and hand-draws the one glyph the set is missing');
+  assert.ok(rulesFor('.slash-icon svg').fill, 'a flat icon inherits the row colour');
+});
+
+/* ---------- a reference chip has to cover the reference ----------
+   `a.mention` sets a transparent tint and outranks a plain `.doc-ref-chip`, so
+   the literal `[[Table#12|Name]]` showed straight through the chip that was
+   meant to hide it — measured: computed background rgba(6,111,209,.08). */
+
+test('a reference chip has an opaque ground', () => {
+  assert.ok(rulesFor('.doc-ref-layer a.doc-ref-chip').background,
+    'the chip must beat a.mention on its own terms');
+});
+
+/* ---------- # is the entity search ----------
+   Referencing a record was two steps: the /entity command, then a dialog to
+   search in. The caret is already where the reference goes, so the document is
+   the search box: # filters records under it, ↑/↓ move, Enter drops the
+   reference in and the chip layer turns it into a chip. */
+
+test('# searches entities inline, and a heading is still a heading', () => {
+  assert.match(APP, /\{ key: '#', hint: entityHint \}/, "the '#' trigger is registered with the editor");
+  const hint = fnBody('entityHint');
+  assert.match(hint, /ENTITY_HINT_MIN/, 'a lone # is not a search');
+  assert.match(APP, /const ENTITY_HINT_MIN = 2;/, 'two characters — "# Heading" must never open one');
+  assert.match(hint, /kind === 'entity'/, 'only records can be the target of a reference');
+  assert.match(hint, /entityReference\(hit\)/, 'picking one writes the same reference the menu writes');
+  assert.match(hint, /entityHintCache/, 'a keystroke that was already asked is not asked again');
+});

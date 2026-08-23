@@ -366,16 +366,29 @@ for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
 </script>
 ${body.includes('class="mermaid"') ? `<script src="/vendor/mermaid.min.js" onerror="document.querySelectorAll('pre.mermaid').forEach(p=>p.style.textAlign='left')"></script>
 <script>if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });</script>` : ''}
-${/* Same vendored highlight.js the editor loads (Issue #35). Only pages that
-      actually carry a language-tagged block pay for it, and unlabeled blocks
-      stay plaintext on purpose — auto-detection would guess a different
-      language per visit. Diagram/math fences belong to their own renderers. */
-  body.includes('<code class="language-') ? `<link rel="stylesheet" href="/vendor/vditor/dist/js/highlight.js/styles/github.min.css" media="(prefers-color-scheme: light)">
+${/* Same vendored highlight.js the editor loads (Issue #35), and literally
+      the same detection: editor-lib.js is the one place that decides what an
+      untagged fence is written in, so a block cannot be coloured one way in
+      the editor and another on its own page. A fence that names its language
+      wins; one that does not is detected structurally; anything unrecognised
+      — prose, a note, a diagram source — stays plain text. Diagram and math
+      fences belong to their own renderers and are never touched. */
+  body.includes('<pre><code') ? `<link rel="stylesheet" href="/vendor/vditor/dist/js/highlight.js/styles/github.min.css" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="/vendor/vditor/dist/js/highlight.js/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
 <script src="/vendor/vditor/dist/js/highlight.js/highlight.min.js"></script>
+<script src="/editor-lib.js"></script>
 <script>
-if (window.hljs) for (const code of document.querySelectorAll('pre > code[class*="language-"]')) {
-  if (!/language-(mermaid|mmd|math|graphviz|plantuml|echarts|mindmap|abc|flowchart)\\b/.test(code.className)) hljs.highlightElement(code);
+const OWNED = /language-(mermaid|mmd|math|graphviz|plantuml|echarts|mindmap|abc|flowchart)\\b/;
+if (window.hljs) for (const code of document.querySelectorAll('pre > code')) {
+  if (OWNED.test(code.className)) continue;
+  if (/language-\\S/.test(code.className)) { hljs.highlightElement(code); continue; }
+  const text = code.textContent || '';
+  const lang = window.WeaveEditorLib && WeaveEditorLib.detectCodeLanguage(text);
+  if (!lang) continue;
+  try {
+    code.innerHTML = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+    code.className = 'hljs language-' + lang;
+  } catch (e) { /* the language is not in the vendored bundle */ }
 }
 </script>` : ''}
 </body>

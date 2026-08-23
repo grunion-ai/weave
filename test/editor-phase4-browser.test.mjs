@@ -303,12 +303,14 @@ if (!chromium) {
       // Expand the row's doc cell (list view keeps inline docs per row).
       await page.waitForSelector('.wv-grid', { timeout: 20000 });
       await page.evaluate(() => {
-        // The 📄 toggle expands a row's inline documents — RowDoc's row,
-        // since the suite's shared table carries other entities too.
-        // Name cells are <input>s, so the row is found by input value.
+        // The documents toggle expands a row's inline documents — RowDoc's
+        // row, since the suite's shared table carries other entities too.
+        // Name cells are <input>s, so the row is found by input value. The
+        // button is found by its title: its glyph is a flat icon now, and an
+        // icon is not text to match on.
         const row = [...document.querySelectorAll('tr')].find((r) =>
           [...r.querySelectorAll('input')].some((i) => (i.value ?? '').includes('RowDoc')));
-        [...row.querySelectorAll('button')].find((b) => b.textContent.includes('📄')).click();
+        row.querySelector('button[title="Edit documents"]').click();
       });
       await page.waitForSelector('textarea.doc-inline', { timeout: 20000 });
       const before = await page.evaluate(() => document.querySelector('textarea.doc-inline').value);
