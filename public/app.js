@@ -2848,7 +2848,10 @@ function slashItems() {
     { label: 'Code block', icon: '#', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '```\ncode\n```' },
     { label: 'Mermaid diagram', icon: '◈', flat: 'graph', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
     { label: 'Table', icon: '▦', flat: 'category', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
-    { label: 'Divider', icon: '—', group: 'all', hint: '---', aliases: ['hr', 'rule', 'separator'], insert: '\n---\n' },
+    /* The divider inserts ***, not --- : Lute reads an inserted --- pair as
+       YAML front matter and renders a yaml code block (Kyle, 2026-08-23:
+       "divider still makes a code block"). Same rule, unambiguous spelling. */
+    { label: 'Divider', icon: '—', group: 'all', hint: '***', aliases: ['hr', 'rule', 'separator'], insert: '\n***\n' },
     /* A hard break, the markdown way (backslash-newline). Before this item,
        "/line break" matched nothing and Enter took whatever row was first —
        usually a code block (Kyle, 2026-08-23). */
@@ -2971,9 +2974,11 @@ function slashHint(query) {
    typographic mark, which for B / I / S / ` / H IS the icon. Never an emoji —
    a colour picture in a monochrome menu ignores the text colour and the
    theme. `link` is drawn here because the Iconly free set has no chain. */
-const SLASH_LINK_GLYPH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'
-  + '<path d="M10 13.5a4 4 0 0 0 5.7.4l2.6-2.6a4 4 0 0 0-5.7-5.7l-1.3 1.3"/>'
-  + '<path d="M14 10.5a4 4 0 0 0-5.7-.4l-2.6 2.6a4 4 0 0 0 5.7 5.7l1.3-1.3"/></svg>';
+// Feather's `link` (MIT) — the interlocked-chain everyone recognises; the
+// hand-drawn approximation it replaces read as two broken arcs.
+const SLASH_LINK_GLYPH = '<svg viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>'
+  + '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
 function slashGlyph(item) {
   if (item.flat === 'link') return SLASH_LINK_GLYPH;
   const flat = item.flat && window.ICONLY_FLAT?.[item.flat];
@@ -3031,6 +3036,25 @@ function replayChord(host, key, shift = false) {
   const ir = host.querySelector('.vditor-ir .vditor-reset') ?? host;
   ir.dispatchEvent(new KeyboardEvent('keydown', { key, metaKey: mac, ctrlKey: !mac, shiftKey: shift, bubbles: true, cancelable: true }));
 }
+/* The slash menu opens upward when the caret sits low — and a 20-row menu
+   can overflow the top of the window, hiding exactly the row the query
+   promoted (the writer then reads the wrong first row). Clamp it into the
+   viewport and let it scroll instead. */
+function attachHintClamp(host) {
+  const clamp = (hint) => {
+    hint.style.maxHeight = `${Math.max(200, innerHeight - 24)}px`;
+    hint.style.overflowY = 'auto';
+    const top = hint.getBoundingClientRect().top;
+    if (top < 8) hint.style.top = `${parseFloat(hint.style.top || '0') + (8 - top)}px`;
+  };
+  new MutationObserver((muts) => {
+    for (const m of muts) {
+      const hint = m.target.classList?.contains('vditor-hint') ? m.target : null;
+      if (hint && hint.style.display !== 'none') clamp(hint);
+    }
+  }).observe(host, { subtree: true, attributes: true, attributeFilter: ['style'] });
+}
+
 function attachTableKeys(host) {
   host.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.isComposing) return;
@@ -3058,6 +3082,7 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }
   const chips = attachRefChips(host);
   attachCodeAuto(host);
   attachTableKeys(host);
+  attachHintClamp(host);
   const editor = new Vditor(host, {
     mode: 'ir',
     // Vendored, not the public CDN default: a weave instance with no internet

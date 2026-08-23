@@ -1570,3 +1570,23 @@ test('fullscreen edits: a markdown document expands as its own live editor, not 
   assert.match(body, /expandDocument\(grid, `\$\{fmtBase\}\.html`, f\.name, isApp \? \{\} : \{ node: host \}\)/,
     'the ⛶ hands the editor over for markdown; an HTML app keeps its frame');
 });
+
+test('the divider inserts *** — an inserted --- pair is YAML front matter to Lute', () => {
+  const items = APP.slice(APP.indexOf('function slashItems'), APP.indexOf('function slashScore'));
+  const item = items.match(/label: 'Divider'.*insert: '((?:[^'\\]|\\.)*)'/);
+  assert.ok(item, 'the Divider item exists');
+  assert.equal(item[1], '\\n***\\n', 'thematic break, unambiguous spelling');
+  assert.doesNotMatch(items, /insert: '\\n---\\n'/, 'the front-matter spelling is gone');
+});
+
+test('the slash menu clamps into the viewport instead of hiding its promoted row', () => {
+  assert.match(fnBody('mountDocEditor'), /attachHintClamp\(host\)/, 'wired at mount');
+  const fn = fnBody('attachHintClamp');
+  assert.match(fn, /maxHeight/, 'tall menus scroll');
+  assert.match(fn, /top < 8/, 'a menu that overflows the top is pushed back down');
+});
+
+test('the slash link glyph is the interlocked chain, not the hand-drawn arcs', () => {
+  assert.match(APP, /M10 13a5 5 0 0 0 7\.54\.54/, "Feather's link path");
+  assert.doesNotMatch(APP, /M10 13\.5a4 4 0 0 0 5\.7\.4/, 'the old approximation is gone');
+});
