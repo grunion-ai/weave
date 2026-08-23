@@ -235,6 +235,12 @@ A system table whose rows are structure: `Workspace/Spaces`, `Workspace/Tables`,
 `Workspace/Fields`. Readable, queryable and editable like any table; not
 deletable, not redefinable.
 
+The registries are related to each other exactly as the hierarchy says: a
+Fields row belongs to its Tables row (the `Table` field, inverse `Fields`), and
+a Tables row to its Spaces row (`Space`, inverse `Tables`). Both links are
+re-asserted on every sync, and `registryReport()` / `rebuildRegistry()` inspect
+and repair a workspace whose links drifted.
+
 ### Relation
 A link between two tables, materialised as a paired field on each side. The pair
 is the relation; there is no separate link object.

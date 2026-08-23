@@ -1158,6 +1158,13 @@ export class Weave {
     return Object.values(this.state.entities).find((e) => e.dbId === t.id && e.sysId === sysId && !e.deletedAt);
   }
 
+  /* The ids a registry row's relation points at, however it is stored. */
+  #relIds(row, table, fieldName) {
+    const f = this.#sysField(table, fieldName);
+    const v = row.values[f.id];
+    return Array.isArray(v) ? v : v == null ? [] : [v];
+  }
+
   #sysField(table, name) {
     return Object.values(table.fields).find((f) => f.name === name);
   }
@@ -1212,6 +1219,79 @@ export class Weave {
     }
   }
 
+  /* ---------------- registry integrity (Issue: drifted links) ----------------
+
+     The registry is only true if both directions agree: a Fields row belongs
+     to the Tables row of the table that actually owns the column, and a Tables
+     row to its Spaces row. Both links used to be written once, at row
+     creation, and never looked at again — so a link that was wrong, or that
+     could not be written yet because the parent row did not exist during a
+     legacy backfill, stayed wrong forever and the two sides disagreed about
+     which fields a table has. The syncs now re-assert the link, and these two
+     verbs make the state inspectable and repairable on demand. */
+
+  registryReport() {
+    const problems = [];
+    const rowOf = (kind, sysId) => this.#sysRow(kind, sysId);
+    const relIds = (row, table, fieldName) => this.#relIds(row, table, fieldName);
+    const tablesT = this.#sysTable('tables');
+    const fieldsT = this.#sysTable('fields');
+    if (!tablesT || !fieldsT) return { problems, rows: 0 };
+
+    let rows = 0;
+    for (const db of this.listTables()) {
+      if (db.system) continue;
+      const tableRow = rowOf('tables', db.id);
+      if (!tableRow) { problems.push({ kind: 'table', name: this.qualifiedName(db), problem: 'no registry row' }); continue; }
+      rows++;
+      const spaceRow = rowOf('spaces', db.spaceId);
+      if (spaceRow && !relIds(tableRow, tablesT, 'Space').includes(spaceRow.id)) {
+        problems.push({ kind: 'table', name: this.qualifiedName(db), problem: 'row is not registered to its space' });
+      }
+      for (const f of Object.values(db.fields)) {
+        const fieldRow = rowOf('fields', f.id);
+        if (!fieldRow) { problems.push({ kind: 'field', name: `${db.name}.${f.name}`, problem: 'no registry row' }); continue; }
+        rows++;
+        if (!relIds(fieldRow, fieldsT, 'Table').includes(tableRow.id)) {
+          problems.push({ kind: 'field', name: `${db.name}.${f.name}`, problem: 'row is not registered to its table' });
+        }
+      }
+    }
+    // Rows describing something the schema no longer has.
+    for (const [kind, sysTable, lookup] of [
+      ['table', tablesT, (id) => this.state.tables[id]],
+      ['field', fieldsT, (id) => this.#fieldOwner(id)],
+    ]) {
+      for (const row of this.listEntities(sysTable.id)) {
+        if (row.sysId && !lookup(row.sysId)) {
+          problems.push({ kind, name: this.entityName(row), problem: 'row describes nothing that exists', rowId: row.id });
+        }
+      }
+    }
+    return { problems, rows };
+  }
+
+  /* Re-run every sync, then drop rows that describe nothing. Idempotent: a
+     clean workspace reports zero repairs. */
+  rebuildRegistry() {
+    const before = this.registryReport().problems;
+    for (const space of this.listSpaces()) this.#syncSpaceRow(space);
+    for (const db of this.listTables()) {
+      if (db.system) continue;
+      this.#syncTableRow(db);
+      for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
+    }
+    for (const p of before) {
+      if (p.problem === 'row describes nothing that exists' && p.rowId) {
+        const row = this.state.entities[p.rowId];
+        if (row) this.#metaSync(() => this.deleteEntity(row.id, { hard: true }));
+      }
+    }
+    this.save();
+    const after = this.registryReport().problems;
+    return { repaired: before.length - after.length, remaining: after };
+  }
+
   #syncSpaceRow(space) {
     if (space.system) return undefined;
     const t = this.#sysTable('spaces');
@@ -1252,6 +1332,9 @@ export class Weave {
     if (this.entityName(row) !== db.name) patch.Name = db.name;
     const descF = this.#sysField(t, 'Description');
     if ((row.values[descF.id] ?? '') !== (db.description ?? '')) patch.Description = db.description ?? '';
+    // The link, every time — not only at creation. A row created mid-bootstrap
+    // has no space row to point at yet, and nothing ever went back for it.
+    if (spaceRow && !this.#relIds(row, t, 'Space').includes(spaceRow.id)) patch.Space = spaceRow.id;
     if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
     return row;
   }
@@ -1285,6 +1368,9 @@ export class Weave {
     const patch = {};
     if (this.entityName(row) !== f.name) patch.Name = f.name;
     if (definable) patch.Definition = { type: f.type, config: f.config };
+    // Same repair as the table row's Space: the registry is only true if the
+    // row belongs to the table whose column it describes.
+    if (!this.#relIds(row, t, 'Table').includes(tableRow.id)) patch.Table = tableRow.id;
     if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
     return row;
   }

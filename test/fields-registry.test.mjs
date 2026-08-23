@@ -121,3 +121,115 @@ test('the Name field of a table is marked and its row cannot be deleted', () => 
   const nameRow = rowsOf(w).find((e) => w.entityName(e) === 'Name');
   assert.throws(() => w.deleteEntity(nameRow.id, { hard: true }), /Name/);
 });
+
+/* The registry's relations are the point of it: a Fields row belongs to its
+   Tables row (`Table` / inverse `Fields`), and a Tables row to its Spaces row
+   (`Space` / inverse `Tables`). Both links were written once at row creation
+   and never re-asserted, so a link that was wrong — or that could not be
+   written yet because the parent row did not exist during bootstrap — stayed
+   wrong forever, and the two sides of the registry disagreed about which
+   fields a table has. Kyle found it by asking why tables were not registered
+   to fields and fields to tables (2026-08-23). */
+
+const drift = (w, table, row, fieldName, value) => {
+  const f = Object.values(w.getTable(table).fields).find((x) => x.name === fieldName);
+  const live = w.getEntity(row.id);
+  const prev = live.values[f.id];
+  for (const id of (Array.isArray(prev) ? prev : prev == null ? [] : [prev])) {
+    const far = w.getEntity(id);
+    const inv = w.getTable(table).fields[f.id].config.inverseFieldId;
+    if (far && inv) far.values[inv] = (far.values[inv] ?? []).filter((x) => x !== row.id);
+  }
+  live.values[f.id] = value;
+  for (const id of (Array.isArray(value) ? value : value == null ? [] : [value])) {
+    const far = w.getEntity(id);
+    const inv = w.getTable(table).fields[f.id].config.inverseFieldId;
+    if (far && inv) far.values[inv] = [...(far.values[inv] ?? []), row.id];
+  }
+  w.save();
+};
+
+const relOf = (w, table, row, fieldName) => {
+  const f = Object.values(w.getTable(table).fields).find((x) => x.name === fieldName);
+  const v = row.values[f.id];
+  return Array.isArray(v) ? v : v == null ? [] : [v];
+};
+
+test('a field row that points at the wrong table is repaired', () => {
+  const w = fresh();
+  w.createTable({ space: 'Dev', name: 'Project' });
+  const projectRow = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Project');
+  const orderRow = (w.addField('Task', { name: 'Order', type: 'number' }), rowNamed(w, 'Order'));
+
+  // Drift as a legacy workspace carries it: the row surface refuses a move
+  // ('A field cannot move between tables'), so write the stored value directly.
+  drift(w, 'Fields', orderRow, 'Table', projectRow.id);
+  assert.deepEqual(relOf(w, 'Fields', w.getEntity(orderRow.id), 'Table'), [projectRow.id], 'setup: drifted');
+
+  w.rebuildRegistry();
+
+  const taskRow = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Task');
+  assert.deepEqual(relOf(w, 'Fields', w.getEntity(orderRow.id), 'Table'), [taskRow.id],
+    'the field row is registered back to the table that actually owns the column');
+  const listed = relOf(w, 'Tables', w.getEntity(taskRow.id), 'Fields');
+  assert.ok(listed.includes(orderRow.id), 'and the table lists it among its fields');
+});
+
+test('a field row with no table at all is repaired', () => {
+  const w = fresh();
+  w.addField('Task', { name: 'Order', type: 'number' });
+  const row = rowNamed(w, 'Order');
+  drift(w, 'Fields', row, 'Table', []);
+  assert.deepEqual(relOf(w, 'Fields', w.getEntity(row.id), 'Table'), [], 'setup: orphaned');
+
+  w.rebuildRegistry();
+
+  const taskRow = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Task');
+  assert.deepEqual(relOf(w, 'Fields', w.getEntity(row.id), 'Table'), [taskRow.id]);
+});
+
+test('a table row with no space is repaired', () => {
+  const w = fresh();
+  const taskRow = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Task');
+  drift(w, 'Tables', taskRow, 'Space', []);
+  assert.deepEqual(relOf(w, 'Tables', w.getEntity(taskRow.id), 'Space'), [], 'setup: orphaned');
+
+  w.rebuildRegistry();
+
+  const spaceRow = w.listEntities(w.getTable('Spaces').id).find((e) => w.entityName(e) === 'Dev');
+  assert.deepEqual(relOf(w, 'Tables', w.getEntity(taskRow.id), 'Space'), [spaceRow.id]);
+  assert.ok(relOf(w, 'Spaces', w.getEntity(spaceRow.id), 'Tables').includes(taskRow.id),
+    'and the space lists the table');
+});
+
+/* The invariant both repairs exist to hold: the registry and the schema agree
+   about every field of every table, in both directions. */
+test('every field of every table is registered to it, and only to it', () => {
+  const w = fresh();
+  w.createTable({ space: 'Dev', name: 'Project' });
+  w.addField('Task', { name: 'Order', type: 'number' });
+  w.addField('Project', { name: 'Budget', type: 'number' });
+  w.addRelation('Task', { name: 'Project', targetDb: 'Project', cardinality: 'many-to-one' });
+
+  const report = w.registryReport();
+  assert.deepEqual(report.problems, [], 'a freshly built workspace has a clean registry');
+
+  for (const db of w.listTables().filter((t) => !t.system)) {
+    const tableRow = w.listEntities(w.getTable('Tables').id).find((e) => e.sysId === db.id);
+    const listed = relOf(w, 'Tables', w.getEntity(tableRow.id), 'Fields')
+      .map((id) => w.entityName(w.getEntity(id))).sort();
+    const actual = db.fieldOrder.map((id) => db.fields[id].name).sort();
+    assert.deepEqual(listed, actual, `${db.name}: the registry lists exactly its fields`);
+  }
+});
+
+test('registryReport names a drifted link instead of hiding it', () => {
+  const w = fresh();
+  const row = rowNamed(w, 'Name');
+  drift(w, 'Fields', row, 'Table', []);
+  const report = w.registryReport();
+  assert.equal(report.problems.length, 1);
+  assert.match(report.problems[0].problem, /table/i);
+  assert.equal(w.rebuildRegistry().repaired, 1);
+  assert.deepEqual(w.registryReport().problems, []);
+});
