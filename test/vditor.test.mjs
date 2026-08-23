@@ -125,11 +125,39 @@ test('markdown formatting is reachable from a slash menu', () => {
 
 test('the slash menu covers the markdown-native block set', () => {
   // The toolbar is hidden, so anything absent here is unreachable.
-  const list = APP.slice(APP.indexOf('function slashItems'), APP.indexOf('function slashItems') + 3000);
-  for (const needle of ['Heading 1', 'Bold', 'Italic', 'Code', 'Quote', 'Table',
-    'Bulleted', 'Numbered', 'Task', 'Divider', 'Link', 'Mermaid']) {
+  // The whole function, not a fixed window: the catalogue outgrew 3000 chars
+  // and the last commands silently fell outside the slice.
+  const from = APP.indexOf('function slashItems');
+  const list = APP.slice(from, APP.indexOf('\n}\n', from));
+  for (const needle of ['Text', 'Heading 1–6', 'Bold', 'Italic', 'Inline code', 'Code block',
+    'Quote', 'Table', 'Bulleted', 'Numbered', 'Task', 'Divider', 'Image', 'Raw HTML',
+    'Link', 'Mermaid', 'Entity', 'Space / workspace']) {
     assert.ok(list.includes(needle), `slash menu is missing: ${needle}`);
   }
+  /* Every row is a glyph, a name and the syntax it writes — the syntax column
+     is what makes the menu teach rather than just insert — and every command
+     belongs to a group the menu knows how to title. */
+  const rows = [...list.matchAll(/\{ label: '[^']+',[^}]*\}/g)].map((m) => m[0]);
+  assert.ok(rows.length >= 20, `expected the full catalogue, found ${rows.length} rows`);
+  for (const row of rows) {
+    assert.match(row, /icon: '/, `no glyph: ${row.slice(0, 44)}`);
+    assert.match(row, /hint: '/, `no syntax hint: ${row.slice(0, 44)}`);
+  }
+  const titled = new Set([...APP.matchAll(/\['(\w+)', '[^']+'\],/g)].map((m) => m[1]));
+  for (const m of list.matchAll(/group: '(\w+)'/g)) {
+    assert.ok(titled.has(m[1]), `group '${m[1]}' has no title in SLASH_GROUPS`);
+  }
+});
+
+/* The vendored hint renders a fixed maximum number of rows, and Vditor ships
+   eight (`if(!(n>7))` in index.min.js). Eight cannot hold a grouped catalogue
+   of twenty: REFERENCE and FORMAT would sit below a fold with nothing to
+   scroll. The vendored file therefore carries a one-number patch to 64, and it
+   is pinned here — a re-vendor that drops it silently truncates the menu. */
+test('the vendored hint renders the whole catalogue, not the first eight rows', () => {
+  const vendor = readFileSync(join(ROOT, 'public/vendor/vditor/dist/index.min.js'), 'utf8');
+  assert.ok(vendor.includes('if(!(n>63))'), 'the hint row cap must be patched up from 8 to 64');
+  assert.ok(!vendor.includes('if(!(n>7))'), 'and the stock cap must be gone');
 });
 
 test('the theme is applied before the first render', () => {

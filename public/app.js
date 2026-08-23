@@ -1512,7 +1512,7 @@ function eyeGlyph() {
   return svg;
 }
 
-function fieldVisibilityPopover(anchor, db, trashCount = 0) {
+function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
   const hidden = new Set(db.hiddenFields ?? []);
   const sysOn = new Set(db.systemFields ?? []);
   const save = async (patch) => {
@@ -1520,9 +1520,10 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0) {
       await api('PATCH', `/tables/${db.id}`, patch);
       await loadSchema();
       const fresh = allTables().find((d) => d.id === db.id);
-      await keepScroll(() => showDatabase(db.id, state.route.view));
+      // The entity page opens this too (Feature #117): it redraws itself.
+      redraw ? await redraw() : await keepScroll(() => showDatabase(db.id, state.route.view));
       const again = document.querySelector('.eye-btn');
-      if (again) fieldVisibilityPopover(again, fresh, trashCount);
+      if (again) fieldVisibilityPopover(again, fresh, trashCount, { redraw, rowsSection });
     } catch (err) { toast(err.message, true); }
   };
   // Each row is a toggle switch: the whole row flips it.
@@ -1543,12 +1544,14 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0) {
       if (next.has(n)) next.delete(n); else next.add(n);
       save({ systemFields: [...next] });
     })),
-    el('div', { class: 'eye-head' }, 'Rows'),
-    row(state.showDeleted.has(db.id), `Deleted entities${trashCount ? ` (${trashCount})` : ''}`, () => {
-      if (state.showDeleted.has(db.id)) state.showDeleted.delete(db.id); else state.showDeleted.add(db.id);
-      document.querySelector('.chip-pop')?.remove();
-      keepScroll(() => showDatabase(db.id, state.route.view));
-    }),
+    ...(rowsSection ? [
+      el('div', { class: 'eye-head' }, 'Rows'),
+      row(state.showDeleted.has(db.id), `Deleted entities${trashCount ? ` (${trashCount})` : ''}`, () => {
+        if (state.showDeleted.has(db.id)) state.showDeleted.delete(db.id); else state.showDeleted.add(db.id);
+        document.querySelector('.chip-pop')?.remove();
+        keepScroll(() => showDatabase(db.id, state.route.view));
+      }),
+    ] : []),
   ];
   showPopover(anchor, rows);
 }
@@ -2737,44 +2740,101 @@ const DOC_SAVE_DEBOUNCE = 600;
 const liveEditors = new Set();
 const pendingDocSaves = new Map();
 
-/* Picking this item opens the ⌘K search instead of inserting text. It travels
-   through Vditor as a value, because a hint item can only insert — so the
-   editor's own input handler recognises the marker, takes it back out and
-   hands over to the picker. U+2063 is invisible and not something a writer
-   types by accident. */
-const ENTITY_LINK_MARKER = '⁣entity-link⁣';
 
-/* The block set. With the toolbar hidden this list is the ONLY way to reach a
-   markdown construct, so anything missing here is unreachable. `insert` is
-   what replaces the typed "/query" — Vditor swaps the trigger for the value.
+/* ---------- the slash menu ----------
+   With the toolbar hidden this menu is the ONLY way to reach a markdown
+   construct, so it has to read like a menu and not like a list of syntax:
+   a glyph for what the thing is, its name, and — on the right of every row —
+   the markdown it actually writes, so the menu teaches the syntax while it
+   inserts it. Commands are grouped by what they do rather than alphabetically:
+   blocks you insert, references to other records, and formatting.
 
    Line-prefix blocks carry placeholder text on purpose. A marker with nothing
    after it is not a block: "# " round-tripped through Lute as "#\n" and "> "
    vanished to "\n", so every heading, quote and list item the menu inserted
-   came out empty. Placeholders make the block real and visible, and the
-   writer types over them. */
+   came out empty. Placeholders make the block real and visible, and the writer
+   types over them. */
+const SLASH_GROUPS = [
+  ['all', 'ALL COMMANDS'],
+  ['reference', 'REFERENCE'],
+  ['format', 'FORMAT · APPLIES TO SELECTION'],
+];
+
+/* Picking a reference opens the ⌘K search instead of inserting text. It
+   travels through Vditor as a value, because a hint item can only insert — so
+   the editor's own input handler recognises the marker, takes it back out and
+   hands over to the picker. U+2063 is invisible and not something a writer
+   types by accident. */
+const refMarker = (kind) => `⁣ref:${kind}⁣`;
+/* Same trick for a raw HTML block, for a different reason: Vditor's insert
+   path spins what it inserts through Lute in a context that drops an html
+   block outright (measured: "/raw html" produced an empty document), while a
+   whole-document write round-trips it untouched. The marker is what the menu
+   inserts; the input handler swaps it for the block. */
+const DEFERRED_INSERTS = { '⁣raw-html⁣': '<div>html</div>' };
+const ENTITY_LINK_MARKER = refMarker('entity');
+const REF_MARKER_RE = /⁣ref:(entity|table|space)⁣/;
+
+/* The last thing the writer selected, remembered because typing "/" replaces
+   the selection before any command can see it. A format command wraps that
+   text instead of a placeholder, which is what "applies to selection" means
+   from the writer's side. Short-lived on purpose: a selection from a minute
+   ago is not what this "/" is about. */
+const SELECTION_MEMORY_MS = 15000;
+let lastSelection = { text: '', at: 0 };
+function rememberSelection() {
+  const sel = document.getSelection();
+  const text = sel && !sel.isCollapsed ? String(sel).replace(/\s+/g, ' ').trim() : '';
+  if (text) lastSelection = { text, at: Date.now() };
+}
+function selectionForFormat() {
+  const fresh = lastSelection.text && Date.now() - lastSelection.at < SELECTION_MEMORY_MS;
+  return fresh ? lastSelection.text : '';
+}
+
+/* One catalogue. `hint` is the syntax column, `icon` the leading glyph, and
+   `aliases` are the words a writer is likely to type for something the label
+   does not literally say ("h2", "checkbox", "hr"). `hidden` items never show
+   on their own row — they exist so a query can promote a specific one, which
+   is how "Heading 1–6" answers /h4 with a level-4 heading. */
 function slashItems() {
+  const wrap = (before, after = before) => {
+    const picked = selectionForFormat();
+    return `${before}${picked || 'text'}${after}`;
+  };
+  const headings = [1, 2, 3, 4, 5, 6].map((n) => ({
+    label: `Heading ${n}`, icon: 'H', group: 'all', hidden: true,
+    hint: `${'#'.repeat(n)} `, aliases: [`h${n}`, `heading${n}`],
+    insert: `${'#'.repeat(n)} Heading`,
+  }));
   return [
-    { label: 'Heading 1', insert: '# Heading' },
-    { label: 'Heading 2', insert: '## Heading' },
-    { label: 'Heading 3', insert: '### Heading' },
-    { label: 'Bold', insert: '**text**' },
-    { label: 'Italic', insert: '*text*' },
-    { label: 'Strikethrough', insert: '~~text~~' },
-    { label: 'Inline code', insert: '`code`' },
+    { label: 'Text', icon: '¶', group: 'all', hint: '—', aliases: ['paragraph', 'plain'], insert: 'Text' },
+    { label: 'Heading 1–6', icon: 'H', group: 'all', hint: '#…######', aliases: ['title'], insert: '# Heading' },
+    ...headings,
+    { label: 'Bulleted list', icon: '•', group: 'all', hint: '-', aliases: ['ul', 'unordered'], insert: '- List item' },
+    { label: 'Numbered list', icon: '1.', group: 'all', hint: '1.', aliases: ['ol', 'ordered'], insert: '1. List item' },
+    { label: 'Task list', icon: '☑', group: 'all', hint: '- [ ]', aliases: ['todo', 'checkbox'], insert: '- [ ] To do' },
+    { label: 'Quote', icon: '❝', group: 'all', hint: '>', aliases: ['blockquote'], insert: '> Quote' },
     // The language is a placeholder like the text ones: a bare ``` fence is
     // plaintext to hljs — zero token spans, one colour, forever (Issue #35).
-    { label: 'Code block', insert: '```js\ncode\n```' },
-    { label: 'Quote', insert: '> Quote' },
-    { label: 'Bulleted list', insert: '- List item' },
-    { label: 'Numbered list', insert: '1. List item' },
-    { label: 'Task list', insert: '- [ ] To do' },
-    { label: 'Table', insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
-    { label: 'Divider', insert: '\n---\n' },
-    { label: 'Link', insert: '[text](url)' },
-    { label: 'Image', insert: '![alt](url)' },
-    { label: 'Mermaid diagram', insert: '```mermaid\ngraph TD\n  A --> B\n```' },
-    { label: 'Entity link', insert: ENTITY_LINK_MARKER },
+    { label: 'Code block', icon: '#', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '```js\ncode\n```' },
+    { label: 'Mermaid diagram', icon: '◈', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
+    { label: 'Table', icon: '▦', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
+    { label: 'Divider', icon: '—', group: 'all', hint: '---', aliases: ['hr', 'rule', 'separator'], insert: '\n---\n' },
+    { label: 'Image', icon: '🖼', group: 'all', hint: '![](…)', aliases: ['picture', 'photo'], insert: '![alt](url)' },
+    // Raw HTML is a block Lute passes through untouched: the escape hatch for
+    // anything markdown has no syntax for.
+    { label: 'Raw HTML', icon: '</>', group: 'all', hint: '<div>', aliases: ['embed', 'html'], insert: '⁣raw-html⁣' },
+
+    { label: 'Entity', icon: '#', group: 'reference', hint: '[[Task#12]]', aliases: ['record', 'row', 'link entity', 'mention'], insert: refMarker('entity') },
+    { label: 'Table', icon: '▦', group: 'reference', hint: '[[table:…]]', aliases: ['database', 'link table'], insert: refMarker('table') },
+    { label: 'Space / workspace', icon: '◇', group: 'reference', hint: '[[space:…]]', aliases: ['link space'], insert: refMarker('space') },
+
+    { label: 'Bold', icon: 'B', group: 'format', hint: '**…**', aliases: ['strong'], insert: wrap('**') },
+    { label: 'Italic', icon: 'I', group: 'format', hint: '*…*', aliases: ['emphasis', 'em'], insert: wrap('*') },
+    { label: 'Strikethrough', icon: 'S', group: 'format', hint: '~~…~~', aliases: ['strike', 'delete'], insert: wrap('~~') },
+    { label: 'Inline code', icon: '`', group: 'format', hint: '`…`', aliases: ['monospace'], insert: wrap('`') },
+    { label: 'Link', icon: '🔗', group: 'format', hint: '[…](…)', aliases: ['url', 'href'], insert: `[${selectionForFormat() || 'text'}](url)` },
   ];
 }
 
@@ -2785,14 +2845,71 @@ function entityReference(hit) {
   return `[[${hit.db}#${hit.publicId}|${hit.name}]]`;
 }
 
+/* What the picked search result becomes, per reference kind — the same four
+   shapes the renderer's mention parser accepts. */
+function referenceFor(kind, hit) {
+  if (hit.kind === 'entity') return entityReference(hit);
+  if (hit.kind === 'table') return `[[table:${hit.name}]]`;
+  if (hit.kind === 'space') return `[[space:${hit.name}]]`;
+  return `[[workspace|${hit.name}]]`;
+}
+
+/* Ranking: a query promotes its best matches into an INSERT group at the top
+   and leaves the rest of the catalogue where it is, so the menu narrows
+   without ever becoming a dead end — a typo still shows every command. */
+function slashScore(item, q) {
+  if (!q) return 0;
+  const label = item.label.toLowerCase();
+  if (label.startsWith(q)) return 100;
+  if ((item.aliases ?? []).some((a) => a.toLowerCase().startsWith(q))) return 90;
+  if (label.split(/[^a-z0-9]+/).some((w) => w.startsWith(q))) return 70;
+  if (label.includes(q)) return 50;
+  if ((item.aliases ?? []).some((a) => a.toLowerCase().includes(q))) return 40;
+  return 0;
+}
+
+const SLASH_PROMOTED = 4;
+
+function slashRows(query) {
+  const q = String(query ?? '').trim().toLowerCase();
+  const items = slashItems();
+  const ranked = q
+    ? items
+      .map((item, i) => ({ item, i, score: slashScore(item, q) }))
+      // Only a strong match is promoted: a query that merely appears inside a
+      // word ("ta" in "italic") is not what the writer meant, and a wrong row
+      // at the top is worse than no INSERT group at all.
+      .filter((r) => r.score >= 70)
+      .sort((a, b) => (b.score - a.score) || (a.i - b.i))
+      .slice(0, SLASH_PROMOTED)
+    : [];
+  const promoted = new Set(ranked.map((r) => r.item));
+  const rows = ranked.map((r, n) => ({ item: r.item, group: n === 0 ? 'INSERT' : null }));
+  for (const [key, title] of SLASH_GROUPS) {
+    let first = true;
+    for (const item of items) {
+      if (item.group !== key || item.hidden || promoted.has(item)) continue;
+      rows.push({ item, group: first ? title : null });
+      first = false;
+    }
+  }
+  return rows;
+}
+
 function slashHint(query) {
-  const q = String(query ?? '').toLowerCase();
-  return slashItems()
-    .filter((i) => i.label.toLowerCase().includes(q))
-    .map((i) => ({
-      value: i.insert,
-      html: `<span class="slash-item"><b>${i.label}</b></span>`,
-    }));
+  return slashRows(query).map(({ item, group }) => ({
+    value: item.insert,
+    html: (group ? `<span class="slash-group">${escapeHtmlText(group)}</span>` : '')
+      + `<span class="slash-item"><span class="slash-icon">${escapeHtmlText(item.icon)}</span>`
+      + `<b>${escapeHtmlText(item.label)}</b>`
+      + `<code class="slash-syntax">${escapeHtmlText(item.hint)}</code></span>`,
+  }));
+}
+
+// The catalogue is weave's own text, but it reaches the menu as innerHTML and
+// a remembered SELECTION rides into it — which is the writer's text.
+function escapeHtmlText(text) {
+  return String(text ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
 // Editor chrome, document content and code highlighting each take a theme;
@@ -2851,12 +2968,41 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }
     after: () => {
       dedupeVditorSprites();
       scheduleDecorFor(host);
+      /* Typing "/" replaces whatever was selected, so the selection has to be
+         remembered before the menu can ask for it. Both events fire after the
+         selection settles, and only a non-empty one is kept — the collapsed
+         selection left by the "/" itself must not erase it. */
+      host.addEventListener('keyup', rememberSelection);
+      host.addEventListener('mouseup', rememberSelection);
+      /* Vditor moves the slash menu's highlight on ↑/↓ but never scrolls to
+         it, which is invisible in a menu of eight rows and useless in one of
+         twenty. Runs after Vditor's own handler, so the class has moved. */
+      host.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+        requestAnimationFrame(() =>
+          host.querySelector('.vditor-hint--current')?.scrollIntoView({ block: 'nearest' }));
+      });
       if (autoFocus) editor.focus();
     },
     ...(onBlur ? { blur: () => onBlur() } : {}),
     input: (v) => {
-      // The entity-link command arrives here as its marker, never as content.
-      if (v.includes(ENTITY_LINK_MARKER)) return pickEntityLink(editor, v, onInput);
+      // A reference command arrives here as its marker, never as content.
+      const ref = v.match(REF_MARKER_RE);
+      if (ref) return pickReference(editor, v, ref[0], ref[1], onInput);
+      for (const [marker, block] of Object.entries(DEFERRED_INSERTS)) {
+        if (!v.includes(marker)) continue;
+        const next = v.replace(marker, block);
+        /* A microtask, not a timer or a frame: a headless page is
+           backgrounded and Chrome throttles both there, so the swap would
+           never land under test — and the writer would watch the marker sit
+           in their document until something else woke the page. */
+        queueMicrotask(() => {
+          editor.setValue(next);
+          editor.focus();
+          onInput(next);
+        });
+        return;
+      }
       onInput(v);
       chips.schedule();
     },
@@ -3158,16 +3304,26 @@ async function resolveRefs(refs) {
 /* Hands off to the same search the ⌘K palette runs, so one search surface
    serves navigation and referencing. Picking writes the reference where the
    marker was; dismissing leaves the document as it was. */
-function pickEntityLink(editor, value, onInput) {
+const REF_KINDS = {
+  entity: { kinds: ['entity'], placeholder: 'Search entities to reference…' },
+  table: { kinds: ['table'], placeholder: 'Search tables to reference…' },
+  space: { kinds: ['space', 'workspace'], placeholder: 'Search spaces to reference…' },
+};
+
+function pickReference(editor, value, marker, kind, onInput) {
   const settle = (replacement) => {
-    const next = value.replace(ENTITY_LINK_MARKER, replacement);
+    const next = value.replace(marker, replacement);
     editor.setValue(next);
     editor.focus();
     onInput(next);
   };
+  const { kinds, placeholder } = REF_KINDS[kind] ?? REF_KINDS.entity;
   openCommandK({
-    entitiesOnly: true,
-    onPick: (hit) => settle(entityReference(hit)),
+    kinds,
+    placeholder,
+    onPick: (hit) => settle(referenceFor(kind, hit)),
+    // Dismissing leaves the document as it was: the marker goes, nothing
+    // takes its place, and the writer is back where they typed "/".
     onDismiss: () => settle(''),
   });
 }
@@ -3346,9 +3502,22 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   /* Crumb row, then a title row that ends in the ⋮ — the same two-row shape
      viewHeader() builds for tables, boards, lists and spaces, so the menu is
      in one place across the app. */
+  // The eye (Feature #114), the table's own: one hidden set per table, so a
+  // field hidden here is hidden in the grid and back. No Rows section — a
+  // page has no rows to show deleted.
+  // Comments + activity are a side column the reader asks for: off by
+  // default, remembered per browser once opened.
+  const sideOpen = localStorage.getItem('wv-entity-side') === '1';
+  const activityBtn = el('button', {
+    class: 'btn btn-sm activity-btn' + (sideOpen ? ' active-toggle' : ''), title: 'Comments & activity', 'aria-pressed': String(sideOpen),
+    onclick: () => { localStorage.setItem('wv-entity-side', sideOpen ? '0' : '1'); refresh(); },
+  }, `Activity${entity.comments.length ? ` · ${entity.comments.length}` : ''}`);
+  const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields', 'aria-label': 'Show or hide fields' }, eyeGlyph());
+  eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false }); });
   mount.append(
     el('div', { class: 'view-header' },
-      el('div', { class: 'crumb' },
+      el('div', { class: 'crumb crumb-row' },
+        el('span', { class: 'crumb-path' },
         ...(inPeek
           ? [el('a', { href: `#/table/${entity.dbId}` }, entity.db), ' › ']
           : weaveBreadcrumbs.entityCrumbs($('#ws-name').textContent || 'workspace', state.trail, entityHop(entity))
@@ -3357,65 +3526,16 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
           class: 'permalink-copy', title: 'Copy permalink',
           onclick: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied'),
         }, `#${entity.publicId} ⧉`)),
-      el('div', { class: 'wv-toolbar entity-head' }, nameInput, dlBtn)),
+        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn)),
+      el('div', { class: 'wv-toolbar entity-head' }, nameInput)),
   );
 
   const grid = el('div', { class: 'entity-grid' });
+  grid.classList.toggle('side-open', sideOpen);
   mount.append(grid);
   const left = el('div');
-  const right = el('div');
+  const right = el('div', { class: 'entity-side' });
   grid.append(left, right);
-
-  /* A deck is composed on read, so the frame IS the deck: the same editable
-     file /e/:id/deck.html serves, live over whatever the slides say right now.
-     A deck entity shows its whole composition; a slide shows itself, wearing
-     the chrome of the deck it belongs to. Slides also carry the version
-     action, because a version is a new row, not a saved copy. */
-  const deckRole = deckRoleOf(db);
-  if (deckRole) {
-    const deckUrl = `${WS_PREFIX}/e/${id}/deck.html`;
-    const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
-    const frame = el('iframe', { class: 'deck-frame', src: deckUrl, allowfullscreen: '', allow: 'fullscreen', title: label });
-    const body = el('div', { class: 'doc-section-body' }, frame);
-    const caret = el('button', {
-      class: 'doc-caret', type: 'button', title: 'Collapse section',
-      onclick: () => {
-        const open = body.classList.toggle('hidden');
-        caret.classList.toggle('closed', open);
-        docSectionCollapse(id, label, open);
-      },
-    });
-    const newVersion = async (promote) => {
-      try {
-        const made = await api('POST', `/entities/${id}/version${promote ? '?promote=1' : ''}`);
-        toast(`Version ${made.fields?.Version ?? ''} created`);
-        location.hash = `#/entity/${made.id}`;
-      } catch (err) { toast(err.message, true); }
-    };
-    const menu = dotsMenu([
-      { label: 'Download .html', href: deckUrl, download: `${entity.name || label}.html` },
-      { label: 'Open the composed model (.json)', href: `${WS_PREFIX}/e/${id}/deck.json` },
-      ...(deckRole === 'slide' ? [
-        'divider',
-        { label: 'New version', run: () => newVersion(false) },
-        { label: 'New version, promoted into its decks', run: () => newVersion(true) },
-      ] : []),
-    ], { title: `${label} actions`, extraClass: 'doc-dl' });
-    const section = el('section', { class: 'doc-section deck-section' },
-      el('div', { class: 'doc-section-head' },
-        caret,
-        el('span', { class: 'doc-section-name' }, label),
-        el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, '⟳'),
-        el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, '⛶'),
-        el('span', {
-          class: 'doc-anchor permalink-copy', title: 'Copy link to this deck',
-          onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
-        }, '⧉'),
-        menu),
-      body);
-    left.append(section);
-    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); }
-  }
 
   /* One document section per document field — built here, placed by the
      ordered body below. The rendered document IS the
@@ -3533,17 +3653,29 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
      relocates in place; the schema write happens behind the move. */
   const fields = el('div', { class: 'entity-fields' });
   let dragFrom = null;
-  const shown = db.fields.filter((f) => !(f.name === 'Name' || (f.type === 'relation' && f.many)));
+  /* Values in the table's column order, then documents, then files (Kyle,
+     2026-08-23). Each group keeps fieldOrder; Array.sort is stable. A drag
+     moves within its group only — across groups the grid and the page would
+     disagree about where a field sits. */
+  const bodyKind = (f) => f.type === 'document' ? 1 : f.type === 'attachments' ? 2 : 0;
+  const hidden = new Set(db.hiddenFields ?? []);
+  const shown = db.fields.filter((f) => !(f.name === 'Name' || (f.type === 'relation' && f.many)) && !hidden.has(f.name))
+    .sort((a, b) => bodyKind(a) - bodyKind(b));
   const dragRow = (node, handle, f) => {
     node.dataset.field = f.name;
     handle.addEventListener('dragstart', (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; node.classList.add('dragging'); });
     handle.addEventListener('dragend', () => node.classList.remove('dragging'));
-    node.addEventListener('dragover', (e) => { if (!dragFrom) return; e.preventDefault(); node.classList.add('drop-target'); });
+    node.addEventListener('dragover', (e) => {
+      if (!dragFrom || bodyKind(shown.find((x) => x.name === dragFrom)) !== bodyKind(f)) return;
+      e.preventDefault(); node.classList.add('drop-target');
+    });
     node.addEventListener('dragleave', () => node.classList.remove('drop-target'));
     node.addEventListener('drop', (e) => {
       node.classList.remove('drop-target');
       const from = dragFrom; dragFrom = null;
       if (!from || from === f.name) return;
+      const fromField = shown.find((x) => x.name === from);
+      if (bodyKind(fromField) !== bodyKind(f)) return;
       e.preventDefault();
       const fromNode = fields.querySelector(`[data-field="${CSS.escape(from)}"]`);
       const after = shown.findIndex((x) => x.name === from) < shown.findIndex((x) => x.name === f.name);
@@ -4025,16 +4157,17 @@ function wireSearchButton() {
 }
 
 /* One search surface. By default a pick navigates; callers that need a
-   reference rather than a jump — the editor's entity-link command — pass
-   their own onPick and get the hit back instead. */
-function openCommandK({ onPick = null, onDismiss = null, entitiesOnly = false } = {}) {
+   reference rather than a jump — the editor's reference commands, which ask
+   for one kind of target each — pass their own onPick and get the hit back
+   instead. */
+function openCommandK({ onPick = null, onDismiss = null, kinds = null, placeholder = null } = {}) {
   if ($('#cmdk-back')) return;
   let picked = false;
   const dismiss = () => { back.remove(); if (!picked) onDismiss?.(); };
   const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
   const input = el('input', {
     id: 'cmdk-input', autocomplete: 'off',
-    placeholder: entitiesOnly ? 'Search entities to link…' : 'Search workspace, spaces, tables, entities…',
+    placeholder: placeholder ?? 'Search workspace, spaces, tables, entities…',
   });
   const list = el('div', { id: 'cmdk-results' });
   let hits = [], rowEls = [], sel = 0;
@@ -4057,8 +4190,9 @@ function openCommandK({ onPick = null, onDismiss = null, entitiesOnly = false } 
       const q = input.value.trim();
       if (!q) { hits = []; rowEls = []; list.replaceChildren(); return; }
       hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`);
-      // Only an entity can be the target of a [[…]] reference.
-      if (entitiesOnly) hits = hits.filter((h) => h.kind === 'entity');
+      // A reference command asks for one kind of target; the palette itself
+      // asks for all of them.
+      if (kinds) hits = hits.filter((h) => kinds.includes(h.kind));
       rowEls = hits.map((h, i) => {
         const row = resultRow(h, pick);
         row.addEventListener('mouseenter', () => setSel(i, false));

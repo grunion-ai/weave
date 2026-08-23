@@ -773,13 +773,32 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.doesNotMatch(APP, /crumb-offset/, 'the crumb no longer indents around a corner control');
   assert.doesNotMatch(CSS, /crumb-offset/);
 
-  // The head is a toolbar row (same flex container as .view-title-row) and
-  // the menu is its last child, inside the same .view-header block every
-  // other view wraps its crumb + title row in.
-  assert.match(APP, /class: 'wv-toolbar entity-head' \}, nameInput, dlBtn\)/,
-    'the entity ⋮ must be the trailing element of the entity head row');
-  assert.match(APP, /class: 'view-header' \},\s*\n\s*el\('div', \{ class: 'crumb' \}/,
+  // The entity's controls sit on the crumb line, right-aligned, exactly as
+  // the table's do (Kyle, 2026-08-23: "move the entity 3 dots menu to be in
+  // line with the breadcrumbs and include the show/hide eye just like on the
+  // table view"). The title row is the title.
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*el\('span', \{ class: 'crumb-path' \},[\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, dlBtn\)/,
+    'the entity activity toggle, eye and ⋮ trail the crumb line');
+  // Kyle, 2026-08-23: "create an activity button as well — when clicked it
+  // shows comments and activity in the right panel; by default it is hidden."
+  // The side column is a toggle, remembered per browser, off until asked for.
+  const body = fnBody('renderEntityView');
+  assert.match(body, /const sideOpen = localStorage\.getItem\('wv-entity-side'\) === '1';/, 'hidden by default, remembered once opened');
+  assert.match(body, /class: 'btn btn-sm activity-btn' \+ \(sideOpen \? ' active-toggle' : ''\)/, 'the button shows its state');
+  assert.match(body, /grid\.classList\.toggle\('side-open', sideOpen\)/, 'the grid carries the state');
+  assert.equal(rulesFor('.entity-grid')['grid-template-columns'], 'minmax(0, 1fr)', 'one column at rest');
+  assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) 320px; \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');
+  assert.equal(rulesFor('.entity-grid:not(.side-open) > .entity-side').display, 'none', 'the side column is gone, not blank');
+  assert.match(APP, /class: 'wv-toolbar entity-head' \}, nameInput\)/, 'the title row holds only the name');
+  assert.match(APP, /class: 'view-header' \},\s*\n\s*el\('div', \{ class: 'crumb crumb-row' \}/,
     'the entity crumb + title row live in a .view-header, so crumb spacing matches');
+  assert.match(body, /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false \}\)/,
+    'the same eye popover as the table, redrawing the entity and without the table-only Rows section');
+  assert.match(body, /!hidden\.has\(f\.name\)/, 'hidden fields are hidden here too — one hidden set per table');
+  const eyeFn = fnBody('fieldVisibilityPopover');
+  assert.match(eyeFn, /redraw \? await redraw\(\) : await keepScroll/, 'the popover redraws whatever view opened it');
+  assert.match(eyeFn, /rowsSection \? \[/, 'the Rows section is optional');
+  assert.match(eyeFn, /fieldVisibilityPopover\(again, fresh, trashCount, \{ redraw, rowsSection \}\)/, 'and the reopened popover keeps its options');
   assert.equal(rulesFor('.entity-head')['margin-bottom'], '0',
     '.view-header owns the gap below the header, exactly as on .view-title-row');
 
@@ -1015,8 +1034,16 @@ test('the entity page heads its body with a draggable fields block that writes f
   // Documents are fields too (Kyle, 2026-08-23: "be reorderable with other
   // fields"): one ordered body over db.fields, a document rendering as its
   // section in that sequence, draggable by its head, droppable anywhere.
-  assert.match(body, /const shown = db\.fields\.filter\(\(f\) => !\(f\.name === 'Name' \|\| \(f\.type === 'relation' && f\.many\)\)\);/,
-    'the ordered body is every field but Name and collections — documents included');
+  // Kyle, 2026-08-23: "by default the order of the entity view should be
+  // fields in the order they appear on the table, then description, then
+  // files." Three groups, each in fieldOrder; a drag reorders within its
+  // group (a drop across groups is refused) so the grid's column order and
+  // the page never disagree about where a value field sits.
+  assert.match(body, /const bodyKind = \(f\) => f\.type === 'document' \? 1 : f\.type === 'attachments' \? 2 : 0;/,
+    'values, then documents, then files');
+  assert.match(body, /const shown = db\.fields\.filter\(\(f\) => !\(f\.name === 'Name' \|\| \(f\.type === 'relation' && f\.many\)\) && !hidden\.has\(f\.name\)\)\s*\.sort\(\(a, b\) => bodyKind\(a\) - bodyKind\(b\)\);/,
+    'the ordered body is every field but Name and collections, grouped by kind, fieldOrder within a group (stable sort)');
+  assert.match(body, /if \(bodyKind\(fromField\) !== bodyKind\(f\)\) return;/, 'a drop across groups is refused');
   assert.match(body, /f\.type === 'document' \? docSection\(f\) :/, 'a document field renders as its section, in sequence');
   assert.match(body, /class: 'doc-section-head', draggable: 'true'/, 'a document is dragged by its head');
   assert.match(body, /const dragRow = \(node, handle, f\)/, 'one drag wiring serves rows and sections');
@@ -1384,4 +1411,66 @@ test('the table grid previews the first document in the Docs cell', () => {
   assert.match(grid, /class: 'docs-cell'/, 'the cell is addressable');
   assert.ok(rulesFor('.docs-cell .doc-snip')['max-width'], 'the snip is width-capped');
   assert.equal(rulesFor('.docs-cell .doc-snip')['text-overflow'], 'ellipsis', 'and ellipsises');
+});
+
+/* ---------- the slash menu reads as a menu ----------
+   It was a flat list of names: no grouping, no glyphs, and nothing that said
+   what markdown a command writes. The rebuilt menu is grouped, every row shows
+   its syntax on the right, and a query promotes its best matches to the top
+   instead of filtering the catalogue away. */
+
+test('the slash menu is grouped, glyphed and shows the syntax it writes', () => {
+  assert.match(APP, /const SLASH_GROUPS = \[/, 'the groups are declared once');
+  for (const title of ['ALL COMMANDS', 'REFERENCE', 'FORMAT · APPLIES TO SELECTION']) {
+    assert.ok(APP.includes(title), `missing group: ${title}`);
+  }
+  const hint = fnBody('slashHint');
+  assert.match(hint, /slash-group/, 'a group header rides on the first row of its group');
+  assert.match(hint, /slash-icon/, 'every row carries a glyph');
+  assert.match(hint, /slash-syntax/, 'and the markdown it writes');
+  assert.match(hint, /escapeHtmlText\(/, 'the row is innerHTML, so its parts are escaped');
+
+  // The highlight belongs to the row, not to the button that carries the group
+  // header — otherwise picking through the list lights up the group titles.
+  for (const sel of ['.vditor-hint button:hover', '.vditor-hint button.vditor-hint--current']) {
+    assert.equal(rulesFor(sel)['background-color'], 'transparent', `${sel} must not paint the group header`);
+  }
+  for (const sel of ['.vditor-hint button:hover .slash-item', '.vditor-hint button.vditor-hint--current .slash-item']) {
+    assert.ok(rulesFor(sel).background, `${sel} is what gets the highlight`);
+  }
+  assert.equal(rulesFor('.slash-syntax')['margin-left'], 'auto', 'the syntax column sits on the right of every row');
+  assert.ok(rulesFor('.vditor-hint')['overflow-y'], 'a twenty-row menu has to scroll');
+});
+
+test('a query promotes matches instead of emptying the menu', () => {
+  const rows = fnBody('slashRows');
+  assert.match(rows, /'INSERT'/, 'best matches lead under their own heading');
+  assert.match(rows, /r\.score >= 70/, 'only strong matches are promoted');
+  assert.match(rows, /promoted\.has\(item\)/, 'a promoted row is not repeated in its group');
+  assert.match(rows, /SLASH_PROMOTED/, 'and the promoted set is capped');
+  const score = fnBody('slashScore');
+  assert.match(score, /startsWith/, 'a prefix is the strongest match');
+  assert.match(score, /aliases/, 'aliases are what make /h4 and /todo work');
+});
+
+test('formatting wraps the selection the writer had before typing "/"', () => {
+  assert.match(APP, /const SELECTION_MEMORY_MS = \d+;/, 'the memory is bounded');
+  const remember = fnBody('rememberSelection');
+  assert.match(remember, /isCollapsed/, 'only a real selection is remembered');
+  assert.match(remember, /if \(text\)/, 'and the collapsed selection left by "/" must not erase it');
+  assert.match(fnBody('selectionForFormat'), /Date\.now\(\) - lastSelection\.at < SELECTION_MEMORY_MS/,
+    'a stale selection is not what this "/" is about');
+  assert.match(fnBody('slashItems'), /const picked = selectionForFormat\(\);/,
+    'the format rows are built around it');
+});
+
+test('a command that Vditor cannot insert finishes itself', () => {
+  // Raw HTML measured live: inserted through the hint it produced an empty
+  // document; written as a whole document it round-trips untouched.
+  assert.match(APP, /const DEFERRED_INSERTS = \{/, 'the deferred inserts are declared once');
+  const mount = fnBody('mountDocEditor');
+  assert.match(mount, /queueMicrotask\(\(\) => \{/, 'the swap is a microtask');
+  assert.doesNotMatch(mount.slice(mount.indexOf('DEFERRED_INSERTS')), /setTimeout|requestAnimationFrame/,
+    'not a timer or a frame — both are throttled in a backgrounded page');
+  assert.match(APP, /REF_MARKER_RE/, 'references travel the same way, through their own marker');
 });

@@ -84,9 +84,14 @@ if (!chromium) {
   // query → what the resulting markdown must contain. One case per menu item,
   // so a regression names the command that broke rather than "the menu".
   const CASES = [
+    ['text', /^Text$/m],
     ['head', /^# /m],
     ['heading 2', /^## /m],
     ['heading 3', /^### /m],
+    // One "Heading 1–6" row, six levels behind it: /h4 must reach level four
+    // without the menu carrying six rows for headings alone.
+    ['h4', /^#### /m],
+    ['raw html', /^<div>/m],
     ['bold', /\*\*.+\*\*/],
     ['ital', /(?<!\*)\*[^*]+\*/],
     ['strike', /~~.+~~/],
@@ -163,6 +168,127 @@ if (!chromium) {
       `the picked reference must render as a live entity chip; stored markdown was ${JSON.stringify(stored)}`);
     assert.doesNotMatch(html, /class="mention broken"/,
       'no broken references');
+    await page.close();
+  });
+
+  /* ---------- the menu itself ----------
+     With the toolbar hidden the menu IS the editor's UI, so its shape is a
+     contract: what it groups, what it teaches, and what it puts first. */
+
+  test('the menu is grouped, and every row shows the syntax it writes', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/entity/${freshEntity()}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.click('.vditor-ir [contenteditable="true"]');
+    await page.keyboard.type('/');
+    await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+
+    const menu = await page.evaluate(() => ({
+      groups: [...document.querySelectorAll('.vditor-hint .slash-group')].map((g) => g.textContent),
+      rows: document.querySelectorAll('.vditor-hint button').length,
+      labels: [...document.querySelectorAll('.vditor-hint .slash-item b')].map((b) => b.textContent),
+      syntax: [...document.querySelectorAll('.vditor-hint .slash-item')]
+        .map((i) => i.querySelector('.slash-syntax')?.textContent ?? null),
+      icons: [...document.querySelectorAll('.vditor-hint .slash-item')]
+        .map((i) => i.querySelector('.slash-icon')?.textContent ?? null),
+    }));
+
+    assert.deepEqual(menu.groups, ['ALL COMMANDS', 'REFERENCE', 'FORMAT · APPLIES TO SELECTION'],
+      'an unfiltered menu is the catalogue, grouped by what the commands do');
+    // The vendored hint renders at most 64 rows (patched up from 8): the whole
+    // catalogue has to fit, or the groups below the fold are unreachable.
+    assert.ok(menu.rows >= 20, `the whole catalogue renders, got ${menu.rows} rows`);
+    assert.ok(menu.syntax.every(Boolean), 'every row carries its syntax hint');
+    assert.ok(menu.icons.every(Boolean), 'and its glyph');
+    for (const label of ['Text', 'Heading 1–6', 'Raw HTML', 'Entity', 'Space / workspace', 'Bold', 'Link']) {
+      assert.ok(menu.labels.includes(label), `the menu is missing: ${label}`);
+    }
+    await page.close();
+  });
+
+  test('typing promotes the best matches into an INSERT group, keeping the rest', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/entity/${freshEntity()}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.click('.vditor-ir [contenteditable="true"]');
+    await page.keyboard.type('/ta');
+    await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    const menu = await page.evaluate(() => ({
+      groups: [...document.querySelectorAll('.vditor-hint .slash-group')].map((g) => g.textContent),
+      labels: [...document.querySelectorAll('.vditor-hint .slash-item b')].map((b) => b.textContent),
+    }));
+    assert.equal(menu.groups[0], 'INSERT', 'matches lead the menu');
+    assert.deepEqual(menu.labels.slice(0, 2).sort(), ['Table', 'Task list'],
+      'and they are the rows whose names start with what was typed');
+    // A query narrows the top of the menu without emptying the rest of it:
+    // a near-miss must never leave the writer with nothing to pick.
+    assert.ok(menu.groups.includes('ALL COMMANDS'), 'the catalogue stays underneath');
+    assert.ok(menu.labels.includes('Quote'), 'including commands that do not match at all');
+    await page.close();
+  });
+
+  test('a format command wraps what was selected, not a placeholder', async () => {
+    const page = await browser.newPage();
+    const id = freshEntity('Selection case');
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.evaluate(() => {
+      const ed = window.__weaveEditors.values().next().value;
+      ed.setValue('vermilion');
+      ed.focus();
+    });
+    /* Select the line, the way a writer would before reaching for bold.
+       Typing "/" then replaces the selection — which is exactly why the menu
+       has to have remembered it. (A dblclick lands on the padding as often as
+       the word in a one-line document, so the keyboard does the selecting.) */
+    await page.click('.vditor-ir [contenteditable="true"] p');
+    await page.keyboard.press('End');
+    await page.keyboard.down('Shift');
+    await page.keyboard.press('Home');
+    await page.keyboard.up('Shift');
+    await page.keyboard.type('/bold');
+    await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(150);
+    const markdown = await page.evaluate(() =>
+      window.__weaveEditors.values().next().value.getValue());
+    assert.match(markdown, /\*\*vermilion\*\*/, `expected the selection wrapped, got ${JSON.stringify(markdown)}`);
+    assert.doesNotMatch(markdown, /\*\*text\*\*/, 'the placeholder is the fallback, not the answer');
+    await page.close();
+  });
+
+  test('a table reference is picked from search and resolves to a live chip', async () => {
+    const page = await browser.newPage();
+    const id = freshEntity('Table ref case');
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.evaluate(() => {
+      const ed = window.__weaveEditors.values().next().value;
+      ed.setValue('');
+      ed.focus();
+    });
+    await page.click('.vditor-ir [contenteditable="true"]');
+    // The alias, because "table" itself belongs to the block that inserts one.
+    await page.keyboard.type('/link table');
+    await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#cmdk', { state: 'visible' });
+    await page.keyboard.type('Note');
+    await page.waitForSelector('#cmdk-results .result-main');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(150);
+    const markdown = await page.evaluate(() =>
+      window.__weaveEditors.values().next().value.getValue());
+    assert.match(markdown, /\[\[table:[^\]]+\]\]/, `expected a table reference, got ${JSON.stringify(markdown)}`);
+
+    let html = '';
+    for (let i = 0; i < 40 && !html.includes('mention'); i++) {
+      await page.waitForTimeout(50);
+      await page.evaluate(() => window.__weaveFlushDocSaves?.());
+      html = await (await fetch(`${base}/e/${id}/doc.html`)).text();
+    }
+    assert.match(html, /class="mention mention-table"/, 'the reference must render as a live table chip');
+    assert.doesNotMatch(html, /class="mention broken"/);
     await page.close();
   });
 }

@@ -306,8 +306,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-head input.name-edit:hover, .entity-head input.name-edit:focus { background: var(--tblr-bg-surface-secondary); border-radius: var(--tblr-border-radius); outline: none; }
 .crumb { color: var(--tblr-secondary); font-size: 12.5px; margin-bottom: 14px; }
 .crumb a { color: var(--tblr-primary); text-decoration: none; }
-.entity-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
-@media (max-width: 900px) { .entity-grid { grid-template-columns: 1fr; } }
+.entity-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.entity-grid.side-open { grid-template-columns: minmax(0, 1fr) 320px; }
+.entity-grid:not(.side-open) > .entity-side { display: none; }
+@media (max-width: 900px) { .entity-grid.side-open { grid-template-columns: 1fr; } }
 .panel { margin-bottom: 16px; }
 .fieldrow { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: center; padding: 4px 0; }
 .fieldrow label { color: var(--tblr-secondary); font-size: 12.5px; }
@@ -589,7 +591,23 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .doc-editor .vditor-copy svg { color: currentColor; }
 /* The slash menu is the only route to markdown blocks now, so it reads as a
    list of names rather than a strip of syntax. */
-.vditor-hint .slash-item b { font-weight: 500; }
+/* The slash menu is the only route to a markdown construct, so it reads as a
+   menu: a glyph for what the thing is, its name, and — on the right of every
+   row — the syntax it writes. Groups are headers INSIDE the first row of each
+   group (a hint item is always a button), so the highlight is painted on the
+   row rather than the button: a group label never lights up. */
+.vditor-hint { max-width: 380px; min-width: 320px; padding: 6px; max-height: 68vh; overflow-y: auto; }
+.vditor-hint button { padding: 0; }
+.vditor-hint button:hover, .vditor-hint button.vditor-hint--current { background-color: transparent; }
+.slash-group { display: block; padding: 12px 8px 4px; font-size: 10px; font-weight: 600; letter-spacing: .09em; color: var(--tblr-secondary); opacity: .75; }
+.vditor-hint button:first-child .slash-group { padding-top: 2px; }
+.slash-item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; }
+.vditor-hint button:hover .slash-item, .vditor-hint button.vditor-hint--current .slash-item { background: var(--tblr-bg-surface-secondary); }
+.slash-icon { flex: 0 0 20px; text-align: center; font-size: 12px; color: var(--tblr-secondary); }
+.vditor-hint .slash-item b { font-weight: 500; font-size: 13px; }
+/* The syntax column is the teaching half of the menu: monospace, quiet, and
+   never wrapped — it is the shape of the markdown, not prose. */
+.slash-syntax { margin-left: auto; padding: 0; background: none; font-size: 11px; color: var(--tblr-secondary); opacity: .8; white-space: nowrap; }
 .activity-pop { max-width: 560px; }
 .dl-wrap { position: relative; margin-right: 6px; }
 .dl-menu { position: absolute; top: 100%; left: 0; z-index: 30; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-shadow-dropdown, 0 2px 8px rgba(0,0,0,.15)); min-width: 150px; padding: 4px 0; }
