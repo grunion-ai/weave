@@ -113,108 +113,164 @@ export const TYPE_MIGRATIONS = {
   workflow: ['select'],
 };
 
-/* The ONTOLOGY: the kinds of object weave itself models, on the axis that the
-   field types above are NOT. An entity HAS fields; a field is not an entity,
-   and `text` is not a kind of thing weave stores — it is the datatype of one
-   slot on one. Both axes are exported because both are asked for: agents
-   discovering the model need to know what a Table is before what a `rollup`
-   is. Every entry names the verbs that create and read it, so the list cannot
-   quietly outlive the engine (test/ontology.test.mjs holds it to that, and to
-   docs/ONTOLOGY.md). `storedIn` says where the object actually lives — which
-   is how you can tell a Key (never in the workspace, only in the keystore)
-   from a Comment (inside the entity that carries it). */
-export const ONTOLOGY = [
-  {
-    key: 'workspace', name: 'Workspace', layer: 'structure', storedIn: 'state.meta', parent: null,
-    definition: 'One workspace file and everything in it: spaces, tables, entities, and the operational objects around them.',
-    identity: 'the .db file itself; a name and an optional logo',
-    api: ['describeSchema', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
+/* The ONTOLOGY: what weave models, on the axis the field types above are NOT.
+
+   Its spine (Kyle, 2026-08-23): an ENTITY is the one core kind, and a
+   workspace, a space, a table and a row inside a table are all entities. They
+   differ by LEVEL, not by kind — each is addressable, each carries fields,
+   each has a dedicated entity view. What a row is called downstream is a
+   naming convention: record, item, entry, customer, company, account, task,
+   deal, endlessly, exactly as in Airtable. None of those names is a kind.
+   The engine already works this way — creating a space writes a row in
+   `Workspace/Spaces`, a table writes one in `Workspace/Tables`, a field one
+   in `Workspace/Fields`, through the same verbs a customer row answers to.
+
+   A field is NOT an entity in this sense — it is a slot on a table — but it
+   IS described by an entity of its own in the Fields registry, which is how
+   the schema stays editable as data. And `text` is not a kind of thing weave
+   stores at all: it is the datatype of one slot. Both axes are exported
+   because agents discovering the model need to know what a Table is before
+   what a `rollup` is; test/ontology.test.mjs holds this list, docs/ONTOLOGY.md
+   and the engine to each other. */
+export const ONTOLOGY = {
+  core: {
+    key: 'entity', name: 'Entity', definition:
+      'One addressable thing: it has an id, a public id, a set of fields with values, and a dedicated entity view. Workspaces, spaces, tables and the rows inside tables are all entities; they differ by level, not by kind.',
+    identity: 'uuid, plus a per-table public id addressed as Table#n',
+    storedIn: 'state.entities',
+    view: '/e/<id> — the entity view: its fields, its documents, its comments, its files, its activity',
+    has: ['values', 'documents', 'comments', 'files', 'activity'],
+    api: ['getEntity', 'findEntity', 'readEntity', 'entityName', 'query'],
   },
-  {
-    key: 'space', name: 'Space', layer: 'structure', storedIn: 'state.spaces', parent: 'workspace',
-    definition: 'A named container grouping tables that belong to one area of work; it qualifies their names.',
-    identity: 'uuid; name unique in the workspace, and the left half of Space/Table',
-    api: ['createSpace', 'listSpaces', 'updateSpace', 'deleteSpace'],
-  },
-  {
-    key: 'table', name: 'Table', layer: 'structure', storedIn: 'state.tables', parent: 'space',
-    definition: 'A user-defined entity type: the schema — an ordered set of fields — that every one of its entities follows.',
-    identity: 'uuid; qualified name Space/Table',
-    api: ['createTable', 'listTables', 'updateTable', 'deleteTable', 'qualifiedName'],
-  },
-  {
-    key: 'field', name: 'Field', layer: 'structure', storedIn: 'table.fields', parent: 'table',
-    definition: 'One typed, named slot on a table, carrying a field type and that type’s config. Not an entity: it describes entities.',
-    identity: 'uuid; name unique within its table',
-    api: ['addField', 'addRelation', 'updateField', 'deleteField', 'materializeField'],
-  },
-  {
-    key: 'entity', name: 'Entity', layer: 'data', storedIn: 'state.entities', parent: 'table',
-    definition: 'One row of one table: a value per field, plus the documents, comments, files and activity it carries.',
-    identity: 'uuid; per-table public id addressed as Table#n',
-    api: ['createEntity', 'updateEntity', 'readEntity', 'deleteEntity', 'restoreEntity', 'query'],
-  },
-  {
-    key: 'document', name: 'Document', layer: 'entity content', storedIn: 'entity.docs', parent: 'entity',
-    definition: 'A long-form body — markdown, html or code — held in a document-typed field. An entity may carry any number.',
-    identity: 'the entity plus the document field it fills',
-    api: ['getDoc', 'setDoc', 'appendDoc', 'documentFields'],
-  },
-  {
-    key: 'comment', name: 'Comment', layer: 'entity content', storedIn: 'entity.comments', parent: 'entity',
-    definition: 'An authored note on an entity, ordered by time and separate from its documents.',
-    identity: 'uuid within its entity',
-    api: ['addComment', 'deleteComment'],
-  },
-  {
-    key: 'file', name: 'File', layer: 'entity content', storedIn: 'entity.files', parent: 'entity',
-    definition: 'A blob attached to an entity, stored beside the workspace file and referenced by id from attachments fields.',
-    identity: 'uuid; the blob is files/<id> next to the workspace',
-    api: ['attachFile', 'attachToField', 'readFile', 'deleteFile'],
-  },
-  {
-    key: 'activity', name: 'Activity', layer: 'history', storedIn: 'entity.activity', parent: 'entity',
-    definition: 'An append-only record of one thing that happened to an entity — created, field-updated, state-changed, doc-updated, comment-added, file-attached, relation-updated, doc-appended, automation-ran, undo.',
-    identity: 'entityId:index',
-    api: ['activityFeed', 'getActivity'],
-  },
-  {
-    key: 'view', name: 'View', layer: 'operations', storedIn: 'state.meta.views', parent: 'workspace',
-    definition: 'A saved arrangement of one or more table blocks, each with its own filter and layout; optionally shared by token.',
-    identity: 'uuid; a share token when shared',
-    api: ['createView', 'listViews', 'getView', 'deleteView', 'resolveView', 'shareView', 'unshareView'],
-  },
-  {
-    key: 'automation', name: 'Automation', layer: 'operations', storedIn: 'state.automations', parent: 'table',
-    definition: 'A rule bound to one table: a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook).',
-    identity: 'uuid',
-    api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
-  },
-  {
-    key: 'account', name: 'Account', layer: 'access', storedIn: 'state.meta.accounts', parent: 'workspace',
-    definition: 'A named token holder with a role (admin, writer, reader). Only the token hash is kept.',
-    identity: 'uuid; name unique in the workspace',
-    api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth'],
-  },
-  {
-    key: 'key', name: 'Key', layer: 'access', storedIn: 'keystore', parent: 'workspace',
-    definition: 'A named secret in the keystore outside the workspace. A key field stores the NAME; the value is never in the .db, never read back.',
-    identity: 'its name',
-    api: ['setKey', 'hasKey', 'listKeys', 'resolveKey', 'deleteKey'],
-  },
-  {
-    key: 'audit', name: 'Audit entry', layer: 'history', storedIn: 'store.audit_log', parent: 'workspace',
-    definition: 'A workspace-level record of a structural change: spaces, tables, fields, relations, views, accounts, keys, applied schemas.',
-    identity: 'rowid in audit_log',
-    api: ['listAudit'],
-  },
-  {
-    key: 'undo', name: 'Undo step', layer: 'history', storedIn: 'store.undo_log', parent: 'workspace',
-    definition: 'A reversible before-image of one entity mutation, newest first, replayed by undo().',
-    identity: 'rowid in undo_log',
-    api: ['undo', 'listUndo'],
-  },
-];
+
+  /* The levels of the hierarchy. Every one of them is an entity. */
+  levels: [
+    {
+      key: 'workspace', name: 'Workspace', isEntity: true, registry: null, storedIn: 'state.meta',
+      contains: 'spaces', identity: 'the .db file; a name and an optional logo',
+      definition: 'One workspace file and everything in it. The top level of the hierarchy.',
+      note: 'The only level with no registry row yet: the workspace is state, not an entity you can open. Tracked as weave Feature #121.',
+      api: ['describeSchema', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
+    },
+    {
+      key: 'space', name: 'Space', isEntity: true, registry: 'Workspace/Spaces', storedIn: 'state.spaces',
+      contains: 'tables', identity: 'uuid; name unique in the workspace, and the left half of Space/Table',
+      definition: 'A named container grouping the tables of one area of work. Its row in the Spaces registry is the same object seen as data.',
+      api: ['createSpace', 'listSpaces', 'updateSpace', 'deleteSpace'],
+    },
+    {
+      key: 'table', name: 'Table', isEntity: true, registry: 'Workspace/Tables', storedIn: 'state.tables',
+      contains: 'rows', identity: 'uuid; qualified name Space/Table',
+      definition: 'An entity that is also an entity TYPE: the ordered set of fields every row inside it follows.',
+      api: ['createTable', 'listTables', 'updateTable', 'deleteTable', 'qualifiedName'],
+    },
+    {
+      key: 'field', name: 'Field', isEntity: true, registry: 'Workspace/Fields', storedIn: 'table.fields',
+      contains: 'nothing', identity: 'uuid; name unique within its table',
+      definition: 'One typed, named slot on a table. A field is not itself a row of data, but it has a row in the Fields registry — carrying its type and its definition — so the schema is editable as data.',
+      api: ['addField', 'addRelation', 'updateField', 'deleteField', 'materializeField'],
+    },
+    {
+      key: 'row', name: 'Row', isEntity: true, registry: null, storedIn: 'state.entities',
+      contains: 'its values, documents, comments, files and activity',
+      identity: 'uuid; public id addressed as Table#n',
+      definition: 'An entity inside a table, typed by that table. Called whatever the domain calls it — record, item, entry, customer, company, account — without changing what it is.',
+      note: 'A row needs no registry: it IS the data, and the table it belongs to is its entity type.',
+      api: ['createEntity', 'updateEntity', 'deleteEntity', 'restoreEntity', 'listEntities'],
+    },
+  ],
+
+  /* What an entity is made of. These have no identity apart from the entity
+     that carries them, and no entity view of their own. */
+  constituents: [
+    {
+      key: 'value', name: 'Value', storedIn: 'entity.values',
+      definition: 'What one entity holds in one field, validated and coerced by that field’s type.',
+      identity: 'the entity plus the field',
+      api: ['resolveField', 'updateEntity', 'link', 'unlink', 'setState'],
+    },
+    {
+      key: 'document', name: 'Document', storedIn: 'entity.docs',
+      definition: 'A long-form body — markdown, HTML or code — held in a document-typed field. An entity may carry any number.',
+      identity: 'the entity plus the document field it fills',
+      api: ['getDoc', 'setDoc', 'appendDoc', 'documentFields'],
+    },
+    {
+      key: 'comment', name: 'Comment', storedIn: 'entity.comments',
+      definition: 'An authored, time-ordered note on an entity, kept separate from its documents.',
+      identity: 'uuid within its entity',
+      api: ['addComment', 'deleteComment'],
+    },
+    {
+      key: 'file', name: 'File', storedIn: 'entity.files',
+      definition: 'A blob attached to an entity, stored beside the workspace file and referenced by id from attachments fields.',
+      identity: 'uuid; the blob is files/<id> next to the workspace',
+      api: ['attachFile', 'attachToField', 'readFile', 'deleteFile'],
+    },
+    {
+      key: 'activity', name: 'Activity', storedIn: 'entity.activity',
+      definition: 'An append-only record of one thing that happened to an entity — created, field-updated, state-changed, relation-updated, doc-updated, doc-appended, comment-added, file-attached, automation-ran, undo.',
+      identity: 'entityId:index',
+      api: ['activityFeed', 'getActivity'],
+    },
+  ],
+
+  /* Machinery around the entities: real objects with their own verbs, but not
+     entities — nothing here has fields or an entity view. */
+  apparatus: [
+    {
+      key: 'saved-view', name: 'Saved view', storedIn: 'state.meta.views',
+      definition: 'A saved arrangement of one or more table blocks, each with its own filter and layout; optionally published read-only through a share token. Not to be confused with the entity view, which every entity has by existing.',
+      identity: 'uuid; a share token when shared',
+      api: ['createView', 'listViews', 'getView', 'deleteView', 'resolveView', 'shareView', 'unshareView'],
+    },
+    {
+      key: 'automation', name: 'Automation', storedIn: 'state.automations',
+      definition: 'A rule bound to one table: a trigger — entity-created, field-updated, state-changed — and the actions it fires: set-field, append-doc, add-comment, webhook.',
+      identity: 'uuid',
+      api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
+    },
+    {
+      key: 'account', name: 'Account', storedIn: 'state.meta.accounts',
+      definition: 'A named token holder with a role — admin, writer, or reader. Only the token hash is kept.',
+      identity: 'uuid; name unique in the workspace',
+      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth'],
+    },
+    {
+      key: 'key', name: 'Key', storedIn: 'keystore',
+      definition: 'A named secret in the keystore outside the workspace. A key field stores the NAME; the value never enters the .db and is never read back.',
+      identity: 'its name',
+      api: ['setKey', 'hasKey', 'listKeys', 'resolveKey', 'deleteKey'],
+    },
+    {
+      key: 'audit', name: 'Audit entry', storedIn: 'store.audit_log',
+      definition: 'A workspace-level record of a structural change: spaces, tables, fields, relations, saved views, accounts, keys, applied schemas.',
+      identity: 'rowid in audit_log',
+      api: ['listAudit'],
+    },
+    {
+      key: 'undo', name: 'Undo step', storedIn: 'store.undo_log',
+      definition: 'A reversible before-image of one entity mutation, newest first, replayed by undo().',
+      identity: 'rowid in undo_log',
+      api: ['undo', 'listUndo'],
+    },
+  ],
+
+  /* Names people give rows. Endless, domain-specific, and ontologically
+     empty — a customer is a row, an item is a row, an entry is a row. */
+  aliases: ['record', 'item', 'entry', 'customer', 'company', 'account', 'task', 'deal', 'ticket', 'contact'],
+
+  /* One alias collides with a kind, and the collision is real rather than a
+     naming slip: an "account" row in a CRM table is a Row like any other,
+     while the Account kind is a token holder with a role. Same word, two
+     levels. Anything listed here must be disambiguated in the glossary. */
+  collisions: [
+    {
+      alias: 'account', kind: 'account',
+      note: 'An "account" row in a CRM table is a Row like any other; the Account kind here is a token holder with a role. Same word, two levels.',
+    },
+  ],
+};
 
 /* The number costume (#97): decimals, thousands separator, then one of
    percent / currency (ISO code through Intl — '$149.50', '€1,200') / a
