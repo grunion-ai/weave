@@ -751,3 +751,56 @@ test('only today() and now() are dynamic — other tokens are refused as dates',
   const { w, tasks } = buildWorkspace();
   assert.throws(() => w.addField(tasks, { name: 'X', type: 'date', config: { default: 'yesterday()' } }), /not a valid date/);
 });
+
+/* ---------- units vs currency, on numbers AND formulas (2026-08-23) ----------
+   `unit` is free text appended to a number ('12 days', '3 feet');
+   `currency` is an ISO code formatted by Intl ('$149.50', '€1,200.00').
+   A formula whose result is numeric wears the same costume. */
+test('unit text appends; currency code formats with Intl; the two are separate keys', () => {
+  const { w, tasks } = buildWorkspace();
+  const days = w.addField(tasks, { name: 'Lead', type: 'number', config: { unit: 'days' } });
+  const usd = w.addField(tasks, { name: 'Cost', type: 'number', config: { format: 'currency', currency: 'USD' } });
+  const eur = w.addField(tasks, { name: 'Fee', type: 'number', config: { format: 'currency', currency: 'EUR', decimals: 0 } });
+  const e = w.createEntity(tasks, { name: 'A', values: { Lead: 12, Cost: 149.5, Fee: 1200 } });
+  const r = w.readEntity(e.id).fields;
+  assert.equal(r.Lead, '12 days');
+  assert.equal(r.Cost, '$149.50');
+  assert.equal(r.Fee, '€1,200');
+  assert.equal(usd.config.currency, 'USD');
+  assert.equal(usd.config.unit, undefined);
+  assert.equal(days.config.currency, undefined);
+});
+
+test('legacy currency fields that carried the code in `unit` normalise to `currency`', () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.addField(tasks, { name: 'Price', type: 'number', config: { format: 'currency', unit: 'USD', decimals: 2 } });
+  assert.equal(f.config.currency, 'USD');
+  assert.equal(f.config.unit, undefined);
+  const e = w.createEntity(tasks, { name: 'A', values: { Price: 149.5 } });
+  assert.equal(w.readEntity(e.id).fields.Price, '$149.50');
+});
+
+test('a formula result wears the same costume: unit, currency, decimals', () => {
+  const { w, tasks } = buildWorkspace();
+  w.addField(tasks, { name: 'Rate', type: 'number' });
+  const total = w.addField(tasks, { name: 'Total', type: 'formula', config: { expression: 'Estimate * Rate', format: 'currency', currency: 'USD' } });
+  const dbl = w.addField(tasks, { name: 'Double', type: 'formula', config: { expression: 'Estimate * 2', unit: 'days' } });
+  assert.equal(total.config.currency, 'USD');
+  const e = w.createEntity(tasks, { name: 'A', values: { Estimate: 3, Rate: 149.5 } });
+  const r = w.readEntity(e.id).fields;
+  assert.equal(r.Total, '$448.50');
+  assert.equal(r.Double, '6 days');
+  // The costume is editable after the fact, and the expression survives it.
+  w.updateField(tasks, total.id, { config: { currency: 'EUR', decimals: 0 } });
+  assert.equal(w.getField(tasks, total.id).config.expression, 'Estimate * Rate');
+  assert.equal(w.readEntity(e.id).fields.Total, '€449');
+  // And describeSchema tells the client about it.
+  const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id);
+  assert.equal(view.fields.find((f) => f.name === 'Total').currency, 'EUR');
+  assert.equal(view.fields.find((f) => f.name === 'Double').unit, 'days');
+});
+
+test('an unknown currency code is refused at definition time', () => {
+  const { w, tasks } = buildWorkspace();
+  assert.throws(() => w.addField(tasks, { name: 'X', type: 'number', config: { format: 'currency', currency: 'DOLLARS' } }), /currency/i);
+});

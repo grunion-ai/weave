@@ -29,7 +29,7 @@ export function seedFieldShowcase(w) {
   w.addField(ft, { name: 'Contact', type: 'email' });
   // --- number: four configurations
   w.addField(ft, { name: 'Count', type: 'number' });
-  w.addField(ft, { name: 'Price', type: 'number', config: { format: 'currency', unit: 'USD', decimals: 2, separator: true } });
+  w.addField(ft, { name: 'Price', type: 'number', config: { format: 'currency', currency: 'USD', decimals: 2 } });
   w.addField(ft, { name: 'Share', type: 'number', config: { format: 'percent', decimals: 1 } });
   w.addField(ft, { name: 'Weight', type: 'number', config: { unit: 'kg', decimals: 0 } });
   // --- dates: three configurations + a range

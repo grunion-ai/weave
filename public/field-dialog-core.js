@@ -104,6 +104,12 @@
   const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
   const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
   const NUMBER_FORMATS = ['number', 'currency', 'percent'];
+  // ISO 4217 codes offered in the picker (any valid code types in too).
+  const CURRENCIES = [
+    ['USD', 'US dollar'], ['EUR', 'Euro'], ['GBP', 'British pound'], ['CAD', 'Canadian dollar'], ['AUD', 'Australian dollar'],
+    ['JPY', 'Japanese yen'], ['CHF', 'Swiss franc'], ['CNY', 'Chinese yuan'], ['INR', 'Indian rupee'], ['MXN', 'Mexican peso'],
+    ['BRL', 'Brazilian real'], ['SGD', 'Singapore dollar'], ['HKD', 'Hong Kong dollar'], ['SEK', 'Swedish krona'], ['NZD', 'New Zealand dollar'],
+  ].map(([id, name]) => ({ id, label: `${id} — ${name}` }));
   const DATE_FORMATS = ['iso', 'us', 'eu', 'long'];
   const MAX_DEPTH = 4;
   const DEFAULTABLE = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
@@ -116,7 +122,7 @@
     expression: '',
     options: [],              // [{name, color}]
     states: [],               // [{name, category, default}]
-    number: { format: 'number', unit: '', decimals: null, separator: false },
+    number: { format: 'number', unit: '', currency: 'USD', decimals: null, separator: false },
     date: { format: 'iso', time: false },
     depth: 1,
     relationField: '',
@@ -136,9 +142,23 @@
 
   /* Dialog state -> canonical {type, config}. Emits the same minimal shape
      the engine normaliser would store, so the code pane shows truth. */
+  /* The number costume: decimals/separator always; then currency (ISO code)
+     OR a free-text unit, never both — a currency field's formatting is its
+     own (Kyle, 2026-08-23). Shared by number fields and formula results. */
+  function numberCostume(n = {}) {
+    const config = {};
+    if (n.format && n.format !== 'number') config.format = n.format;
+    if (n.format === 'currency') {
+      if (n.currency && String(n.currency).trim()) config.currency = String(n.currency).trim().toUpperCase();
+    } else if (n.unit && String(n.unit).trim()) config.unit = String(n.unit).trim();
+    if (n.decimals != null && n.decimals !== '') config.decimals = Number(n.decimals);
+    if (n.separator) config.separator = true;
+    return config;
+  }
+
   function definitionFromState(state) {
     if (state.computed === 'formula') {
-      return { type: 'formula', config: { expression: state.expression ?? '' } };
+      return { type: 'formula', config: { expression: state.expression ?? '', ...numberCostume(state.number) } };
     }
     const t = state.type;
     const config = {};
@@ -147,11 +167,7 @@
     } else if (t === 'workflow') {
       config.states = (state.states ?? []).map((s) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', default: !!s.default }));
     } else if (t === 'number') {
-      const n = state.number ?? {};
-      if (n.format && n.format !== 'number') config.format = n.format;
-      if (n.unit && String(n.unit).trim()) config.unit = String(n.unit).trim();
-      if (n.decimals != null && n.decimals !== '') config.decimals = Number(n.decimals);
-      if (n.separator) config.separator = true;
+      Object.assign(config, numberCostume(state.number));
     } else if (t === 'date') {
       const d = state.date ?? {};
       if (d.format && d.format !== 'iso') config.format = d.format;
@@ -180,6 +196,7 @@
       state.type = 'text'; // grid shows a neutral tile behind the toggle
       state.computed = 'formula';
       state.expression = c.expression ?? '';
+      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator };
       return state;
     }
     if (def.type === 'select' || def.type === 'multiselect') {
@@ -189,7 +206,7 @@
         ? { name: s, category: 'in-progress', default: false }
         : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', default: !!s.default }));
     } else if (def.type === 'number') {
-      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', decimals: c.decimals ?? null, separator: !!c.separator };
+      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator };
     } else if (def.type === 'date') {
       state.date = { format: c.format ?? 'iso', time: !!c.time };
     } else if (def.type === 'field') {
@@ -255,7 +272,7 @@
 
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, AGGREGATES, TYPE_MIGRATIONS, typeChoices, migrateState,
-    NUMBER_FORMATS, DATE_FORMATS, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
+    NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     blankState, definitionFromState, stateFromDefinition,
     serializeDefinition, parseDefinition,
   };

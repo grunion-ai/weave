@@ -1250,3 +1250,20 @@ test('a field edit keeps the page and grid scroll across the redraw', () => {
   assert.match(keep, /window\.scrollTo\(x, y\)/);
   assert.match(keep, /scrollLeft = left/);
 });
+
+/* Kyle, 2026-08-23: units vs currency on number AND formula fields; Enter
+   in the date popover is "done". */
+test('number costume controls: unit for plain numbers, an ISO-code picker for currency, shared with formula results', () => {
+  const ctl = fnBody('numberCostumeControls');
+  assert.match(ctl, /dsection\('Unit'/, 'plain numbers take a free-text unit');
+  assert.match(ctl, /dsection\('Currency', pick/, 'currency takes a code through the picker dialect');
+  assert.match(ctl, /fdc\.CURRENCIES/, 'codes come from the tested core list');
+  const dlg = fnBody('fieldDialog');
+  assert.match(dlg, /numberCostumeControls\(state, drawCfg, changed, \{ label: 'Result format' \}\)/, 'a formula result wears the same costume');
+  assert.match(fnBody('editPatchConfig'), /patch\.currency = c\.currency \?\? null/, 'currency clears like the other costume keys');
+});
+
+test('Enter in the date popover commits and closes, time kept', () => {
+  const pop = fnBody('datePopover');
+  assert.match(pop, /commit\(dc\.joinIso\(day, time \? clock : ''\), true\)/);
+});

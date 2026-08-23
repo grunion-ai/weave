@@ -46,6 +46,7 @@ const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
    absent on purpose: its default is one of its states, which is where it has
    always lived. */
 const DYNAMIC_DATE_DEFAULTS = ['today()', 'now()'];
+const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator'];
 const DEFAULTABLE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 /* What a document edit actually did, in the terms a reader of the feed needs:
@@ -111,6 +112,30 @@ export const TYPE_MIGRATIONS = {
   workflow: ['select'],
 };
 
+/* The number costume (#97): decimals, thousands separator, then one of
+   percent / currency (ISO code through Intl — '$149.50', '€1,200') / a
+   free-text unit appended ('12 days'). Used by number fields and by
+   formulas whose result is a number. */
+function dressNumber(c, value) {
+  if (c.format == null && c.unit == null && c.currency == null && c.decimals == null && !c.separator) return value;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return value;
+  if (c.format === 'currency') {
+    const currency = c.currency ?? 'USD';
+    const digits = c.decimals ?? 2;
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+    } catch { return `${currency} ${n.toFixed(digits)}`; }
+  }
+  let text = c.decimals != null ? n.toFixed(c.decimals) : String(n);
+  if (c.separator) {
+    const [int, frac] = text.split('.');
+    text = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (frac ? '.' + frac : '');
+  }
+  if (c.format === 'percent') return `${text}%`;
+  return c.unit ? `${text} ${c.unit}` : text;
+}
+
 /* The single normaliser for every type whose config is self-contained. Used
    by addField AND by `field` value validation, so a definition can never
    describe a field the engine would refuse to create. */
@@ -142,7 +167,16 @@ function normalizeSelfContainedConfig(type, config = {}) {
       }
       if (config.format !== 'number') out.format = config.format;
     }
-    if (config.unit != null && String(config.unit).trim()) out.unit = String(config.unit).trim();
+    // `unit` is free text ('days', 'feet'); `currency` is an ISO code. A
+    // legacy currency field that carried its code in `unit` moves it over.
+    let unit = config.unit != null && String(config.unit).trim() ? String(config.unit).trim() : null;
+    let currency = config.currency != null && String(config.currency).trim() ? String(config.currency).trim().toUpperCase() : null;
+    if (out.format === 'currency' && !currency && unit && /^[A-Za-z]{3}$/.test(unit)) { currency = unit.toUpperCase(); unit = null; }
+    if (currency) {
+      try { new Intl.NumberFormat('en-US', { style: 'currency', currency }); } catch { throw new WeaveError(`'${currency}' is not a currency code (use ISO 4217: USD, EUR, GBP…)`, 'invalid'); }
+      out.currency = currency;
+    }
+    if (unit) out.unit = unit;
     if (config.decimals != null) {
       if (!Number.isInteger(config.decimals) || config.decimals < 0 || config.decimals > 6) {
         throw new WeaveError(`Decimals must be 0..6, got '${config.decimals}'`, 'invalid');
@@ -1254,7 +1288,8 @@ export class Weave {
       field.config = { relationField: rel.id, targetField: targetFieldId, aggregate };
     } else if (type === 'formula') {
       if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
-      field.config = { expression: config.expression };
+      // A numeric result wears the number costume (unit / currency / decimals).
+      field.config = { expression: config.expression, ...normalizeSelfContainedConfig('number', config) };
     }
     if (config.default !== undefined && config.default !== null) {
       field.config.default = this.#validateDefault(field, config.default);
@@ -1331,11 +1366,11 @@ export class Weave {
         if (patch.config.default === null) delete field.config.default;
         else field.config.default = this.#validateDefault(field, patch.config.default);
       }
-      if (field.type === 'number') {
+      if (field.type === 'number' || field.type === 'formula') {
         // Merge the costume keys through the same validation addField runs;
         // absent keys keep their value, width/default ride their own lanes.
         const costume = normalizeSelfContainedConfig('number', { ...field.config, ...patch.config });
-        for (const k of ['format', 'unit', 'decimals', 'separator']) {
+        for (const k of NUMBER_COSTUME_KEYS) {
           if (k in patch.config || k in costume) {
             if (costume[k] == null) delete field.config[k];
             else field.config[k] = costume[k];
@@ -2083,19 +2118,12 @@ export class Weave {
         const timeText = c.time && timePart ? ' ' + timePart.slice(0, 5) : '';
         return dateText + timeText;
       }
-      case 'number': {
-        const c = field.config;
-        if (c.format == null && c.unit == null && c.decimals == null && !c.separator) return resolved;
-        let n = Number(resolved);
-        let text = c.decimals != null ? n.toFixed(c.decimals) : String(n);
-        if (c.separator) {
-          const [int, frac] = text.split('.');
-          text = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (frac ? '.' + frac : '');
-        }
-        if (c.format === 'percent') return `${text}%`;
-        if (c.format === 'currency') return `${c.unit ?? '$'}${text}`;
-        return c.unit ? `${text} ${c.unit}` : text;
-      }
+      case 'number':
+        return dressNumber(field.config, resolved);
+      case 'formula':
+        // A numeric result wears the field's number costume; anything else
+        // (text, dates) is already in display form.
+        return typeof resolved === 'number' ? dressNumber(field.config, resolved) : resolved;
       case 'relation': {
         const names = resolved.map((id) => {
           const t = this.state.entities[id];
@@ -2804,8 +2832,8 @@ export class Weave {
             }
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
           }
-          if (f.type === 'number') {
-            for (const k of ['format', 'unit', 'decimals', 'separator']) {
+          if (f.type === 'number' || f.type === 'formula') {
+            for (const k of NUMBER_COSTUME_KEYS) {
               if (f.config[k] != null) out[k] = f.config[k];
             }
           }

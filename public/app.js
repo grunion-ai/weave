@@ -1827,7 +1827,8 @@ function datePopover({ anchor, value, time, format, onPick }) {
     const day = parseNaturalDate(smart.value, new Date(), { dayFirst: format === 'eu' });
     if (!day) return toast(`Could not read '${smart.value}' as a date`, true);
     selected = day; [y, m] = day.split('-').map(Number);
-    commit(dc.joinIso(day, time ? clock : ''), !time);
+    // Enter is "done": commit and close, time of day kept (Kyle, 2026-08-23).
+    commit(dc.joinIso(day, time ? clock : ''), true);
   });
   const body = el('div', { class: 'date-pop-body' });
   function draw() {
@@ -2018,6 +2019,36 @@ function formulaScriptDialog(db, state, onSave) {
   }, 'Save script');
 }
 
+/* The number costume controls (Kyle, 2026-08-23): Format → number shows a
+   free-text Unit (days, feet); currency shows an ISO-code picker — the two
+   never mix; percent shows neither. Decimals and the separator apply to
+   all. Used by number fields and by a formula's numeric result. */
+function numberCostumeControls(state, redraw, changed, { label = 'Format' } = {}) {
+  const fdc = fieldDialogCore;
+  const n = state.number;
+  const kids = [];
+  kids.push(dsection(label, segCtl(fdc.NUMBER_FORMATS, n.format ?? 'number', (v) => { n.format = v; redraw(); changed(); })));
+  if ((n.format ?? 'number') === 'number') {
+    kids.push(dsection('Unit', el('input', { class: 'form-control', value: n.unit ?? '', placeholder: 'days, feet, kg …', oninput: (e) => { n.unit = e.target.value; changed(); } })));
+  } else if (n.format === 'currency') {
+    const known = fdc.CURRENCIES.some((c) => c.id === n.currency);
+    const options = known ? fdc.CURRENCIES : [{ id: n.currency, label: n.currency }, ...fdc.CURRENCIES];
+    const pick = pickerSelect({ name: 'currency', options, value: n.currency ?? 'USD' });
+    pick.input.addEventListener('change', () => { n.currency = pick.input.value; changed(); });
+    kids.push(dsection('Currency', pick, el('div', { class: 'hintnote' }, 'Formatted by code — $149.50, €1,200 — separate from units')));
+  }
+  kids.push(dsection('Decimals', el('input', {
+    type: 'number', min: 0, max: 6, class: 'form-control dlg-narrow', value: n.decimals ?? '', placeholder: n.format === 'currency' ? '2' : 'auto',
+    oninput: (e) => { n.decimals = e.target.value === '' ? null : Number(e.target.value); changed(); },
+  })));
+  if (n.format !== 'currency') {
+    kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
+      el('input', { type: 'checkbox', class: 'form-check-input', checked: n.separator ? '' : undefined, onchange: (e) => { n.separator = e.target.checked; changed(); } }),
+      el('span', { class: 'form-check-label' }, 'Add 1,000 separator')));
+  }
+  return kids;
+}
+
 function fieldDialog(db, existing, after) {
   const fdc = fieldDialogCore;
   const isEdit = !!existing;
@@ -2026,7 +2057,7 @@ function fieldDialog(db, existing, after) {
     const c = {};
     if (f.type === 'select' || f.type === 'multiselect') c.options = f.optionsFull ?? (f.options ?? []).map((n) => ({ name: n, color: '' }));
     if (f.type === 'workflow') c.states = f.states ?? [];
-    if (f.type === 'number') for (const k of ['format', 'unit', 'decimals', 'separator']) { if (f[k] != null) c[k] = f[k]; }
+    if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator']) { if (f[k] != null) c[k] = f[k]; }
     if (f.type === 'date') { if (f.format) c.format = f.format; if (f.time) c.time = true; }
     if (f.type === 'formula') c.expression = f.expression ?? '';
     if (f.type === 'field') c.depth = f.depth ?? 1;
@@ -2101,6 +2132,8 @@ function fieldDialog(db, existing, after) {
       kids.push(dsection('Script', el('div', { class: 'fx-summary' },
         el('code', { class: 'fx-summary-expr' }, state.expression || '— no script yet —'),
         el('button', { type: 'button', class: 'btn btn-sm', onclick: () => formulaScriptDialog(db, state, () => { drawCfg(); changed(); }) }, state.expression ? 'Edit script…' : 'Write script…'))));
+      // A numeric result wears the same costume a number field does.
+      kids.push(...numberCostumeControls(state, drawCfg, changed, { label: 'Result format' }));
     } else {
       const t = state.type;
       if (t === 'select' || t === 'multiselect') {
@@ -2108,15 +2141,7 @@ function fieldDialog(db, existing, after) {
       } else if (t === 'workflow') {
         kids.push(dsection('States', stateListEditor(state, changed)));
       } else if (t === 'number') {
-        kids.push(dsection('Format', segCtl(fdc.NUMBER_FORMATS, state.number.format ?? 'number', (v) => { state.number.format = v; changed(); })));
-        kids.push(dsection('Unit', el('input', { class: 'form-control', value: state.number.unit ?? '', placeholder: 'days, kg, $ …', oninput: (e) => { state.number.unit = e.target.value; changed(); } })));
-        kids.push(dsection('Decimals', el('input', {
-          type: 'number', min: 0, max: 6, class: 'form-control dlg-narrow', value: state.number.decimals ?? '', placeholder: 'auto',
-          oninput: (e) => { state.number.decimals = e.target.value === '' ? null : Number(e.target.value); changed(); },
-        })));
-        kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
-          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.number.separator ? '' : undefined, onchange: (e) => { state.number.separator = e.target.checked; changed(); } }),
-          el('span', { class: 'form-check-label' }, 'Add 1,000 separator')));
+        kids.push(...numberCostumeControls(state, drawCfg, changed));
       } else if (t === 'date') {
         // Each format shown as today's date would render in it — the
         // example IS the label. The time toggle shows its own example.
@@ -2218,21 +2243,22 @@ function fieldDialog(db, existing, after) {
 function editPatchConfig(existing, def, state) {
   const c = def.config;
   const patch = {};
-  if (existing.type === 'number') {
+  if (existing.type === 'number' || existing.type === 'formula') {
     patch.format = c.format ?? null;
     patch.unit = c.unit ?? null;
+    patch.currency = c.currency ?? null;
     patch.decimals = c.decimals ?? null;
     patch.separator = c.separator ?? null;
-  } else if (existing.type === 'date') {
+  }
+  if (existing.type === 'date') {
     patch.format = c.format ?? null;
     patch.time = c.time ?? null;
   } else if (existing.type === 'select' || existing.type === 'multiselect') {
     patch.options = (c.options ?? []).filter((o) => o.name && o.name.trim());
   } else if (existing.type === 'workflow') {
     patch.states = (c.states ?? []).filter((s) => s.name && s.name.trim());
-  } else if (existing.type === 'formula') {
-    if (state.expression) patch.expression = state.expression;
   }
+  if (existing.type === 'formula' && state.expression) patch.expression = state.expression;
   if (fieldDialogCore.DEFAULTABLE.includes(existing.type)) {
     patch.default = c.default ?? null;
   }

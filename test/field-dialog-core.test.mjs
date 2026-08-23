@@ -79,8 +79,8 @@ test('number config is canonical-minimal, like the engine normaliser output', ()
   // format 'number' and empty unit are defaults — they must not appear.
   const plain = core.definitionFromState({ type: 'number', number: { format: 'number', unit: '', decimals: null, separator: false } });
   assert.deepEqual(plain, { type: 'number', config: {} });
-  const rich = core.definitionFromState({ type: 'number', number: { format: 'currency', unit: 'USD', decimals: 2, separator: true } });
-  assert.deepEqual(rich.config, { format: 'currency', unit: 'USD', decimals: 2, separator: true });
+  const rich = core.definitionFromState({ type: 'number', number: { format: 'currency', currency: 'USD', decimals: 2, separator: true } });
+  assert.deepEqual(rich.config, { format: 'currency', currency: 'USD', decimals: 2, separator: true });
 });
 
 test('date config drops iso format, keeps time only when true', () => {
@@ -141,7 +141,7 @@ test('string options normalise into {name, color} state rows', () => {
 /* ---------- code pane: serialize + parse ---------- */
 
 test('serializeDefinition emits pretty JSON that parseDefinition accepts', () => {
-  const state = core.stateFromDefinition({ type: 'number', config: { format: 'currency', unit: 'USD', decimals: 2 } });
+  const state = core.stateFromDefinition({ type: 'number', config: { format: 'currency', currency: 'USD', decimals: 2 } });
   const text = core.serializeDefinition(state);
   assert.match(text, /"currency"/);
   const parsed = core.parseDefinition(text);
@@ -222,4 +222,28 @@ test('migrateState carries config across a compatible move so the form can be ad
   const num = core.migrateState(core.stateFromDefinition({ type: 'text', config: { default: 'x' } }), 'number');
   assert.equal(num.type, 'number');
   assert.equal(num.default, '', 'a default of the old type does not survive');
+});
+
+/* ---------- units vs currency, numbers and formulas (2026-08-23) ---------- */
+
+test('number state: currency code rides `currency`, free text rides `unit`, never both', () => {
+  const cur = core.definitionFromState({ type: 'number', number: { format: 'currency', currency: 'EUR', unit: 'days', decimals: 2, separator: false } });
+  assert.deepEqual(cur.config, { format: 'currency', currency: 'EUR', decimals: 2 });
+  const unit = core.definitionFromState({ type: 'number', number: { format: 'number', currency: 'EUR', unit: 'days', decimals: null, separator: false } });
+  assert.deepEqual(unit.config, { unit: 'days' });
+});
+
+test('a formula carries the number costume and round-trips it', () => {
+  const def = { type: 'formula', config: { expression: 'Price * Count', format: 'currency', currency: 'USD', decimals: 0 } };
+  const state = core.stateFromDefinition(def);
+  assert.equal(state.number.currency, 'USD');
+  assert.deepEqual(core.definitionFromState(state), def);
+  const plain = core.definitionFromState({ type: 'text', computed: 'formula', expression: 'len(Name)', number: core.blankState().number });
+  assert.deepEqual(plain, { type: 'formula', config: { expression: 'len(Name)' } });
+});
+
+test('CURRENCIES lists ISO codes the engine will accept, USD first', () => {
+  assert.equal(core.CURRENCIES[0].id, 'USD');
+  assert.ok(core.CURRENCIES.length >= 12);
+  for (const c of core.CURRENCIES) assert.match(c.id, /^[A-Z]{3}$/);
 });
