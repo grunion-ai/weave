@@ -29,7 +29,16 @@ const FONTS = {
 // (codepoint→gid), hmtx/hhea (advance widths), head (unitsPerEm, bbox),
 // maxp (glyph count), OS/2 (cap height). No libraries.
 
-const TTF_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'vendor', 'fonts', 'DejaVuSans.ttf');
+/* Resolved lazily and tolerantly: under a bundler (the Cloudflare Worker,
+   Feature #84) import.meta.url is undefined for non-entry modules and there
+   is no font file on disk anyway — fileURLToPath at module top crashed the
+   whole Worker at cold start (G2, 2026-08-22). With no font available,
+   needsUnicode() reports false and non-WinAnsi text degrades to '?' instead
+   of the embedded DejaVu — a worse PDF, never a dead process. */
+let TTF_PATH = null;
+try {
+  TTF_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'vendor', 'fonts', 'DejaVuSans.ttf');
+} catch { /* no file URL in this runtime — unicodeFont() stays null */ }
 const MISSING_GLYPH_CP = 0x25a1; // □ — visible stand-in for glyphs the font lacks
 
 function parseTtf(buf) {
@@ -121,16 +130,26 @@ function parseTtf(buf) {
 }
 
 let UNI = null;
+let UNI_FAILED = false;
 export function unicodeFont() {
-  if (!UNI) UNI = parseTtf(readFileSync(TTF_PATH));
+  if (UNI) return UNI;
+  if (UNI_FAILED) return null;
+  try {
+    UNI = parseTtf(readFileSync(TTF_PATH));
+  } catch {
+    UNI_FAILED = true; // no path (bundled runtime) or no file — degrade, once
+    return null;
+  }
   return UNI;
 }
 
-// A string needs the embedded font when any codepoint has no WinAnsi byte.
+// A string needs the embedded font when any codepoint has no WinAnsi byte —
+// and the font is actually available; without it the WinAnsi '?' fallback in
+// escapePdfText carries those glyphs instead.
 function needsUnicode(text) {
   for (const ch of String(text)) {
     const cp = ch.codePointAt(0);
-    if (cp > 255 && !WINANSI_EXTRA[cp]) return true;
+    if (cp > 255 && !WINANSI_EXTRA[cp]) return !!unicodeFont();
   }
   return false;
 }

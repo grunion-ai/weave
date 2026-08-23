@@ -3,7 +3,7 @@
 # gitignored on purpose: account ids, routes, and binding names stay private.
 name = "weave"
 main = "src/worker.js"
-compatibility_date = "2026-08-01"
+compatibility_date = "2026-06-02"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]

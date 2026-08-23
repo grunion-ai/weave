@@ -170,3 +170,25 @@ test('unicode PDF written to disk has a well-formed xref trailer', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a missing unicode font degrades the PDF, never the process (G2, workerd)', async () => {
+  /* The Worker bundle has no import.meta.url and no font on disk: TTF_PATH
+     resolution and readFileSync both fail there. Re-import the module with
+     the font path unreachable and render unicode markdown — it must produce
+     a valid PDF through the WinAnsi '?' fallback, not throw. */
+  const { mkdtempSync, cpSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'weave-pdf-nofont-'));
+  try {
+    cpSync(new URL('../src', import.meta.url).pathname, join(dir, 'src'), { recursive: true });
+    // public/vendor/fonts deliberately NOT copied — unicodeFont() must fail.
+    const mod = await import(join(dir, 'src', 'pdf.js'));
+    assert.equal(mod.unicodeFont(), null, 'font resolution fails closed');
+    const pdf = mod.markdownToPdf('# Привет\n\nКириллица without a font.', { title: 'т' });
+    assert.ok(pdf.length > 500, 'a real PDF still renders');
+    assert.equal(pdf.subarray(0, 5).toString(), '%PDF-', 'and it is a PDF');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
