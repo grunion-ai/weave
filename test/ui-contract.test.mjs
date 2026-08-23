@@ -812,15 +812,15 @@ test('heading levels are not labelled in the document gutter', () => {
   }
 });
 
-test('the document section head is quiet until it is reached for', () => {
+test('the document section head names the document at rest; its tools stay quiet until reached for', () => {
+  // Kyle, 2026-08-23: "docs and description show only on hover, they should
+  // show all the time" — the name is a field label like any other row's.
+  // The caret / permalink / downloads beside it still fade in on hover.
   const head = rulesFor('.doc-section-head');
-  assert.equal(head.opacity, '0', 'at rest the head shows nothing above the document');
-  assert.ok(head.transition, 'it fades rather than snapping');
-  // Still in the layout: hiding it with display:none would shift the document
-  // up on hover, and take the caret / permalink / downloads with it.
+  assert.notEqual(head.opacity, '0', 'the head is visible at rest');
   assert.notEqual(head.display, 'none', 'the head keeps its space in the flow');
-  assert.equal(rulesFor('.doc-section:hover .doc-section-head').opacity, '1');
-  assert.equal(rulesFor('.doc-section:focus-within .doc-section-head').opacity, '1');
+  assert.equal(rulesFor('.doc-anchor').opacity, '0', 'the tools are hidden at rest');
+  assert.equal(rulesFor('.doc-section:hover .doc-anchor').opacity, '.7', 'and fade in on hover');
 });
 
 /* ---------- defect: a code block under the caret rendered as a smear ----------
@@ -1012,8 +1012,24 @@ test('the entity page heads its body with a draggable fields block that writes f
   const rf = fnBody('reorderField');
   assert.match(rf, /onFail = \(\) => showDatabase\(db\.id\)/, 'reorderField defaults its failure redraw to the table view');
   assert.match(rf, /onFail\(\)/, 'and calls whatever the caller gave it');
+  // Documents are fields too (Kyle, 2026-08-23: "be reorderable with other
+  // fields"): one ordered body over db.fields, a document rendering as its
+  // section in that sequence, draggable by its head, droppable anywhere.
+  assert.match(body, /const shown = db\.fields\.filter\(\(f\) => !\(f\.name === 'Name' \|\| \(f\.type === 'relation' && f\.many\)\)\);/,
+    'the ordered body is every field but Name and collections — documents included');
+  assert.match(body, /f\.type === 'document' \? docSection\(f\) :/, 'a document field renders as its section, in sequence');
+  assert.match(body, /class: 'doc-section-head', draggable: 'true'/, 'a document is dragged by its head');
+  assert.match(body, /const dragRow = \(node, handle, f\)/, 'one drag wiring serves rows and sections');
+  assert.doesNotMatch(body, /for \(const f of documentFields\(db\)\)/, 'no separate documents loop');
   assert.match(CSS, /\.entity-fields \.fieldrow\.dragging/, 'a dragged row is ghosted');
   assert.match(CSS, /\.entity-fields \.fieldrow\.drop-target/, 'and the drop target is marked');
+  assert.match(CSS, /\.entity-fields \.doc-section\.drop-target/, 'a section too');
+  // The label is the field: clicking it opens the same tray the table's
+  // header click opens (Feature #109), so a field is editable from the one
+  // place a reader already is.
+  assert.match(body, /class: 'fieldrow-label', title: 'Edit field', onclick: \(\) => editFieldDialog\(db, f\)/,
+    'the label click opens the field tray');
+  assert.match(CSS, /\.entity-fields \.fieldrow-label:hover/, 'and reads as clickable on hover');
 });
 
 test('an embedded grid can add a record and link it in one step', () => {
@@ -1354,4 +1370,18 @@ test('system columns are toggled only from the eye — not from the table ⋮ me
   const draw = fnBody('drawDatabase');
   assert.doesNotMatch(draw, /Object\.keys\(SYSTEM_COLS\)\.map/, 'no Created At / Modified At rows in the table menu');
   assert.match(fnBody('fieldVisibilityPopover'), /Object\.keys\(SYSTEM_COLS\)\.map/);
+});
+
+/* Kyle, 2026-08-23: "if an entity has a description it should show in the
+   table view of that entity." The Docs cell carries a one-line preview of
+   the first document beside the 📄 toggle — the same docPreview the search
+   results and cards use — so a row says what it is about without opening. */
+test('the table grid previews the first document in the Docs cell', () => {
+  const grid = fnBody('renderTable');
+  assert.match(grid, /class: 'doc-snip'/, 'the preview is a quiet snip in the cell');
+  assert.match(grid, /docPreview\(item\.docs\?\.\[documentFields\(db\)\[0\]\?\.name\] \?\? item\.doc, 90\)/,
+    'the first document field, through the one preview function');
+  assert.match(grid, /class: 'docs-cell'/, 'the cell is addressable');
+  assert.ok(rulesFor('.docs-cell .doc-snip')['max-width'], 'the snip is width-capped');
+  assert.equal(rulesFor('.docs-cell .doc-snip')['text-overflow'], 'ellipsis', 'and ellipsises');
 });

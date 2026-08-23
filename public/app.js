@@ -1604,7 +1604,10 @@ function renderTable(main, db, items, onSaved) {
           }, editorFor(f, item, db, onSaved, { compact: true }));
         }),
         ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')),
-        el('td', {}, el('button', {
+        el('td', { class: 'docs-cell' }, el('span', {
+          class: 'doc-snip', title: 'Open documents',
+          onclick: (e) => { e.stopPropagation(); state.expanded.add(item.id); draw(); },
+        }, docPreview(item.docs?.[documentFields(db)[0]?.name] ?? item.doc, 90)), el('button', {
           class: 'btn btn-sm btn-ghost-secondary tiny' + (state.expanded.has(item.id) ? ' active-toggle' : ''),
           title: 'Edit documents',
           onclick: () => {
@@ -3363,11 +3366,63 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const right = el('div');
   grid.append(left, right);
 
-  /* One document section per document field. The rendered document IS the
+  /* A deck is composed on read, so the frame IS the deck: the same editable
+     file /e/:id/deck.html serves, live over whatever the slides say right now.
+     A deck entity shows its whole composition; a slide shows itself, wearing
+     the chrome of the deck it belongs to. Slides also carry the version
+     action, because a version is a new row, not a saved copy. */
+  const deckRole = deckRoleOf(db);
+  if (deckRole) {
+    const deckUrl = `${WS_PREFIX}/e/${id}/deck.html`;
+    const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
+    const frame = el('iframe', { class: 'deck-frame', src: deckUrl, allowfullscreen: '', allow: 'fullscreen', title: label });
+    const body = el('div', { class: 'doc-section-body' }, frame);
+    const caret = el('button', {
+      class: 'doc-caret', type: 'button', title: 'Collapse section',
+      onclick: () => {
+        const open = body.classList.toggle('hidden');
+        caret.classList.toggle('closed', open);
+        docSectionCollapse(id, label, open);
+      },
+    });
+    const newVersion = async (promote) => {
+      try {
+        const made = await api('POST', `/entities/${id}/version${promote ? '?promote=1' : ''}`);
+        toast(`Version ${made.fields?.Version ?? ''} created`);
+        location.hash = `#/entity/${made.id}`;
+      } catch (err) { toast(err.message, true); }
+    };
+    const menu = dotsMenu([
+      { label: 'Download .html', href: deckUrl, download: `${entity.name || label}.html` },
+      { label: 'Open the composed model (.json)', href: `${WS_PREFIX}/e/${id}/deck.json` },
+      ...(deckRole === 'slide' ? [
+        'divider',
+        { label: 'New version', run: () => newVersion(false) },
+        { label: 'New version, promoted into its decks', run: () => newVersion(true) },
+      ] : []),
+    ], { title: `${label} actions`, extraClass: 'doc-dl' });
+    const section = el('section', { class: 'doc-section deck-section' },
+      el('div', { class: 'doc-section-head' },
+        caret,
+        el('span', { class: 'doc-section-name' }, label),
+        el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, '⟳'),
+        el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, '⛶'),
+        el('span', {
+          class: 'doc-anchor permalink-copy', title: 'Copy link to this deck',
+          onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
+        }, '⧉'),
+        menu),
+      body);
+    left.append(section);
+    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); }
+  }
+
+  /* One document section per document field — built here, placed by the
+     ordered body below. The rendered document IS the
      editor — no edit mode, no preview toggle, no save button. The section
      title is a quiet collapsible line rather than a card header, so nothing
      competes with the document for attention. */
-  for (const f of documentFields(db)) {
+  const docSection = (f) => {
     const fmtBase = `${WS_PREFIX}/e/${id}/doc/${encodeURIComponent(f.name)}`;
     const host = el('div', { class: 'doc-editor' });
     const status = el('span', { class: 'doc-status', title: 'Saved automatically' });
@@ -3391,20 +3446,21 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       },
     });
     const section = el('section', { class: 'doc-section' },
-      el('div', { class: 'doc-section-head' },
+      el('div', { class: 'doc-section-head', draggable: 'true' },
+        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
         caret,
         el('span', { class: 'doc-section-name' }, f.name),
+        sourceToggle,
         el('span', {
-          class: 'doc-anchor', title: 'View fullscreen',
-          onclick: () => fullscreenViewer(`${entity.name || 'Document'} — ${f.name}`, { url: `${fmtBase}.html` }),
+          class: 'doc-anchor', title: 'Expand',
+          onclick: () => expandDocument(grid, `${fmtBase}.html`, f.name),
         }, '⛶'),
         el('span', {
-          class: 'doc-anchor', title: 'Copy link to this document',
+          class: 'doc-anchor permalink-copy', title: 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
-        }, '🔗'),
+        }, '⧉'),
         status, dl),
       body);
-    left.append(section);
 
     if (docSectionCollapse(id, f.name)) {
       body.classList.add('hidden');
@@ -3412,17 +3468,29 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     }
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name);
-    const ed = mountDocEditor(host, {
-      value: entity.docs?.[f.name] ?? '',
-      placeholder: `Write ${f.name}… press / for blocks`,
-      onInput: (value) => {
-        scheduleDocSave(id, f.name, value, status);
-        rail.schedule(); // headings may have changed
-        folds.schedule(); // a re-render drops the fold classes; re-apply
-      },
-    });
-    editors?.push(ed);
-  }
+    const mountEditor = () => {
+      const ed = mountDocEditor(host, {
+        value: entity.docs?.[f.name] ?? '',
+        placeholder: `Write ${f.name}… press / for blocks`,
+        onInput: (value) => {
+          scheduleDocSave(id, f.name, value, status);
+          rail.schedule(); // headings may have changed
+          folds.schedule(); // a re-render drops the fold classes; re-apply
+        },
+      });
+      editors?.push(ed);
+    };
+    // The source of an HTML document is code, so its editor is a code box —
+    // the rendering editor would run the HTML instead of showing it.
+    const mountSourceEditor = () => {
+      const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: 'HTML source' });
+      ta.value = entity.docs?.[f.name] ?? '';
+      ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, status));
+      host.append(ta);
+    };
+    if (!isApp) mountEditor();
+    return section;
+  };
 
   /* Collections of related records go under the documents, in the body rather
      than the side panel: they are work to do, not attributes to read. Each is
@@ -3457,41 +3525,44 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   });
   commentsBody.append(el('div', { style: 'margin-top:8px' }, commentInput));
 
-  /* Fields block (Feature #117) — the first thing in the body, Fibery-style
-     label/value rows, because the fields are what the record IS; documents
-     and collections follow. Order is the table's fieldOrder: drag ⠿ and the
-     table view's columns follow, through the one reorderField writer. Rows
-     move in place on drop; the schema write happens behind the move. */
+  /* The ordered body (Feature #117) — every field but Name and collections,
+     in the table's fieldOrder, documents included: a value field is a
+     Fibery-style label / value row, a document field is its section, in
+     sequence. Drag ⠿ (a row, or a section by its head) and the table view's
+     columns follow, through the one reorderField writer. The moved node
+     relocates in place; the schema write happens behind the move. */
   const fields = el('div', { class: 'entity-fields' });
   let dragFrom = null;
-  const shown = db.fields.filter((f) => !(f.name === 'Name' || f.type === 'document' || (f.type === 'relation' && f.many)));
+  const shown = db.fields.filter((f) => !(f.name === 'Name' || (f.type === 'relation' && f.many)));
+  const dragRow = (node, handle, f) => {
+    node.dataset.field = f.name;
+    handle.addEventListener('dragstart', (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; node.classList.add('dragging'); });
+    handle.addEventListener('dragend', () => node.classList.remove('dragging'));
+    node.addEventListener('dragover', (e) => { if (!dragFrom) return; e.preventDefault(); node.classList.add('drop-target'); });
+    node.addEventListener('dragleave', () => node.classList.remove('drop-target'));
+    node.addEventListener('drop', (e) => {
+      node.classList.remove('drop-target');
+      const from = dragFrom; dragFrom = null;
+      if (!from || from === f.name) return;
+      e.preventDefault();
+      const fromNode = fields.querySelector(`[data-field="${CSS.escape(from)}"]`);
+      const after = shown.findIndex((x) => x.name === from) < shown.findIndex((x) => x.name === f.name);
+      if (fromNode) node.insertAdjacentElement(after ? 'afterend' : 'beforebegin', fromNode);
+      reorderField(db, from, f.name, { after, onFail: refresh });
+    });
+    // Editors inside a draggable node must keep their own mouse events.
+    for (const ctl of handle.querySelectorAll('input,button,textarea,select,.picker-wrap,[contenteditable]')) ctl.addEventListener('mousedown', (e) => e.stopPropagation());
+    return node;
+  };
   for (const f of shown) {
-    if (f.name === 'Name' || f.type === 'document') continue;
     // A collection relation is the grid in the body; a row of chips repeating
     // it here would be the same links twice, one of them worse.
     if (f.type === 'relation' && f.many) continue;
-    const row = el('div', {
-      class: 'fieldrow', draggable: 'true', dataset: { field: f.name },
-      ondragstart: (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); },
-      ondragend: () => row.classList.remove('dragging'),
-      ondragover: (e) => { e.preventDefault(); row.classList.add('drop-target'); },
-      ondragleave: () => row.classList.remove('drop-target'),
-      ondrop: (e) => {
-        e.preventDefault(); row.classList.remove('drop-target');
-        const from = dragFrom; dragFrom = null;
-        if (!from || from === f.name) return;
-        const fromRow = fields.querySelector(`[data-field="${CSS.escape(from)}"]`);
-        const after = shown.findIndex((x) => x.name === from) < shown.findIndex((x) => x.name === f.name);
-        if (fromRow) row.insertAdjacentElement(after ? 'afterend' : 'beforebegin', fromRow);
-        reorderField(db, from, f.name, { after, onFail: refresh });
-      },
-    },
+    const node = f.type === 'document' ? docSection(f) : el('div', { class: 'fieldrow', draggable: 'true' },
       el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
-      el('label', {}, fieldNameLabel(f)),
+      el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) }, fieldNameLabel(f)),
       editorFor(f, entity, db, () => refresh()));
-    // Editors inside a draggable row must keep their own mouse events.
-    for (const ctl of row.querySelectorAll('input,button,textarea,select,.picker-wrap,[contenteditable]')) ctl.addEventListener('mousedown', (e) => e.stopPropagation());
-    fields.append(row);
+    fields.append(dragRow(node, f.type === 'document' ? node.querySelector('.doc-section-head') : node, f));
   }
   if (!fields.childElementCount) {
     fields.append(el('span', { class: 'wv-empty' }, 'This table has no fields beyond its name.'));

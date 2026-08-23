@@ -217,6 +217,9 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 .add-entity-btn { width: 100%; display: block; padding: 7px 12px; background: none; border: 0; color: var(--tblr-secondary); font: inherit; text-align: left; cursor: pointer; }
 .add-entity-btn:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-primary); }
 .entity-row { cursor: pointer; }
+.docs-cell { white-space: nowrap; }
+.docs-cell .doc-snip { display: inline-block; vertical-align: middle; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--tblr-secondary); margin-right: 6px; cursor: pointer; }
+.docs-cell .doc-snip:empty { display: none; }
 .doc-row td { background: var(--tblr-bg-surface-secondary); }
 .doc-row:hover td { background: var(--tblr-bg-surface-secondary); box-shadow: none; }
 
@@ -313,12 +316,22 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    The first thing in the body: label / value rows, a ⠿ grip that only shows
    on hover so the block reads as a form, not a list of handles. A drop moves
    the row in place and writes fieldOrder (the table's columns follow). */
-.entity-fields { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 22px; max-width: 720px; }
+.entity-fields { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 22px; }
+.entity-fields .fieldrow { max-width: 720px; }
+.entity-fields .doc-section { margin: 10px 0 18px; border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
+.entity-fields .doc-section .opt-grip { opacity: 0; transition: opacity .12s; cursor: grab; }
+.entity-fields .doc-section:hover .opt-grip { opacity: 1; }
+.entity-fields .doc-section-head { cursor: grab; }
+.entity-fields .doc-section.dragging { opacity: .4; }
+.entity-fields .doc-section.drop-target { border-top-color: var(--tblr-primary); }
+.entity-fields .dragging ~ .doc-section.drop-target { border-top-color: transparent; border-bottom-color: var(--tblr-primary); }
 .entity-fields .fieldrow { grid-template-columns: 16px 150px minmax(0, 1fr); gap: 0 10px; padding: 3px 6px 3px 0; margin-left: -6px; border-radius: var(--tblr-border-radius); border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
 .entity-fields .fieldrow:hover { background: var(--wv-pill-hover); }
 .entity-fields .fieldrow .opt-grip { opacity: 0; text-align: center; transition: opacity .12s; }
 .entity-fields .fieldrow:hover .opt-grip { opacity: 1; }
 .entity-fields .fieldrow label { font-size: 13px; }
+.entity-fields .fieldrow-label { cursor: pointer; border-radius: 4px; padding: 2px 6px; margin-left: -6px; width: fit-content; }
+.entity-fields .fieldrow-label:hover { background: var(--wv-pill-active); color: var(--tblr-body-color); }
 /* Values sit at their own width on the left of the column — a chip is a chip,
    not a bar; text inputs stay quiet until hovered, like the grid's. */
 .entity-fields .fieldrow { min-height: 32px; }
@@ -512,8 +525,7 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
    chrome ABOUT the document, so it stays out of sight until the section is
    hovered or holds focus. It keeps its space in the flow: display:none would
    jump the document up by a line the moment the pointer crossed it. */
-.doc-section-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; opacity: 0; transition: opacity .12s ease; }
-.doc-section:hover .doc-section-head, .doc-section:focus-within .doc-section-head { opacity: 1; }
+.doc-section-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; }
 .doc-section-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
 .doc-caret { border: 0; background: none; padding: 0 2px; cursor: pointer; color: var(--tblr-secondary); line-height: 1; }
 .doc-caret::before { content: "▾"; display: inline-block; transition: transform .12s ease; }
