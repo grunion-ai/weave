@@ -278,3 +278,7 @@ test('select and files wear distinct icons from multiselect and document', () =>
   assert.notEqual(icon('attachments'), icon('document'));
   assert.equal(icon('select'), '▾');
 });
+
+test('url wears a link icon, not the command glyph (Kyle, 2026-08-23)', () => {
+  assert.equal(core.FIELD_TYPES.find((t) => t.id === 'url').icon, '🔗');
+});

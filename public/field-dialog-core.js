@@ -16,7 +16,7 @@
     { id: 'date', label: 'date', icon: '▤' },
     { id: 'daterange', label: 'range', icon: '⇤⇥' },
     { id: 'checkbox', label: 'checkbox', icon: '☑' },
-    { id: 'url', label: 'url', icon: '⌘' },
+    { id: 'url', label: 'url', icon: '🔗' },
     { id: 'email', label: 'email', icon: '@' },
     { id: 'select', label: 'select', icon: '▾' },
     { id: 'multiselect', label: 'multi', icon: '☰' },
