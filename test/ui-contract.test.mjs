@@ -1057,6 +1057,11 @@ test('docs go fullscreen and diagrams become whiteboards (Features #47, #46)', (
   assert.ok(html.includes('graph-parse.js'), 'the parser loads with the app');
   assert.ok(app.includes("src = '/vendor/cytoscape.min.js'"), 'cytoscape is lazy — 434KB only when a whiteboard opens');
   assert.ok(app.includes('pre.dataset.mmd'), 'the mermaid source survives its own rendering');
+  // A document that is itself an app (an HTML slide deck) calls
+  // requestFullscreen from inside the frame; Safari refuses unless the
+  // iframe says allowfullscreen (Chromium allows same-origin by default).
+  const frame = app.slice(app.indexOf("class: 'fsv-frame'"), app.indexOf("class: 'fsv-frame'") + 120);
+  assert.ok(frame.includes('allowfullscreen'), 'the viewer frame permits fullscreen from inside (Safari)');
 });
 
 test('every selector speaks the one dialect: search bar first, list under it', () => {

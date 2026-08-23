@@ -456,7 +456,7 @@ let mermaidLoading = null;
    the whiteboard (#46), which fills the frame slot with a canvas instead. */
 function fullscreenViewer(title, { url = null, mount = null } = {}) {
   document.querySelector('#fsv-back')?.remove();
-  const frame = url ? el('iframe', { class: 'fsv-frame', src: url }) : null;
+  const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen' }) : null;
   const back = el('div', { id: 'fsv-back' },
     el('div', { class: 'fsv-bar' },
       url ? el('button', { class: 'btn btn-sm', title: 'Back', onclick: () => frame.contentWindow?.history.back() }, '‹') : null,
