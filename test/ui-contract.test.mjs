@@ -1093,7 +1093,8 @@ test('resize and reorder commit in place — the grid never tears down mid-gestu
   assert.ok(!resize.includes('showDatabase(db.id);\n') || resize.includes('catch'), 'redraw only on failure');
   assert.ok(resize.includes('th.style.width'), 'the header keeps its width locally');
   assert.ok(resize.includes('cell.style.maxWidth'), 'cells follow without a repaint');
-  const reorder = app.slice(app.indexOf('async function reorderField'), app.indexOf('async function setColumnWidth'));
+  const rStart = app.indexOf('async function reorderField');
+  const reorder = app.slice(rStart, rStart + 2600);
   assert.ok(reorder.includes('insertAdjacentElement'), 'columns move as DOM cells, not a redraw');
   assert.ok(reorder.includes('db.fields.splice'), 'the local schema order follows the move');
   assert.ok(reorder.includes('showDatabase(db.id); // the move did not hold'), 'failure falls back to truth');
