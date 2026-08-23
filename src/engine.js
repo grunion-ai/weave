@@ -113,6 +113,109 @@ export const TYPE_MIGRATIONS = {
   workflow: ['select'],
 };
 
+/* The ONTOLOGY: the kinds of object weave itself models, on the axis that the
+   field types above are NOT. An entity HAS fields; a field is not an entity,
+   and `text` is not a kind of thing weave stores — it is the datatype of one
+   slot on one. Both axes are exported because both are asked for: agents
+   discovering the model need to know what a Table is before what a `rollup`
+   is. Every entry names the verbs that create and read it, so the list cannot
+   quietly outlive the engine (test/ontology.test.mjs holds it to that, and to
+   docs/ONTOLOGY.md). `storedIn` says where the object actually lives — which
+   is how you can tell a Key (never in the workspace, only in the keystore)
+   from a Comment (inside the entity that carries it). */
+export const ONTOLOGY = [
+  {
+    key: 'workspace', name: 'Workspace', layer: 'structure', storedIn: 'state.meta', parent: null,
+    definition: 'One workspace file and everything in it: spaces, tables, entities, and the operational objects around them.',
+    identity: 'the .db file itself; a name and an optional logo',
+    api: ['describeSchema', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
+  },
+  {
+    key: 'space', name: 'Space', layer: 'structure', storedIn: 'state.spaces', parent: 'workspace',
+    definition: 'A named container grouping tables that belong to one area of work; it qualifies their names.',
+    identity: 'uuid; name unique in the workspace, and the left half of Space/Table',
+    api: ['createSpace', 'listSpaces', 'updateSpace', 'deleteSpace'],
+  },
+  {
+    key: 'table', name: 'Table', layer: 'structure', storedIn: 'state.tables', parent: 'space',
+    definition: 'A user-defined entity type: the schema — an ordered set of fields — that every one of its entities follows.',
+    identity: 'uuid; qualified name Space/Table',
+    api: ['createTable', 'listTables', 'updateTable', 'deleteTable', 'qualifiedName'],
+  },
+  {
+    key: 'field', name: 'Field', layer: 'structure', storedIn: 'table.fields', parent: 'table',
+    definition: 'One typed, named slot on a table, carrying a field type and that type’s config. Not an entity: it describes entities.',
+    identity: 'uuid; name unique within its table',
+    api: ['addField', 'addRelation', 'updateField', 'deleteField', 'materializeField'],
+  },
+  {
+    key: 'entity', name: 'Entity', layer: 'data', storedIn: 'state.entities', parent: 'table',
+    definition: 'One row of one table: a value per field, plus the documents, comments, files and activity it carries.',
+    identity: 'uuid; per-table public id addressed as Table#n',
+    api: ['createEntity', 'updateEntity', 'readEntity', 'deleteEntity', 'restoreEntity', 'query'],
+  },
+  {
+    key: 'document', name: 'Document', layer: 'entity content', storedIn: 'entity.docs', parent: 'entity',
+    definition: 'A long-form body — markdown, html or code — held in a document-typed field. An entity may carry any number.',
+    identity: 'the entity plus the document field it fills',
+    api: ['getDoc', 'setDoc', 'appendDoc', 'documentFields'],
+  },
+  {
+    key: 'comment', name: 'Comment', layer: 'entity content', storedIn: 'entity.comments', parent: 'entity',
+    definition: 'An authored note on an entity, ordered by time and separate from its documents.',
+    identity: 'uuid within its entity',
+    api: ['addComment', 'deleteComment'],
+  },
+  {
+    key: 'file', name: 'File', layer: 'entity content', storedIn: 'entity.files', parent: 'entity',
+    definition: 'A blob attached to an entity, stored beside the workspace file and referenced by id from attachments fields.',
+    identity: 'uuid; the blob is files/<id> next to the workspace',
+    api: ['attachFile', 'attachToField', 'readFile', 'deleteFile'],
+  },
+  {
+    key: 'activity', name: 'Activity', layer: 'history', storedIn: 'entity.activity', parent: 'entity',
+    definition: 'An append-only record of one thing that happened to an entity — created, field-updated, state-changed, doc-updated, comment-added, file-attached, relation-updated, doc-appended, automation-ran, undo.',
+    identity: 'entityId:index',
+    api: ['activityFeed', 'getActivity'],
+  },
+  {
+    key: 'view', name: 'View', layer: 'operations', storedIn: 'state.meta.views', parent: 'workspace',
+    definition: 'A saved arrangement of one or more table blocks, each with its own filter and layout; optionally shared by token.',
+    identity: 'uuid; a share token when shared',
+    api: ['createView', 'listViews', 'getView', 'deleteView', 'resolveView', 'shareView', 'unshareView'],
+  },
+  {
+    key: 'automation', name: 'Automation', layer: 'operations', storedIn: 'state.automations', parent: 'table',
+    definition: 'A rule bound to one table: a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook).',
+    identity: 'uuid',
+    api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
+  },
+  {
+    key: 'account', name: 'Account', layer: 'access', storedIn: 'state.meta.accounts', parent: 'workspace',
+    definition: 'A named token holder with a role (admin, writer, reader). Only the token hash is kept.',
+    identity: 'uuid; name unique in the workspace',
+    api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth'],
+  },
+  {
+    key: 'key', name: 'Key', layer: 'access', storedIn: 'keystore', parent: 'workspace',
+    definition: 'A named secret in the keystore outside the workspace. A key field stores the NAME; the value is never in the .db, never read back.',
+    identity: 'its name',
+    api: ['setKey', 'hasKey', 'listKeys', 'resolveKey', 'deleteKey'],
+  },
+  {
+    key: 'audit', name: 'Audit entry', layer: 'history', storedIn: 'store.audit_log', parent: 'workspace',
+    definition: 'A workspace-level record of a structural change: spaces, tables, fields, relations, views, accounts, keys, applied schemas.',
+    identity: 'rowid in audit_log',
+    api: ['listAudit'],
+  },
+  {
+    key: 'undo', name: 'Undo step', layer: 'history', storedIn: 'store.undo_log', parent: 'workspace',
+    definition: 'A reversible before-image of one entity mutation, newest first, replayed by undo().',
+    identity: 'rowid in undo_log',
+    api: ['undo', 'listUndo'],
+  },
+];
+
 /* The number costume (#97): decimals, thousands separator, then one of
    percent / currency (ISO code through Intl — '$149.50', '€1,200') / a
    free-text unit appended ('12 days'). Used by number fields and by
