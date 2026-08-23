@@ -2068,19 +2068,6 @@ function formulaBuilder(db, state, onChange) {
       el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'functions'), ...fnChips)));
 }
 
-/* The formula script, in its own dialog above the tray: the expression
-   with insertable field/function chips. Saving writes state.expression. */
-function formulaScriptDialog(db, state, onSave) {
-  const draft = { expression: state.expression ?? '' };
-  modal('Formula script', [
-    el('div', { class: 'full' }, formulaBuilder(db, draft, () => {})),
-  ], async () => {
-    if (!draft.expression.trim()) throw new Error('A formula needs an expression');
-    state.expression = draft.expression;
-    onSave();
-  }, 'Save script');
-}
-
 /* The number costume controls (Kyle, 2026-08-23): Format → number shows a
    free-text Unit (days, feet); currency shows an ISO-code picker — the two
    never mix; percent shows neither. Decimals and the separator apply to
@@ -2171,7 +2158,7 @@ function fieldDialog(db, existing, after) {
         onchange: (e) => {
           state.computed = e.target.checked ? 'formula' : false;
           drawGrid(); drawCfg(); changed();
-          if (state.computed) formulaScriptDialog(db, state, () => { drawCfg(); changed(); });
+          if (state.computed) cfgWrap.querySelector('.fx-expr')?.focus();
         },
       }),
       el('span', { class: 'fx-mark' }, 'ƒ'), 'Formula',
@@ -2193,9 +2180,8 @@ function fieldDialog(db, existing, after) {
   function drawCfg() {
     const kids = [];
     if (state.computed === 'formula') {
-      kids.push(dsection('Script', el('div', { class: 'fx-summary' },
-        el('code', { class: 'fx-summary-expr' }, state.expression || '— no script yet —'),
-        el('button', { type: 'button', class: 'btn btn-sm', onclick: () => formulaScriptDialog(db, state, () => { drawCfg(); changed(); }) }, state.expression ? 'Edit script…' : 'Write script…'))));
+      // The script editor lives in the tray (Kyle, 2026-08-23), not a window.
+      kids.push(dsection('Script', formulaBuilder(db, state, changed)));
       // A numeric result wears the same costume a number field does.
       kids.push(...numberCostumeControls(state, drawCfg, changed, { label: 'Result format' }));
     } else {

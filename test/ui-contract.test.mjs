@@ -1153,11 +1153,11 @@ test('app.js consumes the tested core, loaded before it', () => {
   assert.ok(core > -1 && core < app, 'field-dialog-core.js must load before app.js');
 });
 
-test('formula is a checkbox that opens the script dialog; the code pane is gone (Kyle, 2026-08-23)', () => {
+test('formula is a checkbox; the script editor lives inside the tray (Kyle, 2026-08-23)', () => {
   const dlg = fnBody('fieldDialog');
   assert.doesNotMatch(dlg, /def-code|\{ \} definition/, 'no definition pane');
-  assert.match(dlg, /formulaScriptDialog\(db, state/, 'ticking Formula opens the script dialog');
-  assert.match(fnBody('formulaScriptDialog'), /\n  modal\('Formula script'/, 'the script is its own dialog above the tray');
+  assert.doesNotMatch(APP, /formulaScriptDialog/, 'no separate script window');
+  assert.match(dlg, /dsection\('Script', formulaBuilder\(db, state, changed\)\)/, 'the builder is a tray section');
   assert.match(dlg, /fdc\.typeChoices\(isEdit \? existing\.type : null\)/, 'existing fields see self + migrations only');
   assert.match(dlg, /patch\.type = def\.type/, 'a changed type is sent as a migration');
 });
