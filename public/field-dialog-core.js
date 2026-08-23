@@ -23,7 +23,7 @@
     { id: 'workflow', label: 'workflow', icon: '⟳' },
     { id: 'document', label: 'document', icon: '¶' },
     { id: 'field', label: 'field', icon: '⧉' },
-    { id: 'key', label: 'key', icon: '⌗' },
+    { id: 'key', label: 'key', icon: '✱' },
     { id: 'attachments', label: 'files', icon: '🗂' },
     { id: 'relation', label: 'relation', icon: '⇄', relation: true },
     { id: 'lookup', label: 'lookup', icon: '↗', computed: true },
@@ -90,6 +90,14 @@
      tuned before the save; the old default is dropped — it was a value of
      the old type. The engine derives anything left empty (text -> select
      builds its options from the values present). */
+  /* Reorder by drag: the item at `from` lands at `to`. */
+  function moveItem(list, from, to) {
+    const out = list.slice();
+    const [it] = out.splice(from, 1);
+    out.splice(to, 0, it);
+    return out;
+  }
+
   function migrateState(state, toType) {
     const next = { ...blankState(toType), options: [], states: [] };
     const from = state.type;
@@ -98,12 +106,14 @@
     } else if ((toType === 'select' || toType === 'multiselect') && from === 'workflow') {
       next.options = (state.states ?? []).map((s) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, color: '' }));
     } else if (toType === 'workflow' && from === 'select') {
-      next.states = (state.options ?? []).map((o, i) => ({ ...(o.id ? { id: o.id } : {}), name: o.name, category: 'in-progress', default: i === 0 }));
+      next.states = (state.options ?? []).map((o) => ({ ...(o.id ? { id: o.id } : {}), name: o.name, category: 'in-progress' }));
     }
     return next;
   }
 
-  const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
+  const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled', 'other'];
+  // Glyphs a state may wear in its chip; '' = none.
+  const STATE_ICONS = ['', '○', '◔', '◑', '◕', '●', '✓', '✕', '⏸', '⚑', '★', '!', '?', '→'];
   const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
   const NUMBER_FORMATS = ['number', 'currency', 'percent'];
   // ISO 4217 codes offered in the picker (any valid code types in too).
@@ -172,7 +182,9 @@
     if (t === 'select' || t === 'multiselect') {
       config.options = (state.options ?? []).map((o) => ({ ...(o.id ? { id: o.id } : {}), name: o.name, color: o.color ?? '' }));
     } else if (t === 'workflow') {
-      config.states = (state.states ?? []).map((s) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', default: !!s.default }));
+      // No default flag: the engine takes the first state (the list's order
+      // is the selector's order). Icons ride along when set.
+      config.states = (state.states ?? []).map((s) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}) }));
     } else if (t === 'number') {
       Object.assign(config, numberCostume(state.number));
     } else if (t === 'date') {
@@ -220,7 +232,7 @@
     } else if (def.type === 'workflow') {
       state.states = (c.states ?? []).map((s) => (typeof s === 'string'
         ? { name: s, category: 'in-progress', default: false }
-        : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', default: !!s.default }));
+        : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}) }));
     } else if (def.type === 'number') {
       state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator };
     } else if (def.type === 'date') {
@@ -293,7 +305,7 @@
   }
 
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, AGGREGATES, TYPE_MIGRATIONS, typeChoices, migrateState,
+    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, AGGREGATES, TYPE_MIGRATIONS, typeChoices, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     blankState, definitionFromState, stateFromDefinition,
     serializeDefinition, parseDefinition,

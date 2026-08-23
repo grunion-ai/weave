@@ -865,3 +865,23 @@ test('document: kind is markdown by default; html and code are the other kinds',
   w.updateField(tasks, md.id, { config: { kind: 'code' } });
   assert.equal(w.getField(tasks, md.id).config.kind, 'code');
 });
+
+/* ---------- workflow states: an 'other' category, icons, order (Kyle, 2026-08-23) ---------- */
+test("a state may be 'other' — none of not-started / in-progress / done / canceled", () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.addField(tasks, { name: 'Lane', type: 'workflow', config: { states: [{ name: 'Parked', category: 'other' }, { name: 'Live', category: 'in-progress' }] } });
+  assert.equal(f.config.states[0].category, 'other');
+});
+
+test('a state carries an icon, exported to the client; order is the order given; the first state is the default when none is marked', () => {
+  const { w, tasks } = buildWorkspace();
+  const f = w.addField(tasks, { name: 'Lane', type: 'workflow', config: { states: [{ name: 'B', category: 'done', icon: '✓' }, { name: 'A', category: 'not-started' }] } });
+  assert.deepEqual(f.config.states.map((s) => s.name), ['B', 'A']);
+  assert.equal(f.config.states[0].icon, '✓');
+  assert.equal(f.config.states.find((s) => s.default).name, 'B');
+  const e = w.createEntity(tasks, { name: 'x' });
+  assert.equal(w.readEntity(e.id).fields.Lane, 'B');
+  w.updateField(tasks, f.id, { config: { states: [{ id: 'a', name: 'A', category: 'not-started', icon: '○' }, { id: 'b', name: 'B', category: 'done', icon: '✓' }] } });
+  const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id).fields.find((x) => x.name === 'Lane');
+  assert.deepEqual(view.states.map((s) => [s.name, s.icon, s.default]), [['A', '○', true], ['B', '✓', false]]);
+});

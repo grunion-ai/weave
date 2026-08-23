@@ -75,7 +75,7 @@ function docChange(field, before, after) {
   };
 }
 
-const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
+const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled', 'other'];
 const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
 const MAX_COMPUTE_DEPTH = 8;
 
@@ -154,8 +154,11 @@ function normalizeSelfContainedConfig(type, config = {}) {
   if (type === 'workflow') {
     const states = (config.states ?? []).map((s) => (typeof s === 'string'
       ? { id: slug(s), name: s, category: 'in-progress', default: false }
-      : { id: s.id ?? slug(s.name), name: s.name, category: s.category ?? 'in-progress', default: !!s.default }));
+      : { id: s.id ?? slug(s.name), name: s.name, category: s.category ?? 'in-progress', default: !!s.default, ...(s.icon ? { icon: String(s.icon) } : {}) }));
     if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
+    // The list's order is the order everywhere; the first state is the
+    // default unless one is marked (the tray marks none — Kyle, 2026-08-23).
+    if (!states.some((s) => s.default)) states[0].default = true;
     for (const s of states) {
       if (!STATE_CATEGORIES.includes(s.category)) {
         throw new WeaveError(`Invalid state category '${s.category}' (use ${STATE_CATEGORIES.join(', ')})`, 'invalid');
@@ -1426,10 +1429,9 @@ export class Weave {
         if (patch.config.expression) field.config.expression = patch.config.expression;
       } else if (field.type === 'workflow') {
         if (patch.config.states) {
-          const states = patch.config.states.map((s) =>
-            typeof s === 'string' ? { id: slug(s), name: s, category: 'in-progress', default: false }
-              : { id: s.id ?? slug(s.name), name: s.name, category: s.category ?? 'in-progress', default: !!s.default });
-          if (!states.some((s) => s.default) && states.length) states[0].default = true;
+          // Same normaliser as addField: categories checked, icons kept,
+          // the first state the default when none is marked.
+          const states = normalizeSelfContainedConfig('workflow', { states: patch.config.states }).states;
           field.config.states = states;
         }
       }
@@ -2127,7 +2129,9 @@ export class Weave {
       }
       case 'key':
         // The name and whether the keystore holds it — never the secret.
-        return `🔑 ${resolved}${this.hasKey(resolved) ? '' : ' (unset)'}`;
+        // Redacted (Kyle, 2026-08-23): the secret is write-only by design; the
+        // cell shows asterisks and the key's NAME, never the value.
+        return `✱✱✱✱ ${resolved}${this.hasKey(resolved) ? '' : ' (unset)'}`;
       case 'attachments': {
         if (!Array.isArray(resolved) || !resolved.length) return null;
         const names = resolved.map((id) => e?.files?.find((x) => x.id === id)?.name ?? '(missing)');
@@ -2847,7 +2851,7 @@ export class Weave {
             // names for every existing consumer.
             out.optionsFull = f.config.options.map((o) => ({ id: o.id, name: o.name, color: o.color ?? '' }));
           }
-          if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default }));
+          if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default, ...(s.icon ? { icon: s.icon } : {}) }));
           if (f.type === 'relation') {
             const target = this.state.tables[f.config.targetDb];
             out.targetDb = this.qualifiedName(target);

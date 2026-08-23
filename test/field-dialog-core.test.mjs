@@ -66,16 +66,15 @@ test('select state produces options config, colors kept', () => {
   });
 });
 
-test('workflow state produces states config with categories and default flag', () => {
+test('workflow state produces states config with categories, in list order, no default flag', () => {
   const def = core.definitionFromState({
     type: 'workflow',
     states: [
-      { name: 'Open', category: 'not-started', default: false },
-      { name: 'Doing', category: 'in-progress', default: true },
+      { name: 'Open', category: 'not-started' },
+      { name: 'Doing', category: 'in-progress' },
     ],
   });
-  assert.equal(def.config.states.length, 2);
-  assert.equal(def.config.states[1].default, true);
+  assert.deepEqual(def.config.states, [{ name: 'Open', category: 'not-started' }, { name: 'Doing', category: 'in-progress' }]);
 });
 
 test('number config is canonical-minimal, like the engine normaliser output', () => {
@@ -122,7 +121,7 @@ test('definition -> state -> definition round-trips for every shape', () => {
   const defs = [
     { type: 'text', config: {} },
     { type: 'select', config: { options: [{ name: 'A', color: '' }, { name: 'B', color: '#e5484d' }] } },
-    { type: 'workflow', config: { states: [{ name: 'Open', category: 'not-started', default: true }] } },
+    { type: 'workflow', config: { states: [{ name: 'Open', category: 'not-started' }] } },
     { type: 'number', config: { format: 'percent', decimals: 1 } },
     { type: 'date', config: { format: 'us', time: true } },
     { type: 'field', config: { depth: 2 } },
@@ -218,7 +217,7 @@ test('migrateState carries config across a compatible move so the form can be ad
   const sel = core.stateFromDefinition({ type: 'select', config: { options: [{ id: 'lo', name: 'Low', color: '#2ea043' }, { id: 'hi', name: 'High', color: '' }] } });
   const wf = core.migrateState(sel, 'workflow');
   assert.equal(wf.type, 'workflow');
-  assert.deepEqual(wf.states.map((s) => [s.id, s.name, s.category, s.default]), [['lo', 'Low', 'in-progress', true], ['hi', 'High', 'in-progress', false]]);
+  assert.deepEqual(wf.states.map((s) => [s.id, s.name, s.category]), [['lo', 'Low', 'in-progress'], ['hi', 'High', 'in-progress']]);
   const multi = core.migrateState(sel, 'multiselect');
   assert.deepEqual(multi.options, sel.options);
   const back = core.migrateState(wf, 'select');
@@ -281,4 +280,16 @@ test('select and files wear distinct icons from multiselect and document', () =>
 
 test('url wears a link icon, not the command glyph (Kyle, 2026-08-23)', () => {
   assert.equal(core.FIELD_TYPES.find((t) => t.id === 'url').icon, '🔗');
+  assert.equal(core.FIELD_TYPES.find((t) => t.id === 'key').icon, '✱', 'a key reads as redacted text');
+});
+
+/* ---------- workflow states: icons, reorder, no default radio (2026-08-23) ---------- */
+test('states keep icons; no default is sent (the first state is the default); moveItem reorders', () => {
+  const def = core.definitionFromState({ type: 'workflow', states: [{ id: 'a', name: 'A', category: 'other', icon: '⚑' }, { id: 'b', name: 'B', category: 'done' }] });
+  assert.deepEqual(def.config.states, [{ id: 'a', name: 'A', category: 'other', icon: '⚑' }, { id: 'b', name: 'B', category: 'done' }]);
+  const back = core.stateFromDefinition(def);
+  assert.equal(back.states[0].icon, '⚑');
+  assert.deepEqual(core.moveItem(['a', 'b', 'c'], 0, 2), ['b', 'c', 'a']);
+  assert.deepEqual(core.moveItem(['a', 'b', 'c'], 2, 0), ['c', 'a', 'b']);
+  assert.ok(core.STATE_ICONS.includes('') && core.STATE_ICONS.length >= 8);
 });

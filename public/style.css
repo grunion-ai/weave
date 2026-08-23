@@ -842,8 +842,35 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 
 /* ---------- the eyeball: show / hide (Feature #114) ---------- */
 .eye-head { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--tblr-secondary); padding: 6px 8px 2px; font-weight: 600; }
-.eye-row { display: flex; align-items: center; gap: 8px; }
-.eye-mark { color: var(--tblr-secondary); font-size: 10px; }
-.eye-mark.on { color: var(--tblr-primary); }
+.eye-row { display: flex; align-items: center; gap: 12px; min-width: 220px; }
+.eye-label { flex: 1; text-align: left; }
+.switch { position: relative; width: 30px; height: 18px; border-radius: 9px; background: var(--tblr-border-color); transition: background .12s; flex-shrink: 0; }
+.switch .switch-knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .12s; }
+.switch.on { background: var(--tblr-primary); }
+.switch.on .switch-knob { left: 14px; }
+.eye-btn svg { display: block; }
+.crumb-row { display: flex; align-items: center; gap: 12px; }
+.crumb-path { flex: 1; min-width: 0; }
+.crumb-actions { display: flex; align-items: center; gap: 6px; }
 .row-deleted { opacity: .5; }
 .row-deleted .open-link { text-decoration: line-through; }
+
+/* states: the 'other' category and the tray's reorderable rows (2026-08-23) */
+.chip.state-other { background: rgba(142, 78, 198, .10); border-color: rgba(142, 78, 198, .38); color: #7a3fb8; }
+[data-bs-theme="dark"] .chip.state-other { background: rgba(180, 120, 240, .16); border-color: rgba(180, 120, 240, .48); color: #c9a6f5; }
+.opt-grip { color: var(--tblr-secondary); cursor: grab; font-size: 12px; user-select: none; }
+.opt-row.dragging { opacity: .4; }
+.opt-row.drop-target { box-shadow: 0 -2px 0 var(--tblr-primary); }
+.opt-icon { width: 24px; height: 24px; flex-shrink: 0; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 13px; cursor: pointer; padding: 0; }
+.opt-icon.none { color: var(--tblr-secondary); }
+
+/* checkboxes: one quiet house style everywhere (grid cells, tray, pickers) —
+   a rounded square on the surface, primary fill + tick when checked. */
+input[type="checkbox"].form-check-input { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; margin: 0; border: 1.5px solid var(--tblr-border-color); border-radius: 4px; background: var(--tblr-bg-surface); cursor: pointer; position: relative; vertical-align: middle; transition: background .1s, border-color .1s; }
+input[type="checkbox"].form-check-input:hover { border-color: var(--tblr-secondary); }
+input[type="checkbox"].form-check-input:checked { background: var(--tblr-primary); border-color: var(--tblr-primary); }
+input[type="checkbox"].form-check-input:checked::after { content: ''; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+input[type="checkbox"].form-check-input:focus-visible { outline: 2px solid rgba(var(--tblr-primary-rgb), .35); outline-offset: 1px; }
+input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default; }
+/* long popovers (the eyeball lists every field) scroll instead of flipping off-screen */
+.chip-pop { max-height: min(70vh, 560px); overflow-y: auto; }

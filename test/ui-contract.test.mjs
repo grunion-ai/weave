@@ -361,12 +361,10 @@ test('purging keeps the hold-to-confirm and is the only hard delete in the UI', 
   assert.match(APP, /#\\?\/trash\\?\/\(\[\^\/\?\]\+\)/, 'trash needs a route');
 });
 
-test('the trash entry point appears only when there is something in it', () => {
-  const draw = APP.slice(APP.indexOf('function drawDatabase'));
-  assert.match(draw.slice(0, draw.indexOf('function renderTable')),
-    /trashCount\s*\n?\s*\?\s*el\('a'.*?#\/trash\//s,
-    'the 🗑 control must be conditional on trashCount');
-  assert.match(APP, /api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/);
+test('deleted rows are reached through the eyeball; the toolbar has no trash badge (superseded 2026-08-23)', () => {
+  assert.doesNotMatch(fnBody('drawDatabase'), /#\/trash\//, 'no 🗑 control on the toolbar');
+  assert.match(APP, /api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/, 'the count still feeds the eyeball');
+  assert.match(fnBody('fieldVisibilityPopover'), /Deleted entities/);
 });
 
 /* ---------- defect: the description block was oversized ---------- */
@@ -1289,4 +1287,39 @@ test('relation is a tile in the add tray and posts to /relations; files and docu
   assert.match(dlg, /fdc\.CARDINALITIES/);
   assert.match(dlg, /'Allow multiple files'/);
   assert.match(dlg, /dsection\('Kind', segCtl\(fdc\.DOCUMENT_KINDS/);
+});
+
+/* Kyle, 2026-08-23: an 'other' state category; states drag to reorder and
+   the selector follows that order; no default radio — icons instead. */
+test('workflow states: other category tinted, rows drag to reorder, icon instead of a default radio', () => {
+  assert.ok(rulesFor('.chip.state-other').background, 'other has a chip tint');
+  const ed = fnBody('stateListEditor');
+  assert.match(ed, /draggable: 'true'/);
+  assert.match(ed, /fdc\.moveItem\(state\.states, dragFrom, i\)/, 'a drop reorders the states');
+  assert.match(ed, /fdc\.STATE_ICONS/, 'an icon picker per state');
+  assert.doesNotMatch(ed, /type: 'radio'/, 'no default radio — the first state is the default');
+  assert.match(fnBody('stateLabel'), /icon \? `\$\{icon\} \$\{stateName\}`/, 'chips wear the icon');
+});
+
+test('checkbox default is Unchecked / Checked, and checkboxes wear the house style (Kyle, 2026-08-23)', () => {
+  assert.match(fnBody('fieldDialog'), /\{ id: 'unchecked', label: 'Unchecked' \}, \{ id: 'checked', label: 'Checked' \}/);
+  const box = rulesFor('input[type="checkbox"].form-check-input');
+  assert.equal(box.appearance, 'none', 'the native control is replaced');
+  assert.ok(rulesFor('input[type="checkbox"].form-check-input:checked').background?.includes('--tblr-primary'), 'checked is the brand fill');
+});
+
+test('lookup / rollup pick their relation and target field from what exists; no trash button in the toolbar (Kyle, 2026-08-23)', () => {
+  const dlg = fnBody('fieldDialog');
+  assert.match(dlg, /dsection\('Target field', tSel\)/, 'the target field is a picker over the target table');
+  assert.match(dlg, /allTables\(\)\.find\(\(d\) => d\.id === rel\.targetDbId\)/, 'its options come from the relation\'s target');
+  assert.doesNotMatch(fnBody('drawDatabase'), /🗑/, 'the eyeball shows deleted rows; the toolbar badge is gone');
+});
+
+test('the view controls sit on the crumb line; the eyeball is a flat glyph with switch rows (Kyle, 2026-08-23)', () => {
+  const vh = fnBody('viewHeader');
+  assert.match(vh, /class: 'crumb-actions wv-toolbar' \}, \.\.\.actions\.filter\(Boolean\)/, 'actions render beside the crumb');
+  assert.doesNotMatch(vh, /titleInput, \.\.\.actions/, 'and no longer on the title row');
+  assert.match(fnBody('fieldVisibilityPopover'), /class: 'switch' \+ \(on \? ' on' : ''\)/, 'rows are toggle switches');
+  assert.match(APP, /eye-btn', title: 'Show \/ hide fields and deleted rows', 'aria-label': 'Show or hide fields' \}, eyeGlyph\(\)\)/, 'a flat inline glyph, not an emoji');
+  assert.ok(rulesFor('.switch.on').background?.includes('--tblr-primary'));
 });

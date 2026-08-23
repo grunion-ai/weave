@@ -320,7 +320,11 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
     class: 'permalink-copy', title: 'Copy permalink',
     onclick: () => copyText(permalink, 'Permalink copied'),
   }, `${title} ⧉`));
-  box.append(el('div', { class: 'crumb' }, ...crumbKids));
+  // The view's controls sit on the crumb line, right-aligned (Kyle,
+  // 2026-08-23), leaving the title row to the title.
+  box.append(el('div', { class: 'crumb crumb-row' },
+    el('span', { class: 'crumb-path' }, ...crumbKids),
+    el('span', { class: 'crumb-actions wv-toolbar' }, ...actions.filter(Boolean))));
 
   const titleInput = el('input', { class: 'view-title', value: title, title: onRename ? 'Click to rename' : '' });
   if (onRename) {
@@ -334,7 +338,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
   }
   box.append(el('div', { class: 'wv-toolbar view-title-row' },
     onSetIcon ? iconButton(icon, onSetIcon) : (icon ? iconEl(icon) : null),
-    titleInput, ...actions.filter(Boolean)));
+    titleInput));
 
   if (onSaveDescription) {
     const descBox = el('div', { class: 'view-desc' });
@@ -463,6 +467,12 @@ function fieldValueCell(value) {
   return String(value);
 }
 
+/* A state's chip text: its icon, when it has one, then the name. */
+function stateLabel(fieldSchema, stateName) {
+  if (stateName == null) return '—';
+  const icon = fieldSchema.states?.find((s) => s.name === stateName)?.icon;
+  return icon ? `${icon} ${stateName}` : stateName;
+}
 function stateCategory(fieldSchema, stateName) {
   return fieldSchema.states?.find((s) => s.name === stateName)?.category ?? 'not-started';
 }
@@ -810,7 +820,7 @@ function chipPicker({ trigger, options, current, onPick }) {
       : null;
     searchPicker({
       anchor: trigger,
-      options: options.map((o) => ({ id: o.name, label: o.name, cls: o.cls, chip: true })),
+      options: options.map((o) => ({ id: o.name, label: o.label ?? o.name, cls: o.cls, chip: true })),
       currentId: current,
       onPick: async (o) => { if (o.id !== current) await onPick(o.id); },
     });
@@ -954,8 +964,8 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   }
   if (f.type === 'workflow') {
     return chipPicker({
-      trigger: el('button', { class: `chip state-${stateCategory(f, val)}`, type: 'button', title: f.name }, val ?? '—'),
-      options: f.states.map((s) => ({ name: s.name, cls: `state-${s.category}` })),
+      trigger: el('button', { class: `chip state-${stateCategory(f, val)}`, type: 'button', title: f.name }, stateLabel(f, val)),
+      options: f.states.map((s) => ({ name: s.name, cls: `state-${s.category}`, label: stateLabel(f, s.name) })),
       current: val,
       onPick: async (name) => {
         try {
@@ -1391,13 +1401,10 @@ function drawDatabase(db, items, trashCount = 0) {
       switcher,
       // Only surfaced once the table actually has deleted rows — an empty
       // trash is not worth a permanent control.
-      trashCount
-        ? el('a', { class: 'btn btn-sm', href: `#/trash/${db.id}`, title: 'Deleted entities' }, `🗑 ${trashCount}`)
-        : null,
       // The eyeball (Feature #114): show / hide fields, system columns and
       // deleted rows — replaces "Manage fields".
       state.route.view === 'table' ? (() => {
-        const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields and deleted rows', 'aria-label': 'Show or hide fields' }, '👁');
+        const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields and deleted rows', 'aria-label': 'Show or hide fields' }, eyeGlyph());
         eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, trashCount); });
         return eye;
       })() : null,
@@ -1506,6 +1513,16 @@ function drawDatabase(db, items, trashCount = 0) {
    the deleted rows. A tick toggles and the list reopens; hidden fields and
    shown system columns persist on the table (PATCH), deleted-row display
    is a session switch. */
+/* A flat eye, drawn inline so it takes the text color (no emoji). */
+function eyeGlyph() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', '16'); svg.setAttribute('height', '16');
+  svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '1.8');
+  svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+  svg.innerHTML = '<path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
+  return svg;
+}
+
 function fieldVisibilityPopover(anchor, db, trashCount = 0) {
   const hidden = new Set(db.hiddenFields ?? []);
   const sysOn = new Set(db.systemFields ?? []);
@@ -1519,10 +1536,11 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0) {
       if (again) fieldVisibilityPopover(again, fresh, trashCount);
     } catch (err) { toast(err.message, true); }
   };
+  // Each row is a toggle switch: the whole row flips it.
   const row = (on, label, run) => el('button', {
-    class: 'chip-pop-row eye-row', type: 'button',
+    class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
     onclick: (e) => { e.stopPropagation(); run(); },
-  }, el('span', { class: 'eye-mark' + (on ? ' on' : '') }, on ? '●' : '○'), label);
+  }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
   const rows = [
     el('div', { class: 'eye-head' }, 'Fields'),
     ...db.fields.filter((f) => f.type !== 'document').map((f) => row(!hidden.has(f.name), f.name, () => {
@@ -2010,30 +2028,49 @@ function optionListEditor(state, onChange) {
   return wrap;
 }
 
+/* States: drag ⠿ to reorder (the list's order is the selector's order and
+   the first state is the default — no radio), an icon the chip wears, the
+   name, the category through the picker dialect. */
 function stateListEditor(state, onChange) {
-  const cats = fieldDialogCore.STATE_CATEGORIES;
+  const fdc = fieldDialogCore;
   const wrap = el('div', { class: 'opt-list' });
+  let dragFrom = null;
   const draw = () => {
     wrap.replaceChildren(
-      ...state.states.map((s, i) => el('div', { class: 'opt-row' },
-        el('input', {
-          type: 'radio', name: 'wf-default', class: 'opt-default', title: 'Default state for new rows',
-          checked: s.default ? '' : undefined,
-          onchange: () => { state.states.forEach((x, j) => { x.default = j === i; }); onChange(); },
-        }),
+      ...state.states.map((s, i) => {
+        const row = el('div', {
+          class: 'opt-row', draggable: 'true',
+          ondragstart: (e) => { dragFrom = i; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); },
+          ondragend: () => row.classList.remove('dragging'),
+          ondragover: (e) => { e.preventDefault(); row.classList.add('drop-target'); },
+          ondragleave: () => row.classList.remove('drop-target'),
+          ondrop: (e) => {
+            e.preventDefault(); row.classList.remove('drop-target');
+            if (dragFrom == null || dragFrom === i) return;
+            state.states = fdc.moveItem(state.states, dragFrom, i);
+            dragFrom = null; draw(); onChange();
+          },
+        },
+        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
+        el('button', {
+          type: 'button', class: 'opt-icon' + (s.icon ? '' : ' none'), title: 'Cycle icon',
+          onclick: () => { s.icon = fdc.STATE_ICONS[(fdc.STATE_ICONS.indexOf(s.icon ?? '') + 1) % fdc.STATE_ICONS.length]; draw(); onChange(); },
+        }, s.icon || '·'),
         el('input', { class: 'opt-name', value: s.name, placeholder: 'State', oninput: (e) => { s.name = e.target.value; onChange(); } }),
         (() => {
-          // Category goes through the house picker dialect, never a native
-          // <select> (ui-contract: one selector dialect everywhere).
-          const cat = pickerSelect({ name: `wf-cat-${i}`, options: cats.map((c) => ({ id: c, label: c })), value: s.category ?? 'in-progress' });
+          const cat = pickerSelect({ name: `wf-cat-${i}`, options: fdc.STATE_CATEGORIES.map((c) => ({ id: c, label: c })), value: s.category ?? 'in-progress' });
           cat.classList.add('opt-cat');
           cat.input.addEventListener('change', () => { s.category = cat.input.value; onChange(); });
           return cat;
         })(),
-        el('button', { type: 'button', class: 'opt-del', title: 'Remove state', onclick: () => { state.states.splice(i, 1); draw(); onChange(); } }, '✕'))),
+        el('button', { type: 'button', class: 'opt-del', title: 'Remove state', onclick: () => { state.states.splice(i, 1); draw(); onChange(); } }, '✕'));
+        // Inputs inside a draggable row must keep their own mouse events.
+        for (const ctl of row.querySelectorAll('input,button,.picker-wrap')) ctl.addEventListener('mousedown', (e) => e.stopPropagation());
+        return row;
+      }),
       el('button', {
         type: 'button', class: 'opt-add',
-        onclick: () => { state.states.push({ name: '', category: 'in-progress', default: state.states.length === 0 }); draw(); onChange(); wrap.querySelectorAll('.opt-name')[state.states.length - 1]?.focus(); },
+        onclick: () => { state.states.push({ name: '', category: 'in-progress' }); draw(); onChange(); wrap.querySelectorAll('.opt-name')[state.states.length - 1]?.focus(); },
       }, '+ Add state'));
   };
   draw();
@@ -2215,7 +2252,11 @@ function fieldDialog(db, existing, after) {
           target.input.addEventListener('change', () => { r.targetDb = target.input.value; changed(); });
           kids.push(dsection('Target table', target));
           kids.push(dsection('Cardinality', segCtl(fdc.CARDINALITIES.map((c) => ({ id: c, label: c.replace('-to-', ' → ') })), r.cardinality ?? 'many-to-one', (v) => { r.cardinality = v; changed(); })));
-          kids.push(dsection('Inverse field', el('input', { class: 'form-control', value: r.inverseName ?? '', placeholder: 'Name on the target table (optional)', oninput: (e) => { r.inverseName = e.target.value; changed(); } })));
+          // The inverse is a NEW field the engine creates on the target table
+          // — a name, not a pick — and it has a sensible default, so the
+          // input only exists to override it.
+          const autoName = db.name + (['many-to-one', 'many-to-many'].includes(r.cardinality ?? 'many-to-one') ? 's' : '');
+          kids.push(dsection('Inverse field on the target', el('input', { class: 'form-control', value: r.inverseName ?? '', placeholder: `${autoName} (created automatically — rename here)`, oninput: (e) => { r.inverseName = e.target.value; changed(); } })));
         }
       } else if (t === 'attachments') {
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
@@ -2232,14 +2273,24 @@ function fieldDialog(db, existing, after) {
         if (isEdit) {
           kids.push(el('div', { class: 'modal-note full' }, 'Computed config is not editable — delete and recreate to repoint it'));
         } else {
+          // Both picks are search-as-you-type over what exists: the table's
+          // relations, then the fields of the table that relation points at.
           const rels = db.fields.filter((x) => x.type === 'relation');
-          const relSel = pickerSelect({ name: 'relationField', title: 'Relation', options: rels.map((r) => ({ id: r.name, label: r.name })), value: state.relationField || (rels[0]?.name ?? null) });
+          const relSel = pickerSelect({ name: 'relationField', options: rels.map((r) => ({ id: r.name, label: `${r.name} → ${r.targetDb}` })), value: state.relationField || (rels[0]?.name ?? null) });
           state.relationField = state.relationField || (rels[0]?.name ?? '');
-          relSel.input.addEventListener('change', () => { state.relationField = relSel.input.value; changed(); });
-          kids.push(dsection('Relation', relSel));
-          kids.push(dsection('Target field', el('input', { class: 'form-control', value: state.targetField ?? '', placeholder: 'Field on the target table', oninput: (e) => { state.targetField = e.target.value; changed(); } })));
+          relSel.input.addEventListener('change', () => { state.relationField = relSel.input.value; state.targetField = ''; drawCfg(); changed(); });
+          kids.push(dsection('Relation', rels.length ? relSel : el('div', { class: 'modal-note' }, 'This table has no relations yet — add one first')));
+          const rel = rels.find((r) => r.name === state.relationField);
+          const target = rel && allTables().find((d) => d.id === rel.targetDbId);
+          const targets = (target?.fields ?? []).filter((x) => x.type !== 'document');
+          const needsTarget = t === 'lookup' || (state.aggregate ?? 'count') !== 'count';
+          if (needsTarget && target) {
+            const tSel = pickerSelect({ name: 'targetField', placeholder: `Field of ${target.name}…`, options: targets.map((x) => ({ id: x.name, label: `${x.name} · ${x.type}` })), value: state.targetField || null });
+            tSel.input.addEventListener('change', () => { state.targetField = tSel.input.value; changed(); });
+            kids.push(dsection('Target field', tSel));
+          }
           if (t === 'rollup') {
-            kids.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; changed(); })));
+            kids.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); changed(); })));
           }
         }
       }
@@ -2266,6 +2317,11 @@ function fieldDialog(db, existing, after) {
           }));
         }
         kids.push(dsection('Default', body));
+      } else if (t === 'checkbox') {
+        // A checkbox default is one of two states, not typed text.
+        const cur = state.default === '' ? 'none' : ['true', 'yes', '1'].includes(String(state.default).toLowerCase()) ? 'checked' : 'unchecked';
+        kids.push(dsection('Default', segCtl([{ id: 'unchecked', label: 'Unchecked' }, { id: 'checked', label: 'Checked' }], cur === 'none' ? 'unchecked' : cur,
+          (v) => { state.default = v === 'checked' ? 'true' : 'false'; changed(); })));
       } else if (fdc.DEFAULTABLE.includes(t)) {
         kids.push(dsection('Default', el('input', {
           class: 'form-control', value: state.default ?? '',
