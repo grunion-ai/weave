@@ -255,7 +255,15 @@ A before-image of one entity mutation, newest first, replayed by `undo()`.
 
 ### Public id
 The per-table counter that makes an entity addressable as `Task#42` in queries,
-documents and mentions.
+documents and mentions. A convenience spelling: the durable reference is
+always the uuid.
+
+### Permalink
+The id-based URL every entity answers to, at every level: the workspace at
+`/w/<workspace-id>/` (its name is an alias), a space at `#/space/<id>`, a
+table at `#/table/<id>`, a row at `/e/<id>`. Ids never change, so a permalink
+survives every rename; mentions may use a bare uuid (`[[<uuid>]]`) for the
+same reason.
 
 ### Registry
 A system table whose rows are structure: `Workspace/Spaces`, `Workspace/Tables`,

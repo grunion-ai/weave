@@ -90,7 +90,11 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
     },
     get(name) {
       if (instances.has(name)) return instances.get(name);
+      // The universal reference rule: a workspace answers to its id as well
+      // as its friendly name, so /w/<id>/ survives any rename.
+      for (const w of instances.values()) if (w.state.meta.id === name) return w;
       scan();
+      for (const w of instances.values()) if (w.state.meta.id === name) return w;
       return instances.get(name) ?? null;
     },
     list() {
@@ -98,6 +102,8 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       for (const w of instances.values()) w.maybeRefresh();
       return [...instances.entries()].map(([name, w]) => ({
         name,
+        id: w.state.meta.id,
+        url: `/w/${w.state.meta.id}/`,
         default: name === defaultName,
         spaces: w.listSpaces().length,
         tables: w.listTables().length,

@@ -453,6 +453,10 @@ export class Weave {
   // single entity-level `doc` → a Description document field per table.
   #migrate() {
     const s = this.state;
+    // The universal reference rule (Kyle, 2026-08-24): every entity — the
+    // workspace included — is referenced by a unique id; names are display
+    // labels. Minted once here, kept through export/import and every rename.
+    if (!s.meta.id) { s.meta.id = uuid(); if (this.store.path) this.save(); }
     if (s.databases && !s.tables) {
       s.tables = s.databases;
       delete s.databases;
@@ -2528,6 +2532,7 @@ export class Weave {
       createdBy: e.createdBy ?? null,
       modifiedBy: e.modifiedBy ?? null,
       deletedAt: e.deletedAt ?? null,
+      url: `/e/${e.id}`,
       // A registry row stands for a piece of structure; sysId says which, so
       // a surface can open the space/table itself rather than the row.
       ...(e.sysId ? { sysId: e.sysId } : {}),
@@ -3147,12 +3152,14 @@ export class Weave {
     return this.listSpaces().map((sp) => ({
       space: sp.name,
       spaceId: sp.id,
+      url: `#/space/${sp.id}`,
       description: sp.description ?? '',
       ...(sp.system ? { system: sp.system } : {}),
       ...(sp.icon ? { icon: sp.icon } : {}),
       tables: this.listTables(sp.id).map((db) => ({
         id: db.id,
         name: db.name,
+        url: `#/table/${db.id}`,
         description: db.description ?? '',
         ...(db.system ? { system: db.system } : {}),
         ...(db.icon ? { icon: db.icon } : {}),

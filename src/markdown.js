@@ -32,7 +32,9 @@ function renderInline(text, resolveMention) {
         const ref = (pipe < 0 ? inner : inner.slice(0, pipe)).trim();
         const label = pipe < 0 ? null : inner.slice(pipe + 1).trim();
         const typed = ref.match(/^(table|space|workspace)(?::(.*))?$/);
-        const kind = typed ? typed[1] : /^.+#\d+$/.test(ref) ? 'entity' : null;
+        // Two entity spellings: the human 'Table#12' and the durable bare
+        // uuid, which survives every rename (universal reference rule).
+        const kind = typed ? typed[1] : (/^.+#\d+$/.test(ref) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) ? 'entity' : null;
         const target = typed ? (typed[2] ?? '').trim() : ref;
         if (kind && resolveMention && (kind === 'workspace' || target)) {
           // A resolver reaches into workspace state and can throw on an

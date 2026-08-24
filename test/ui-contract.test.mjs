@@ -1654,3 +1654,21 @@ test('opening a registry row opens the structure it stands for', () => {
   assert.match(grid, /registryHref\(db, item\) \?\? `#\/entity\//,
     'the #N open link is the same affordance: structure for registry rows, entity page otherwise');
 });
+
+/* Universal reference rule (Kyle, 2026-08-24): surfaces reference entities by
+   id, never by name. Renames must not strand a link or mis-scope a view. */
+
+test('the space page scopes its registry grid by id, not by name', () => {
+  const body = fnBody('showSpace');
+  assert.match(body, /item\.sysId|i\.sysId/, 'rows are matched to the space through sysId');
+  assert.doesNotMatch(body, /\.name === space\.space/, 'no name-join — two names can drift, ids cannot');
+});
+
+test('workspace links and rename use the workspace id permalink', () => {
+  const home = fnBody('showHome');
+  assert.match(home, /\/w\/\$\{updated\.id\}\//, 'a rename lands on the id URL, which the rename cannot break');
+  assert.doesNotMatch(home, /\/w\/\$\{updated\.name\}\//, 'never the name URL');
+  const rail = fnBody('buildWsRail');
+  assert.match(rail, /w\.url|\/w\/\$\{w\.id\}\//, 'the rail links workspaces by id');
+  assert.match(rail, /w\.id === seg|seg === w\.id|\.id === seg/, 'the current workspace matches by id or name segment');
+});

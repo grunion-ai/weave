@@ -145,6 +145,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const db = weave.findTable(ref);
           return db ? { href: `${wsPrefix}/#/table/${db.id}`, label: weave.qualifiedName(db) } : null;
         }
+        // A bare uuid is the durable form: resolves whatever the names are now.
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) {
+          const e = weave.state.entities[ref];
+          if (!e || e.deletedAt) return null;
+          return { href: `${wsPrefix}/e/${e.id}/doc.html`, label: weave.entityName(e) };
+        }
         const m = /^(.+)#(\d+)$/.exec(ref);
         if (!m) return null;
         const db = weave.findTable(m[1].trim());
@@ -239,7 +245,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if (route === 'GET /api/workspace') {
-          return out(200, { name: weave.state.meta.name, description: weave.state.meta.description ?? '', logo: !!weave.state.meta.logo, requireAuth: !!weave.state.meta.requireAuth });
+          return out(200, { id: weave.state.meta.id, url: `/w/${weave.state.meta.id}/`, name: weave.state.meta.name, description: weave.state.meta.description ?? '', logo: !!weave.state.meta.logo, requireAuth: !!weave.state.meta.requireAuth });
         }
 
         // Accounts (Feature #14). Once any account exists, only an admin
@@ -323,7 +329,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             weave.state.meta.name = body.name;
           }
           weave.save();
-          return out(200, { name: weave.state.meta.name, description: weave.state.meta.description ?? '' });
+          return out(200, { id: weave.state.meta.id, url: `/w/${weave.state.meta.id}/`, name: weave.state.meta.name, description: weave.state.meta.description ?? '' });
         }
         if (route === 'POST /api/markdown') {
           return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention }) });

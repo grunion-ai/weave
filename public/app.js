@@ -2780,7 +2780,9 @@ async function showSpace(spaceId) {
   const reg = registryTable('tables');
   if (reg) {
     const res = await api('POST', `/tables/${reg.id}/query`, {});
-    const items = res.items.filter((i) => i.fields.Space?.name === space.space);
+    // Scoped by id (universal reference rule): a registry row belongs to this
+    // space iff its sysId names one of the space's tables. Names can drift.
+    const items = res.items.filter((i) => space.tables.some((t) => t.id === i.sysId));
     const onSaved = async () => {
       await loadSchema();
       await showSpace(spaceId);
@@ -4431,11 +4433,12 @@ async function showHome() {
   main.replaceChildren(
     viewHeader({
       crumbs: [],
-      permalink: location.origin + wsHomeHref(),
+      permalink: location.origin + (ws.url ?? wsHomeHref()),
       title: ws.name,
       onRename: async (name) => {
         const updated = await api('PATCH', '/workspace', { name });
-        location.href = WS_PREFIX ? `/w/${updated.name}/` : '/';
+        // The id permalink survives the rename; the name URL just died.
+        location.href = WS_PREFIX ? `/w/${updated.id}/` : '/';
       },
       description: ws.description,
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
@@ -4764,7 +4767,10 @@ async function buildWsRail() {
   if (!listBox) return;
   try {
     const list = await api('GET', '/workspaces');
-    const current = WS_PREFIX ? WS_PREFIX.slice(3) : list.find((w) => w.default)?.name;
+    const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
+    // The URL segment may be the friendly name or the durable id — both route.
+    const cur = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
+    const current = cur?.name ?? seg;
     // The wordmark is the way home, not a caption (Kyle, 2026-08-24: "allow
     // clicking the workspace name to take you to the workspace entity page in
     // addition to the workspace selector chip"). A real href, so ⌘-click and
@@ -4776,15 +4782,15 @@ async function buildWsRail() {
     const weaveWs = list.find((w) => w.name === 'weave');
     const pinned = $('#rail-weave');
     if (pinned) {
-      if (weaveWs) pinned.href = weaveWs.default ? '/' : '/w/weave/';
+      if (weaveWs) pinned.href = weaveWs.default ? '/' : (weaveWs.url ?? '/w/weave/');
       pinned.classList.toggle('active', current === 'weave');
     }
     listBox.replaceChildren(
       ...list.filter((w) => w.name !== 'weave').map((w) => {
-        const prefix = w.default ? '' : `/w/${w.name}`;
+        const prefix = w.default ? '' : `/w/${w.id}`;
         const chip = el('a', {
           class: 'ws-icon' + (w.name === current ? ' active' : ''),
-          href: w.default ? '/' : `/w/${w.name}/`,
+          href: w.default ? '/' : (w.url ?? `/w/${w.id}/`),
           title: `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (right-click to set logo)' : ''),
         }, w.logo
           ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name })
