@@ -198,6 +198,10 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 /* Resize grip (Feature #42): the column's own right edge. It spans the full
    header height so the target is a line, not a dot, and it only shows its
    tint once the header is hovered — the cursor carries the affordance. */
+/* Off-grid measurer for double-click-to-fit: a column's content is cloned in
+   here, unclipped, to read the width it actually needs. Never visible. */
+.wv-measure { position: absolute; left: -10000px; top: 0; visibility: hidden; pointer-events: none; contain: layout style; }
+.wv-measure-cell { display: block; width: max-content; white-space: nowrap; }
 .col-resize { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize; user-select: none; touch-action: none; }
 .wv-grid th.col-head:hover .col-resize { background: var(--tblr-border-color); }
 .col-resize:hover { background: var(--tblr-primary) !important; }

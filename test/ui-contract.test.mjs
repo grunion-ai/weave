@@ -669,8 +669,16 @@ test('a hovered header is tinted so the menu has a visible owner', () => {
 test('a stored column width reaches both the header and its cells', () => {
   const head = fnBody('renderTable');
   assert.match(head, /f\.width/, 'the header applies the field width');
-  assert.match(head, /max-width:\$\{f\.width\}px|max-width: \$\{f\.width\}px/,
+  assert.match(head, /columnWidthStyle\(f\.width\)/,
     'cells need a matching max-width or the 260px cap still ellipsises them');
+  // Kyle, 2026-08-24: a resized column snapped back. Auto table layout drops a
+  // bare `width` the moment the grid is wider than its card, so the stored
+  // width has to be a floor too, on the header and on every cell.
+  const style = APP.match(/const columnWidthStyle = .*/)?.[0] ?? '';
+  assert.match(style, /min-width:/, 'a stored width must hold the column open');
+  assert.match(style, /max-width:/, 'and still cap it so cells ellipsise');
+  const apply = fnBody('applyColumnWidth');
+  assert.match(apply, /minWidth/, 'the in-place commit sets the same floor');
 });
 
 test('a resize grip commits once, on release', () => {
@@ -693,6 +701,26 @@ test('double-click fits the column to its content (measured), a schema write lik
   const writer = fnBody('setColumnWidth');
   assert.match(writer, /'PATCH'/, 'width is a schema write');
   assert.match(writer, /config: \{ width/, 'through the field config');
+});
+
+test('a fit measures the content, not the box the column already has', () => {
+  // Kyle, 2026-08-24: "table resize double click does not snap to properly".
+  // Cells clip with max-width + ellipsis, so scrollWidth equals clientWidth
+  // and a text cell's <input> is a default-sized box — the old measurement
+  // returned the current width every time and each click only added padding.
+  const fit = fnBody('fitColumnWidth');
+  assert.ok(!/scrollWidth/.test(fit), 'a clipped cell never reports overflow — scrollWidth cannot fit it');
+  assert.match(fit, /cellFitProbe\(/, 'the fit measures a clone off the grid');
+  assert.match(fit, /colSpan > 1/, 'the "+ New" row and expanded documents span the grid, not the column');
+  assert.match(fit, /getBoundingClientRect\(\)\.width/, 'the clone is measured as painted');
+  const probe = fnBody('cellFitProbe');
+  assert.match(probe, /input, textarea/, 'an input paints its value, not its box');
+  assert.match(probe, /src\.value \|\| src\.placeholder/, 'so the value is what gets measured');
+  const measurer = rulesFor('.wv-measure');
+  assert.equal(measurer.visibility, 'hidden', 'the measurer never shows');
+  assert.equal(measurer.position, 'absolute', 'and never takes part in the layout');
+  assert.equal(rulesFor('.wv-measure-cell')['white-space'] ?? rulesFor('.wv-measure-cell').whiteSpace, 'nowrap',
+    'the clone must not wrap, or the fit reads a wrapped width');
 });
 
 test('the client width floor is the engine width floor', () => {
@@ -1189,8 +1217,11 @@ test('resize and reorder commit in place — the grid never tears down mid-gestu
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const resize = app.slice(app.indexOf('async function setColumnWidth'), app.indexOf('function fieldMenuButton'));
   assert.ok(!resize.includes('showDatabase(db.id);\n') || resize.includes('catch'), 'redraw only on failure');
-  assert.ok(resize.includes('th.style.width'), 'the header keeps its width locally');
-  assert.ok(resize.includes('cell.style.maxWidth'), 'cells follow without a repaint');
+  assert.ok(resize.includes('applyColumnWidth(th, width)'), 'the header keeps its width locally');
+  assert.ok(resize.includes('applyColumnWidth(cell, width)'), 'cells follow without a repaint');
+  const apply = fnBody('applyColumnWidth');
+  assert.ok(apply.includes('style.width') && apply.includes('style.maxWidth'),
+    'and the width is written as inline style, not a redraw');
   const rStart = app.indexOf('async function reorderField');
   const reorder = app.slice(rStart, rStart + 2600);
   assert.ok(reorder.includes('insertAdjacentElement'), 'columns move as DOM cells, not a redraw');
@@ -1308,7 +1339,7 @@ test('column resize captures the pointer and suspends the drag; double-click fit
   assert.match(grip, /th\.draggable = false/, 'column reorder cannot hijack a resize');
   assert.match(grip, /lostpointercapture/, 'a lost capture ends the resize cleanly');
   assert.match(grip, /fitColumnWidth\(th\)/, 'double-click fits the content');
-  assert.match(fnBody('fitColumnWidth'), /scrollWidth/, 'fit is measured on the cells, clipped or not');
+  assert.ok(!/scrollWidth/.test(fnBody('fitColumnWidth')), 'a clipped cell never reports overflow — the fit is measured off the grid');
   assert.equal(rulesFor('.col-resize')['touch-action'], 'none');
 });
 

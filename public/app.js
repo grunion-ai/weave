@@ -1694,7 +1694,7 @@ function renderTable(main, db, items, onSaved) {
             class: (f.type === 'number' ? 'num' : '') + kind,
             // A resized column overrides the shared 260px cap — otherwise the
             // header widens and the cells keep ellipsising at the old width.
-            style: f.width ? `max-width:${f.width}px` : null,
+            style: f.width ? columnWidthStyle(f.width) : null,
           }, editorFor(f, item, db, onSaved, { compact: true }));
         }),
         ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')),
@@ -1731,7 +1731,7 @@ function renderTable(main, db, items, onSaved) {
         ...cols.map((c, i) => el('th', {
           class: 'col-head',
           draggable: 'true',
-          style: colField(db, c).width ? `width:${colField(db, c).width}px` : null,
+          style: colField(db, c).width ? columnWidthStyle(colField(db, c).width) : null,
           // Click opens the field in the tray (Kyle, 2026-08-23: editing is
           // what a header click should mean); sorting lives in the ⋮ menu.
           onclick: () => editFieldDialog(db, colField(db, c)),
@@ -1792,21 +1792,63 @@ const MIN_COLUMN_WIDTH = 60;
 /* Drag the edge to size a column, double-click it to hand the column back to
    the browser. The width is per-field schema, so it is the grid's width for
    everyone — one write on release, never one per pointermove. */
-/* The widest content in the column, measured on the cells themselves:
-   double-clicking the grip fits the column to it so nothing is cut off
-   (Kyle, 2026-08-23). scrollWidth reads the full content even when the
-   cell clips it. */
+/* The widest content in the column, measured off the grid: double-clicking
+   the grip fits the column to it so nothing is cut off (Kyle, 2026-08-23).
+   scrollWidth cannot answer this (Kyle, 2026-08-24 — "does not snap to
+   properly"): a cell clips with `max-width` + ellipsis, so it never reports
+   overflow, and the <input> a text cell holds is a fixed default box whose
+   width says nothing about its value. Every fit came back as the width the
+   column already had, plus the padding constant. So the column's content is
+   cloned into an unclipped measurer — inputs swapped for spans carrying their
+   text and metrics — and the widest clone is the fit. */
+function cellFitProbe(cell) {
+  const cs = getComputedStyle(cell);
+  const probe = el('span', { class: 'wv-measure-cell' });
+  for (const prop of ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing']) {
+    probe.style[prop] = cs[prop];
+  }
+  for (const node of cell.childNodes) probe.append(node.cloneNode(true));
+  // An <input> paints its value, not its box, so measure the value.
+  const live = cell.querySelectorAll('input, textarea');
+  probe.querySelectorAll('input, textarea').forEach((copy, i) => {
+    const src = live[i] ?? copy;
+    const s = getComputedStyle(src);
+    const text = el('span', {}, src.value || src.placeholder || '');
+    for (const prop of ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing',
+      'paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']) {
+      text.style[prop] = s[prop];
+    }
+    text.style.borderStyle = 'solid';
+    copy.replaceWith(text);
+  });
+  return probe;
+}
+
 function fitColumnWidth(th) {
   const table = th.closest('table');
   const idx = [...th.parentElement.children].indexOf(th);
-  let widest = 0;
-  for (const row of table.querySelectorAll('tr')) {
+  const measure = el('div', { class: 'wv-measure' });
+  document.body.append(measure);
+  const probes = [];
+  const rows = [th.parentElement, ...table.querySelectorAll(':scope > tbody > tr')];
+  for (const row of rows) {
     const cell = row.children[idx];
-    if (!cell) continue;
-    const inner = cell.firstElementChild;
-    widest = Math.max(widest, (inner ? inner.scrollWidth : 0), cell.scrollWidth);
+    // A colspan cell (the "+ New" row, an expanded document) is the whole
+    // grid, not this column — measuring it fits the column to the table.
+    if (!cell || cell.colSpan > 1) continue;
+    const probe = cellFitProbe(cell);
+    measure.append(probe);
+    probes.push({ probe, cell });
   }
-  return Math.max(MIN_COLUMN_WIDTH, Math.ceil(widest) + 18);
+  let widest = 0;
+  for (const { probe, cell } of probes) {
+    const cs = getComputedStyle(cell);
+    const box = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']
+      .reduce((sum, prop) => sum + (parseFloat(cs[prop]) || 0), 0);
+    widest = Math.max(widest, probe.getBoundingClientRect().width + box);
+  }
+  measure.remove();
+  return Math.max(MIN_COLUMN_WIDTH, Math.ceil(widest));
 }
 
 function columnResizeGrip(db, f) {
@@ -1851,6 +1893,19 @@ function columnResizeGrip(db, f) {
   return grip;
 }
 
+/* A column width is a floor as well as a ceiling. Auto table layout treats a
+   bare `width` as a suggestion and squeezes it away as soon as the grid is
+   wider than its card — which is every grid with a document column — so a
+   resized or fitted column visibly refused to move (Kyle, 2026-08-24).
+   min-width holds the column open; max-width keeps the cells ellipsising. */
+const columnWidthStyle = (width) => `width:${width}px;min-width:${width}px;max-width:${width}px`;
+
+function applyColumnWidth(cell, width) {
+  cell.style.width = width ? `${width}px` : '';
+  cell.style.minWidth = width ? `${width}px` : '';
+  cell.style.maxWidth = width ? `${width}px` : '';
+}
+
 async function setColumnWidth(db, f, width, th = null) {
   try {
     await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, { config: { width } });
@@ -1858,11 +1913,11 @@ async function setColumnWidth(db, f, width, th = null) {
     // follow, without tearing the grid down mid-gesture (Kyle, 2026-08-22).
     f.width = width ?? undefined;
     if (th) {
-      th.style.width = width ? `${width}px` : '';
+      applyColumnWidth(th, width);
       const idx = [...th.parentElement.children].indexOf(th);
       for (const row of th.closest('table')?.querySelectorAll('tbody tr') ?? []) {
         const cell = row.children[idx];
-        if (cell) cell.style.maxWidth = width ? `${width}px` : '';
+        if (cell && cell.colSpan === 1) applyColumnWidth(cell, width);
       }
     }
     loadSchema().catch(() => {}); // background truth refresh, no repaint
