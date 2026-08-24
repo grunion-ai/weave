@@ -986,6 +986,34 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
   return wrap;
 }
 
+/* A text value is markdown when tokenizing it finds a mark — cheaper to ask
+   the tokenizer than to keep a second grammar in sync with it. */
+function hasInlineMarkup(text) {
+  return globalThis.WeaveEditorLib.inlineTokens(text).some((t) => t.mark);
+}
+
+const INLINE_TAG = { strong: 'strong', em: 'em', code: 'code', strike: 's', link: 'span', ref: 'span' };
+
+/* The costume: marks painted, syntax gone, and one click back to the source.
+   Focus follows the click so typing continues where it was aimed. */
+function dressedText(md, input) {
+  const tokens = globalThis.WeaveEditorLib.inlineTokens(md);
+  // The tooltip is the whole value the cell had to ellipsise — as prose, for
+  // the same reason the cell is: nobody wants to read markers in a tooltip.
+  const dressed = el('span', { class: 'text-dressed', tabindex: 0, title: tokens.map((t) => t.text).join('') });
+  for (const t of tokens) {
+    const cls = t.mark === 'link' ? 'md-link' : t.mark === 'ref' ? 'md-ref' : null;
+    dressed.append(t.mark ? el(INLINE_TAG[t.mark], cls ? { class: cls } : {}, t.text) : t.text);
+  }
+  dressed.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dressed.replaceWith(input);
+    input.focus();
+  });
+  input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
+  return dressed;
+}
+
 function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
@@ -1206,6 +1234,12 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     onclick: (e) => e.stopPropagation(),
   });
   input.addEventListener('change', () => patch(input.value === '' ? null : f.type === 'number' ? Number(input.value) : input.value));
+  // Space and table descriptions are markdown living in a text field. A grid
+  // that paints them raw reads `**Official docs** — the pages`, so the cell
+  // wears the marks and hands over the source on click (the #97 pattern).
+  if (f.type === 'text' && typeof rawVal === 'string' && hasInlineMarkup(rawVal)) {
+    return dressedText(rawVal, input);
+  }
   // A formatted number (#97) shows its costume at rest — '30 days' — and
   // hands over the raw number the moment it is clicked.
   if (f.type === 'number' && val != null && String(val) !== String(rawVal)) {

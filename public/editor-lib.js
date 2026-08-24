@@ -24,6 +24,49 @@ globalThis.WeaveEditorLib = {
     return out;
   },
 
+  /* ---------- one line of markdown, as marks instead of syntax ----------
+     For places that show a markdown value without editing it — the text
+     cells of the registry grids, where a space description was reading
+     `**Official docs** — the pages`. Flat by design: the first mark that
+     closes wins, nothing nests, and an unclosed marker is just text (so
+     `2 * 3` and `snake_case` survive). Same grammar as renderInline() in
+     src/markdown.js, minus the block level, which a cell has no room for. */
+  inlineTokens(md) {
+    const src = String(md ?? '');
+    if (!src) return [];
+    const RULES = [
+      [/^\[\[([^[\]\n|]+)(?:\|([^[\]\n]+))?\]\]/, (m) => ({ text: (m[2] ?? m[1]).trim(), mark: 'ref' })],
+      [/^\[([^\]\n]+)\]\([^)\s]*\)/, (m) => ({ text: m[1], mark: 'link' })],
+      // Every emphasis mark is flanked: it may not open or close on a space,
+      // so `2 * 3 * 4` stays arithmetic.
+      [/^\*\*(\S|\S[^*\n]*\S)\*\*/, (m) => ({ text: m[1], mark: 'strong' })],
+      [/^__(\S|\S[^_\n]*\S)__/, (m) => ({ text: m[1], mark: 'strong' })],
+      [/^~~(\S|\S[^~\n]*\S)~~/, (m) => ({ text: m[1], mark: 'strike' })],
+      [/^`(\S|\S[^`\n]*\S)`/, (m) => ({ text: m[1], mark: 'code' })],
+      [/^\*(\S|\S[^*\n]*\S)\*/, (m) => ({ text: m[1], mark: 'em' })],
+      // _em_ only between non-word edges, or snake_case_names would italicise.
+      [/^_(\S|\S[^_\n]*\S)_(?!\w)/, (m) => ({ text: m[1], mark: 'em' })],
+    ];
+    const out = [];
+    let plain = '';
+    const flush = () => { if (plain) { out.push({ text: plain, mark: null }); plain = ''; } };
+    for (let i = 0; i < src.length;) {
+      const rest = src.slice(i);
+      const hit = RULES.map(([re, make]) => [re.exec(rest), make]).find(([m]) => m);
+      // An underscore mark may only open where a word does not already run.
+      if (hit && !(hit[0][0][0] === '_' && /\w$/.test(plain))) {
+        flush();
+        out.push(hit[1](hit[0]));
+        i += hit[0][0].length;
+      } else {
+        plain += src[i];
+        i += 1;
+      }
+    }
+    flush();
+    return out;
+  },
+
   /* ---------- what language a fence is written in, when it does not say ----
      Measured first, then written: highlight.js's own auto-detection is not
      usable here. Over a subset it read a JS block as CSS (relevance 4) and a

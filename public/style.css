@@ -273,6 +273,18 @@ button.chip-trigger { cursor: pointer; font: inherit; }
    up its border and background has nothing to cast one, so the shadow read as
    a smudge under the text. Scoped to :not(:focus) — the focus ring rides the
    same property. */
+/* A markdown text value at rest: the marks, not the syntax. Sized and
+   ellipsised like the input it stands in for, so the cell never reflows on
+   the swap. Clicking hands the source back (see dressedText in app.js). */
+.text-dressed { display: block; max-width: 100%; padding: 4px 7px; border: 1px solid transparent;
+  border-radius: var(--tblr-border-radius); cursor: text; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.text-dressed:hover { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
+.text-dressed code { font-size: .92em; padding: 0 4px; border-radius: 4px; background: var(--tblr-bg-surface-secondary); color: inherit; }
+.text-dressed .md-link { color: var(--tblr-primary); text-decoration: underline; text-underline-offset: 2px; }
+.text-dressed .md-ref { color: var(--tblr-primary); padding: 0 4px; border-radius: 4px;
+  background: rgba(var(--tblr-primary-rgb), .08); }
+.text-dressed s { color: var(--tblr-secondary); }
+
 .inline-edit { border-color: transparent; background: transparent; max-width: 100%; }
 .inline-edit:not(:focus) { box-shadow: none; }
 .inline-edit:hover { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
