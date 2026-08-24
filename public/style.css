@@ -473,9 +473,19 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 
 /* ---------- relation map ---------- */
 .map-wrap { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); background: var(--tblr-bg-surface); overflow: auto; }
-.relmap { width: 100%; min-width: 700px; display: block; }
-.relmap .node-box { fill: var(--tblr-bg-surface-secondary); stroke: var(--tblr-border-color); stroke-width: 1.2; }
+/* Drawn at its own size and scrolled when it does not fit: shrinking a wide
+   map to the card's width only makes the labels unreadable. */
+.relmap { display: block; margin: 0 auto; }
+/* A space is ground the tables stand on — the subgraph the mermaid map drew,
+   in weave's own tokens. Its label is the space name, set like the nav's. */
+.relmap .space-box { fill: var(--tblr-bg-surface-secondary); stroke: var(--tblr-border-color); stroke-dasharray: 5 4; opacity: .7; }
+.relmap .space-label { font: 600 10.5px var(--tblr-font-sans-serif); letter-spacing: .06em; text-transform: uppercase; fill: var(--tblr-secondary); }
+.relmap .node-box { fill: var(--tblr-bg-surface); stroke: var(--tblr-border-color); stroke-width: 1.2; }
 .relmap .table-node:hover .node-box { stroke: var(--tblr-primary); }
+/* A guest from another space: present because something here points at it. */
+.relmap .table-node.foreign .node-box { stroke-dasharray: 4 3; }
+.relmap .table-node.foreign .node-title { fill: var(--tblr-secondary); }
+.relmap .rel-arrow { fill: var(--tblr-secondary); opacity: .75; }
 .relmap .node-title { font: 600 13px var(--tblr-font-sans-serif); fill: var(--tblr-body-color); }
 .relmap .node-sub { font: 10.5px var(--tblr-font-sans-serif); fill: var(--tblr-secondary); }
 .relmap .rel-line { stroke: var(--tblr-secondary); stroke-width: 1.1; opacity: .55; }

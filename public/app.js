@@ -2722,7 +2722,6 @@ async function showSpace(spaceId) {
         await loadSchema();
       },
       actions: [
-        el('a', { class: 'btn btn-sm', href: '#/map' }, iconEl('iconly:discovery', 'wv-icon'), ' Map'),
         // A space has no CSV of its own — it is a container — so the menu
         // offers one export per table it holds, then the destructive act.
         dotsMenu([
@@ -2766,9 +2765,116 @@ async function showSpace(spaceId) {
     };
     renderTable(main, reg, items, onSaved);
   }
+  // A space draws its own map — itself and whatever it touches — instead of
+  // sending the reader to the workspace-wide one (Kyle, 2026-08-24).
+  const card = await relationMapCard('Relation map', { spaceId });
+  if (card) main.append(card);
 }
 
-/* ---------- relation map (tables, relations, automations) ---------- */
+/* ---------- relation map (tables, relations, automations) ----------
+   ONE map, drawn at three altitudes: the full page behind #/map, a card on
+   the workspace home, and a card on a space page showing that space and
+   whatever it touches. It replaces both of the maps that came before — the
+   mermaid render (right content: user tables, grouped by space, a labelled
+   arrow each) and the circle-layout SVG (right design: weave's own cards).
+   Geometry is relmap-layout.js; this is the drawing. */
+
+const AUTO_ACTION = { 'set-field': (x) => `set ${x.field}`, 'append-doc': (x) => `append ${x.field}`, 'add-comment': () => 'comment' };
+
+function relationMapView(tables, automations, { spaceId = null } = {}) {
+  const autosByTable = new Map();
+  for (const a of automations ?? []) {
+    if (!autosByTable.has(a.tableId)) autosByTable.set(a.tableId, []);
+    autosByTable.get(a.tableId).push(a);
+  }
+  const autoCounts = Object.fromEntries([...autosByTable].map(([id, list]) => [id, list.length]));
+  const map = globalThis.WeaveRelmap.relmapLayout(tables, { spaceId, autoCounts });
+  if (!map.nodes.length) {
+    return el('div', { class: 'wv-empty' }, spaceId ? 'No related tables in this space yet.' : 'No tables yet.');
+  }
+  const svg = svgEl('svg', { viewBox: `0 0 ${map.width} ${map.height}`, class: 'relmap', width: map.width, height: map.height });
+
+  // One arrowhead, referenced by every relation line.
+  const defs = svgEl('defs');
+  const marker = svgEl('marker', {
+    id: 'relmap-arrow', viewBox: '0 0 8 8', refX: '7', refY: '4',
+    markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse',
+  });
+  marker.append(svgEl('path', { d: 'M0,0 L8,4 L0,8 z', class: 'rel-arrow' }));
+  defs.append(marker);
+  svg.append(defs);
+
+  // Space boxes first: they are ground, everything else sits on them.
+  for (const g of map.groups) {
+    svg.append(svgEl('rect', { x: g.x, y: g.y, width: g.w, height: g.h, rx: 14, class: 'space-box' }));
+    svg.append(svgEl('text', { x: g.x + 14, y: g.y + 18, class: 'space-label' }, g.name));
+  }
+
+  for (const e of map.edges) {
+    if (e.self) {
+      // A relation onto its own table: a loop off the card's right edge.
+      svg.append(svgEl('path', {
+        d: `M${e.x1},${e.y1} C${e.x1 + 34},${e.y1 - 16} ${e.x2 + 34},${e.y2 + 16} ${e.x2},${e.y2}`,
+        class: 'rel-line', 'marker-end': 'url(#relmap-arrow)', fill: 'none',
+      }));
+    } else {
+      svg.append(svgEl('line', { x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, class: 'rel-line', 'marker-end': 'url(#relmap-arrow)' }));
+    }
+    const tw = e.label.length * 6.2 + 14;
+    svg.append(svgEl('rect', { x: e.lx - tw / 2, y: e.ly - 9, width: tw, height: 18, rx: 9, class: 'rel-label-bg' }));
+    svg.append(svgEl('text', { x: e.lx, y: e.ly + 4, 'text-anchor': 'middle', class: 'rel-label' }, e.label));
+  }
+
+  for (const n of map.nodes) {
+    const x = n.x - n.w / 2, y = n.y - n.h / 2;
+    const g = svgEl('g', { class: 'table-node' + (n.foreign ? ' foreign' : ''), cursor: 'pointer' });
+    g.addEventListener('click', () => { location.hash = `#/table/${n.id}`; });
+    g.append(svgEl('rect', { x, y, width: n.w, height: n.h, rx: 10, class: 'node-box' }));
+    g.append(svgEl('text', { x: n.x, y: y + 24, 'text-anchor': 'middle', class: 'node-title' }, n.name));
+    // Inside its own space box the space name is redundant; a guest names it.
+    g.append(svgEl('text', { x: n.x, y: y + 43, 'text-anchor': 'middle', class: 'node-sub' },
+      n.foreign ? `${n.space} • ${n.entityCount} entities` : `${n.entityCount} entities`));
+    svg.append(g);
+
+    (autosByTable.get(n.id) ?? []).forEach((a, i) => {
+      const ay = y + n.h + 6 + i * 25;
+      const actions = a.actions.map((x) => (AUTO_ACTION[x.type] ?? (() => 'webhook'))(x)).join(', ');
+      const trig = a.trigger.type === 'state-changed' ? `${a.trigger.field}→${a.trigger.toState ?? '*'}`
+        : a.trigger.type === 'field-updated' ? `${a.trigger.field} changed` : 'created';
+      // The pill never outgrows its card: a wider one leaves the space box
+      // and, in the first column, the canvas itself.
+      const full = `⚡ ${trig} ⇒ ${actions}`;
+      const fits = Math.floor((n.w - 16) / 5.8);
+      const label = full.length > fits ? full.slice(0, fits - 1).trimEnd() + '…' : full;
+      const tw = Math.min(n.w, label.length * 5.8 + 14);
+      svg.append(svgEl('line', { x1: n.x, y1: y + n.h, x2: n.x, y2: ay, class: 'auto-line' }));
+      const pill = svgEl('g', { class: 'auto' });
+      pill.append(svgEl('title', {}, full));
+      pill.append(svgEl('rect', { x: n.x - tw / 2, y: ay, width: tw, height: 17, rx: 8.5, class: 'auto-pill' + (a.enabled ? '' : ' off') }));
+      pill.append(svgEl('text', { x: n.x, y: ay + 12, 'text-anchor': 'middle', class: 'auto-label' }, label));
+      svg.append(pill);
+    });
+  }
+
+  return el('div', { class: 'map-view' },
+    el('div', { class: 'map-wrap' }, svg),
+    el('div', { class: 'map-legend' },
+      el('span', {}, '▢ table (click to open)'),
+      el('span', {}, '→ relation (1/∗ = cardinality)'),
+      el('span', {}, '⚡ automation: trigger ⇒ actions')));
+}
+
+/* The same view as a card, for a page that is mostly something else. */
+async function relationMapCard(title, { spaceId = null } = {}) {
+  const card = el('div', { class: 'card panel home-map' },
+    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, title)),
+    el('div', { class: 'card-body' }, el('div', { class: 'wv-empty' }, '…')));
+  const [schema, automations] = await Promise.all([api('GET', '/schema'), api('GET', '/automations').catch(() => [])]);
+  const tables = schema.flatMap((s) => s.tables.map((t) => ({ ...t, space: s.space, spaceId: s.spaceId })));
+  const view = relationMapView(tables, automations, { spaceId });
+  card.querySelector('.card-body').replaceChildren(view);
+  return view.classList.contains('wv-empty') ? null : card;
+}
 
 async function showMap() {
   state.route = { page: 'map' };
@@ -2779,102 +2885,9 @@ async function showMap() {
     permalink: `${location.origin}${WS_PREFIX}/#/map`,
     title: 'Relation map',
   }));
-
   const [schema, automations] = await Promise.all([api('GET', '/schema'), api('GET', '/automations')]);
-  const tables = schema.flatMap((s) => s.tables.map((t) => ({ ...t, space: s.space })));
-  if (!tables.length) {
-    main.append(el('div', { class: 'wv-empty' }, 'No tables yet.'));
-    return;
-  }
-
-  const W = 1060;
-  const NODE_W = 190, NODE_H = 58;
-  const autosByTable = new Map();
-  for (const a of automations) {
-    if (!autosByTable.has(a.tableId)) autosByTable.set(a.tableId, []);
-    autosByTable.get(a.tableId).push(a);
-  }
-  const hasWebhook = automations.some((a) => a.actions.some((x) => x.type === 'webhook'));
-
-  // Circle layout, with vertical room under each node for automation pills.
-  const n = tables.length;
-  const cx = W / 2, cy = 290;
-  const rx = Math.min(400, 140 + n * 45), ry = 185;
-  const pos = new Map();
-  tables.forEach((t, i) => {
-    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-    pos.set(t.id, { x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) });
-  });
-  const maxAutos = Math.max(0, ...[...autosByTable.values()].map((a) => a.length));
-  const H = 580 + maxAutos * 24;
-
-  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'relmap' });
-
-  // Relations: draw each pair once (dedupe by field id vs inverse id).
-  const drawn = new Set();
-  for (const t of tables) {
-    for (const f of t.fields) {
-      if (f.type !== 'relation' || drawn.has(f.id) || drawn.has(f.inverseFieldId)) continue;
-      drawn.add(f.id);
-      const a = pos.get(t.id), b = pos.get(f.targetDbId);
-      if (!a || !b) continue;
-      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      svg.append(svgEl('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'rel-line' }));
-      const thisCard = f.many ? '∗' : '1';
-      const target = tables.find((x) => x.id === f.targetDbId);
-      const invField = target?.fields.find((x) => x.id === f.inverseFieldId);
-      const invCard = invField?.many ? '∗' : '1';
-      const label = `${t.name}.${f.name} ${invCard}—${thisCard} ${f.inverseField ?? ''}`;
-      const tw = label.length * 6.2 + 12;
-      svg.append(svgEl('rect', { x: mx - tw / 2, y: my - 10, width: tw, height: 18, rx: 9, class: 'rel-label-bg' }));
-      svg.append(svgEl('text', { x: mx, y: my + 3, 'text-anchor': 'middle', class: 'rel-label' }, label));
-    }
-  }
-
-  // External webhook node.
-  if (hasWebhook) {
-    svg.append(svgEl('rect', { x: W - 130, y: 16, width: 112, height: 34, rx: 8, class: 'ext-node' }));
-    svg.append(svgEl('text', { x: W - 74, y: 37, 'text-anchor': 'middle', class: 'node-title' }, 'webhooks'));
-  }
-
-  // Table nodes + automation pills.
-  for (const t of tables) {
-    const p = pos.get(t.id);
-    const x = p.x - NODE_W / 2, y = p.y - NODE_H / 2;
-    const g = svgEl('g', { class: 'table-node', cursor: 'pointer' });
-    g.addEventListener('click', () => { location.hash = `#/table/${t.id}`; });
-    g.append(svgEl('rect', { x, y, width: NODE_W, height: NODE_H, rx: 10, class: 'node-box' }));
-    g.append(svgEl('text', { x: p.x, y: y + 24, 'text-anchor': 'middle', class: 'node-title' }, t.name));
-    g.append(svgEl('text', { x: p.x, y: y + 43, 'text-anchor': 'middle', class: 'node-sub' }, `${t.space} • ${t.entityCount} entities`));
-    svg.append(g);
-
-    const autos = autosByTable.get(t.id) ?? [];
-    autos.forEach((a, i) => {
-      const ay = y + NODE_H + 10 + i * 22;
-      const actions = a.actions.map((x) =>
-        x.type === 'set-field' ? `set ${x.field}` :
-        x.type === 'append-doc' ? `append ${x.field}` :
-        x.type === 'add-comment' ? 'comment' : 'webhook').join(', ');
-      const trig = a.trigger.type === 'state-changed' ? `${a.trigger.field}→${a.trigger.toState ?? '*'}` :
-        a.trigger.type === 'field-updated' ? `${a.trigger.field} changed` : 'created';
-      const label = `⚡ ${trig} ⇒ ${actions}`;
-      const tw = Math.min(NODE_W + 70, label.length * 5.8 + 14);
-      svg.append(svgEl('line', { x1: p.x, y1: y + NODE_H, x2: p.x, y2: ay, class: 'auto-line' }));
-      svg.append(svgEl('rect', { x: p.x - tw / 2, y: ay, width: tw, height: 17, rx: 8.5, class: 'auto-pill' + (a.enabled ? '' : ' off') }));
-      svg.append(svgEl('text', { x: p.x, y: ay + 12, 'text-anchor': 'middle', class: 'auto-label' }, label));
-      if (a.actions.some((x) => x.type === 'webhook') && hasWebhook) {
-        svg.append(svgEl('line', { x1: p.x + tw / 2, y1: ay + 8, x2: W - 130, y2: 40, class: 'auto-line dashed' }));
-      }
-    });
-  }
-
-  const legend = el('div', { class: 'map-legend' },
-    el('span', {}, '▢ table (click to open)'),
-    el('span', {}, '— relation (1/∗ = cardinality)'),
-    el('span', {}, '⚡ automation: trigger ⇒ actions'));
-  const wrap = el('div', { class: 'map-wrap' });
-  wrap.append(svg);
-  main.append(wrap, legend);
+  const tables = schema.flatMap((s) => s.tables.map((t) => ({ ...t, space: s.space, spaceId: s.spaceId })));
+  main.append(relationMapView(tables, automations));
 }
 
 /* ---------- the embedded document editor (Feature #45) ----------
@@ -4445,18 +4458,11 @@ async function showHome() {
           el('span', { class: 'pid' }, `${v.blocks.length} block${v.blocks.length === 1 ? '' : 's'}`)))));
     }
   } catch { /* older server */ }
-  // The workspace's shape, read-only (Feature #51): the same .mmd any doc can
-  // reference, rendered here through the vendored mermaid.
+  // The workspace's shape, read-only (Feature #51) — the same view #/map and
+  // every space page draw, so there is one map to learn, not three.
   if (dbs.some((d) => !d.system)) {
-    const mapCard = el('div', { class: 'card panel home-map' },
-      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Relation map')),
-      el('div', { class: 'card-body' }, '…'));
-    main.append(mapCard);
-    fetch(`${WS_PREFIX}/api/relation-map.mmd`).then((r) => r.text()).then((mmd) => {
-      const body = mapCard.querySelector('.card-body');
-      body.replaceChildren(el('pre', { class: 'mermaid' }, mmd));
-      renderMermaidIn(body);
-    }).catch(() => mapCard.remove());
+    const card = await relationMapCard('Relation map');
+    if (card) main.append(card);
   }
 }
 
