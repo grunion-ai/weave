@@ -217,3 +217,19 @@ test('the description at the top of the table is the row Description, both ways'
   const descF = Object.values(w.getTable('Tables').fields).find((f) => f.name === 'Description');
   assert.equal(w.getEntity(row.id).values[descF.id], 'The work, refined');
 });
+
+/* The UI shows the registries AS the space/workspace views, and opening a
+   registry row opens the structure it stands for. That needs the row to say
+   what it stands for: readEntity (and so the query API) exposes sysId on
+   system-registry rows. */
+test('registry rows expose sysId so a row can open its structure', () => {
+  const w = fresh();
+  const spaceRow = w.listEntities(w.getTable('Spaces').id)[0];
+  assert.equal(w.readEntity(spaceRow.id).sysId, w.getSpace('Dev').id);
+  const tableRow = tableRowOf(w, 'Task');
+  assert.equal(w.readEntity(tableRow.id).sysId, w.getTable('Task').id);
+  const viaQuery = w.query('Tables', {}).items.find((i) => i.name === 'Task');
+  assert.equal(viaQuery.sysId, w.getTable('Task').id, 'query carries it too');
+  const plain = w.createEntity(w.getTable('Task').id, { Name: 'row' });
+  assert.equal(w.readEntity(plain.id).sysId, undefined, 'ordinary rows carry none');
+});

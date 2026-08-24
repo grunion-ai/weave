@@ -909,6 +909,32 @@ function openCellPicker(cell) {
 }
 
 // Row click → 'ignore' (a control handled it), the picker cell, or null (open).
+/* The Workspace registries, as the schema describes them. kind is the
+   engine's system marker: 'spaces' | 'tables' | 'fields'. */
+function registryTable(kind) {
+  for (const sp of state.schema) {
+    if (sp.system !== 'workspace') continue;
+    const db = sp.tables.find((t) => t.system === kind);
+    if (db) return db;
+  }
+  return null;
+}
+
+/* A registry row stands for a piece of structure; registryHref says where it
+   opens — the space or the table, which IS the entity of the workspace
+   (Kyle, 2026-08-24). Ordinary rows open their entity page as ever. */
+function registryHref(db, item) {
+  if (db.system === 'tables' && item.sysId) return `#/table/${item.sysId}`;
+  if (db.system === 'spaces' && item.sysId) return `#/space/${item.sysId}`;
+  return null;
+}
+
+function openRegistryRow(db, item) {
+  const href = registryHref(db, item);
+  if (href) { location.hash = href; return true; }
+  return false;
+}
+
 function rowClickTarget(e) {
   if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return 'ignore';
   return e.target.closest('.cell-pick');
@@ -1616,11 +1642,16 @@ function renderTable(main, db, items, onSaved) {
           const pick = rowClickTarget(e);
           if (pick === 'ignore') return;
           if (pick) return openCellPicker(pick);
+          if (openRegistryRow(db, item)) return;
           openEntity(item.id);
         },
       },
         el('td', { class: 'pid-cell' },
-          el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`)),
+          el('a', {
+            class: 'open-link',
+            href: registryHref(db, item) ?? `#/entity/${item.id}`,
+            title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : 'Open entity page',
+          }, `#${item.publicId} ↗`)),
         ...cols.map((c) => {
           const f = db.fields.find((x) => x.name === c);
           const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
@@ -2630,21 +2661,22 @@ async function showSpace(spaceId) {
         ], { title: 'Space actions', align: 'right' }),
       ],
     }),
-    el('div', { class: 'card list-rows' }, ...space.tables.map((d) => {
-      const wf = d.fields.find((x) => x.type === 'workflow');
-      const bits = [
-        `${d.entityCount} ${d.noun ? d.noun + (d.entityCount === 1 ? '' : 's') : (d.entityCount === 1 ? 'entity' : 'entities')}`,
-        `${d.fields.length} fields`,
-        ...(wf ? [`${wf.states.length}-state ${wf.name.toLowerCase()}`] : []),
-        ...(d.fields.some((x) => x.type === 'relation') ? ['linked'] : []),
-      ];
-      return el('div', { class: 'list-row space-table-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
-        el('span', { class: 'space-table-main' },
-          el('span', { class: 'space-table-name' }, iconEl(d.icon, 'wv-icon'), d.name),
-          d.description ? el('span', { class: 'space-table-desc' }, d.description.replace(/[#*_`\[\]]/g, '').slice(0, 90)) : null),
-        el('span', { class: 'spacer' }),
-        el('span', { class: 'pid' }, bits.join(' · ')));
-    })));
+  );
+  // The tables of this space, AS the Tables registry grid (Kyle, 2026-08-24):
+  // the same rows the engine syncs, with every field — Description, Field
+  // Order, Hidden Fields, the Fields relation — editable in place. Opening a
+  // row opens the table, because the row IS the table.
+  const reg = registryTable('tables');
+  if (reg) {
+    const res = await api('POST', `/tables/${reg.id}/query`, {});
+    const items = res.items.filter((i) => i.fields.Space?.name === space.space);
+    const onSaved = async () => {
+      await loadSchema();
+      await showSpace(spaceId);
+      restoreGridFocus();
+    };
+    renderTable(main, reg, items, onSaved);
+  }
 }
 
 /* ---------- relation map (tables, relations, automations) ---------- */
@@ -4267,12 +4299,9 @@ async function showHome() {
       description: ws.description,
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
     }),
-    dbs.length
-      ? el('div', { class: 'card list-rows' }, ...dbs.map((d) =>
-        el('div', { class: 'list-row', onclick: () => { location.hash = `#/table/${d.id}`; } },
-          el('span', {}, d.qualified), el('span', { class: 'spacer' }),
-          el('span', { class: 'pid' }, `${d.entityCount} entities`))))
-      : el('div', { class: 'wv-empty' }, 'Welcome to Weave. Create a space and a table to get started.'),
+    ...(dbs.length
+      ? []
+      : [el('div', { class: 'wv-empty' }, 'Welcome to Weave. Create a space and a table to get started.')]),
     /* The system tables live below the workspace's own, marked as weave's
        rather than the user's — they are reached from here because they belong
        to no space. */
@@ -4281,6 +4310,23 @@ async function showHome() {
         el('span', {}, 'Activity'), el('span', { class: 'chip system-chip' }, 'system'),
         el('span', { class: 'spacer' }),
         el('span', { class: 'pid' }, 'every event in this workspace'))));
+  // The spaces of this workspace, AS the Spaces registry grid (Kyle,
+  // 2026-08-24): every field of the registry, editable in place; opening a
+  // row opens the space, because the row IS the space.
+  const reg = registryTable('spaces');
+  if (reg && dbs.length) {
+    const res = await api('POST', `/tables/${reg.id}/query`, {});
+    const onSaved = async () => {
+      await loadSchema();
+      await showHome();
+      restoreGridFocus();
+    };
+    const sysCard = main.querySelector('.system-tables');
+    renderTable(main, reg, res.items, onSaved);
+    // renderTable appends; the registry grid belongs above the system card.
+    const wrap = main.lastElementChild;
+    if (sysCard && wrap && wrap !== sysCard) main.insertBefore(wrap, sysCard);
+  }
   // Saved views (Feature #17): named cross-table slices; share mints a
   // read-only capability URL that outlives the auth wall until revoked.
   try {

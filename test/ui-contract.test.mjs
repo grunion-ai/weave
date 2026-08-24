@@ -127,7 +127,9 @@ test('row click on a picker cell opens the picker instead of the entity', () => 
   // through rowClickTarget before it may open the entity page (Feature #117:
   // the page is the destination; the side peek of #39 is no longer a row's
   // click target).
-  const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*openEntity\(/g)];
+  // The grid may hop through openRegistryRow first (2026-08-24): a registry
+  // row opens its structure, every other row still opens the entity.
+  const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*(?:if \(openRegistryRow\(db, item\)\) return;\s*\n\s*)?openEntity\(/g)];
   assert.equal(routed.length, 3, 'grid, board and embedded related rows must all route clicks (list view removed 2026-08-22)');
   assert.equal((APP.match(/openEntity\(item\.id\)/g) ?? []).length, routed.length,
     'no row surface may open the entity without routing first');
@@ -1589,4 +1591,33 @@ test('the slash menu clamps into the viewport instead of hiding its promoted row
 test('the slash link glyph is the interlocked chain, not the hand-drawn arcs', () => {
   assert.match(APP, /M10 13a5 5 0 0 0 7\.54\.54/, "Feather's link path");
   assert.doesNotMatch(APP, /M10 13\.5a4 4 0 0 0 5\.7\.4/, 'the old approximation is gone');
+});
+
+/* Kyle, 2026-08-24: the view of tables within a space and the view of spaces
+   within a workspace are not hand-rolled lists — they ARE the registry grids,
+   with all their fields, and opening a row opens the space or table it
+   stands for. */
+
+test('the space page renders the Tables registry as a real grid', () => {
+  const body = fnBody('showSpace');
+  assert.match(body, /registryTable\('tables'\)/, 'the space page finds the Tables registry');
+  assert.match(body, /renderTable\(/, 'and renders it with the one grid renderer');
+  assert.doesNotMatch(body, /space-table-row/, 'the hand-rolled table list is gone');
+});
+
+test('the workspace page renders the Spaces registry as a real grid', () => {
+  const body = fnBody('showHome');
+  assert.match(body, /registryTable\('spaces'\)/, 'the workspace page finds the Spaces registry');
+  assert.match(body, /renderTable\(/, 'and renders it with the one grid renderer');
+});
+
+test('opening a registry row opens the structure it stands for', () => {
+  const body = fnBody('registryHref');
+  assert.match(body, /#\/table\/\$\{/, 'a Tables row opens the table');
+  assert.match(body, /#\/space\/\$\{/, 'a Spaces row opens the space');
+  assert.match(body, /sysId/, 'navigation uses the row sysId, not a name match');
+  const grid = fnBody('renderTable');
+  assert.match(grid, /openRegistryRow/, 'the grid routes row clicks through it');
+  assert.match(grid, /registryHref\(db, item\) \?\? `#\/entity\//,
+    'the #N open link is the same affordance: structure for registry rows, entity page otherwise');
 });

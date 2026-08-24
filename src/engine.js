@@ -2487,6 +2487,9 @@ export class Weave {
       createdBy: e.createdBy ?? null,
       modifiedBy: e.modifiedBy ?? null,
       deletedAt: e.deletedAt ?? null,
+      // A registry row stands for a piece of structure; sysId says which, so
+      // a surface can open the space/table itself rather than the row.
+      ...(e.sysId ? { sysId: e.sysId } : {}),
     };
   }
 
