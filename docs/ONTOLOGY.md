@@ -262,6 +262,14 @@ A system table whose rows are structure: `Workspace/Spaces`, `Workspace/Tables`,
 `Workspace/Fields`. Readable, queryable and editable like any table; not
 deletable, not redefinable.
 
+Not every system table is a registry. `Workspace/Workflows` is a system table
+whose rows are ordinary data — one row per workflow: the tables and spaces it
+touches (relations into the registries), its executable script (a code
+document), Version, State (Draft / Active / Deactivated), Health (Healthy /
+Warning / Failed), Last Run, a Diagram document carrying the workflow's
+mermaid, and a Type select that ships empty until workflow types are rolled
+out.
+
 The registries are related to each other exactly as the hierarchy says: a
 Fields row belongs to its Tables row (the `Table` field, inverse `Fields`), and
 a Tables row to its Spaces row (`Space`, inverse `Tables`). Both links are

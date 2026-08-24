@@ -1217,6 +1217,42 @@ export class Weave {
     // are themselves definitions one level down. A depth-4 field column is the
     // one shape the registry cannot hold — #syncFieldRow leaves it empty.
     if (!this.#sysField(fieldsT, 'Definition')) this.addField(fieldsT.id, { name: 'Definition', type: 'field', config: { depth: 4 } }).system = true;
+    /* Workflows (Kyle, 2026-08-24): a system table whose rows are DATA —
+       one row per workflow — not a mirror of structure. It lives beside the
+       registries because a workflow belongs to the workspace, not to any one
+       table. The Type select ships EMPTY on purpose: workflow types are
+       designed and rolled out later; the field is the socket they plug into. */
+    const wfT = this.#sysTable('workflows')
+      ?? mkTable('Workflows', 'workflows', 'Every workflow in this workspace, as a row: the tables and spaces it touches, its executable script, version, state, health, last run, and a mermaid diagram of itself.');
+    if (!this.#sysField(wfT, 'Tables')) {
+      const { field, inverse } = this.addRelation(wfT.id, { name: 'Tables', targetDb: tablesT.id, cardinality: 'many-to-many', inverseName: 'Workflows' });
+      field.system = true;
+      inverse.system = true;
+    }
+    if (!this.#sysField(wfT, 'Spaces')) {
+      const { field, inverse } = this.addRelation(wfT.id, { name: 'Spaces', targetDb: spacesT.id, cardinality: 'many-to-many', inverseName: 'Workflows' });
+      field.system = true;
+      inverse.system = true;
+    }
+    if (!this.#sysField(wfT, 'Script')) this.addField(wfT.id, { name: 'Script', type: 'document', config: { kind: 'code' } }).system = true;
+    if (!this.#sysField(wfT, 'Version')) this.addField(wfT.id, { name: 'Version', type: 'number', config: { decimals: 0 } }).system = true;
+    if (!this.#sysField(wfT, 'State')) {
+      this.addField(wfT.id, { name: 'State', type: 'workflow', config: { states: [
+        { name: 'Draft', category: 'not-started', default: true },
+        { name: 'Active', category: 'in-progress' },
+        { name: 'Deactivated', category: 'canceled' },
+      ] } }).system = true;
+    }
+    if (!this.#sysField(wfT, 'Health')) {
+      this.addField(wfT.id, { name: 'Health', type: 'select', config: { options: [
+        { name: 'Healthy', color: 'green' },
+        { name: 'Warning', color: 'yellow' },
+        { name: 'Failed', color: 'red' },
+      ] } }).system = true;
+    }
+    if (!this.#sysField(wfT, 'Last Run')) this.addField(wfT.id, { name: 'Last Run', type: 'date', config: { time: true } }).system = true;
+    if (!this.#sysField(wfT, 'Diagram')) this.addField(wfT.id, { name: 'Diagram', type: 'document' }).system = true;
+    if (!this.#sysField(wfT, 'Type')) this.addField(wfT.id, { name: 'Type', type: 'select', config: { options: [] } }).system = true;
     for (const sp of Object.values(s.spaces)) this.#syncSpaceRow(sp);
     for (const t of Object.values(s.tables)) this.#syncTableRow(t);
     for (const t of Object.values(s.tables)) {
@@ -1450,6 +1486,9 @@ export class Weave {
 
   #interceptUpdate(e, db, valuesByName) {
     if (!db.system || this.#inMetaSync) return undefined;
+    // Only the registries mirror structure; rows of other system tables
+    // (Workflows) are ordinary data and take the ordinary path.
+    if (!['spaces', 'tables', 'fields'].includes(db.system)) return undefined;
     const patch = { ...valuesByName };
     if (db.system === 'fields') {
       const owner = this.#fieldOwner(e.sysId);
@@ -1506,6 +1545,8 @@ export class Weave {
 
   #interceptDelete(e, db, hard) {
     if (!db.system || this.#inMetaSync) return undefined;
+    if (!['spaces', 'tables', 'fields'].includes(db.system)) return undefined; // ordinary rows
+
     const noun = { spaces: 'space', tables: 'table', fields: 'column' }[db.system];
     if (!hard) {
       throw new WeaveError(`Deleting a ${noun} is not recoverable — pass hard to confirm`, 'invalid');
