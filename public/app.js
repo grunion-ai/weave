@@ -3385,7 +3385,13 @@ const DASH_READING_LINE = 80; // px below the viewport top: past the header
 const docRails = new Set();
 
 function attachDashRail(section, host) {
-  const st = { section, host, rail: el('nav', { class: 'doc-rail', title: 'Document outline' }), timer: 0 };
+  // rail = the full-height gutter column; track = the sticky thing inside it,
+  // so the map floats alongside the reader instead of scrolling off the top.
+  const track = el('div', { class: 'doc-rail-track' });
+  const st = {
+    section, host, track, timer: 0,
+    rail: el('nav', { class: 'doc-rail', title: 'Document outline' }, track),
+  };
   st.schedule = () => {
     clearTimeout(st.timer);
     st.timer = setTimeout(() => refreshDashRail(st), REF_CHIP_DEBOUNCE);
@@ -3417,15 +3423,25 @@ function refreshDashRail(st) {
   if (!spec.length) { st.rail.remove(); return; } // < 3 headings: no rail
   if (!st.rail.isConnected) st.section.append(st.rail);
   const current = lib.currentSection(heads.map((h) => h.getBoundingClientRect().top), DASH_READING_LINE);
-  st.rail.replaceChildren(...spec.map((d, i) => el('button', {
+  // A dash is a tick plus its heading's words. The words are display:none
+  // until the rail is hovered, so the resting rail stays a minimap and the
+  // dash keeps the tick's own width.
+  st.track.replaceChildren(...spec.map((d, i) => el('button', {
     class: 'doc-rail-dash' + (i === current ? ' active' : ''),
     type: 'button',
     title: d.text,
-    style: `width:${d.width}px`,
     // Instant, not smooth: a backgrounded tab never runs the animation
     // frames a smooth scroll rides on, and the jump is the point anyway.
     onclick: () => heads[i].scrollIntoView({ block: 'start' }),
-  })));
+  },
+  el('i', { class: 'doc-rail-tick', style: `width:${d.width}px` }),
+  el('span', { class: 'doc-rail-label' }, d.text))));
+  // The track caps at the viewport, so a long map has to bring the reader's
+  // own section back into it — never while they are scrolling the map by hand.
+  const marker = st.track.children[current];
+  if (marker && st.track.scrollHeight > st.track.clientHeight && !st.rail.matches(':hover')) {
+    st.track.scrollTop = Math.max(0, marker.offsetTop - st.track.clientHeight / 2);
+  }
 }
 
 /* ---------- collapsible headings (Issue #88) ----------

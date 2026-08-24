@@ -225,6 +225,43 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
+  test('hovering the rail opens the headings themselves', async () => {
+    const id = entityWithDoc('RailHover', RAIL_DOC);
+    const page = await openEntity(id);
+    try {
+      await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
+      const before = await page.evaluate(() =>
+        getComputedStyle(document.querySelector('.doc-rail-label')).display);
+      assert.equal(before, 'none', 'the resting rail is a minimap, not a table of contents');
+      await page.hover('.doc-rail');
+      const after = await page.evaluate(() => {
+        const l = document.querySelector('.doc-rail-label');
+        return { display: getComputedStyle(l).display, text: l.textContent, width: l.getBoundingClientRect().width };
+      });
+      assert.notEqual(after.display, 'none', 'hovering shows the headings');
+      assert.equal(after.text, 'One', 'the label is the heading');
+      assert.ok(after.width > 0, 'and it takes real space');
+    } finally { await page.close(); }
+  });
+
+  test('the rail floats: scrolling leaves the track near the reading line', async () => {
+    const id = entityWithDoc('RailFloat', RAIL_DOC);
+    const page = await openEntity(id);
+    try {
+      await page.waitForSelector('.doc-rail .doc-rail-track', { timeout: 20000 });
+      const top = () => page.evaluate(() =>
+        document.querySelector('.doc-rail-track').getBoundingClientRect().top);
+      const resting = await top();
+      await page.evaluate(() => window.scrollBy(0, 600));
+      await page.waitForFunction((t) =>
+        document.querySelector('.doc-rail-track').getBoundingClientRect().top > t - 300,
+      resting, { timeout: 20000 });
+      const scrolled = await top();
+      assert.ok(scrolled > 0, 'the track never scrolls off the top of the viewport');
+      assert.ok(scrolled < 200, 'it holds at the reading line instead of riding the document down');
+    } finally { await page.close(); }
+  });
+
   test('a two-heading document stays rail-free', async () => {
     const id = entityWithDoc('NoRail', '# A\n\ntext\n\n## B\n\nmore\n');
     const page = await openEntity(id);

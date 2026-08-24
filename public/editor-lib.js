@@ -82,12 +82,12 @@ globalThis.WeaveEditorLib = {
      headings a map explains nothing, so there is no rail at all (Issue #87). */
   railSpec(headings) {
     if (!Array.isArray(headings) || headings.length < 3) return [];
-    // Widths stay under 13px so the rail column never reaches the fold
-    // carets sharing the gutter (rail at -26, carets from -13).
+    // Widths stay under 20px: the rail owns the full gutter now that the
+    // document text is indented and the fold carets moved inside that indent.
     return headings.map((h) => ({
       level: h.level,
       text: h.text,
-      width: Math.max(4, 14 - h.level * 2),
+      width: Math.max(6, 20 - h.level * 3),
     }));
   },
 

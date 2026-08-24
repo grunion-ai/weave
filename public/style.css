@@ -501,22 +501,45 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
    competes with the name it hangs off. */
 .field-mark { font-size: .72em; font-weight: 400; color: var(--tblr-secondary); margin-left: 2px; cursor: help; }
 
-.doc-section { margin: 0 0 26px; position: relative; }
+/* The document body is indented off the gutter so the rail and the fold
+   carets have room of their own and the text never runs up against them. */
+.doc-section { margin: 0 0 26px; position: relative; padding-left: 18px; }
+.doc-section.deck-section { padding-left: 0; }
 
 /* ---------- outline dash rail (Issue #87) ----------
    A minimap in the gutter #main's own padding provides: one dash per
    heading, longer for higher levels; the active dash is the section under
-   the reading line. Narrow screens have no gutter, so no rail. */
-.doc-rail { position: absolute; left: -26px; top: 34px; display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
-.doc-rail-dash { height: 3px; border: 0; padding: 0; border-radius: 2px; background: var(--tblr-border-color); cursor: pointer; display: block; }
-.doc-rail-dash:hover { background: var(--tblr-secondary); }
-.doc-rail-dash.active { background: var(--tblr-primary); }
+   the reading line. The rail spans the whole section but its track is
+   sticky, so the map floats beside the reader instead of scrolling away.
+   Hovering it opens the headings themselves. Narrow screens have no
+   gutter, so no rail. */
+.doc-rail { position: absolute; left: -26px; top: 0; bottom: 0; width: 22px; }
+.doc-rail-track { position: sticky; top: 88px; width: max-content; display: flex; flex-direction: column;
+  gap: 1px; align-items: flex-start; padding: 8px 10px; margin: 26px -10px 0; border-radius: 10px;
+  border: 1px solid transparent; transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
+  /* A long document out-maps the viewport: the track scrolls itself, and the
+     active dash is kept in it. No scrollbar — this is chrome, not a pane. */
+  max-height: calc(100vh - 120px); overflow-y: auto; scrollbar-width: none; }
+.doc-rail-track::-webkit-scrollbar { display: none; }
+.doc-rail:hover .doc-rail-track { background: var(--tblr-bg-surface); border-color: var(--tblr-border-color);
+  box-shadow: var(--tblr-box-shadow); z-index: 6; max-width: 260px; }
+.doc-rail-dash { border: 0; padding: 3px 0; background: none; cursor: pointer; display: flex;
+  align-items: center; gap: 9px; color: var(--tblr-secondary); font-size: 12px; line-height: 15px; text-align: left; }
+.doc-rail-tick { height: 4px; border-radius: 2px; flex: none; background: var(--tblr-border-color);
+  transition: transform .14s ease, background .14s ease; transform-origin: left center; }
+.doc-rail-dash:hover .doc-rail-tick { background: var(--tblr-secondary); transform: scaleX(1.3); }
+.doc-rail-dash.active .doc-rail-tick { background: var(--tblr-primary); }
+.doc-rail-label { display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.doc-rail:hover .doc-rail-label { display: block; }
+.doc-rail-dash:hover .doc-rail-label { color: var(--tblr-body-color); }
+.doc-rail-dash.active .doc-rail-label { color: var(--tblr-primary); font-weight: 600; }
 @media (max-width: 900px) { .doc-rail { display: none; } }
 
 /* ---------- collapsible headings (Issue #88) ----------
-   Carets sit between the rail (left: -26, dashes ≤ 12px wide) and the text,
-   one per visible heading. Hover chrome like the section head — except a
-   FOLDED caret stays visible, or the hidden content would be unfindable. */
+   Carets sit just left of the text, inside the section's own 18px indent;
+   the rail owns the gutter outside it. One per visible heading. Hover
+   chrome like the section head — except a FOLDED caret stays visible, or
+   the hidden content would be unfindable. */
 .doc-fold-layer { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .doc-fold { position: absolute; left: -13px; width: 13px; pointer-events: auto; border: 0; background: none;
   padding: 0; cursor: pointer; color: var(--tblr-secondary); display: flex; align-items: center;

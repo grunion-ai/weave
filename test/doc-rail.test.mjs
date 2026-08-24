@@ -45,6 +45,13 @@ test('equal levels get equal dashes', () => {
   assert.ok(spec.every((d) => d.width === spec[0].width));
 });
 
+test('dashes are big enough to aim at', () => {
+  const spec = LIB.railSpec(H(1, 3, 6));
+  assert.ok(spec[0].width >= 16, 'an h1 dash reads as a dash, not a speck');
+  assert.ok(spec[2].width >= 6, 'the deepest heading still has a target');
+  assert.ok(spec[0].width <= 22, 'and the rail stays inside the 26px gutter');
+});
+
 /* ---------- currentSection: the tracker ---------- */
 
 test('the tracker picks the last heading above the reading line', () => {
@@ -72,6 +79,28 @@ test('the rail lives in the left gutter and hides on narrow screens', () => {
   assert.match(CSS, /\.doc-rail\s*\{[^}]*position:\s*absolute/);
   assert.match(CSS, /@media[^{]*max-width[^{]*\{[^]*?\.doc-rail\s*\{\s*display:\s*none/,
     'no gutter on narrow screens, no rail');
+});
+
+test('the rail floats: its track is sticky inside a full-height gutter', () => {
+  assert.match(CSS, /\.doc-rail\s*\{[^}]*top:\s*0[^}]*bottom:\s*0/,
+    'the rail spans its section, so the sticky track has room to travel');
+  assert.match(CSS, /\.doc-rail-track\s*\{[^}]*position:\s*sticky/);
+  assert.match(APP, /class:\s*'doc-rail-track'/, 'the rail is built with a track to stick');
+});
+
+test('each dash carries its heading, hidden until the rail is hovered', () => {
+  assert.match(APP, /doc-rail-label'\s*\}\s*,\s*d\.text/, 'the label is the heading text');
+  assert.match(CSS, /\.doc-rail-label\s*\{[^}]*display:\s*none/, 'resting rail is a minimap');
+  assert.match(CSS, /\.doc-rail:hover\s+\.doc-rail-label\s*\{\s*display:\s*block/,
+    'hovering the rail opens the headings');
+});
+
+test('a hovered dash grows its tick', () => {
+  assert.match(CSS, /\.doc-rail-dash:hover\s+\.doc-rail-tick\s*\{[^}]*scaleX\(/);
+});
+
+test('the document text is indented off the gutter', () => {
+  assert.match(CSS, /\.doc-section\s*\{[^}]*padding-left:\s*18px/);
 });
 
 test('clicking a dash scrolls to its section', () => {
