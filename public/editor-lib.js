@@ -24,6 +24,24 @@ globalThis.WeaveEditorLib = {
     return out;
   },
 
+  /* ---------- what kind of thing a document is ----------
+     A document field holds whatever was written into it, and weave already
+     treats some of that specially: a complete HTML file runs as an app
+     (isHtmlDocument in app.js and src/markdown.js), a slide Model is JSON, a
+     mermaid source renders as a diagram. The chips in a grid row say which,
+     so a row of three documents is legible without opening any of them.
+     null for an empty document — it has no kind yet. */
+  docKind(text) {
+    const src = String(text ?? '').trim();
+    if (!src) return null;
+    if (/^(?:<!doctype\s+html|<html[\s>])/i.test(src)) return 'html';
+    if (/^[{[]/.test(src)) {
+      try { JSON.parse(src); return 'json'; } catch { /* prose that opens with a brace */ }
+    }
+    if (/^(?:graph|flowchart|sequenceDiagram|classDiagram|erDiagram|stateDiagram|gantt|pie|mindmap)\b/.test(src)) return 'mmd';
+    return 'md';
+  },
+
   /* ---------- one line of markdown, as marks instead of syntax ----------
      For places that show a markdown value without editing it — the text
      cells of the registry grids, where a space description was reading

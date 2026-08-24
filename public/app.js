@@ -149,7 +149,9 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   return back;
 }
 
-const state = { schema: [], route: null, expanded: new Set(), refocus: null, trail: [], showDeleted: new Set() };
+// expandedDoc: which document a row was expanded ON — clicking a chip opens
+// that field's tab, not whichever one happens to come first.
+const state = { schema: [], route: null, expanded: new Set(), expandedDoc: new Map(), refocus: null, trail: [], showDeleted: new Set() };
 
 // Single entry point for opening an entity. The page IS the destination
 // (Feature #117): a row click lands here; the side peek below is kept for
@@ -1254,13 +1256,32 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   return input;
 }
 
+/* ---------- a row's documents, as chips (Kyle, 2026-08-24) ----------
+   A row can carry several documents; a 90-character slice of the first one
+   said nothing about the rest. One chip per document field instead: its
+   name, and the kind of thing it holds — md, an html app, a json model, a
+   mermaid diagram — with the empty ones dimmed and labelled as empty. */
+function docChips(item, db, onOpen) {
+  const box = el('span', { class: 'doc-chips' });
+  for (const f of documentFields(db)) {
+    const kind = globalThis.WeaveEditorLib.docKind(item.docs?.[f.name]);
+    box.append(el('button', {
+      class: 'chip doc-chip' + (kind ? '' : ' empty'),
+      type: 'button',
+      title: kind ? `Open ${f.name} (${kind})` : `${f.name} is empty — click to write it`,
+      onclick: (e) => { e.stopPropagation(); onOpen(f.name); },
+    }, f.name, el('span', { class: 'doc-kind' }, kind ?? 'empty')));
+  }
+  return box;
+}
+
 /* ---------- inline multi-document editor ----------
    Tabbed across every document field of the table. Used by all views. */
 
-function docsEditor(item, db, onSaved) {
+function docsEditor(item, db, onSaved, { active: want = null } = {}) {
   const fields = documentFields(db);
   if (!fields.length) return el('div', { class: 'doc-inline-wrap' }, 'This table has no document fields.');
-  let active = fields[0].name;
+  let active = fields.some((f) => f.name === want) ? want : fields[0].name;
   const wrap = el('div', { class: 'doc-inline-wrap' });
 
   const draw = () => {
@@ -1698,10 +1719,11 @@ function renderTable(main, db, items, onSaved) {
           }, editorFor(f, item, db, onSaved, { compact: true }));
         }),
         ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')),
-        el('td', { class: 'docs-cell' }, el('span', {
-          class: 'doc-snip', title: 'Open documents',
-          onclick: (e) => { e.stopPropagation(); state.expanded.add(item.id); draw(); },
-        }, docPreview(item.docs?.[documentFields(db)[0]?.name] ?? item.doc, 90)), el('button', {
+        el('td', { class: 'docs-cell' }, docChips(item, db, (field) => {
+          state.expanded.add(item.id);
+          state.expandedDoc.set(item.id, field);
+          draw();
+        }), el('button', {
           class: 'btn btn-sm btn-ghost-secondary tiny' + (state.expanded.has(item.id) ? ' active-toggle' : ''),
           title: 'Edit documents',
           onclick: () => {
@@ -1713,7 +1735,8 @@ function renderTable(main, db, items, onSaved) {
       tbody.append(row);
       if (state.expanded.has(item.id)) {
         tbody.append(el('tr', { class: 'doc-row' },
-          el('td', { colspan: String(colCount) }, docsEditor(item, db, onSaved))));
+          el('td', { colspan: String(colCount) },
+            docsEditor(item, db, onSaved, { active: state.expandedDoc.get(item.id) }))));
       }
     }
     // Creating an entity is the last row of the grid, not a detached bar:

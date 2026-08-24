@@ -1436,14 +1436,16 @@ test('system columns are toggled only from the eye — not from the table ⋮ me
    table view of that entity." The Docs cell carries a one-line preview of
    the first document beside the 📄 toggle — the same docPreview the search
    results and cards use — so a row says what it is about without opening. */
-test('the table grid previews the first document in the Docs cell', () => {
+/* Was: a 90-character snip of the FIRST document field. A row can hold
+   several documents, so the snip described one of them and hid the rest.
+   Now every document field is a chip carrying its name and its kind
+   (test/doc-chips.test.mjs owns that behavior). */
+test('the table grid names every document in the Docs cell', () => {
   const grid = fnBody('renderTable');
-  assert.match(grid, /class: 'doc-snip'/, 'the preview is a quiet snip in the cell');
-  assert.match(grid, /docPreview\(item\.docs\?\.\[documentFields\(db\)\[0\]\?\.name\] \?\? item\.doc, 90\)/,
-    'the first document field, through the one preview function');
   assert.match(grid, /class: 'docs-cell'/, 'the cell is addressable');
-  assert.ok(rulesFor('.docs-cell .doc-snip')['max-width'], 'the snip is width-capped');
-  assert.equal(rulesFor('.docs-cell .doc-snip')['text-overflow'], 'ellipsis', 'and ellipsises');
+  assert.match(grid, /docChips\(item, db,/, 'the cell is chips, one per document field');
+  assert.ok(!grid.includes("class: 'doc-snip'"), 'the one-document snip is gone');
+  assert.ok(rulesFor('.doc-chip')['max-width'], 'a chip is width-capped');
 });
 
 /* ---------- the slash menu reads as a menu ----------

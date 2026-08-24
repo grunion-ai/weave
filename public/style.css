@@ -227,8 +227,14 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 .add-entity-btn:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-primary); }
 .entity-row { cursor: pointer; }
 .docs-cell { white-space: nowrap; }
-.docs-cell .doc-snip { display: inline-block; vertical-align: middle; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--tblr-secondary); margin-right: 6px; cursor: pointer; }
-.docs-cell .doc-snip:empty { display: none; }
+/* One chip per document field: its name, then what it holds. The kind rides
+   inside the chip as a quieter second half, the way the state chips carry
+   their category — a chip you can read at a glance and click to open. */
+.doc-chips { display: inline-flex; gap: 4px; vertical-align: middle; margin-right: 6px; }
+.doc-chip { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; max-width: 190px; }
+.doc-chip .doc-kind { font-family: var(--tblr-font-monospace); font-size: .82em; opacity: .62; }
+.doc-chip.empty { opacity: .5; }
+.doc-chip:hover { border-color: var(--tblr-primary); color: var(--tblr-primary); opacity: 1; }
 .doc-row td { background: var(--tblr-bg-surface-secondary); }
 .doc-row:hover td { background: var(--tblr-bg-surface-secondary); box-shadow: none; }
 
