@@ -4742,7 +4742,14 @@ async function buildWsRail() {
   try {
     const list = await api('GET', '/workspaces');
     const current = WS_PREFIX ? WS_PREFIX.slice(3) : list.find((w) => w.default)?.name;
-    $('#ws-name').textContent = current ?? '';
+    // The wordmark is the way home, not a caption (Kyle, 2026-08-24: "allow
+    // clicking the workspace name to take you to the workspace entity page in
+    // addition to the workspace selector chip"). A real href, so ⌘-click and
+    // middle-click open the workspace in a tab like every other link.
+    const wordmark = $('#ws-name');
+    wordmark.textContent = current ?? '';
+    wordmark.href = wsHomeHref();
+    wordmark.title = current ? `Open the ${current} workspace page` : 'Open the workspace page';
     const weaveWs = list.find((w) => w.name === 'weave');
     const pinned = $('#rail-weave');
     if (pinned) {

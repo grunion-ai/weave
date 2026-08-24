@@ -47,6 +47,11 @@ body { font-size: 14px; background: var(--wv-canvas); }
    own; the white content panel provides all the separation (Buzz idiom). */
 #sidebar { width: 240px; flex-shrink: 0; background: transparent; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 .brand { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+/* The workspace name is the way home (Kyle, 2026-08-24). It stays the
+   wordmark — brand color, no link blue — and earns an underline on hover;
+   the blue that other nav links use goes muddy on the dark sidebar. */
+.ws-wordmark { color: inherit; text-decoration: none; cursor: pointer; }
+.ws-wordmark:hover, .ws-wordmark:focus-visible { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .ws-wordmark { font-family: 'Inter', var(--tblr-font-sans-serif, -apple-system, sans-serif); font-weight: 700; font-size: 18px; letter-spacing: -0.02em; line-height: 22px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #nav-collapse { flex-shrink: 0; }
 #nav { flex: 1; }
