@@ -145,3 +145,75 @@ test('describeSchema flags the system space and tables so surfaces can badge the
   assert.equal(ws.system, 'workspace');
   assert.equal(ws.tables.find((t) => t.name === 'Spaces').system, 'spaces');
 });
+
+/* Kyle, 2026-08-24: a workspace and a space are themselves structured as
+   tables with fields — the space level is a table whose rows are tables, and
+   a table's own configuration is carried AS FIELDS on that row: the
+   description shown at the top of the table, which fields are visible, and in
+   what order. Not a mirror: editing the row edits the table. */
+
+const tval = (w, row, name) => {
+  const t = w.getTable('Tables');
+  const f = Object.values(t.fields).find((x) => x.name === name);
+  return w.getEntity(row.id).values[f.id];
+};
+const tableRowOf = (w, dbName) =>
+  w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === dbName);
+
+test('a table row carries its configuration as fields: Field Order and Hidden Fields', () => {
+  const w = fresh();
+  w.addField('Task', { name: 'Points', type: 'number' });
+  w.addField('Task', { name: 'Due', type: 'date' });
+  const row = tableRowOf(w, 'Task');
+  assert.equal(tval(w, row, 'Field Order'), 'Name, Description, Points, Due',
+    'the row states the column order');
+  assert.equal(tval(w, row, 'Hidden Fields') ?? '', '', 'nothing hidden yet');
+
+  w.updateTable('Task', { hiddenFields: ['Points', 'Created At'] });
+  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Hidden Fields'), 'Points, Created At');
+
+  w.updateTable('Task', { fieldOrder: ['Due', 'Name', 'Points', 'Description'] });
+  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Due, Name, Points, Description');
+});
+
+test('schema verbs that change the columns refresh the row', () => {
+  const w = fresh();
+  w.createTable({ space: 'Dev', name: 'Project' });
+  w.addField('Task', { name: 'Points', type: 'number' });
+  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Points');
+  w.addRelation('Task', { name: 'Project', targetDb: 'Project', cardinality: 'many-to-one' });
+  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Points, Project');
+  assert.equal(tval(w, tableRowOf(w, 'Project'), 'Field Order'), 'Name, Description, Tasks',
+    'the inverse end lands on the far table row too');
+  w.deleteField('Task', 'Points');
+  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Project');
+});
+
+test('editing the row edits the table: Field Order and Hidden Fields write back', () => {
+  const w = fresh();
+  w.addField('Task', { name: 'Points', type: 'number' });
+  const row = tableRowOf(w, 'Task');
+
+  w.updateEntity(row.id, { 'Field Order': 'Points, Name, Description' });
+  const db = w.getTable('Task');
+  assert.deepEqual(db.fieldOrder.map((id) => db.fields[id].name), ['Points', 'Name', 'Description']);
+
+  w.updateEntity(row.id, { 'Hidden Fields': 'Points' });
+  assert.deepEqual(w.getTable('Task').hiddenFields, ['Points']);
+  w.updateEntity(row.id, { 'Hidden Fields': '' });
+  assert.equal(w.getTable('Task').hiddenFields, undefined, 'empty clears');
+
+  // The same validation as the schema verb: a partial order is refused.
+  assert.throws(() => w.updateEntity(row.id, { 'Field Order': 'Name' }), /every field exactly once/);
+  assert.throws(() => w.updateEntity(row.id, { 'Hidden Fields': 'Nope' }), /not a field/);
+});
+
+test('the description at the top of the table is the row Description, both ways', () => {
+  const w = fresh();
+  const row = tableRowOf(w, 'Task');
+  w.updateEntity(row.id, { Description: 'All the work' });
+  assert.equal(w.getTable('Task').description, 'All the work');
+  w.updateTable('Task', { description: 'The work, refined' });
+  const descF = Object.values(w.getTable('Tables').fields).find((f) => f.name === 'Description');
+  assert.equal(w.getEntity(row.id).values[descF.id], 'The work, refined');
+});

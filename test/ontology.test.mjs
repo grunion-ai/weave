@@ -172,3 +172,21 @@ test('the doc lists exactly the engine field types', () => {
     assert.ok(FIELD_TYPES.includes(n), `field-type axis names \`${n}\`, which is not a field type`);
   }
 });
+
+/* Kyle, 2026-08-24: a workspace and a space are themselves structured as
+   tables with fields — and a table's configuration (the description at its
+   top, which fields are visible, in what order) is fields ON its registry
+   row. The doc must say so, and the fields it names must actually exist on
+   the Tables registry. */
+test('the doc documents structure-as-tables, and the config fields are real', () => {
+  const start = DOC.indexOf('## Every level is a table');
+  assert.ok(start > 0, 'ONTOLOGY.md must carry the "Every level is a table" section');
+  const section = DOC.slice(start, DOC.indexOf('\n## ', start + 5));
+  const w = new Weave();
+  const tablesT = w.getTable('Tables');
+  for (const name of ['Field Order', 'Hidden Fields', 'Description']) {
+    assert.ok(section.includes(`\`${name}\``), `section never names \`${name}\``);
+    assert.ok(Object.values(tablesT.fields).some((f) => f.name === name),
+      `'${name}' is documented but not a field of the Tables registry`);
+  }
+});

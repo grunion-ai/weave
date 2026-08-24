@@ -1199,6 +1199,12 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
+    // A table's configuration IS fields on its row (Kyle, 2026-08-24): the
+    // visible column order and the hidden columns, as comma-separated names.
+    // Editing them edits the table — #interceptUpdate routes them through
+    // updateTable, which validates exactly as the schema verb does.
+    if (!this.#sysField(tablesT, 'Field Order')) this.addField(tablesT.id, { name: 'Field Order', type: 'text' }).system = true;
+    if (!this.#sysField(tablesT, 'Hidden Fields')) this.addField(tablesT.id, { name: 'Hidden Fields', type: 'text' }).system = true;
     const fieldsT = this.#sysTable('fields')
       ?? mkTable('Fields', 'fields', 'Every field of every table, as a row related to its table and carrying its definition. Creating a row creates the column; renaming it renames the column; editing its Definition changes the config; hard-deleting it deletes the column.');
     if (!this.#sysField(fieldsT, 'Table')) {
@@ -1335,6 +1341,17 @@ export class Weave {
     // The link, every time — not only at creation. A row created mid-bootstrap
     // has no space row to point at yet, and nothing ever went back for it.
     if (spaceRow && !this.#relIds(row, t, 'Space').includes(spaceRow.id)) patch.Space = spaceRow.id;
+    // Configuration as fields: the column order and the hidden columns.
+    const orderF = this.#sysField(t, 'Field Order');
+    if (orderF) {
+      const order = db.fieldOrder.map((id) => db.fields[id]?.name).filter(Boolean).join(', ');
+      if ((row.values[orderF.id] ?? '') !== order) patch['Field Order'] = order;
+    }
+    const hiddenF = this.#sysField(t, 'Hidden Fields');
+    if (hiddenF) {
+      const hidden = (db.hiddenFields ?? []).join(', ');
+      if ((row.values[hiddenF.id] ?? '') !== hidden) patch['Hidden Fields'] = hidden;
+    }
     if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
     return row;
   }
@@ -1471,6 +1488,13 @@ export class Weave {
       const structural = {};
       if ('Name' in patch) { structural.name = patch.Name; delete patch.Name; }
       if ('Description' in patch) { structural.description = patch.Description; delete patch.Description; }
+      if (db.system === 'tables') {
+        // Configuration as fields, writing back: same validation as the
+        // schema verb, because it IS the schema verb.
+        const split = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+        if ('Field Order' in patch) { structural.fieldOrder = split(patch['Field Order']); delete patch['Field Order']; }
+        if ('Hidden Fields' in patch) { structural.hiddenFields = split(patch['Hidden Fields']); delete patch['Hidden Fields']; }
+      }
       if (Object.keys(structural).length) {
         if (db.system === 'spaces') this.updateSpace(e.sysId, structural);
         else this.updateTable(e.sysId, structural);
@@ -1571,6 +1595,7 @@ export class Weave {
     db.fieldOrder.push(field.id);
     this.save();
     this.#syncFieldRow(db, field);
+    this.#syncTableRow(db); // the row's Field Order names every column
     if (!db.system) this.#audit('field-added', { table: db.name, name: field.name, type: field.type });
     return field;
   }
@@ -1602,6 +1627,8 @@ export class Weave {
     this.save();
     this.#syncFieldRow(db, a);
     this.#syncFieldRow(target, b);
+    this.#syncTableRow(db);
+    this.#syncTableRow(target);
     if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, target: target.name });
     return { field: a, inverse: b };
   }
@@ -1783,6 +1810,11 @@ export class Weave {
     this.#removeFieldRaw(db, field.id);
     this.#dropFieldRow(field.id);
     if (field.type === 'relation' && field.config.inverseFieldId) this.#dropFieldRow(field.config.inverseFieldId);
+    this.#syncTableRow(db);
+    if (field.type === 'relation' && field.config.targetDb) {
+      const far = this.state.tables[field.config.targetDb];
+      if (far) this.#syncTableRow(far);
+    }
     this.save();
     if (!db.system) this.#audit('field-deleted', { table: db.name, name: field.name });
   }

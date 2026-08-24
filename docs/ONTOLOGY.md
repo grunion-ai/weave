@@ -72,6 +72,33 @@ or an entity view.
 | **Audit entry** | `store.audit_log` | A workspace-level record of a structural change. |
 | **Undo step** | `store.undo_log` | A reversible before-image of one entity mutation. |
 
+## Every level is a table
+
+The claim "everything is an entity" has a twin: **every level is itself
+structured as a table with fields.**
+
+- The **workspace** is a table whose rows are its spaces — literally
+  `Workspace/Spaces`.
+- A **space** is a table whose rows are its tables — `Workspace/Tables`,
+  scoped to the space through the `Space` relation; a space's entity view
+  lists exactly its own tables.
+- A **table** is a table whose rows are its rows — that one needs no
+  registry, it is the thing itself.
+
+And because a table's row is a real entity, **the table's configuration is
+fields on that row**, not settings hidden in an options panel:
+
+| Field on the Tables row | What it configures |
+| --- | --- |
+| `Description` | The description shown at the top of the table |
+| `Field Order` | Which columns appear, in what order — a comma-separated full permutation |
+| `Hidden Fields` | Which columns (including system columns) are hidden |
+
+The sync is two-way and validated identically in both directions: editing
+`Field Order` on the row *is* `updateTable({ fieldOrder })`, so a partial
+order is refused on the row exactly as it is at the schema verb. Adding,
+deleting, or reordering columns through the schema verbs updates the row.
+
 ## How it nests
 
 ```
