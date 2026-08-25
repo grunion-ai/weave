@@ -518,10 +518,12 @@ export class Weave {
 
   // ---------------- spaces ----------------
 
-  createSpace({ name, description = '' }) {
+  createSpace({ name, description = '', icon = '' }) {
     if (!name) throw new WeaveError('Space name is required', 'invalid');
     if (this.findSpace(name)) throw new WeaveError(`Space '${name}' already exists`, 'conflict');
-    const space = { id: uuid(), name, description, createdAt: nowISO() };
+    // A table has taken its icon at creation since Feature #51; a space had to
+    // be created and then updated, which is a second call for one field.
+    const space = { id: uuid(), name, description, ...(icon ? { icon } : {}), createdAt: nowISO() };
     this.state.spaces[space.id] = space;
     this.save();
     this.#syncSpaceRow(space);

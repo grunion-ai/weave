@@ -146,12 +146,16 @@ export const TOOLS = [
   {
     name: 'weave_create_space',
     description: 'Create a space (top-level grouping of tables).',
-    inputSchema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' } }, required: ['name'] },
+    inputSchema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } }, required: ['name'] },
   },
   {
     name: 'weave_create_table',
-    description: 'Create a table in a space (a Name text field is added automatically).',
-    inputSchema: { type: 'object', properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' } }, required: ['space', 'name'] },
+    description: 'Create a table in a space (a Name text field and a Description document are added automatically). icon is `iconly:<name>` from weave_vocabulary.',
+    inputSchema: {
+      type: 'object',
+      properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } },
+      required: ['space', 'name'],
+    },
   },
   {
     name: 'weave_add_field',
@@ -421,9 +425,9 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_search':
       return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
     case 'weave_create_space':
-      return weave.createSpace(args);
+      return weave.createSpace(pick(args, ['name', 'description', 'icon']));
     case 'weave_create_table':
-      return weave.createTable(args);
+      return weave.createTable(pick(args, ['space', 'name', 'description', 'icon']));
     case 'weave_add_field':
       return weave.addField(args.db, { name: args.name, type: args.type, config: args.config ?? {} });
     case 'weave_add_relation':

@@ -88,6 +88,10 @@ human.
 
 ### Configuration without a browser
 
+A space and a table are born with everything they need: `weave_create_space`
+and `weave_create_table` take `description` and `icon` alongside the name, so
+standing one up is one call rather than a create followed by an update.
+
 **Read `weave_vocabulary` before configuring anything.** It returns every
 closed set a config value can come from *and what the choice looks like on
 screen*: the eighteen field types with how each renders in the grid and which

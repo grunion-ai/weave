@@ -116,6 +116,37 @@ test('every capability has a CLI command that exists', () => {
   }
 });
 
+/* Presence is not parity: a tool can name a capability and still leave half
+   its arguments on the floor. `weave_create_table` took space, name and
+   description while the engine's createTable also took an icon, so an agent
+   creating a table could not give it one without a second call — a small gate,
+   but a gate. The creates are checked against the engine's own signatures. */
+test('a create tool takes every option the engine create takes', () => {
+  const ENGINE = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
+  const optionsOf = (method) => {
+    const sig = ENGINE.match(new RegExp(`\\n  ${method}\\(\\{([^}]*)\\}`))?.[1] ?? '';
+    return sig.split(',').map((p) => p.trim().split(/[=\s]/)[0]).filter(Boolean);
+  };
+  for (const [method, tool] of [['createSpace', 'weave_create_space'], ['createTable', 'weave_create_table']]) {
+    const wanted = optionsOf(method);
+    assert.ok(wanted.length, `could not read ${method}'s signature`);
+    const props = Object.keys(TOOLS.find((t) => t.name === tool).inputSchema.properties);
+    const missing = wanted.filter((k) => !props.includes(k));
+    assert.deepEqual(missing, [], `${tool} is missing ${missing.join(', ')} — the engine takes it`);
+  }
+});
+
+test('the CLI creates take the same options', () => {
+  const block = (cmd) => {
+    const i = CLI.indexOf(`case '${cmd}'`);
+    return CLI.slice(i, i + 2600);
+  };
+  // The create call itself, not a neighbouring subcommand that happens to
+  // mention an icon.
+  assert.match(block('space'), /createSpace\(\{[^}]*icon/, 'weave space create passes --icon through');
+  assert.match(block('table'), /createTable\(\{[^}]*icon/, 'weave table create passes --icon through');
+});
+
 test('every MCP tool is documented in AGENTS.md', () => {
   const undocumented = [...toolNames].filter((n) => !AGENTS.includes(n));
   assert.deepEqual(undocumented, [], `tools missing from AGENTS.md: ${undocumented.join(', ')}`);

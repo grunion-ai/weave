@@ -44,6 +44,16 @@ test('a field is renamed, recolored, widened and dropped without a browser', () 
   assert.equal(field(), undefined);
 });
 
+test('a space and a table are born with their icons — one call, not two', () => {
+  const w = new Weave();
+  call(w, 'weave_create_space', { name: 'Ops', description: 'how work runs', icon: 'iconly:work' });
+  call(w, 'weave_create_table', { space: 'Ops', name: 'Invoice', description: 'one bill', icon: 'iconly:wallet' });
+  const sp = call(w, 'weave_schema').find((s) => s.space === 'Ops');
+  assert.equal(sp.icon, 'iconly:work');
+  assert.equal(sp.tables[0].icon, 'iconly:wallet');
+  assert.equal(sp.tables[0].description, 'one bill');
+});
+
 test('a space is renamed and re-iconed, and deleting it takes its tables', () => {
   const w = workspace();
   call(w, 'weave_update_space', { space: 'Ops', name: 'Operations', icon: 'iconly:work' });

@@ -90,7 +90,7 @@ Schema
                                       Grow the workspace to match the document
   vocabulary [section]                Every legal config value and what it looks like
                                       (icons are iconly:<name>; colors are hex from the palette)
-  space create <name> [--description]
+  space create <name> [--description] [--icon iconly:work]
   space list | update <ref> [--name] [--description] [--icon iconly:work] | delete <ref>
   table create <space> <name> [--description] [--icon]
   table list | delete <ref>
@@ -283,7 +283,7 @@ async function main() {
     }
     case 'space': {
       const [sub, name] = args;
-      if (sub === 'create') return out(w.createSpace({ name, description: flags.description ?? '' }));
+      if (sub === 'create') return out(w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '' }));
       if (sub === 'update') return out(w.updateSpace(name, pickFlags(['name', 'description', 'icon'])));
       if (sub === 'delete') { w.deleteSpace(name); return out({ space: name, deleted: true }); }
       if (sub === 'list' || !sub) return out(w.listSpaces());

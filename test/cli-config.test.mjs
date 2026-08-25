@@ -25,6 +25,13 @@ test.before(() => {
 });
 test.after(() => rmSync(dir, { recursive: true, force: true }));
 
+test('the terminal creates a space with its icon in one call', () => {
+  cli('space', 'create', 'Field', '--description', 'work in the field', '--icon', 'iconly:location');
+  const sp = schema().find((s) => s.space === 'Field');
+  assert.equal(sp.icon, 'iconly:location');
+  assert.equal(sp.description, 'work in the field');
+});
+
 test('the vocabulary is one command away', () => {
   const v = json('vocabulary');
   assert.ok(v.icons.names.includes('wallet'));
