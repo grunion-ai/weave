@@ -5088,17 +5088,10 @@ window.addEventListener('focus', async () => {
 /* ---------- the bug reporter (Feature #141) ---------- */
 
 /* The report button's glyph: Kyle's ant, traced from the icon he sent
-   (2026-08-25). Hand-drawn here for the same reason SLASH_LINK_GLYPH is —
-   the vendored flat set has no bug in it — and filled with currentColor so
-   it takes the theme like every other mark in the chrome. */
-const BUG_GLYPH = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
-  + '<g transform="translate(1.5000,3.9818) scale(0.095455) translate(0,168.0) scale(0.1,-0.1)">'
-  + '<path d="M1520 1664 c0 -8 -16 -22 -35 -30 -19 -8 -35 -18 -35 -22 0 -4 -11 -20 -25 -36 -14 -16 -25 -33 -25 -38 0 -40 -54 -87 -112 -97 -34 -6 -68 -17 -77 -26 -9 -9 -30 -28 -47 -44 -17 -15 -34 -36 -37 -45 -9 -23 -34 -30 -63 -18 -29 14 -34 83 -8 121 54 77 -7 180 -62 104 -38 -53 -70 -186 -50 -214 9 -13 16 -31 16 -41 0 -9 6 -23 13 -30 63 -67 84 -128 50 -146 -65 -34 -71 -31 -198 97 -129 131 -161 149 -197 113 -27 -26 -11 -50 124 -184 110 -109 122 -129 102 -176 -14 -35 -37 -41 -63 -17 -52 47 -62 55 -70 55 -4 0 -21 10 -37 23 -35 27 -132 29 -182 3 -17 -9 -42 -16 -56 -16 -47 0 -68 -52 -38 -91 18 -22 20 -22 59 -6 61 24 137 32 173 17 38 -16 38 -16 -8 -72 -146 -176 -180 -401 -76 -499 33 -31 247 -37 280 -8 11 9 32 19 48 23 16 4 41 16 54 27 14 10 31 19 38 19 8 0 14 3 14 8 0 17 71 63 89 57 33 -10 45 -56 27 -100 -33 -78 -31 -160 4 -165 30 -5 38 1 58 34 55 93 52 229 -7 303 -73 93 -74 133 -4 133 45 0 47 -1 164 -120 121 -123 153 -142 187 -108 25 25 8 53 -105 168 -137 140 -137 139 -130 197 9 79 11 78 158 -22 54 -37 175 -43 219 -12 13 9 32 17 40 17 20 0 60 41 60 61 -1 38 -48 52 -99 30 -117 -50 -228 -21 -155 41 89 74 124 129 138 209 7 41 18 53 56 62 63 15 170 145 170 206 0 43 -81 46 -97 4 -20 -55 -88 -113 -130 -113 -33 1 -153 125 -153 159 0 33 47 96 81 106 86 27 96 115 14 115 -43 0 -55 -3 -55 -16z m-90 -335 c130 -65 135 -234 8 -307 -160 -93 -338 130 -214 266 61 66 130 80 206 41z m-299 -353 c74 -59 69 -140 -13 -193 -45 -30 -69 -27 -122 19 -115 100 16 270 135 174z m-239 -245 c129 -128 122 -191 -30 -269 -204 -105 -338 -14 -243 164 12 21 21 44 21 51 0 7 10 27 23 45 75 111 124 113 229 9z"/></g></svg>';
-const bugGlyph = () => {
-  const span = el('span', { class: 'bug-fab-icon' });
-  span.innerHTML = BUG_GLYPH;
-  return span;
-};
+   (2026-08-25) and vendored into the flat set as `bug` — "this is also
+   good for the icon library" — so spaces, tables and states can wear it
+   too. The FAB draws it through iconEl like every other mark. */
+const bugGlyph = () => iconEl('iconly:bug', 'bug-fab-icon');
 
 /* One recorder for the session, started at boot. It holds the last minute of
    what happened — routes, clicks, API calls with their status and duration,

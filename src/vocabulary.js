@@ -54,7 +54,7 @@ export const ICONS = [
   '2user', '3user', 'activity', 'adduser', 'arrow-down', 'arrow-down2', 'arrow-down3', 'arrow-downcircle',
   'arrow-downsquare', 'arrow-left', 'arrow-left2', 'arrow-left3', 'arrow-leftcircle', 'arrow-leftsquare', 'arrow-right', 'arrow-right2',
   'arrow-right3', 'arrow-rightcircle', 'arrow-rightsquare', 'arrow-up', 'arrow-up2', 'arrow-up3', 'arrow-upcircle', 'arrow-upsquare',
-  'bag', 'bag2', 'bookmark', 'buy', 'calendar', 'call', 'calling', 'callmissed',
+  'bag', 'bag2', 'bookmark', 'bug', 'buy', 'calendar', 'call', 'calling', 'callmissed',
   'callsilent', 'camera', 'category', 'chart', 'chat', 'closesquare', 'danger', 'delete',
   'discount', 'discovery', 'document', 'download', 'edit', 'editsquare', 'filter', 'filter2',
   'folder', 'game', 'graph', 'heart', 'hide', 'home', 'image', 'image2',

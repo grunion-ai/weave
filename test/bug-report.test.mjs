@@ -489,9 +489,14 @@ test('the button becomes the receipt', () => {
   assert.match(CSS, /\.bug-send\.sent/, 'and it is styled as a confirmation, not a dead control');
 });
 
-test('the report button wears the bug Kyle drew, not a stand-in from the flat set', () => {
-  assert.match(APP, /const BUG_GLYPH = /, 'hand-drawn, like SLASH_LINK_GLYPH');
-  assert.match(APP, /BUG_GLYPH[\s\S]{0,400}fill="currentColor"/, 'so it takes the theme');
+test('the report button wears the bug Kyle drew, vendored into the flat set', () => {
+  // Kyle, 2026-08-25: "this is also good for the icon library" — the traced
+  // ant lives in ICONLY_FLAT as `bug`, so the FAB and any space, table or
+  // state draw the same glyph, themed through currentColor like the rest.
+  const vendor = src('public/vendor/iconly-flat.js');
+  assert.match(vendor, /"bug": "<g transform=/, "Kyle's ant is the flat set's bug");
+  assert.match(APP, /const bugGlyph = \(\) => iconEl\('iconly:bug', 'bug-fab-icon'\)/,
+    'the FAB draws it through iconEl like every other mark');
   assert.ok(!/iconly:danger/.test(APP), 'the placeholder triangle is gone');
 });
 
