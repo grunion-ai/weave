@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
 import { Weave, WeaveError } from '../src/engine.js';
+import { VOCABULARY } from '../src/vocabulary.js';
 import { startServer } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { renderDocumentPage } from '../src/markdown.js';
@@ -45,6 +46,15 @@ function parseJsonFlag(name) {
   }
 }
 
+// Only the flags a caller actually typed: an absent flag means "leave it".
+function pickFlags(names) {
+  const patch = {};
+  for (const n of names) if (flags[n] != null && flags[n] !== true) patch[n] = flags[n];
+  return patch;
+}
+
+const splitList = (v) => String(v).split(',').map((x) => x.trim()).filter(Boolean);
+
 function resolveEntityRef(w, ref, dbFlag) {
   // Accept: entity uuid, "Db#12", or (with --db) a name / #pid.
   const m = String(ref).match(/^(.+)#(\d+)$/);
@@ -78,10 +88,19 @@ Schema
   schema export [--out file]          The schema as an editable JSON document
   schema apply --file doc.json [--dry-run] [--allow-destructive]
                                       Grow the workspace to match the document
-  space create <name>
-  table create <space> <name>
+  vocabulary [section]                Every legal config value and what it looks like
+  space create <name> [--description]
+  space list | update <ref> [--name] [--description] [--icon] | delete <ref>
+  table create <space> <name> [--description] [--icon]
+  table list | delete <ref>
+  table update <ref> [--name] [--description] [--icon] [--noun invoice]
+              [--hidden A,B] [--system 'Created At'] [--order Name,A,B]
   field add <table> <name> <type> [--config '{json}']
+  field list <table> | delete <table> <field>
+  field update <table> <field> [--name] [--type] [--config '{json}'] [--width 240|null]
   relation add <table> <name> <targetTable> [--cardinality many-to-one] [--inverse Name]
+  registry [report|rebuild]           The meta-model rows that mirror the schema
+  map                                 Relation map as mermaid
 
 Entities
   query <db> [--where '[["Field","=",1]]'] [--select 'A,B'] [--sort Field] [--limit n]
@@ -92,7 +111,8 @@ Entities
   restore <ref>                       Bring a soft-deleted entity back
   trash [table]                       Deleted entities, one table or all
   state <ref> <field> <state>         Move workflow state
-  link <ref> <field> <target> [--unlink]
+  link <ref> <field> <target...>
+  unlink <ref> <field> <target...>
 
 Documents (entities can carry several document fields; --field picks one,
 default is the table's first document field, usually "Description")
@@ -113,10 +133,29 @@ Accounts & audit (Feature #14)
 Undo (entity mutations only — schema work is not undoable)
   undo [--steps n]                    Revert the last n entity mutations
   undo --list [--limit 20]           Show what undo would revert, newest first
+Views & automations
+  view list | get <id> | delete <id> | share <id> | unshare <id>
+  view create <name> --blocks '[{"table":"Task","view":"board"}]'
+  automation list [<table>] | describe [<table>] | delete <id>
+  automation create <table> --name N --trigger '{json}' --actions '[json]'
+  automation update <id> --patch '{json}'
+
+The workspace itself
+  workspace [get]                     Name, description, logo, auth
+  workspace set [--name] [--description]
+  workspace logo (--path file | --out file | --clear)
+  workspace require-auth [--off]
+  activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n]
+
 Collaboration & data
   comment <ref> <text> [--author name]
+  comment delete <ref> <commentId>
   search <text>
-  csv <db>
+  csv <db>                            Export a table as CSV
+  csv import <db> [--file path]       Import rows (stdin when --file is absent)
+  file attach <ref> --path file [--field Name] [--mime type]
+  file read <fileId> [--out path]
+  file delete <ref> <fileId>
   export [--out path]                 Full workspace JSON
   import --file path
 
@@ -243,19 +282,46 @@ async function main() {
     }
     case 'space': {
       const [sub, name] = args;
-      if (sub === 'create') return out(w.createSpace({ name }));
-      return out(w.listSpaces());
+      if (sub === 'create') return out(w.createSpace({ name, description: flags.description ?? '' }));
+      if (sub === 'update') return out(w.updateSpace(name, pickFlags(['name', 'description', 'icon'])));
+      if (sub === 'delete') { w.deleteSpace(name); return out({ space: name, deleted: true }); }
+      if (sub === 'list' || !sub) return out(w.listSpaces());
+      throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, delete`);
     }
     case 'table':
     case 'db': { // `db` kept as an alias
       const [sub, space, name] = args;
-      if (sub === 'create') return out(w.createTable({ space, name }));
-      return out(w.listTables().map((d) => w.qualifiedName(d)));
+      if (sub === 'create') return out(w.createTable({ space, name, description: flags.description ?? '', icon: flags.icon ?? '' }));
+      if (sub === 'update') {
+        // `space` is the table ref here: `table update Ops/Invoice --icon wallet`.
+        const patch = pickFlags(['name', 'description', 'icon', 'noun']);
+        if (flags.hidden != null) patch.hiddenFields = splitList(flags.hidden);
+        if (flags.system != null) patch.systemFields = splitList(flags.system);
+        if (flags.order != null) patch.fieldOrder = splitList(flags.order);
+        return out(w.updateTable(space, patch));
+      }
+      if (sub === 'delete') { w.deleteTable(space); return out({ table: space, deleted: true }); }
+      if (sub === 'list' || !sub) return out(w.listTables().map((d) => w.qualifiedName(d)));
+      throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, delete`);
     }
     case 'field': {
       const [sub, db, name, type] = args;
       if (sub === 'add') return out(w.addField(db, { name, type, config: parseJsonFlag('config') ?? {} }));
-      throw new WeaveError(`Unknown field subcommand '${sub}'`);
+      if (sub === 'update') {
+        const patch = {};
+        if (flags.name != null) patch.name = flags.name;
+        if (flags.type != null) patch.type = flags.type;
+        const config = parseJsonFlag('config') ?? {};
+        // Width and default ride their own lanes in the engine, so they are
+        // flags rather than JSON: `--width 240`, `--width null` to reset.
+        if (flags.width != null) config.width = flags.width === 'null' ? null : Number(flags.width);
+        if (flags.default != null) config.default = flags.default === 'null' ? null : flags.default;
+        if (Object.keys(config).length) patch.config = config;
+        return out(w.updateField(db, name, patch));
+      }
+      if (sub === 'delete') return out(w.deleteField(db, name));
+      if (sub === 'list' || !sub) return out(w.getTable(db).fieldOrder.map((id) => w.getTable(db).fields[id]));
+      throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, delete`);
     }
     case 'relation': {
       const [sub, db, name, targetDb] = args;
@@ -303,10 +369,13 @@ async function main() {
       w.setState(e.id, field, stateParts.join(' '));
       return out(w.readEntity(e.id));
     }
-    case 'link': {
+    case 'link':
+    case 'unlink': {
       const [ref, field, ...targets] = args;
       const e = resolveEntityRef(w, ref, flags.db);
-      if (flags.unlink) w.unlink(e.id, field, targets);
+      // `link --unlink` was the only way to take one off, which reads as a
+      // flag that means the opposite of its command.
+      if (command === 'unlink' || flags.unlink) w.unlink(e.id, field, targets);
       else w.link(e.id, field, targets);
       return out(w.readEntity(e.id));
     }
@@ -338,14 +407,26 @@ async function main() {
       throw new WeaveError(`Unknown doc subcommand '${sub}'`);
     }
     case 'comment': {
-      const [ref, ...textParts] = args;
-      const e = resolveEntityRef(w, ref, flags.db);
-      return out(w.addComment(e.id, { author: flags.author ?? 'cli', text: textParts.join(' ') }));
+      const [first, ...rest] = args;
+      if (first === 'delete') {
+        const [ref, commentId] = rest;
+        return out(w.deleteComment(resolveEntityRef(w, ref, flags.db).id, commentId));
+      }
+      const e = resolveEntityRef(w, first, flags.db);
+      return out(w.addComment(e.id, { author: flags.author ?? 'cli', text: rest.join(' ') }));
     }
     case 'search':
       return out(w.search(args.join(' '), { limit: flags.limit ? Number(flags.limit) : 25 }));
-    case 'csv':
-      return process.stdout.write(w.exportCSV(args[0]));
+    case 'csv': {
+      const [sub, ...rest] = args;
+      if (sub === 'import') {
+        const db = rest[0];
+        const text = flags.file ? readFileSync(flags.file, 'utf8') : readFileSync(0, 'utf8');
+        return out(w.importCSV(db, text));
+      }
+      // `csv <table>` stays the export it has always been.
+      return process.stdout.write(w.exportCSV(sub === 'export' ? rest[0] : sub));
+    }
     case 'export': {
       const dump = JSON.stringify(w.exportJSON(), null, 1);
       if (flags.out) {
@@ -359,6 +440,94 @@ async function main() {
       w.importJSON(JSON.parse(readFileSync(flags.file, 'utf8')));
       return out({ ok: true });
     }
+    /* Everything below reaches a capability the web UI has always had and the
+       terminal did not — which made a browser the only way to do it. */
+    case 'vocabulary': {
+      const [section] = args;
+      if (section) {
+        if (!(section in VOCABULARY)) throw new WeaveError(`Unknown vocabulary section '${section}' (${Object.keys(VOCABULARY).join(', ')})`);
+        return out(VOCABULARY[section]);
+      }
+      return out(VOCABULARY);
+    }
+    case 'view': {
+      const [sub, ref] = args;
+      if (sub === 'create') return out(w.createView({ name: ref, blocks: parseJsonFlag('blocks') ?? [] }));
+      if (sub === 'get') return out(w.resolveView(ref));
+      if (sub === 'delete') return out(w.deleteView(ref));
+      if (sub === 'share') return out(w.shareView(ref));
+      if (sub === 'unshare') return out(w.unshareView(ref));
+      if (sub === 'list' || !sub) return out(w.listViews());
+      throw new WeaveError(`Unknown view subcommand '${sub}'. Try: create, list, get, delete, share, unshare`);
+    }
+    case 'automation': {
+      const [sub, ref] = args;
+      if (sub === 'create') {
+        return out(w.createAutomation(ref, {
+          name: flags.name, trigger: parseJsonFlag('trigger'), actions: parseJsonFlag('actions') ?? [],
+          enabled: flags.enabled !== 'false',
+        }));
+      }
+      if (sub === 'describe') return out(w.describeAutomations(ref ?? flags.db ?? null));
+      if (sub === 'update') return out(w.updateAutomation(ref, parseJsonFlag('patch') ?? {}));
+      if (sub === 'delete') return out(w.deleteAutomation(ref));
+      if (sub === 'list' || !sub) return out(w.listAutomations(ref ?? flags.db ?? null));
+      throw new WeaveError(`Unknown automation subcommand '${sub}'. Try: create, list, describe, update, delete`);
+    }
+    case 'activity': {
+      const [id] = args;
+      if (id) return out(w.getActivity(id));
+      return out(w.activityFeed({
+        entityId: flags.entity ? resolveEntityRef(w, flags.entity, flags.db).id : null,
+        tableRef: flags.table ?? null,
+        kinds: flags.kinds ? splitList(flags.kinds) : null,
+        since: flags.since ?? null,
+        limit: flags.limit ? Number(flags.limit) : null,
+      }));
+    }
+    case 'workspace': {
+      const [sub] = args;
+      if (sub === 'logo') {
+        if (flags.clear) { w.deleteWorkspaceLogo(); return out({ logo: false }); }
+        if (flags.out) {
+          const logo = w.getWorkspaceLogo();
+          if (!logo) throw new WeaveError('This workspace has no logo');
+          writeFileSync(flags.out, Buffer.from(logo.bytes));
+          return out({ ok: true, path: flags.out, mime: logo.mime });
+        }
+        if (!flags.path) throw new WeaveError('workspace logo needs --path, --out or --clear');
+        const bytes = readFileSync(flags.path).toString('base64');
+        return out(w.setWorkspaceLogo({ name: flags.path.split('/').pop(), mime: flags.mime ?? 'image/png', bytes }));
+      }
+      if (sub === 'set' || sub === 'update') return out(w.updateWorkspace(pickFlags(['name', 'description'])));
+      if (sub === 'require-auth') return out(w.setRequireAuth(flags.off ? false : true));
+      if (sub === 'get' || !sub) return out(w.getWorkspace());
+      throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth`);
+    }
+    case 'file': {
+      const [sub, ref, fileId] = args;
+      if (sub === 'attach') {
+        if (!flags.path) throw new WeaveError('file attach needs --path');
+        const e = resolveEntityRef(w, ref, flags.db);
+        const file = { name: flags.path.split('/').pop(), mime: flags.mime ?? 'application/octet-stream', bytes: readFileSync(flags.path).toString('base64') };
+        return out(flags.field ? w.attachToField(e.id, flags.field, file) : w.attachFile(e.id, file));
+      }
+      if (sub === 'read') {
+        const { meta, bytes } = w.readFile(ref);
+        if (flags.out) { writeFileSync(flags.out, Buffer.from(bytes)); return out({ ...meta, path: flags.out }); }
+        return process.stdout.write(Buffer.from(bytes));
+      }
+      if (sub === 'delete') return out(w.deleteFile(resolveEntityRef(w, ref, flags.db).id, fileId));
+      throw new WeaveError(`Unknown file subcommand '${sub}'. Try: attach, read, delete`);
+    }
+    case 'registry': {
+      const [sub] = args;
+      if (sub === 'rebuild') return out(w.rebuildRegistry());
+      if (sub === 'report' || !sub) return out(w.registryReport());
+      throw new WeaveError(`Unknown registry subcommand '${sub}'. Try: report, rebuild`);
+    }
+    case 'map':
+      return out(w.relationMapMmd());
     default:
       console.error(`Unknown command '${command}'. Run: weave help`);
       process.exit(1);
