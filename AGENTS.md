@@ -66,16 +66,75 @@ Point an MCP client at the stdio server:
 }
 ```
 
-Tools, grouped:
+Forty-five tools, grouped. Every one of them reaches something the web UI can
+do — there is no configuration that needs a browser, and none that needs a
+human.
 
 | Group | Tools |
 | --- | --- |
-| Schema | `weave_schema`, `weave_create_space`, `weave_create_table`, `weave_add_field`, `weave_add_relation` |
-| Entities | `weave_query`, `weave_get_entity`, `weave_create_entity`, `weave_update_entity`, `weave_delete_entity`, `weave_restore_entity`, `weave_trash` |
+| Read the shape | `weave_schema`, `weave_vocabulary`, `weave_relation_map`, `weave_registry` |
+| Spaces & tables | `weave_create_space`, `weave_update_space`, `weave_delete_space`, `weave_create_table`, `weave_update_table`, `weave_delete_table` |
+| Fields | `weave_add_field`, `weave_update_field`, `weave_delete_field`, `weave_add_relation` |
+| Whole schema | `weave_apply_schema` |
+| Entities | `weave_query`, `weave_get_entity`, `weave_create_entity`, `weave_update_entity`, `weave_delete_entity`, `weave_restore_entity`, `weave_trash`, `weave_undo` |
 | Relations & state | `weave_link`, `weave_unlink`, `weave_set_state` |
-| Documents | `weave_get_doc`, `weave_set_doc`, `weave_add_comment` |
-| Search & data | `weave_search`, `weave_export_csv`, `weave_import_csv`, `weave_attach_file` |
-| Automations | `weave_create_automation` |
+| Documents & comments | `weave_get_doc`, `weave_set_doc`, `weave_add_comment`, `weave_delete_comment` |
+| Search & data | `weave_search`, `weave_export_csv`, `weave_import_csv`, `weave_export_json`, `weave_import_json` |
+| Files | `weave_attach_file`, `weave_files` |
+| Views | `weave_views` |
+| Automations | `weave_create_automation`, `weave_automations` |
+| History | `weave_activity`, `weave_audit` |
+| The workspace itself | `weave_workspace`, `weave_accounts`, `weave_keys` |
+
+### Configuration without a browser
+
+**Read `weave_vocabulary` before configuring anything.** It returns every
+closed set a config value can come from *and what the choice looks like on
+screen*: the eighteen field types with how each renders in the grid and which
+config keys it takes, the eight option colors, the hundred icon names, number
+and date formats, document kinds, relation cardinalities, workflow state
+categories, rollup aggregates, the system columns, the two view kinds, and the
+column-width rules (60px floor, 260px cap when unset, a set width is a floor as
+well as a ceiling). Guessing a color that validates still reads wrong.
+
+**The registry rows are the schema verbs.** `Workspace/Spaces`,
+`Workspace/Tables` and `Workspace/Fields` are ordinary tables whose rows *are*
+the spaces, tables and fields, so entity CRUD on them runs the same validation
+as the schema verb — useful when you are already holding an entity tool:
+
+| Change | Write |
+| --- | --- |
+| Rename a table, edit its description | `weave_update_entity` on `Workspace/Tables#n` → `Name`, `Description` |
+| Reorder columns | same row → `Field Order`: every field name, comma-separated, exactly once |
+| Hide a column | same row → `Hidden Fields` (data untouched) |
+| Rename a field | `weave_update_entity` on `Workspace/Fields#n` → `Name` |
+| Reconfigure a field | same row → `Definition` = `{type, config: {…}}` — the type cannot change |
+| Drop a field or table | `weave_delete_entity` on its registry row with `hard: true` |
+
+The dedicated verbs (`weave_update_table`, `weave_update_field`, …) do the same
+work with an argument list instead of a row, and reach the three settings the
+registry has no column for: a table's `icon` and `noun`, and its `systemFields`.
+
+**A schema document round-trips.** `weave_schema` out, edit, `weave_apply_schema`
+back — with `dryRun` first for the plan. Everything the description emits
+survives the apply, including option colors, column widths, icons, nouns,
+hidden columns and column order. Omitted spaces, tables and fields are
+deletions, which is why they need `allowDestructive`.
+
+### The CLI mirrors all of it
+
+`node bin/weave.js help` prints the full list; `--data <path>` picks the
+workspace. Every MCP tool has a command:
+
+| Read | Schema | Data |
+| --- | --- | --- |
+| `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` | `weave create` / `weave get` / `weave query` |
+| `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table delete` | `weave update` / `weave delete` / `weave restore` / `weave trash` |
+| `weave map` | `weave field add` / `weave field update` / `weave field delete` | `weave link` / `weave unlink` / `weave state` |
+| `weave registry` | `weave relation add` | `weave doc` / `weave comment` / `weave comment delete` |
+| `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
+| `weave audit` | `weave view` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
+| `weave workspace` | `weave workspace logo` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
 
 Notes that save round trips:
 
@@ -94,9 +153,9 @@ Notes that save round trips:
   take a field name; the default is the table's first document field.
 - **Deletes are recoverable.** `weave_delete_entity` is a soft delete by
   default; `weave_trash` lists what is recoverable and `weave_restore_entity`
-  brings it back.
-- **The CLI mirrors all of it** — `node bin/weave.js --help` — if you would
-  rather shell out than speak MCP.
+  brings it back. Schema deletes are not: a dropped column takes its values.
+- **Secrets never come back.** A `key` field holds the *name* of a secret;
+  `weave_keys` lists names and sets values, and nothing returns one.
 
 ## Self-documenting workspace
 

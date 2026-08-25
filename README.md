@@ -160,11 +160,21 @@ runtime) at the stdio server:
 }
 ```
 
-It exposes the whole platform as tools — `weave_schema`, `weave_query`,
-`weave_create_entity`, `weave_set_doc`, `weave_link`, `weave_set_state`,
-`weave_create_table`, `weave_add_relation`, `weave_create_automation`,
-`weave_search`, and more. An agent can design a schema and then fill it, without
-a human opening the UI.
+It exposes the whole platform as forty-five tools — `weave_schema`,
+`weave_query`, `weave_create_entity`, `weave_set_doc`, `weave_link`,
+`weave_set_state`, `weave_create_table`, `weave_update_table`,
+`weave_update_field`, `weave_apply_schema`, `weave_views`, `weave_automations`,
+`weave_activity`, `weave_vocabulary`, and the rest. An agent designs a schema,
+fills it, and configures how it reads — icons, option colors, column widths and
+order, hidden columns, saved views — without a human opening the UI.
+
+Two things make that practical. `weave_vocabulary` returns every value a config
+key will accept **and what the choice looks like on screen**, so an agent picking
+a color or an icon is reading rather than guessing. And the meta-model means the
+schema is data: the rows of `Workspace/Spaces`, `Workspace/Tables` and
+`Workspace/Fields` *are* the spaces, tables and fields, so an entity write on a
+registry row runs the same validation as the schema verb — a field's whole shape
+edits through its `Definition`, a table's column order through `Field Order`.
 
 **REST** and **CLI** cover the same ground:
 
