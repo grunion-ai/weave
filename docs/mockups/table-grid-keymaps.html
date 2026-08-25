@@ -32,8 +32,14 @@ section.dir{margin:52px 0}
 .notes{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:14px;font-size:12.5px}
 .notes>div{color:var(--muted)}.notes b{font-weight:600;display:block;margin-bottom:2px}
 .win b{color:var(--ok)}.fit b{color:var(--accent)}
-.collides{margin-top:14px;padding:11px 15px;border:1px solid #f59f0044;border-left:3px solid var(--warn);border-radius:8px;background:rgba(245,159,0,.05);font-size:12.5px;color:var(--muted)}
-.collides b{color:var(--warn);font-weight:600}
+.resolved{margin-top:14px;padding:11px 15px;border:1px solid #2fb34440;border-left:3px solid var(--ok);border-radius:8px;background:rgba(47,179,68,.045);font-size:12.5px;color:var(--muted)}
+.resolved b{color:var(--ok);font-weight:600}
+.evid{display:grid;grid-template-columns:132px 1fr;gap:0;margin-top:12px;font-size:12.5px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.evid dt{background:var(--soft);color:var(--muted);padding:8px 13px;font-family:var(--mono);font-size:11px;border-bottom:1px solid var(--line)}
+.evid dd{margin:0;padding:8px 15px;border-bottom:1px solid var(--line);color:var(--muted)}
+.evid dt:nth-last-of-type(1),.evid dd:nth-last-of-type(1){border-bottom:none}
+.evid b{color:var(--fg);font-weight:600}
+.count{font-family:var(--mono);color:var(--warn);font-weight:700}
 .costs{margin-top:14px;border:1px solid var(--line);border-radius:10px;background:var(--soft);padding:13px 20px 15px}
 .costs h4{margin:0 0 4px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--warn)}
 .costs ol{margin:5px 0 0;padding-left:19px;color:var(--muted);font-size:12.5px}
@@ -160,7 +166,7 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 <div class="dir-head"><span class="tag">H</span><h2>Hover-live · the modifiers select, the click edits</h2><span class="lineage">Finder · Kyle, 2026-08-24</span></div>
 <p class="thesis">Your proposal, exactly. Cells rest as values and <b>arm on hover</b>, so the control shows up where you point instead of everywhere at once. A plain click edits — checkbox included, one click, no exception needed. <kbd>⌘</kbd>-click and <kbd>⇧</kbd>-click carry all of selection, so the plain click never had to be spent. No modes anywhere: the focus ring is the cursor, and the keyboard is four handlers on top of what already exists.</p>
 <div class="stage" data-pattern="H"></div>
-<div class="collides"><b>⌘-click has to move something.</b> Today it opens the side peek (#133). Under H it selects, so the peek relocates to <kbd>⌘Return</kbd> and the <span class="mono">#id ↗</span> link keeps opening the entity page. Try both in the demo.</div>
+<div class="resolved"><b>⌘-click turned out not to be contested.</b> It opens the side peek today (#133) — the peek's only surviving caller. Feature #117 already replaced the peek as a row target with the entity page and kept <span class="mono">peekEntity</span> "for callers that want a slide-over on top of a page"; that caller was never written. So ⌘-click is free, and <kbd>⌘Return</kbd> plus the <span class="mono">#id ↗</span> link both go to the page. See <a href="#peek-q" style="color:var(--accent)">Do we need peek?</a> below.</div>
 <div class="notes">
 <div class="win"><b>Wins</b>Nothing is traded. The plain click keeps the behaviour #133 settled, checkboxes stay one click, selection costs no key and no mode, and the grid gets quieter at rest. Smallest thing that answers the whole ask.</div>
 <div class="fit"><b>Fits</b>Everything the grid does today, plus bulk operations for anyone holding a mouse.</div>
@@ -172,13 +178,28 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 <div class="dir-head"><span class="tag">K</span><h2>Hover-live + nav mode · selection without a mouse</h2><span class="lineage">H, plus an escape hatch</span></div>
 <p class="thesis">Everything in H, unchanged — same hover, same one-click edit, same <kbd>⌘</kbd>/<kbd>⇧</kbd>-click. K adds one thing: <kbd>Esc</kbd> pops focus out of the cell into a <b>nav</b> mode where the grid is a map. There <kbd>Space</kbd> picks a row up, <kbd>⇧↑</kbd><kbd>⇧↓</kbd> take a run, <kbd>⌘A</kbd> takes the table, and <kbd>Return</kbd> drops back into the cell. A typist who never presses <kbd>Esc</kbd> never meets the mode.</p>
 <div class="stage" data-pattern="K"></div>
-<div class="collides"><b>Same ⌘-click eviction as H</b> — the peek lives on <kbd>⌘Return</kbd>. The mode is the only difference between these two; press <kbd>Esc</kbd> here and the chip above the grid turns amber.</div>
+<div class="resolved"><b>Same as H</b> — ⌘-click is free, the record opens as a page. The mode is the only difference between these two; press <kbd>Esc</kbd> here and the chip above the grid turns amber.</div>
 <div class="notes">
 <div class="win"><b>Wins</b>Bulk selection with no mouse at all, which is also the accessible path — <kbd>⌘</kbd>-click has no keyboard equivalent, so H simply has no answer for someone who cannot use a pointer.</div>
 <div class="fit"><b>Fits</b>The same tables as H, plus keyboard-first bulk work and any accessibility commitment.</div>
 </div>
 <div class="costs"><h4>What we lose</h4><ol id="cost-K"></ol></div>
 </section>
+
+
+<h2 class="plain" id="peek-q">Do we need peek?</h2>
+<p class="intro" style="margin-top:6px">Counted rather than argued, because the repo already answers it.</p>
+<dl class="evid" id="peek-evidence"></dl>
+<div class="rec" style="margin-top:16px">
+<h3>No — and dropping it is what makes ⌘-click free</h3>
+<p style="color:var(--muted);margin:6px 0 0;max-width:860px">The peek is a second way to render a record, kept for a caller that does not exist. Its own upgrade is what did it in: you asked for "<i>panel when open should not be preview but the full entity</i>" (#39), so the peek became the entity — and then #117 decided the entity belongs on a page. What is left is the same view twice, with five <span class="mono">inPeek</span> branches threaded through <span class="mono">renderEntityView</span> to keep them apart.</p>
+<p style="color:var(--muted);margin:8px 0 0;max-width:860px">The honest argument for keeping it is scroll position — the table stays where it was while you read a record. #117 already weighed that against a full page and chose the page. If that call still holds, the peek has nothing left to do.</p>
+<ol>
+<li><b>Delete <span class="mono">peekEntity</span></b> (~56 lines), its 17 CSS rules, and the five <span class="mono">inPeek</span> branches in <span class="mono">renderEntityView</span>. The entity page is unaffected — it is the same renderer without a second layout mode.</li>
+<li><b>⌘-click becomes free</b>, which is exactly what H and K want it for. Nothing relocates, and <kbd>⌘Return</kbd> opens the page.</li>
+<li><b>Watch the one thing it was good at.</b> If losing your place in a long table starts to hurt, the answer is a back-to-table affordance on the entity page, not a second renderer.</li>
+</ol>
+</div>
 
 <h2 class="plain">Side by side</h2>
 <table class="cmp">
@@ -189,7 +210,8 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 <tr><td>Cells at rest</td><td class="n2">every control, always on</td><td class="y">values; hover arms</td><td class="y">values; hover arms</td></tr>
 <tr><td>⌘-click</td><td>side peek</td><td class="y">toggle row</td><td class="y">toggle row</td></tr>
 <tr><td>⇧-click</td><td class="n2">nothing</td><td class="y">extend the run</td><td class="y">extend the run</td></tr>
-<tr><td>Side peek moves to</td><td class="n2">—</td><td>⌘Return</td><td>⌘Return</td></tr>
+<tr><td>Opening a record</td><td>side peek · #id ↗</td><td class="y">the page — ⌘Return · #id ↗</td><td class="y">the page — ⌘Return · #id ↗</td></tr>
+<tr><td>Ways to render a record</td><td class="n2">two — page and peek</td><td class="y">one</td><td class="y">one</td></tr>
 <tr><td>Tab / ⇧Tab</td><td class="n2">browser default</td><td class="y">along the row, wrapping</td><td class="y">along the row, wrapping</td></tr>
 <tr><td>↑ ↓</td><td class="n2">nothing</td><td class="y">down the column</td><td class="y">down the column</td></tr>
 <tr><td>← →</td><td>the caret</td><td class="y">the caret</td><td class="y">the caret · nav: move</td></tr>
@@ -273,7 +295,20 @@ const hoverPointer = {
   click: 'edit', checkbox: 'toggle', field: 'cellActivation',
   cmdClick: 'toggleSelect', shiftClick: 'extendSelect', hover: 'arm',
 };
-const PEEK_MOVED = 'Taking ⌘-click for selection evicts the side peek it opens today (#133). The peek moves to ⌘Return; the #id ↗ link still opens the entity page.';
+/* Kyle: "I dont knwo if we need peek". Counted rather than argued.
+   #39 built the side peek as every row's click target. #117 replaced that
+   with the full entity page after Kyle reviewed five entity surfaces, and
+   kept peekEntity only "for callers that want a slide-over on top of a
+   page". No such caller was ever written. The one call site left is the
+   ⌘-click row target of #133 — the exact thing #117 said the peek had
+   stopped being. So ⌘-click is not contested; it is merely occupied. */
+const PEEK_VERDICT = {
+  callers: 1,
+  qualifyingCallers: 0,
+  evidence: '#39 made the peek every row\u2019s click target. #117 replaced that with the entity page and kept peekEntity "for callers that want a slide-over on top of a page" \u2014 no such caller exists. The single remaining call is the ⌘-click row target added by #133, which is the case #117 had just ruled out.',
+  frees: 'Dropping it frees ⌘-click outright, so neither challenger has to move anything, and removes the second way of rendering a record: peekEntity (~56 lines), 17 CSS rules, and 5 inPeek branches threaded through renderEntityView.',
+  keeps: 'The one real argument for it: the table keeps its scroll position while you read a record. #117 already weighed that and chose the page.',
+};
 
 const PATTERNS = {
 
@@ -283,6 +318,8 @@ const PATTERNS = {
     thesis: 'Every cell wears its editor permanently, a click lands in the field it hit, ⌘-click peeks the row — and the grid answers to no keys and knows nothing about a selection.',
     caps: { rowSelect: 'none', cellEdit: 'always-live', homeMode: 'cell', modes: ['cell'], hover: 'none', keyboard: 'none' },
     pointer: { click: 'edit', checkbox: 'toggle', field: 'cellActivation', cmdClick: 'peek', shiftClick: 'none', hover: 'none' },
+    opens: 'peek',
+    peekVerdict: PEEK_VERDICT,
     costs: [
       'No keyboard at all. Tab, the arrows, Return and ⇧Return every one of them falls through to the browser, so a record cannot be filled in without the mouse.',
       'No row selection, so nothing can act on more than one record — no bulk state change, no multi-delete, and nothing for the puck bar of #132 to stand on.',
@@ -299,18 +336,17 @@ const PATTERNS = {
     thesis: 'Cells rest as values and arm on hover; a plain click edits any type including a checkbox, and ⌘/⇧-click carry the whole of selection so the plain click never has to be spent on it.',
     caps: { rowSelect: 'pointer-only', cellEdit: 'always-live', homeMode: 'cell', modes: ['cell'], hover: 'arm', keyboard: 'navigate' },
     pointer: hoverPointer,
-    collides: PEEK_MOVED,
+    opens: 'page',
     costs: [
       'Selection needs a mouse. ⌘-click has no keyboard equivalent, so bulk work is pointer-only and there is no answer at all for someone who cannot use one.',
       'Hover is the only thing announcing that a cell is editable, which is thinnest exactly where it matters most — a table of empty fields looks inert until you point at it.',
-      'The side peek gives up ⌘-click and moves to ⌘Return, so one gesture people already use has to be relearned.',
       'Nothing here helps a reader who wants the record rather than the field; Return commits down the column and opening still means the #id link or ⌘Return.',
     ],
     keys: [['click', 'edit that field — checkbox included, one click'], ['hover', 'the control appears where you point'],
       ['⌘click', 'toggle the row into the selection'], ['⇧click', 'extend the run from the last one'],
       ['Tab / ⇧Tab', 'along the row, wrapping into the next'], ['↑ ↓', 'down the column'],
       ['← →', 'the text caret — never stolen'], ['Return', 'commit, move down'],
-      ['⇧Return', 'new row below'], ['⌘Return', 'open the record — where the peek moved'], ['Esc', 'drop the selection']],
+      ['⇧Return', 'new row below'], ['⌘Return', 'open the record'], ['Esc', 'drop the selection']],
     keymap(k, s) {
       const shared = sharedKeys(k, s);
       if (shared) return shared;
@@ -325,12 +361,12 @@ const PATTERNS = {
     thesis: 'Every line of H, plus one escape hatch: Esc pops out of the cell into a nav mode where Space picks up rows and ⇧↑↓ take a run, so bulk work never needs a pointer.',
     caps: { rowSelect: 'keyboard', cellEdit: 'always-live', homeMode: 'cell', modes: ['cell', 'nav'], hover: 'arm', keyboard: 'navigate+select' },
     pointer: hoverPointer,
-    collides: PEEK_MOVED,
+    opens: 'page',
     differsFrom: 'H',
     theOneQuestion: 'Can a row be selected without a mouse? H says the modifiers are enough; K spends Esc to say no.',
     costs: [
       'It is a mode, and a mode can be wrong. The indicator has to be drawn and watched, and Esc now means two things depending on where you are standing.',
-      'Everything H loses, it loses too — hover is still the only editability cue, and the side peek still moves off ⌘-click onto ⌘Return.',
+      'Everything H loses, it loses too — hover is still the only cue that a cell can be typed into.',
       'More to build and more to explain than H, for a path some tables will never use.',
     ],
     keys: [['everything in H', 'unchanged — same click, same hover, same ⌘/⇧click'],
@@ -595,6 +631,15 @@ document.querySelectorAll('.stage[data-pattern]').forEach(buildStage);
 
 /* Each bill is the pattern's own costs array — one list, so the page cannot
    claim a cost the keymap record does not carry. */
+const V = PATTERNS.NOW.peekVerdict;
+document.getElementById('peek-evidence').innerHTML = [
+  ['call sites', `<span class="count">${V.callers}</span> — the ⌘-click row target in the grid`],
+  ['qualifying', `<span class="count">${V.qualifyingCallers}</span> — nothing wants a slide-over on top of a page, which is the only reason #117 kept it`],
+  ['history', V.evidence],
+  ['dropping it', V.frees],
+  ['keeping it', V.keeps],
+].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+
 for (const id of ['NOW', 'H', 'K']) {
   document.getElementById('cost-' + id).innerHTML = PATTERNS[id].costs
     .map((c) => { const i = c.indexOf('.'); return `<li><b>${c.slice(0, i + 1)}</b> ${c.slice(i + 1).trim()}</li>`; }).join('');

@@ -95,13 +95,37 @@ test('cmd-click and shift-click de/select, and never in the plain click’s way'
   assert.equal(PATTERNS.NOW.caps.rowSelect, 'none', 'today there is no selection to speak of');
 });
 
-test('taking cmd-click for selection evicts the side peek, and both challengers say where it went', () => {
+test('taking cmd-click for selection frees a gesture the peek was holding', () => {
   assert.equal(PATTERNS.NOW.pointer.cmdClick, 'peek', 'today ⌘-click opens the row in the side peek (#133)');
   for (const id of CHALLENGERS) {
     assert.notEqual(PATTERNS[id].pointer.cmdClick, 'peek', `${id} spends the gesture on selection`);
-    assert.match(PATTERNS[id].collides, /peek/i, `${id} names the collision rather than hiding it`);
-    assert.equal(act(id, 'Enter', { meta: true }, home(id)), 'open',
-      `${id}: ⌘Return is where the peek moved to`);
+    assert.equal(act(id, 'Enter', { meta: true }, home(id)), 'open', `${id}: ⌘Return opens the record`);
+    assert.equal(PATTERNS[id].opens, 'page',
+      `${id}: and the record it opens is the entity PAGE — the destination #117 already picked`);
+  }
+});
+
+/* Kyle, 2026-08-24: "I dont knwo if we need peek". The repo answers it.
+   #39 built the side peek as every row's click target. #117 replaced that
+   with the full page after Kyle reviewed five entity surfaces — "the side
+   peek is no longer any row's click target; peekEntity remains for callers
+   that want a slide-over on top of a page." No such caller was ever
+   written. The one call left is a row target, which is the exact thing
+   #117 said it had stopped being. */
+test('the peek question is answered from the repo, not from taste', () => {
+  const v = PATTERNS.NOW.peekVerdict;
+  assert.ok(v, 'the baseline carries the verdict, since the peek is its behaviour');
+  assert.equal(v.callers, 1, 'exactly one call site survives');
+  assert.equal(v.qualifyingCallers, 0,
+    'and none of them is the slide-over-on-a-page case #117 kept it for');
+  assert.match(v.evidence, /#117/, 'the verdict cites the feature that demoted it');
+  assert.ok(v.frees.includes('⌘-click'), 'dropping it frees the gesture both challengers want');
+});
+
+test('neither challenger keeps a second way to render a record', () => {
+  for (const id of CHALLENGERS) {
+    assert.equal(PATTERNS[id].opens, 'page', `${id}: one destination for a record, not two`);
+    assert.ok(!PATTERNS[id].pointer.peek, `${id}: no pointer gesture routes to a peek`);
   }
 });
 
@@ -229,4 +253,10 @@ test('the page wires the core to three live grids and reports every verb', () =>
 test('the page demonstrates the checkbox claim with a real checkbox column', () => {
   assert.match(HTML, /type: 'checkbox'/, 'a checkbox field is in the demo data');
   assert.match(HTML, /class="costs"/, 'and every direction shows its bill on the page');
+});
+
+test('the page argues the peek case with the repo evidence, not an opinion', () => {
+  assert.match(HTML, /class="resolved"/, 'the former collision is shown as resolved, not as a cost');
+  assert.match(HTML, /#117/, 'and cites the feature that already demoted the peek');
+  assert.doesNotMatch(HTML, /class="collides"/, 'the collision callout is gone, because the collision is');
 });
