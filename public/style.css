@@ -5,36 +5,39 @@
    sidebar + workspace rail, board, chips, doc editor, ⌘K palette, relation
    map — mapped onto Tabler tokens (var(--tblr-*)). */
 
-/* ---------- Buzz-inspired skin (2026-08-22) ----------
-   Visual language borrowed from the Buzz client: a warm chartreuse-cream
-   canvas carries the chrome (rail + sidebar), and the content lives on a
-   white panel with large rounded corners floating on that canvas. Nav is
-   borderless — separation comes from background contrast, hover/active are
-   soft ink-tint pills, not colored fills. Brand colors are untouched:
-   weave blue #2563eb (--tblr-primary default) + navy rope mark. */
+/* ---------- Buzz-layout skin, Grunion (Kami) palette (2026-08-23) ----------
+   Layout language borrowed from the Buzz client: the chrome (rail + sidebar)
+   sits on a canvas and the content lives on a panel with large rounded
+   corners floating on it; nav is borderless — hover/active are soft
+   ink-tint pills. Colors are the Grunion brand kit (brand-grunion-skill.md):
+   light = Paper Tint canvas / Warm White panel; dark = Deep Navy canvas /
+   Elevated Panel. Brand blue #2563eb (--tblr-primary default) + rope mark. */
 :root, [data-bs-theme="light"] {
-  --wv-canvas: #e9eac8;                      /* Buzz's pale chartreuse cream */
-  --wv-canvas-muted: #8f9070;                /* muted ink on the cream */
-  --wv-pill-hover: rgba(83, 84, 44, .08);    /* nav hover pill */
-  --wv-pill-active: rgba(83, 84, 44, .16);   /* nav active pill */
-  --wv-panel-shadow: 0 1px 3px rgba(83, 84, 44, .07);
+  --wv-canvas: #f3f1ec;                      /* Kami Paper Tint */
+  --wv-canvas-muted: #7e8394;                /* Kami Muted Tertiary */
+  --wv-pill-hover: rgba(12, 27, 51, .06);    /* ink tint on paper */
+  --wv-pill-active: rgba(12, 27, 51, .12);
+  --wv-panel-shadow: 0 1px 3px rgba(12, 27, 51, .08);
   --tblr-border-radius: 8px;
   --tblr-border-radius-lg: 14px;
-  --tblr-bg-surface-secondary: #f6f6ee;      /* warm tint inside the panel */
-  --tblr-border-color: #ebebdf;              /* warm hairline */
+  --tblr-bg-surface: #fafaf8;                /* Kami Warm White Paper */
+  --tblr-bg-surface-secondary: #f3f1ec;
+  --tblr-border-color: #e6e3dc;
   --tblr-body-bg: var(--wv-canvas);
 }
 [data-bs-theme="dark"] {
-  --wv-canvas: #202117;                      /* dark olive canvas */
-  --wv-canvas-muted: #a3a488;
-  --wv-pill-hover: rgba(233, 234, 200, .08);
-  --wv-pill-active: rgba(233, 234, 200, .16);
-  --wv-panel-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+  --wv-canvas: #0c1b33;                      /* Kami Deep Navy Canvas */
+  --wv-canvas-muted: #7e8394;
+  --wv-pill-hover: rgba(224, 220, 212, .07); /* cream tint on navy */
+  --wv-pill-active: rgba(224, 220, 212, .14);
+  --wv-panel-shadow: 0 1px 3px rgba(0, 0, 0, .35);
   --tblr-border-radius: 8px;
   --tblr-border-radius-lg: 14px;
-  --tblr-bg-surface: #2a2b20;                /* warm panel, not Tabler's blue-gray */
-  --tblr-bg-surface-secondary: #323326;
-  --tblr-border-color: #3d3e2f;
+  --tblr-bg-surface: #132444;                /* Kami Elevated Panel */
+  --tblr-bg-surface-secondary: #1a2d54;      /* Kami Elevated Surface */
+  --tblr-border-color: #24375e;
+  --tblr-body-color: #e0dcd4;                /* Kami Cream Primary */
+  --tblr-secondary: #b4b8c4;                 /* Kami Silver Secondary */
   --tblr-body-bg: var(--wv-canvas);
 }
 
@@ -856,14 +859,21 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .fsv-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--tblr-border-color); }
 .fsv-title { font-weight: 600; font-size: 14px; margin-left: 6px; }
 .fsv-frame { flex: 1; border: 0; width: 100%; background: #fff; }
-
-/* ---------- expand a document in place (Feature #47, editable) ---------- */
+.fsv-body { flex: 1; }
+.doc-app { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #fff; }
+.doc-app.hidden { display: none; }
+.doc-anchor.active { color: var(--tblr-primary); }
+.doc-source { display: block; width: 100%; min-height: 420px; font-family: var(--tblr-font-monospace); font-size: 12px; line-height: 1.5; tab-size: 2; border: 1px solid var(--tblr-border-color); border-radius: 8px; padding: 10px 12px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); resize: vertical; }
 .doc-expand { display: flex; flex-direction: column; height: calc(100vh - 150px); min-height: 420px; }
 .doc-expand-bar { display: flex; align-items: center; gap: 6px; padding: 0 0 8px; }
 .doc-expand-frame { flex: 1; border: 0; border-radius: 8px; background: #fff; }
 /* Expanded markdown: the live editor fills the overlay and scrolls itself. */
 .doc-expand-edit > .doc-editor { flex: 1; overflow-y: auto; border: 1px solid var(--tblr-border-color); border-radius: 8px; background: var(--tblr-bg-surface); }
-.fsv-body { flex: 1; }
+/* ---------- composed decks (Feature #118) ---------- */
+/* The deck paints its own ground (its style tokens, not the app's), so the
+   frame stays neutral in both themes and only draws the edge around it. */
+.deck-frame { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--tblr-border-color); border-radius: 8px; background: var(--tblr-bg-surface-secondary); }
+.deck-section .doc-section-body { padding-top: 2px; }
 .mmd-tools { display: block; text-align: right; margin-bottom: -26px; position: relative; z-index: 2; }
 /* ---------- the one selection dialect ---------- */
 .picker-pop { padding: 6px; min-width: 220px; }
@@ -919,6 +929,7 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .opt-row .opt-name { flex: 1; min-width: 0; background: var(--tblr-bg-forms, var(--tblr-bg-surface)); border: 1px solid var(--tblr-border-color); border-radius: 6px; padding: 4px 8px; font-size: 13px; color: var(--tblr-body-color); }
 .opt-color { width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--tblr-border-color); cursor: pointer; padding: 0; }
 .opt-color.neutral { background: var(--tblr-bg-surface-secondary); }
+.opt-row .opt-cat { flex: 0 0 auto; width: auto; }
 .opt-cat .picker-face { padding: 2px 8px; font-size: 12px; width: auto; min-width: 108px; }
 .opt-default { flex-shrink: 0; margin: 0; accent-color: var(--tblr-primary); }
 .opt-del { background: none; border: none; color: var(--tblr-secondary); font-size: 12px; cursor: pointer; padding: 2px 4px; }

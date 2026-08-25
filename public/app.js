@@ -485,6 +485,20 @@ function documentFields(db) {
   return db.fields.filter((f) => f.type === 'document');
 }
 
+/* What this table is to the slide composer (Feature #118): a table with a
+   many-relation named Slides is a deck, a table with a Model document is a
+   slide. The same convention the server composes on, read off the schema so
+   the entity view knows whether to frame a deck before asking for one. */
+function deckRoleOf(db) {
+  if (!db?.fields) return null;
+  const isSlideTable = (t) => !!t?.fields?.some((f) => f.name === 'Model' && f.type === 'document');
+  const slides = db.fields.find((f) => f.name === 'Slides');
+  if (slides?.type === 'relation' && slides.many
+    && isSlideTable(allTables().find((t) => t.id === slides.targetDbId))) return 'deck';
+  if (isSlideTable(db)) return 'slide';
+  return null;
+}
+
 // First lines of an entity's default document, flattened for view previews.
 function docPreview(md, max = 120) {
   const flat = String(md ?? '')
@@ -500,39 +514,24 @@ function docPreview(md, max = 120) {
 // Lazy mermaid: load the vendored lib only when a preview contains a diagram.
 let mermaidLoading = null;
 
-/* ---------- fullscreen viewer (Feature #47) ----------
-   Any URL weave serves, full-viewport, without leaving the app: an in-tree
-   dialog hosting an iframe with its own back/refresh — mention links inside
-   keep navigating in-frame (#27), and Esc brings you home. Also the host for
-   the whiteboard (#46), which fills the frame slot with a canvas instead. */
-function fullscreenViewer(title, { url = null, mount = null } = {}) {
-  document.querySelector('#fsv-back')?.remove();
-  const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen' }) : null;
-  const back = el('div', { id: 'fsv-back' },
-    el('div', { class: 'fsv-bar' },
-      url ? el('button', { class: 'btn btn-sm', title: 'Back', onclick: () => frame.contentWindow?.history.back() }, '‹') : null,
-      url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, '⟳') : null,
-      el('span', { class: 'fsv-title' }, title),
-      el('span', { style: 'flex:1' }),
-      url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, '↗') : null,
-      el('button', { class: 'btn btn-sm', title: 'Close', onclick: () => back.remove() }, '✕')),
-    frame ?? el('div', { class: 'fsv-body' }));
-  document.body.append(back);
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape') { back.remove(); removeEventListener('keydown', esc); }
-  });
-  if (mount) mount(back.querySelector('.fsv-body'));
-  return back;
+/* A document can be an app: a complete HTML file (doctype or <html> first)
+   is embedded and run, not edited as markdown. Mirrors src/markdown.js. */
+function isHtmlDocument(text) {
+  return typeof text === 'string' && /^\s*(?:<!doctype\s+html|<html[\s>])/i.test(text);
 }
 
-/* ---------- expand a document (Feature #47, editable — Kyle, 2026-08-23) ----------
-   A markdown document expands as ITSELF: the live editor node moves into the
-   overlay and moves home on collapse — one editor, nothing to sync, still
-   saving as you type. Only an HTML app document keeps a rendered frame,
-   because the frame IS that document. */
+/* ---------- expand a document (Feature #47) ----------
+   Expanding is not fullscreen: the document takes the entity body — fields,
+   comments, activity step aside — while the nav and breadcrumbs stay where
+   they are. Collapse (or Esc, even with the cursor in the frame) brings the
+   body back. The document's own fullscreen (a deck's F) is its to ask for. */
 function expandDocument(grid, url, title, { node = null } = {}) {
   grid.parentElement?.querySelector('.doc-expand')?.remove();
+  /* A markdown document expands as ITSELF: the live editor node moves into
+     the overlay and moves home on collapse — one editor, nothing to sync,
+     still saving as you type (Kyle, 2026-08-23: "md should be editable in
+     fullscreen mode as well"). Only an HTML app document keeps the rendered
+     frame, because the frame IS that document. */
   const origin = node?.parentElement ?? null;
   const frame = node ? null : el('iframe', { class: 'doc-expand-frame', src: url, allowfullscreen: '', allow: 'fullscreen', title });
   const collapse = () => { if (node && origin) origin.append(node); wrap.remove(); grid.classList.remove('hidden'); };
@@ -546,10 +545,56 @@ function expandDocument(grid, url, title, { node = null } = {}) {
     node ?? frame);
   grid.classList.add('hidden');
   grid.after(wrap);
+  const onKey = (e) => { if (e.key === 'Escape') collapse(); };
   addEventListener('keydown', function esc(e) {
     if (!wrap.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape') collapse();
+    onKey(e);
   });
+  frame.addEventListener('load', () => {
+    try { frame.contentWindow.addEventListener('keydown', onKey); } catch { /* cross-origin: the bar still collapses */ }
+  });
+  return wrap;
+}
+
+/* ---------- fullscreen viewer (Feature #47) ----------
+   Any URL weave serves, full-viewport, without leaving the app: an in-tree
+   dialog hosting an iframe with its own back/refresh — mention links inside
+   keep navigating in-frame (#27), and Esc brings you home. Also the host for
+   the whiteboard (#46), which fills the frame slot with a canvas instead. */
+function fullscreenViewer(title, { url = null, mount = null } = {}) {
+  document.querySelector('#fsv-back')?.remove();
+  const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen' }) : null;
+  // Closing leaves real fullscreen too, if we got it; leaving real fullscreen
+  // (Esc, the browser's own control) closes the viewer — one state, not two.
+  const close = () => back.remove();
+  // Back means back: the frame's own history when it has one, home when it
+  // does not — a fresh frame has nowhere to go but out.
+  const goBack = () => {
+    const h = frame?.contentWindow?.history;
+    if (h && h.length > 1) h.back(); else close();
+  };
+  const back = el('div', { id: 'fsv-back' },
+    el('div', { class: 'fsv-bar' },
+      url ? el('button', { class: 'btn btn-sm', title: 'Back', onclick: goBack }, '‹') : null,
+      url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, '⟳') : null,
+      el('span', { class: 'fsv-title' }, title),
+      el('span', { style: 'flex:1' }),
+      url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, '↗') : null,
+      el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, '✕')),
+    frame ?? el('div', { class: 'fsv-body' }));
+  document.body.append(back);
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  addEventListener('keydown', function esc(e) {
+    if (!back.isConnected) return removeEventListener('keydown', esc);
+    onKey(e);
+  });
+  // Keys land in the frame once it has focus; a same-origin frame lets us
+  // listen there too, so Esc works wherever the cursor is.
+  frame?.addEventListener('load', () => {
+    try { frame.contentWindow.addEventListener('keydown', onKey); } catch { /* cross-origin: the bar still closes */ }
+  });
+  if (mount) mount(back.querySelector('.fsv-body'));
+  return back;
 }
 
 /* ---------- whiteboard (Feature #46) ----------
@@ -1002,8 +1047,8 @@ function registryTable(kind) {
   return null;
 }
 
-/* A registry row stands for a piece of structure; registryHref says where it
-   opens — the space or the table, which IS the entity of the workspace
+/* A registry row stands for a piece of structure; opening it opens the
+   structure — the space or the table, which IS the entity of the workspace
    (Kyle, 2026-08-24). Ordinary rows open their entity page as ever. */
 function registryHref(db, item) {
   if (db.system === 'tables' && item.sysId) return `#/table/${item.sysId}`;
@@ -4047,6 +4092,25 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       { title: `${f.name} downloads`, extraClass: 'doc-dl' });
 
     const body = el('div', { class: 'doc-section-body' }, host);
+    // An HTML document runs in its own frame here; the markdown editor for
+    // its source is one </> toggle away — mounted on first use, because an
+    // editor mounted into a hidden box measures nothing and stays blank.
+    const isApp = isHtmlDocument(entity.docs?.[f.name] ?? '');
+    const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, allowfullscreen: '', allow: 'fullscreen', title: f.name }) : null;
+    let showingSource = false;
+    let mounted = false;
+    const sourceToggle = isApp ? el('span', {
+      class: 'doc-anchor', title: 'Edit source',
+      onclick: () => {
+        showingSource = !showingSource;
+        host.classList.toggle('hidden', !showingSource);
+        appFrame.classList.toggle('hidden', showingSource);
+        sourceToggle.classList.toggle('active', showingSource);
+        if (showingSource && !mounted) { mounted = true; mountSourceEditor(); }
+        if (!showingSource) appFrame.src = appFrame.src; // pick up what was typed
+      },
+    }, '</>') : null;
+    if (isApp) { host.classList.add('hidden'); body.prepend(appFrame); }
     const caret = el('button', {
       class: 'doc-caret', type: 'button', title: 'Collapse section',
       onclick: () => {
@@ -4190,6 +4254,56 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     fields.append(el('span', { class: 'wv-empty' }, 'This table has no fields beyond its name.'));
   }
   left.prepend(fields);
+  /* A deck is composed on read, so the frame IS the deck: the same editable
+     file /e/:id/deck.html serves, live over whatever the slides say right now.
+     A deck entity shows its whole composition; a slide shows itself, wearing
+     the chrome of the deck it belongs to. Slides also carry the version
+     action, because a version is a new row, not a saved copy. */
+  const deckRole = deckRoleOf(db);
+  if (deckRole) {
+    const deckUrl = `${WS_PREFIX}/e/${id}/deck.html`;
+    const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
+    const frame = el('iframe', { class: 'deck-frame', src: deckUrl, allowfullscreen: '', allow: 'fullscreen', title: label });
+    const body = el('div', { class: 'doc-section-body' }, frame);
+    const caret = el('button', {
+      class: 'doc-caret', type: 'button', title: 'Collapse section',
+      onclick: () => {
+        const open = body.classList.toggle('hidden');
+        caret.classList.toggle('closed', open);
+        docSectionCollapse(id, label, open);
+      },
+    });
+    const newVersion = async (promote) => {
+      try {
+        const made = await api('POST', `/entities/${id}/version${promote ? '?promote=1' : ''}`);
+        toast(`Version ${made.fields?.Version ?? ''} created`);
+        location.hash = `#/entity/${made.id}`;
+      } catch (err) { toast(err.message, true); }
+    };
+    const menu = dotsMenu([
+      { label: 'Download .html', href: deckUrl, download: `${entity.name || label}.html` },
+      { label: 'Open the composed model (.json)', href: `${WS_PREFIX}/e/${id}/deck.json` },
+      ...(deckRole === 'slide' ? [
+        'divider',
+        { label: 'New version', run: () => newVersion(false) },
+        { label: 'New version, promoted into its decks', run: () => newVersion(true) },
+      ] : []),
+    ], { title: `${label} actions`, extraClass: 'doc-dl' });
+    const section = el('section', { class: 'doc-section deck-section' },
+      el('div', { class: 'doc-section-head' },
+        caret,
+        el('span', { class: 'doc-section-name' }, label),
+        el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, '⟳'),
+        el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, '⛶'),
+        el('span', {
+          class: 'doc-anchor permalink-copy', title: 'Copy link to this deck',
+          onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
+        }, '⧉'),
+        menu),
+      body);
+    left.prepend(section);
+    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); }
+  }
   // The side column reads top-down as what people said (Comments) and what
   // happened (Activity); the body holds what the record is and carries.
   right.append(commentsPanel, actPanel); // delete lives in the ⋮ menu

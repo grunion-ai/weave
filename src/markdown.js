@@ -298,6 +298,15 @@ export function renderMarkdown(markdown, { resolveMention = null } = {}) {
 }
 
 // Full standalone HTML page for an entity document.
+/* A document can be an app. When the stored text is itself a complete HTML
+   document — a slide deck, an interactive figure — it is not markdown with
+   an HTML block in it, and must never be split at blank lines or wrapped in
+   the page skeleton. The test is the file's own opening: a doctype or the
+   <html> tag, nothing else. */
+export function isHtmlDocument(text) {
+  return typeof text === 'string' && /^\s*(?:<!doctype\s+html|<html[\s>])/i.test(text);
+}
+
 export function renderDocumentPage({ title, subtitle = '', markdown, resolveMention = null }) {
   const body = renderMarkdown(markdown, { resolveMention });
   return `<!doctype html>

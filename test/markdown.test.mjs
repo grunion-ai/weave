@@ -86,6 +86,17 @@ test('a rendered document page gives every code block a copy button', () => {
   assert.match(page, /navigator\.clipboard/, 'copying uses the clipboard API');
 });
 
+test('isHtmlDocument: a complete HTML file, not a markdown doc with an HTML block', async () => {
+  const { isHtmlDocument } = await import('../src/markdown.js');
+  assert.ok(isHtmlDocument('<!DOCTYPE html>\n<html>'));
+  assert.ok(isHtmlDocument('  <!doctype HTML>'));
+  assert.ok(isHtmlDocument('<html lang="en"><body>'));
+  assert.ok(!isHtmlDocument('# Heading\n\n<div>block</div>'));
+  assert.ok(!isHtmlDocument('<div>just a block</div>'));
+  assert.ok(!isHtmlDocument(''));
+  assert.ok(!isHtmlDocument(null));
+});
+
 /* Kyle, 2026-08-23: "/line break in md editors gives a code block, not a line
    break." Half of that bug was here: the renderer had no hard-break support
    at all, so even a correctly written break rendered as a space. Both

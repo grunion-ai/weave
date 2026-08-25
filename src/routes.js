@@ -5,8 +5,9 @@
 // The adapter owns transport: reading the body stream, writing the response,
 // and static assets (node reads public/; Workers bind Static Assets).
 import { WeaveError } from './engine.js';
-import { renderDocumentPage, renderMarkdown } from './markdown.js';
+import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
+import { renderDeck, newSlideVersion } from './deck.js';
 import { handleMcpMessage } from './mcp.js';
 
 export function statusFor(err) {
@@ -188,6 +189,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, markdown, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
         }
         if (m[3] === 'html') {
+          // An HTML document serves itself — its own styles and scripts, verbatim.
+          if (isHtmlDocument(markdown)) return out(200, markdown, { 'Content-Type': 'text/html; charset=utf-8' });
           const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown, resolveMention });
           return out(200, page, { 'Content-Type': 'text/html; charset=utf-8' });
         }
@@ -220,6 +223,23 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return out(200, markdownToPdf(md, { title: entity.name || `#${entity.publicId}`, subtitle }), {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `inline; filename="${(entity.name || 'entity').replace(/[^\w.-]+/g, '_')}.pdf"`,
+        });
+      }
+
+      /* ---------- composed decks (Feature #118) ----------
+         /e/:ref/deck.html is a deck the way /e/:ref/doc.html is a document:
+         composed on read from the slides the entity links, never stored. A
+         slide entity answers the same route with a one-slide preview wearing
+         its deck's chrome. .json is the composed model plus what the decklet
+         validator says about it. */
+      if ((m = path.match(/^\/e\/([^/]+)\/deck\.(html|json)$/))) {
+        const built = renderDeck(weave, m[1]);
+        if (m[2] === 'json') {
+          return out(200, { model: built.model, errors: built.errors, warnings: built.warnings });
+        }
+        return out(200, built.html, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'X-Weave-Deck-Warnings': String(built.warnings.length),
         });
       }
 
@@ -420,6 +440,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/restore$/)) && rx.method === 'POST') {
           return out(200, weave.restoreEntity(m[1]));
+        }
+        // A slide's next version: same key and content, Version + 1, pointing
+        // back at what it supersedes. ?promote=1 swaps it into the decks the
+        // old row sat in, keeping its place in each running order.
+        if ((m = path.match(/^\/api\/entities\/([^/]+)\/version$/)) && rx.method === 'POST') {
+          const promote = ['1', 'true'].includes(rx.searchParams.get('promote') ?? '') || body.promote === true;
+          const made = newSlideVersion(weave, m[1], { promote });
+          return out(201, weave.readEntity(made.id));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/link$/)) && rx.method === 'POST') {
           weave.link(m[1], body.field, body.targets ?? body.items);

@@ -180,3 +180,29 @@ test('HTTP: per-field doc endpoints and universal search', async () => {
     server.close();
   }
 });
+
+/* A document can be an app. When the stored text is itself a complete HTML
+   document (a slide deck, an interactive figure), the .html endpoint serves
+   it verbatim — no markdown page skeleton around it, no block splitting at
+   blank lines — so its own <style> and <script> run as written. */
+test('HTTP: a document that is an HTML document is served verbatim', async () => {
+  const { w, tasks } = build();
+  w.addField(tasks, { name: 'Slides', type: 'document' });
+  const deck = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<style>\nbody{background:#181310}\n\n.x{color:red}\n</style>\n</head>\n<body>\n<div id="canvas">hi</div>\n\n<script>\nconst fs=()=>document.documentElement.requestFullscreen();\n</script>\n</body>\n</html>\n';
+  const e = w.createEntity(tasks, { name: 'Deck', doc: '# plain markdown', docs: { Slides: deck } });
+  const { server } = await startServer(w, { port: 0 });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const res = await fetch(`${base}/e/${e.id}/doc/Slides.html`);
+    assert.match(res.headers.get('content-type'), /text\/html/);
+    assert.equal(await res.text(), deck, 'byte-for-byte the stored document');
+    // Markdown documents still get the page skeleton.
+    const md = await (await fetch(`${base}/e/${e.id}/doc/Description.html`)).text();
+    assert.match(md, /<h1>plain markdown<\/h1>/);
+    assert.match(md, /<!doctype html>/i);
+    // The raw .md export is untouched either way.
+    assert.equal(await (await fetch(`${base}/e/${e.id}/doc/Slides.md`)).text(), deck);
+  } finally {
+    server.close();
+  }
+});

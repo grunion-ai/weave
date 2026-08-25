@@ -98,6 +98,8 @@ test('there is no edit mode, no preview toggle and no save button', () => {
   // View/MD/MMD/PDF switcher. Rendering IS editing now, so the toggle is gone;
   // MD/MMD/PDF survive only as downloads.
   assert.doesNotMatch(APP, /doc-frame/, 'the preview iframe is gone');
+  // (.doc-app is not a preview: it is an HTML document running as itself —
+  // the markdown editor for its source is a toggle away, not a mode.)
   assert.doesNotMatch(APP, /'Preview'/, 'no Preview control');
   for (const label of ['Save', 'Saving']) {
     assert.doesNotMatch(APP, new RegExp(`>\\s*${label}\\s*<`), `no ${label} button`);

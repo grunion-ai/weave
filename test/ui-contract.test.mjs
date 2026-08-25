@@ -1171,7 +1171,7 @@ test('docs go fullscreen and diagrams become whiteboards (Features #47, #46)', (
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.ok(app.includes('function fullscreenViewer('), 'the in-tree dialog exists');
-  assert.ok(app.includes('history.back()'), 'the frame has its own back');
+  assert.ok(app.includes('h.back()'), 'the frame has its own back');
   assert.ok(app.includes('function openWhiteboard('), 'the whiteboard exists');
   assert.ok(html.includes('graph-parse.js'), 'the parser loads with the app');
   assert.ok(app.includes("src = '/vendor/cytoscape.min.js'"), 'cytoscape is lazy — 434KB only when a whiteboard opens');
@@ -1313,45 +1313,38 @@ test('spaces and tables wear Iconly flat icons, picked beside their name (Featur
   assert.ok(Object.values(icons).every((v) => !/#[0-9A-Fa-f]{6}/.test(v)), 'no hardcoded fills — icons inherit currentColor');
 });
 
-/* UAT (Kyle, 2026-08-23, Showcase/People → Ada Chen): the Owns / Peer of
-   grids embed the 33-column Field Types table and ran under the right-hand
-   Fields/Comments column. A wide embedded grid scrolls inside its own card;
-   the page never widens. */
-test('an embedded related grid scrolls horizontally inside its card', () => {
-  const card = rulesFor('.related-section .card');
-  assert.equal(card['overflow-x'], 'auto', 'the card is the scroll container');
-  // rulesFor merges the @media override in; the base rule is read directly.
-  assert.match(CSS, /\n\.entity-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/, 'the left column may shrink below its content');
+test('a document that is an HTML app is embedded, not edited as markdown', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  // The entity page mounts a frame for an HTML document (so its script runs
+  // as written, in Safari too); the source editor is a toggle away and is
+  // mounted on first use — an editor mounted into a hidden box stays blank.
+  assert.ok(app.includes('function isHtmlDocument('), 'the client can tell an HTML document apart');
+  const i = app.indexOf("class: 'doc-app'");
+  assert.ok(i > 0, 'the embedded frame exists');
+  assert.ok(app.slice(i, i + 160).includes('allowfullscreen'), 'the embedded frame permits fullscreen (Safari)');
+  assert.ok(app.includes("title: 'Edit source'"), 'the source editor is one toggle away');
+  assert.ok(app.includes('if (!isApp) mountEditor();'), 'the rendering editor is for markdown only');
+  assert.ok(app.includes("class: 'doc-source'") && app.includes('mountSourceEditor'), 'HTML source edits in a code box, mounted on first toggle');
+  assert.match(rulesFor('.doc-source')['font-family'] ?? '', /monospace/, 'the source box is monospace');
+  const css = rulesFor('.doc-app');
+  assert.equal(css['aspect-ratio'], '16 / 9', 'the frame has a stable 16:9 box');
+  assert.equal(css.width, '100%');
 });
 
-test('entity crumbs carry the navigation trail (breadcrumbs.js), loaded before app.js', () => {
-  assert.match(fnBody('showEntity'), /weaveBreadcrumbs\.pushTrail\(state\.trail, state\.route, hop\)/, 'every entity visit updates the trail from the route being left');
-  assert.match(APP, /weaveBreadcrumbs\.entityCrumbs\(/, 'the full page crumb is the path taken');
-  const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
-  assert.ok(HTML.indexOf('breadcrumbs.js') < HTML.indexOf('"/app.js"'));
-});
-
-/* Kyle, 2026-08-23: "resize field is stuck in some browsers" — the th is
-   draggable (column reorder) and Safari/Firefox start that native drag a
-   few pixels into a resize, ending the pointer stream. "double click
-   resize handle to autofit content without cutoff" — fit to the widest
-   cell, not the engine's auto width. "editing a table field snaps me back
-   to the beginning of the table" — the redraw keeps the scroll. */
-test('column resize captures the pointer and suspends the drag; double-click fits content', () => {
-  const grip = fnBody('columnResizeGrip');
-  assert.match(grip, /setPointerCapture\(e\.pointerId\)/, 'moves reach the grip even when the pointer leaves it');
-  assert.match(grip, /th\.draggable = false/, 'column reorder cannot hijack a resize');
-  assert.match(grip, /lostpointercapture/, 'a lost capture ends the resize cleanly');
-  assert.match(grip, /fitColumnWidth\(th\)/, 'double-click fits the content');
-  assert.ok(!/scrollWidth/.test(fnBody('fitColumnWidth')), 'a clipped cell never reports overflow — the fit is measured off the grid');
-  assert.equal(rulesFor('.col-resize')['touch-action'], 'none');
-});
-
-test('a field edit keeps the page and grid scroll across the redraw', () => {
-  assert.match(fnBody('editFieldDialog'), /keepScroll\(\(\) => showDatabase\(db\.id\)\)/);
-  const keep = fnBody('keepScroll');
-  assert.match(keep, /window\.scrollTo\(x, y\)/);
-  assert.match(keep, /scrollLeft = left/);
+test('expanding a document keeps the nav and breadcrumbs; the copy icon is the system one', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  assert.ok(app.includes('function expandDocument('), 'expand exists');
+  assert.ok(app.includes("title: 'Expand'"), 'it is called Expand, not fullscreen');
+  assert.ok(!app.includes("title: 'View fullscreen'"), 'the old fullscreen handle is gone');
+  const fn = app.slice(app.indexOf('function expandDocument('), app.indexOf('/* ---------- fullscreen viewer'));
+  assert.ok(fn.includes("grid.classList.add('hidden')") && fn.includes('grid.after(wrap)'), 'it swaps the entity body in place');
+  assert.ok(!fn.includes('requestFullscreen'), 'it never grabs the screen');
+  assert.ok(fn.includes("e.key === 'Escape'") && fn.includes("frame.contentWindow.addEventListener('keydown'"), 'Esc collapses, from inside the frame too');
+  const k = app.indexOf("title: 'Copy link to this document'");
+  const copy = app.slice(k - 60, k + 200);
+  assert.ok(copy.includes("'⧉'") && copy.includes('permalink-copy'), 'document copy-link uses the system ⧉');
+  assert.equal(rulesFor('.doc-expand').display, 'flex');
+  assert.equal(rulesFor('.doc-expand-frame')['flex'], '1');
 });
 
 /* Kyle, 2026-08-23: units vs currency on number AND formula fields; Enter

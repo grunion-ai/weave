@@ -74,9 +74,18 @@ if (!chromium) {
     await page.waitForSelector('.vditor-hint button', { state: 'visible' });
     const label = await page.textContent('.vditor-hint button');
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(120);
-    const markdown = await page.evaluate(() =>
-      window.__weaveEditors.values().next().value.getValue());
+    /* Poll rather than sleep: a headless page is backgrounded, Chrome throttles
+       the timers Vditor dispatches its input event on, and a command that
+       finishes itself (a reference, a raw HTML block) settles one step after
+       that. Read until the document stops changing. */
+    let markdown = '';
+    for (let i = 0; i < 30; i++) {
+      const now = await page.evaluate(() =>
+        window.__weaveEditors.values().next().value.getValue());
+      if (i && now === markdown && !/⁣/.test(now)) break;
+      markdown = now;
+      await page.waitForTimeout(50);
+    }
     return { label: label.trim(), markdown };
     } finally { await page.close(); }
   }
@@ -189,8 +198,13 @@ if (!chromium) {
       labels: [...document.querySelectorAll('.vditor-hint .slash-item b')].map((b) => b.textContent),
       syntax: [...document.querySelectorAll('.vditor-hint .slash-item')]
         .map((i) => i.querySelector('.slash-syntax')?.textContent ?? null),
+      // A glyph is either a typographic mark (B, I, H, ¶) or a flat icon —
+      // never an emoji, which is why an <svg> counts and text is optional.
       icons: [...document.querySelectorAll('.vditor-hint .slash-item')]
-        .map((i) => i.querySelector('.slash-icon')?.textContent ?? null),
+        .map((i) => {
+          const slot = i.querySelector('.slash-icon');
+          return slot ? (slot.querySelector('svg') ? 'svg' : slot.textContent) : null;
+        }),
     }));
 
     assert.deepEqual(menu.groups, ['ALL COMMANDS', 'REFERENCE', 'FORMAT · APPLIES TO SELECTION'],

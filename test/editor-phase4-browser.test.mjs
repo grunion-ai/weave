@@ -78,7 +78,10 @@ if (!chromium) {
       await page.keyboard.press('Enter');
       await page.waitForTimeout(150);
       const md = await page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
-      assert.match(md, /```\w+/, 'the stored fence keeps the placeholder language');
+      /* The fence is bare on purpose now: the content decides the language,
+         and the block detects it. What must hold is the end state — real code
+         lights up — not who named the language. */
+      assert.match(md, /^```\n/, 'the command inserts a fence, and guesses nothing');
       // The placeholder word "code" is a bare identifier — zero tokens in any
       // grammar. Once real code replaces it, the block must light up.
       await page.evaluate(() => {

@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>decklet</title>
+<style>
+:root{/*TOKENS*/--bg:#111315;--fg:#F3F4F6;--muted:#9CA3AF;--accent:#5B9CF6;--card:#1A1D21;--line:#2C3138;--sel:#5B9CF6;--box:#20262E/*/TOKENS*/;--W:960px;--H:540px;--Z:0.85;--AR:1.7778}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+#wrap{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
+#canvas{position:relative;width:var(--W);height:var(--H);background:var(--card);border:1px solid var(--line);border-radius:12px;transform-origin:center;flex:none;overflow:hidden}
+/* href is one model prop with two surfaces: an inset anchor over a whole row (a CTA box), and anchor runs inside .html.
+   The row overlay is inert while editing (a click selects and drags the row) and live in present mode.
+   NB: never write a "less-than" character in this stylesheet — it is serialised verbatim into the PDF rasteriser's
+   foreignObject, which is parsed as XML, and one in a comment ends the export in a parse error. */
+.el a.lk{position:absolute;inset:0;display:block;pointer-events:none;text-decoration:none;color:inherit}
+body.present .el a.lk{pointer-events:auto}
+/* ⌘S is the only durable path when the browser blocks storage for local files — give it a button in exactly that state */
+#savecopy{display:none}body.nostore #savecopy{display:inline-flex}
+/* rows carry their own typography: the element adds NOTHING implicit (no padding, radius or pre-wrap) — chrome lives on .box/.tile only */
+.el{position:absolute;cursor:grab;padding:0;border-radius:0;white-space:normal;line-height:normal}
+.el.box{border:1.5px solid var(--accent);background:var(--box);text-align:center;padding:6px 8px;border-radius:8px;white-space:pre-wrap}
+.el.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;text-align:center;display:flex;flex-direction:column;justify-content:center}
+.el svg{display:block;width:100%;height:100%}
+/* motion: four entrance anims, staggered 120 ms on slide ENTRY. rise = text, fade = quiet chrome, pop = stats/tiles, wipe = bars, lines, rules */
+.el.rise{animation:rise .5s cubic-bezier(.2,.7,.3,1) backwards}
+.el.fade{animation:fade .5s ease backwards}
+.el.pop{animation:pop .42s cubic-bezier(.2,.8,.3,1.25) backwards}
+.el.wipe{animation:wipe .5s cubic-bezier(.2,.7,.3,1) backwards}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}}
+@keyframes fade{from{opacity:0}}
+@keyframes pop{from{opacity:0;transform:scale(.92)}}
+@keyframes wipe{from{clip-path:inset(0 100% 0 0)}}
+@media (prefers-reduced-motion:reduce){.el.rise,.el.fade,.el.pop,.el.wipe{animation:none}}
+.el.selected{outline:2px solid var(--sel);outline-offset:2px}
+.el[contenteditable="true"]{cursor:text;outline:2px dashed var(--sel);outline-offset:2px}
+/* resize nib = selection chrome only: drawn by render() for one selected painting row; never in present/print */
+.el .h{position:absolute;right:-7px;bottom:-7px;width:13px;height:13px;background:var(--accent);border:2px solid var(--bg);border-radius:4px;cursor:nwse-resize}
+/* counter: inline inside the footer master element (inherits its font/baseline) — or the generic pin when no footer exists */
+.num{pointer-events:none}
+.el .num{white-space:nowrap}
+.pin{position:absolute;bottom:10px;font:12px ui-monospace,Menlo,monospace;color:var(--muted);letter-spacing:.08em}
+/* inline marks change weight/style/position/colour — never size: sub/sup shift the baseline only */
+.el sub,.el sup{font-size:inherit;line-height:0;vertical-align:sub}.el sup{vertical-align:super}
+/* autosave dot: green ✓ persisted · red edits lost on refresh · amber pulse saving */
+#autosave{width:9px;height:9px;border-radius:50%;background:#3fb950;box-shadow:0 0 6px #3fb95088;position:relative;flex:none}
+#autosave::after{content:'✓';position:absolute;inset:0;font:bold 7px/9px sans-serif;color:#0b2e14;text-align:center}
+/* hover label = status + last save time (data-tip mirrors title, readable without the OS tooltip delay) */
+#autosave::before{content:attr(data-tip);display:none;position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 10px);white-space:nowrap;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 8px;color:var(--fg);font:12px ui-monospace,Menlo,monospace;z-index:13}
+#autosave:hover::before{display:block}
+#autosave[data-state=bad]{background:#f85149;box-shadow:0 0 6px #f8514988}#autosave[data-state=bad]::after{content:''}
+#autosave[data-state=busy]{background:#d29922;box-shadow:0 0 6px #d2992288;animation:asave .6s ease-in-out infinite alternate}#autosave[data-state=busy]::after{content:''}
+@keyframes asave{from{opacity:.5}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){#autosave{box-shadow:none;animation:none!important}}
+#hud{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-top:1px solid var(--line);font:12px ui-monospace,Menlo,monospace;color:var(--muted)}
+#hud button,#tb button,#sheet-back{background:var(--card);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
+#hud .sep{width:1px;height:18px;background:var(--line)}
+#hud .spacer{flex:1}
+/* "+" micro-menu: the add controls (Text / Box / Slide) nest under one button; opens upward, click-away closes */
+#addwrap,#helpwrap{position:relative}
+#addmenu,#helpmenu{display:none;position:absolute;bottom:calc(100% + 6px);flex-direction:column;gap:4px;padding:6px;background:var(--card);border:1px solid var(--line);border-radius:8px;z-index:11;white-space:nowrap}
+#addmenu{left:0}#addmenu.open{display:flex}
+/* ⓘ popover: the ONE home for shortcut hints (the HUD itself stays free of hint text); click or hover opens, click-away / Esc closes */
+#helpmenu{right:0;padding:8px 10px;line-height:1.7}#helpmenu.open{display:flex}
+#helpmenu kbd{font:inherit;color:var(--accent);display:inline-block;min-width:9em}
+/* floating mini toolbar: role segment + inline marks + promote actions. No font pickers — roles ARE the type system */
+#tb{position:fixed;z-index:12;display:flex;flex-wrap:wrap;align-items:center;max-width:calc(100vw - 8px);gap:4px;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:8px;font:12px ui-monospace,Menlo,monospace}
+#tb[hidden]{display:none}
+/* every segment is one centred line box: buttons and the 16px swatch circles share a vertical axis (symmetric margins/padding) */
+#tb .seg{display:inline-flex;align-items:center;gap:2px;padding:2px 4px 2px 0;border-right:1px solid var(--line)} /* symmetric top/bottom: the swatch row is centred, not baseline-hung */
+#tb .seg:last-of-type{border:0}
+#tb .seg[hidden]{display:none}
+#tb button.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+#tb button:disabled{opacity:.35;cursor:default}
+#tb .sw{width:16px;height:16px;padding:0;margin:0;vertical-align:middle;border-radius:50%;border:2px solid var(--line)}
+#tb .sw.on{border-color:var(--fg);box-shadow:0 0 0 1px var(--fg)}
+/* contact sheet: the slide manager — 3 across, rows scroll, live thumbnails; ← Back (top-left) closes to the current slide */
+#sheet{position:fixed;inset:0;z-index:20;background:var(--bg);overflow:auto;padding:24px;-webkit-user-select:none;user-select:none}
+#sheet-back{display:block;margin-bottom:16px;font:12px ui-monospace,Menlo,monospace}
+body.dragging{-webkit-user-select:none;user-select:none}
+#sheet[hidden]{display:none}
+#grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.cell{position:relative;aspect-ratio:var(--AR);border:2px solid var(--line);border-radius:8px;overflow:hidden;cursor:grab;background:var(--card);touch-action:none;-webkit-user-select:none;user-select:none;transition:transform .15s ease}
+.cell.sel{border-color:var(--sel);box-shadow:0 0 0 2px var(--sel)}
+/* pointer drag: the grabbed cell lifts (scale + shadow, tracks the pointer with no transition); siblings FLIP aside; drop eases in */
+.cell.lift{z-index:3;transition:none;box-shadow:0 14px 36px rgba(0,0,0,.55);pointer-events:none;cursor:grabbing}
+.cell.drop{z-index:3;transition:transform .16s ease}
+@media (prefers-reduced-motion:reduce){.cell,.cell.drop{transition:none}}
+.cell .cv{position:absolute;left:0;top:0;width:var(--W);height:var(--H);transform-origin:0 0;pointer-events:none}
+.cell .cv .el{cursor:default}
+.cell .n{position:absolute;left:8px;top:6px;z-index:1;font:12px ui-monospace,Menlo,monospace;color:var(--fg);background:rgba(0,0,0,.55);padding:1px 6px;border-radius:4px}
+#print{display:none}
+/* fullscreen = presentation mode: chrome hidden; body backdrop is set by render() to the CURRENT slide's bg.
+   The text toolbar is NOT chrome here: editing is allowed in present mode (it floats on a selection exactly as windowed) */
+body.present #hud,body.present .h{display:none!important}
+body.present #canvas{border:0;border-radius:0}
+/* …but the HUD peeks back in while the pointer hovers the bottom twelfth (video-player controls pattern) */
+body.present.peek #hud{display:flex!important;position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--card);border-top:1px solid var(--line)}
+/* print: Safari forces US Letter PORTRAIT — it ignores px @page sizes AND the landscape keyword (margin:0 is honored).
+   Layout is page-size-independent: each page is the model space at true size (absolute px, no clamps),
+   `zoom`ed to the printable page width (816/W for Letter, 794/W for A4 — see deck.page). Each page paints ITS slide's bg; the dark body paints the letterbox. */
+@page{size:letter;margin:0} /* deck.page==="a4" injects an overriding @page rule at load */
+@media print{
+  #wrap,#hud,#tb,#sheet{display:none!important}
+  body{height:auto;overflow:visible;display:block;background:var(--bg);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #print{display:block}
+  #print .pg{position:relative;width:var(--W);height:var(--H);zoom:var(--Z);background:var(--card);break-after:page;break-inside:avoid}
+  #print .pg:last-child{break-after:auto}
+  #print .cv{position:absolute;left:0;top:0;width:var(--W);height:var(--H)}
+}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="canvas"></div></div>
+<div id="tb" hidden>
+  <span class="seg" id="tb-roles"></span>
+  <span class="seg" id="tb-inline">
+    <button data-cmd="bold" title="Bold" aria-label="Bold"><b>B</b></button>
+    <button data-cmd="italic" title="Italic" aria-label="Italic"><i>I</i></button>
+    <button data-cmd="underline" title="Underline" aria-label="Underline"><u>U</u></button>
+    <button data-cmd="strikeThrough" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+    <button data-link="1" title="Link (http, https or mailto)" aria-label="Link">🔗</button>
+  </span>
+  <span class="seg" id="tb-colors"></span>
+  <button id="tb-layout" hidden title="Promote this geometry to the layout slot">Apply to layout</button>
+  <button id="tb-master" hidden title="Promote this slide-local override back to every slide">Apply to all slides</button>
+</div>
+<div id="hud">
+  <button id="prev" title="Previous slide (←)" aria-label="Previous slide (←)">‹</button>
+  <button id="next" title="Next slide (→)" aria-label="Next slide (→)">›</button>
+  <div class="spacer"></div>
+  <span id="autosave" role="status" data-state="ok" title="Autosaved" aria-label="Autosaved" data-tip="Autosaved"></span>
+  <div id="addwrap">
+    <button id="addbtn" aria-haspopup="true" aria-expanded="false" title="Add" aria-label="Add">+</button>
+    <div id="addmenu" role="menu">
+      <button id="add-text">+ Text</button>
+      <button id="add-box">+ Box</button>
+      <button id="sadd">+ Slide</button>
+    </div>
+  </div>
+  <button id="grid-btn" title="Slides (G / Esc)" aria-label="Slides">⊞</button>
+  <button id="savecopy" title="Save a copy (⌘S)" aria-label="Save a copy">⤒</button>
+  <button id="pdf" title="Download PDF (⌘P prints)" aria-label="PDF">⤓</button>
+  <div class="sep"></div>
+  <button id="fs" title="Full screen (F)" aria-label="Full screen (F)">⛶</button>
+  <div id="helpwrap">
+    <button id="help" aria-haspopup="true" aria-expanded="false" title="Shortcuts" aria-label="Shortcuts">ⓘ</button>
+    <div id="helpmenu" role="dialog" aria-label="Shortcuts">
+      <div><kbd>← → / ↑ ↓</kbd> navigate</div>
+      <div><kbd>F</kbd> fullscreen (presentation)</div>
+      <div><kbd>Esc · G</kbd> contact sheet (slides)</div>
+      <div><kbd>⌘-click · ⇧-click</kbd> multi-select</div>
+      <div><kbd>drag</kbd> move · corner handle resizes</div>
+      <div><kbd>double-click</kbd> edit text</div>
+      <div><kbd>select text</kbd> → roles · B I U S̶ · link · color</div>
+      <div><kbd>⌫</kbd> delete</div>
+      <div><kbd>⌘Z</kbd> undo</div>
+      <div><kbd>⌘C · ⌘V · ⌘D</kbd> copy · paste · duplicate slides (in the sheet)</div>
+      <div><kbd>⌘S</kbd> save a copy (.html)</div>
+      <div><kbd>⤓ · ⌘P</kbd> PDF · paper print</div>
+    </div>
+  </div>
+</div>
+<div id="sheet" hidden><button id="sheet-back" title="Back to slide (Esc)" aria-label="Back to slide (Esc)">← Back</button><div id="grid"></div></div>
+<div id="print"></div>
+
+<script>
+// ONE element type; box/tile/bar(h+bg)/line/donut/align/radius/anim/svg/img/html are optional props on it.
+//  · anim      → entrance motion on slide ENTRY: rise | fade | pop | wipe, staggered 120 ms in model order. Print, the contact
+//                sheet, the PDF rasteriser and verify all draw the settled frame; prefers-reduced-motion turns it off entirely.
+// Deck = {w,h, format?, page?, styles:{roles,margin,pad}, slots:{…deck-wide}, layouts:{name:{slot:{x,y,w,h?,role}}}, master:[…], slides:[{layout?,bg?,hide?,els}]}
+// Full contract: SKILL.md (MODEL CONTRACT) · validator: bin/validate.mjs
+//  · role      → the text treatment. EIGHT roles (Title, Supertitle, H1, H2, Body, Caption, Label, Stat), each ONE font/size/line-height —
+//                the only source of family/size/lh/tracking. A row may carry weight/color/tt/italic; it can never carry size/font/lh
+//                (the validator rejects it). No H3, no Subtitle. Title = display size for title/closing slides; H1 = content-slide title.
+//  · slot      → row inherits the slot's geometry+role; its own x/y/w/h are slide-local overrides. deck.slots are deck-wide
+//                (the supertitle lives there); layouts vary CONTENT slots only (title/body)
+//  · master    → chrome, deck-wide: drawn identically under every slide. An edit forks {override:<id>,…changed props only};
+//                hide:[id] suppresses one. Chrome never varies per layout.
+//  · margin    → styles.margin: the content inset chrome sits on; the counter's right edge = W - margin, never the canvas edge
+//  · footer    → master flag: the page counter renders inline inside this row (same font/baseline, right edge on the margin)
+//  · nowrap / w:'auto' / p → text-fit intent: single line, shrink-to-fit, explicit padding (or a styles.pad token)
+// img (data-URI) and css (raw escape hatch) are supported but discouraged — the validator warns on css.
+const DECK=/*DECK*/{"w":960,"h":540,"styles":{"roles":{"Title":{"font":"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif","size":64,"weight":800,"lh":68,"ls":-1.5,"color":"var(--fg)"},"Supertitle":{"font":"ui-monospace,Menlo,Consolas,monospace","size":12,"weight":500,"lh":16,"ls":1.5,"color":"var(--accent)","tt":"uppercase"},"H1":{"font":"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif","size":34,"weight":800,"lh":40,"ls":-0.5,"color":"var(--fg)"},"H2":{"font":"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif","size":22,"weight":600,"lh":28,"ls":-0.3,"color":"var(--fg)"},"Body":{"font":"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif","size":16,"weight":400,"lh":24,"ls":0,"color":"var(--fg)"},"Caption":{"font":"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif","size":13,"weight":400,"lh":18,"ls":0,"color":"var(--muted)"},"Label":{"font":"ui-monospace,Menlo,Consolas,monospace","size":11,"weight":500,"lh":14,"ls":1,"color":"var(--muted)","tt":"uppercase"},"Stat":{"font":"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif","size":40,"weight":800,"lh":44,"ls":-1,"color":"var(--accent)"}},"margin":60,"pad":{"chip":"3px 8px","pill":"5px 12px"}},"slots":{},"layouts":{},"master":[],"slides":[{"els":[]}]}/*/DECK*/;
+
+// store shim: localStorage throws in sandboxed contexts (data:/locked-down file:) — degrade to no-persistence, never to a dead page
+// lastSavedAt = the moment of the last CONFIRMED write (set only when setItem returned) — the autosave tooltip reads it
+let lastSavedAt=null;
+// mem = the session fallback: when nothing persists, edits still survive navigation, the contact sheet and undo — just not a refresh
+const mem=new Map();
+const store={get:k=>{try{return localStorage.getItem(k)}catch{return mem.has(k)?mem.get(k):null}},set:(k,v)=>{try{localStorage.setItem(k,v);lastSavedAt=new Date();return true}catch{mem.set(k,v);return false}},del:k=>{try{localStorage.removeItem(k)}catch{mem.delete(k)}}};
+// storage namespace is per deck (create.mjs stamps it from the model hash) — two decks on one origin never share edits
+const NS=/*KEY*/'decklet:template'/*/KEY*/,KEY=NS+':model',HKEY=NS+':hist',PKEY=NS+':pos',canvas=document.getElementById('canvas'),$=id=>document.getElementById(id);
+// Safari refuses localStorage on file:// — the browser most people double-click a deck in. PROBE it at load rather than
+// waiting for the first save to go red: there is no storage API that works there (indexedDB/cookies are blocked too), so
+// the honest answer is to name the durable path (⌘S) and the browser that persists (Chrome), and surface the ⌘S button.
+const CANSTORE=(()=>{try{localStorage.setItem(NS+':probe','1');localStorage.removeItem(NS+':probe');return true}catch{return false}})();
+// position: the URL hash (#4 = slide 4) wins over the stored position; render() clamps to the slide count
+const hashPos=()=>parseInt(location.hash.slice(1))-1;
+let deck=JSON.parse(store.get(KEY)||'null')||structuredClone(DECK),i=hashPos()>=0?hashPos():parseInt(store.get(PKEY))||0,sel=new Set();
+document.title=deck.title||'decklet'; // the deck names itself: tab title, ⤓ PDF filename and ⌘S copy filename are all this one string
+const W=deck.w||960,H=deck.h||540;
+const PAGE=deck.page==='a4'?'a4':'letter',PW=PAGE==='a4'?794:816;
+document.documentElement.style.cssText=`--W:${W}px;--H:${H}px;--Z:${(PW/W).toFixed(4)};--AR:${(W/H).toFixed(4)}`;
+if(PAGE==='a4'){const st=document.createElement('style');st.textContent='@page{size:a4;margin:0}';document.head.appendChild(st)}
+// undo = snapshot stack; snap() BEFORE each mutation; persisted so ⌘Z survives refresh. no redo yet
+let history=JSON.parse(store.get(HKEY)||'[]');
+const hsave=()=>store.set(HKEY,JSON.stringify(history));
+const snap=()=>{history.push(JSON.stringify(deck));if(history.length>50)history.shift();hsave()};
+function undo(){if(!history.length)return;deck=JSON.parse(history.pop());hsave();sel.clear();save();render()}
+
+// windowed = maximal slide: scale up as well as down (no 1-cap); reserve only real chrome (few px sides, HUD below)
+function fit(){const s=document.fullscreenElement?Math.min(innerWidth/W,innerHeight/H):Math.min((innerWidth-12)/W,(innerHeight-52)/H);canvas.style.transform=`scale(${s})`;placeTb()}
+addEventListener('resize',fit);
+
+// autosave indicator: amber pulse while saving → green ✓ when the shim persisted → red when edits would be lost on refresh.
+// The tooltip (title + hover label) always carries the last confirmed save time.
+const hms=d=>d?d.toTimeString().slice(0,8):'';
+const BLOCKED='Not saved — this browser blocks storage for local files (Safari does, on file://). Press ⌘S to save a copy you can reopen, or open this deck in Chrome.';
+const autosave=(st,msg)=>{const a=$('autosave');if(!a)return;a.dataset.state=st;const txt=msg||{ok:'Autosaved · '+hms(lastSavedAt),bad:CANSTORE?'Not saved — edits will be lost on refresh'+(lastSavedAt?' (last saved '+hms(lastSavedAt)+')':''):BLOCKED,busy:'Saving…'}[st];a.title=txt;a.dataset.tip=txt;a.setAttribute('aria-label',txt)};
+let asT;function save(){autosave('busy');const ok=store.set(KEY,JSON.stringify(deck));clearTimeout(asT);asT=setTimeout(()=>autosave(ok?'ok':'bad'),250)}
+if(!CANSTORE){document.body.classList.add('nostore');autosave('bad')} // say it at load, not after the first lost edit
+const slide=()=>deck.slides[i];
+const LAY=s=>({...(deck.slots||{}),...((deck.layouts||{})[s.layout]||{})}); // deck-wide slots under the layout's content slots
+const MG=()=>deck.styles&&deck.styles.margin!=null?deck.styles.margin:Math.round(W*.06);
+// res(): slot geometry ← master row (for override rows) ← the row's own props ← role treatment. The role fills what the row
+// left unset AND always wins the LOCKED keys: a row can never change family/size/line-height/tracking. Every consumer reads through this.
+const LOCK=['font','size','lh','ls'];
+const res=(el,s)=>{const m=el.override&&(deck.master||[]).find(x=>x.id===el.override)||{};const sl=el.slot&&LAY(s)[el.slot]||{};const r={...sl,...m,...el};
+  const R=deck.styles&&deck.styles.roles||{},t=R[r.role]||((r.text!=null||r.html!=null)&&R.Body)||{};for(const k in t)if(r[k]==null||LOCK.includes(k))r[k]=t[k];return r};
+// motion vocabulary — the only four anims an element may carry; anything else is ignored (the validator rejects it upstream)
+const ANIM=['rise','fade','pop','wipe'];
+const paints=r=>!!(r.text||r.html||r.svg||r.img||r.bg||r.bd||r.bt||r.br||r.bb||r.bl||r.box||r.tile||r.line||r.curve||r.donut!=null);
+// href: navigable schemes only. ONE gate for both surfaces — a row's own href and an <a> inside an .html run — applied at
+// render as well as in validate, because a saved copy's model can be hand-edited to anything.
+const href=u=>{u=String(u==null?'':u).trim();return /^(https?:|mailto:)/i.test(u)?u:''};
+// arrow heads: which ends of a line or a curve carry one
+const AR=r=>({start:[1,0],end:[0,1],both:[1,1]}[r.arrow]||[0,0]);
+let uid=0; // marker ids must be unique per document — the contact sheet renders every slide at once
+// shared element painter — render(), the contact sheet and the print pipeline all use it
+function drawEls(s,root,animate){
+  let a=0;
+  root.style.background=s.bg||'var(--card)';
+  const items=[];
+  (deck.master||[]).forEach(m=>{if((s.hide||[]).includes(m.id)||(s.els||[]).some(e=>e.override===m.id))return;items.push({el:m,m:m.id})});
+  (s.els||[]).forEach((el,n)=>items.push({el,n}));
+  items.forEach(({el,n,m})=>{
+    const r=res(el,s),d=document.createElement('div');
+    const an=animate&&ANIM.includes(r.anim)?r.anim:'';
+    d.className='el'+(r.box?' box':'')+(r.tile?' tile':'')+(an?' '+an:'');
+    if(r.svg)d.innerHTML=r.svg;
+    else if(r.img){const im=new Image();im.src=r.img;im.style.cssText=`display:block;width:100%;height:100%;object-fit:${r.fit||'fill'};object-position:${r.pos||'50% 50%'};pointer-events:none`;d.appendChild(im)}
+    else if(r.html){d.innerHTML=r.html; // rich inline runs (<b>/<i>/<u>/<s>/<span>/<a href>) — re-gate the links on the way in
+      d.querySelectorAll('a[href]').forEach(a=>{const u=href(a.getAttribute('href'));if(u){a.setAttribute('href',u);a.target='_blank';a.rel='noopener noreferrer'}else a.removeAttribute('href')})}
+    else d.textContent=r.text||'';
+    const pad=r.p!=null?(deck.styles&&deck.styles.pad&&deck.styles.pad[r.p])||(typeof r.p==='number'?r.p+'px':r.p):null;
+    d.style.cssText=`left:${r.x||0}px;top:${r.y||0}px;width:${r.w==='auto'?'auto':(r.w||0)+'px'};font-size:${r.size||14}px;`+
+      (r.weight?`font-weight:${r.weight};`:'')+(r.color?`color:${r.color};`:'')+
+      (r.font?`font-family:${r.font};`:'')+
+      (r.ls!=null?`letter-spacing:${r.ls}px;`:'')+(r.lh!=null?`line-height:${r.lh}px;`:'')+(r.tt?`text-transform:${r.tt};`:'')+
+      (r.ws?`white-space:${r.ws};`:'')+(r.nowrap?'white-space:nowrap;':'')+(!r.html&&/\n/.test(r.text||'')?'white-space:pre-wrap;':'')+(r.italic?'font-style:italic;':'')+(r.op!=null?`opacity:${r.op};`:'')+
+      (pad?`padding:${pad};`:'')+(r.h?`height:${r.h}px;`:'')+(r.bg?`background:${r.bg};`:'')+
+      (r.bd?`border:${r.bd};`:'')+(r.bt?`border-top:${r.bt};`:'')+(r.br?`border-right:${r.br};`:'')+(r.bb?`border-bottom:${r.bb};`:'')+(r.bl?`border-left:${r.bl};`:'')+
+      (r.shadow?`box-shadow:${r.shadow};`:'')+(r.bar?'border-radius:6px 6px 0 0;':'')+
+      (r.align?`text-align:${r.align};`:'')+(r.radius!=null?`border-radius:${typeof r.radius==='number'?r.radius+'px':r.radius};`:'')+(r.img||r.svg?'overflow:hidden;':'')+(r.css?r.css+';':'');
+    // footer master: the counter is appended INSIDE this row, so anchor it to its nearer edge and let it grow away from it
+    // footer master: the counter is appended INSIDE this row; the row is anchored to the content edge (styles.margin) and grows inward
+    if(r.footer){d.dataset.footer='1';d.style.whiteSpace='nowrap';d.style.width='auto';if((r.x||0)+(typeof r.w==='number'?r.w:0)/2>W/2){d.style.left='auto';d.style.right=MG()+'px'}else d.style.left=MG()+'px'}
+    // line = one rotated div (no SVG layer); donut = one conic-gradient ring with a mask hole
+    if(r.line){const dx=r.line[0]-r.x,dy=r.line[1]-r.y;
+      d.style.cssText+=`width:${Math.hypot(dx,dy).toFixed(1)}px;height:${r.h||3}px;padding:0;background:${r.bg||'var(--accent)'};transform:rotate(${Math.atan2(dy,dx)}rad);transform-origin:0 50%;border-radius:2px;`}
+    // curve = one cubic bezier drawn as an SVG path; the row box wraps the whole control hull so parity/collision can measure it
+    if(r.curve){const [c1x,c1y,c2x,c2y,ex,ey]=r.curve,sx=r.x||0,sy=r.y||0,sw=r.h||3,c=r.bg||'var(--accent)',[as,ae]=AR(r);
+      const pad=sw*4+2,xs=[sx,c1x,c2x,ex],ys=[sy,c1y,c2y,ey],bx=Math.min(...xs)-pad,by=Math.min(...ys)-pad;
+      const bw=Math.max(...xs)-Math.min(...xs)+pad*2,bh=Math.max(...ys)-Math.min(...ys)+pad*2,P=(x,y)=>`${(x-bx).toFixed(1)} ${(y-by).toFixed(1)}`,id='ah'+(++uid);
+      d.innerHTML=`<svg width="${bw}" height="${bh}" viewBox="0 0 ${bw} ${bh}" fill="none" xmlns="http://www.w3.org/2000/svg">`+
+        (as||ae?`<defs><marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M0 0L10 5L0 10z" fill="${c}"/></marker></defs>`:'')+
+        `<path d="M${P(sx,sy)}C${P(c1x,c1y)} ${P(c2x,c2y)} ${P(ex,ey)}" stroke="${c}" stroke-width="${sw}" stroke-linecap="round"${ae?` marker-end="url(#${id})"`:''}${as?` marker-start="url(#${id})"`:''}/></svg>`;
+      d.style.cssText+=`left:${bx}px;top:${by}px;width:${bw}px;height:${bh}px;padding:0;background:none;border:0;`}
+    // arrow heads on a straight line: the row is already rotated along the line, so a CSS triangle at either edge points the right way
+    if(r.line&&r.arrow){const [as,ae]=AR(r),c=r.bg||'var(--accent)',hw=(r.h||3)*3;
+      for(const [on,at] of [[ae,1],[as,0]]) if(on){const t=document.createElement('i');t.className='ar';
+        t.style.cssText=`position:absolute;top:50%;${at?'right':'left'}:${-hw*2}px;width:0;height:0;border:${hw}px solid transparent;border-${at?'left':'right'}-color:${c};transform:translateY(-50%)`;d.appendChild(t)}}
+    if(r.donut!=null)d.style.cssText+=`width:${r.w}px;height:${r.w}px;padding:0;border-radius:50%;background:conic-gradient(${r.color||'var(--accent)'} ${r.donut}%,var(--line) 0);-webkit-mask:radial-gradient(#0000 55%,#000 56%);mask:radial-gradient(#0000 55%,#000 56%);`;
+    // a row's own href: ONE inset anchor over the whole row, so a painted CTA box is clickable even though its label is a separate row
+    if(href(r.href)){const a=document.createElement('a');a.className='lk';a.href=href(r.href);a.target='_blank';a.rel='noopener noreferrer';a.setAttribute('aria-label',r.text||r.href);d.appendChild(a)}
+    if(an)d.style.animationDelay=(a++*120)+'ms';
+    if(el._lines)d.dataset.lines=el._lines; // extractor metadata: source line count (layout-parity proof)
+    if(el.over)d.dataset.over=1; // declared overlay: verify's collision check leaves this row alone
+    // ink = what can be drawn THROUGH text: leader lines, curves, rules, hairlines, small dots. A card, tile, bar, donut or
+    // backdrop is something text is meant to sit ON — a stacking decision, not a collision. The engine declares it; verify reads it.
+    if(!(r.text||r.html)){const thin=Math.min(r.w==='auto'?1e4:(+r.w||1e4),+r.h||1e4)<=24;
+      if(r.line)d.dataset.seg=[r.x||0,r.y||0,r.line[0],r.line[1],r.h||3].join(',');
+      else if(r.curve)d.dataset.cur=[r.x||0,r.y||0,...r.curve,r.h||3].join(',');
+      else if((r.bg||r.bd)&&thin&&!r.bar&&r.donut==null)d.dataset.ink=1}
+    if(el._src)d.dataset.snapped=1; // extractor metadata: the type scale changed this row (its line-count drift is scale crowding, not a parity failure)
+    if(n!=null)d.dataset.n=n;else d.dataset.m=m;
+    root.appendChild(d);
+  });
+}
+let lastAnim=-1; // anim replays on slide ENTRY only — drag/select re-renders of the same slide must not restagger
+const present=()=>document.body.classList.contains('present');
+function render(){
+  i=Math.max(0,Math.min(deck.slides.length-1,i));
+  const s=slide(),animate=i!==lastAnim;lastAnim=i;
+  if(animate){store.set(PKEY,i);location.replace('#'+(i+1))} // slide change → persisted position + URL hash (refresh and deep links land here; replace = no history entry, works on file:)
+  sel.forEach(k=>{if(typeof k==='number'?!s.els[k]:!(deck.master||[]).some(m=>m.id===k.slice(2)))sel.delete(k)}); // stale keys (slide changed under a selection) never reach the painter
+  canvas.innerHTML='';
+  drawEls(s,canvas,animate);
+  const node=k=>canvas.querySelector(typeof k==='number'?`[data-n="${k}"]`:`[data-m="${k.slice(2)}"]`);
+  sel.forEach(k=>{const d=node(k);d&&d.classList.add('selected')});
+  // nib: one selected row that paints and has size; never in present mode (print never calls render)
+  if(sel.size===1&&!present()){const k=[...sel][0],d=node(k);const r=d&&res(typeof k==='number'?s.els[k]:deck.master.find(m=>m.id===k.slice(2)),s);
+    if(d&&paints(r)&&r.w!==0&&r.h!==0){const h=document.createElement('i');h.className='h';d.appendChild(h)}}
+  num(canvas,i+1);
+  document.body.style.background=present()?(s.bg||'var(--card)'):''; // present backdrop = CURRENT slide's bg
+  if(!$('sheet').hidden)sheetRender();
+  placeTb();
+}
+// counter: inside the footer master row when one exists (inherits its font/baseline/padding); else the generic pin
+const num=(root,n)=>{const f=root.querySelector('[data-footer]');const c=document.createElement(f?'span':'div');c.className=f?'num':'num pin';c.textContent=(f?' · ':'')+n+' / '+deck.slides.length;if(!f)c.style.right=MG()+'px';(f||root).appendChild(c)};
+// print: every slide becomes one page painted with its own bg — same drawEls, no handlers needed
+addEventListener('beforeprint',()=>{commitEdit();const p=$('print');p.innerHTML='';deck.slides.forEach((s,n)=>{const pg=document.createElement('div');pg.className='pg';pg.style.background=s.bg||'var(--card)';const cv=document.createElement('div');cv.className='cv';drawEls(s,cv,false);num(cv,n+1);pg.appendChild(cv);p.appendChild(pg)})});
+addEventListener('afterprint',()=>{$('print').innerHTML=''});
+
+// master fork: the first edit of a master row on a slide adds {override:<id>} — a PARTIAL row holding only what the slide changed;
+// everything else keeps reading from the master (identical everywhere until edited)
+function fork(id){slide().els.push({override:id});return slide().els.length-1}
+const selEl=()=>{if(sel.size!==1)return null;const k=[...sel][0];return typeof k==='number'?slide().els[k]:null};
+// drag + resize + select + edit — listener sits on #wrap so click-off ANYWHERE outside an element
+// (canvas gaps AND the margin around the canvas) deselects; the HUD is outside #wrap
+let drag=null;
+$('wrap').addEventListener('mousedown',e=>{
+  if(!e.target.closest('[contenteditable="true"]'))commitEdit(); // flush a live text edit BEFORE any deselect/re-render destroys its node
+  const scale=canvas.getBoundingClientRect().width/W;
+  if(e.target.className==='h'){ // SE handle: drag changes w (and h when the element has one)
+    let k=[...sel][0];snap();if(typeof k!=='number'){k=fork(k.slice(2));sel.clear();sel.add(k)}
+    const el=slide().els[k],r=res(el,slide());
+    drag={mode:'size',el,ow:r.w==='auto'?100:(r.w||100),oh:r.h,sx:e.clientX/scale,sy:e.clientY/scale,moved:true};
+    e.preventDefault();return;
+  }
+  const t=e.target.closest('.el');
+  if(!t){if(sel.size){sel.clear();render()}return} // click-off = deselect (nib goes with it)
+  if(t.isContentEditable)return;
+  const k=t.dataset.n!=null?+t.dataset.n:'m:'+t.dataset.m;
+  if(e.metaKey||e.ctrlKey){sel.has(k)?sel.delete(k):sel.add(k)}
+  else if(!sel.has(k)){sel.clear();sel.add(k)}
+  // double-click handled via e.detail — the selection re-render on click 1 destroys the
+  // node, so a real dblclick event never fires on it (this was the "can't edit" bug)
+  if(e.detail>=2){edit(k);return}
+  drag={mode:'move',items:[...sel].map(m=>{const el=typeof m==='number'?slide().els[m]:deck.master.find(x=>x.id===m.slice(2));const r=res(el,slide());return {k:m,el,ox:r.x||0,oy:r.y||0}}),
+        sx:e.clientX/scale,sy:e.clientY/scale,moved:false};
+  render();
+});
+addEventListener('mousemove',e=>{
+  if(!drag)return;
+  const scale=canvas.getBoundingClientRect().width/W;
+  const dx=e.clientX/scale-drag.sx,dy=e.clientY/scale-drag.sy;
+  if(drag.mode==='size'){
+    drag.el.w=Math.max(20,Math.round(drag.ow+dx));
+    if(drag.oh!=null)drag.el.h=Math.max(10,Math.round(drag.oh+dy));
+    render();return;
+  }
+  if(!drag.moved){snap();drag.moved=true;drag.items.forEach(it=>{if(typeof it.k!=='number'){const n=fork(it.k.slice(2));sel.delete(it.k);sel.add(n);it.el=slide().els[n]}})}
+  drag.items.forEach(it=>{it.el.x=Math.round(it.ox+dx);it.el.y=Math.round(it.oy+dy)});
+  render();
+});
+addEventListener('mouseup',()=>{if(drag){drag=null;save()}});
+// commitEdit: the ONE place a live text edit lands in the model. Called first on every path that re-renders or
+// destroys nodes (click-off, nav, slide add/delete, add element, fullscreen, print) — a blur handler alone is too late:
+// render() wipes the contenteditable node before blur fires, and the typed text died with it. edit() snaps first, so ⌘Z restores.
+function commitEdit(){
+  const t=canvas.querySelector('.el[contenteditable="true"]');
+  if(!t)return;
+  const el=slide().els[+t.dataset.n];
+  t.onblur=null;t.querySelectorAll('.h,.num').forEach(x=>x.remove());
+  if(t.querySelector('*')){el.html=t.innerHTML;delete el.text}else{el.text=t.textContent;delete el.html} // inline marks → html; plain → text
+  t.contentEditable=false;save();render();
+}
+function edit(k){
+  if(typeof k!=='number'){snap();k=fork(k.slice(2));sel.clear();sel.add(k);render()}else snap();
+  const el=slide().els[k];if(el.svg||el.img)return; // marks and images have no text to edit
+  drag=null;const t=canvas.querySelector(`[data-n="${k}"]`);t.querySelectorAll('.h,.num').forEach(x=>x.remove());t.contentEditable=true;t.focus(); // nib + counter are chrome, not content
+  getSelection().selectAllChildren(t);
+  t.onblur=commitEdit;placeTb();
+}
+// ── floating mini toolbar (roles + inline marks + promote actions) ──
+const tb=$('tb');
+// color swatches = the text colors ALREADY in the deck (roles first, then first appearance in rows/runs). No picker, no hex input.
+// dedupe on the RESOLVED value (#23262C and rgb(35, 38, 44) are one swatch); the first literal spelling is kept
+const deckColors=()=>{const seen=new Map();for(const c of [...Object.values(deck.styles&&deck.styles.roles||{}).map(r=>r.color),...[...(deck.master||[]),...deck.slides.flatMap(s=>s.els||[])].flatMap(e=>[e.color,...[...(e.html||'').matchAll(/color:\s*([^;"']+)/g)].map(m=>m[1].trim())])].filter(Boolean)){canvas.style.color=c;const k=getComputedStyle(canvas).color;if(!seen.has(k))seen.set(k,c)}canvas.style.color='';return [...seen.values()]};
+const runSpan=(sr,node)=>{const a=sr.rangeCount&&sr.anchorNode,el=a&&(a.nodeType===1?a:a.parentElement).closest('[style*="color"]');return el&&node.contains(el)&&el!==node?el:null};
+// palette is TEXT color only (no box fill — retracted 2026-08-23): any painting row still gets the toolbar for the promote actions
+function placeTb(){
+  const el=selEl();const k=[...sel][0];
+  if(sel.size!==1||!$('sheet').hidden){tb.hidden=true;return}
+  const s=slide(),src=el||(typeof k==='string'&&deck.master.find(m=>m.id===k.slice(2)));
+  const r=src&&res(src,s),textual=!!(r&&(r.text||r.html));
+  if(!src||!(textual||paints(r))){tb.hidden=true;return}
+  const node=canvas.querySelector(el?`[data-n="${k}"]`:`[data-m="${k.slice(2)}"]`);if(!node)return;
+  const editing=node.isContentEditable,sr=getSelection();
+  let rect=node.getBoundingClientRect();
+  if(editing&&sr.rangeCount&&!sr.isCollapsed&&node.contains(sr.anchorNode)){const rr=sr.getRangeAt(0).getBoundingClientRect();if(rr.width)rect=rr}
+  tb.hidden=false;
+  ['tb-roles','tb-inline','tb-colors'].forEach(id=>$(id).hidden=!textual); // text segments only for text rows
+  const roles=Object.keys(deck.styles&&deck.styles.roles||{}),rw=$('tb-roles');
+  rw.innerHTML=roles.map(n=>`<button data-role="${n}" class="${n===(src.role||(src.slot&&LAY(s)[src.slot]||{}).role)?'on':''}" title="${n}">${n}</button>`).join('');
+  tb.querySelectorAll('[data-cmd]').forEach(b=>{b.disabled=!editing;b.classList.toggle('on',editing&&document.queryCommandState(b.dataset.cmd))});
+  const run=editing&&!sr.isCollapsed&&runSpan(sr,node),cur=run?(run.getAttribute('style').match(/color:\s*([^;]+)/)||[])[1]:res(src,s).color;
+  $('tb-colors').innerHTML=deckColors().map(c=>`<button class="sw${c===(cur||'').trim()?' on':''}" data-color="${c}" style="background:${c}" title="${c}" aria-label="${c}"></button>`).join('');
+  $('tb-layout').hidden=!(el&&el.slot&&['x','y','w','h'].some(p=>el[p]!=null));
+  $('tb-master').hidden=!(el&&el.override);
+  tb.style.left=Math.max(4,Math.min(rect.left,innerWidth-tb.offsetWidth-4))+'px';tb.style.top=Math.max(4,rect.top-tb.offsetHeight-8)+'px';
+}
+tb.addEventListener('mousedown',e=>e.preventDefault()); // keep the text selection + focus alive
+tb.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.cmd){document.execCommand(b.dataset.cmd);placeTb();return}
+  if(b.dataset.link){ // the link MARK: wraps the selected run in <a href>, exactly as B wraps it in <b>. Empty field = unlink.
+    const t0=canvas.querySelector('.el[contenteditable="true"]'),sr0=getSelection();
+    if(!t0||sr0.isCollapsed||!t0.contains(sr0.anchorNode))return; // a link is a run, not a field — select the text first
+    const cur=sr0.anchorNode.parentElement&&sr0.anchorNode.parentElement.closest('a'),u=prompt('Link URL (http, https or mailto)',cur?cur.getAttribute('href'):'https://');
+    if(u==null)return;
+    if(!u.trim())document.execCommand('unlink');
+    else if(href(u))document.execCommand('createLink',false,href(u));
+    placeTb();return}
+  let k=[...sel][0];
+  const sr=getSelection(),t0=canvas.querySelector('.el[contenteditable="true"]');
+  if(b.dataset.color&&t0&&!sr.isCollapsed&&t0.contains(sr.anchorNode)){ // highlighted run → <span style="color:…"> in the html prop (same storage as B/I/U/S)
+    const r=sr.getRangeAt(0),old=runSpan(sr,t0),sp=document.createElement('span');sp.setAttribute('style','color:'+b.dataset.color);
+    if(old&&old.textContent===r.toString()){old.setAttribute('style','color:'+b.dataset.color)}else{sp.appendChild(r.extractContents());r.insertNode(sp);sr.removeAllRanges();sr.selectAllChildren(sp)}
+    placeTb();return;
+  }
+  if(b.dataset.color){ // collapsed / not editing → whole-field color override on the row
+    if(t0)commitEdit();
+    snap();if(typeof k!=='number'){k=fork(k.slice(2));sel.clear();sel.add(k)}
+    slide().els[k].color=b.dataset.color;save();render();return;
+  }
+  if(b.dataset.role){ // role applies to the WHOLE field: raw overrides are cleared so the treatment takes effect
+    const t=canvas.querySelector('.el[contenteditable="true"]');if(t)commitEdit();
+    snap();if(typeof k!=='number'){k=fork(k.slice(2));sel.clear();sel.add(k)}
+    const el=slide().els[k];el.role=b.dataset.role;['weight','color','tt','italic'].forEach(p=>delete el[p]);save();render();return;
+  }
+  const el=slide().els[k];
+  if(b.id==='tb-layout'){snap();const sl=LAY(slide())[el.slot];['x','y','w','h'].forEach(p=>{if(el[p]!=null){sl[p]=el[p];delete el[p]}});save();render()}
+  if(b.id==='tb-master'){snap();const id=el.override,mi=deck.master.findIndex(m=>m.id===id);const m={...deck.master[mi],...el,id};delete m.override;deck.master[mi]=m;slide().els.splice(k,1);sel.clear();save();render()}
+});
+document.addEventListener('selectionchange',()=>{if(!tb.hidden||canvas.querySelector('[contenteditable="true"]'))placeTb()});
+// ── contact sheet: the slide manager ──
+const sheet=$('sheet'),grid=$('grid');let gsel=new Set(),ganchor=0,clip=null,ins=null;
+function sheetOpen(){commitEdit();sel.clear();gsel=new Set([i]);ganchor=i;sheet.hidden=false;sheetRender();tb.hidden=true}
+function sheetClose(){sheet.hidden=true;render()}
+$('sheet-back').onclick=sheetClose; // ← Back: closes to the CURRENT slide (i untouched); Esc / dblclick-a-cell unchanged
+function sheetRender(){
+  grid.innerHTML='';
+  deck.slides.forEach((s,n)=>{
+    const c=document.createElement('div');c.className='cell'+(gsel.has(n)?' sel':'');c.dataset.n=n;
+    const cv=document.createElement('div');cv.className='cv';drawEls(s,cv,false);num(cv,n+1);
+    const lb=document.createElement('span');lb.className='n';lb.textContent=n+1;
+    c.append(cv,lb);grid.appendChild(c);
+    cv.style.transform=`scale(${(c.clientWidth/W).toFixed(4)})`;
+  });
+}
+grid.addEventListener('mousedown',e=>{
+  const c=e.target.closest('.cell');if(!c)return;e.preventDefault();const n=+c.dataset.n; // preventDefault: thumbnails are renders, never text — no native selection/focus on press
+  if(e.metaKey||e.ctrlKey){gsel.has(n)?gsel.delete(n):gsel.add(n)}
+  else if(e.shiftKey){const [a,b]=[Math.min(ganchor,n),Math.max(ganchor,n)];for(let x=a;x<=b;x++)gsel.add(x)}
+  else{if(e.detail>=2){i=n;sheetClose();return}if(!gsel.has(n)){gsel=new Set([n]);ganchor=n}}
+  grid.querySelectorAll('.cell').forEach(x=>x.classList.toggle('sel',gsel.has(+x.dataset.n))); // no re-render: a pointer drag may be starting on this node
+});
+// pointer drag (mouse AND touch — pointer events, no HTML5 DnD): past a 6px threshold the grabbed cell lifts and tracks the pointer;
+// the landing slot is the midline of the cell under the pointer; every other cell FLIPs to where it will land (transform only).
+// Drop eases the lifted cell into its slot, then reorder() commits ONE undo snapshot. prefers-reduced-motion: no transitions.
+let pd=null;const RM=matchMedia('(prefers-reduced-motion:reduce)');
+const landing=()=>{const mv=[...gsel].sort((a,b)=>a-b),at2=ins-mv.filter(n=>n<ins).length,order=deck.slides.map((_,n)=>n).filter(n=>!gsel.has(n));order.splice(at2,0,...mv);return order}; // new order of old indices
+grid.addEventListener('pointerdown',e=>{const c=e.target.closest('.cell');if(!c||e.button)return;pd={c,n:+c.dataset.n,x:e.clientX,y:e.clientY,on:false};c.setPointerCapture(e.pointerId)});
+grid.addEventListener('pointermove',e=>{
+  if(!pd)return;const dx=e.clientX-pd.x,dy=e.clientY-pd.y;
+  if(!pd.on){if(Math.hypot(dx,dy)<6)return;pd.on=true;e.preventDefault();getSelection().removeAllRanges();document.body.classList.add('dragging');pd.cells=[...grid.querySelectorAll('.cell')];pd.rects=pd.cells.map(c=>c.getBoundingClientRect());pd.c.classList.add('lift')}
+  pd.c.style.transform=`translate(${dx}px,${dy}px) scale(1.05)`;
+  const k=pd.rects.findIndex(r=>e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom);
+  if(k>=0)ins=k+(e.clientX<pd.rects[k].left+pd.rects[k].width/2?0:1);
+  if(ins==null)return;
+  const order=landing();
+  pd.cells.forEach((c,n)=>{if(c===pd.c)return;const to=pd.rects[order.indexOf(n)],from=pd.rects[n];c.style.transform=to===from?'':`translate(${to.left-from.left}px,${to.top-from.top}px)`});
+});
+const pend=()=>{if(!pd)return;const d=pd;pd=null;if(!d.on)return;document.body.classList.remove('dragging');
+  if(ins==null){d.c.classList.remove('lift');d.cells.forEach(c=>c.style.transform='');return}
+  const to=d.rects[landing().indexOf(d.n)],from=d.rects[d.n];d.c.classList.replace('lift','drop');d.c.style.transform=`translate(${to.left-from.left}px,${to.top-from.top}px)`;
+  const land=()=>{const at=ins;ins=null;reorder(at)};RM.matches?land():setTimeout(land,170)};
+grid.addEventListener('pointerup',pend);grid.addEventListener('pointercancel',pend);
+// reorder: ONE snapshot per drop; moved slides keep their relative order and land at the insertion index
+function reorder(at){
+  const mv=[...gsel].sort((a,b)=>a-b);if(!mv.length)return;snap();
+  const items=mv.map(n=>deck.slides[n]);const rest=deck.slides.filter((_,n)=>!gsel.has(n));
+  const at2=at-mv.filter(n=>n<at).length;rest.splice(at2,0,...items);deck.slides=rest;
+  gsel=new Set(items.map((_,x)=>at2+x));i=at2;save();sheetRender();
+}
+const dup=s=>JSON.parse(JSON.stringify(s));
+function sheetKey(e){
+  const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();
+  if(e.key==='Escape'){sheetClose();return true}
+  if(e.key==='Enter'&&gsel.size){i=[...gsel][0];sheetClose();return true}
+  if((e.key==='Backspace'||e.key==='Delete')&&gsel.size){ // never the last slide
+    const del=[...gsel].sort((a,b)=>b-a);if(del.length>=deck.slides.length)del.pop();if(!del.length)return true;
+    snap();del.forEach(n=>deck.slides.splice(n,1));i=Math.min(del[del.length-1],deck.slides.length-1);gsel=new Set([i]);ganchor=i;save();sheetRender();return true}
+  if(mod&&k==='c'&&gsel.size){clip=[...gsel].sort((a,b)=>a-b).map(n=>dup(deck.slides[n]));return true}
+  if(mod&&k==='v'&&clip){snap();const at=Math.max(...gsel,-1)+1;deck.slides.splice(at,0,...clip.map(dup));gsel=new Set(clip.map((_,x)=>at+x));i=at;save();sheetRender();return true}
+  if(mod&&k==='d'&&gsel.size){snap();const src=[...gsel].sort((a,b)=>a-b),at=src[src.length-1]+1;deck.slides.splice(at,0,...src.map(n=>dup(deck.slides[n])));gsel=new Set(src.map((_,x)=>at+x));i=at;save();sheetRender();return true}
+  if(mod&&k==='z'){undo();gsel=new Set([Math.min(i,deck.slides.length-1)]);sheetRender();return true}
+  return false;
+}
+addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='s'){e.preventDefault();saveCopy();return} // ⌘S never reaches the browser's Save Page As
+  if(e.target.isContentEditable){if(e.key==='Escape')e.target.blur();return}
+  if(!sheet.hidden){if(sheetKey(e))e.preventDefault();return}
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();undo();return}
+  if(e.key==='Escape'){if(helpmenu.classList.contains('open'))help(false);else if(sel.size){sel.clear();render()}else sheetOpen();return}
+  if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' ')nav(1); // ↓ ≡ → (next), ↑ ≡ ← (prev); guarded above: never while editing or in the sheet
+  if(e.key==='ArrowLeft'||e.key==='ArrowUp')nav(-1);
+  if((e.key==='Backspace'||e.key==='Delete')&&sel.size){
+    snap();[...sel].filter(k=>typeof k!=='number').forEach(k=>(slide().hide=slide().hide||[]).push(k.slice(2)));
+    [...sel].filter(k=>typeof k==='number').sort((a,b)=>b-a).forEach(n=>slide().els.splice(n,1));sel.clear();save();render();
+  }
+  if(e.key.toLowerCase()==='f')fs();
+  if(e.key.toLowerCase()==='g')sheetOpen();
+});
+// native Fullscreen API — F or button toggles; fullscreen IS presentation mode (chrome hidden, slide fills the screen)
+const fs=()=>{commitEdit();return document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()};
+document.addEventListener('fullscreenchange',()=>{document.body.classList.toggle('present',!!document.fullscreenElement);document.body.classList.remove('peek');sel.clear();sheet.hidden=true;render();fit()});
+// present mode: HUD reappears while the pointer hovers the bottom twelfth of the screen, hides on leaving —
+// but never auto-hides while something it opened is still open (the + menu, the ⓘ popover, the text toolbar, the contact sheet)
+const pinned=()=>addmenu.classList.contains('open')||helpmenu.classList.contains('open')||!tb.hidden||!sheet.hidden;
+addEventListener('mousemove',e=>{if(present())document.body.classList.toggle('peek',e.clientY>innerHeight*11/12||pinned())});
+$('fs').onclick=fs;
+// ⤓ PDF: a TRUE slide-sized PDF written in-file, zero dependencies. Each slide is rasterised from its live DOM in LAYERS:
+// (a) the deck's <style> + the slide's XHTML inside an SVG foreignObject → <img> → canvas at 2×, with every img/svg row
+// kept as an invisible placeholder (layout intact, pixels deferred); (b) every img row drawn straight onto the canvas from a
+// decoded Image (await decode()), every inline svg row serialised ALONE into its own Image and drawn at the row's rect — in
+// model z-order. Why: WebKit fires the foreignObject image's onload before the nested <img> it contains have decoded (data:
+// PNGs above ~20KB came out blank in Safari's export — the headshot, the larger glyphs), so nothing nested is trusted to paint.
+// Then JPEG → one DCTDecode XObject drawn full-page on a W×H pt page (1 model px = 1 pt: 1600×900 / 960×540 — real 16:9, no
+// letterboxing). Fonts: awaits document.fonts.ready (the deck makes no requests anyway). Falls back to print() — the paper
+// path, ⌘P — if rasterisation throws or the canvas is tainted. The xref table is byte-exact.
+async function exportPdf(){
+  commitEdit();await document.fonts.ready;const css=document.querySelector('style').textContent,S=2,jpg=[],annots=[];
+  const load=src=>new Promise((ok,no)=>{const im=new Image();im.onload=()=>ok(im);im.onerror=no;im.src=src});
+  // ONE offscreen host holds every clone for its whole life. The clone is never repositioned into the page to be serialised
+  // and the visible canvas is never repainted to read a colour — both used to flash an inverted slide at the viewer.
+  const pdfbtn=$('pdf');pdfbtn.setAttribute('aria-busy','true');
+  const host=document.createElement('div');host.style.cssText='position:fixed;left:-99999px;top:0;width:0;height:0;overflow:hidden';document.body.appendChild(host);
+  try{
+  for(const [n,s] of deck.slides.entries()){
+    const cv=document.createElement('div');cv.style.cssText=`position:relative;width:${W}px;height:${H}px;overflow:hidden;font:16px/1.45 -apple-system,BlinkMacSystemFont,sans-serif;color:${getComputedStyle(canvas).color}`;drawEls(s,cv,false);num(cv,n+1);
+    host.appendChild(cv); // in-document (but offscreen) so the media rows have geometry (slots resolve to real rects here)
+    const cb=cv.getBoundingClientRect(),media=[...cv.querySelectorAll('.el')].filter(d=>d.querySelector('img,svg')).map(d=>{
+      const e=d.querySelector('img,svg'),b=e.getBoundingClientRect(),cs=getComputedStyle(d);
+      return{el:d,x:b.left-cb.left,y:b.top-cb.top,w:b.width,h:b.height,op:+cs.opacity,radius:parseFloat(cs.borderRadius)||0,color:cs.color,src:e.tagName==='IMG'?e.getAttribute('src'):null,svg:e.tagName==='IMG'?null:e,fit:e.tagName==='IMG'?e.style.objectFit:null,pos:e.tagName==='IMG'?e.style.objectPosition:null};
+    });
+    // links, in page order: a row overlay (a.lk) is one rect; an inline mark can wrap across lines, so take each of its client rects
+    for(const a of cv.querySelectorAll('a[href]')){const u=href(a.getAttribute('href'));if(!u)continue;
+      for(const b of (a.className==='lk'?[a.getBoundingClientRect()]:a.getClientRects())) if(b.width>1&&b.height>1)
+        annots.push({n,u,r:[b.left-cb.left,H-(b.bottom-cb.top),b.right-cb.left,H-(b.top-cb.top)]});} // PDF space: origin bottom-left
+    media.forEach(m=>m.el.style.visibility='hidden'); // placeholders: layout stays, pixels come from layer (b)
+    const pagebg=getComputedStyle(cv).backgroundColor; // the clone already carries this slide's background — the live canvas is left alone
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><style>${css}</style><foreignObject width="${W}" height="${H}"><div xmlns="http://www.w3.org/1999/xhtml" style="--W:${W}px;--H:${H}px">${new XMLSerializer().serializeToString(cv)}</div></foreignObject></svg>`;
+    cv.remove();
+    const im=await load('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg)); // data: URL, not blob: — a blob minted by a file:// page is cross-origin to itself and taints the canvas
+    const c=document.createElement('canvas');c.width=W*S;c.height=H*S;const g=c.getContext('2d');
+    g.fillStyle=pagebg;g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0,c.width,c.height);
+    for(const m of media){ // layer (b): media rows, DOM order == model z-order
+      let pic;
+      if(m.src){pic=new Image();pic.src=m.src;await pic.decode()}
+      else{const x=m.svg.cloneNode(true);x.setAttribute('xmlns','http://www.w3.org/2000/svg');x.setAttribute('width',m.w);x.setAttribute('height',m.h);x.style.color=m.color;if(!x.getAttribute('viewBox')&&x.getAttribute('width'))x.setAttribute('preserveAspectRatio','none');
+        pic=await load('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(x)))}
+      g.save();g.globalAlpha=m.op;g.beginPath();if(m.radius&&g.roundRect)g.roundRect(m.x*S,m.y*S,m.w*S,m.h*S,m.radius*S);else g.rect(m.x*S,m.y*S,m.w*S,m.h*S);g.clip();
+      // object-fit: fill (default) stretches; cover/contain scale by the ratio and place by object-position (defaults 50% 50%)
+      let dx=m.x,dy=m.y,dw=m.w,dh=m.h;
+      if(m.src&&(m.fit==='cover'||m.fit==='contain')){const k=m.fit==='cover'?Math.max(m.w/pic.naturalWidth,m.h/pic.naturalHeight):Math.min(m.w/pic.naturalWidth,m.h/pic.naturalHeight);dw=pic.naturalWidth*k;dh=pic.naturalHeight*k;
+        const p=(m.pos||'50% 50%').split(/\s+/).map(v=>parseFloat(v)/100);dx=m.x+(m.w-dw)*(isNaN(p[0])?.5:p[0]);dy=m.y+(m.h-dh)*(isNaN(p[1])?.5:p[1])}
+      g.drawImage(pic,dx*S,dy*S,dw*S,dh*S);g.restore();
+    }
+    jpg.push(atob(c.toDataURL('image/jpeg',.92).split(',')[1])); // SecurityError here = tainted canvas → caller falls back to print()
+  }
+  }finally{host.remove();pdfbtn.removeAttribute('aria-busy')}
+  // minimal PDF: 1 catalog · 2 pages · per slide {page, image XObject, content}; offsets tracked as bytes (latin-1 strings)
+  const obj=[],off=[];let out='%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+  const add=body=>{obj.push(body);return obj.length};
+  add('<< /Type /Catalog /Pages 2 0 R >>');const pagesId=add('');const kids=[];
+  // a link annotation is a real indirect object per rect — this is what a LinkedIn document post (and every PDF reader) follows
+  const uri=u=>u.replace(/[\\()]/g,c=>'\\'+c);
+  jpg.forEach((j,n)=>{const p=add('');kids.push(p+' 0 R');const im=add(`<< /Type /XObject /Subtype /Image /Width ${W*S} /Height ${H*S} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${j.length} >>\nstream\n${j}\nendstream`);
+    const cs=`q ${W} 0 0 ${H} 0 0 cm /Im Do Q`,ct=add(`<< /Length ${cs.length} >>\nstream\n${cs}\nendstream`);
+    const la=annots.filter(a=>a.n===n).map(a=>add(`<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [${a.r.map(v=>v.toFixed(2)).join(' ')}] /A << /S /URI /URI (${uri(a.u)}) >> >>`)+' 0 R');
+    obj[p-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /Im ${im} 0 R >> >>${la.length?` /Annots [${la.join(' ')}]`:''} /Contents ${ct} 0 R >>`});
+  obj[pagesId-1]=`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${kids.length} >>`;
+  obj.forEach((b,n)=>{off.push(out.length);out+=`${n+1} 0 obj\n${b}\nendobj\n`});
+  const x=out.length;out+=`xref\n0 ${obj.length+1}\n0000000000 65535 f \n`+off.map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${obj.length+1} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF\n`;
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([Uint8Array.from(out,ch=>ch.charCodeAt(0))],{type:'application/pdf'}));a.download=document.title.replace(/[\/:*?"<>|]+/g,'-')+'.pdf';a.click();
+}
+$('pdf').onclick=()=>exportPdf().catch(()=>print());
+$('savecopy').onclick=()=>saveCopy(); // only visible when the browser blocks storage — then it is the only way to keep an edit
+$('grid-btn').onclick=()=>sheet.hidden?sheetOpen():sheetClose();
+// "+" micro-menu: one HUD button fans out Text / Box / Slide; any pick or a click anywhere outside closes it
+const addmenu=$('addmenu'),addbtn=$('addbtn');
+const menu=open=>{addmenu.classList.toggle('open',open);addbtn.setAttribute('aria-expanded',open)};
+addbtn.onclick=()=>menu(!addmenu.classList.contains('open'));
+// ⓘ popover: click toggles, hover opens after a short delay; click-away (below) or Esc closes
+const helpmenu=$('helpmenu'),helpbtn=$('help');let helpT;
+const help=open=>{helpmenu.classList.toggle('open',open);helpbtn.setAttribute('aria-expanded',open)};
+helpbtn.onclick=()=>help(!helpmenu.classList.contains('open'));
+helpbtn.onmouseenter=()=>{helpT=setTimeout(()=>help(true),350)};helpbtn.onmouseleave=()=>clearTimeout(helpT);
+document.addEventListener('mousedown',e=>{if(!e.target.closest('#addwrap'))menu(false);if(!e.target.closest('#helpwrap'))help(false)});
+// ⌘S = save a copy: THIS document with the CURRENT model baked into the DECK literal, chrome state stripped, storage namespace
+// re-stamped — the copy opens anywhere with the edits and never depends on (or shares) browser storage. Keyboard-only, no HUD button.
+function saveCopy(){
+  commitEdit();const d=document.documentElement.cloneNode(true),q=s=>d.querySelector(s);
+  d.removeAttribute('style');q('body').removeAttribute('style');q('body').className='';['#canvas','#grid','#print'].forEach(s=>q(s).innerHTML='');
+  q('#tb').hidden=q('#sheet').hidden=true;q('#addmenu').classList.remove('open');q('#helpmenu').classList.remove('open');
+  const sc=q('script');sc.textContent=sc.textContent
+    .replace(/\/\*DECK\*\/[\s\S]*?\/\*\/DECK\*\//,()=>'/*DECK*/'+JSON.stringify(deck).replace(/<\/script/gi,'<\\/script')+'/*/DECK*/')
+    .replace(/(const NS=(?:\/\*KEY\*\/)?')([^']*)'/,(m,a,b)=>a+b+'.'+Date.now()+"'");
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['<!DOCTYPE html>\n'+d.outerHTML],{type:'text/html'}));a.download=document.title.replace(/[\/:*?"<>|]+/g,'-')+'.html';a.click();
+  autosave('busy');clearTimeout(asT);asT=setTimeout(()=>autosave('ok','Saved copy · '+hms(new Date())),250);
+}
+// add text + box: new text is born Body — or binds to a free slot of the slide's layout (inheriting its role + geometry)
+const TPL={
+  text:{x:Math.round(W*.4),y:Math.round(H*.46),w:Math.round(W*.31),role:'Body',text:'New text — double-click to edit'},
+  box:{x:Math.round(W*.42),y:Math.round(H*.43),w:Math.round(W*.19),role:'Body',box:1,text:'box'}
+};
+for(const k in TPL)$('add-'+k).onclick=()=>{
+  commitEdit();menu(false);snap();const s=slide(),el=structuredClone(TPL[k]);
+  if(k==='text'){const free=Object.keys(LAY(s)).find(n=>!s.els.some(e=>e.slot===n));if(free){['x','y','w','role'].forEach(p=>delete el[p]);el.slot=free}}
+  s.els.push(el);sel.clear();sel.add(s.els.length-1);save();render();
+};
+// navigation (‹ prev / next › + arrow keys)
+const nav=d=>{commitEdit();sel.clear();i+=d;render()};
+addEventListener('hashchange',()=>{if(hashPos()>=0&&hashPos()!==i){commitEdit();sel.clear();i=hashPos();render()}}); // back/forward or a typed #n
+$('prev').onclick=()=>nav(-1);
+$('next').onclick=()=>nav(1);
+// + Slide: same layout as the current slide, title slot filled; deleting/reordering lives in the contact sheet
+$('sadd').onclick=()=>{commitEdit();menu(false);snap();const s=slide(),ns={els:[]};if(s.bg)ns.bg=s.bg;if(s.layout){ns.layout=s.layout;const t=Object.entries(LAY(s)).find(([,v])=>v.role==='H1');ns.els.push(t?{slot:t[0],text:'New slide'}:{x:60,y:88,w:W-120,role:'H1',text:'New slide'})}else ns.els.push({x:60,y:88,w:W-120,role:'H1',text:'New slide'});deck.slides.splice(i+1,0,ns);i++;sel.clear();save();render()};
+fit();render();autosave(store.set(KEY,JSON.stringify(deck))?'ok':'bad'); // on load: green when storage takes a write, red when the shim reports it unavailable
+
+// self-check — model round-trips through JSON and renderer draws every element (+ master rows + counter)
+console.assert(JSON.parse(JSON.stringify(DECK)).slides.length===DECK.slides.length,'model round-trip');
+console.assert(canvas.querySelectorAll('.el').length===DECK.slides[0].els.length+(DECK.master||[]).length,'renderer draws all elements');
+</script>
+</body>
+</html>
