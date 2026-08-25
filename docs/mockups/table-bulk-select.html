@@ -139,14 +139,22 @@ table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
 .grid td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; color: var(--ink); }
 .grid tbody tr:hover td { background: var(--hover); }
 .grid tbody tr.sel td { background: var(--accent-soft); }
-.grid tbody tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--primary); }
 
 /* The checkbox is its own column, to the LEFT of the row's # link — the link
    never disappears, so you can still open a row while a selection is live.
+   Header and body boxes share ONE padding rule at equal specificity, so the
+   select-all box sits on the same vertical line as every row's box; the
+   `.grid thead th` shorthand would otherwise out-specify a plain `th.cb`.
    The column keeps its width at rest and only reveals the box on row hover
    or once a selection exists, so an idle grid stays clean. */
-th.cb, td.cb { width: 1%; padding: 0 0 0 12px; }
-th.pid, td.pid { width: 1%; padding-left: 8px; padding-right: 6px; }
+.grid thead th.cb, .grid tbody td.cb {
+  width: 1%; padding: 0; text-align: left; line-height: 0;
+}
+.grid thead th.cb > .cbhit, .grid tbody td.cb > .cbhit {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 30px; margin: 0; cursor: pointer;
+}
+.grid thead th.pid, .grid tbody td.pid { width: 1%; padding-left: 0; padding-right: 10px; }
 td.cb input, th.cb input { opacity: 0; transition: opacity .12s; }
 tr:hover td.cb input, body.has-sel td.cb input, tr.sel td.cb input,
 .grid:hover th.cb input, body.has-sel th.cb input { opacity: 1; }
@@ -253,15 +261,15 @@ body.has-sel .dock { opacity: 1; transform: none; }
   border-radius: 999px; background: var(--primary); color: #fff;
   font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums;
 }
-#v2 .act { padding: 0; width: 34px; height: 34px; justify-content: center; border-radius: 999px; position: relative; }
-#v2 .act svg { width: 17px; height: 17px; }
-#v2 .act .tip {
+#v2 .dock > .act, #v2 .actwrap > .act { padding: 0; width: 34px; height: 34px; justify-content: center; border-radius: 999px; position: relative; }
+#v2 .dock > .act svg, #v2 .actwrap > .act svg { width: 17px; height: 17px; }
+#v2 .dock > .act .tip, #v2 .actwrap > .act .tip {
   position: absolute; bottom: calc(100% + 9px); left: 50%; transform: translateX(-50%) translateY(3px);
   background: var(--ink-solid); color: var(--ink-solid-fg);
   font-size: 11.5px; font-weight: 500; padding: 4px 8px; border-radius: 6px;
   white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .12s, transform .12s;
 }
-#v2 .act:hover .tip { opacity: 1; transform: translateX(-50%); }
+#v2 .dock > .act:hover .tip, #v2 .actwrap > .act:hover .tip { opacity: 1; transform: translateX(-50%); }
 .actwrap { position: relative; display: inline-flex; flex: none; }
 .actwrap:has(.pop.open) > .act { background: var(--accent-soft); color: var(--primary); }
 .actwrap:has(.pop.open) .tip { display: none; }
@@ -270,7 +278,7 @@ body.has-sel .dock { opacity: 1; transform: none; }
    and the overflow. One popover at a time; Esc or a click outside closes. */
 .pop {
   position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%) translateY(4px);
-  min-width: 178px; padding: 6px; border-radius: 12px;
+  min-width: 232px; padding: 6px; border-radius: 12px;
   display: none; flex-direction: column; gap: 1px; text-align: left;
   opacity: 0; transition: opacity .12s, transform .12s;
 }
@@ -279,6 +287,28 @@ body.has-sel .dock { opacity: 1; transform: none; }
 .pop.wide.open { transform: none; }
 .pop .act { width: 100%; justify-content: flex-start; font-size: 13px; padding: 7px 9px; height: auto; border-radius: 8px; color: var(--ink); }
 .pop .act .chip { font-size: 12px; }
+.pop .poprow .trail {
+  margin-left: auto; padding-left: 14px; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11.5px; color: var(--muted); text-transform: lowercase;
+}
+.pop .poprow .trail svg { width: 13px; height: 13px; }
+.pophead {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); padding: 6px 9px 5px; font-weight: 600;
+}
+.pop .act.pophead { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600; color: var(--secondary); padding: 6px 9px; }
+.pop .act.pophead svg { width: 14px; height: 14px; }
+.popsearch, .popform { display: flex; align-items: center; gap: 7px; padding: 5px 9px 7px; }
+.popsearch svg { width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 1.8; flex: none; }
+.popsearch input, .popform input {
+  flex: 1; min-width: 0; appearance: none; font: inherit; font-size: 13px; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; outline: none;
+}
+.popsearch input:focus, .popform input:focus { border-color: var(--primary); }
+.popapply {
+  appearance: none; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  border: 0; background: var(--primary); color: #fff; border-radius: 7px; padding: 6px 10px; white-space: nowrap;
+}
 
 /* ---------- V3 · Two-part dock with a More popover ---------- */
 #v3 .dock { border-radius: 15px; overflow: visible; }
@@ -406,7 +436,7 @@ body.has-sel .dock { opacity: 1; transform: none; }
     <div class="grid-scroll">
       <table class="grid">
         <thead><tr>
-          <th class="cb"><input type="checkbox" id="all"></th>
+          <th class="cb"><label class="cbhit"><input type="checkbox" id="all"></label></th>
           <th class="pid">#</th>
           <th>Name</th><th>Status</th><th>Owner</th><th>Due</th><th class="num">Est</th>
         </tr></thead>
@@ -420,7 +450,7 @@ body.has-sel .dock { opacity: 1; transform: none; }
 
 <div class="notes">
   <h2>Commands on the puck</h2>
-  <p class="lede">Four live on the bar, five behind <span class="mono">⋯</span>, and the bar only ever shows what the table can actually do — no <em>Set state</em> on a table without a workflow field, no <em>Link to</em> without relations.</p>
+  <p class="lede">Three live on the bar, three behind <span class="mono">⋯</span>, and trash sits past a hairline on its own. State is not one of them: a table can carry more than one workflow field, so state is a field like any other and lives inside <em>Set a field…</em>. The bar stays contextual — no <em>Link to</em> on a table without relations.</p>
   <table>
     <thead><tr><th>Command</th><th>Where</th><th>Why it earns the slot</th></tr></thead>
     <tbody id="cmdnotes"></tbody>
@@ -443,50 +473,47 @@ body.has-sel .dock { opacity: 1; transform: none; }
 /* ---------- icons ---------- */
 const I = {
   fields: '<svg viewBox="0 0 24 24"><path d="M4 6h10M4 12h16M4 18h7"/><circle cx="18" cy="6" r="2"/><circle cx="14" cy="18" r="2"/></svg>',
-  state:  '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M9 12.5l2 2 4-4.5"/></svg>',
-  link:   '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>',
+  link:   '<svg viewBox="0 0 24 24"><rect x="2" y="9" width="7.5" height="6" rx="1.5"/><rect x="14.5" y="9" width="7.5" height="6" rx="1.5"/><path d="M9.5 12h5"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg>',
   dup:    '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
   move:   '<svg viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h5l2 2h7a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4"/><path d="M2 13h8m0 0l-3-3m3 3l-3 3"/></svg>',
   rollup: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="5" rx="1"/><rect x="3" y="15" width="7" height="5" rx="1"/><rect x="15" y="9.5" width="6" height="5" rx="1"/><path d="M10 6.5h2a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/></svg>',
-  map:    '<svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="17" r="2.5"/><path d="M8 8.5l2.5 6M16 8l-2.7 7"/></svg>',
   copy:   '<svg viewBox="0 0 24 24"><path d="M9 12h6"/><path d="M11 8H8a4 4 0 0 0 0 8h3M13 8h3a4 4 0 0 1 0 8h-3"/></svg>',
   md:     '<svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 15V9l3 3 3-3v6M17 9v4m0 0l-2-2m2 2l2-2"/></svg>',
-  similar:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>',
   trash:  '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg>',
   more:   '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>',
   check:  '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>',
   x:      '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  back:   '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
+  right:  '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+  search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/></svg>',
 };
 
 const ACTIONS = [
-  { id:'state',   label:'Set state',        icon:I.state,   key:'S',  bar:1, menu:'states',
-    why:'The change you make most. Opens the workflow chips for this table — one click sets every selected row.' },
-  { id:'fields',  label:'Set a field…',     icon:I.fields,  key:'E',  bar:1, menu:'fields',
-    why:'The universal one: pick a field, type one value, write it across the selection. Owner, due date, priority, a checkbox — all of it is this.' },
-  { id:'link',    label:'Link to…',         icon:I.link,    key:'L',  bar:1, menu:'rels',
-    why:'Pick a relation, pick the target entity, connect all selected rows to it. Twelve tasks into a project in one gesture — the payoff of a graph you cannot get from a spreadsheet.' },
-  { id:'dup',     label:'Duplicate',        icon:I.dup,     key:'D',  bar:1,
+  { id:'fields',  label:'Set a field\u2026',  icon:I.fields,  key:'E',  bar:1, menu:'fields',
+    why:'The whole editing surface in one command. Pick a field, give it one value, and it is written across the selection \u2014 owner, due date, estimate, a checkbox, and workflow state, which is just another field. A table with two workflow fields gets two rows in this list and needs no extra button.' },
+  { id:'link',    label:'Link to\u2026',       icon:I.link,    key:'L',  bar:1, menu:'rels',
+    why:'Pick a relation, then search for the target row. Twelve tasks onto a project in one gesture \u2014 the payoff of a graph you cannot get from a spreadsheet. The picker is search-first, same dialect as every other picker in weave.' },
+  { id:'dup',     label:'Duplicate',         icon:I.dup,     key:'D',  bar:1,
     why:'Copies each selected row with its field values. Cheap to build, and the fastest way to fork a batch of near-identical rows.' },
-  { id:'move',    label:'Move to table…',   icon:I.move,    key:'',   bar:0,
-    why:'Relocates rows into another table or space, mapping fields by name and reporting what did not fit. Rarer than the top four, and it deserves a confirm step.' },
-  { id:'rollup',  label:'Roll up into a new entity…', icon:I.rollup, key:'', bar:0,
-    why:'Creates one parent — a project, an epic, a trip — and links every selected row to it. Selection becomes structure instead of a one-off edit.' },
-  { id:'map',     label:'Show these in the map', icon:I.map, key:'',  bar:0,
-    why:'Sends the selection to the relation map as its seed set, so you see what the rows you picked are actually connected to.' },
-  { id:'similar', label:'Select all with the same…', icon:I.similar, key:'', bar:0,
-    why:'Grows the selection instead of acting on it — same owner, same state, same anything. Turns two hand-picked rows into the whole cohort.' },
-  { id:'copy',    label:'Copy links',       icon:I.copy,    key:'\u2318C', bar:0,
+  { id:'move',    label:'Move to table\u2026', icon:I.move,    key:'',   bar:0,
+    why:'Relocates rows into another table or space, mapping fields by name and reporting what did not fit. Rarer than the three on the bar, and it deserves a confirm step.' },
+  { id:'rollup',  label:'Roll up into a new entity\u2026', icon:I.rollup, key:'', bar:0,
+    why:'Creates one parent \u2014 a project, an epic, a trip \u2014 and links every selected row to it. Selection becomes structure instead of a one-off edit.' },
+  { id:'copy',    label:'Copy links',        icon:I.copy,    key:'\u2318C', bar:0,
     why:'Puts one permalink per selected row on the clipboard. The cheapest way to move a selection into a message or a doc.' },
 ];
 const MORE = ACTIONS.filter((a) => !a.bar);
 const BAR = ACTIONS.filter((a) => a.bar);
 const CUT = [
-  { label:'Convert to…',        why:'Changing a row\u2019s type is a schema decision, not a bulk edit. It belongs in the field/table dialog where you can see what breaks.' },
+  { label:'Set state',          why:'A table can carry more than one workflow field, so a single state button is a lie. State is a field \u2014 it lives inside <em>Set a field\u2026</em> with the rest. (The alternative is generating one bar command per workflow field, which trades a fixed-width puck for a bar that changes shape per table.)' },
+  { label:'Convert to\u2026',    why:'Changing a row\u2019s type is a schema decision, not a bulk edit. It belongs in the field/table dialog where you can see what breaks.' },
   { label:'Download all files', why:'Weave attaches files to entities, but a zip of every attachment across a selection is a rare ask and a slow, failure-prone job.' },
   { label:'Copy as Markdown',   why:'Every weave page is already markdown, and \u2318C on a selection can do this without spending a slot on the bar.' },
-  { label:'Merge into…',        why:'Merging entities means reconciling every field and relinking every edge. Real, but a wizard \u2014 not a puck button.' },
+  { label:'Merge into\u2026',    why:'Merging entities means reconciling every field and relinking every edge. Real, but a wizard \u2014 not a puck button.' },
+  { label:'Show these in the map', why:'Cut by Kyle, 2026-08-24. The map is a place you go, not something a selection pushes you into.' },
+  { label:'Select all with the same\u2026', why:'Cut by Kyle, 2026-08-24. Growing a selection is the filter strip\u2019s job, not a bulk action.' },
 ];
-const PRIMARY = ['state','fields','link'];   /* V3 keeps three out front */
+const PRIMARY = ['fields','link','dup'];   /* V3 keeps three out front */
 
 /* ---------- fake rows ---------- */
 const DATA = [
@@ -511,14 +538,14 @@ DATA.forEach(([pid,name,st,who,due,est]) => {
   const tr = document.createElement('tr');
   tr.dataset.pid = pid;
   tr.innerHTML =
-    `<td class="cb"><input type="checkbox"></td>` +
+    `<td class="cb"><label class="cbhit"><input type="checkbox"></label></td>` +
     `<td class="pid"><a class="pidlink" href="#" onclick="return false">${pid}</a></td>` +
     `<td>${name}</td><td><span class="chip ${CAT[st]}">${st}</span></td>` +
     `<td class="who-cell">${who}</td><td class="who-cell">${due}</td><td class="num">${est}</td>`;
   const cb = tr.querySelector('input');
   cb.addEventListener('change', () => { cb.checked ? sel.add(pid) : sel.delete(pid); sync(); });
   tr.addEventListener('click', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.closest('a')) return;
+    if (e.target.closest('.cbhit') || e.target.closest('a')) return;
     cb.checked = !cb.checked; cb.dispatchEvent(new Event('change'));
   });
   rowsEl.append(tr);
@@ -551,16 +578,70 @@ const VARIANTS = [
     cost:'Bulk actions inherit the palette you already built, so this bar never needs to grow \u2014 but a click-first user has to type.' },
 ];
 
-const popFields = ['Name','Status','Owner','Due','Est','Sprint','Blocked by'];
-const popStates = [['Open','c-open'],['Done','c-done'],['Blocked','c-block'],['Idle','c-idle']];
-const popRels   = ['Project','Sprint','Owner','Blocked by','Parent task'];
-function popBody(kind) {
-  if (kind === 'states') return popStates.map(([n, c]) => `<button class="act"><span class="chip ${c}">${n}</span></button>`).join('');
-  if (kind === 'rels')   return popRels.map((n) => `<button class="act">${I.link}${n}…</button>`).join('');
-  return popFields.map((n) => `<button class="act">${I.fields}${n}</button>`).join('');
+/* The Tasks demo table carries TWO workflow fields on purpose: state is a
+   field like any other, so both show up in one list and neither needs a
+   button of its own. */
+const FIELDS = [
+  { name:'Status',  kind:'state',  values:[['Open','c-open'],['Done','c-done'],['Blocked','c-block'],['Idle','c-idle']] },
+  { name:'Stage',   kind:'state',  values:[['Triage','c-idle'],['Build','c-open'],['Review','c-block'],['Shipped','c-done']] },
+  { name:'Owner',   kind:'select', values:[['Kyle'],['Sajit'],['Hayden'],['Unassigned']] },
+  { name:'Sprint',  kind:'select', values:[['Aug W4'],['Sep W1'],['Backlog']] },
+  { name:'Due',     kind:'date' },
+  { name:'Est',     kind:'number' },
+  { name:'Blocked', kind:'check' },
+];
+const RELS = [
+  { name:'Project',     to:'Projects' },
+  { name:'Sprint',      to:'Sprints' },
+  { name:'Parent task', to:'Tasks' },
+  { name:'Blocked by',  to:'Tasks' },
+];
+const REL_ROWS = {
+  Projects: ['Weave v0.5', 'Undersight redesign', 'AFB pilot', 'Decklet engine'],
+  Sprints:  ['Aug W4', 'Sep W1', 'Sep W2'],
+  Tasks:    DATA.slice(0, 6).map(([pid, n]) => `#${pid} ${n}`),
+};
+
+const popRow = (label, trail = '') =>
+  `<button class="act poprow">${label}<span class="trail">${trail}</span></button>`;
+
+function popStep1(kind) {
+  if (kind === 'rels') {
+    return `<div class="pophead">Link the selection to…</div>` +
+      RELS.map((r, i) => `<button class="act poprow" data-step="rel:${i}">${I.link}${r.name}<span class="trail">${r.to} ${I.right}</span></button>`).join('');
+  }
+  return `<div class="pophead">Set a field on 2 rows…</div>` +
+    FIELDS.map((f, i) => `<button class="act poprow" data-step="field:${i}">${I.fields}${f.name}<span class="trail">${f.kind} ${I.right}</span></button>`).join('');
 }
+
+function popStep2(kind, i) {
+  const back = (t) => `<button class="act pophead back" data-step="root:${kind}">${I.back}${t}</button>`;
+  if (kind === 'rel') {
+    const r = RELS[i];
+    return back(r.name) +
+      `<div class="popsearch">${I.search}<input placeholder="Search ${r.to}…"></div>` +
+      REL_ROWS[r.to].map((n) => popRow(n)).join('');
+  }
+  const f = FIELDS[i];
+  if (f.kind === 'state' || f.kind === 'select') {
+    return back(f.name) + f.values.map(([n, c]) =>
+      `<button class="act poprow">${c ? `<span class="chip ${c}">${n}</span>` : n}</button>`).join('');
+  }
+  if (f.kind === 'check') {
+    return back(f.name) + popRow('Checked') + popRow('Unchecked');
+  }
+  const ph = f.kind === 'date' ? 'e.g. next friday' : '0';
+  return back(f.name) +
+    `<div class="popform"><input placeholder="${ph}"><button class="popapply">Set on 2 rows</button></div>`;
+}
+
+function popBody(spec) {
+  const [step, arg] = spec.split(':');
+  return step === 'root' ? popStep1(arg) : popStep2(step, +arg);
+}
+
 const barBtn = (a) => a.menu
-  ? `<span class="actwrap"><button class="act" data-menu="${a.menu}" title="${a.label}">${a.icon}<span class="tip">${a.label}</span></button><span class="pop glass">${popBody(a.menu)}</span></span>`
+  ? `<span class="actwrap"><button class="act" data-menu="${a.menu}" title="${a.label}">${a.icon}<span class="tip">${a.label}</span></button><span class="pop glass" data-root="${a.menu}">${popBody('root:' + a.menu)}</span></span>`
   : `<button class="act" title="${a.label}">${a.icon}<span class="tip">${a.label}</span></button>`;
 const rowBtn = (a) => `<button class="act" title="${a.label}">${a.icon}<span class="lbl">${a.label}</span></button>`;
 
@@ -664,7 +745,14 @@ function bindDock() {
       dock.querySelectorAll('.pop.open').forEach((p) => p.classList.remove('open'));
       pop.classList.toggle('open', !wasOpen);
     });
-    btn.parentElement.querySelector('.pop')?.addEventListener('click', (e) => e.stopPropagation());
+    const pop = btn.parentElement.querySelector('.pop');
+    pop?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const step = e.target.closest('[data-step]')?.dataset.step;
+      if (!step) return;
+      pop.innerHTML = popBody(step);
+      pop.querySelector('.popsearch input, .popform input')?.focus();
+    });
   });
 
   const moreBtn = dock.querySelector('[data-more]');
