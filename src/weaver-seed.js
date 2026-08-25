@@ -1,3 +1,4 @@
+import { SYMPTOM_FIELD, SYMPTOM_OPTIONS } from './bugreport.js';
 // The "weaver" workspace: Weave's canonical, self-referential documentation,
 // how-to, wiki, test-suite mirror, and public issue/roadmap tracker — stored
 // in Weave itself (like the.fibery.io), not an off-the-shelf docs engine.
@@ -237,6 +238,10 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
     },
   });
   w.addField(issues, { name: 'Severity', type: 'select', config: { options: ['Low', 'Medium', 'High'] } });
+  /* What the reporter saw, as a filterable field rather than a sentence
+     (Feature #141). The in-app reporter writes these four; several can be
+     true of one bug, and a report filed on a note alone leaves it empty. */
+  w.addField(issues, { name: SYMPTOM_FIELD, type: 'multiselect', config: { options: SYMPTOM_OPTIONS } });
 
   const features = w.createTable({ space: 'Development', name: 'Feature' });
   w.addField(features, {

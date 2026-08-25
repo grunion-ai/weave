@@ -1214,3 +1214,38 @@ input[type="checkbox"].form-check-input:focus-visible { outline: 2px solid rgba(
 input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default; }
 /* long popovers (the eyeball lists every field) scroll instead of flipping off-screen */
 .chip-pop { max-height: min(70vh, 560px); overflow-y: auto; }
+/* ---------- bug reporter (Feature #141) ----------
+   The button lives in the bottom-right corner, stacked above the instance
+   chip it shares that corner with (.nav-health sits at bottom: 10px). The
+   panel floats beside it rather than over the page: reporting a bug must not
+   cover the bug. Small on purpose (Kyle, 2026-08-25) — this is a corner
+   affordance, not a form. Every surface is a Tabler token, so both themes
+   follow. */
+.bug-fab { position: fixed; right: 12px; bottom: 34px; z-index: 1150; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.10); cursor: pointer; opacity: .62; transition: opacity .12s, border-color .12s; }
+.bug-fab:hover, .bug-fab[aria-expanded="true"] { opacity: 1; border-color: var(--tblr-secondary); }
+.bug-fab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
+.bug-fab-icon { display: flex; width: 16px; height: 16px; color: var(--tblr-body-color); }
+.bug-fab-icon svg { width: 100%; height: 100%; fill: currentColor; }
+
+#bug-panel { position: fixed; z-index: 1160; width: 252px; max-width: calc(100vw - 24px); padding: 8px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 9px; box-shadow: 0 8px 26px rgba(0,0,0,.20); color: var(--tblr-body-color); }
+.bug-note { display: block; width: 100%; font-size: 12px; line-height: 1.35; padding: 5px 7px; resize: none; }
+.bug-note::placeholder { color: var(--tblr-secondary); }
+
+/* Two columns of soft squared toggles, in the chip idiom the rest of the app
+   uses: a tint when on, an outline never. Multi-select, so several can be
+   lit at once — one bug is often slow AND wrong. */
+.bug-cats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
+.bug-cat { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 4px 6px; font-size: 11px; line-height: 1.2; text-align: left; background: var(--tblr-bg-surface-secondary); border: 1px solid transparent; border-radius: 6px; color: var(--tblr-secondary); cursor: pointer; }
+.bug-cat > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bug-cat:hover { color: var(--tblr-body-color); }
+.bug-cat.picked { background: var(--tblr-primary-lt, rgba(71,105,235,.12)); color: var(--tblr-primary); font-weight: 600; }
+.bug-cat:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
+.bug-cat-icon { display: flex; flex: 0 0 auto; width: 12px; height: 12px; }
+.bug-cat-icon svg { width: 100%; height: 100%; fill: currentColor; }
+
+.bug-foot { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+.bug-captured { flex: 1; min-width: 0; font-size: 10px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bug-send { padding: 2px 10px; font-size: 11.5px; }
+/* Sent is a receipt, not a disabled button: it keeps the primary weight so
+   the eye lands on the confirmation it was already looking at. */
+.bug-send.sent, .bug-send.sent:disabled { opacity: 1; background: var(--tblr-success); border-color: var(--tblr-success); color: #fff; }

@@ -10,6 +10,7 @@ import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.j
 import { markdownToPdf } from './pdf.js';
 import { renderDeck, newSlideVersion } from './deck.js';
 import { handleMcpMessage } from './mcp.js';
+import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
@@ -357,6 +358,85 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'POST /api/markdown') {
           return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention }) });
+        }
+
+        /* The in-app bug reporter (Feature #141). A reporter picks one of four
+           things, and the page hands over the ring buffer of what just
+           happened; the report is rendered and filed here.
+
+           It files into the **weave** docs workspace, whichever workspace the
+           reporter was looking at, because a bug in weave is not a row in
+           somebody's data. And the server supplies its own version, start
+           time and workspace name rather than trusting the page's copy — a
+           stale build reporting its own version is how this project's most
+           common false bug starts. */
+        if (route === 'POST /api/bug-report') {
+          const events = body?.events ?? [];
+          if (!Array.isArray(events) || events.length > MAX_BUG_EVENTS) {
+            return out(400, { error: `events must be an array of at most ${MAX_BUG_EVENTS} entries`, code: 'invalid' });
+          }
+          // The docs workspace, by either spelling, or this instance is not
+          // one a bug can be filed against.
+          const docs = hub.get('weave') ?? hub.get('weaver');
+          const issues = docs && (() => { try { return docs.getTable('Development/Issue'); } catch { return null; } })();
+          if (!issues) {
+            return out(501, { error: 'No Development/Issue table to file into — this instance has no weave docs workspace', code: 'unsupported' });
+          }
+          docs.maybeRefresh();
+          /* renderBugReport is the validator too: an unknown symptom, or a
+             report with neither a symptom nor a note, throws before anything
+             is written. */
+          let report;
+          try {
+            report = renderBugReport({
+              categories: body?.categories ?? [],
+              note: body?.note,
+              events,
+              client: body?.client ?? {},
+              server: {
+                version,
+                startedAt: STARTED_AT,
+                uptime: Math.round(uptime()),
+                workspace: weave.state.meta.name,
+              },
+            });
+          } catch (err) {
+            return out(400, { error: err.message, code: 'invalid' });
+          }
+          const was = docs.actor;
+          docs.actor = 'bug-report';
+          try {
+            /* The symptoms land in a real multiselect so a week of reports
+               can be filtered rather than read (Kyle, 2026-08-25: "this should
+               map perfectly to an issue record with a multiselect and a
+               description field"). A workspace seeded before the field existed
+               keeps them in the Description alone rather than 400ing. */
+            const values = { Severity: report.severity };
+            const field = docs.findField(issues, SYMPTOM_FIELD);
+            /* Only options the field actually declares. A workspace whose
+               options were renamed would otherwise reject the whole create
+               ("'Slow or stuck' is not an option of 'Symptom'", seen live
+               2026-08-25) and lose a report over a label edit. */
+            const declared = new Set((field?.config?.options ?? []).map((o) => o?.name ?? o));
+            const settable = report.symptoms.filter((s) => declared.has(s));
+            if (settable.length) values[SYMPTOM_FIELD] = settable;
+            const issue = docs.createEntity(issues.id, {
+              name: report.title,
+              values,
+              docs: { Description: report.markdown },
+            });
+            return out(201, {
+              id: issue.id,
+              publicId: issue.publicId,
+              workspace: docs.state.meta.name,
+              table: 'Development/Issue',
+              severity: report.severity,
+              symptoms: settable,
+              url: `/w/${docs.state.meta.name}/#/entity/${issue.id}`,
+            });
+          } finally {
+            docs.actor = was;
+          }
         }
 
         if (path === '/api/workspace/logo') {

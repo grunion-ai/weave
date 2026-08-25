@@ -5272,8 +5272,219 @@ window.addEventListener('focus', async () => {
   route();
 });
 
+/* ---------- the bug reporter (Feature #141) ---------- */
+
+/* The report button's glyph: Kyle's ant, traced from the icon he sent
+   (2026-08-25). Hand-drawn here for the same reason SLASH_LINK_GLYPH is —
+   the vendored flat set has no bug in it — and filled with currentColor so
+   it takes the theme like every other mark in the chrome. */
+const BUG_GLYPH = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+  + '<g transform="translate(1.5000,3.9818) scale(0.095455) translate(0,168.0) scale(0.1,-0.1)">'
+  + '<path d="M1520 1664 c0 -8 -16 -22 -35 -30 -19 -8 -35 -18 -35 -22 0 -4 -11 -20 -25 -36 -14 -16 -25 -33 -25 -38 0 -40 -54 -87 -112 -97 -34 -6 -68 -17 -77 -26 -9 -9 -30 -28 -47 -44 -17 -15 -34 -36 -37 -45 -9 -23 -34 -30 -63 -18 -29 14 -34 83 -8 121 54 77 -7 180 -62 104 -38 -53 -70 -186 -50 -214 9 -13 16 -31 16 -41 0 -9 6 -23 13 -30 63 -67 84 -128 50 -146 -65 -34 -71 -31 -198 97 -129 131 -161 149 -197 113 -27 -26 -11 -50 124 -184 110 -109 122 -129 102 -176 -14 -35 -37 -41 -63 -17 -52 47 -62 55 -70 55 -4 0 -21 10 -37 23 -35 27 -132 29 -182 3 -17 -9 -42 -16 -56 -16 -47 0 -68 -52 -38 -91 18 -22 20 -22 59 -6 61 24 137 32 173 17 38 -16 38 -16 -8 -72 -146 -176 -180 -401 -76 -499 33 -31 247 -37 280 -8 11 9 32 19 48 23 16 4 41 16 54 27 14 10 31 19 38 19 8 0 14 3 14 8 0 17 71 63 89 57 33 -10 45 -56 27 -100 -33 -78 -31 -160 4 -165 30 -5 38 1 58 34 55 93 52 229 -7 303 -73 93 -74 133 -4 133 45 0 47 -1 164 -120 121 -123 153 -142 187 -108 25 25 8 53 -105 168 -137 140 -137 139 -130 197 9 79 11 78 158 -22 54 -37 175 -43 219 -12 13 9 32 17 40 17 20 0 60 41 60 61 -1 38 -48 52 -99 30 -117 -50 -228 -21 -155 41 89 74 124 129 138 209 7 41 18 53 56 62 63 15 170 145 170 206 0 43 -81 46 -97 4 -20 -55 -88 -113 -130 -113 -33 1 -153 125 -153 159 0 33 47 96 81 106 86 27 96 115 14 115 -43 0 -55 -3 -55 -16z m-90 -335 c130 -65 135 -234 8 -307 -160 -93 -338 130 -214 266 61 66 130 80 206 41z m-299 -353 c74 -59 69 -140 -13 -193 -45 -30 -69 -27 -122 19 -115 100 16 270 135 174z m-239 -245 c129 -128 122 -191 -30 -269 -204 -105 -338 -14 -243 164 12 21 21 44 21 51 0 7 10 27 23 45 75 111 124 113 229 9z"/></g></svg>';
+const bugGlyph = () => {
+  const span = el('span', { class: 'bug-fab-icon' });
+  span.innerHTML = BUG_GLYPH;
+  return span;
+};
+
+/* One recorder for the session, started at boot. It holds the last minute of
+   what happened — routes, clicks, API calls with their status and duration,
+   anything that threw — so a report can carry the steps to reproduce instead
+   of asking the reporter to remember them. bugCore owns the rules about what
+   may be remembered (public/bug-core.js); this wires it to the page. */
+let bugRecorder = null;
+
+function installBugReporter() {
+  if (bugRecorder) return;
+  bugRecorder = bugCore.createRecorder();
+  const now = () => Date.now();
+
+  // Routes. The hash IS the page in this SPA, so a route change is the
+  // coarsest replay step and usually the first line of a reproduction.
+  bugRecorder.record({ kind: 'nav', to: location.hash || '#/', t: now() });
+  addEventListener('hashchange', () => bugRecorder.record({ kind: 'nav', to: location.hash, t: now() }));
+
+  /* Clicks, captured at the document so a redraw cannot unsubscribe us. The
+     reporter's own controls are skipped: the trace is about the app, and a
+     bug report that ends "clicked Report" tells nobody anything. */
+  addEventListener('click', (e) => {
+    const node = e.target?.closest?.('button, a, [role="button"], th, td, .chip, summary') ?? e.target;
+    if (node?.closest?.('.bug-fab, #bug-panel')) return;
+    bugRecorder.record({ kind: 'click', target: bugCore.describeTarget(node), t: now() });
+  }, true);
+
+  /* Requests — but not all of them. A page load fires a dozen reads that all
+     come back 200 in 3ms; recorded, they fill the buffer with the app working
+     correctly and push the actions that caused the bug off the end. What is
+     evidence: anything that failed, anything slow enough to be the complaint,
+     and every write (a 200 on a PATCH is what proves the save was accepted,
+     which is the whole question in a "didn't save" report). */
+  const SLOW_MS = 400;
+  /* weave posts its reads: a filter goes in a body, so /query, /search and
+     /markdown are POSTs that change nothing. Classify by what a call does,
+     not by its verb, or "every write is evidence" quietly readmits the noise. */
+  const READ_PATHS = /\/(query|search|markdown|health|schema|vocabulary)(\?|$)/;
+  const worthRecording = (method, status, ms, path = '') =>
+    status === 0 || status >= 400 || ms >= SLOW_MS || (method !== 'GET' && !READ_PATHS.test(path));
+
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async (input, init = {}) => {
+    const url = String(input?.url ?? input ?? '');
+    const method = String(init.method ?? input?.method ?? 'GET').toUpperCase();
+    const started = now();
+    const mine = url.includes('/api/bug-report');
+    try {
+      const res = await nativeFetch(input, init);
+      const ms = now() - started;
+      if (!mine && worthRecording(method, res.status, ms, url)) {
+        bugRecorder.record({
+          kind: 'api', method, path: url.replace(location.origin, ''),
+          status: res.status, ms, t: started,
+        });
+      }
+      return res;
+    } catch (err) {
+      // status 0 is "never arrived" — a dropped connection reads differently
+      // from a 500 when an agent is deciding what to reproduce.
+      if (!mine) {
+        bugRecorder.record({
+          kind: 'api', method, path: url.replace(location.origin, ''),
+          status: 0, ms: now() - started, t: started, message: String(err?.message ?? err),
+        });
+      }
+      throw err;
+    }
+  };
+
+  addEventListener('error', (e) => bugRecorder.record({
+    kind: 'error',
+    message: String(e.message ?? e.error?.message ?? 'error'),
+    source: String(e.filename ?? '').replace(location.origin, ''),
+    line: e.lineno ?? null,
+    t: now(),
+  }));
+  addEventListener('unhandledrejection', (e) => bugRecorder.record({
+    kind: 'error', message: String(e.reason?.message ?? e.reason ?? 'unhandled rejection'), t: now(),
+  }));
+
+  const fab = el('button', {
+    class: 'bug-fab', type: 'button', title: 'Report a problem',
+    'aria-label': 'Report a problem', 'aria-expanded': 'false',
+    onclick: () => (document.querySelector('#bug-panel') ? closeBugPanel() : openBugPanel(fab)),
+  }, bugGlyph());
+  document.body.append(fab);
+}
+
+function closeBugPanel() {
+  document.querySelector('#bug-panel')?.remove();
+  document.querySelector('.bug-fab')?.setAttribute('aria-expanded', 'false');
+}
+
+/* The panel floats beside the button — no backdrop, no modal (Kyle,
+   2026-08-25: "dialog floats next to bug button"). Reporting a bug must not
+   cover the bug: the broken page stays visible while the report is written.
+
+   The note is first and focused, so the fastest report is to start typing;
+   the four symptoms are a multi-select underneath, because one bug is often
+   slow AND wrong, and neither half is required — a sentence alone is the
+   "other" nobody has to be given a fifth button for. */
+function openBugPanel(fab) {
+  closeBugPanel();
+  fab.setAttribute('aria-expanded', 'true');
+  const c = bugRecorder.counts();
+  let picked = [];
+
+  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '' }, 'Send');
+  const note = el('textarea', {
+    class: 'form-control bug-note', rows: '2', maxlength: '600',
+    placeholder: 'What went wrong?',
+  });
+  const sync = () => { send.disabled = !bugCore.canSubmit(picked, note.value); };
+  note.addEventListener('input', sync);
+
+  const cats = bugCore.CATEGORIES.map((cat) => {
+    const btn = el('button', {
+      class: 'bug-cat', type: 'button', title: cat.hint,
+      'aria-pressed': 'false', 'data-cat': cat.id,
+    }, iconEl(cat.icon, 'bug-cat-icon'), el('span', {}, cat.label));
+    btn.addEventListener('click', () => {
+      picked = bugCore.toggleCategory(picked, cat.id);
+      const on = picked.includes(cat.id);
+      btn.classList.toggle('picked', on);
+      btn.setAttribute('aria-pressed', String(on));
+      sync();
+    });
+    return btn;
+  });
+
+  const form = el('form', { class: 'bug-form' },
+    note,
+    el('div', { class: 'bug-cats' }, ...cats),
+    el('div', { class: 'bug-foot' },
+      // Say what is being sent before it is sent — a trace of someone's
+      // session is not something to attach quietly.
+      el('span', { class: 'bug-captured', title: 'Recent routes, clicks, requests and errors — never anything you typed into a field' },
+        `${c.actions + c.errors + c.failedRequests} steps captured`),
+      send));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (send.disabled) return;
+    send.disabled = true;
+    send.textContent = 'Sending…';
+    try {
+      const filed = await api('POST', '/bug-report', {
+        categories: picked,
+        note: note.value.trim(),
+        events: bugRecorder.events(),
+        client: bugCore.clientContext(),
+      });
+      /* The button becomes the receipt (Kyle: "send should sent"). Confirming
+         in the control that was pressed beats a toast that has already faded
+         by the time anyone looks up. */
+      send.textContent = 'Sent';
+      send.classList.add('sent');
+      panel.classList.add('sent');
+      toast(`Issue #${filed.publicId}`, false, { label: 'Open', run: () => { location.href = filed.url; } });
+      setTimeout(closeBugPanel, 1100);
+    } catch (err) {
+      send.disabled = false;
+      send.textContent = 'Send';
+      toast(err.message, true);
+    }
+  });
+
+  const panel = el('div', { id: 'bug-panel', role: 'dialog', 'aria-label': 'Report a problem' }, form);
+  document.body.append(panel);
+
+  // Anchored to the button, flipped inside the viewport on a small screen.
+  const r = fab.getBoundingClientRect();
+  panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
+  panel.style.bottom = (innerHeight - r.top + 6) + 'px';
+
+  const away = (ev) => {
+    if (!panel.isConnected) return removeEventListener('click', away, true);
+    if (!panel.contains(ev.target) && !fab.contains(ev.target)) { closeBugPanel(); removeEventListener('click', away, true); }
+  };
+  addEventListener('click', away, true);
+  addEventListener('keydown', function esc(ev) {
+    if (!panel.isConnected) return removeEventListener('keydown', esc);
+    if (ev.key === 'Escape') { closeBugPanel(); fab.focus(); removeEventListener('keydown', esc); }
+    // ⌘/Ctrl+Enter sends from the note without reaching for the mouse.
+    if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey) && panel.contains(ev.target)) {
+      ev.preventDefault();
+      form.requestSubmit();
+    }
+  });
+  note.focus();
+}
+
 // The loader is fetched before the first route so boot's own wait can use it.
 initPageLoader();
+/* The recorder starts before the first render: a bug on first paint is a
+   bug too, and by the time a user reaches for the button the actions that
+   caused it are already history. */
+installBugReporter();
 /* Theme first: the first render must not paint an unthemed frame. Anything
    that reads the theme when it is built rather than on every paint — the
    document editors, and the mermaid diagrams they render once — would
