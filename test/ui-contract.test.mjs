@@ -1398,7 +1398,10 @@ test('workflow states: rows drag to reorder, icon instead of a default radio, an
   const ed = fnBody('stateListEditor');
   assert.match(ed, /draggable: 'true'/);
   assert.match(ed, /fdc\.moveItem\(state\.states, dragFrom, i\)/, 'a drop reorders the states');
-  assert.match(ed, /fdc\.STATE_ICONS/, 'an icon picker per state');
+  // The vocabulary moved into glyphPopover when the cycle became a picker
+  // (2026-08-25); the row still offers one glyph control per state.
+  assert.match(ed, /glyphPopover\(/, 'an icon picker per state');
+  assert.match(fnBody('glyphPopover'), /fieldDialogCore\.STATE_ICONS/, 'over the shared vocabulary');
   assert.doesNotMatch(ed, /type: 'radio'/, 'no default radio — the first state is the default');
   assert.match(fnBody('stateLabel'), /icon \? `\$\{icon\} \$\{stateName\}`/, 'chips wear the icon');
 });

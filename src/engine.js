@@ -80,6 +80,30 @@ function docChange(field, before, after) {
    in-progress, and normaliseStates migrates it on the next write. */
 const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
 const RETIRED_STATE_CATEGORIES = { other: 'in-progress' };
+
+/* An option's colour is a name from the ten-hue ramp (public/chip-core.js),
+   not a loose hex. `color` is kept in step with it so schema export, CSV and
+   every other existing reader keeps working, and an option stored before the
+   ramp reads back as whichever hue its hex already was. */
+const HUE_HEX = {
+  slate: '', blue: '#4769eb', green: '#2ea043', amber: '#f59f00', red: '#e5484d',
+  purple: '#8e4ec6', cyan: '#00a2c7', pink: '#d6409f', teal: '#12a594', orange: '#f76b15',
+};
+const HEX_HUE = new Map(Object.entries(HUE_HEX).filter(([, h]) => h).map(([n, h]) => [h.toLowerCase(), n]));
+const hueOf = (o) => (HUE_HEX[o?.hue] !== undefined
+  ? o.hue
+  : HEX_HUE.get(String(o?.color ?? '').trim().toLowerCase()) ?? 'slate');
+/* One option, normalised: identity, name, ramp hue, optional glyph, and the
+   hex that hue resolves to. */
+function normaliseOption(o) {
+  if (typeof o === 'string') return { id: slug(o), name: o, hue: 'slate', icon: '', color: '' };
+  const hue = hueOf(o);
+  return {
+    id: o.id ?? slug(o.name), name: o.name, hue,
+    icon: o.icon ? String(o.icon) : '',
+    color: HUE_HEX[hue],
+  };
+}
 const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
 const MAX_COMPUTE_DEPTH = 8;
 
@@ -310,8 +334,8 @@ function normalizeSelfContainedConfig(type, config = {}) {
   if (type === 'select' || type === 'multiselect') {
     return {
       options: (config.options ?? []).map((o) => (typeof o === 'string'
-        ? { id: slug(o), name: o, color: '' }
-        : { id: o.id ?? slug(o.name), name: o.name, color: o.color ?? '' })),
+        ? normaliseOption(o)
+        : normaliseOption(o))),
     };
   }
   if (type === 'workflow') {
@@ -834,7 +858,10 @@ export class Weave {
         // alone keeps the color it already had.
         const named = new Map((f.optionsFull ?? []).map((o) => [o.name, o.color ?? '']));
         const kept = new Map((existing?.config.options ?? []).map((o) => [o.name, o.color ?? '']));
-        config.options = f.options.map((name) => ({ name, color: named.get(name) ?? kept.get(name) ?? '' }));
+        // named/kept hold the colour an option already had, keyed by name.
+        config.options = f.options.map((name) => normaliseOption({
+          name, color: named.get(name) ?? kept.get(name) ?? '',
+        }));
       }
       if (f.states) config.states = f.states;
       if (f.expression) config.expression = f.expression;
@@ -1863,7 +1890,7 @@ export class Weave {
       if (field.type === 'select' || field.type === 'multiselect') {
         if (patch.config.options) {
           field.config.options = patch.config.options.map((o) =>
-            typeof o === 'string' ? { id: slug(o), name: o, color: '' } : { id: o.id ?? slug(o.name), name: o.name, color: o.color ?? '' });
+            normaliseOption(o));
         }
       } else if (field.type === 'formula') {
         if (patch.config.expression) field.config.expression = patch.config.expression;
@@ -3300,7 +3327,9 @@ export class Weave {
             // The field dialog edits colors and must round-trip ids so a
             // rename keeps the option's identity. `options` stays plain
             // names for every existing consumer.
-            out.optionsFull = f.config.options.map((o) => ({ id: o.id, name: o.name, color: o.color ?? '' }));
+            out.optionsFull = f.config.options.map((o) => ({
+              id: o.id, name: o.name, hue: hueOf(o), icon: o.icon ?? '', color: o.color ?? '',
+            }));
           }
           if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default, ...(s.icon ? { icon: s.icon } : {}) }));
           if (f.type === 'relation') {

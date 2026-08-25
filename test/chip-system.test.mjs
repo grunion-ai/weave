@@ -47,6 +47,15 @@ function rulesFor(selector, css = CSS) {
    half lives. */
 const DARK = CSS.split('[data-bs-theme="dark"]').slice(1).join('\n');
 
+/* The body of a top-level function in app.js, for asserting what it renders.
+   Same trick ui-contract.test.mjs uses. */
+function fnBodyOf(name) {
+  const at = APP.indexOf(`function ${name}(`);
+  assert.ok(at > -1, `app.js has no ${name}()`);
+  const next = APP.indexOf('\nfunction ', at + 1);
+  return APP.slice(at, next === -1 ? APP.length : next);
+}
+
 const VALUE = ['.k-state', '.k-select', '.k-multi', '.k-key'];
 const POINTER = ['.k-rel', '.k-doc', '.k-attach', '.k-more'];
 
@@ -250,4 +259,85 @@ test('chip-core is loaded by the page, not just by the tests', () => {
   assert.match(INDEX, /<script src="\/chip-core\.js"><\/script>/);
   assert.ok(INDEX.indexOf('/chip-core.js') < INDEX.indexOf('/app.js'),
     'chip-core must load before app.js reads it');
+});
+
+/* ---------- the mockup, implemented directly (2026-08-25) ----------
+   Kyle, reviewing the shipped system against the specimen page: the chips are
+   not all the same size, and the tray should edit the chip you are going to
+   get. These pin both. */
+
+test('a chip keeps its own type on a picker button', () => {
+  // `button.chip-trigger { font: inherit }` outranks `.k` and reset the size,
+  // so a workflow or select chip rendered at the table's 14px while a
+  // multiselect chip beside it — a span, untouched — stayed at 11.5px. That
+  // is the "why are multiselects smaller" defect: they were the correct ones.
+  const trigger = rulesFor('button.chip-trigger');
+  assert.equal(trigger.font, undefined,
+    'the font shorthand resets size and must not fight the chip base');
+  assert.equal(trigger['font-size'], undefined, 'nor may it set a size directly');
+  assert.equal(rulesFor('.k')['font-size'], '11.5px', 'one size for every tier');
+});
+
+test('an empty chip is dashed, never dimmed', () => {
+  // .doc-chip.empty { opacity: .5 } survived the migration and fought the
+  // dashed rule, so an empty document read as disabled rather than inviting.
+  assert.equal(rulesFor('.doc-chip.empty').opacity, undefined);
+  for (const sel of ['.k-doc.empty', '.k-attach.empty', '.k-add']) {
+    assert.notEqual(rulesFor(sel).opacity, '.5', `${sel} must not dim`);
+  }
+});
+
+test('the filter row above the grid speaks the row’s vocabulary', () => {
+  // It sits directly above the chips it filters; two grammars in one eyeline
+  // is the thing this whole system set out to remove.
+  const f = rulesFor('.filter-chip');
+  assert.equal(f['border-radius'], '4px', 'same 4px as every chip');
+  assert.equal(f['font-size'], '11.5px', 'same size as every chip');
+});
+
+/* ---------- the tray edits the chip you will get ---------- */
+
+test('an option carries a hue and a glyph, not a loose hex', () => {
+  assert.match(ENGINE, /icon: o\.icon/, 'the option normaliser keeps a glyph');
+  assert.match(ENGINE, /hue:/, 'and a ramp hue');
+});
+
+test('describeSchema hands the client the hue and the glyph', () => {
+  const at = ENGINE.indexOf('out.optionsFull =');
+  const line = ENGINE.slice(at, at + 220);
+  assert.match(line, /hue/, 'optionsFull exposes hue');
+  assert.match(line, /icon/, 'optionsFull exposes icon');
+});
+
+test('the colour control opens the ramp instead of cycling seven hexes', () => {
+  const ed = fnBodyOf('optionListEditor');
+  assert.match(ed, /huePopover|openHuePicker/, 'the swatch opens a picker');
+  assert.doesNotMatch(ed, /Cycle color/, 'no more one-click-at-a-time cycling');
+});
+
+test('a select option can wear a glyph, not just a workflow state', () => {
+  const ed = fnBodyOf('optionListEditor');
+  assert.match(ed, /opt-icon/, 'the option row offers the glyph button');
+});
+
+test('every option row previews the chip it produces', () => {
+  assert.match(fnBodyOf('optionListEditor'), /optionPreview\(/, 'an option row shows its chip');
+  assert.match(fnBodyOf('stateListEditor'), /statePreview\(/, 'a state row shows its chip');
+  for (const fn of ['optionPreview', 'statePreview']) {
+    assert.match(fnBodyOf(fn), /opt-preview/, `${fn} builds the preview cell`);
+    assert.match(fnBodyOf(fn), /class: `k k-/, `${fn} builds a real chip, not a swatch`);
+  }
+  assert.ok(Object.keys(rulesFor('.opt-preview')).length, '.opt-preview has a rule');
+});
+
+test('a workflow row cannot repaint its category, and says why', () => {
+  const ed = fnBodyOf('stateListEditor');
+  assert.match(ed, /locked/, 'the swatch is locked on a state row');
+  assert.match(ed, /categor/i, 'and the reason names the category');
+});
+
+test('a chip is sized by its label even as a flex item', () => {
+  // .doc-chips is a flex container, and the default align-items: stretch grew
+  // each doc chip to the full height of the cell (66px against a 21px chip).
+  assert.equal(rulesFor('.doc-chips')['align-items'], 'center');
 });

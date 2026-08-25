@@ -155,7 +155,10 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .view-desc-edit { width: 100%; min-height: 38px; font: inherit; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); padding: 4px 6px; }
 
 /* ---------- chip picker popover (replaces native selects) ---------- */
-button.chip-trigger { cursor: pointer; font: inherit; }
+/* A picker trigger borrows the page's family and weight but NOT its size —
+   `font: inherit` outranks .k and rendered state and select chips at the
+   table's 14px while a multiselect span beside them stayed at 11.5px. */
+button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inherit; }
 .chip-pop { position: fixed; z-index: 1200; min-width: 140px; padding: 4px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg, 8px); box-shadow: 0 8px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px; }
 .chip-pop-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: none; border: 0; border-radius: var(--tblr-border-radius); cursor: pointer; text-align: left; color: var(--tblr-body-color); }
 .chip-pop-row:hover, .chip-pop-row:focus { background: var(--tblr-active-bg, rgba(0,0,0,.05)); outline: none; }
@@ -290,11 +293,13 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 /* One chip per document field: its name, then what it holds. The kind rides
    inside the chip as a quieter second half, the way the state chips carry
    their category — a chip you can read at a glance and click to open. */
-.doc-chips { display: inline-flex; gap: 4px; vertical-align: middle; margin-right: 6px; }
-.doc-chip { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; max-width: 190px; }
-.doc-chip .doc-kind { font-family: var(--tblr-font-monospace); font-size: .82em; opacity: .62; }
-.doc-chip.empty { opacity: .5; }
-.doc-chip:hover { border-color: var(--tblr-primary); color: var(--tblr-primary); opacity: 1; }
+/* align-items: center, not the flex default of stretch — a chip is sized by
+   its label, and a stretching one grows to whatever the cell is tall. */
+.doc-chips { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; margin-right: 6px; }
+/* Geometry only — .k-doc carries the look, and the empty state is dashed
+   rather than dimmed: 50% opacity reads as "you may not", which is the
+   opposite of what an empty document field is telling you. */
+.doc-chip { max-width: 190px; }
 .doc-row td { background: var(--tblr-bg-surface-secondary); }
 .doc-row:hover td { background: var(--tblr-bg-surface-secondary); box-shadow: none; }
 
@@ -417,16 +422,16 @@ button.chip-trigger { cursor: pointer; font: inherit; }
    are exactly today's OPTION_COLORS, so a stored option migrates by name.
    Ramp order (chip-core.js RAMP_ORDER) decides what a new option gets; slate
    is held back as the resting colour for anything uncoloured. */
-.hue-slate  { --fill: rgba(0, 5, 20, .05);      --text: #60646c; }
-.hue-blue   { --fill: rgba(71, 105, 235, .12);  --text: #3a5bc7; }
-.hue-green  { --fill: rgba(46, 160, 67, .14);   --text: #218358; }
-.hue-amber  { --fill: rgba(245, 159, 0, .16);   --text: #7a5209; }
-.hue-red    { --fill: rgba(229, 72, 77, .12);   --text: #ce2c31; }
-.hue-purple { --fill: rgba(142, 78, 198, .12);  --text: #7a3fb8; }
-.hue-cyan   { --fill: rgba(0, 162, 199, .14);   --text: #0a6379; }
-.hue-pink   { --fill: rgba(214, 64, 159, .12);  --text: #a32677; }
-.hue-teal   { --fill: rgba(18, 165, 148, .14);  --text: #10695c; }
-.hue-orange { --fill: rgba(247, 107, 21, .14);  --text: #9a4310; }
+.hue-slate  { --fill: rgba(0, 5, 20, .05);      --text: #60646c; --dot: transparent; }
+.hue-blue   { --fill: rgba(71, 105, 235, .12);  --text: #3a5bc7; --dot: #4769eb; }
+.hue-green  { --fill: rgba(46, 160, 67, .14);   --text: #218358; --dot: #2ea043; }
+.hue-amber  { --fill: rgba(245, 159, 0, .16);   --text: #7a5209; --dot: #f59f00; }
+.hue-red    { --fill: rgba(229, 72, 77, .12);   --text: #ce2c31; --dot: #e5484d; }
+.hue-purple { --fill: rgba(142, 78, 198, .12);  --text: #7a3fb8; --dot: #8e4ec6; }
+.hue-cyan   { --fill: rgba(0, 162, 199, .14);   --text: #0a6379; --dot: #00a2c7; }
+.hue-pink   { --fill: rgba(214, 64, 159, .12);  --text: #a32677; --dot: #d6409f; }
+.hue-teal   { --fill: rgba(18, 165, 148, .14);  --text: #10695c; --dot: #12a594; }
+.hue-orange { --fill: rgba(247, 107, 21, .14);  --text: #9a4310; --dot: #f76b15; }
 [data-bs-theme="dark"] .hue-slate  { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
 [data-bs-theme="dark"] .hue-blue   { --fill: rgba(99, 140, 245, .18);  --text: #9eb1ff; }
 [data-bs-theme="dark"] .hue-green  { --fill: rgba(70, 180, 110, .16);  --text: #71d083; }
@@ -915,9 +920,14 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .filter-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
 .filter-group { display: inline-flex; align-items: center; gap: 4px; }
 .filter-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); margin-right: 2px; }
-.filter-chip { font-size: 12px; padding: 2px 9px; border-radius: 5px; border: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); color: var(--tblr-secondary); cursor: pointer; }
+/* The state filters sit directly above the chips they filter, so they wear
+   the same tier: off is a quiet outline, on is the category's own fill. */
+.filter-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; line-height: 1.7;
+  padding: 1px 8px; border-radius: 4px; border: 1px solid var(--tblr-border-color);
+  background: none; color: var(--tblr-secondary); cursor: pointer; }
 .filter-chip:hover { border-color: var(--tblr-primary); color: var(--tblr-body-color); }
-.filter-chip.on { border-color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .10); color: var(--tblr-primary); font-weight: 600; }
+.filter-chip.on { border-color: transparent; background: var(--fill, rgba(var(--tblr-primary-rgb), .10));
+  color: var(--text, var(--tblr-primary)); font-weight: 600; }
 /* ---------- type-or-pick dates (Feature #44) ---------- */
 .date-cell { display: inline-flex; align-items: center; gap: 2px; }
 .date-cell .date-text { min-width: 90px; }
@@ -1162,6 +1172,25 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .opt-row.drop-target { box-shadow: 0 -2px 0 var(--tblr-primary); }
 .opt-icon { width: 24px; height: 24px; flex-shrink: 0; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 13px; cursor: pointer; padding: 0; }
 .opt-icon.none { color: var(--tblr-secondary); }
+/* The chip the row will actually produce, shown where the choice is made. */
+/* The preview yields before the name input does — it is a reassurance, not
+   a column, and the tray is only 480px wide. */
+.opt-preview { flex: 0 1 auto; min-width: 0; max-width: 128px; display: flex;
+  justify-content: flex-end; align-items: center; overflow: hidden; }
+.opt-preview .k { overflow: hidden; text-overflow: ellipsis; display: inline-flex; }
+.opt-color.locked { cursor: not-allowed; opacity: .7; }
+/* The ramp and the glyph vocabulary, as pickers rather than cycles. */
+.swatch-grid { display: grid; grid-template-columns: repeat(5, 26px); gap: 5px; }
+.glyph-grid { display: grid; grid-template-columns: repeat(7, 26px); gap: 5px; }
+.swatch-grid .sw, .glyph-grid .gl { width: 26px; height: 26px; padding: 0; cursor: pointer;
+  border: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); color: var(--tblr-body-color); }
+.swatch-grid .sw { border-radius: 50%; background: var(--dot, transparent); }
+.swatch-grid .sw.neutral { background: repeating-linear-gradient(45deg, var(--tblr-bg-surface-secondary) 0 3px, var(--tblr-bg-surface) 3px 6px); }
+.glyph-grid .gl { border-radius: 6px; font-size: 13px; }
+.swatch-grid .sw:hover, .glyph-grid .gl:hover { border-color: var(--tblr-secondary); }
+.swatch-grid .sw.sel { box-shadow: 0 0 0 2px var(--tblr-bg-surface), 0 0 0 3.5px var(--tblr-primary); }
+.glyph-grid .gl.sel { border-color: var(--tblr-primary); color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .08); }
+.pick-note { font-size: 10.5px; font-family: var(--tblr-font-monospace); color: var(--tblr-secondary); margin: 7px 2px 1px; max-width: 190px; }
 
 /* checkboxes: one quiet house style everywhere (grid cells, tray, pickers) —
    a rounded square on the surface, primary fill + tick when checked. */

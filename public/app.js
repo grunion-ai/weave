@@ -2383,28 +2383,81 @@ function segCtl(options, value, onPick) {
   return wrap;
 }
 
-function optionSwatchStyle(hex) {
-  return hex ? `background:${hex}` : '';
+/* The ten-hue ramp and the glyph vocabulary as popovers rather than cycles.
+   Seven clicks to reach the seventh colour was tolerable when there were
+   seven; the ramp is ten and the glyphs are fourteen. */
+function huePopover(anchor, current, onPick) {
+  const grid = el('div', { class: 'swatch-grid' },
+    ...chipCore.HUES.map((h) => el('button', {
+      type: 'button', class: `sw hue-${h}${h === 'slate' ? ' neutral' : ''}${h === current ? ' sel' : ''}`,
+      title: h === 'slate' ? 'no colour' : h, 'aria-label': h,
+      onclick: () => onPick(h),
+    })));
+  showPopover(anchor, [grid, el('p', { class: 'pick-note' },
+    'Stored as a name. A new option takes the next hue in ramp order.')]);
+}
+function glyphPopover(anchor, current, onPick) {
+  const grid = el('div', { class: 'glyph-grid' },
+    ...fieldDialogCore.STATE_ICONS.map((g) => el('button', {
+      type: 'button', class: `gl${g === (current ?? '') ? ' sel' : ''}`,
+      title: g || 'no glyph', 'aria-label': g || 'no glyph',
+      onclick: () => onPick(g),
+    }, g || '—')));
+  showPopover(anchor, [grid]);
+}
+
+/* The chip a row is about to produce, shown beside the controls that produce
+   it — the one thing the tray could never tell you before. */
+function optionPreview(o) {
+  return el('span', { class: 'opt-preview' },
+    el('span', { class: `k k-select hue-${o.hue ?? 'slate'}` },
+      o.icon ? el('span', { class: 'ico' }, o.icon) : null,
+      o.name || 'Option'));
+}
+function statePreview(st) {
+  const cat = chipCore.categoryOrDefault(st.category ?? 'in-progress');
+  return el('span', { class: 'opt-preview' },
+    el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}` },
+      st.icon ? el('span', { class: 'ico' }, st.icon) : null,
+      st.name || 'State'));
 }
 
 /* Rows of {name, color} with a cycling color swatch — replaces the
    comma-separated string that couldn't hold a color and choked on commas. */
 function optionListEditor(state, onChange) {
-  const colors = fieldDialogCore.OPTION_COLORS;
   const wrap = el('div', { class: 'opt-list' });
   const draw = () => {
     wrap.replaceChildren(
-      ...state.options.map((o, i) => el('div', { class: 'opt-row' },
-        el('button', {
-          type: 'button', class: 'opt-color' + (o.color ? '' : ' neutral'), title: 'Cycle color',
-          style: optionSwatchStyle(o.color),
-          onclick: () => { o.color = colors[(colors.indexOf(o.color ?? '') + 1) % colors.length]; draw(); onChange(); },
-        }),
-        el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; onChange(); } }),
-        el('button', { type: 'button', class: 'opt-del', title: 'Remove option', onclick: () => { state.options.splice(i, 1); draw(); onChange(); } }, '✕'))),
+      ...state.options.map((o, i) => {
+        const hue = o.hue ?? chipCore.hueFromHex(o.color);
+        return el('div', { class: 'opt-row' },
+          (() => {
+            const b = el('button', {
+              type: 'button', class: 'opt-icon' + (o.icon ? '' : ' none'), title: 'Choose a glyph',
+              onclick: () => glyphPopover(b, o.icon ?? '', (g) => { o.icon = g; draw(); onChange(); }),
+            }, o.icon || '—');
+            return b;
+          })(),
+          el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; onChange(); } }),
+          (() => {
+            const b = el('button', {
+              type: 'button', class: `opt-color hue-${hue}${hue === 'slate' ? ' neutral' : ''}`, title: 'Choose a colour',
+              onclick: () => huePopover(b, hue, (h) => { o.hue = h; o.color = chipCore.HUE_HEX[h]; draw(); onChange(); }),
+            });
+            return b;
+          })(),
+          optionPreview({ ...o, hue }),
+          el('button', { type: 'button', class: 'opt-del', title: 'Remove option', onclick: () => { state.options.splice(i, 1); draw(); onChange(); } }, '✕'));
+      }),
       el('button', {
         type: 'button', class: 'opt-add',
-        onclick: () => { state.options.push({ name: '', color: '' }); draw(); onChange(); wrap.querySelectorAll('.opt-name')[state.options.length - 1]?.focus(); },
+        // A new option takes the next hue in ramp order, so a fresh set is
+        // legible before anyone has chosen anything.
+        onclick: () => {
+          const hue = chipCore.hueForIndex(state.options.length);
+          state.options.push({ name: '', hue, icon: '', color: chipCore.HUE_HEX[hue] });
+          draw(); onChange();
+        },
       }, '+ Add option'));
   };
   draw();
@@ -2435,17 +2488,31 @@ function stateListEditor(state, onChange) {
           },
         },
         el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
-        el('button', {
-          type: 'button', class: 'opt-icon' + (s.icon ? '' : ' none'), title: 'Cycle icon',
-          onclick: () => { s.icon = fdc.STATE_ICONS[(fdc.STATE_ICONS.indexOf(s.icon ?? '') + 1) % fdc.STATE_ICONS.length]; draw(); onChange(); },
-        }, s.icon || '·'),
+        (() => {
+          const b = el('button', {
+            type: 'button', class: 'opt-icon' + (s.icon ? '' : ' none'), title: 'Choose a glyph',
+            onclick: () => glyphPopover(b, s.icon ?? '', (g) => { s.icon = g; draw(); onChange(); }),
+          }, s.icon || '—');
+          return b;
+        })(),
         el('input', { class: 'opt-name', value: s.name, placeholder: 'State', oninput: (e) => { s.name = e.target.value; onChange(); } }),
         (() => {
-          const cat = pickerSelect({ name: `wf-cat-${i}`, options: fdc.STATE_CATEGORIES.map((c) => ({ id: c, label: c })), value: s.category ?? 'in-progress' });
+          const cat = pickerSelect({ name: `wf-cat-${i}`, options: fdc.STATE_CATEGORIES.map((c) => ({ id: c, label: c })), value: chipCore.categoryOrDefault(s.category ?? 'in-progress') });
           cat.classList.add('opt-cat');
-          cat.input.addEventListener('change', () => { s.category = cat.input.value; onChange(); });
+          cat.input.addEventListener('change', () => { s.category = cat.input.value; draw(); onChange(); });
           return cat;
         })(),
+        // A state's colour belongs to its category — status has to mean the
+        // same thing in every table — so the swatch shows it and refuses.
+        (() => {
+          const cat = chipCore.categoryOrDefault(s.category ?? 'in-progress');
+          const hue = chipCore.categoryHue(cat);
+          return el('button', {
+            type: 'button', class: `opt-color locked hue-${hue}${hue === 'slate' ? ' neutral' : ''}`,
+            disabled: true, title: `Colour comes from the ${cat} category`, 'aria-label': `Colour: ${cat}`,
+          });
+        })(),
+        statePreview(s),
         el('button', { type: 'button', class: 'opt-del', title: 'Remove state', onclick: () => { state.states.splice(i, 1); draw(); onChange(); } }, '✕'));
         // Inputs inside a draggable row must keep their own mouse events.
         for (const ctl of row.querySelectorAll('input,button,.picker-wrap')) ctl.addEventListener('mousedown', (e) => e.stopPropagation());

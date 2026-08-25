@@ -62,5 +62,9 @@ test('clicking a chip opens that document, not the first one', () => {
 });
 
 test('an empty document reads as empty rather than lying about a kind', () => {
-  assert.match(CSS, /\.doc-chip\.empty/);
+  // Since the chip system (2026-08-25) the empty state is a dashed pointer,
+  // not a dimmed one — .doc-chip carries geometry only, .k-doc.empty the look.
+  assert.match(CSS, /\.k-doc\.empty/);
+  assert.doesNotMatch(CSS, /\.doc-chip\.empty\s*\{[^}]*opacity/,
+    'dimming an empty field reads as disabled, not as an invitation');
 });
