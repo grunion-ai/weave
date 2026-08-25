@@ -1192,14 +1192,22 @@ test('every selector speaks the one dialect: search bar first, list under it', (
   // The mandate: the cursor is already in the search bar.
   const picker = app.slice(app.indexOf('function searchPicker('), app.indexOf('function pickerSelect('));
   assert.ok(picker.includes('input.focus()'), 'the search bar takes focus on open');
-  assert.ok(picker.includes("key === 'ArrowDown'") && picker.includes("key === 'Enter'"), 'arrows move, Enter picks');
+  // The keyboard grammar itself is pure (public/picker-core.js, tested in
+  // test/picker-core.test.mjs); the DOM half only feeds it keys and where the
+  // text caret sits, then runs the effect it hands back.
+  assert.ok(picker.includes('core.keyDown('), 'keys route through the one grammar');
+  assert.ok(picker.includes('input.selectionStart === 0'), 'and it is told whether the caret is at the start');
+  for (const eff of ['pick', 'close']) assert.ok(picker.includes(`'${eff}'`), `${eff} is an effect the picker runs`);
   // No native <select> may remain anywhere in the app.
   assert.equal((app.match(/el\('select'/g) ?? []).length, 0, 'native selects are gone — everything routes through the picker');
   // Chip cells route through the same dialect.
   const chips = app.slice(app.indexOf('function chipPicker('), app.indexOf('const PICKER_FIELD_TYPES'));
   assert.ok(chips.includes('searchPicker('), 'workflow/select chips open the dialect too');
-  const search = rulesFor('.picker-search');
-  assert.equal(search['width'], '100%');
+  // The box wears the field's border now; the input inside it is bare.
+  const box = rulesFor('.picker-box');
+  assert.equal(box['width'], '100%');
+  assert.ok(box['border'], 'the box is the field');
+  assert.equal(rulesFor('.picker-search')['border'], '0', 'the input inside it draws nothing');
   const list = rulesFor('.picker-list');
   assert.ok(list['max-height'], 'the list is small and scrolls');
 });
@@ -1208,7 +1216,7 @@ test('multi pickers edit in place: selections listed with ×, saved on Enter', (
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const picker = app.slice(app.indexOf('function searchPicker('), app.indexOf('function pickerSelect('));
   assert.ok(picker.includes('multi'), 'the dialect has a multi mode');
-  assert.ok(picker.includes('drawChosen'), 'current selections render inside the picker');
+  assert.ok(picker.includes('drawChips'), 'current selections render inside the picker');
   assert.ok(picker.includes("'Remove'"), 'each selection carries its ×');
   assert.ok(picker.includes('await commit()'), 'Enter on an empty search saves');
   assert.ok(picker.includes('if (multi && pop.isConnected) { commit('), 'outside click saves, never discards');
@@ -1217,6 +1225,43 @@ test('multi pickers edit in place: selections listed with ×, saved on Enter', (
   const links = [...app.matchAll(/multi: \{\s*\n\s*selected:/g)];
   assert.ok(links.length >= 2, `both link surfaces edit through multi (saw ${links.length})`);
   assert.ok(app.includes('unlink'), 'removals commit as unlinks');
+});
+
+/* Kyle, 2026-08-25: "selected chips should be in the cursor box so user can
+   navigate around with arrows to quickly delete and type to add with the top
+   fit autoselected on search". The grammar is tested in
+   test/picker-core.test.mjs; what this pins is the DOM that carries it. */
+test('the picker is a token box: chips sit inside the field, ahead of the caret', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const picker = app.slice(app.indexOf('function searchPicker('), app.indexOf('function pickerSelect('));
+  // One box, chips first, then the input — not a chosen-list stacked above a
+  // separate search bar (what it was until 2026-08-25).
+  assert.match(picker, /el\('div', \{ class: 'picker-box' \}, chips, input\)/, 'chips and the caret share one box');
+  assert.ok(!picker.includes('picker-chosen'), 'the separate chosen list is gone');
+  assert.ok(picker.includes("class: 'picker-chips'"), 'the chips are their own element');
+  assert.ok(picker.includes("st.caret === i ? ' sel' : ''"), 'the chip under the cursor is marked');
+  // Redrawing chips must not detach the focused input, which is why they are
+  // a sibling element that flows into the box with display:contents.
+  assert.ok(picker.includes('chips.replaceChildren('), 'only the chips redraw');
+  assert.equal(rulesFor('.picker-chips')['display'], 'contents', 'so the chips still flow in the box row');
+  assert.ok(rulesFor('.picker-chip.sel')['outline'], 'the cursor on a chip reads as a ring');
+  assert.equal(rulesFor('.picker-box')['flex-wrap'], 'wrap', 'a full box wraps rather than clipping');
+  // The pure half loads before app.js.
+  const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  assert.ok(HTML.indexOf('picker-core.js') < HTML.indexOf('"/app.js"'), 'picker-core.js loads first');
+});
+
+/* Single select overwrites, so its box carries at most one chip and taking
+   that chip out is a pick of the field's empty value — a select has one ('—'),
+   a workflow state does not. */
+test('a select clears through its own empty option; a state cannot be emptied', () => {
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const cell = app.slice(app.indexOf("if (f.type === 'workflow')"), app.indexOf("if (f.type === 'multiselect')"));
+  const sel = cell.slice(cell.indexOf("if (f.type === 'select')"));
+  assert.ok(sel.includes("clearId: '—'"), 'Backspace on the select chip picks —');
+  assert.ok(sel.includes('current: val ?? null'), 'an unset select carries no chip at all');
+  const wf = cell.slice(0, cell.indexOf("if (f.type === 'select')"));
+  assert.ok(!wf.includes('clearId'), 'a workflow state has no empty value to clear to');
 });
 
 test('resize and reorder commit in place — the grid never tears down mid-gesture', () => {

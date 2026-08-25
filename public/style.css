@@ -992,8 +992,20 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 /* ---------- the one selection dialect ---------- */
 .picker-pop { padding: 6px; min-width: 220px; }
 .picker-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); padding: 2px 4px 6px; }
-.picker-search { width: 100%; border: 1px solid var(--tblr-border-color); border-radius: 5px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 13px; padding: 5px 8px; margin-bottom: 6px; outline: none; }
-.picker-search:focus { border-color: var(--tblr-primary); }
+/* The cursor box (Kyle, 2026-08-25): the chips already chosen sit INSIDE the
+   search field, ahead of the caret, so one control carries both the value and
+   the search. The box wears the border the input used to wear; the input
+   itself is bare and grows into whatever room the chips leave. */
+.picker-box { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; width: 100%; border: 1px solid var(--tblr-border-color); border-radius: 5px; background: var(--tblr-bg-surface); padding: 3px 5px; margin-bottom: 6px; cursor: text; }
+.picker-box:focus-within { border-color: var(--tblr-primary); }
+/* display:contents — the chips flow in the box's own row, so they wrap with
+   the caret instead of stacking above it. */
+.picker-chips { display: contents; }
+.picker-chip { cursor: default; }
+/* The chip the cursor sits on. A ring, not a fill: ← → is a caret walking the
+   chips, not a second kind of selection. */
+.picker-chip.sel { outline: 2px solid var(--tblr-primary); outline-offset: 1px; }
+.picker-search { flex: 1 1 90px; min-width: 90px; border: 0; border-radius: 3px; background: none; color: var(--tblr-body-color); font-size: 13px; padding: 3px 3px; outline: none; }
 .picker-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
 .picker-row { display: flex; align-items: center; gap: 8px; }
 .picker-row.active { background: rgba(var(--tblr-primary-rgb), .10); border-radius: 5px; }

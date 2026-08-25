@@ -792,79 +792,94 @@ function restoreGridFocus() {
 }
 
 
-/* ---------- the one selection dialect (Kyle, 2026-08-22) ----------
+/* ---------- the one selection dialect (Kyle, 2026-08-22; token box 08-25) ----------
    Everything that picks from a list — workflow states, select options, field
-   types, relation targets, formats — opens the SAME surface: a compact panel
-   with the cursor already in a search bar, a small scrollable list under it,
-   ↑↓ to move, Enter to pick, Esc to close. Anchored to its trigger when it
-   has one, centered otherwise. */
-function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null }) {
-  // multi: { selected: [{id, label, cls?}], onCommit(ids) } — the picker
-  // becomes the editor: current picks listed with an ×, additions staged from
-  // the list, and Enter on an empty search saves the lot (Kyle, 2026-08-22).
+   types, relation targets, formats — opens the SAME surface: a panel whose
+   first line is a box holding the chips already chosen and, right after them,
+   the cursor. Type and the list beneath filters with the top fit already
+   armed, so Enter adds it; ↑↓ move that arming; ← → walk the chips and
+   Backspace/Delete takes one out; Enter on an empty search saves. Anchored to
+   its trigger when it has one, centered otherwise.
+
+   multi (multiselect, linked records) accumulates chips and commits the set.
+   single (select, workflow states) overwrites — a pick commits and closes on
+   the spot — and `clearId` is the empty value Backspace picks for a field
+   that has one (a select does; a workflow state does not).
+   The keyboard grammar itself is pure and lives in public/picker-core.js. */
+function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null, clearId = null }) {
   document.querySelector('.chip-pop')?.remove();
+  const core = globalThis.pickerCore;
+  let st = core.blank({
+    mode: multi ? 'multi' : 'single',
+    options,
+    staged: multi ? multi.selected.map((x) => ({ ...x })) : [],
+    currentId,
+    clearId,
+  });
   const input = el('input', { class: 'picker-search', placeholder, type: 'text' });
+  // Chips are their own element so redrawing them never detaches the focused
+  // input; display:contents keeps them in the box's own flex row.
+  const chips = el('span', { class: 'picker-chips' });
+  const box = el('div', { class: 'picker-box' }, chips, input);
   const list = el('div', { class: 'picker-list' });
-  const chosen = el('div', { class: 'picker-chosen' });
-  const staged = multi ? new Map(multi.selected.map((x) => [x.id, x])) : null;
-  const byId = new Map(options.map((o) => [o.id, o]));
-  const drawChosen = () => {
-    if (!multi) return;
-    chosen.replaceChildren(...[...staged.values()].map((x) => el('span', { class: `chip ${x.cls ?? ''}` }, x.label,
-      el('span', { class: 'x', title: 'Remove', onclick: (ev) => { ev.stopPropagation(); staged.delete(x.id); drawChosen(); draw(); input.focus(); } }, '×'))));
-    if (!staged.size) chosen.append(el('span', { class: 'picker-empty' }, 'Nothing selected yet'));
-  };
   const pop = el('div', { class: 'chip-pop picker-pop' },
     title ? el('div', { class: 'picker-title' }, title) : null,
-    multi ? chosen : null,
-    input, list);
-  const commit = async () => { pop.remove(); await multi.onCommit([...staged.keys()]); };
-  let active = -1;
-  let visible = [];
+    box, list);
+  const commit = async () => { pop.remove(); await multi.onCommit(core.ids(st)); };
+  const dismiss = () => { pop.remove(); anchor?.focus?.(); };
+  const pick = async (o) => { pop.remove(); await onPick(o); };
+  const apply = (next) => { st = next; input.value = st.query; drawChips(); draw(); input.focus(); };
+
+  const drawChips = () => {
+    chips.replaceChildren(...st.staged.map((x, i) => el('span', {
+      class: `${x.cls ?? 'k k-multi hue-slate'} picker-chip${st.caret === i ? ' sel' : ''}`,
+      onclick: (ev) => { ev.stopPropagation(); apply({ ...st, caret: i, active: -1 }); },
+    }, x.label,
+      (multi || clearId) ? el('span', {
+        class: 'x', title: 'Remove',
+        onclick: (ev) => {
+          ev.stopPropagation();
+          if (multi) apply(core.removeId(st, x.id)); else pick({ id: clearId, label: clearId });
+        },
+      }, '×') : null)));
+    // The placeholder is the empty box's label; chips take its place.
+    input.placeholder = st.staged.length ? '' : placeholder;
+  };
   const draw = () => {
-    const q = input.value.trim().toLowerCase();
-    visible = options.filter((o) => !q || `${o.label} ${o.hint ?? ''}`.toLowerCase().includes(q));
-    list.replaceChildren(...visible.map((o, i) => el('button', {
-      class: 'chip-pop-row picker-row' + (i === active ? ' active' : ''), type: 'button',
+    const vis = core.visible(st);
+    list.replaceChildren(...vis.map((o, i) => el('button', {
+      class: 'chip-pop-row picker-row' + (i === st.active ? ' active' : ''), type: 'button',
       onclick: async () => {
-        if (multi) {
-          staged.has(o.id) ? staged.delete(o.id) : staged.set(o.id, o);
-          drawChosen(); draw(); input.focus();
-          return;
-        }
-        pop.remove();
-        await onPick(o);
+        if (multi) { apply(core.toggle(st, o)); return; }
+        await pick(o);
       },
     },
       o.chip ? el('span', { class: o.cls ?? 'k k-multi hue-slate' }, o.label)
         : o.iconly ? el('span', { class: 'picker-label picker-iconly' }, iconEl(`iconly:${o.iconly}`), o.label)
         : el('span', { class: 'picker-label' }, o.label),
       o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
-      (multi ? staged.has(o.id) : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
-    if (!visible.length) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
+      (multi ? core.has(st, o.id) : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
+    if (!vis.length) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
   };
-  input.addEventListener('input', () => { active = -1; draw(); });
+  // Clicking the box's empty space is aiming at the caret, not at a chip.
+  box.addEventListener('click', (ev) => {
+    if (ev.target !== box && ev.target !== chips) return;
+    apply({ ...st, caret: null });
+  });
+  input.addEventListener('input', () => { st = core.search(st, input.value); drawChips(); draw(); });
   input.addEventListener('keydown', async (ev) => {
-    if (ev.key === 'ArrowDown') { ev.preventDefault(); active = Math.min(active + 1, visible.length - 1); draw(); }
-    else if (ev.key === 'ArrowUp') { ev.preventDefault(); active = Math.max(active - 1, 0); draw(); }
-    else if (ev.key === 'Enter') {
-      ev.preventDefault();
-      if (multi) {
-        // Enter with a match toggles it; Enter on an empty search SAVES.
-        const pick = visible[active] ?? (input.value.trim() ? visible[0] : null);
-        if (pick) {
-          staged.has(pick.id) ? staged.delete(pick.id) : staged.set(pick.id, pick);
-          input.value = '';
-          active = -1;
-          drawChosen(); draw();
-        } else {
-          await commit();
-        }
-        return;
-      }
-      const pick = visible[active] ?? visible[0];
-      if (pick) { pop.remove(); await onPick(pick); }
-    } else if (ev.key === 'Escape') { ev.preventDefault(); pop.remove(); anchor?.focus?.(); }
+    // Where the text caret sits decides whether ← belongs to the text or to
+    // the chips in front of it.
+    const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+    const r = core.keyDown(st, { key: ev.key, atStart });
+    if (!r.handled) return;
+    ev.preventDefault();
+    if (r.state) { st = r.state; input.value = st.query; drawChips(); draw(); }
+    if (!r.effect) return;
+    if (r.effect.type === 'pick') await pick(r.effect.option);
+    else if (r.effect.type === 'close') dismiss();
+    else if (multi) await commit();
+    else dismiss();
   });
   document.body.append(pop);
   if (anchor?.getBoundingClientRect) {
@@ -881,11 +896,9 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     pop.remove();
   };
   addEventListener('click', close, true);
-  // The mandate: the cursor is already in the search bar.
+  // The mandate: the cursor is already in the box, after the chips.
   input.focus();
-  drawChosen();
-  const cur = options.findIndex((o) => o.id === currentId);
-  if (cur >= 0) { active = cur; }
+  drawChips();
   draw();
   return pop;
 }
@@ -913,7 +926,7 @@ function pickerSelect({ name, options, value = null, placeholder = 'Choose…', 
   return wrap;
 }
 
-function chipPicker({ trigger, options, current, onPick }) {
+function chipPicker({ trigger, options, current, onPick, clearId = null }) {
   trigger.classList.add('chip-trigger');
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -925,6 +938,7 @@ function chipPicker({ trigger, options, current, onPick }) {
       anchor: trigger,
       options: options.map((o) => ({ id: o.name, label: o.label ?? o.name, cls: o.cls, chip: true })),
       currentId: current,
+      clearId,
       onPick: async (o) => { if (o.id !== current) await onPick(o.id); },
     });
   });
@@ -1223,7 +1237,8 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
       trigger: el('button', { class: `k k-select ${optionHue(f, val)}`, type: 'button', title: f.name },
         optionIcon(f, val), val ?? '—'),
       options: [{ name: '—' }, ...f.options.map((o) => ({ name: o }))],
-      current: val ?? '—',
+      current: val ?? null,
+      clearId: '—',
       onPick: (name) => patch(name === '—' ? null : name),
     });
   }
