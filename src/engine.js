@@ -814,27 +814,68 @@ export class Weave {
       plan.push({ action, subject });
       if (!dryRun) fn();
     };
-    const configFromDescriptor = (f) => {
-      const config = {};
-      if (f.options) config.options = f.options;
+    /* A descriptor carries everything describeSchema() emits, including the
+       half that decides how the table READS — option colors, column widths,
+       number and date costumes, document kind, state icons. Applying used to
+       rebuild the config from four keys, so any edit to a document stripped
+       the rest (Issue #59). The config is merged over what the field already
+       has: a key the document does not mention keeps its value, while options
+       and states are replacements, because dropping one is the point. */
+    const configFromDescriptor = (f, existing = null) => {
+      const config = existing ? { ...existing.config } : {};
+      if (f.options) {
+        // Colors ride optionsFull; a name that survives an edit to `options`
+        // alone keeps the color it already had.
+        const named = new Map((f.optionsFull ?? []).map((o) => [o.name, o.color ?? '']));
+        const kept = new Map((existing?.config.options ?? []).map((o) => [o.name, o.color ?? '']));
+        config.options = f.options.map((name) => ({ name, color: named.get(name) ?? kept.get(name) ?? '' }));
+      }
       if (f.states) config.states = f.states;
       if (f.expression) config.expression = f.expression;
       if (f.via) config.relationField = f.via;
       if (f.targetField) config.targetField = f.targetField;
       if (f.aggregate) config.aggregate = f.aggregate;
       if (f.default !== undefined) config.default = f.default;
-      if (f.types || f.depth) config.depth = f.depth;
+      if (f.types) config.types = f.types;
+      if (f.depth != null) config.depth = f.depth;
+      if (f.width != null) config.width = f.width;
+      for (const k of NUMBER_COSTUME_KEYS) if (f[k] != null) config[k] = f[k];
+      if (f.time != null) config.time = f.time;
+      if (f.kind != null) config.kind = f.kind;
+      if (f.multiple != null) config.multiple = f.multiple;
       return config;
     };
+    /* The apply is a no-op exactly when the document already describes the
+       workspace, so the comparison is descriptor against descriptor — never
+       config against config, where a relation field is an id on one side and a
+       name on the other. */
+    const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'targetField', 'aggregate',
+      'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'time', 'kind', 'multiple', 'types', 'depth'];
+    const colorsOf = (full) => JSON.stringify((full ?? []).map((o) => ({ name: o.name, color: o.color ?? '' })));
+    const fieldChanged = (fDoc, have) => {
+      if (!have) return true;
+      if (fDoc.optionsFull && colorsOf(fDoc.optionsFull) !== colorsOf(have.optionsFull)) return true;
+      return DESCRIPTOR_KEYS.some((k) => k in fDoc && JSON.stringify(fDoc[k]) !== JSON.stringify(have[k]));
+    };
+    const current = new Map();
+    for (const sp of this.describeSchema()) {
+      for (const t of sp.tables) current.set(`${sp.space}/${t.name}`, t);
+    }
     const wanted = doc.filter((sp) => !sp.system);
 
     for (const spDoc of wanted) {
       let sp = this.findSpace(spDoc.space);
       if (!sp) {
-        act('create-space', spDoc.space, () => { sp = this.createSpace({ name: spDoc.space, description: spDoc.description ?? '' }); });
+        act('create-space', spDoc.space, () => {
+          sp = this.createSpace({ name: spDoc.space, description: spDoc.description ?? '' });
+          if (spDoc.icon) this.updateSpace(sp.id, { icon: spDoc.icon });
+        });
         if (dryRun) continue;
-      } else if (spDoc.description != null && spDoc.description !== (sp.description ?? '')) {
-        act('update-space', spDoc.space, () => this.updateSpace(sp.id, { description: spDoc.description }));
+      } else {
+        const patch = {};
+        if (spDoc.description != null && spDoc.description !== (sp.description ?? '')) patch.description = spDoc.description;
+        if (spDoc.icon != null && spDoc.icon !== (sp.icon ?? '')) patch.icon = spDoc.icon;
+        if (Object.keys(patch).length) act('update-space', spDoc.space, () => this.updateSpace(sp.id, patch));
       }
       for (const tDoc of spDoc.tables ?? []) {
         const qualified = `${spDoc.space}/${tDoc.name}`;
@@ -842,17 +883,26 @@ export class Weave {
         if (db?.system) continue;
         if (!db) {
           act('create-table', qualified, () => {
-            db = this.createTable({ space: spDoc.space, name: tDoc.name, description: tDoc.description ?? '' });
+            db = this.createTable({ space: spDoc.space, name: tDoc.name, description: tDoc.description ?? '', icon: tDoc.icon ?? '' });
             for (const f of tDoc.fields ?? []) {
               if (['Name', 'Description'].includes(f.name)) continue;
               this.addField(db.id, { name: f.name, type: f.type, config: configFromDescriptor(f) });
             }
+            this.#applyTableCostume(db, tDoc);
           });
           continue;
         }
-        if (tDoc.description != null && tDoc.description !== (db.description ?? '')) {
-          act('update-table', qualified, () => this.updateTable(db.id, { description: tDoc.description }));
+        const tPatch = {};
+        if (tDoc.description != null && tDoc.description !== (db.description ?? '')) tPatch.description = tDoc.description;
+        if (tDoc.icon != null && tDoc.icon !== (db.icon ?? '')) tPatch.icon = tDoc.icon;
+        if (tDoc.noun != null && tDoc.noun !== (db.noun ?? '')) tPatch.noun = tDoc.noun;
+        if ('hiddenFields' in tDoc && JSON.stringify(tDoc.hiddenFields ?? []) !== JSON.stringify(db.hiddenFields ?? [])) {
+          tPatch.hiddenFields = tDoc.hiddenFields ?? [];
         }
+        if ('systemFields' in tDoc && JSON.stringify(tDoc.systemFields ?? []) !== JSON.stringify(db.systemFields ?? [])) {
+          tPatch.systemFields = tDoc.systemFields ?? [];
+        }
+        if (Object.keys(tPatch).length) act('update-table', qualified, () => this.updateTable(db.id, tPatch));
         for (const fDoc of tDoc.fields ?? []) {
           const existing = Object.values(db.fields).find((x) => x.name === fDoc.name);
           if (!existing) {
@@ -870,11 +920,9 @@ export class Weave {
           if (existing.type !== fDoc.type) {
             throw new WeaveError(`'${qualified}.${fDoc.name}' cannot change type ('${existing.type}' → '${fDoc.type}') — delete the field and create it anew`, 'invalid');
           }
-          const nextCfg = configFromDescriptor(fDoc);
-          const cfgChanged = (fDoc.options && JSON.stringify(fDoc.options) !== JSON.stringify(existing.config.options?.map((o) => o.name)))
-            || (fDoc.states && JSON.stringify(fDoc.states) !== JSON.stringify(existing.config.states?.map((st) => ({ name: st.name, category: st.category, default: !!st.default }))))
-            || (fDoc.expression && fDoc.expression !== existing.config.expression);
-          if (cfgChanged) {
+          const nextCfg = configFromDescriptor(fDoc, existing);
+          const have = current.get(qualified)?.fields.find((x) => x.name === fDoc.name);
+          if (fieldChanged(fDoc, have)) {
             act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, existing.id, { config: nextCfg }));
           }
         }
@@ -886,6 +934,19 @@ export class Weave {
           if (!still) {
             if (!allowDestructive) throw new WeaveError(`Applying this document would delete '${qualified}.${existing.name}' — a destructive change needs allowDestructive`, 'invalid');
             act('delete-field', `${qualified}.${existing.name}`, () => this.deleteField(db.id, existing.id));
+          }
+        }
+        // Column order is the order the document lists its fields in — read
+        // after the creates and deletes, so it is an order over what exists.
+        if (!dryRun && (tDoc.fields ?? []).length) {
+          const wanted = [];
+          for (const fDoc of tDoc.fields) {
+            const f = Object.values(db.fields).find((x) => x.name === fDoc.name);
+            if (f && !wanted.includes(f.id)) wanted.push(f.id);
+          }
+          for (const id of db.fieldOrder) if (!wanted.includes(id)) wanted.push(id);
+          if (wanted.length === db.fieldOrder.length && JSON.stringify(wanted) !== JSON.stringify(db.fieldOrder)) {
+            act('reorder-fields', qualified, () => this.updateTable(db.id, { fieldOrder: wanted }));
           }
         }
       }
@@ -912,6 +973,45 @@ export class Weave {
     }
     if (!dryRun && plan.length) this.#audit('schema-applied', { changes: plan.length });
     return plan;
+  }
+
+  /* The half of a table that is not its fields: what it is called in the
+     create action, which columns a reader never sees, which system columns
+     ride along, and the order of the grid. Applied on create so a document
+     builds the table someone described, not a stripped copy of it. */
+  #applyTableCostume(db, tDoc) {
+    const patch = {};
+    if (tDoc.noun) patch.noun = tDoc.noun;
+    if (tDoc.hiddenFields?.length) patch.hiddenFields = [...tDoc.hiddenFields];
+    if (tDoc.systemFields?.length) patch.systemFields = [...tDoc.systemFields];
+    const wanted = [];
+    for (const fDoc of tDoc.fields ?? []) {
+      const f = Object.values(db.fields).find((x) => x.name === fDoc.name);
+      if (f && !wanted.includes(f.id)) wanted.push(f.id);
+    }
+    for (const id of db.fieldOrder) if (!wanted.includes(id)) wanted.push(id);
+    if (wanted.length === db.fieldOrder.length && JSON.stringify(wanted) !== JSON.stringify(db.fieldOrder)) patch.fieldOrder = wanted;
+    if (Object.keys(patch).length) this.updateTable(db.id, patch);
+  }
+
+  // ---------------- the workspace record ----------------
+  /* The workspace's own name and description are workspace data, so they are
+     engine verbs like any other. The HTTP layer adds what only it knows: the
+     hub's name index, which it re-keys after the write. */
+  getWorkspace() {
+    const m = this.state.meta;
+    return { id: m.id, name: m.name, description: m.description ?? '', logo: !!m.logo, requireAuth: !!m.requireAuth };
+  }
+
+  updateWorkspace({ name = null, description = null } = {}) {
+    if (description != null) this.state.meta.description = String(description);
+    if (name != null && name !== this.state.meta.name) {
+      if (!/^[a-z0-9][a-z0-9-_]*$/i.test(name)) throw new WeaveError('Workspace name must be alphanumeric', 'invalid');
+      this.state.meta.name = name;
+    }
+    this.#audit('workspace-updated', { name: this.state.meta.name });
+    this.save();
+    return this.getWorkspace();
   }
 
   // ---------------- keystore (Feature #64) ----------------
@@ -1516,6 +1616,13 @@ export class Weave {
         if (!def || def.type !== f.type) {
           throw new WeaveError(`A definition cannot change its type ('${f.type}' → '${def?.type}') — delete the column and create it anew`, 'invalid');
         }
+        // A definition names its shape under `config`. The flat descriptor
+        // shape describeSchema() hands back used to pass straight through to
+        // an empty config: the caller's intent discarded, the call a success
+        // (Issue #60). Refusing says which shape the write wanted.
+        if (!def.config || typeof def.config !== 'object') {
+          throw new WeaveError("A definition carries its shape under `config` — {type, config: {…}}", 'invalid');
+        }
         this.updateField(owner.id, f.id, { config: def.config ?? {} });
         delete patch.Definition;
       }
@@ -1634,6 +1741,16 @@ export class Weave {
     }
     if (config.default !== undefined && config.default !== null) {
       field.config.default = this.#validateDefault(field, config.default);
+    }
+    // Width belongs to every type and rides its own lane in updateField; a
+    // create takes it too, so standing a column up is one call rather than
+    // two (and so a schema document can carry the width it describes).
+    if (config.width != null) {
+      const width = Number(config.width);
+      if (!Number.isFinite(width) || width < MIN_COLUMN_WIDTH) {
+        throw new WeaveError(`Column width must be a number of at least ${MIN_COLUMN_WIDTH}px`, 'invalid');
+      }
+      field.config.width = Math.round(width);
     }
 
     db.fields[field.id] = field;

@@ -270,7 +270,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if (route === 'GET /api/workspace') {
-          return out(200, { id: weave.state.meta.id, url: `/w/${weave.state.meta.id}/`, name: weave.state.meta.name, description: weave.state.meta.description ?? '', logo: !!weave.state.meta.logo, requireAuth: !!weave.state.meta.requireAuth });
+          const ws = weave.getWorkspace();
+          return out(200, { ...ws, url: `/w/${ws.id}/` });
         }
 
         // Accounts (Feature #14). Once any account exists, only an admin
@@ -346,15 +347,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (Object.keys(body).length === 1) return out(200, { requireAuth: weave.state.meta.requireAuth });
         }
         if (route === 'PATCH /api/workspace') {
-          if (body.description != null) weave.state.meta.description = String(body.description);
-          if (body.name && body.name !== weave.state.meta.name) {
-            if (!/^[a-z0-9][a-z0-9-_]*$/i.test(body.name)) throw new WeaveError('Workspace name must be alphanumeric', 'invalid');
-            if (hub.get(body.name)) throw new WeaveError(`Workspace '${body.name}' already exists`, 'conflict');
-            hub.rename(weave.state.meta.name, body.name);
-            weave.state.meta.name = body.name;
-          }
-          weave.save();
-          return out(200, { id: weave.state.meta.id, url: `/w/${weave.state.meta.id}/`, name: weave.state.meta.name, description: weave.state.meta.description ?? '' });
+          // The record is the engine's; the hub's name index is the server's.
+          const renaming = body.name && body.name !== weave.state.meta.name;
+          if (renaming && hub.get(body.name)) throw new WeaveError(`Workspace '${body.name}' already exists`, 'conflict');
+          const was = weave.state.meta.name;
+          const ws = weave.updateWorkspace({ name: body.name ?? null, description: body.description ?? null });
+          if (renaming) hub.rename(was, ws.name);
+          return out(200, { id: ws.id, url: `/w/${ws.id}/`, name: ws.name, description: ws.description });
         }
         if (route === 'POST /api/markdown') {
           return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention }) });
