@@ -111,7 +111,9 @@
     return next;
   }
 
-  const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled', 'other'];
+  // Four since 2026-08-24: 'other' was retired with the chip system. The
+  // engine migrates anything still stored under it to in-progress.
+  const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
   // Glyphs a state may wear in its chip; '' = none.
   const STATE_ICONS = ['', '○', '◔', '◑', '◕', '●', '✓', '✕', '⏸', '⚑', '★', '!', '?', '→'];
   const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];

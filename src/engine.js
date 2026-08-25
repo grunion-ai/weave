@@ -75,7 +75,11 @@ function docChange(field, before, after) {
   };
 }
 
-const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled', 'other'];
+/* Four categories since 2026-08-24. 'other' was a purple escape hatch no
+   seeded workflow used; anything still stored under it was describing
+   in-progress, and normaliseStates migrates it on the next write. */
+const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
+const RETIRED_STATE_CATEGORIES = { other: 'in-progress' };
 const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
 const MAX_COMPUTE_DEPTH = 8;
 
@@ -313,7 +317,7 @@ function normalizeSelfContainedConfig(type, config = {}) {
   if (type === 'workflow') {
     const states = (config.states ?? []).map((s) => (typeof s === 'string'
       ? { id: slug(s), name: s, category: 'in-progress', default: false }
-      : { id: s.id ?? slug(s.name), name: s.name, category: s.category ?? 'in-progress', default: !!s.default, ...(s.icon ? { icon: String(s.icon) } : {}) }));
+      : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(s.icon ? { icon: String(s.icon) } : {}) }));
     if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
     // The list's order is the order everywhere; the first state is the
     // default unless one is marked (the tray marks none — Kyle, 2026-08-23).

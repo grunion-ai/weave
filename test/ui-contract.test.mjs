@@ -754,7 +754,9 @@ test('the resize grip is a visible edge, not an invisible strip', () => {
 
 test('a chip is sized by its label, never by a fixed width', () => {
   const chip = rulesFor('.chip');
-  assert.equal(chip.display, 'inline-block', 'inline-block shrink-wraps the label');
+  // inline-flex since the chip system landed (2026-08-24): a chip now carries
+  // a leading glyph beside its label, and both still shrink-wrap.
+  assert.equal(chip.display, 'inline-flex', 'inline-flex shrink-wraps the label');
   assert.ok(chip.padding, 'the chip is padding around text, not a box of a set size');
   for (const prop of ['width', 'min-width']) {
     assert.equal(chip[prop], undefined, `.chip must not declare ${prop}`);
@@ -985,7 +987,7 @@ test('the event detail page reads one event and is laid out like any entity page
 test('the Activity table permalinks each row\'s record without hijacking the row', () => {
   assert.match(fnBody('showActivity'), /recordChip\(a\)/, 'the record cell is the same chip as the detail page');
   const chip = fnBody('recordChip');
-  assert.match(chip, /class: 'chip rel/, 'a relation chip, as on any entity page');
+  assert.match(chip, /class: 'k k-rel/, 'a relation chip, as on any entity page');
   assert.match(chip, /href: `#\/entity\/\$\{a\.entityId\}`/, 'permalinking the entity');
   assert.match(chip, /stopPropagation/, 'without also opening the event around it');
 });
@@ -1388,10 +1390,11 @@ test('relation is a tile in the add tray and posts to /relations; files and docu
   assert.match(dlg, /dsection\('Kind', segCtl\(fdc\.DOCUMENT_KINDS/);
 });
 
-/* Kyle, 2026-08-23: an 'other' state category; states drag to reorder and
-   the selector follows that order; no default radio — icons instead. */
-test('workflow states: other category tinted, rows drag to reorder, icon instead of a default radio', () => {
-  assert.ok(rulesFor('.chip.state-other').background, 'other has a chip tint');
+/* Kyle, 2026-08-23: states drag to reorder and the selector follows that
+   order; no default radio — icons instead. The 'other' category this test
+   also guarded was retired on 2026-08-24 with the chip system. */
+test('workflow states: rows drag to reorder, icon instead of a default radio, and no fifth category', () => {
+  assert.deepEqual(rulesFor('.chip.state-other'), {}, "'other' leaves no tint behind");
   const ed = fnBody('stateListEditor');
   assert.match(ed, /draggable: 'true'/);
   assert.match(ed, /fdc\.moveItem\(state\.states, dragFrom, i\)/, 'a drop reorders the states');

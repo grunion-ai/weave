@@ -195,7 +195,7 @@ button.chip-trigger { cursor: pointer; font: inherit; }
    48px tall and set the height of every row beside it. Overflow is the
    clipped-cell marker's job now, not the row's. */
 .wv-grid tbody .ms-box { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-wrap: nowrap; }
-.wv-grid tbody .ms-box .chip { margin: 0; }
+.wv-grid tbody .ms-box .chip, .wv-grid tbody .ms-box .k { margin: 0; }
 .wv-grid tbody td { padding-top: var(--wv-row-pad); padding-bottom: var(--wv-row-pad); }
 /* Every cell edits, so every cell is a target. */
 .wv-grid tbody td { cursor: text; }
@@ -209,6 +209,7 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 /* A chip is still a chip — the value comes from a set of options — it just
    stops wearing a box inside the grid. */
 .wv-grid .chip { border-color: transparent; }
+.wv-grid .k { max-width: 100%; }
 /* Computed / read-only cells must not read as editable — the glyph says so,
    a tinted box only added another rectangle to a row full of them. */
 .wv-grid td.cell-computed { background: none; color: var(--tblr-secondary); cursor: default; }
@@ -218,9 +219,9 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 .wv-grid .inline-edit:hover { border-color: transparent; background: none; }
 .wv-grid .inline-edit:focus { border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
 /* Remove and link are chrome about the row, not part of it. */
-.wv-grid .chip .x, .wv-grid .ms-box > .btn, .wv-grid .date-pick-btn { opacity: 0; transition: opacity .12s ease; }
-.wv-grid tr:hover .chip .x, .wv-grid tr:hover .ms-box > .btn, .wv-grid tr:hover .date-pick-btn,
-.wv-grid tr:focus-within .chip .x, .wv-grid tr:focus-within .ms-box > .btn, .wv-grid tr:focus-within .date-pick-btn { opacity: 1; }
+.wv-grid .chip .x, .wv-grid .k .x, .wv-grid .ms-box > .btn, .wv-grid .date-pick-btn { opacity: 0; transition: opacity .12s ease; }
+.wv-grid tr:hover .chip .x, .wv-grid tr:hover .k .x, .wv-grid tr:hover .ms-box > .btn, .wv-grid tr:hover .date-pick-btn,
+.wv-grid tr:focus-within .chip .x, .wv-grid tr:focus-within .k .x, .wv-grid tr:focus-within .ms-box > .btn, .wv-grid tr:focus-within .date-pick-btn { opacity: 1; }
 
 /* A capped column says what it is hiding: a marker at rest, the whole value
    on hover. Text gets the native ellipsis too; chips never do, which is why
@@ -242,7 +243,7 @@ button.chip-trigger { cursor: pointer; font: inherit; }
   box-shadow: var(--tblr-box-shadow); pointer-events: none;
 }
 .cell-pop .inline-edit { border-color: transparent; background: none; width: auto; }
-.cell-pop .ms-box > .btn, .cell-pop .chip .x, .cell-pop .date-pick-btn { display: none; }
+.cell-pop .ms-box > .btn, .cell-pop .chip .x, .cell-pop .k .x, .cell-pop .date-pick-btn { display: none; }
 .computed { cursor: default; }
 .computed-mark { margin-right: 5px; opacity: .55; font-size: 11px; }
 /* Column header = the field's control (Feature #41). The ⋮ is absolutely
@@ -324,21 +325,125 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 .list-detail { border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); padding: 10px 16px; }
 .detail-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2px 20px; margin-bottom: 8px; }
 
-/* ---------- state chips: soft alpha tints + soft outline (Radix style) ----------
-   Hand-inlined alpha values; readable in both themes. */
-/* Slightly rounded blocks (Radix Themes soft badges), not pills. */
-.chip { display: inline-block; font-size: 11.5px; line-height: 1.6; border-radius: 4px; padding: 1px 8px; background: var(--tblr-bg-surface-secondary); border: 1px solid var(--tblr-border-color); }
-.chip.state-not-started { background: rgba(0, 5, 20, .05); border-color: rgba(0, 10, 40, .16); color: #60646c; }
-.chip.state-in-progress { background: rgba(71, 105, 235, .10); border-color: rgba(71, 105, 235, .38); color: #3a5bc7; }
-.chip.state-done { background: rgba(46, 160, 67, .12); border-color: rgba(46, 160, 67, .42); color: #218358; }
-.chip.state-canceled { background: rgba(229, 72, 77, .10); border-color: rgba(229, 72, 77, .38); color: #ce2c31; text-decoration: line-through; }
-[data-bs-theme="dark"] .chip.state-not-started { background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .16); color: #b0b4ba; }
-[data-bs-theme="dark"] .chip.state-in-progress { background: rgba(99, 140, 245, .16); border-color: rgba(99, 140, 245, .48); color: #9eb1ff; }
-[data-bs-theme="dark"] .chip.state-done { background: rgba(70, 180, 110, .15); border-color: rgba(70, 180, 110, .48); color: #71d083; }
-[data-bs-theme="dark"] .chip.state-canceled { background: rgba(255, 100, 100, .14); border-color: rgba(255, 100, 100, .48); color: #ff9592; }
-.chip.rel { cursor: pointer; background: rgba(var(--tblr-primary-rgb), .08); border-color: transparent; }
-.chip.rel a { color: var(--tblr-primary); text-decoration: none; }
-.chip .x { margin-left: 4px; cursor: pointer; color: var(--tblr-secondary); }
+/* ---------- the chip system (design review 2026-08-24, set E) ----------
+   Three tiers carry every value a row can hold, and each tier owns exactly one
+   meaning, so a new field type inherits a look instead of inventing one:
+
+     value    a filled tint, no border   — the value was chosen from a set
+     pointer  a 1px outline plus ↗       — clicking goes somewhere
+     computed a glyph, then the value    — not yours to type
+
+   Kyle settled the two open axes on 2026-08-24: 4px rather than a pill, and no
+   fill at all behind a pointer. Colour is spent only in the value tier, and
+   only out of the ramp below — which is why a relation no longer wears brand
+   blue and stops competing with the in-progress state for the same channel.
+   The pure half of this (ramp order, hex→hue, the avatar hash) is
+   public/chip-core.js. */
+
+.k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+     font-size: 11.5px; line-height: 1.7; padding: 1px 8px; border-radius: 4px; border: 0; }
+.k .ico { font-size: 10.5px; line-height: 1; opacity: .85; flex: none; }
+
+/* tier 1 — value. --fill and --text come from the .hue-* class beside it. */
+.k-state, .k-select, .k-multi, .k-key {
+  background: var(--fill, var(--tblr-bg-surface-secondary));
+  color: var(--text, var(--tblr-secondary));
+  border: 0;
+}
+/* Category owns the colour. Binding it here as well as in the class app.js
+   emits means a state chip is right even when the hue class is missing. */
+.k-state.cat-not-started { --fill: rgba(0, 5, 20, .05);     --text: #60646c; }
+.k-state.cat-in-progress { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; }
+.k-state.cat-done        { --fill: rgba(46, 160, 67, .14);  --text: #218358; }
+.k-state.cat-canceled    { --fill: rgba(229, 72, 77, .12);  --text: #ce2c31; text-decoration: line-through; }
+[data-bs-theme="dark"] .k-state.cat-not-started { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
+[data-bs-theme="dark"] .k-state.cat-in-progress { --fill: rgba(99, 140, 245, .18);  --text: #9eb1ff; }
+[data-bs-theme="dark"] .k-state.cat-done        { --fill: rgba(70, 180, 110, .16);  --text: #71d083; }
+[data-bs-theme="dark"] .k-state.cat-canceled    { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
+.k-key { font-family: var(--tblr-font-monospace); font-size: 11px; letter-spacing: .02em; }
+
+/* tier 2 — pointer. Neutral by design: the moment a pointer carries a hue it
+   reads as a value, and the row loses the one thing colour was meant to say. */
+.k-rel, .k-doc, .k-attach, .k-more {
+  background: none;
+  border: 1px solid var(--tblr-border-color);
+  color: var(--tblr-body-color);
+  cursor: pointer;
+}
+.k-rel:hover, .k-doc:hover, .k-attach:hover, .k-more:hover {
+  border-color: var(--tblr-primary); color: var(--tblr-primary);
+}
+.k-rel::after, .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: 10px; margin-left: 1px; }
+.k-rel { padding-left: 2px; }
+.k-rel a { color: inherit; text-decoration: none; }
+.k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; opacity: .6; }
+.k-more { font-family: var(--tblr-font-monospace); font-size: 10.5px; }
+
+/* An empty cell is an invitation. Dimming it to 50% reads as "you may not",
+   which is the opposite of what is true. */
+.k-add, .k-doc.empty, .k-attach.empty {
+  background: none; border: 1px dashed var(--tblr-border-color);
+  color: var(--tblr-secondary); cursor: pointer;
+}
+.k-doc.empty, .k-attach.empty { border-style: dashed; }
+
+/* tier 3 — computed. Never a chip: the glyph says "not editable" before a
+   click has to prove it. */
+.k-computed { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
+
+/* One neutral system chip, replacing .system-chip and the old .kind-badge —
+   they differed only by case and letter-spacing and never shared a row. */
+.k-sys { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary);
+         font-family: var(--tblr-font-monospace); font-size: 9.5px; line-height: 1.9;
+         letter-spacing: .11em; text-transform: uppercase; padding: 0 7px; }
+
+.k .x { margin-left: 2px; cursor: pointer; color: var(--tblr-secondary); font-size: 11px; }
+.k .x:hover { color: var(--tblr-danger); }
+.k.deleted { opacity: .55; text-decoration: line-through; }
+
+/* The avatar is structural, not decorative: it is what separates a person from
+   every other pointer on the row. Colour is hashed from the name, so the same
+   colleague is the same colour in every table with nothing to configure. */
+.av { flex: none; width: 17px; height: 17px; border-radius: 3px; overflow: hidden;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: var(--tblr-font-monospace); font-size: 8.5px; font-weight: 600; letter-spacing: .02em;
+      background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
+.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.unknown { background: none; box-shadow: inset 0 0 0 1px var(--tblr-border-color); color: var(--tblr-secondary); }
+
+/* ---------- the hue ramp ----------
+   Ten hues as a --fill/--text pair, redefined for dark rather than inverted:
+   a light tint on navy is the classic unreadable cell. The first seven hexes
+   are exactly today's OPTION_COLORS, so a stored option migrates by name.
+   Ramp order (chip-core.js RAMP_ORDER) decides what a new option gets; slate
+   is held back as the resting colour for anything uncoloured. */
+.hue-slate  { --fill: rgba(0, 5, 20, .05);      --text: #60646c; }
+.hue-blue   { --fill: rgba(71, 105, 235, .12);  --text: #3a5bc7; }
+.hue-green  { --fill: rgba(46, 160, 67, .14);   --text: #218358; }
+.hue-amber  { --fill: rgba(245, 159, 0, .16);   --text: #7a5209; }
+.hue-red    { --fill: rgba(229, 72, 77, .12);   --text: #ce2c31; }
+.hue-purple { --fill: rgba(142, 78, 198, .12);  --text: #7a3fb8; }
+.hue-cyan   { --fill: rgba(0, 162, 199, .14);   --text: #0a6379; }
+.hue-pink   { --fill: rgba(214, 64, 159, .12);  --text: #a32677; }
+.hue-teal   { --fill: rgba(18, 165, 148, .14);  --text: #10695c; }
+.hue-orange { --fill: rgba(247, 107, 21, .14);  --text: #9a4310; }
+[data-bs-theme="dark"] .hue-slate  { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
+[data-bs-theme="dark"] .hue-blue   { --fill: rgba(99, 140, 245, .18);  --text: #9eb1ff; }
+[data-bs-theme="dark"] .hue-green  { --fill: rgba(70, 180, 110, .16);  --text: #71d083; }
+[data-bs-theme="dark"] .hue-amber  { --fill: rgba(240, 190, 80, .18);  --text: #f2c968; }
+[data-bs-theme="dark"] .hue-red    { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
+[data-bs-theme="dark"] .hue-purple { --fill: rgba(180, 120, 240, .18); --text: #c9a6f5; }
+[data-bs-theme="dark"] .hue-cyan   { --fill: rgba(80, 190, 240, .18);  --text: #7fd3f5; }
+[data-bs-theme="dark"] .hue-pink   { --fill: rgba(240, 120, 170, .18); --text: #f79ec0; }
+[data-bs-theme="dark"] .hue-teal   { --fill: rgba(70, 200, 180, .16);  --text: #6fdcc8; }
+[data-bs-theme="dark"] .hue-orange { --fill: rgba(250, 150, 80, .18);  --text: #ffb183; }
+
+/* .chip stays as an alias for one release: the board, the list, the doc rail
+   and the cell popover all still ask for it while their callers migrate. */
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; line-height: 1.7;
+        border-radius: 4px; padding: 1px 8px; border: 0;
+        background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
+.chip .x { margin-left: 2px; cursor: pointer; color: var(--tblr-secondary); }
 .chip .x:hover { color: var(--tblr-danger); }
 
 
@@ -526,7 +631,6 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .result:hover { background: var(--tblr-active-bg); }
 .result .snip { color: var(--tblr-secondary); font-size: 12px; }
 .result-main { display: flex; align-items: center; gap: 7px; }
-.kind-badge { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); border: 1px solid var(--tblr-border-color); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
 .copy-btn { margin-left: auto; }
 .snip.mono { font-family: var(--tblr-font-monospace); font-size: 10.5px; color: var(--tblr-secondary); }
 .kbd-hint { color: var(--tblr-secondary); font-size: 12px; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); padding: 2px 8px; }
@@ -1051,9 +1155,8 @@ textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-fo
 .row-deleted { opacity: .5; }
 .row-deleted .open-link { text-decoration: line-through; }
 
-/* states: the 'other' category and the tray's reorderable rows (2026-08-23) */
-.chip.state-other { background: rgba(142, 78, 198, .10); border-color: rgba(142, 78, 198, .38); color: #7a3fb8; }
-[data-bs-theme="dark"] .chip.state-other { background: rgba(180, 120, 240, .16); border-color: rgba(180, 120, 240, .48); color: #c9a6f5; }
+/* The tray's reorderable option rows (2026-08-23). The 'other' category that
+   used to be styled here was retired on 2026-08-24 — see chip-core.js. */
 .opt-grip { color: var(--tblr-secondary); cursor: grab; font-size: 12px; user-select: none; }
 .opt-row.dragging { opacity: .4; }
 .opt-row.drop-target { box-shadow: 0 -2px 0 var(--tblr-primary); }

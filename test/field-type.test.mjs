@@ -163,7 +163,7 @@ test('a field cell is not rendered as an editable text box', async () => {
     'the grid must special-case `field`, or the text fallback claims it');
   const at = APP.indexOf("if (f.type === 'field') {");
   const body = APP.slice(at, APP.indexOf('// Attachments (Feature #16)', at));
-  assert.match(body, /class: 'computed'/,
+  assert.match(body, /class: 'computed k k-computed'/,
     'a structured value must not look editable in a cell — same treatment as document');
   assert.doesNotMatch(body, /addEventListener\('change'/, 'no free-text patching of a definition');
   assert.match(APP, /field: '⌗'/, 'the type needs its own computed mark');

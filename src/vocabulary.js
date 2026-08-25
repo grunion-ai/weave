@@ -78,7 +78,7 @@ export const VOCABULARY = {
   dateFormats: ['iso', 'us', 'eu', 'long'],
   documentKinds: ['markdown', 'html', 'code'],
   cardinalities: ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'],
-  stateCategories: ['not-started', 'in-progress', 'done', 'canceled', 'other'],
+  stateCategories: ['not-started', 'in-progress', 'done', 'canceled'],
   aggregates: ['count', 'sum', 'avg', 'min', 'max', 'join'],
   // Off by default; add them where provenance is part of the record.
   systemFields: ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'],

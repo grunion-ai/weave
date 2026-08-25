@@ -868,10 +868,14 @@ test('document: kind is markdown by default; html and code are the other kinds',
 });
 
 /* ---------- workflow states: an 'other' category, icons, order (Kyle, 2026-08-23) ---------- */
-test("a state may be 'other' — none of not-started / in-progress / done / canceled", () => {
+test("a state stored as 'other' migrates instead of failing validation (retired 2026-08-24)", () => {
+  // 'other' was a purple escape hatch no seeded workflow used. A caller that
+  // still sends it was describing in-progress, so the normaliser says so
+  // rather than rejecting a workspace that was valid last week.
   const { w, tasks } = buildWorkspace();
   const f = w.addField(tasks, { name: 'Lane', type: 'workflow', config: { states: [{ name: 'Parked', category: 'other' }, { name: 'Live', category: 'in-progress' }] } });
-  assert.equal(f.config.states[0].category, 'other');
+  assert.equal(f.config.states[0].category, 'in-progress');
+  assert.equal(f.config.states[1].category, 'in-progress');
 });
 
 test('a state carries an icon, exported to the client; order is the order given; the first state is the default when none is marked', () => {

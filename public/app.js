@@ -478,7 +478,35 @@ function stateLabel(fieldSchema, stateName) {
   return icon ? `${icon} ${stateName}` : stateName;
 }
 function stateCategory(fieldSchema, stateName) {
-  return fieldSchema.states?.find((s) => s.name === stateName)?.category ?? 'not-started';
+  const found = fieldSchema.states?.find((s) => s.name === stateName)?.category;
+  // A state stored under the retired 'other' category still has to render, so
+  // it lands on the default rather than on a class with no rule behind it.
+  return found ? chipCore.categoryOrDefault(found) : 'not-started';
+}
+
+/* A state chip: its tier, its category, and the hue that category owns.
+   Category keeps the colour because status has to mean the same thing in
+   every table — it is the one part of the ramp an author cannot repaint. */
+function stateChipClass(fieldSchema, stateName, bare = false) {
+  const cat = stateCategory(fieldSchema, stateName);
+  return `${bare ? '' : 'k '}k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`.trim();
+}
+
+/* weave has no person type yet — a colleague is a relation to whatever table
+   holds people — so person-ness is read off the target table's name. When a
+   real flag lands this is the one function that changes. */
+const PERSON_TABLE = /^(people|persons?|members?|users?|contacts?|owners?|team|staff|employees?)$/i;
+function relationIsPerson(f) {
+  const table = String(f?.targetDb ?? '').split('/').pop() ?? '';
+  return PERSON_TABLE.test(table.trim());
+}
+/* Initials on a hue hashed from the name, so the same colleague is the same
+   colour in every table with nothing to configure. */
+function personAvatar(f, target) {
+  if (!relationIsPerson(f)) return null;
+  const name = target?.name ?? '';
+  if (!name) return el('span', { class: 'av unknown' }, '?');
+  return el('span', { class: `av hue-${chipCore.hueForName(name)}` }, chipCore.initialsFor(name));
 }
 
 function documentFields(db) {
@@ -808,7 +836,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
         await onPick(o);
       },
     },
-      o.chip ? el('span', { class: `chip ${o.cls ?? ''}` }, o.label)
+      o.chip ? el('span', { class: o.cls ?? 'k k-multi hue-slate' }, o.label)
         : o.iconly ? el('span', { class: 'picker-label picker-iconly' }, iconEl(`iconly:${o.iconly}`), o.label)
         : el('span', { class: 'picker-label' }, o.label),
       o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
@@ -1156,25 +1184,31 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     } catch (err) { toast(err.message, true); }
   };
 
-  // Option colors come from the field dialog's swatches; a soft alpha tint
-  // in the option's own hue, readable in both themes (Radix-style).
-  function optionChipStyle(field, name) {
-    const hex = (field.optionsFull ?? []).find((o) => o.name === name)?.color;
-    return hex ? `background:${hex}1f;border-color:${hex}66;color:${hex}` : undefined;
+  // An option's colour is a name from the ten-hue ramp, not a loose hex —
+  // chip-core.js reads the stored hex back as one, so an option that predates
+  // the ramp keeps exactly the colour it had. Uncoloured rests on slate.
+  function optionHue(field, name) {
+    const o = (field.optionsFull ?? []).find((x) => x.name === name);
+    return `hue-${chipCore.hueFromHex(o?.color)}`;
+  }
+  // The glyph an option wears, if its author gave it one.
+  function optionIcon(field, name) {
+    const ico = (field.optionsFull ?? []).find((x) => x.name === name)?.icon;
+    return ico ? el('span', { class: 'ico' }, ico) : null;
   }
 
   if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
     // Read-only: the glyph says "computed, not editable" at a glance so these
     // are not mistaken for the chips and inputs beside them.
-    const box = el('span', { class: 'computed', title: `${f.type} — read-only` },
+    const box = el('span', { class: 'computed k k-computed', title: `${f.type} — read-only` },
       el('span', { class: 'computed-mark' }, computedMark(f.type)), fieldValueCell(val) || '—');
     if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
     return box;
   }
   if (f.type === 'workflow') {
     return chipPicker({
-      trigger: el('button', { class: `chip state-${stateCategory(f, val)}`, type: 'button', title: f.name }, stateLabel(f, val)),
-      options: f.states.map((s) => ({ name: s.name, cls: `state-${s.category}`, label: stateLabel(f, s.name) })),
+      trigger: el('button', { class: stateChipClass(f, val), type: 'button', title: f.name }, stateLabel(f, val)),
+      options: f.states.map((s) => ({ name: s.name, cls: stateChipClass(f, s.name, true), label: stateLabel(f, s.name) })),
       current: val,
       onPick: async (name) => {
         try {
@@ -1186,7 +1220,8 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   }
   if (f.type === 'select') {
     return chipPicker({
-      trigger: el('button', { class: 'chip', type: 'button', title: f.name, style: optionChipStyle(f, val) }, val ?? '—'),
+      trigger: el('button', { class: `k k-select ${optionHue(f, val)}`, type: 'button', title: f.name },
+        optionIcon(f, val), val ?? '—'),
       options: [{ name: '—' }, ...f.options.map((o) => ({ name: o }))],
       current: val ?? '—',
       onPick: (name) => patch(name === '—' ? null : name),
@@ -1195,8 +1230,8 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   if (f.type === 'multiselect') {
     const current = Array.isArray(val) ? val : [];
     const box = el('span', { class: 'ms-box', title: 'Edit selections' });
-    for (const v of current) box.append(el('span', { class: 'chip', style: optionChipStyle(f, v) }, v), ' ');
-    if (!current.length) box.append(el('span', { class: 'chip chip-add' }, '+'));
+    for (const v of current) box.append(el('span', { class: `k k-multi ${optionHue(f, v)}` }, optionIcon(f, v), v), ' ');
+    if (!current.length) box.append(el('span', { class: 'k k-add' }, '+'));
     chipPickerMulti({
       trigger: box,
       options: f.options.map((o) => ({ id: o, label: o, chip: true })),
@@ -1205,6 +1240,13 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     });
     return box;
   }
+  if (f.type === 'key') {
+    // A key is generated, not typed. It reads as a value chip in slate and
+    // in the monospace an identifier deserves — the identity treatment the
+    // row's own #41 ↗ already gets. (Feature: chip system, 2026-08-24.)
+    return el('span', { class: 'k k-key hue-slate', title: `${f.name} — generated` },
+      el('span', { class: 'ico' }, '✱'), fieldValueCell(val) || '—');
+  }
   if (f.type === 'checkbox') {
     const cb = el('input', { type: 'checkbox', class: 'form-check-input', onchange: () => patch(cb.checked) });
     cb.checked = !!val;
@@ -1212,9 +1254,16 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   }
   if (f.type === 'relation') {
     const box = el('span', { class: 'ms-box' });
-    const current = val == null ? [] : Array.isArray(val) ? val : [val];
+    const all = val == null ? [] : Array.isArray(val) ? val : [val];
+    // In the grid a cell is nowrap and used to clip whatever did not fit. Show
+    // the first few and hand the rest to a count that opens the cell popover,
+    // so the row says how much it is not showing.
+    const CAP = 3;
+    const current = compact && all.length > CAP ? all.slice(0, CAP) : all;
+    const hidden = all.length - current.length;
     for (const s of current) {
-      box.append(el('span', { class: 'chip rel' },
+      box.append(el('span', { class: 'k k-rel' },
+        personAvatar(f, s),
         el('a', { href: `#/entity/${s.id}`, onclick: (e) => e.stopPropagation() }, s.name || `#${s.publicId}`),
         el('span', {
           class: 'x',
@@ -1225,6 +1274,11 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
             } catch (err) { toast(err.message, true); }
           },
         }, '×')), ' ');
+    }
+    if (hidden > 0) {
+      box.append(el('span', {
+        class: 'k k-more', title: `${hidden} more — open the cell to see them`,
+      }, `+${hidden}`), ' ');
     }
     box.append(el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny',
@@ -1255,7 +1309,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   if (f.type === 'document') {
     // Documents are edited through the doc editor surfaces, not a cell input.
     const text = String(val ?? '');
-    return el('span', { class: 'computed', title: 'document — edit in the doc editor' },
+    return el('span', { class: 'computed k k-computed', title: 'document — edit in the doc editor' },
       el('span', { class: 'computed-mark' }, computedMark('document')),
       text ? text.slice(0, 60).replace(/\n/g, ' ') + (text.length > 60 ? '…' : '') : '—');
   }
@@ -1269,7 +1323,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     // `val` (item.fields) is the engine's display sentence — 'select · 3
     // options'; the definition itself rides in item.raw.
     const def = item.raw?.[f.name] ?? null;
-    const chip = el('span', { class: 'computed', title: compact ? 'field definition — edit on the entity page' : 'field definition — click to edit' },
+    const chip = el('span', { class: 'computed k k-computed', title: compact ? 'field definition — edit on the entity page' : 'field definition — click to edit' },
       el('span', { class: 'computed-mark' }, computedMark('field')),
       def == null ? '—' : String(val));
     if (compact) return chip;
@@ -1309,8 +1363,8 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   // the entity page manages the list — upload lands blob and column together.
   if (f.type === 'attachments') {
     const ids = item.raw?.[f.name] ?? [];
-    const chip = el('span', { class: 'computed', title: 'attachments' },
-      el('span', { class: 'computed-mark' }, iconEl('iconly:paper', 'wv-icon')),
+    const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' empty'), title: 'attachments' },
+      el('span', { class: 'ico' }, iconEl('iconly:paper', 'wv-icon')),
       ids.length ? String(val ?? `${ids.length}`) : '—');
     if (compact) return chip;
     const box = el('span', { class: 'attach-box' });
@@ -1391,7 +1445,7 @@ function docChips(item, db, onOpen) {
   for (const f of documentFields(db)) {
     const kind = globalThis.WeaveEditorLib.docKind(item.docs?.[f.name]);
     box.append(el('button', {
-      class: 'chip doc-chip' + (kind ? '' : ' empty'),
+      class: 'k k-doc doc-chip' + (kind ? '' : ' empty'),
       type: 'button',
       title: kind ? `Open ${f.name} (${kind})` : `${f.name} is empty — click to write it`,
       onclick: (e) => { e.stopPropagation(); onOpen(f.name); },
@@ -4539,7 +4593,7 @@ async function showActivity(param) {
     onclick: () => { location.hash = `#/activity/${a.id}`; },
   },
     el('td', { class: 'activity-when', title: a.ts }, new Date(a.ts).toLocaleString()),
-    el('td', {}, el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind)),
+    el('td', {}, el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
     el('td', {}, activitySummary(a)),
     el('td', {}, recordChip(a)),
     el('td', {}, a.entityName ?? '—')));
@@ -4569,7 +4623,7 @@ async function showActivity(param) {
    uses: a permalink to the entity, swallowing the click so the row or page
    around it keeps its own destination. */
 function recordChip(a) {
-  return el('span', { class: 'chip rel' + (a.deleted ? ' deleted' : '') },
+  return el('span', { class: 'k k-rel' + (a.deleted ? ' deleted' : '') },
     el('a', { href: `#/entity/${a.entityId}`, onclick: (e) => e.stopPropagation() },
       `${a.db ?? '—'} #${a.publicId}${a.deleted ? ' (deleted)' : ''}`));
 }
@@ -4593,7 +4647,7 @@ async function showActivityDetail(id) {
   const fieldsBody = el('div', { class: 'card-body' },
     row('Record', recordChip(a)),
     row('Table', a.db ? el('a', { href: `#/table/${a.dbId}` }, a.db) : '—'),
-    row('Event', el('span', { class: `chip activity-kind kind-${a.kind}` }, a.kind)),
+    row('Event', el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
     row('When', el('span', { title: a.ts }, new Date(a.ts).toLocaleString())),
     row('Actor', a.actor ?? '—'),
     ...Object.entries(a.detail ?? {}).map(([k, v]) => row(k, fmtValue(v))),
@@ -4685,7 +4739,7 @@ async function showHome() {
        to no space. */
     el('div', { class: 'card list-rows system-tables' },
       el('div', { class: 'list-row', onclick: () => { location.hash = '#/activity'; } },
-        el('span', {}, 'Activity'), el('span', { class: 'chip system-chip' }, 'system'),
+        el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
         el('span', { class: 'spacer' }),
         el('span', { class: 'pid' }, 'every event in this workspace'))));
   // The spaces of this workspace, AS the Spaces registry grid (Kyle,
@@ -4713,7 +4767,7 @@ async function showHome() {
       main.append(el('div', { class: 'card list-rows' },
         ...views.map((v) => el('div', { class: 'list-row', onclick: () => { location.hash = `#/view/${v.id}`; } },
           el('span', {}, v.name),
-          v.shared ? el('span', { class: 'chip system-chip' }, 'shared') : null,
+          v.shared ? el('span', { class: 'k k-sys' }, 'shared') : null,
           el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, `${v.blocks.length} block${v.blocks.length === 1 ? '' : 's'}`)))));
     }
@@ -4747,7 +4801,7 @@ function resultRow(hit, onPick) {
   const permalink = location.origin + hit.url;
   return el('div', { class: 'result', onclick: () => onPick(hit) },
     el('div', { class: 'result-main' },
-      el('span', { class: 'kind-badge' },
+      el('span', { class: 'k k-sys' },
         ...(hit.kind === 'workspace'
           ? [el('img', { class: 'kind-mark', src: '/brand/weave-favicon.svg', alt: '' }), ` ${hit.kind}`]
           : [`${KIND_ICON[hit.kind] ?? ''} ${hit.kind}`])),
