@@ -48,7 +48,9 @@ body { font-size: 14px; background: var(--wv-canvas); }
 /* ---------- sidebar ---------- */
 /* Sidebar sits directly on the cream canvas — no border, no surface of its
    own; the white content panel provides all the separation (Buzz idiom). */
-#sidebar { width: 240px; flex-shrink: 0; background: transparent; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+/* 264px is the comfortable minimum (Kyle, 2026-08-25, Issue #77): 240px
+   compacted the rows once counts and carets joined the labels. */
+#sidebar { width: 264px; flex-shrink: 0; background: transparent; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 .brand { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
 /* The workspace name is the way home (Kyle, 2026-08-24). It stays the
    wordmark — brand color, no link blue — and earns an underline on hover;
@@ -124,6 +126,14 @@ a.nav-space:hover { color: var(--tblr-primary); }
 #ws-list:empty { display: none; }
 .rail-spacer { flex: 1; }
 #app.nav-collapsed #sidebar { display: none; }
+/* Collapsed-nav slide-out (Issue #77): a slim hot strip where the sidebar's
+   edge used to be. Resting on it slides the nav out OVER the page — the
+   workspace rail stays put — and clicking it pins the nav open again. The
+   overlay needs the canvas color it normally borrows by being transparent. */
+#nav-hot-strip { display: none; }
+#app.nav-collapsed #nav-hot-strip { display: block; position: fixed; left: 52px; top: 0; width: 14px; height: 100vh; z-index: 55; cursor: e-resize; }
+#app.nav-collapsed.nav-peek #sidebar { display: flex; position: fixed; left: 52px; top: 0; z-index: 70; background: var(--wv-canvas); box-shadow: var(--wv-panel-shadow); border-radius: 0 14px 14px 0; animation: nav-peek-slide .16s ease; }
+@keyframes nav-peek-slide { from { transform: translateX(-16px); opacity: .5; } to { transform: none; opacity: 1; } }
 /* Expand control keeps the collapse chevron's upper-left position (fixed
    beside the rail) instead of stacking as a workspace chip. */
 #nav-expand { position: fixed; top: 10px; left: 60px; z-index: 60; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
@@ -165,8 +175,6 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 /* Keyboard focus needs to be as loud as hover — arrows move focus, not hover. */
 .chip-pop-row:focus-visible { box-shadow: inset 0 0 0 2px var(--tblr-primary); }
 .chip-pop-check { margin-left: auto; color: var(--tblr-primary); font-weight: 700; }
-.doc-preview { color: var(--tblr-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; flex-shrink: 1; }
-.card-doc-preview { margin-top: 4px; max-width: none; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
 /* ---------- main + toolbar ---------- */
 /* The content panel is THE surface: white, big rounded corners, floating on
@@ -175,7 +183,6 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 #main { flex: 1; padding: 24px 28px; min-width: 0; margin: 8px 8px 8px 0; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-height: calc(100vh - 16px); }
 .wv-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .wv-toolbar h1 { font-size: 19px; margin: 0 auto 0 0; }
-.view-switch .btn.active { background: var(--tblr-primary); border-color: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); }
 
 /* ---------- table view ---------- */
 /* position:relative so the clipped-cell overlay can hang off the wrapper —
@@ -300,23 +307,6 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    rather than dimmed: 50% opacity reads as "you may not", which is the
    opposite of what an empty document field is telling you. */
 .doc-chip { max-width: 190px; }
-.doc-row td { background: var(--tblr-bg-surface-secondary); }
-.doc-row:hover td { background: var(--tblr-bg-surface-secondary); box-shadow: none; }
-
-/* ---------- board view ---------- */
-.board { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 20px; }
-.board-col { background: var(--tblr-bg-surface-secondary); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); min-width: 230px; width: 230px; padding: 8px; }
-.board-col h3 { margin: 2px 4px 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); display: flex; justify-content: space-between; }
-.board-col.dragover { outline: 2px dashed var(--tblr-primary); }
-.board-card { padding: 8px 10px; margin-bottom: 8px; cursor: pointer; }
-.board-card:hover { border-color: var(--tblr-primary); }
-.board-card.editing { cursor: default; border-color: var(--tblr-primary); }
-.card-top { display: flex; align-items: center; margin-bottom: 2px; }
-.card-top .pid { text-decoration: none; color: var(--tblr-secondary); font-size: 11px; }
-.card-top .pid:hover { color: var(--tblr-primary); }
-.card-name { width: 100%; border: none; background: none; font: inherit; color: inherit; padding: 2px 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card-name:hover, .card-name:focus { background: var(--tblr-bg-surface-secondary); border-radius: 5px; outline: none; }
-.card-fields { border-top: 1px solid var(--tblr-border-color); margin-top: 7px; padding-top: 6px; }
 
 /* ---------- list view ---------- */
 .list-rows { overflow: hidden; }
@@ -561,25 +551,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-head .activity-title { font-size: 20px; font-weight: 700; padding: 2px 4px; flex: 1; min-width: 0; }
 .chip.rel.deleted a { text-decoration: line-through; color: var(--tblr-secondary); }
 
-/* ---------- inline document editor (tabs across document fields) ---------- */
-.doc-inline-wrap { padding: 10px 6px; }
-textarea.doc-inline { width: 100%; min-height: 170px; font-family: var(--tblr-font-monospace); font-size: 12.5px; }
-/* The shared Vditor mounted over a focused row cell (Issue #89): the same
-   footprint the textarea had, boxed so the cell reads as a field. */
-.doc-inline-editor { min-height: 170px; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); padding: 6px 10px; position: relative; }
-.doc-inline-editor .vditor { border: 0; background: transparent; }
-.doc-inline-editor .vditor-toolbar { display: none; }
-.doc-tabs { border-bottom: none; flex-wrap: nowrap; }
-.doc-tabs .nav-link.doc-tab { padding: 4px 12px; font-size: 12.5px; }
-.doc-label { color: var(--tblr-secondary); font-size: 12px; }
-
 /* ---------- entity doc preview panels ---------- */
-.doc-preview { min-height: 60px; padding: 2px 4px; overflow-x: auto; }
-.doc-preview h1 { font-size: 20px; } .doc-preview h2 { font-size: 17px; }
-.doc-preview code { background: var(--tblr-bg-surface-secondary); border-radius: 4px; padding: 1px 4px; }
-.doc-preview pre { background: var(--tblr-bg-surface-secondary); padding: 10px; border-radius: var(--tblr-border-radius); overflow-x: auto; }
-.doc-preview blockquote { border-left: 3px solid var(--tblr-border-color); margin-left: 0; padding-left: 14px; color: var(--tblr-secondary); }
-.doc-preview table { border-collapse: collapse; } .doc-preview th, .doc-preview td { border: 1px solid var(--tblr-border-color); padding: 4px 9px; }
 .doc-preview a.mention, .doc-ref-layer a.mention { background: rgba(var(--tblr-primary-rgb), .08); border-radius: 4px; padding: 0 4px; text-decoration: none; color: var(--tblr-primary); }
 /* Kind glyphs match the standalone document page (src/markdown.js). */
 .doc-preview a.mention::before, .doc-ref-layer a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
@@ -1214,6 +1186,7 @@ input[type="checkbox"].form-check-input:focus-visible { outline: 2px solid rgba(
 input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default; }
 /* long popovers (the eyeball lists every field) scroll instead of flipping off-screen */
 .chip-pop { max-height: min(70vh, 560px); overflow-y: auto; }
+
 /* ---------- bug reporter (Feature #141) ----------
    The button lives in the bottom-right corner, stacked above the instance
    chip it shares that corner with (.nav-health sits at bottom: 10px). The

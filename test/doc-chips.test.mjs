@@ -55,10 +55,14 @@ test('the Docs cell is chips, one per document field', () => {
   assert.ok(!/docPreview\(item\.docs/.test(APP), 'the flattened snippet of one document is gone');
 });
 
-test('clicking a chip opens that document, not the first one', () => {
-  assert.match(APP, /function docsEditor\(item, db, onSaved, \{ active/,
-    'the editor can be opened on a named field');
-  assert.match(APP, /state\.expandedDoc/, 'the row remembers which document was asked for');
+test('clicking a chip opens the entity peek, never a row expansion (Issue #74)', () => {
+  // Documents used to expand an editor UNDER the grid row, stretching the
+  // table. Kyle (2026-08-25): they open in the side peek — the full entity
+  // view with its ✕ in the upper right — and the row expansion is gone.
+  assert.match(APP, /class: 'docs-cell' \}, docChips\(item, db, \(\) => peekEntity\(item\.id\)\)/,
+    'a doc chip opens the side peek on its entity');
+  assert.ok(!APP.includes('docsEditor('), 'the inline under-row editor is gone');
+  assert.ok(!APP.includes("class: 'doc-row'"), 'no expansion row under the grid');
 });
 
 test('an empty document reads as empty rather than lying about a kind', () => {

@@ -124,16 +124,17 @@ test('picker-type cells are tagged so the row handler can route clicks', () => {
 
 /* Superseded for the GRID by the Ledger direction (Kyle, 2026-08-24): there,
    the #id link navigates and every cell edits, so a row click no longer
-   reaches openEntity at all and ⌘-click opens the side peek. The board and
-   the embedded related rows are unchanged and still route the old way —
-   test/ledger-grid.test.mjs owns the grid's contract. */
-test('board and related rows still route a click before opening the entity', () => {
+   reaches openEntity at all and ⌘-click opens the side peek. The embedded
+   related rows are unchanged and still route the old way — the board went
+   entirely (Kyle, 2026-08-25, Issue #75) — and test/ledger-grid.test.mjs
+   owns the grid's contract. */
+test('related rows still route a click before opening the entity', () => {
   const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*(?:if \(openRegistryRow\(db, item\)\) return;\s*\n\s*)?openEntity\(/g)];
-  assert.equal(routed.length, 2, 'board and embedded related rows route clicks; the grid edits in place');
+  assert.equal(routed.length, 1, 'embedded related rows route clicks; the grid edits in place');
   assert.equal((APP.match(/openEntity\(item\.id\)/g) ?? []).length, routed.length,
     'no row surface may open the entity without routing first');
-  assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, 1,
-    'exactly one surface opens the side peek: the grid, on ⌘-click');
+  assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, 2,
+    'two surfaces open the side peek: the grid on ⌘-click, and a doc chip (Issue #74)');
   assert.match(APP, /function rowClickTarget/);
   assert.match(APP, /function openCellPicker/);
   const fn = APP.slice(APP.indexOf('function openCellPicker'));
@@ -187,14 +188,12 @@ test('the # column shrinks to its content and is left-aligned', () => {
 });
 
 /* ---------- create affordances live inside the grid ----------
-   Table view carries both "+" controls in the grid itself: fields at the end
-   of the header bar, entities as the last row. Board and list have no grid to
-   host them, so they keep the header buttons. */
+   The grid carries both "+" controls itself: fields at the end of the header
+   bar, entities as the last row. The header buttons existed for board and
+   list; with both views gone (Issues #75), so are the buttons. */
 
 test('table view moves both create controls into the grid', () => {
-  // Header buttons are suppressed in table view only.
-  const guarded = [...APP.matchAll(/state\.route\.view === 'table' \? null\s*\n\s*: el\('button'/g)];
-  assert.equal(guarded.length, 2, 'both ⚙ Fields and + New are table-view guarded');
+  assert.ok(!APP.includes("state.route.view === 'table'"), 'no view guards remain — the grid is the view');
   assert.match(APP, /class: 'add-field-head'/, 'header bar ends with the field "+" cell');
   assert.match(APP, /function addFieldMenuButton/);
   assert.match(APP, /class: 'add-entity-row'/, 'the grid ends with the new-entity row');
@@ -214,12 +213,12 @@ test('the field "+" opens the add tray directly — relation is a grid tile, Man
 
 test('full-width grid rows derive their span from one column count', () => {
   // The header gained a column; a restated `cols.length + N` would silently
-  // under-span the doc and new-entity rows.
+  // under-span the new-entity row.
   assert.match(APP, /const colCount = cols\.length \+ 3;/, 'the table view derives it once');
   assert.match(APP, /const colCount = cols\.length \+ 2;/, 'so does the embedded related grid, from its own columns');
   assert.doesNotMatch(APP, /colspan: String\(cols\.length/, 'never restated at a use site');
-  assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 3,
-    'doc row and new-entity row in the table view, plus the related grid\'s add row');
+  assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 2,
+    'the new-entity row in the table view, plus the related grid\'s add row');
 });
 
 test('grid create controls are styled', () => {
@@ -921,7 +920,7 @@ test('a computed field carries its glyph next to the name, not only in cells', (
 
   // Every surface that prints a field name uses it — a column marked in the
   // grid but bare on the entity page is worse than not marking it at all.
-  for (const fn of ['renderTable', 'renderBoard', 'renderEntityView', 'openSchemaEditor']) {
+  for (const fn of ['renderTable', 'renderEntityView', 'openSchemaEditor']) {
     assert.match(fnBody(fn), /fieldNameLabel\(/, `${fn}() must label field names through the helper`);
   }
   const mark = rulesFor('.field-mark');
@@ -1104,11 +1103,34 @@ test('an embedded grid can add a record and link it in one step', () => {
   assert.equal(rulesFor('.entity-row:hover .unlink-btn').opacity, '.7');
 });
 
-test('board card titles truncate with an ellipsis, not a mid-word clip (Issue #20)', () => {
-  const name = rulesFor('.card-name');
-  assert.equal(name['overflow'], 'hidden');
-  assert.equal(name['text-overflow'], 'ellipsis');
-  assert.equal(name['white-space'], 'nowrap');
+test('the board view is gone (Kyle, 2026-08-25, Issue #75)', () => {
+  // The way the list view went before it: stale routes and saved views that
+  // say "board" land on the table, and no switcher offers the choice.
+  assert.ok(!APP.includes('renderBoard'), 'no board renderer');
+  assert.ok(!APP.includes('view-switch'), 'no table/board switcher');
+  assert.match(fnBody('showDatabase'), /view: 'table'/, 'every #/table route lands on the grid');
+});
+
+test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #77)', () => {
+  const wire = fnBody('wireNavCollapse');
+  assert.match(wire, /nav-hot-strip/, 'a hot strip guards the left edge while collapsed');
+  assert.match(wire, /nav-peek/, 'resting on it slides the nav out as an overlay');
+  assert.match(wire, /strip\.addEventListener\('click'/, 'clicking the edge pins the nav open');
+  assert.match(CSS, /#app\.nav-collapsed\.nav-peek #sidebar \{[^}]*position: fixed/,
+    'the peek overlays the page instead of reflowing it');
+  assert.match(CSS, /#app\.nav-collapsed #nav-hot-strip \{[^}]*position: fixed/,
+    'the strip only exists while the nav is collapsed');
+  assert.match(CSS, /#sidebar \{ width: 264px/,
+    'the nav keeps its comfortable width (264px), never compacted');
+});
+
+test('clicking the open space in the nav folds it instead of navigating nowhere (Issue #72)', () => {
+  const nav = fnBody('renderNav');
+  assert.match(nav, /state\.route\?\.page === 'space' && state\.route\.spaceId === space\.spaceId/,
+    'only the already-open space repurposes the click');
+  assert.match(nav, /e\.preventDefault\(\);\s*\n\s*toggleFold\(space\.spaceId\)/,
+    'the dead navigation becomes the fold toggle');
+  assert.match(nav, /e\.metaKey \|\| e\.ctrlKey/, '⌘-click still opens the space in a tab');
 });
 
 test('vendored mermaid is at or past the 11.9.0 security release (Issue #8)', () => {

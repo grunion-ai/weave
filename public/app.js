@@ -149,9 +149,7 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   return back;
 }
 
-// expandedDoc: which document a row was expanded ON — clicking a chip opens
-// that field's tab, not whichever one happens to come first.
-const state = { schema: [], route: null, expanded: new Set(), expandedDoc: new Map(), refocus: null, trail: [], showDeleted: new Set() };
+const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: new Set() };
 
 // Single entry point for opening an entity. The page IS the destination
 // (Feature #117): a row click lands here; the side peek below is kept for
@@ -399,22 +397,36 @@ function renderNav() {
     href: '#/map',
   }, iconEl('iconly:discovery', 'wv-icon nav-icon'), ' Relation map'));
   const folded = new Set(JSON.parse(localStorage.getItem('weave-folded-spaces') ?? '[]'));
+  const toggleFold = (spaceId) => {
+    if (folded.has(spaceId)) folded.delete(spaceId);
+    else folded.add(spaceId);
+    localStorage.setItem('weave-folded-spaces', JSON.stringify([...folded]));
+    renderNav();
+  };
   for (const space of state.schema) {
     const isFolded = folded.has(space.spaceId);
     const spaceRow = el('div', { class: 'nav-space-row' },
-      el('a', { class: 'nav-space', href: `#/space/${space.spaceId}` }, iconEl(space.icon, 'wv-icon nav-icon'), space.space),
+      el('a', {
+        class: 'nav-space', href: `#/space/${space.spaceId}`,
+        // A click that would navigate nowhere — the space page is already
+        // open — folds/unfolds the tables instead (Issue #72). Navigation
+        // keeps ⌘-click and middle-click untouched: only the plain click on
+        // the already-open space is repurposed.
+        onclick: (e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+          if (state.route?.page === 'space' && state.route.spaceId === space.spaceId) {
+            e.preventDefault();
+            toggleFold(space.spaceId);
+          }
+        },
+      }, iconEl(space.icon, 'wv-icon nav-icon'), space.space),
       // Trails the label, "Routines ›" — the caret reads as part of the space
       // name, not as a gutter control. Open is a rotation of the same glyph.
       el('button', {
         class: 'nav-caret' + (isFolded ? '' : ' open'),
         title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`, type: 'button',
         'aria-expanded': String(!isFolded),
-        onclick: () => {
-          if (folded.has(space.spaceId)) folded.delete(space.spaceId);
-          else folded.add(space.spaceId);
-          localStorage.setItem('weave-folded-spaces', JSON.stringify([...folded]));
-          renderNav();
-        },
+        onclick: () => toggleFold(space.spaceId),
       }, chevron()),
       el('button', {
         class: 'btn btn-sm btn-icon btn-ghost-secondary tiny nav-add-table',
@@ -528,16 +540,6 @@ function deckRoleOf(db) {
 }
 
 // First lines of an entity's default document, flattened for view previews.
-function docPreview(md, max = 120) {
-  const flat = String(md ?? '')
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/\[\[([^\]]+)\]\]/g, '$1')
-    .replace(/^[\s]*[-+] /gm, '')
-    .replace(/[#>*`_|]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return flat.length > max ? flat.slice(0, max).trimEnd() + '…' : flat;
-}
 
 // Lazy mermaid: load the vendored lib only when a preview contains a diagram.
 let mermaidLoading = null;
@@ -1469,57 +1471,6 @@ function docChips(item, db, onOpen) {
   return box;
 }
 
-/* ---------- inline multi-document editor ----------
-   Tabbed across every document field of the table. Used by all views. */
-
-function docsEditor(item, db, onSaved, { active: want = null } = {}) {
-  const fields = documentFields(db);
-  if (!fields.length) return el('div', { class: 'doc-inline-wrap' }, 'This table has no document fields.');
-  let active = fields.some((f) => f.name === want) ? want : fields[0].name;
-  const wrap = el('div', { class: 'doc-inline-wrap' });
-
-  const draw = () => {
-    wrap.replaceChildren();
-    const tabs = el('nav', { class: 'nav nav-tabs doc-tabs' },
-      ...fields.map((f) => el('button', {
-        class: 'nav-link doc-tab' + (f.name === active ? ' active' : ''),
-        type: 'button',
-        onclick: () => { active = f.name; draw(); },
-      }, f.name)));
-    const area = el('textarea', {
-      class: 'form-control doc-inline', spellcheck: 'false',
-      dataset: { eid: item.id, field: active },
-    });
-    area.value = item.docs?.[active] ?? '';
-    // Focus swaps in the shared Vditor (Issue #89); blur brings this
-    // textarea back carrying whatever was typed.
-    area.addEventListener('focus', () => mountRowEditor(area));
-    const fmtBase = `${WS_PREFIX}/e/${item.id}/doc/${encodeURIComponent(active)}`;
-    wrap.append(
-      el('div', { class: 'doc-toolbar' },
-        tabs,
-        el('span', { style: 'flex:1' }),
-        el('div', { class: 'btn-group' },
-          el('a', { class: 'btn btn-sm fmt', href: `${fmtBase}.md`, target: '_blank' }, 'MD'),
-          el('a', { class: 'btn btn-sm fmt', href: `${fmtBase}.html`, target: '_blank' }, 'HTML'),
-          el('a', { class: 'btn btn-sm fmt', href: `${fmtBase}.pdf`, target: '_blank' }, 'PDF'))),
-      area,
-      el('div', { style: 'margin-top:8px; text-align:right' },
-        el('button', {
-          class: 'btn btn-sm btn-primary',
-          onclick: async () => {
-            try {
-              await api('PUT', `/entities/${item.id}/doc`, { field: active, doc: area.value });
-              toast(`${active} saved`);
-              const fresh = await api('GET', `/entities/${item.id}`);
-              onSaved(fresh);
-            } catch (err) { toast(err.message, true); }
-          },
-        }, `Save ${active}`)));
-  };
-  draw();
-  return wrap;
-}
 
 /* ---------- trash ----------
    Deleted rows keep their public id and links, so this reads as the table it
@@ -1644,8 +1595,11 @@ function filterStrip(db, onChange) {
 async function showDatabase(dbId, view) {
   const db = allTables().find((d) => d.id === dbId);
   if (!db) return showHome();
-  if (state.route?.dbId !== dbId) state.expanded.clear();
-  state.route = { page: 'db', dbId, view: view ?? state.route?.view ?? 'table' };
+  // The board view is gone (Kyle, 2026-08-25, Issue #75) the way the list
+  // view went before it: stale #/… routes and saved views that say 'board'
+  // land on the table.
+  void view;
+  state.route = { page: 'db', dbId, view: 'table' };
   renderNav();
   // public/ is served from disk while the server process is long-lived, so a
   // page can be newer than the routes behind it (git pull without a restart).
@@ -1664,18 +1618,7 @@ async function showDatabase(dbId, view) {
 
 function drawDatabase(db, items, trashCount = 0) {
   const main = $('#main');
-  const unsaved = new Map();
-  for (const area of main.querySelectorAll('textarea.doc-inline[data-eid]')) {
-    unsaved.set(`${area.dataset.eid}::${area.dataset.field}`, area.value);
-  }
   main.replaceChildren();
-
-  const switcher = el('div', { class: 'btn-group view-switch' },
-    ...['table', 'board'].map((v) =>
-      el('button', {
-        class: 'btn btn-sm' + (state.route.view === v ? ' active' : ''),
-        onclick: () => showDatabase(db.id, v),
-      }, v[0].toUpperCase() + v.slice(1))));
 
   main.append(viewHeader({
     crumbs: [
@@ -1701,38 +1644,28 @@ function drawDatabase(db, items, trashCount = 0) {
       await loadSchema();
     },
     actions: [
-      switcher,
       // Only surfaced once the table actually has deleted rows — an empty
       // trash is not worth a permanent control.
       // The eyeball (Feature #114): show / hide fields, system columns and
       // deleted rows — replaces "Manage fields".
-      state.route.view === 'table' ? (() => {
+      (() => {
         const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields and deleted rows', 'aria-label': 'Show or hide fields' }, eyeGlyph());
         eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, trashCount); });
         return eye;
-      })() : null,
+      })(),
       // How tall a row reads at (Kyle, 2026-08-24). A way of reading the
       // table, so it is a control in the toolbar and a per-person memory —
       // not schema, and not something the next reader inherits.
-      state.route.view === 'table'
-        ? segCtl(
-          [{ id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
-            { id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }],
-          gridDensity(db.id),
-          (mode) => {
-            gridDensity(db.id, mode);
-            const grid = document.querySelector('.wv-grid');
-            if (grid) { grid.dataset.density = mode; markClippedCells(grid); }
-          },
-        )
-        : null,
-      // Table view carries both affordances inside the grid itself — a "+"
-      // in the header bar for fields, a "+ New" row at the foot for entities.
-      // Board and list have no grid to host them, so they keep the buttons.
-      state.route.view === 'table' ? null
-        : el('button', { class: 'btn btn-sm', onclick: () => openSchemaEditor(db) }, iconEl('iconly:setting', 'wv-icon'), ' Fields'),
-      state.route.view === 'table' ? null
-        : el('button', { class: 'btn btn-sm btn-primary', onclick: () => quickCreate(db) }, '+ New'),
+      segCtl(
+        [{ id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
+          { id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }],
+        gridDensity(db.id),
+        (mode) => {
+          gridDensity(db.id, mode);
+          const grid = document.querySelector('.wv-grid');
+          if (grid) { grid.dataset.density = mode; markClippedCells(grid); }
+        },
+      ),
       // Export and delete are occasional and one of them is irreversible, so
       // they live in the overflow rather than the toolbar.
       dotsMenu([
@@ -1789,7 +1722,7 @@ function drawDatabase(db, items, trashCount = 0) {
   };
 
   // Inline add: create an empty entity, redraw, focus its Name cell.
-  state.inlineAdd = state.route.view !== 'table' ? null : async () => {
+  state.inlineAdd = async () => {
     const created = await api('POST', `/tables/${db.id}/entities`, { name: '' });
     await loadSchema();
     const fresh = await api('POST', `/tables/${db.id}/query`, {});
@@ -1798,20 +1731,7 @@ function drawDatabase(db, items, trashCount = 0) {
       $(`tr[data-eid="${created.id}"]`)?.querySelector('td:nth-child(2) input')?.focus());
   };
 
-  if (!items.length && state.route.view !== 'table') {
-    main.append(el('div', { class: 'wv-empty' }, 'No entities yet. Create the first one.'));
-    return;
-  }
-
-  // The list view is gone (Kyle, 2026-08-22): table and board carry it all;
-  // stale #/… routes and saved views that said 'list' land on the table.
-  if (state.route.view === 'board') renderBoard(main, db, items, onSaved);
-  else renderTable(main, db, items, onSaved);
-
-  for (const area of main.querySelectorAll('textarea.doc-inline[data-eid]')) {
-    const key = `${area.dataset.eid}::${area.dataset.field}`;
-    if (unsaved.has(key)) area.value = unsaved.get(key);
-  }
+  renderTable(main, db, items, onSaved);
 }
 
 /* Show / hide, one list: the table's fields, then the system columns, then
@@ -1940,25 +1860,11 @@ function renderTable(main, db, items, onSaved) {
           }, editorFor(f, item, db, onSaved, { compact: true }));
         }),
         ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')),
-        el('td', { class: 'docs-cell' }, docChips(item, db, (field) => {
-          state.expanded.add(item.id);
-          state.expandedDoc.set(item.id, field);
-          draw();
-        }), el('button', {
-          class: 'btn btn-sm btn-ghost-secondary tiny' + (state.expanded.has(item.id) ? ' active-toggle' : ''),
-          title: 'Edit documents',
-          onclick: () => {
-            if (state.expanded.has(item.id)) state.expanded.delete(item.id);
-            else state.expanded.add(item.id);
-            draw();
-          },
-        }, iconEl('iconly:document', 'wv-icon'), state.expanded.has(item.id) ? '▾' : '')));
+        // A document opens in the side peek — the full entity view with its
+        // ✕ in the upper right — never in a row expansion that stretches the
+        // grid (Kyle, 2026-08-25, Issue #74).
+        el('td', { class: 'docs-cell' }, docChips(item, db, () => peekEntity(item.id))));
       tbody.append(row);
-      if (state.expanded.has(item.id)) {
-        tbody.append(el('tr', { class: 'doc-row' },
-          el('td', { colspan: String(colCount) },
-            docsEditor(item, db, onSaved, { active: state.expandedDoc.get(item.id) }))));
-      }
     }
     // Creating an entity is the last row of the grid, not a detached bar:
     // the table reads as one surface that grows from the bottom.
@@ -2929,93 +2835,6 @@ function addFieldMenuButton(db) {
   return btn;
 }
 
-function renderBoard(main, db, items, onSaved) {
-  const groupField = db.fields.find((f) => f.type === 'workflow') ?? db.fields.find((f) => f.type === 'select');
-  if (!groupField) {
-    main.append(el('div', { class: 'wv-empty' }, 'Board view needs a workflow or select field.'));
-    return;
-  }
-  const groups = groupField.type === 'workflow' ? groupField.states.map((s) => s.name) : groupField.options;
-  const board = el('div', { class: 'board' });
-  const redraw = () => drawDatabase(db, items);
-
-  for (const group of groups) {
-    const inGroup = items.filter((i) => i.fields[groupField.name] === group);
-    const col = el('div', { class: 'board-col', dataset: { group } },
-      el('h3', {}, group, el('span', {}, String(inGroup.length))),
-      ...inGroup.map((item) => {
-        const expanded = state.expanded.has(item.id);
-        const nameInput = el('input', { class: 'card-name', value: item.name || '' });
-        nameInput.addEventListener('click', (e) => e.stopPropagation());
-        nameInput.addEventListener('change', async () => {
-          try {
-            await api('PATCH', `/entities/${item.id}`, { values: { Name: nameInput.value } });
-            toast('Saved');
-            onSaved();
-          } catch (err) { toast(err.message, true); }
-        });
-        const card = el('div', {
-          class: 'card board-card' + (expanded ? ' editing' : ''), draggable: 'true', dataset: { id: item.id },
-          onclick: (e) => {
-            if (expanded) return;
-            const pick = rowClickTarget(e);
-            if (pick === 'ignore') return;
-            if (pick) return openCellPicker(pick);
-            openEntity(item.id);
-          },
-        },
-          el('div', { class: 'card-top' },
-            el('a', { class: 'pid', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`),
-            el('span', { style: 'flex:1' }),
-            el('button', {
-              class: 'btn btn-sm btn-ghost-secondary tiny' + (expanded ? ' active-toggle' : ''),
-              title: 'Edit fields & documents',
-              onclick: (e) => {
-                e.stopPropagation();
-                if (expanded) state.expanded.delete(item.id);
-                else state.expanded.add(item.id);
-                redraw();
-              },
-            }, expanded ? '✕' : '✎')),
-          nameInput,
-          !expanded && item.doc ? el('div', { class: 'doc-preview card-doc-preview' }, docPreview(item.doc)) : null);
-        if (expanded) {
-          const fieldsBox = el('div', { class: 'card-fields' });
-          for (const f of db.fields) {
-            if (f.name === 'Name' || f.type === 'document' || f.id === groupField.id) continue;
-            fieldsBox.append(el('div', { class: 'fieldrow compact' },
-              el('label', {}, fieldNameLabel(f)), editorFor(f, item, db, onSaved, { compact: true })));
-          }
-          card.append(fieldsBox, docsEditor(item, db, onSaved));
-        }
-        card.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', item.id));
-        return card;
-      }));
-    col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('dragover'); });
-    col.addEventListener('dragleave', () => col.classList.remove('dragover'));
-    col.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      col.classList.remove('dragover');
-      const id = e.dataTransfer.getData('text/plain');
-      try {
-        if (groupField.type === 'workflow') await api('POST', `/entities/${id}/state`, { field: groupField.name, state: group });
-        else await api('PATCH', `/entities/${id}`, { values: { [groupField.name]: group } });
-        await loadSchema();
-        onSaved();
-      } catch (err) { toast(err.message, true); }
-    });
-    board.append(col);
-  }
-  // Dragging a card near either edge scrolls the column strip horizontally.
-  board.addEventListener('dragover', (e) => {
-    const r = board.getBoundingClientRect();
-    if (e.clientX > r.right - 60) board.scrollLeft += 14;
-    else if (e.clientX < r.left + 60) board.scrollLeft -= 14;
-  });
-  main.append(board);
-}
-
-
 /* ---------- space page ---------- */
 
 async function showSpace(spaceId) {
@@ -3622,43 +3441,6 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }
   return editor;
 }
 
-/* ---------- the shared row editor (Issue #89) ----------
-   Grid, board and list rows keep their <textarea> as the resting state —
-   it is the value the Save button reads and the redraw-preservation map
-   snapshots. ONE shared Vditor mounts into whichever cell has focus and
-   unmounts on blur; measured on a warm page the round trip costs 2–5ms,
-   so focus feels instant and no instance-per-row ever exists. */
-
-let rowEditor = null; // { editor, host, area } — the one mounted cell
-
-function unmountRowEditor() {
-  if (!rowEditor) return;
-  const { editor, host, area } = rowEditor;
-  rowEditor = null;
-  try { area.value = editor.getValue(); } catch { /* keep the last synced value */ }
-  liveEditors.delete(editor);
-  try { editor.destroy(); } catch { /* already gone with the DOM */ }
-  host.remove();
-  area.classList.remove('hidden');
-}
-
-function mountRowEditor(area) {
-  if (rowEditor?.area === area) return;
-  unmountRowEditor();
-  const host = el('div', { class: 'doc-inline-editor' });
-  area.after(host);
-  area.classList.add('hidden');
-  const editor = mountDocEditor(host, {
-    value: area.value,
-    placeholder: 'Write… press / for blocks',
-    // Sync every keystroke back: the textarea stays the source of truth for
-    // Save and for value preservation across view redraws.
-    onInput: (v) => { area.value = v; },
-    onBlur: () => unmountRowEditor(),
-    autoFocus: true,
-  });
-  rowEditor = { editor, host, area };
-}
 
 /* ---------- live [[…]] chips over the IR surface (Issue #86) ----------
    Lute is compiled Go and cannot learn weave's reference syntax, so the
@@ -4048,7 +3830,6 @@ function flushDocSaves() {
 window.addEventListener('beforeunload', flushDocSaves);
 
 function teardownDocEditors() {
-  unmountRowEditor(); // restore the row's textarea before the page goes away
   flushDocSaves();
   for (const ed of liveEditors) {
     try { ed.destroy(); } catch { /* already gone with the DOM */ }
@@ -5210,19 +4991,50 @@ function wireWsNew() {
 }
 
 /* Collapsible left nav: chevron in the sidebar header hides the sidebar
-   (the rail stays); the expand chevron lives at the top of the rail. */
+   (the rail stays); the expand chevron lives at the top of the rail.
+   While collapsed, resting on the left edge slides the nav out as an
+   overlay and clicking the edge pins it open (Kyle, 2026-08-25, Issue #77);
+   the workspace rail keeps its ordinary hover behaviour. */
 function wireNavCollapse() {
   const app = $('#app');
   const collapse = $('#nav-collapse');
   const expand = $('#nav-expand');
-  if (!app || !collapse || !expand) return;
+  const sidebar = $('#sidebar');
+  if (!app || !collapse || !expand || !sidebar) return;
   const apply = (collapsed) => {
     app.classList.toggle('nav-collapsed', collapsed);
+    app.classList.remove('nav-peek');
     expand.classList.toggle('hidden', !collapsed);
     localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
   };
   collapse.addEventListener('click', () => apply(true));
   expand.addEventListener('click', () => apply(false));
+  // The hot strip sits where the sidebar's edge used to be. The overlay
+  // covers it once open, so "left the sidebar" is the one closing signal —
+  // plus a short grace check for a pointer that crossed without settling.
+  const strip = el('div', { id: 'nav-hot-strip', 'aria-hidden': 'true' });
+  app.append(strip);
+  let settle = null;
+  strip.addEventListener('mouseenter', () => {
+    if (!app.classList.contains('nav-collapsed')) return;
+    app.classList.add('nav-peek');
+    clearTimeout(settle);
+    settle = setTimeout(() => {
+      if (!sidebar.matches(':hover') && !strip.matches(':hover')) app.classList.remove('nav-peek');
+    }, 400);
+  });
+  strip.addEventListener('click', () => apply(false));
+  // Once the overlay is out it covers the strip, so the pinning click lands
+  // on the sidebar itself: any press on a non-interactive spot pins the nav.
+  sidebar.addEventListener('click', (e) => {
+    if (!app.classList.contains('nav-peek')) return;
+    if (e.target.closest('a,button,input,textarea,select,label')) return;
+    apply(false);
+  });
+  sidebar.addEventListener('mouseleave', () => {
+    if (app.classList.contains('nav-peek')) app.classList.remove('nav-peek');
+  });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') app.classList.remove('nav-peek'); });
   apply(localStorage.getItem('weave-nav-collapsed') === '1');
 }
 
@@ -5264,13 +5076,14 @@ window.addEventListener('focus', async () => {
   } catch { return; }
   if (JSON.stringify(state.schema) === before) return;
   // A re-render destroys live editors. Never do that over text that has not
-  // reached the server yet, and never mid-edit in a grid row's textarea.
-  if (document.querySelector('textarea.doc-inline') || pendingDocSaves.size) {
+  // reached the server yet.
+  if (pendingDocSaves.size) {
     toast('Schema changed elsewhere — reopen this entity to see new fields');
     return;
   }
   route();
 });
+
 
 /* ---------- the bug reporter (Feature #141) ---------- */
 

@@ -71,8 +71,6 @@ test("Vditor's own outline stays disabled", () => {
 test('the rail exists only on entity-page document panels', () => {
   const calls = APP.match(/attachDashRail\(/g) ?? [];
   assert.equal(calls.length, 2, 'one definition, one call site (the entity page)');
-  const docsEditor = APP.match(/function docsEditor\([^]{0,2500}?\n\}/)[0];
-  assert.ok(!docsEditor.includes('attachDashRail'), 'inline row editors carry no rail');
 });
 
 test('the rail lives in the left gutter and hides on narrow screens', () => {
