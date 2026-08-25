@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="kind" content="design-review"><meta name="generated-at" content="2026-08-25T01:20:00Z"><meta name="repo" content="grunion-ai/weave"><meta name="branch" content="main">
-<title>weave — grid interaction: now, and two ways to finish it</title>
+<title>weave — grid interaction: arrows navigate, and what that costs</title>
 <style>
 :root{--bg:#0d141d;--soft:#16202c;--soft2:#1c2836;--line:#2a3849;--fg:#d7e0e9;--muted:#8298ab;--accent:#3f8cff;--accent-soft:#1b3a63;--ok:#2fb344;--warn:#f59f00;--bad:#e05252;--mono:ui-monospace,'SF Mono',Menlo,monospace}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
@@ -71,8 +71,7 @@ table.g.armed td.v-cell:not(.ro):hover .v{border-color:#3f8cff66;background:rgba
 table.g.armed td.v-cell.pickish:not(.ro):hover .v{cursor:pointer}
 table.g td.cur .v{box-shadow:inset 0 0 0 1.5px var(--accent);background:rgba(63,140,255,.09);border-color:transparent}
 table.g td.cur.editing .v{box-shadow:inset 0 0 0 1.5px var(--ok);background:rgba(47,179,68,.11);color:#fff}
-table.g td.cur.editing .v::after{content:'';display:inline-block;width:1px;height:12px;background:var(--ok);margin-left:1px;vertical-align:-2px;animation:blink 1s steps(1) infinite}
-@keyframes blink{50%{opacity:0}}
+
 table.g td.ro .v{color:#4d6076;font-style:italic}
 table.g tr.sel td{background:rgba(63,140,255,.13)}
 table.g tr.sel td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
@@ -94,6 +93,11 @@ table.g tr.fresh td{animation:pop .5s ease}
 .keylog .verb{color:var(--accent)}
 .keylog .verb.warnv{color:var(--warn)}.keylog .verb.okv{color:var(--ok)}.keylog .verb.mutedv{color:var(--muted)}
 .keylog .said{color:var(--muted)}
+.edgechip{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--warn);border:1px solid #f59f0044;border-radius:4px;padding:1px 7px}
+.gridhint .mode.rest{color:var(--accent);border-color:#3f8cff55}
+.gridhint .mode.edit{color:var(--ok);border-color:#2fb34455}
+input.cellin{width:100%;background:transparent;border:none;outline:none;color:#fff;font:inherit;padding:0}
+table.g td.n input.cellin{text-align:right}
 .keys{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:2px 22px;font-size:11.5px;color:var(--muted)}
 .selbar{margin-top:10px;display:none;align-items:center;gap:10px;font-size:12px;background:rgba(63,140,255,.10);border:1px solid #3f8cff44;border-radius:8px;padding:6px 12px}
 .selbar.on{display:flex}
@@ -126,7 +130,7 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 </style></head><body>
 
 <header class="plan-header">
-<div class="topbar"><span class="kind">DESIGN-REVIEW</span><h1>weave — grid interaction: now, and two ways to finish it</h1><time>2026-08-25T01:20:00Z</time></div>
+<div class="topbar"><span class="kind">DESIGN-REVIEW</span><h1>weave — grid interaction: arrows navigate, and what that costs</h1><time>2026-08-25T01:20:00Z</time></div>
 <dl class="meta">
 <div><dt>Repo</dt><dd>grunion-ai/weave</dd></div>
 <div><dt>Branch</dt><dd>main</dd></div>
@@ -137,23 +141,22 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 </dl></header>
 
 <div class="wrap">
-<p class="intro"><b>Three grids, all live — click into one and type.</b> The seven-way study is retired. Your correction settles most of it: <i>"check boxes should not need double click… on hover you can always single click into the edit, command click and shift click always de/select multiple."</i> Putting selection on the <b>modifiers</b> takes it out of the plain click's way, so nothing has to be traded for it — which is what every earlier direction was paying for one way or another.</p>
-
+<p class="intro"><b>Three grids, all live — click into one and type.</b> "I want to nav with L and R and tab" is not a tweak, so this is rebuilt around it. <kbd>←</kbd> and <kbd>→</kbd> cannot navigate while a cell is a live text input, because the caret is already using them — the previous round claimed both and could only have one. Wanting them for navigation means cells <b>rest as values</b> and open on purpose.</p>
 <div class="settled">
-<b>Settled by that correction, and true of both challengers below</b>
+<b>What that decision hands over, including two things you did not ask for</b>
 <ul>
-<li><b>One click edits, whatever the type.</b> A checkbox flips, a select opens its picker, a date opens the calendar, text takes a caret at the click point — the same <span class="mono">cellActivation</span> map weave already ships.</li>
-<li><b>Hover arms the cell first</b>, so the control appears where you are pointing rather than living in every cell at once. The grid reads as a record at rest and as a form under the cursor.</li>
-<li><b>⌘-click toggles a row into the selection; ⇧-click takes the run</b> from the last one. Neither ever competes with a plain click.</li>
-<li><b>The keyboard arrives</b>: <kbd>Tab</kbd>/<kbd>⇧Tab</kbd> along the row wrapping into the next, <kbd>↑</kbd><kbd>↓</kbd> down the column, <kbd>←</kbd><kbd>→</kbd> left to the caret, <kbd>Return</kbd> commits and drops a row, <kbd>⇧Return</kbd> makes the next item.</li>
+<li><b>All four arrows and <kbd>Tab</kbd> navigate</b> the grid at rest. The thing you asked for.</li>
+<li><b>Keyboard row selection comes free.</b> <kbd>Space</kbd> is unclaimed at rest, so it picks a row up, <kbd>⇧↑</kbd><kbd>⇧↓</kbd> extend and <kbd>⌘A</kbd> takes the table. Last round that needed a mode and a whole extra direction to pay for; now it falls out.</li>
+<li><b>Hover finally has a job</b> — showing the control a click would open, rather than every cell wearing one at once.</li>
+<li><b>Still true from before:</b> one click edits whatever the type and a checkbox flips on that click; <kbd>⌘</kbd>-click toggles a row and <kbd>⇧</kbd>-click takes the run; <kbd>Return</kbd> commits down the column; <kbd>⇧Return</kbd> makes the next item; <kbd>⌘Return</kbd> opens the record as a page.</li>
 </ul>
 </div>
+<p class="intro" style="margin-top:26px">Which leaves <b>one question</b>, and it is the only thing the two challengers disagree about: <b>when a cell is open, do <kbd>←</kbd> and <kbd>→</kbd> still navigate?</b> REST says no — the caret takes them back. EDGE says yes, and steps out of the cell when the caret runs out of text.</p>
 
-<p class="intro" style="margin-top:26px">Which leaves <b>one open question</b>, and it is the only thing the two challengers disagree about: <b>can a row be selected without a mouse?</b> H says the modifiers are enough. K spends <kbd>Esc</kbd> on a nav mode to say no.</p>
 
 <section class="dir">
 <div class="dir-head"><span class="tag now">NOW</span><h2>What ships today</h2><span class="lineage">Feature #133 · Ledger</span></div>
-<p class="thesis">Every cell wears its editor permanently, so the grid always looks like a form. A click lands in the field it hit, <kbd>⌘</kbd>-click opens the row in the side peek, and the <span class="mono">#id ↗</span> link navigates. The grid answers to no keys at all and has no notion of a selected row — press <kbd>Tab</kbd> or <kbd>⇧Return</kbd> in the demo and watch nothing happen.</p>
+<p class="thesis">Every cell wears its editor permanently, which is why <kbd>←</kbd> and <kbd>→</kbd> are already spoken for: they belong to a text caret in whichever cell you are standing in. A click lands in the field it hit, <kbd>⌘</kbd>-click opens the side peek, and the <span class="mono">#id ↗</span> link navigates. The grid answers to no keys and has no notion of a selected row — press <kbd>Tab</kbd>, an arrow, or <kbd>⇧Return</kbd> in the demo and watch nothing happen.</p>
 <div class="stage" data-pattern="NOW"></div>
 <div class="notes">
 <div class="win"><b>Wins</b>Nothing to learn, nothing to build. One click has always reached every field, checkbox included — that part was never broken.</div>
@@ -163,29 +166,26 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 </section>
 
 <section class="dir">
-<div class="dir-head"><span class="tag">H</span><h2>Hover-live · the modifiers select, the click edits</h2><span class="lineage">Finder · Kyle, 2026-08-24</span></div>
-<p class="thesis">Your proposal, exactly. Cells rest as values and <b>arm on hover</b>, so the control shows up where you point instead of everywhere at once. A plain click edits — checkbox included, one click, no exception needed. <kbd>⌘</kbd>-click and <kbd>⇧</kbd>-click carry all of selection, so the plain click never had to be spent. No modes anywhere: the focus ring is the cursor, and the keyboard is four handlers on top of what already exists.</p>
-<div class="stage" data-pattern="H"></div>
-<div class="resolved"><b>⌘-click turned out not to be contested.</b> It opens the side peek today (#133) — the peek's only surviving caller. Feature #117 already replaced the peek as a row target with the entity page and kept <span class="mono">peekEntity</span> "for callers that want a slide-over on top of a page"; that caller was never written. So ⌘-click is free, and <kbd>⌘Return</kbd> plus the <span class="mono">#id ↗</span> link both go to the page. See <a href="#peek-q" style="color:var(--accent)">Do we need peek?</a> below.</div>
+<div class="dir-head"><span class="tag">REST</span><h2>Resting cursor · the caret takes ← → back</h2><span class="lineage">Excel · Airtable</span></div>
+<p class="thesis">Cells rest as values, so all four arrows and <kbd>Tab</kbd> navigate the grid. <kbd>Return</kbd>, a click, or just typing opens a cell — and while it is open, <kbd>←</kbd> and <kbd>→</kbd> go back to the caret until you <kbd>Tab</kbd>, <kbd>Return</kbd> or <kbd>Esc</kbd> out. The conventional split, and the one nobody has to be warned about.</p>
+<div class="stage" data-pattern="REST"></div>
 <div class="notes">
-<div class="win"><b>Wins</b>Nothing is traded. The plain click keeps the behaviour #133 settled, checkboxes stay one click, selection costs no key and no mode, and the grid gets quieter at rest. Smallest thing that answers the whole ask.</div>
-<div class="fit"><b>Fits</b>Everything the grid does today, plus bulk operations for anyone holding a mouse.</div>
+<div class="win"><b>Wins</b>Every key means one thing in each state, and the states are the ones every spreadsheet already taught. No surprises, nothing to explain.</div>
+<div class="fit"><b>Fits</b>Almost everything. The safe answer, and the one to pick if you are not sure.</div>
 </div>
-<div class="costs"><h4>What we lose</h4><ol id="cost-H"></ol></div>
+<div class="costs"><h4>What we lose</h4><ol id="cost-REST"></ol></div>
 </section>
 
 <section class="dir">
-<div class="dir-head"><span class="tag">K</span><h2>Hover-live + nav mode · selection without a mouse</h2><span class="lineage">H, plus an escape hatch</span></div>
-<p class="thesis">Everything in H, unchanged — same hover, same one-click edit, same <kbd>⌘</kbd>/<kbd>⇧</kbd>-click. K adds one thing: <kbd>Esc</kbd> pops focus out of the cell into a <b>nav</b> mode where the grid is a map. There <kbd>Space</kbd> picks a row up, <kbd>⇧↑</kbd><kbd>⇧↓</kbd> take a run, <kbd>⌘A</kbd> takes the table, and <kbd>Return</kbd> drops back into the cell. A typist who never presses <kbd>Esc</kbd> never meets the mode.</p>
-<div class="stage" data-pattern="K"></div>
-<div class="resolved"><b>Same as H</b> — ⌘-click is free, the record opens as a page. The mode is the only difference between these two; press <kbd>Esc</kbd> here and the chip above the grid turns amber.</div>
+<div class="dir-head"><span class="tag">EDGE</span><h2>Edge-through · ← and → always navigate, eventually</h2><span class="lineage">the literal reading</span></div>
+<p class="thesis">The strict answer to "nav with L and R": those keys never stop being navigation keys. Inside an open cell they walk the caret, and the press that would run past the end of the text steps into the next cell instead. Try it in the demo — put the caret mid-word and press <kbd>→</kbd> until it falls out the far side.</p>
+<div class="stage" data-pattern="EDGE"></div>
 <div class="notes">
-<div class="win"><b>Wins</b>Bulk selection with no mouse at all, which is also the accessible path — <kbd>⌘</kbd>-click has no keyboard equivalent, so H simply has no answer for someone who cannot use a pointer.</div>
-<div class="fit"><b>Fits</b>The same tables as H, plus keyboard-first bulk work and any accessibility commitment.</div>
+<div class="win"><b>Wins</b>You never have to think about which state you are in, and a row of short values can be walked end to end without ever reaching for <kbd>Tab</kbd>.</div>
+<div class="fit"><b>Fits</b>Dense tables of short values — dates, amounts, statuses — where the caret rarely has far to travel.</div>
 </div>
-<div class="costs"><h4>What we lose</h4><ol id="cost-K"></ol></div>
+<div class="costs"><h4>What we lose</h4><ol id="cost-EDGE"></ol></div>
 </section>
-
 
 <h2 class="plain" id="peek-q">Do we need peek?</h2>
 <p class="intro" style="margin-top:6px">Counted rather than argued, because the repo already answers it.</p>
@@ -203,38 +203,39 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 
 <h2 class="plain">Side by side</h2>
 <table class="cmp">
-<thead><tr><th>Question</th><th>NOW · today</th><th>H · Hover-live</th><th>K · H + nav mode</th></tr></thead>
+<thead><tr><th>Question</th><th>NOW · today</th><th>REST</th><th>EDGE</th></tr></thead>
 <tbody>
+<tr class="split"><td>← → at rest</td><td class="n2">the caret, always</td><td class="y">navigate</td><td class="y">navigate</td></tr>
+<tr class="split"><td>← → in an open cell</td><td class="n2">the caret</td><td>the caret</td><td class="y">caret, then out at the edge</td></tr>
+<tr><td>↑ ↓ · Tab</td><td class="n2">nothing</td><td class="y">navigate</td><td class="y">navigate</td></tr>
+<tr><td>Cells at rest</td><td class="n2">every control, always on</td><td class="y">values; hover arms</td><td class="y">values; hover arms</td></tr>
 <tr><td>Click a cell</td><td class="y">edits it</td><td class="y">edits it</td><td class="y">edits it</td></tr>
 <tr><td>Click a checkbox</td><td class="y">toggles, 1 click</td><td class="y">toggles, 1 click</td><td class="y">toggles, 1 click</td></tr>
-<tr><td>Cells at rest</td><td class="n2">every control, always on</td><td class="y">values; hover arms</td><td class="y">values; hover arms</td></tr>
-<tr><td>⌘-click</td><td>side peek</td><td class="y">toggle row</td><td class="y">toggle row</td></tr>
-<tr><td>⇧-click</td><td class="n2">nothing</td><td class="y">extend the run</td><td class="y">extend the run</td></tr>
-<tr><td>Opening a record</td><td>side peek · #id ↗</td><td class="y">the page — ⌘Return · #id ↗</td><td class="y">the page — ⌘Return · #id ↗</td></tr>
-<tr><td>Ways to render a record</td><td class="n2">two — page and peek</td><td class="y">one</td><td class="y">one</td></tr>
-<tr><td>Tab / ⇧Tab</td><td class="n2">browser default</td><td class="y">along the row, wrapping</td><td class="y">along the row, wrapping</td></tr>
-<tr><td>↑ ↓</td><td class="n2">nothing</td><td class="y">down the column</td><td class="y">down the column</td></tr>
-<tr><td>← →</td><td>the caret</td><td class="y">the caret</td><td class="y">the caret · nav: move</td></tr>
+<tr><td>Open a cell by key</td><td class="n2">—</td><td class="y">Return · any character</td><td class="y">Return · any character</td></tr>
+<tr><td>Leave a cell</td><td class="n2">—</td><td>Tab · Return · Esc</td><td class="y">those, or ← → off the edge</td></tr>
+<tr><td>Row select, keyboard</td><td class="n2">none</td><td class="y">Space · ⇧↑↓ · ⌘A</td><td class="y">Space · ⇧↑↓ · ⌘A</td></tr>
+<tr><td>Row select, pointer</td><td class="n2">none</td><td class="y">⌘click · ⇧click</td><td class="y">⌘click · ⇧click</td></tr>
 <tr><td>Return</td><td class="n2">nothing</td><td class="y">commit, move down</td><td class="y">commit, move down</td></tr>
 <tr><td>⇧Return</td><td class="n2">nothing</td><td class="y">new row below</td><td class="y">new row below</td></tr>
-<tr class="split"><td>Select without a mouse</td><td class="n2">no selection at all</td><td class="n2">no</td><td class="y">Space · ⇧↑↓ · ⌘A</td></tr>
-<tr class="split"><td>Modes</td><td class="y">none</td><td class="y">none</td><td>cell / nav, behind Esc</td></tr>
-<tr><td>Bulk edit</td><td class="n2">no</td><td>selection + puck bar (#132)</td><td>selection + puck bar (#132)</td></tr>
-<tr><td>Build cost</td><td class="y">—</td><td>S — four key handlers, hover CSS, two click modifiers</td><td>M — all of H, plus a mode and its indicator</td></tr>
+<tr><td>⇧← ⇧→ select text</td><td class="y">yes</td><td class="y">yes</td><td>yes — the one exception to the rule</td></tr>
+<tr><td>Opening a record</td><td>side peek · #id ↗</td><td class="y">the page — ⌘Return · #id ↗</td><td class="y">the page — ⌘Return · #id ↗</td></tr>
+<tr><td>Ways to render a record</td><td class="n2">two — page and peek</td><td class="y">one</td><td class="y">one</td></tr>
+<tr><td>Build cost</td><td class="y">—</td><td>S — rest rendering, hover CSS, one keymap</td><td>S+ — all of REST, plus caret-edge tracking</td></tr>
 </tbody>
 </table>
 
 <h2 class="plain">Recommendation</h2>
 <div class="rec">
-<h3>Build H. Add K's mode only when something asks for it.</h3>
-<p style="color:var(--muted);margin:6px 0 0;max-width:860px">H is the whole ask with nothing traded away, and it is small: hover CSS, two click modifiers, four key handlers. It keeps the ruling #133 already made, so no shipped behaviour reverses — the only thing that moves is <kbd>⌘</kbd>-click, and it moves to <kbd>⌘Return</kbd> where the keyboard wanted a peek anyway.</p>
-<p style="color:var(--muted);margin:8px 0 0;max-width:860px">K is H plus one escape hatch, and every line of H survives in it. That is the argument for not deciding now: build H, and if bulk work turns out to happen from the keyboard — or an accessibility commitment lands, where <kbd>⌘</kbd>-click has no equivalent at all — <kbd>Esc</kbd> is still free and the mode drops in without touching anything already built.</p>
+<h3>Build REST. Ship EDGE behind a setting if the corridor turns out to be worth it.</h3>
+<p style="color:var(--muted);margin:6px 0 0;max-width:860px">Both give you what you asked for: at rest, <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> and <kbd>Tab</kbd> all navigate. They differ only once a cell is open, and there REST is the one that never surprises anybody — the caret owns the horizontal arrows, exactly as it does in every text field on the machine.</p>
+<p style="color:var(--muted);margin:8px 0 0;max-width:860px">EDGE is the stricter reading of what you said, and its appeal is real: a row of short values walks end to end with one key. Its problem is that the keypress which leaves the cell is indistinguishable from the one before it, and an empty cell is at both edges at once — so a run of blanks becomes a corridor you fall through. That is worth having, and worth having deliberately, which is what a setting is for.</p>
 <ol>
-<li><b>Hover + one-click edit.</b> Cells render as values; <span class="mono">:hover</span> paints the control. The click path is unchanged from today, so <span class="mono">activateCell</span> is already correct.</li>
-<li><b>⌘-click and ⇧-click select</b>, with a row set on the table view and <kbd>Esc</kbd> to clear. Move the peek to <kbd>⌘Return</kbd> in the same change so no gesture is ever ambiguous.</li>
-<li><b>Four key handlers</b> — <kbd>Tab</kbd>, <kbd>↑</kbd><kbd>↓</kbd>, <kbd>Return</kbd>, <kbd>⇧Return</kbd>. <kbd>⇧Return</kbd> reuses <span class="mono">state.inlineAdd</span>; <kbd>⌘Return</kbd> reuses <span class="mono">peekEntity</span>.</li>
-<li><b>Then the puck bar of #132</b>, which now has a selection to act on and needs no new interaction model.</li>
-<li><b>K's mode, deferred.</b> Costs nothing to leave out and nothing to add later.</li>
+<li><b>Cells rest as values; hover arms them.</b> The click path is unchanged from today, so <span class="mono">activateCell</span> is already correct — it just gets called on an armed cell rather than a permanently live one.</li>
+<li><b>One keymap.</b> At rest: arrows and <kbd>Tab</kbd> move, <kbd>Space</kbd> selects, <kbd>Return</kbd> or any character opens. Open: <kbd>Return</kbd> commits down, <kbd>Tab</kbd> commits across, <kbd>Esc</kbd> reverts.</li>
+<li><b>Selection, now free on both sides.</b> <kbd>⌘</kbd>-click and <kbd>⇧</kbd>-click from the pointer, <kbd>Space</kbd> and <kbd>⇧↑↓</kbd> from the keyboard. This is what last round needed an entire extra direction to buy.</li>
+<li><b>Drop the peek</b> in the same change — see below. That is what makes <kbd>⌘</kbd>-click free, and it deletes a second rendering of a record rather than adding one.</li>
+<li><b>Then the puck bar of #132</b>, which now has a selection to act on from either hand.</li>
+<li><b>EDGE as a per-table or per-user setting</b>, once REST is in. It is one branch in the open-cell keymap, so it is cheap to add and cheap to withdraw.</li>
 </ol>
 </div>
 
@@ -242,10 +243,10 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 <table class="cmp">
 <thead><tr><th>Question</th><th>Why it matters</th></tr></thead>
 <tbody>
-<tr><td><b>Select without a mouse?</b></td><td>The only thing separating H from K. ⌘-click has no keyboard equivalent, so H has nothing to offer anyone who cannot use a pointer — the accessibility answer, if you want one, is K.</td></tr>
-<tr><td>Does ⇧-click select a run of rows or a rectangle of cells?</td><td>Rows is the smaller build and matches the puck bar of #132. Cells opens the door to fill-down and paste later, and cannot be retrofitted cheaply.</td></tr>
-<tr><td>Where does the docs-chips column sit in the Tab order?</td><td>Documents are not cells. Skipping them keeps the Tab run tabular; including them makes the last stop a chip rather than a field.</td></tr>
-<tr><td>Does a hover-armed grid still read as editable?</td><td>The reason every cell wears a control today. Worth watching for on a table of mostly-empty fields, where hover is the only thing saying they can be filled in.</td></tr>
+<tr><td><b>Do ← → step out of an open cell?</b></td><td>The only thing separating REST from EDGE. REST never surprises; EDGE never makes you think about a state. One branch in the open-cell keymap either way, so it can be a setting rather than a verdict.</td></tr>
+<tr><td>Does ⇧-click take a run of rows or a rectangle of cells?</td><td>Rows is the smaller build and matches the puck bar of #132. Cells opens the door to fill-down and paste later, and cannot be retrofitted cheaply.</td></tr>
+<tr><td>Where does the docs-chips column sit in the arrow and Tab order?</td><td>Documents are not cells. Skipping them keeps the run tabular; including them makes one stop a chip rather than a field.</td></tr>
+<tr><td>Does a resting grid still read as editable?</td><td>The reason every cell wears a control today. Worth watching on a table of mostly-empty fields, where hover is the only thing saying they can be filled in.</td></tr>
 </tbody>
 </table>
 </div>
@@ -261,54 +262,79 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
    Pure: a keystroke plus a grid state resolves to a verb. No DOM here, so
    test/grid-patterns.test.mjs presses the same keys the page does.
 
-   state  { mode, r, c, rows, cols, sel:Set<rowIndex>, anchor, readonly }
+   Kyle, 2026-08-24: "I want to nav with L and R and tab". That decides the
+   shape. ← and → cannot navigate while a cell is a live text input — the
+   caret is already using them — so cells REST as values and open on
+   purpose. Two things fall out for free: Space is unclaimed at rest, so
+   keyboard row selection costs nothing, and hover finally has a job.
+
+   state  { mode, r, c, rows, cols, sel:Set<rowIndex>, anchor, readonly,
+            caret:{atStart,atEnd} }   caret is read from the real input
    verb   { type, ... }
      move / commitMove {dr,dc,wrap?}  · move, saving first if it must
-     edit {select?} · exit            · raise the editor · leave it
-     open                             · open the record
+     edit {select?} · revert          · open the cell · back out of it
+     open                             · open the record (the page)
      newRow {at,focus}                · create an item
      toggleSelect / extendSelect {dir} / selectAll / clearSelect
-     none                             · the browser keeps it (a caret, a character)
-
-   pointer  what each mouse gesture does, which is where Kyle's correction
-            landed: the plain click keeps editing, the MODIFIERS select. */
+     none                             · the browser keeps it */
 
 const printable = (key) => key.length === 1 && key !== ' ';
 const MOVE = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
 
-/* Everything both challengers share: the keyboard that does not exist today.
-   Return commits down a column, Tab walks the row and wraps into the next,
-   the horizontal arrows stay with the text caret so a typist is never
-   interrupted mid-word, and Shift+Return makes the next item. */
-const sharedKeys = (k, s) => {
-  if (k.key === 'Tab') return { type: 'move', dr: 0, dc: k.shift ? -1 : 1, wrap: 'grid' };
-  if (k.key === 'Enter' && k.meta) return { type: 'open' };
-  if (k.key === 'Enter' && k.shift) return { type: 'newRow', at: 'below', focus: 'first' };
-  if (k.key === 'Enter') return { type: 'commitMove', dr: 1, dc: 0 };
-  if (k.key === 'ArrowUp' || k.key === 'ArrowDown') return { type: 'move', dr: k.key === 'ArrowUp' ? -1 : 1, dc: 0 };
-  return null;
-};
-
-/* The pointer story is IDENTICAL in H and K — the whole difference between
-   them is whether the keyboard can also select. Shared so it cannot drift. */
-const hoverPointer = {
-  click: 'edit', checkbox: 'toggle', field: 'cellActivation',
-  cmdClick: 'toggleSelect', shiftClick: 'extendSelect', hover: 'arm',
-};
 /* Kyle: "I dont knwo if we need peek". Counted rather than argued.
    #39 built the side peek as every row's click target. #117 replaced that
    with the full entity page after Kyle reviewed five entity surfaces, and
    kept peekEntity only "for callers that want a slide-over on top of a
    page". No such caller was ever written. The one call site left is the
-   ⌘-click row target of #133 — the exact thing #117 said the peek had
-   stopped being. So ⌘-click is not contested; it is merely occupied. */
+   ⌘-click row target of #133 — the exact case #117 had just ruled out. */
 const PEEK_VERDICT = {
   callers: 1,
   qualifyingCallers: 0,
-  evidence: '#39 made the peek every row\u2019s click target. #117 replaced that with the entity page and kept peekEntity "for callers that want a slide-over on top of a page" \u2014 no such caller exists. The single remaining call is the ⌘-click row target added by #133, which is the case #117 had just ruled out.',
+  evidence: '#39 made the peek every row’s click target. #117 replaced that with the entity page and kept peekEntity "for callers that want a slide-over on top of a page" — no such caller exists. The single remaining call is the ⌘-click row target added by #133, which is the case #117 had just ruled out.',
   frees: 'Dropping it frees ⌘-click outright, so neither challenger has to move anything, and removes the second way of rendering a record: peekEntity (~56 lines), 17 CSS rules, and 5 inPeek branches threaded through renderEntityView.',
   keeps: 'The one real argument for it: the table keeps its scroll position while you read a record. #117 already weighed that and chose the page.',
 };
+
+/* Identical in both challengers, so the fork between them stays a single
+   axis: the plain click edits, the modifiers select, hover shows which. */
+const restPointer = {
+  click: 'edit', checkbox: 'toggle', field: 'cellActivation',
+  cmdClick: 'toggleSelect', shiftClick: 'extendSelect', hover: 'arm',
+};
+
+/* At rest the grid is a map: all four arrows and Tab move, Space is free
+   for selection, Return and any character open the cell. This is the half
+   both challengers share — they differ only once a cell is OPEN. */
+const restKeys = (k, s) => {
+  if (k.key === 'Tab') return { type: 'move', dr: 0, dc: k.shift ? -1 : 1, wrap: 'grid' };
+  if (k.key === 'Enter' && k.meta) return { type: 'open' };
+  if (k.key === 'Enter' && k.shift) return { type: 'newRow', at: 'below', focus: 'first' };
+  if (k.key === 'Enter') return s.readonly ? { type: 'none' } : { type: 'edit', select: 'all' };
+  if (k.key === 'a' && k.meta) return { type: 'selectAll' };
+  if (k.shift && (k.key === 'ArrowUp' || k.key === 'ArrowDown')) return { type: 'extendSelect', dir: k.key === 'ArrowUp' ? -1 : 1 };
+  if (MOVE[k.key]) return { type: 'move', dr: MOVE[k.key][0], dc: MOVE[k.key][1] };
+  if (k.key === ' ') return { type: 'toggleSelect' };
+  if (k.key === 'Escape') return s.sel.size ? { type: 'clearSelect' } : { type: 'none' };
+  if (printable(k.key) && !k.meta) return s.readonly ? { type: 'none' } : { type: 'edit', select: 'replace' };
+  return { type: 'none' };
+};
+
+/* Inside an open cell, everything except the horizontal arrows is agreed. */
+const openKeys = (k, s) => {
+  if (k.key === 'Tab') return { type: 'commitMove', dr: 0, dc: k.shift ? -1 : 1, wrap: 'grid' };
+  if (k.key === 'Enter' && k.meta) return { type: 'open' };
+  if (k.key === 'Enter' && k.shift) return { type: 'newRow', at: 'below', focus: 'first' };
+  if (k.key === 'Enter') return { type: 'commitMove', dr: 1, dc: 0 };
+  if (k.key === 'ArrowUp' || k.key === 'ArrowDown') return { type: 'commitMove', dr: k.key === 'ArrowUp' ? -1 : 1, dc: 0 };
+  if (k.key === 'Escape') return { type: 'revert' };
+  return null;
+};
+
+const SHARED_COSTS = [
+  'The always-live grid goes. Cells rest as values and only show a control on hover or once opened, so the grid stops advertising which fields can be typed into — a text cell and a formula cell need a marker to stay apart.',
+  'Hover becomes the only editability cue, which is thinnest exactly where it matters most: a table of empty fields looks inert until you point at it.',
+  'A resting state is a state. Nobody has to call it a mode, but the cursor is either in a cell or beside it, and the grid has to draw the difference clearly enough that you never type into the wrong one.',
+];
 
 const PATTERNS = {
 
@@ -316,87 +342,83 @@ const PATTERNS = {
   NOW: {
     name: 'Now · what ships today',
     thesis: 'Every cell wears its editor permanently, a click lands in the field it hit, ⌘-click peeks the row — and the grid answers to no keys and knows nothing about a selection.',
-    caps: { rowSelect: 'none', cellEdit: 'always-live', homeMode: 'cell', modes: ['cell'], hover: 'none', keyboard: 'none' },
+    caps: { rowSelect: 'none', cellEdit: 'always-live', homeMode: 'rest', modes: ['live'], hover: 'none', keyboard: 'none', arrows: 'caret', arrowsInCell: 'caret' },
     pointer: { click: 'edit', checkbox: 'toggle', field: 'cellActivation', cmdClick: 'peek', shiftClick: 'none', hover: 'none' },
     opens: 'peek',
     peekVerdict: PEEK_VERDICT,
     costs: [
-      'No keyboard at all. Tab, the arrows, Return and ⇧Return every one of them falls through to the browser, so a record cannot be filled in without the mouse.',
+      'No keyboard at all. Tab, every arrow, Return and ⇧Return each fall through to the browser, so a record cannot be filled in without the mouse.',
       'No row selection, so nothing can act on more than one record — no bulk state change, no multi-delete, and nothing for the puck bar of #132 to stand on.',
-      'Every cell wears a control at all times, which makes a table of forty rows read as a wall of form fields rather than as records.',
+      'Every cell wears a control at all times, which makes forty rows read as a wall of form fields rather than as records — and leaves ← and → permanently spoken for.',
     ],
     keys: [['click', 'edit that field'], ['⌘click', 'open the row in the side peek'], ['#id ↗', 'open the entity page'],
-      ['Tab · ↑ ↓ · Return · ⇧Return', 'nothing — try them']],
+      ['Tab · ← → ↑ ↓ · Return · ⇧Return', 'nothing — try them']],
     keymap() { return { type: 'none' }; },
   },
 
-  /* ── H · Hover-live ──────────────────────────────────────────────── */
-  H: {
-    name: 'Hover-live · the modifiers select, the click edits',
-    thesis: 'Cells rest as values and arm on hover; a plain click edits any type including a checkbox, and ⌘/⇧-click carry the whole of selection so the plain click never has to be spent on it.',
-    caps: { rowSelect: 'pointer-only', cellEdit: 'always-live', homeMode: 'cell', modes: ['cell'], hover: 'arm', keyboard: 'navigate' },
-    pointer: hoverPointer,
+  /* ── REST · the caret keeps ← → once a cell is open ──────────────── */
+  REST: {
+    name: 'Resting cursor · arrows navigate, the caret takes them back',
+    thesis: 'Cells rest as values, so all four arrows and Tab navigate the grid; opening a cell hands ← and → to the caret until you Tab, Return or Esc back out. The conventional split, and the one nobody has to be warned about.',
+    caps: { rowSelect: 'keyboard', cellEdit: 'rest-then-open', homeMode: 'rest', modes: ['rest', 'edit'], hover: 'arm', keyboard: 'navigate+select', arrows: 'navigate', arrowsInCell: 'caret' },
+    pointer: restPointer,
     opens: 'page',
     costs: [
-      'Selection needs a mouse. ⌘-click has no keyboard equivalent, so bulk work is pointer-only and there is no answer at all for someone who cannot use one.',
-      'Hover is the only thing announcing that a cell is editable, which is thinnest exactly where it matters most — a table of empty fields looks inert until you point at it.',
-      'Nothing here helps a reader who wants the record rather than the field; Return commits down the column and opening still means the #id link or ⌘Return.',
+      'While a cell is open, "← and → navigate" stops being true — which is most of the time you are actually typing, so the promise holds at rest and quietly lapses in use.',
+      'Getting out of a cell needs a deliberate key: Tab, Return or Esc. A run of edits across a row is one extra keystroke per cell against EDGE.',
+      ...SHARED_COSTS,
     ],
-    keys: [['click', 'edit that field — checkbox included, one click'], ['hover', 'the control appears where you point'],
-      ['⌘click', 'toggle the row into the selection'], ['⇧click', 'extend the run from the last one'],
-      ['Tab / ⇧Tab', 'along the row, wrapping into the next'], ['↑ ↓', 'down the column'],
-      ['← →', 'the text caret — never stolen'], ['Return', 'commit, move down'],
-      ['⇧Return', 'new row below'], ['⌘Return', 'open the record'], ['Esc', 'drop the selection']],
+    keys: [['← → ↑ ↓', 'navigate the grid'], ['Tab / ⇧Tab', 'along the row, wrapping into the next'],
+      ['Return · any character', 'open the cell'], ['click', 'open it too — checkbox flips on that one click'],
+      ['hover', 'the control appears where you point'],
+      ['open: ← →', 'the text caret — until you leave'], ['open: Return', 'commit, move down'],
+      ['Esc', 'back out, restoring the value'], ['Space', 'pick the row up'], ['⇧↑ ⇧↓', 'extend the run'],
+      ['⌘A', 'take the table'], ['⌘click · ⇧click', 'toggle a row · take the run'],
+      ['⇧Return', 'new row below'], ['⌘Return', 'open the record']],
     keymap(k, s) {
-      const shared = sharedKeys(k, s);
-      if (shared) return shared;
-      if (k.key === 'Escape') return s.sel.size ? { type: 'clearSelect' } : { type: 'exit' };
-      return { type: 'none' };
+      if (s.mode === 'edit') {
+        const shared = openKeys(k, s);
+        if (shared) return shared;
+        return { type: 'none' };                 // ← → belong to the caret, always
+      }
+      return restKeys(k, s);
     },
   },
 
-  /* ── K · H, plus a nav mode ──────────────────────────────────────── */
-  K: {
-    name: 'Hover-live + nav mode · selection without a mouse',
-    thesis: 'Every line of H, plus one escape hatch: Esc pops out of the cell into a nav mode where Space picks up rows and ⇧↑↓ take a run, so bulk work never needs a pointer.',
-    caps: { rowSelect: 'keyboard', cellEdit: 'always-live', homeMode: 'cell', modes: ['cell', 'nav'], hover: 'arm', keyboard: 'navigate+select' },
-    pointer: hoverPointer,
+  /* ── EDGE · ← → never stop navigating ────────────────────────────── */
+  EDGE: {
+    name: 'Edge-through · ← and → always navigate, eventually',
+    thesis: 'The literal answer: ← and → never stop being navigation keys. Inside an open cell they walk the caret, and the press that would run past the end of the text steps into the next cell instead — so there is no state in which the keys mean something else.',
+    caps: { rowSelect: 'keyboard', cellEdit: 'rest-then-open', homeMode: 'rest', modes: ['rest', 'edit'], hover: 'arm', keyboard: 'navigate+select', arrows: 'navigate', arrowsInCell: 'through-edge' },
+    pointer: restPointer,
     opens: 'page',
-    differsFrom: 'H',
-    theOneQuestion: 'Can a row be selected without a mouse? H says the modifiers are enough; K spends Esc to say no.',
     costs: [
-      'It is a mode, and a mode can be wrong. The indicator has to be drawn and watched, and Esc now means two things depending on where you are standing.',
-      'Everything H loses, it loses too — hover is still the only cue that a cell can be typed into.',
-      'More to build and more to explain than H, for a path some tables will never use.',
+      'You leave a cell on a keypress you aimed at the caret. Hold → to get to the end of a value and the next press is already in the next field, with whatever you type landing there.',
+      'An empty cell is at both edges at once, so a single ← or → passes straight through it. A row of blanks becomes a corridor, which is fast and is also exactly where a typist is least sure where they are.',
+      '⇧← and ⇧→ have to keep selecting text inside the cell, so the shift pair is the one place the rule does not hold — the exception EDGE exists to avoid.',
+      'Nothing marks the boundary. The keypress that leaves looks identical to the one before it, so the only feedback is the cursor arriving somewhere else.',
+      ...SHARED_COSTS,
     ],
-    keys: [['everything in H', 'unchanged — same click, same hover, same ⌘/⇧click'],
-      ['Esc', 'pop out of the cell into nav'], ['Space', 'nav: pick the row up'],
-      ['⇧↑ ⇧↓', 'nav: extend the run'], ['⌘A', 'nav: take the table'],
-      ['↑ ↓ ← →', 'nav: move the cursor'], ['Return', 'nav: drop back into the cell'],
-      ['Esc again', 'drop the selection']],
+    keys: [['← → ↑ ↓', 'navigate the grid'], ['Tab / ⇧Tab', 'along the row, wrapping into the next'],
+      ['Return · any character', 'open the cell'], ['click', 'open it too — checkbox flips on that one click'],
+      ['hover', 'the control appears where you point'],
+      ['open: ← →', 'walk the caret · step out at the edge of the text'],
+      ['open: ⇧← ⇧→', 'select text — the one exception'], ['open: Return', 'commit, move down'],
+      ['Esc', 'back out, restoring the value'], ['Space', 'pick the row up'], ['⇧↑ ⇧↓', 'extend the run'],
+      ['⌘A', 'take the table'], ['⌘click · ⇧click', 'toggle a row · take the run'],
+      ['⇧Return', 'new row below'], ['⌘Return', 'open the record']],
     keymap(k, s) {
-      if (s.mode === 'nav') {
-        if (k.key === 'Tab') return { type: 'move', dr: 0, dc: k.shift ? -1 : 1, wrap: 'grid' };
-        if (k.key === 'Enter' && k.meta) return { type: 'open' };
-        if (k.key === 'Enter' && k.shift) return { type: 'newRow', at: 'below', focus: 'first' };
-        if (k.key === 'Enter') return s.readonly ? { type: 'none' } : { type: 'edit', select: 'all' };
-        if (k.key === ' ') return { type: 'toggleSelect' };
-        if (k.key === 'a' && k.meta) return { type: 'selectAll' };
-        if (k.shift && (k.key === 'ArrowUp' || k.key === 'ArrowDown')) return { type: 'extendSelect', dir: k.key === 'ArrowUp' ? -1 : 1 };
-        if (MOVE[k.key]) return { type: 'move', dr: MOVE[k.key][0], dc: MOVE[k.key][1] };
-        if (k.key === 'Escape') return s.sel.size ? { type: 'clearSelect' } : { type: 'exit' };
-        if (printable(k.key) && !k.meta) return s.readonly ? { type: 'none' } : { type: 'edit', select: 'replace' };
-        return { type: 'none' };
+      if (s.mode === 'edit') {
+        const shared = openKeys(k, s);
+        if (shared) return shared;
+        /* ⇧← and ⇧→ stay with text selection — the single exception, and
+           the reason this pattern books one of its costs. */
+        if (k.shift) return { type: 'none' };
+        if (k.key === 'ArrowRight' && s.caret.atEnd) return { type: 'commitMove', dr: 0, dc: 1, wrap: 'grid' };
+        if (k.key === 'ArrowLeft' && s.caret.atStart) return { type: 'commitMove', dr: 0, dc: -1, wrap: 'grid' };
+        return { type: 'none' };                 // mid-word: the caret's
       }
-      const shared = sharedKeys(k, s);
-      if (shared) return shared;
-      /* Esc always cancels the loudest live thing. A selection made by
-         ⌘-click is louder than the cell you happen to be standing in — it
-         is tinted, and it has an action bar under the grid — so it goes
-         first, and only an unselected grid pops out to the map. Same rule
-         as H, which is the point: these two differ on ONE axis. */
-      if (k.key === 'Escape') return s.sel.size ? { type: 'clearSelect' } : { type: 'exit' };
-      return { type: 'none' };
+      return restKeys(k, s);
     },
   },
 };
@@ -441,7 +463,8 @@ const fmtDate = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('e
 function buildStage(stage) {
   const P = PATTERNS[stage.dataset.pattern];
   const rows = SEED.map((r) => ({ pid: r.pid, v: [...r.v] }));
-  const s = { mode: 'cell', r: 0, c: 0, rows: rows.length, cols: COLS.length, sel: new Set(), anchor: null, readonly: false };
+  const s = { mode: P.caps.homeMode, r: 0, c: 0, rows: rows.length, cols: COLS.length,
+    sel: new Set(), anchor: null, readonly: false, caret: { atStart: true, atEnd: true } };
   let fresh = null;
 
   const box = document.createElement('div');
@@ -451,6 +474,8 @@ function buildStage(stage) {
   const bar = document.createElement('div'); bar.className = 'selbar';
   const log = document.createElement('div'); log.className = 'keylog';
   const pop = document.createElement('div'); pop.className = 'pop';
+  const edge = document.createElement('span'); edge.className = 'edgechip'; edge.style.display = 'none';
+  let openSelect = null;
   const keys = document.createElement('div'); keys.className = 'keys';
   keys.innerHTML = P.keys.map(([kk, what]) =>
     `<div><kbd>${kk.split(' / ').join('</kbd> / <kbd>').split(' · ').join('</kbd> · <kbd>')}</kbd> ${what}</div>`).join('');
@@ -465,10 +490,11 @@ function buildStage(stage) {
 
   const draw = () => {
     tbl.className = 'g ' + (P.caps.hover === 'arm' ? 'armed' : 'always');
-    const modeChip = P.caps.modes.length > 1
-      ? `<span class="mode ${s.mode}">${s.mode}</span>`
-      : `<span class="mode none">no modes</span>`;
-    hint.innerHTML = modeChip + `<span>${s.sel.size ? s.sel.size + ' row' + (s.sel.size > 1 ? 's' : '') + ' selected' : (P.caps.rowSelect === 'none' ? 'no selection — this grid has none' : 'no selection · ⌘-click a row')}</span>`;
+    const modeChip = P.caps.keyboard === 'none'
+      ? `<span class="mode none">no keys at all</span>`
+      : `<span class="mode ${s.mode}">${s.mode === 'edit' ? 'cell open' : 'at rest'}</span>`;
+    hint.innerHTML = modeChip + `<span>${s.sel.size ? s.sel.size + ' row' + (s.sel.size > 1 ? 's' : '') + ' selected' : (P.caps.rowSelect === 'none' ? 'no selection — this grid has none' : 'no selection · Space or ⌘-click a row')}</span>`;
+    hint.append(edge);
     let h = '<thead><tr><th class="pid">id</th>' + COLS.map((c) => `<th class="${c.num ? 'n' : c.box ? 'c' : ''}">${c.name}</th>`).join('') + '</tr></thead><tbody>';
     rows.forEach((row, ri) => {
       const cls = ['r', s.sel.has(ri) ? 'sel' : '', s.anchor === ri && s.sel.has(ri) ? 'anchor' : '', fresh === ri ? 'fresh' : ''].filter(Boolean).join(' ');
@@ -477,8 +503,13 @@ function buildStage(stage) {
         const col = COLS[ci];
         const cur = ri === s.r && ci === s.c && s.mode !== 'nav-off';
         const td = ['v-cell', col.num ? 'n' : '', col.box ? 'c' : '', col.pick ? 'pickish' : '', col.ro ? 'ro' : '',
-          cur ? 'cur' : '', cur && s.mode === 'cell' && !col.ro ? 'editing' : ''].filter(Boolean).join(' ');
-        const shown = col.box ? `<span class="cb${val ? ' on' : ''}"></span>`
+          cur ? 'cur' : '', cur && s.mode === 'edit' && !col.ro ? 'editing' : ''].filter(Boolean).join(' ');
+        /* An open text cell is a REAL input, so EDGE's "step out at the
+           end of the text" is measured from selectionStart rather than
+           mimed. Everything else renders as a value at rest. */
+        const live = cur && s.mode === 'edit' && !col.box && !col.pick && !col.ro;
+        const shown = live ? `<input class="cellin" value="${String(val).replace(/"/g, '&quot;')}">`
+          : col.box ? `<span class="cb${val ? ' on' : ''}"></span>`
           : col.type === 'select' && val ? `<span class="chip ${STAGES[val] ?? ''}">${val}</span>`
           : col.type === 'date' ? (fmtDate(val) || '<span style="color:#3d4d61">—</span>')
           : (val || '<span style="color:#3d4d61">—</span>');
@@ -488,6 +519,23 @@ function buildStage(stage) {
     });
     h += `</tbody><tfoot><tr><td colspan="${COLS.length + 1}"><div class="addrow">+ <span>New row${P.caps.keyboard === 'none' ? '' : ' · ⇧Return'}</span></div></td></tr></tfoot>`;
     tbl.innerHTML = h;
+    const input = tbl.querySelector('input.cellin');
+    if (input) {
+      input.focus();
+      if (openSelect === 'all') input.select();
+      else { const n = input.value.length; input.setSelectionRange(n, n); }
+      openSelect = null;
+      const sync = () => {
+        s.caret.atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+        s.caret.atEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+        edge.textContent = s.caret.atStart && s.caret.atEnd ? 'caret: both edges'
+          : s.caret.atStart ? 'caret: at the start' : s.caret.atEnd ? 'caret: at the end' : 'caret: mid-text';
+      };
+      sync();
+      for (const ev of ['keyup', 'click', 'input', 'select']) input.addEventListener(ev, sync);
+      input.addEventListener('input', () => { rows[s.r].v[s.c] = input.value; });
+      edge.style.display = P.caps.arrowsInCell === 'through-edge' ? '' : 'none';
+    } else { edge.style.display = 'none'; s.caret.atStart = s.caret.atEnd = true; }
     bar.className = 'selbar' + (s.sel.size ? ' on' : '');
     bar.innerHTML = s.sel.size
       ? `<span class="n">${s.sel.size} selected</span><span class="act">Set state</span><span class="act">Set a field…</span><span class="act">Link to…</span><span class="act">Duplicate</span><span class="act">🗑</span><span style="color:var(--muted);margin-left:auto">the puck bar of #132, now with something to act on</span>`
@@ -505,7 +553,8 @@ function buildStage(stage) {
     const row = { pid: nextPid++, v: ['', '', '', '', false, '—'] };
     const at = s.r + 1;
     rows.splice(at, 0, row);
-    s.r = at; s.c = 0; s.rows = rows.length; fresh = at; s.mode = 'cell';
+    s.r = at; s.c = 0; s.rows = rows.length; fresh = at;
+    s.mode = P.caps.keyboard === 'none' ? 'rest' : 'edit'; openSelect = 'all';
   };
 
   const apply = (a) => {
@@ -515,10 +564,13 @@ function buildStage(stage) {
         if (c > COLS.length - 1) { c = 0; r += 1; }
         else if (c < 0) { c = COLS.length - 1; r -= 1; }
         s.r = Math.max(0, Math.min(rows.length - 1, r)); s.c = c;
+        /* Committing always lands you at REST — the next cell is not
+           opened for you. Both challengers agree on that. */
+        if (a.type === 'commitMove') s.mode = 'rest';
         break;
       }
-      case 'edit': s.mode = 'cell'; break;
-      case 'exit': s.mode = P.caps.modes.includes('nav') ? 'nav' : 'cell'; break;
+      case 'edit': s.mode = 'edit'; openSelect = a.select === 'replace' ? 'all' : 'end'; break;
+      case 'revert': s.mode = 'rest'; break;
       case 'newRow': addRow(); break;
       case 'toggleSelect': s.sel.has(s.r) ? s.sel.delete(s.r) : s.sel.add(s.r); s.anchor = s.r; break;
       case 'extendSelect': {
@@ -568,8 +620,10 @@ function buildStage(stage) {
       return draw();
     }
     if (!td) return;
-    s.r = +td.dataset.r; s.c = +td.dataset.c; s.mode = 'cell';
+    s.r = +td.dataset.r; s.c = +td.dataset.c;
     const col = COLS[s.c];
+    s.mode = (col.ro || col.box || col.pick) ? 'rest' : 'edit';
+    openSelect = 'end';
     pop.classList.remove('on');
     if (col.ro) { setLog('click', { type: 'none' }); return draw(); }
     if (col.box) {                                    // one click, always
@@ -640,7 +694,7 @@ document.getElementById('peek-evidence').innerHTML = [
   ['keeping it', V.keeps],
 ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
 
-for (const id of ['NOW', 'H', 'K']) {
+for (const id of ['NOW', 'REST', 'EDGE']) {
   document.getElementById('cost-' + id).innerHTML = PATTERNS[id].costs
     .map((c) => { const i = c.indexOf('.'); return `<li><b>${c.slice(0, i + 1)}</b> ${c.slice(i + 1).trim()}</li>`; }).join('');
 }
