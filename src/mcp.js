@@ -3,6 +3,7 @@
 // (Feature #99, the hosted instance). One handler serves both.
 
 import { readFileSync } from 'node:fs';
+import { VOCABULARY } from './vocabulary.js';
 const PROTOCOL_VERSION = '2024-11-05';
 // Lazy-tolerant, same reason as pdf.js's font path: module-top file reads
 // crash the workerd bundle at cold start. The HTTP transport passes the real
@@ -14,6 +15,14 @@ try {
 
 function textResult(data) {
   return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 1) }] };
+}
+
+// Only the keys a caller actually named: an absent key means "leave it", and
+// the engine's patches distinguish that from an explicit null.
+function pick(args, keys) {
+  const out = {};
+  for (const k of keys) if (k in args) out[k] = args[k];
+  return out;
 }
 
 // Entity refs accepted everywhere: raw entity id, or "Table#publicId".
@@ -106,7 +115,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_unlink',
-    description: 'Unlink entities from a relation field.',
+    description: 'Remove entities from a relation field, leaving both entities in place. targets takes ids, names, or "#publicId"; the inverse field on the other table follows.',
     inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, targets: { type: 'array', items: { type: 'string' } } }, required: ['entity', 'field', 'targets'] },
   },
   {
@@ -121,8 +130,13 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_comment',
-    description: 'Add a comment to an entity.',
+    description: 'Add a comment to an entity. Comments are their own thread on the entity page and ride the activity feed; delete one with weave_delete_comment.',
     inputSchema: { type: 'object', properties: { entity: { type: 'string' }, text: { type: 'string' }, author: { type: 'string' } }, required: ['entity', 'text'] },
+  },
+  {
+    name: 'weave_delete_comment',
+    description: 'Delete one comment from an entity. The comment id comes from weave_get_entity.',
+    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, comment: { type: 'string' } }, required: ['entity', 'comment'] },
   },
   {
     name: 'weave_search',
@@ -141,7 +155,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_field',
-    description: 'Add a field. Types: text, number, date, daterange, checkbox, url, email, select, multiselect, workflow, lookup, rollup, formula. config: {options:[...]} for selects; {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count,sum,avg,min,max,join); {expression} for formula. Any of text, number, date, daterange, checkbox, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead).',
+    description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, date, daterange, checkbox, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count,sum,avg,min,max,join); {expression} for formula. Any of text, number, date, daterange, checkbox, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
@@ -168,7 +182,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_export_csv',
-    description: 'Export a table as CSV.',
+    description: 'Export a table as CSV: one row per entity, one column per field, computed fields resolved. Multiselect and to-many relation cells use "; " separators.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
   },
   {
@@ -184,6 +198,164 @@ export const TOOLS = [
       properties: { entity: { type: 'string' }, name: { type: 'string' }, mime: { type: 'string' }, contentBase64: { type: 'string' } },
       required: ['entity', 'name', 'contentBase64'],
     },
+  },
+  /* ---------- configuration: every choice the UI can make, as a tool ----------
+     The web UI reaches all of this over REST; an agent had to shell out to
+     curl for it, which is a human gate wearing a shell prompt. */
+  {
+    name: 'weave_vocabulary',
+    description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, and the column-width rules. Read this before configuring a table.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'weave_update_space',
+    description: 'Rename a space or change its description or icon. Icon names come from weave_vocabulary.',
+    inputSchema: {
+      type: 'object',
+      properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } },
+      required: ['space'],
+    },
+  },
+  {
+    name: 'weave_delete_space',
+    description: 'Delete a space and every table in it. Not recoverable.',
+    inputSchema: { type: 'object', properties: { space: { type: 'string' } }, required: ['space'] },
+  },
+  {
+    name: 'weave_update_table',
+    description: 'Change a table: name, description, icon (weave_vocabulary), noun (what one record is called — "invoice" makes the create action read "New invoice"), hiddenFields (names kept out of the grid, data untouched), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the column order — every field exactly once).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        db: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' },
+        icon: { type: 'string' }, noun: { type: 'string' },
+        hiddenFields: { type: 'array', items: { type: 'string' } },
+        systemFields: { type: 'array', items: { type: 'string' } },
+        fieldOrder: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['db'],
+    },
+  },
+  {
+    name: 'weave_delete_table',
+    description: 'Delete a table and its entities. Not recoverable.',
+    inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
+  },
+  {
+    name: 'weave_update_field',
+    description: 'Change a field: rename it, retype it (values are migrated), or edit its config. config keys ride their own lanes — width (px, 60 minimum, null resets to auto), default (null clears), options/states (a full replacement), expression, and the costume keys for number, date, document and attachments. See weave_vocabulary for every legal value.',
+    inputSchema: {
+      type: 'object',
+      properties: { db: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
+      required: ['db', 'field'],
+    },
+  },
+  {
+    name: 'weave_delete_field',
+    description: 'Delete a field and its values from every entity of the table. Not recoverable.',
+    inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' } }, required: ['db', 'field'] },
+  },
+  {
+    name: 'weave_apply_schema',
+    description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. dryRun returns the plan without writing. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
+    inputSchema: {
+      type: 'object',
+      properties: { document: { type: 'array' }, dryRun: { type: 'boolean' }, allowDestructive: { type: 'boolean' } },
+      required: ['document'],
+    },
+  },
+  {
+    name: 'weave_views',
+    description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table or board — a board groups by the first workflow field, falling back to the first select). action: list | get | create | delete | share | unshare. Sharing mints a capability token; the /view/<token> URL renders that view read-only, even when the workspace requires auth.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string' }, view: { type: 'string' }, name: { type: 'string' },
+        blocks: { type: 'array', description: '[{table, where?, view?}]' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'weave_automations',
+    description: 'Automations already on a table: action list | describe (rules in prose) | update | delete. Create one with weave_create_automation.',
+    inputSchema: {
+      type: 'object',
+      properties: { action: { type: 'string' }, db: { type: 'string' }, automation: { type: 'string' }, patch: { type: 'object' } },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'weave_activity',
+    description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' }, entity: { type: 'string' }, table: { type: 'string' },
+        kinds: { type: 'array', items: { type: 'string' } }, since: { type: 'string' },
+        limit: { type: 'number' }, offset: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'weave_audit',
+    description: 'The workspace audit log: schema and account events with their actor.',
+    inputSchema: { type: 'object', properties: { limit: { type: 'number' }, since: { type: 'string' } } },
+  },
+  {
+    name: 'weave_workspace',
+    description: 'The workspace record itself. action: get | update (name — alphanumeric — and description) | logo (contentBase64 + name + mime) | clear-logo.',
+    inputSchema: {
+      type: 'object',
+      properties: { action: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, mime: { type: 'string' }, contentBase64: { type: 'string' } },
+    },
+  },
+  {
+    name: 'weave_accounts',
+    description: 'Agent and human accounts. action: list | create (name, role: reader|writer|admin — the token is returned once) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace).',
+    inputSchema: {
+      type: 'object',
+      properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, account: { type: 'string' }, on: { type: 'boolean' } },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'weave_keys',
+    description: 'The keystore behind `key` fields: a key field holds the NAME of a secret, and the secret lives in a chmod-600 file beside the workspace. action: list (names only) | set (name, value) | delete. No tool returns a secret value.',
+    inputSchema: {
+      type: 'object',
+      properties: { action: { type: 'string' }, name: { type: 'string' }, value: { type: 'string' } },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'weave_files',
+    description: 'Files already attached to an entity: action read (returns base64 content) | delete. Attach one with weave_attach_file.',
+    inputSchema: {
+      type: 'object',
+      properties: { action: { type: 'string' }, entity: { type: 'string' }, file: { type: 'string' } },
+      required: ['action', 'file'],
+    },
+  },
+  {
+    name: 'weave_registry',
+    description: 'The meta-model registries (Workspace/Spaces, Tables, Fields) whose rows ARE the schema: action report (drift between the registry and the structures it mirrors) | rebuild.',
+    inputSchema: { type: 'object', properties: { action: { type: 'string' } } },
+  },
+  {
+    name: 'weave_relation_map',
+    description: 'The workspace relation map as a mermaid diagram: every table, relation and automation.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'weave_export_json',
+    description: 'The whole workspace as JSON — the human-readable interchange format, and the backup to take before a destructive apply.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'weave_import_json',
+    description: 'Replace the workspace with a JSON export. Destructive: everything not in the document is gone.',
+    inputSchema: { type: 'object', properties: { state: { type: 'object' } }, required: ['state'] },
   },
 ];
 
@@ -244,6 +416,8 @@ export function dispatchTool(weave, name, args = {}) {
     }
     case 'weave_add_comment':
       return weave.addComment(resolveEntity(weave, args.entity), { author: args.author ?? 'agent', text: args.text });
+    case 'weave_delete_comment':
+      return weave.deleteComment(resolveEntity(weave, args.entity), args.comment);
     case 'weave_search':
       return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
     case 'weave_create_space':
@@ -262,6 +436,93 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.importCSV(args.db, args.csv);
     case 'weave_attach_file':
       return weave.attachFile(resolveEntity(weave, args.entity), { name: args.name, mime: args.mime, bytes: args.contentBase64 });
+    case 'weave_vocabulary':
+      return VOCABULARY;
+    case 'weave_update_space':
+      return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon']));
+    case 'weave_delete_space':
+      weave.deleteSpace(args.space);
+      return { space: args.space, deleted: true };
+    case 'weave_update_table':
+      return weave.updateTable(args.db, pick(args, ['name', 'description', 'icon', 'noun', 'hiddenFields', 'systemFields', 'fieldOrder']));
+    case 'weave_delete_table':
+      weave.deleteTable(args.db);
+      return { table: args.db, deleted: true };
+    case 'weave_update_field':
+      return weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config']));
+    case 'weave_delete_field':
+      return weave.deleteField(args.db, args.field);
+    case 'weave_apply_schema':
+      return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive) }) };
+    case 'weave_views':
+      switch (args.action) {
+        case 'list': return { views: weave.listViews() };
+        case 'get': return weave.resolveView(args.view);
+        case 'create': return weave.createView({ name: args.name, blocks: args.blocks ?? [] });
+        case 'delete': return weave.deleteView(args.view);
+        case 'share': return weave.shareView(args.view);
+        case 'unshare': return weave.unshareView(args.view);
+        default: throw new Error(`Unknown views action '${args.action}' (list, get, create, delete, share, unshare)`);
+      }
+    case 'weave_automations':
+      switch (args.action) {
+        case 'list': return { automations: weave.listAutomations(args.db ?? null) };
+        case 'describe': return { rules: weave.describeAutomations(args.db ?? null) };
+        case 'update': return weave.updateAutomation(args.automation, args.patch ?? {});
+        case 'delete': return weave.deleteAutomation(args.automation);
+        default: throw new Error(`Unknown automations action '${args.action}' (list, describe, update, delete)`);
+      }
+    case 'weave_activity':
+      if (args.id) return weave.getActivity(args.id);
+      return weave.activityFeed({
+        entityId: args.entity ? resolveEntity(weave, args.entity) : null,
+        tableRef: args.table ?? null, kinds: args.kinds ?? null, since: args.since ?? null,
+        limit: args.limit ?? null, offset: args.offset ?? 0,
+      });
+    case 'weave_audit':
+      return { events: weave.listAudit({ limit: args.limit ?? null, since: args.since ?? null }) };
+    case 'weave_workspace':
+      switch (args.action ?? 'get') {
+        case 'get': return weave.getWorkspace();
+        case 'update': return weave.updateWorkspace(pick(args, ['name', 'description']));
+        case 'logo': return weave.setWorkspaceLogo({ name: args.name ?? 'logo.png', mime: args.mime ?? 'image/png', bytes: args.contentBase64 });
+        case 'clear-logo': weave.deleteWorkspaceLogo(); return { logo: false };
+        default: throw new Error(`Unknown workspace action '${args.action}' (get, update, logo, clear-logo)`);
+      }
+    case 'weave_accounts':
+      switch (args.action) {
+        case 'list': return { accounts: weave.listAccounts() };
+        case 'create': return weave.createAccount({ name: args.name, role: args.role ?? 'writer' });
+        case 'delete': return weave.deleteAccount(args.account);
+        case 'require-auth': return weave.setRequireAuth(Boolean(args.on));
+        default: throw new Error(`Unknown accounts action '${args.action}' (list, create, delete, require-auth)`);
+      }
+    case 'weave_keys':
+      switch (args.action) {
+        case 'list': return { keys: weave.listKeys() };
+        case 'set': return weave.setKey(args.name, args.value);
+        case 'delete': return weave.deleteKey(args.name);
+        default: throw new Error(`Unknown keys action '${args.action}' (list, set, delete)`);
+      }
+    case 'weave_files':
+      switch (args.action) {
+        case 'read': {
+          const { meta, bytes } = weave.readFile(args.file);
+          return { ...meta, contentBase64: Buffer.from(bytes).toString('base64') };
+        }
+        case 'delete': return weave.deleteFile(resolveEntity(weave, args.entity), args.file);
+        default: throw new Error(`Unknown files action '${args.action}' (read, delete)`);
+      }
+    case 'weave_registry':
+      if ((args.action ?? 'report') === 'rebuild') return weave.rebuildRegistry();
+      return weave.registryReport();
+    case 'weave_relation_map':
+      return { mermaid: weave.relationMapMmd() };
+    case 'weave_export_json':
+      return weave.exportJSON();
+    case 'weave_import_json':
+      weave.importJSON(args.state);
+      return { ok: true };
     default:
       throw Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
   }
