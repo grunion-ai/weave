@@ -910,6 +910,86 @@ function openCellPicker(cell) {
   try { sel.showPicker?.(); } catch { /* not user-activated — focus is enough */ }
 }
 
+/* ---------- Ledger: a click raises the field's own editor ----------
+   The grid shows values at rest, so aiming at a cell has to produce the
+   control that field type actually uses — a picker for a select, the record
+   search for a relation, a caret for text — rather than a generic input the
+   reader then has to find. Which one is the pure half, in editor-lib.js.
+   A click that already landed ON a control is left alone: the browser has
+   put the caret where the reader aimed, which is better than any guess. */
+function activateCell(cell) {
+  switch (globalThis.WeaveEditorLib.cellActivation(cell.dataset.ftype)) {
+    case 'none': return;
+    case 'toggle': {
+      const box = cell.querySelector('input[type="checkbox"]');
+      if (box) { box.checked = !box.checked; box.dispatchEvent(new Event('change')); }
+      return;
+    }
+    case 'open-picker': return (cell.querySelector('.chip-trigger') ?? cell.querySelector('.ms-box'))?.click();
+    case 'open-button': return cell.querySelector('button')?.click();
+    default: {
+      const input = cell.querySelector('input, select');
+      if (!input) return;
+      input.focus();
+      // Placing the cursor is the point — a bare focus() leaves a text input
+      // with everything selected in some browsers and nothing in others.
+      const end = String(input.value ?? '').length;
+      try { input.setSelectionRange(end, end); } catch { /* number/date reject it */ }
+    }
+  }
+}
+
+/* ---------- Ledger: a capped column says what it is hiding ----------
+   A cell whose value does not fit shows a marker and, on hover, the whole
+   value — as a COPY in an overlay layer over the grid. The cell itself is
+   never touched: rewriting its box to expand in place would move every
+   column beside it (Kyle, 2026-08-24). The layer hangs off .table-wrap,
+   which scrolls with the grid and does not clip like the cell does. */
+function cellPopLayer(wrap) {
+  let layer = wrap.querySelector(':scope > .cell-pop-layer');
+  if (!layer) { layer = el('div', { class: 'cell-pop-layer' }); wrap.append(layer); }
+  return layer;
+}
+
+function showCellPop(td, wrap) {
+  const layer = cellPopLayer(wrap);
+  const base = wrap.getBoundingClientRect();
+  const r = td.getBoundingClientRect();
+  const pop = el('div', {
+    class: 'cell-pop',
+    style: `left:${r.left - base.left + wrap.scrollLeft}px; top:${r.top - base.top + wrap.scrollTop}px; min-width:${r.width}px;`,
+  });
+  // A copy, so the live cell keeps its controls and its place in the row.
+  for (const node of td.childNodes) pop.append(node.cloneNode(true));
+  layer.replaceChildren(pop);
+}
+
+function hideCellPop(wrap) {
+  wrap.querySelector(':scope > .cell-pop-layer')?.replaceChildren();
+}
+
+/* Clipped is measured, never assumed: a value that fits gets no marker, so
+   the marker always means there is more to see. */
+function markClippedCells(grid) {
+  for (const td of grid.querySelectorAll('tbody td')) {
+    td.classList.toggle('clipped', td.scrollWidth > td.clientWidth + 1);
+  }
+}
+
+/* ---------- Ledger: density ----------
+   Comfortable or Compact, per table and per person — a way of reading the
+   table rather than a property of it, so it lives beside the doc-fold state
+   in localStorage rather than in the table's schema. */
+function gridDensity(dbId, next) {
+  const key = `weave-grid-density:${dbId}`;
+  if (next === undefined) {
+    try { return localStorage.getItem(key) === 'compact' ? 'compact' : 'comfortable'; }
+    catch { return 'comfortable'; }
+  }
+  try { localStorage.setItem(key, next); } catch { /* private mode */ }
+  return next;
+}
+
 // Row click → 'ignore' (a control handled it), the picker cell, or null (open).
 /* The Workspace registries, as the schema describes them. kind is the
    engine's system marker: 'spaces' | 'tables' | 'fields'. */
@@ -1517,6 +1597,21 @@ function drawDatabase(db, items, trashCount = 0) {
         eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, trashCount); });
         return eye;
       })() : null,
+      // How tall a row reads at (Kyle, 2026-08-24). A way of reading the
+      // table, so it is a control in the toolbar and a per-person memory —
+      // not schema, and not something the next reader inherits.
+      state.route.view === 'table'
+        ? segCtl(
+          [{ id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
+            { id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }],
+          gridDensity(db.id),
+          (mode) => {
+            gridDensity(db.id, mode);
+            const grid = document.querySelector('.wv-grid');
+            if (grid) { grid.dataset.density = mode; markClippedCells(grid); }
+          },
+        )
+        : null,
       // Table view carries both affordances inside the grid itself — a "+"
       // in the header bar for fields, a "+ New" row at the foot for entities.
       // Board and list have no grid to host them, so they keep the buttons.
@@ -1693,12 +1788,19 @@ function renderTable(main, db, items, onSaved) {
       const row = el('tr', {
         class: 'entity-row' + (item.deleted ? ' row-deleted' : ''),
         dataset: { eid: item.id },
+        /* Ledger's one rule: the #id link navigates, every cell edits. A bare
+           row click used to open the entity, which fought the cell it landed
+           on; now it raises that field's own editor. ⌘-click still opens the
+           row — in the side peek, so the table keeps its place. */
         onclick: (e) => {
-          const pick = rowClickTarget(e);
-          if (pick === 'ignore') return;
-          if (pick) return openCellPicker(pick);
-          if (openRegistryRow(db, item)) return;
-          openEntity(item.id);
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            if (!openRegistryRow(db, item)) peekEntity(item.id);
+            return;
+          }
+          if (e.target.closest('a, button, input, select, textarea, label')) return;
+          const cell = e.target.closest('td');
+          if (cell) activateCell(cell);
         },
       },
         el('td', { class: 'pid-cell' },
@@ -1712,7 +1814,12 @@ function renderTable(main, db, items, onSaved) {
           const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
             : READONLY_FIELD_TYPES.includes(f.type) ? ' cell-computed' : '';
           return el('td', {
-            class: (f.type === 'number' ? 'num' : '') + kind,
+            dataset: { ftype: f.type, field: f.name },
+            // The leading column carries the row's identity — Name by default,
+            // whatever the reader put first after a reorder — so it is set
+            // heavier than the fields that qualify it.
+            class: (f.type === 'number' ? 'num' : '')
+              + (c === cols[0] ? ' name-cell' : '') + kind,
             // A resized column overrides the shared 260px cap — otherwise the
             // header widens and the cells keep ellipsising at the old width.
             style: f.width ? columnWidthStyle(f.width) : null,
@@ -1748,7 +1855,10 @@ function renderTable(main, db, items, onSaved) {
           onclick: () => state.inlineAdd?.(),
         }, '+ New'))));
 
-    const table = el('table', { class: 'table table-sm table-vcenter card-table table-hover wv-grid' },
+    const table = el('table', {
+      class: 'table table-sm table-vcenter card-table table-hover wv-grid',
+      dataset: { density: gridDensity(db.id) },
+    },
       el('thead', {}, el('tr', {},
         el('th', { class: 'pid-head' }, '#'),
         ...cols.map((c, i) => el('th', {
@@ -1788,8 +1898,18 @@ function renderTable(main, db, items, onSaved) {
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db)))),
       tbody);
     wrap.replaceChildren(table);
+    // Measured after the browser has laid the columns out, so "clipped"
+    // means clipped and the marker never claims there is more to read.
+    requestAnimationFrame(() => markClippedCells(table));
   };
   draw();
+  // A clipped cell opens over the grid on hover, in a layer of its own —
+  // the cell keeps its box, so no column ever moves (Kyle, 2026-08-24).
+  wrap.addEventListener('mouseover', (e) => {
+    const td = e.target.closest('td.clipped');
+    if (td && wrap.contains(td)) showCellPop(td, wrap); else hideCellPop(wrap);
+  });
+  wrap.addEventListener('mouseleave', () => hideCellPop(wrap));
   main.append(wrap);
 }
 

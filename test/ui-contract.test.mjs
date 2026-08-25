@@ -122,18 +122,18 @@ test('picker-type cells are tagged so the row handler can route clicks', () => {
   assert.match(APP, /cell-pick/, 'picker cells need the cell-pick class');
 });
 
-test('row click on a picker cell opens the picker instead of the entity', () => {
-  // Every clickable row surface (grid <tr>, list-row, board card) routes
-  // through rowClickTarget before it may open the entity page (Feature #117:
-  // the page is the destination; the side peek of #39 is no longer a row's
-  // click target).
-  // The grid may hop through openRegistryRow first (2026-08-24): a registry
-  // row opens its structure, every other row still opens the entity.
+/* Superseded for the GRID by the Ledger direction (Kyle, 2026-08-24): there,
+   the #id link navigates and every cell edits, so a row click no longer
+   reaches openEntity at all and ⌘-click opens the side peek. The board and
+   the embedded related rows are unchanged and still route the old way —
+   test/ledger-grid.test.mjs owns the grid's contract. */
+test('board and related rows still route a click before opening the entity', () => {
   const routed = [...APP.matchAll(/const pick = rowClickTarget\(e\);\s*\n\s*if \(pick === 'ignore'\) return;\s*\n\s*if \(pick\) return openCellPicker\(pick\);\s*\n\s*(?:if \(openRegistryRow\(db, item\)\) return;\s*\n\s*)?openEntity\(/g)];
-  assert.equal(routed.length, 3, 'grid, board and embedded related rows must all route clicks (list view removed 2026-08-22)');
+  assert.equal(routed.length, 2, 'board and embedded related rows route clicks; the grid edits in place');
   assert.equal((APP.match(/openEntity\(item\.id\)/g) ?? []).length, routed.length,
     'no row surface may open the entity without routing first');
-  assert.doesNotMatch(APP, /peekEntity\(item\.id\)/, 'no row surface opens the side peek any more (Feature #117)');
+  assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, 1,
+    'exactly one surface opens the side peek: the grid, on ⌘-click');
   assert.match(APP, /function rowClickTarget/);
   assert.match(APP, /function openCellPicker/);
   const fn = APP.slice(APP.indexOf('function openCellPicker'));
@@ -142,8 +142,12 @@ test('row click on a picker cell opens the picker instead of the entity', () => 
   assert.match(body, /showPicker/, 'native <select> cells open their own dropdown');
 });
 
-test('picker cells advertise themselves as clickable', () => {
-  assert.ok(rulesFor('.wv-grid td.cell-pick').cursor, 'cell-pick needs a pointer cursor');
+test('in the grid every cell advertises that it edits', () => {
+  // Was: only .cell-pick got a pointer, because only picker cells were
+  // clickable. Now the whole body is a target, and no cell type gets an
+  // outline of its own — that read as a rule between fields.
+  assert.ok(rulesFor('.wv-grid tbody td').cursor, 'the grid body is one big edit target');
+  assert.deepEqual(rulesFor('.wv-grid td.cell-pick'), {}, 'picker cells need no separate affordance');
 });
 
 /* ---------- defect: computed fields looked editable ----------

@@ -172,18 +172,74 @@ button.chip-trigger { cursor: pointer; font: inherit; }
 .view-switch .btn.active { background: var(--tblr-primary); border-color: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); }
 
 /* ---------- table view ---------- */
-.table-wrap { overflow-x: auto; }
+/* position:relative so the clipped-cell overlay can hang off the wrapper —
+   a cell clips its own overflow, and the expansion must not be clipped. */
+.table-wrap { overflow-x: auto; position: relative; }
 .wv-grid thead th { position: sticky; top: 0; z-index: 1; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* The id column carries a short "#12 ↗" link — collapse it to its content
    instead of letting the table hand it an equal share of the width. */
 .wv-grid th.pid-head, .wv-grid td.pid-cell { width: 1%; white-space: nowrap; text-align: left; padding-right: 6px; }
-/* Whole-cell hit target: the chip is small, the cell is not, and a click on
-   the padding must open the picker rather than navigate to the entity. */
-.wv-grid td.cell-pick { cursor: pointer; }
-/* Computed / read-only cells must not read as editable. */
-.wv-grid td.cell-computed { background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); cursor: default; }
+/* ---------- the Ledger grid (Kyle, 2026-08-24 — direction A) ----------
+   The grid was a form: every cell wore a control and hovering drew a box
+   around each one, so a row read as ruled between its fields. It is a record
+   now — values at rest, the control the moment you aim at a cell. Row height
+   is one variable, because density is a control the reader owns. */
+.wv-grid { --wv-row-pad: 9px; }
+.wv-grid[data-density="compact"] { --wv-row-pad: 2px; }
+/* Chips and their + button stay on one line: wrapped, a relation cell was
+   48px tall and set the height of every row beside it. Overflow is the
+   clipped-cell marker's job now, not the row's. */
+.wv-grid tbody .ms-box { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-wrap: nowrap; }
+.wv-grid tbody .ms-box .chip { margin: 0; }
+.wv-grid tbody td { padding-top: var(--wv-row-pad); padding-bottom: var(--wv-row-pad); }
+/* Every cell edits, so every cell is a target. */
+.wv-grid tbody td { cursor: text; }
+/* At rest an input is text, so it is sized like text. Tabler's form-control
+   min-height reserved a control's worth of room in every cell, which is what
+   made a comfortable row 70px tall instead of 43. The border is already
+   transparent until focus, so the box never changes size on the way in. */
+.wv-grid tbody .inline-edit { min-height: 0; height: auto; padding: 1px 4px; line-height: 1.45; }
+/* The leading column carries the row's identity; the rest qualify it. */
+.wv-grid td.name-cell .inline-edit { font-weight: 600; font-size: 15px; }
+/* A chip is still a chip — the value comes from a set of options — it just
+   stops wearing a box inside the grid. */
+.wv-grid .chip { border-color: transparent; }
+/* Computed / read-only cells must not read as editable — the glyph says so,
+   a tinted box only added another rectangle to a row full of them. */
+.wv-grid td.cell-computed { background: none; color: var(--tblr-secondary); cursor: default; }
+/* NO per-cell hover chrome: a border on each cell reads, across a row, as a
+   pale rule between every field. The row's own tint is the feedback, and the
+   focused control is the only thing that draws itself a box. */
+.wv-grid .inline-edit:hover { border-color: transparent; background: none; }
+.wv-grid .inline-edit:focus { border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
+/* Remove and link are chrome about the row, not part of it. */
+.wv-grid .chip .x, .wv-grid .ms-box > .btn, .wv-grid .date-pick-btn { opacity: 0; transition: opacity .12s ease; }
+.wv-grid tr:hover .chip .x, .wv-grid tr:hover .ms-box > .btn, .wv-grid tr:hover .date-pick-btn,
+.wv-grid tr:focus-within .chip .x, .wv-grid tr:focus-within .ms-box > .btn, .wv-grid tr:focus-within .date-pick-btn { opacity: 1; }
+
+/* A capped column says what it is hiding: a marker at rest, the whole value
+   on hover. Text gets the native ellipsis too; chips never do, which is why
+   the glyph is the marker that always shows. */
+.wv-grid td.clipped { position: relative; }
+.wv-grid td.clipped::after {
+  content: "⤢"; position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+  font-size: 10px; line-height: 1; color: var(--tblr-secondary); opacity: .4;
+  transition: opacity .12s ease; pointer-events: none;
+}
+.wv-grid tr:hover td.clipped::after { opacity: 1; color: var(--tblr-primary); }
+/* The expansion is a COPY in a layer over the grid. The cell keeps its own
+   box and its own content, so expanding one cannot move a column. */
+.cell-pop-layer { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.cell-pop {
+  position: absolute; z-index: 6; max-width: 380px; width: max-content;
+  white-space: normal; padding: 8px 10px; background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius);
+  box-shadow: var(--tblr-box-shadow); pointer-events: none;
+}
+.cell-pop .inline-edit { border-color: transparent; background: none; width: auto; }
+.cell-pop .ms-box > .btn, .cell-pop .chip .x, .cell-pop .date-pick-btn { display: none; }
 .computed { cursor: default; }
 .computed-mark { margin-right: 5px; opacity: .55; font-size: 11px; }
 /* Column header = the field's control (Feature #41). The ⋮ is absolutely

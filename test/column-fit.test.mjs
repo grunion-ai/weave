@@ -65,9 +65,22 @@ if (!chromium) {
   const headFor = (label) => `table.wv-grid th.col-head:has(.col-label:text-is("${label}"))`;
 
   test('double-click fits the column to the longest value, not to its own width', async () => {
-    const page = await openGrid();
+    // Start deliberately too narrow. The original wait was "the width moved
+    // by >5px from whatever auto-layout handed out", which stopped meaning
+    // anything once the Ledger skin set the name column heavier (2026-08-24):
+    // the browser's own width and the fit landed 5px apart and the assertion
+    // failed on a fit that was correct. Starting from a wrong width tests the
+    // real property — a fit must reach the value — and still cannot pass on a
+    // no-op, which is the defect this suite was written for.
+    const t = weave.getTable(db.id);
+    const nameField = Object.values(t.fields).find((f) => f.name === 'Name');
+    weave.updateField(db.id, nameField.id, { config: { width: 90 } });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.goto(`${base}/#/table/${t.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('table.wv-grid th.col-head');
     try {
       const before = await page.locator(headFor('Name')).evaluate((th) => th.getBoundingClientRect().width);
+      assert.ok(before < 150, `the column starts squeezed, got ${Math.round(before)}px`);
       // What the value actually needs, measured the way the browser paints it.
       const needed = await page.locator(headFor('Name')).evaluate((th) => {
         const input = th.closest('table').querySelector('tbody tr td input.inline-edit');
@@ -77,12 +90,11 @@ if (!chromium) {
         return ctx.measureText(input.value).width;
       });
       await page.dblclick(gripFor('Name'));
-      // A fit either grows or shrinks the column — what matters is that it
-      // moves off the width the browser happened to hand out.
+      // The fit has to reach the value it was squeezed away from.
       await page.waitForFunction(
         (w) => [...document.querySelectorAll('th.col-head')]
           .some((th) => th.querySelector('.col-label')?.textContent === 'Name'
-            && Math.abs(th.getBoundingClientRect().width - w) > 5),
+            && th.getBoundingClientRect().width > w + 5),
         before, { timeout: 4000 });
       const after = await page.locator(headFor('Name')).evaluate((th) => th.getBoundingClientRect().width);
       assert.ok(after >= needed, `fit ${after}px must cover the ${Math.round(needed)}px value`);

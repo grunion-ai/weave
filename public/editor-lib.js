@@ -24,6 +24,28 @@ globalThis.WeaveEditorLib = {
     return out;
   },
 
+  /* ---------- what a click on a cell should open ----------
+     The Ledger grid shows a value at rest and the control the moment you aim
+     at it, so a click has to raise the editor that field type actually uses
+     rather than a generic input. Read-only types answer 'none' — a formula
+     is not edited from the grid, and a document has its own surface. An
+     unknown type falls to the text input, which is what the grid renders for
+     one anyway (Kyle, 2026-08-24). */
+  cellActivation(type) {
+    return {
+      text: 'focus-input', number: 'focus-input', url: 'focus-input',
+      email: 'focus-input', key: 'focus-input',
+      // Type-or-pick: the caret is the primary path ('next friday'), the
+      // calendar button stays a button.
+      date: 'focus-input',
+      select: 'open-picker', multiselect: 'open-picker', workflow: 'open-picker',
+      relation: 'open-button', attachments: 'open-button', files: 'open-button',
+      checkbox: 'toggle',
+      formula: 'none', rollup: 'none', lookup: 'none', count: 'none',
+      document: 'none', field: 'none',
+    }[type] ?? (type ? 'focus-input' : 'none');
+  },
+
   /* ---------- what kind of thing a document is ----------
      A document field holds whatever was written into it, and weave already
      treats some of that specially: a complete HTML file runs as an app
