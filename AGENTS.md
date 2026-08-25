@@ -156,6 +156,11 @@ Notes that save round trips:
   brings it back. Schema deletes are not: a dropped column takes its values.
 - **Secrets never come back.** A `key` field holds the *name* of a secret;
   `weave_keys` lists names and sets values, and nothing returns one.
+- **One MCP server is one workspace**, because one workspace is one file. A
+  *second* workspace is a second file — `node bin/weave.js --data ./other.db
+  space create …` creates it on first write, and a running hub takes
+  `POST /api/workspaces {"name":"other"}`. Point another MCP server at the new
+  file to work in it.
 
 ## Self-documenting workspace
 

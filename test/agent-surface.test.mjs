@@ -137,6 +137,14 @@ test('the docs say the registry rows are schema writes', () => {
   assert.match(AGENTS, /Field Order/, 'AGENTS.md must name the column-order write');
 });
 
+test('the one boundary an agent will hit is named, not left to be discovered', () => {
+  // An MCP server is bound to one workspace file, so "make me another
+  // workspace" has no tool. Saying how, in the document agents read first,
+  // is the difference between a boundary and a gate.
+  assert.match(AGENTS, /workspace is a second file/i);
+  assert.match(AGENTS, /POST \/api\/workspaces/);
+});
+
 test('every tool description carries enough to use it without asking a human', () => {
   for (const t of TOOLS) {
     assert.ok(t.description && t.description.length >= 40, `${t.name} needs a description that says what it does`);
