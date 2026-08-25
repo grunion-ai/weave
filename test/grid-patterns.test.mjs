@@ -27,7 +27,7 @@ const PATTERNS = await import(
   `data:text/javascript;base64,${Buffer.from(`${core}\nexport default PATTERNS;`).toString('base64')}`
 ).then((m) => m.default);
 
-const IDS = ['A', 'B', 'C', 'D', 'E', 'F'];
+const IDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
 
 /* A keystroke as the page sees it, and a grid state to press it against. */
 const k = (key, mod = {}) => ({ key, shift: false, meta: false, alt: false, ...mod });
@@ -38,8 +38,8 @@ const st = (over = {}) => ({
 const act = (id, key, mod, over) => PATTERNS[id].keymap(k(key, mod), st(over)).type;
 
 /* ── 1 · six sets, each genuinely a different bargain ──────────────────── */
-test('six pattern sets ship, each named and thesis-ed', () => {
-  assert.deepEqual(Object.keys(PATTERNS), IDS, 'A through F, in order');
+test('seven pattern sets ship, each named and thesis-ed', () => {
+  assert.deepEqual(Object.keys(PATTERNS), IDS, 'A through G, in order');
   for (const id of IDS) {
     const p = PATTERNS[id];
     assert.ok(p.name?.length, `${id} has a name`);
@@ -77,17 +77,20 @@ test('every pattern says how a row gets selected, including "it does not"', () =
 
 test('the selecting patterns toggle one row and extend a run', () => {
   for (const id of IDS.filter((x) => PATTERNS[x].caps.rowSelect === 'keyboard')) {
-    const toggle = PATTERNS[id].select.toggle;
-    assert.equal(act(id, toggle), 'toggleSelect', `${id}: ${toggle} picks the row up`);
-    assert.equal(act(id, 'ArrowDown', { shift: true }), 'extendSelect', `${id}: shift+↓ grows the run`);
+    const { toggle, mods = {} } = PATTERNS[id].select;
+    const home = { mode: PATTERNS[id].caps.homeMode };
+    assert.equal(act(id, toggle, mods, home), 'toggleSelect', `${id}: ${toggle} picks the row up`);
+    assert.equal(act(id, 'ArrowDown', { shift: true }, home), 'extendSelect', `${id}: shift+↓ grows the run`);
   }
   assert.equal(PATTERNS.B.select.toggle, ' ', 'two-mode: space is free in nav mode');
   assert.equal(PATTERNS.C.select.toggle, 'x', 'row-first: x, the Gmail/Linear verb');
+  assert.deepEqual(PATTERNS.G.select, { toggle: ' ', mods: { shift: true } },
+    'two-click: typing replaces the cell, so a bare Space cannot be the row toggle');
 });
 
 test('a selected run is cleared without reaching for the mouse', () => {
   for (const id of IDS.filter((x) => PATTERNS[x].caps.rowSelect === 'keyboard')) {
-    assert.equal(act(id, 'Escape', {}, { mode: 'nav', sel: new Set([0, 1]) }), 'clearSelect',
+    assert.equal(act(id, 'Escape', {}, { mode: PATTERNS[id].caps.homeMode, sel: new Set([0, 1]) }), 'clearSelect',
       `${id}: Esc drops the selection before it drops anything else`);
   }
 });
@@ -96,10 +99,11 @@ test('a selected run is cleared without reaching for the mouse', () => {
 test('every pattern says how a cell is opened for editing', () => {
   for (const id of IDS) {
     const how = PATTERNS[id].caps.cellEdit;
-    assert.ok(['always-live', 'two-mode', 'in-row', 'command'].includes(how), `${id} declares cellEdit`);
+    assert.ok(['always-live', 'two-mode', 'in-row', 'command', 'two-click'].includes(how), `${id} declares cellEdit`);
   }
   assert.equal(PATTERNS.A.caps.cellEdit, 'always-live', 'Ledger+ never leaves edit mode, because it has none');
   assert.equal(PATTERNS.E.caps.cellEdit, 'command', 'command-led writes through ⌘K, not the cell');
+  assert.equal(PATTERNS.G.caps.cellEdit, 'two-click', 'two-click makes the pointer, not a key, the mode switch');
 });
 
 test('two-mode patterns enter on Enter and leave on Escape', () => {
@@ -122,7 +126,7 @@ test('Tab always moves along the row, Shift+Tab always back', () => {
   for (const id of IDS) {
     const f = PATTERNS[id].keymap(k('Tab'), st());
     const b = PATTERNS[id].keymap(k('Tab', { shift: true }), st());
-    assert.equal(f.type, 'move', `${id}: Tab moves`);
+    assert.ok(['move', 'commitMove'].includes(f.type), `${id}: Tab moves, committing on the way if it must`);
     assert.equal(f.dc, 1, `${id}: Tab moves right`);
     assert.equal(b.dc, -1, `${id}: Shift+Tab moves left`);
   }
@@ -169,7 +173,7 @@ test('Return does exactly one of three things, and the pattern says which', () =
   }
   assert.deepEqual(bucket.down, ['A', 'F'], 'entry-first patterns walk Return down the column');
   assert.deepEqual(bucket.open, ['C', 'E'], 'read-first patterns open the record on Return');
-  assert.deepEqual(bucket.edit, ['B', 'D'], 'two-mode patterns spend Return on entering the cell');
+  assert.deepEqual(bucket.edit, ['B', 'D', 'G'], 'patterns with a resting state spend Return on entering the cell');
 });
 
 test('⌘Return opens the row wherever Return does not', () => {
@@ -216,4 +220,73 @@ test('the page wires the core to real grids and says what it just did', () => {
   }
   assert.doesNotMatch(HTML, /<script[^>]+src=/, 'self-contained: no external assets');
   assert.doesNotMatch(HTML, /https?:\/\/(?!www\.w3\.org)/, 'self-contained: no remote fetches');
+});
+
+/* ── 9 · G · two-click, and the bill it comes with ─────────────────────
+   Kyle, 2026-08-24: "click to select, click again (doubleclick) to edit /
+   open field-specific dialog, return to lock, arrow keys and tab to
+   navigate, shift enter to create a new row" — then: "what do we lose
+   with this?". The losses are asserted here, not just written down, so a
+   later implementation cannot quietly claim to have avoided them. */
+
+test('G · the pointer is the mode switch: a click selects, the next one edits', () => {
+  assert.equal(PATTERNS.G.caps.homeMode, 'select', 'a cell at rest is selected, not live');
+  assert.equal(PATTERNS.G.pointer.first, 'select', 'one click never opens an editor');
+  assert.equal(PATTERNS.G.pointer.again, 'edit', 'the second click on that same cell opens the field');
+  assert.equal(PATTERNS.G.pointer.field, 'cellActivation',
+    'the second click routes through the type map weave already ships — a date opens the calendar, a select its picker');
+});
+
+test('G · Return locks rather than walking down the column', () => {
+  const lock = PATTERNS.G.keymap(k('Enter'), st({ mode: 'edit' }));
+  assert.equal(lock.type, 'lock', 'Return out of an open cell commits and settles');
+  assert.equal(lock.dr ?? 0, 0, 'and it stays on the cell — no free trip down the column');
+  assert.equal(PATTERNS.G.keymap(k('Enter'), st({ mode: 'select' })).type, 'edit', 'from rest, Return opens the cell');
+});
+
+test('G · Tab commits and lands selected, never mid-edit in the next cell', () => {
+  const t = PATTERNS.G.keymap(k('Tab'), st({ mode: 'edit' }));
+  assert.equal(t.type, 'commitMove', 'Tab saves on the way out');
+  assert.equal(t.then, 'select', 'and the cell it lands on is selected, not opened');
+});
+
+test('G · Escape reverts the open cell before it touches the selection', () => {
+  assert.equal(PATTERNS.G.keymap(k('Escape'), st({ mode: 'edit', sel: new Set([0]) })).type, 'revert',
+    'an open cell is the nearer thing to back out of');
+  assert.equal(PATTERNS.G.keymap(k('Escape'), st({ mode: 'select', sel: new Set([0]) })).type, 'clearSelect');
+});
+
+/* The bill. Each of these is a real cost of the two-click bargain. */
+test('G · costs — typing still replaces, so Space is not free for selection', () => {
+  assert.equal(PATTERNS.G.keymap(k('j'), st({ mode: 'select' })).type, 'edit',
+    'a data grid has to let you type over a cell');
+  assert.equal(PATTERNS.G.keymap(k(' '), st({ mode: 'select' })).type, 'none',
+    'which spends the bare Space bar, unlike B');
+  assert.equal(PATTERNS.G.keymap(k(' ', { shift: true }), st({ mode: 'select' })).type, 'toggleSelect',
+    'so the row toggle retreats to ⇧Space — less discoverable, and the cost is real');
+});
+
+test('G · costs — column-wise entry is gone, and the pattern admits it', () => {
+  const down = PATTERNS.G.keymap(k('Enter'), st({ mode: 'edit' }));
+  assert.notEqual(down.dr, 1, 'Return does not advance, so 40 numbers need Return ↓ Return ↓');
+  assert.ok(PATTERNS.G.costs.some((c) => /column/i.test(c)), 'the cost is stated on the pattern itself');
+});
+
+test('G · costs — every cost is written down where a reader will meet it', () => {
+  assert.ok(PATTERNS.G.costs.length >= 5, 'the bargain is not sold as free');
+  for (const c of PATTERNS.G.costs) assert.ok(c.length > 25, `a cost is spelled out, not a label: ${c}`);
+  const all = PATTERNS.G.costs.join(' ').toLowerCase();
+  for (const must of ['click', 'checkbox', 'double', 'column', 'mode']) {
+    assert.ok(all.includes(must), `the write-up names the ${must} cost`);
+  }
+});
+
+test('G · it reverses a shipped ruling, and says so out loud', () => {
+  assert.match(PATTERNS.G.reverses, /#133|Ledger/,
+    'today a single click raises the field editor; G walks that back and must cite it');
+});
+
+test('the page carries the cost accounting, not just the win', () => {
+  assert.match(HTML, /class="costs"/, 'G gets a visible bill on the page');
+  assert.ok(HTML.includes('data-pattern="G"'), 'pattern G has a live stage');
 });

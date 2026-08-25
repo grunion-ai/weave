@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="kind" content="design-review"><meta name="generated-at" content="2026-08-25T00:02:49Z"><meta name="repo" content="grunion-ai/weave"><meta name="branch" content="main">
-<title>weave — grid interaction: select, edit, navigate, create · 6 pattern sets</title>
+<title>weave — grid interaction: select, edit, navigate, create · 7 pattern sets</title>
 <style>
 :root{--bg:#0d141d;--soft:#16202c;--soft2:#1c2836;--line:#2a3849;--fg:#d7e0e9;--muted:#8298ab;--accent:#3f8cff;--accent-soft:#1b3a63;--ok:#2fb344;--warn:#f59f00;--bad:#e05252;--mono:ui-monospace,'SF Mono',Menlo,monospace}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
@@ -75,6 +75,15 @@ table.g td .cb.on::after{content:'';position:absolute;left:3.5px;top:.5px;width:
 .keylog .verb{color:var(--accent)}
 .keylog .verb.warnv{color:var(--warn)}.keylog .verb.okv{color:var(--ok)}.keylog .verb.mutedv{color:var(--muted)}
 .keylog .said{color:var(--muted)}
+.reverses{margin-top:14px;padding:11px 15px;border:1px solid #f59f0044;border-left:3px solid var(--warn);border-radius:8px;background:rgba(245,159,0,.05);font-size:12.5px;color:var(--muted)}
+.reverses b{color:var(--warn);font-weight:600}
+.costs{margin-top:16px;border:1px solid var(--line);border-radius:10px;background:var(--soft);padding:14px 20px 16px}
+.costs h4{margin:0 0 4px;font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--warn)}
+.costs ol{margin:6px 0 0;padding-left:20px;color:var(--muted);font-size:12.5px}
+.costs li{margin:5px 0}.costs li b{color:var(--fg);font-weight:600}
+table.g td.pick .v{box-shadow:inset 0 0 0 1.5px var(--accent);background:rgba(63,140,255,.06)}
+table.g td.armed .v{box-shadow:inset 0 0 0 1.5px var(--accent),0 0 0 3px rgba(63,140,255,.12)}
+.gridhint .mode.select{color:var(--accent);border-color:#3f8cff55}
 .peek{position:fixed;inset:0 0 0 auto;width:380px;background:var(--soft);border-left:1px solid var(--line);box-shadow:-18px 0 60px rgba(0,0,0,.55);padding:22px 24px;z-index:40;display:none}
 .peek.on{display:block}
 .peek h3{margin:0 0 2px;font-size:16px}.peek .pid{font-family:var(--mono);font-size:11px;color:var(--muted)}
@@ -99,7 +108,7 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 </style></head><body>
 
 <header class="plan-header">
-<div class="topbar"><span class="kind">DESIGN-REVIEW</span><h1>weave — grid interaction: select, edit, navigate, create · 6 pattern sets</h1><time>2026-08-25T00:02:49Z</time></div>
+<div class="topbar"><span class="kind">DESIGN-REVIEW</span><h1>weave — grid interaction: select, edit, navigate, create · 7 pattern sets</h1><time>2026-08-25T00:02:49Z</time></div>
 <dl class="meta">
 <div><dt>Repo</dt><dd>grunion-ai/weave</dd></div>
 <div><dt>Branch</dt><dd>main</dd></div>
@@ -110,7 +119,7 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 </dl></header>
 
 <div class="wrap">
-<p class="intro"><b>Every grid below is live — click into one and type.</b> Same four rows, same five fields, six different bargains about what a keystroke means. The strip under each grid names the verb the pattern just resolved, so you can feel the difference between <kbd>Return</kbd> that walks down a column and <kbd>Return</kbd> that opens a record. Today's weave sits at <b>A</b> minus the keyboard: the <span style="font-family:var(--mono)">#id ↗</span> link navigates, a click on a cell raises that field's editor, ⌘-click peeks — and nothing responds to <kbd>Tab</kbd>, <kbd>↑</kbd><kbd>↓</kbd>, or <kbd>⇧Return</kbd>. Each direction below decides what to spend those keys on.</p>
+<p class="intro"><b>Every grid below is live — click into one and type.</b> Same four rows, same five fields, seven different bargains about what a keystroke means. The strip under each grid names the verb the pattern just resolved, so you can feel the difference between <kbd>Return</kbd> that walks down a column and <kbd>Return</kbd> that opens a record. Today's weave sits at <b>A</b> minus the keyboard: the <span style="font-family:var(--mono)">#id ↗</span> link navigates, a click on a cell raises that field's editor, ⌘-click peeks — and nothing responds to <kbd>Tab</kbd>, <kbd>↑</kbd><kbd>↓</kbd>, or <kbd>⇧Return</kbd>. Each direction below decides what to spend those keys on — and <b>G</b>, the last one, spends a click instead, with its bill itemised.</p>
 
 <section class="dir">
 <div class="dir-head"><span class="tag">A</span><h2>Ledger+ · focus is the cursor</h2><span class="lineage">extends today's weave</span></div>
@@ -178,37 +187,58 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 </div>
 </section>
 
+
+<section class="dir">
+<div class="dir-head"><span class="tag">G</span><h2>Two-click · click selects, click again edits</h2><span class="lineage">Finder · Excel · Kyle, 2026-08-24</span></div>
+<p class="thesis">The pointer carries the mode switch instead of a key. One click <b>selects</b> the cell and tints its row; a second click on that same cell <b>opens that field's own editor or dialog</b> — a date gets the calendar, a select gets its picker, a relation gets record search, routed through the <span class="mono">cellActivation</span> map weave already ships. <kbd>Return</kbd> is a toggle: from rest it opens the cell, from an open cell it <b>locks</b> — commits and settles, without walking down the column. <kbd>Tab</kbd> and the arrows navigate; <kbd>⇧Return</kbd> makes the next row.</p>
+<div class="stage" data-pattern="G"></div>
+<div class="reverses"><b>Reverses a shipped ruling.</b> Feature #133 (Ledger, 2026-08-24) settled that a single click raises that field's editor, because a bare row click "fought the cell it landed on". G walks that back one notch — the first click now selects. Worth deciding on purpose rather than drifting into.</div>
+<div class="notes">
+<div class="win"><b>Wins</b>Row selection costs no key at all — clicking is already selecting. The grid becomes safe to click around in. Every field type reaches its own dialog by the same gesture. It is the model Finder and Excel already taught everyone.</div>
+<div class="cost"><b>Costs</b>Seven of them, itemised below — the headline is a click on every edit, forever.</div>
+<div class="fit"><b>Fits</b>Tables you browse and correct rather than fill. The best answer if row selection matters and a keyboard mode does not appeal.</div>
+</div>
+<div class="costs">
+<h4>What we lose</h4>
+<ol id="cost-list"></ol>
+</div>
+</section>
+
 <h2 class="plain">Side by side</h2>
 <table class="cmp">
-<thead><tr><th>Question</th><th>A · Ledger+</th><th>B · Two-mode</th><th>C · Row-first</th><th>D · Spreadsheet</th><th>E · Command</th><th>F · Form-fill</th></tr></thead>
+<thead><tr><th>Question</th><th>A · Ledger+</th><th>B · Two-mode</th><th>C · Row-first</th><th>D · Spreadsheet</th><th>E · Command</th><th>F · Form-fill</th><th>G · Two-click</th></tr></thead>
 <tbody>
-<tr><td>Cell cursor</td><td>DOM focus</td><td>own cursor</td><td>own, inside a row</td><td>own + range</td><td>own, read-only</td><td>DOM focus</td></tr>
-<tr><td>Modes</td><td class="y">none</td><td>nav / edit</td><td>row / cell</td><td>nav / edit</td><td class="y">none</td><td class="y">none</td></tr>
-<tr><td>Row select</td><td class="n2">none</td><td class="y">Space</td><td class="y">x</td><td class="y">⇧Space</td><td class="y">x</td><td class="n2">mouse only</td></tr>
-<tr><td>Range select</td><td class="n2">—</td><td>rows only</td><td>rows only</td><td class="y">rectangular</td><td>rows only</td><td class="n2">—</td></tr>
-<tr><td>Cell edit</td><td>always live</td><td>Return / type</td><td>→ then type</td><td>Return / F2 / type</td><td class="n2">⌘K only</td><td>always live</td></tr>
-<tr><td>Tab</td><td>row → grid wrap</td><td>next cell</td><td>locked in row</td><td>locked in range</td><td>next cell</td><td class="y">wraps + grows table</td></tr>
-<tr><td>← →</td><td class="y">caret</td><td>nav: move · edit: caret</td><td>enter / leave row</td><td>nav: move · edit: caret</td><td>move</td><td class="y">caret</td></tr>
-<tr><td>Return</td><td>commit ↓</td><td>edit, then ↓</td><td class="y">open record</td><td>edit, then ↓ in range</td><td class="y">open record</td><td>commit ↓</td></tr>
-<tr><td>Open record</td><td>⌘Return</td><td>⌘Return</td><td class="y">Return</td><td>⌘Return</td><td class="y">Return</td><td>⌘Return</td></tr>
-<tr><td>New item</td><td>⇧Return</td><td>⇧Return</td><td>⇧Return</td><td>⇧Return</td><td>⇧Return / ⌘K</td><td class="y">⇧Return or Tab off end</td></tr>
-<tr><td>Bulk edit</td><td class="n2">no</td><td>selection + edit</td><td>selection + ⌘K</td><td class="y">range paste/fill</td><td class="y">⌘K over selection</td><td class="n2">no</td></tr>
-<tr><td>Build cost</td><td class="y">S</td><td>M</td><td>M</td><td>XL</td><td>M (needs ⌘K scoping)</td><td class="y">S</td></tr>
+<tr><td>Cell cursor</td><td>DOM focus</td><td>own cursor</td><td>own, inside a row</td><td>own + range</td><td>own, read-only</td><td>DOM focus</td><td>own cursor</td></tr>
+<tr><td>Modes</td><td class="y">none</td><td>nav / edit</td><td>row / cell</td><td>nav / edit</td><td class="y">none</td><td class="y">none</td><td>selected / edit</td></tr>
+<tr><td>Row select</td><td class="n2">none</td><td class="y">Space</td><td class="y">x</td><td class="y">⇧Space</td><td class="y">x</td><td class="n2">mouse only</td><td class="y">click · ⇧Space</td></tr>
+<tr><td>Range select</td><td class="n2">—</td><td>rows only</td><td>rows only</td><td class="y">rectangular</td><td>rows only</td><td class="n2">—</td><td>rows only</td></tr>
+<tr><td>Clicks to edit</td><td class="y">1</td><td class="y">1</td><td>1</td><td class="y">1</td><td class="n2">1 + palette</td><td class="y">1</td><td class="n2">2</td></tr>
+<tr><td>Mode switch is…</td><td class="n2">—</td><td>a key</td><td>a key</td><td>a key</td><td class="n2">—</td><td class="n2">—</td><td class="y">the pointer</td></tr>
+<tr><td>Cell edit</td><td>always live</td><td>Return / type</td><td>→ then type</td><td>Return / F2 / type</td><td class="n2">⌘K only</td><td>always live</td><td class="n2">second click / Return</td></tr>
+<tr><td>Tab</td><td>row → grid wrap</td><td>next cell</td><td>locked in row</td><td>locked in range</td><td>next cell</td><td class="y">wraps + grows table</td><td>commit, land selected</td></tr>
+<tr><td>← →</td><td class="y">caret</td><td>nav: move · edit: caret</td><td>enter / leave row</td><td>nav: move · edit: caret</td><td>move</td><td class="y">caret</td><td>selected: move · edit: caret</td></tr>
+<tr><td>Return</td><td>commit ↓</td><td>edit, then ↓</td><td class="y">open record</td><td>edit, then ↓ in range</td><td class="y">open record</td><td>commit ↓</td><td>edit ⇄ <b>lock</b>, stays put</td></tr>
+<tr><td>Open record</td><td>⌘Return</td><td>⌘Return</td><td class="y">Return</td><td>⌘Return</td><td class="y">Return</td><td>⌘Return</td><td class="n2">⌘Return · #id only</td></tr>
+<tr><td>New item</td><td>⇧Return</td><td>⇧Return</td><td>⇧Return</td><td>⇧Return</td><td>⇧Return / ⌘K</td><td class="y">⇧Return or Tab off end</td><td>⇧Return</td></tr>
+<tr><td>Bulk edit</td><td class="n2">no</td><td>selection + edit</td><td>selection + ⌘K</td><td class="y">range paste/fill</td><td class="y">⌘K over selection</td><td class="n2">no</td><td>selection + ⌘K</td></tr>
+<tr><td>Build cost</td><td class="y">S</td><td>M</td><td>M</td><td>XL</td><td>M (needs ⌘K scoping)</td><td class="y">S</td><td>M (re-renders every cell at rest)</td></tr>
 </tbody>
 </table>
 
 <h2 class="plain">Recommendation</h2>
 <div class="rec">
-<h3>Ship A now, grow it into B, keep E as the bulk lane</h3>
-<p style="color:var(--muted);margin:6px 0 0;max-width:840px">A is the keyboard weave already implies. Cells are live editors today, so <kbd>Tab</kbd>, <kbd>↑</kbd><kbd>↓</kbd>, <kbd>Return</kbd> and <kbd>⇧Return</kbd> are the four handlers the grid is missing and nothing else has to change. That lands the whole ask except row selection.</p>
-<p style="color:var(--muted);margin:8px 0 0;max-width:840px">Row selection is what forces a second state, so buy it deliberately rather than by accident: add B's nav mode behind <kbd>Esc</kbd> — pop out of the cell you are in, arrows still move, and now <kbd>Space</kbd> is free to pick up rows and <kbd>⇧↑</kbd><kbd>⇧↓</kbd> to take a run. A typist who never presses <kbd>Esc</kbd> never meets the mode, which is the answer to B's one real cost.</p>
+<h3>G is the better answer than my first one — with its bill paid on purpose</h3>
+<p style="color:var(--muted);margin:6px 0 0;max-width:860px">My earlier pick was A now, B later. G beats it on the question that was actually hard. Row selection kept forcing a second state, and every way of buying that state cost either a printable key or a keyboard mode. G pays with the <b>pointer</b> instead: clicking a cell already selects it, so selection arrives free, and the mode switch is a gesture people learned from Finder and Excel rather than a rule they have to be taught.</p>
+<p style="color:var(--muted);margin:8px 0 0;max-width:860px">The thing to decide deliberately is the reversal. Feature #133 ruled a single click raises that field's editor; G makes it take two. That is a real regression for the one job weave's grid is best at today — reading a table and correcting a field in passing — and it is the first cost in the list above, not a footnote.</p>
 <ol>
-<li><b>Phase 1 — A.</b> Four key handlers on <span style="font-family:var(--mono)">.entity-row</span> cells. <kbd>⇧Return</kbd> reuses the existing <span style="font-family:var(--mono)">state.inlineAdd</span>; <kbd>⌘Return</kbd> reuses <span style="font-family:var(--mono)">peekEntity</span>, matching today's ⌘-click.</li>
-<li><b>Phase 2 — B behind Esc.</b> Nav mode, row selection, a selection action bar. The mode chip goes where the filter strip already lives.</li>
-<li><b>Phase 3 — E over the selection.</b> Point the existing ⌘K at the selected rows, so "set Stage → Building" works on six rows and reads identically from the MCP server.</li>
-<li><b>Not now — D.</b> Rectangular ranges are a real feature, not a keymap. Revisit when import volume asks for it.</li>
-<li><b>Not now — C and F.</b> Each is A or B with one key re-spent; both are reachable later as per-table preferences rather than a rebuild.</li>
+<li><b>Decide the reversal first.</b> Is one click worth spending to make selection free? If no, stop here and ship A — nothing below matters. If yes, G is the shape.</li>
+<li><b>Exempt the cheap types, and say so.</b> A checkbox should still flip on one click, and the <span class="mono">#id ↗</span> link still navigates. The rule becomes "one click selects, except where the whole cell <em>is</em> the control". Uniformity loses; a grid that takes two clicks to tick a box loses harder.</li>
+<li><b>Keep the keyboard from A.</b> <kbd>Tab</kbd>, the arrows and <kbd>⇧Return</kbd> behave the same under G, so the four handlers are the same work either way. Build them first and they survive whichever way the reversal goes.</li>
+<li><b>Then the selection, which is now nearly free.</b> Clicking already tracks a cell and a row; the puck bar of #132 needs the row set and a select-all box, not a new interaction model.</li>
+<li><b>⌘K over the selection last</b> (E's lane), so "set Stage → Building" works on six rows and reads identically from the MCP server.</li>
+<li><b>Still not now — D.</b> Rectangular ranges are a feature, not a keymap. C and F each stay reachable later as a per-table preference.</li>
 </ol>
+<p style="color:var(--muted);margin:12px 0 0;max-width:860px"><b>The hedge, if the reversal bothers you:</b> keep single-click-to-edit as today and add <kbd>⇧click</kbd> and a hover checkbox column for selection. You lose G's uniformity and gain back the click — the same trade read from the other end.</p>
 </div>
 
 <h2 class="plain">Open questions for Kyle</h2>
@@ -216,7 +246,9 @@ table.cmp{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}
 <thead><tr><th>Question</th><th>Why it forks the build</th></tr></thead>
 <tbody>
 <tr><td>Does <kbd>Return</kbd> open or commit?</td><td>The single biggest fork. Commit-down (A/B/D/F) treats the grid as a sheet; open-record (C/E) treats it as an inbox. Everything else follows.</td></tr>
-<tr><td>Is row selection worth a mode?</td><td>Selection with no mode means stealing <kbd>x</kbd> or <kbd>Space</kbd> from typing. Selection with a mode means mode error. There is no third option.</td></tr>
+<tr><td><b>Is one click worth spending to make selection free?</b></td><td>The G question, and now the first one. Two clicks to edit is the price; row selection with no key and no keyboard mode is what it buys. Everything else in G follows from this answer.</td></tr>
+<tr><td>Is row selection worth a <em>keyboard</em> mode?</td><td>Only live if the answer above is no. Selection without a mode means stealing <kbd>x</kbd> or <kbd>Space</kbd> from typing; with a mode it means mode error. G's answer is a third option — spend the pointer.</td></tr>
+<tr><td>Do checkboxes and links get an exemption?</td><td>A checkbox that needs two clicks to tick is worse than an inconsistent rule. Exempting the types where the cell <em>is</em> the control keeps G usable and costs its uniformity.</td></tr>
 <tr><td>Does <kbd>Tab</kbd> at the end of the table create a row?</td><td>F's infinite grid is the fastest entry model here and the easiest to trigger by accident. Worth a per-table setting rather than a global answer.</td></tr>
 <tr><td>Where does the doc-chips column sit in the Tab order?</td><td>Documents are not cells. Skipping them keeps the Tab run tabular; including them makes the last stop a chip, not a field.</td></tr>
 </tbody>
@@ -280,7 +312,7 @@ const PATTERNS = {
     name: 'Two-mode · navigate, then edit',
     thesis: 'The grid is a map until you say otherwise; two states buy back the whole modifier space for selection.',
     caps: { rowSelect: 'keyboard', cellEdit: 'two-mode', homeMode: 'nav', modes: ['nav', 'edit'] },
-    select: { toggle: ' ' },
+    select: { toggle: ' ', mods: {} },
     keys: [['↑ ↓ ← →', 'move the cell cursor (nav)'], ['Return / any character', 'drop into the cell'],
       ['Esc', 'back to nav · again to drop the selection'], ['Tab / ⇧Tab', 'next cell, either mode'],
       ['Space', 'pick up the row'], ['⇧↑ ⇧↓', 'extend the run'], ['⌘A', 'take the table'],
@@ -310,7 +342,7 @@ const PATTERNS = {
     name: 'Row-first · the record is the unit',
     thesis: 'The cursor sits on a record, not a cell; cells are one level down, and Tab is trapped inside the row you opened.',
     caps: { rowSelect: 'keyboard', cellEdit: 'in-row', homeMode: 'row', modes: ['row', 'cell'] },
-    select: { toggle: 'x' },
+    select: { toggle: 'x', mods: {} },
     keys: [['↑ ↓ · j k', 'between records'], ['Return', 'open the record'], ['→ · e', 'descend into the row'],
       ['Tab / ⇧Tab', 'across the row — never leaves it'], ['Esc · ←', 'climb back out'],
       ['x', 'pick up the record'], ['⇧↑ ⇧↓', 'extend the run'], ['⇧Return', 'new record below']],
@@ -340,7 +372,7 @@ const PATTERNS = {
     name: 'Spreadsheet · rectangular ranges',
     thesis: 'Two modes over a real rectangular range, so a selection becomes a container that Tab and Return wrap inside.',
     caps: { rowSelect: 'keyboard', cellEdit: 'two-mode', homeMode: 'nav', modes: ['nav', 'edit'] },
-    select: { toggle: ' ' },
+    select: { toggle: ' ', mods: {} },
     keys: [['⇧ + any arrow', 'grow the rectangle'], ['⌘ + arrow', 'jump to the edge of the data'],
       ['⇧Space · ⌘Space', 'whole row · whole column'], ['Tab / Return', 'wrap inside the range'],
       ['⌘C ⌘V', 'move the block'], ['F2', 'edit with the caret at the end'],
@@ -375,7 +407,7 @@ const PATTERNS = {
     name: 'Command-led · the grid reads, ⌘K writes',
     thesis: 'Spend almost no keys on the grid itself; every write is a named command scoped to the cursor, so an agent calls the same verb a person does.',
     caps: { rowSelect: 'keyboard', cellEdit: 'command', homeMode: 'row', modes: ['row'] },
-    select: { toggle: 'x' },
+    select: { toggle: 'x', mods: {} },
     keys: [['↑ ↓', 'between records'], ['← → · Tab', 'across fields, read-only'],
       ['Return', 'open the record'], ['x', 'pick up the record'], ['⇧↑ ⇧↓', 'extend the run'],
       ['⌘K', 'commands scoped to the cursor or the selection'], ['/', 'filter'],
@@ -416,6 +448,48 @@ const PATTERNS = {
       return { type: 'none' };
     },
   },
+
+  /* ── G · Two-click ───────────────────────────────────────────────── */
+  G: {
+    name: 'Two-click · click selects, click again edits',
+    thesis: 'The pointer carries the mode switch instead of a key: one click selects the cell, the next opens that field\u2019s own editor, and Return locks it back down.',
+    caps: { rowSelect: 'keyboard', cellEdit: 'two-click', homeMode: 'select', modes: ['select', 'edit'] },
+    select: { toggle: ' ', mods: { shift: true } },
+    pointer: { first: 'select', again: 'edit', field: 'cellActivation' },
+    reverses: 'Feature #133 (Ledger) ruled that a single click raises that field\u2019s editor. G walks that back one notch: the first click selects and the second edits.',
+    costs: [
+      'A click per edit. Today one click lands you in the field; G asks for two, on every correction, forever.',
+      'The always-live grid goes. Cells rest as values and only summon their control on the second click, so the grid stops advertising which fields are editable — a text cell and a formula cell need a marker to stay apart.',
+      'Cheap cells get expensive. A checkbox flips in one click today and takes select-then-click under the rule. Exempting checkboxes fixes the cost and breaks the rule\u2019s uniformity — pick one.',
+      'Double-click is spent. In most grids it opens the record, and inside text the browser uses it to select a word. G hands the gesture to editing, so opening a record retreats to the #id link and \u2318-click.',
+      'Column-wise entry is gone. Return locks instead of advancing, so a column of forty numbers needs Return then \u2193 rather than Return, Return, Return.',
+      'It is still two modes. Selected and editing is a mode pair whatever opens it; the pointer only makes the switch quieter, and the indicator still has to be drawn.',
+      'Clicking to dismiss leaves a selection behind, so the grid needs a click-outside-clears rule it does not need today.',
+    ],
+    keys: [['click', 'select the cell'], ['click again \u00b7 double-click', 'open that field\u2019s editor or dialog'],
+      ['Return', 'from rest, open \u00b7 from an open cell, lock it'], ['any character', 'replace the cell'],
+      ['Tab / \u21e7Tab', 'commit, move, land selected'], ['\u2191 \u2193 \u2190 \u2192', 'move while selected \u00b7 the caret while editing'],
+      ['\u21e7Space', 'pick up the row'], ['\u21e7\u2191 \u21e7\u2193', 'extend the run'],
+      ['Esc', 'revert the open cell \u00b7 then drop the selection'], ['\u21e7Return', 'new row below'], ['\u2318Return', 'open the record']],
+    keymap(k, s) {
+      if (k.key === 'Tab') return { type: 'commitMove', dr: 0, dc: k.shift ? -1 : 1, wrap: 'grid', then: 'select' };
+      if (k.key === 'Enter' && k.meta) return { type: 'open' };
+      if (k.key === 'Enter' && k.shift) return { type: 'newRow', at: 'below', focus: 'first' };
+      if (s.mode === 'edit') {
+        if (k.key === 'Enter') return { type: 'lock' };
+        if (k.key === 'Escape') return { type: 'revert' };
+        return { type: 'none' };
+      }
+      if (k.key === 'Enter') return s.readonly ? { type: 'none' } : { type: 'edit', select: 'all' };
+      if (k.key === ' ' && k.shift) return { type: 'toggleSelect' };
+      if (k.key === 'a' && k.meta) return { type: 'selectAll' };
+      if (k.shift && (k.key === 'ArrowUp' || k.key === 'ArrowDown')) return { type: 'extendSelect', dir: k.key === 'ArrowUp' ? -1 : 1 };
+      if (MOVE[k.key]) return { type: 'move', dr: MOVE[k.key][0], dc: MOVE[k.key][1] };
+      if (k.key === 'Escape') return s.sel.size ? { type: 'clearSelect' } : { type: 'exit' };
+      if (printable(k.key) && !k.meta) return s.readonly ? { type: 'none' } : { type: 'edit', select: 'replace' };
+      return { type: 'none' };
+    },
+  },
 };
 </script>
 
@@ -449,9 +523,10 @@ const SAID = {
   toggleSelect: 'pick the row up', extendSelect: 'grow the run', selectAll: 'take the table',
   clearSelect: 'drop the selection', enterRow: 'descend into the row', leaveRow: 'climb back out',
   copy: 'copy the range', paste: 'paste the range', command: 'hand off to ⌘K',
-  revert: 'put the old value back', none: 'the browser keeps it',
+  revert: 'put the old value back', lock: 'commit and settle, staying put',
+  select: 'select the cell — no editor yet', none: 'the browser keeps it',
 };
-const TONE = { none: 'mutedv', open: 'warnv', newRow: 'okv', commitMove: 'okv', edit: 'okv' };
+const TONE = { none: 'mutedv', open: 'warnv', newRow: 'okv', commitMove: 'okv', edit: 'okv', lock: 'okv', select: '' };
 
 function buildStage(stage) {
   const P = PATTERNS[stage.dataset.pattern];
@@ -481,7 +556,7 @@ function buildStage(stage) {
 
   const draw = () => {
     hint.innerHTML = P.caps.modes.length > 1
-      ? `<span class="mode ${s.mode}">${s.mode}</span><span>${s.sel.size ? s.sel.size + ' row' + (s.sel.size > 1 ? 's' : '') + ' selected' : 'no selection'}</span>`
+      ? `<span class="mode ${s.mode}">${s.mode === 'select' ? 'selected' : s.mode}</span><span>${s.sel.size ? s.sel.size + ' row' + (s.sel.size > 1 ? 's' : '') + ' selected' : 'no selection'}</span>`
       : `<span class="mode ${s.mode === 'row' ? 'row' : 'nav'}">no modes</span><span>${P.caps.rowSelect === 'none' ? 'row selection: none, by design' : 'row selection: mouse only'}</span>`;
     let h = '<thead><tr><th class="pid">id</th>' + COLS.map((c) => `<th class="${c.num ? 'n' : ''}">${c.name}</th>`).join('') + '</tr></thead><tbody>';
     rows.forEach((row, ri) => {
@@ -491,7 +566,10 @@ function buildStage(stage) {
         const col = COLS[ci];
         const cur = s.mode !== 'row' && ri === s.r && ci === s.c;
         const inr = s.sel.has(ri) && !cur;
-        const td = ['v-cell', col.num ? 'n' : '', col.ro ? 'ro' : '', cur ? 'cur' : '', cur && s.mode === 'edit' ? 'editing' : '', inr ? 'inrange' : ''].filter(Boolean).join(' ');
+        const picked = cur && P.pointer && s.mode === 'select';
+        const td = ['v-cell', col.num ? 'n' : '', col.ro ? 'ro' : '',
+          cur && !picked ? 'cur' : '', picked ? 'pick armed' : '',
+          cur && s.mode === 'edit' ? 'editing' : '', inr ? 'inrange' : ''].filter(Boolean).join(' ');
         const shown = col.type === 'select' && val ? `<span class="chip ${STAGES[val] ?? ''}">${val}</span>` : (val || '<span style="color:#3d4d61">—</span>');
         h += `<td class="${td}" data-r="${ri}" data-c="${ci}"><span class="v">${shown}</span></td>`;
       });
@@ -531,6 +609,8 @@ function buildStage(stage) {
         break;
       }
       case 'edit': s.mode = 'edit'; break;
+      case 'lock': s.mode = P.caps.homeMode; break;
+      case 'revert': s.mode = P.caps.homeMode; break;
       case 'exit': s.mode = P.caps.homeMode; break;
       case 'enterRow': s.mode = 'cell'; s.c = 0; break;
       case 'leaveRow': s.mode = 'row'; break;
@@ -563,9 +643,31 @@ function buildStage(stage) {
   box.addEventListener('click', (e) => {
     const td = e.target.closest('td[data-c]');
     const tr = e.target.closest('tr[data-r]');
-    if (td) { s.r = +td.dataset.r; s.c = +td.dataset.c; if (P.caps.modes.includes('edit')) s.mode = 'nav'; if (s.mode === 'row') s.r = +td.dataset.r; }
-    else if (tr) s.r = +tr.dataset.r;
+    /* G's whole bargain: the FIRST click on a cell selects it, and only a
+       second click on that same cell opens the field. Every other pattern
+       keeps weave's shipped rule, where one click lands you in the editor. */
+    if (td && P.pointer) {
+      const same = s.mode !== 'row' && +td.dataset.r === s.r && +td.dataset.c === s.c;
+      s.r = +td.dataset.r; s.c = +td.dataset.c;
+      const ro = !!COLS[s.c]?.ro;
+      s.mode = same && s.mode === 'select' && !ro ? 'edit' : 'select';
+      setLog(same && s.mode === 'edit' ? 'click again' : 'click',
+        { type: s.mode === 'edit' ? 'edit' : 'select' });
+    } else if (td) {
+      s.r = +td.dataset.r; s.c = +td.dataset.c;
+      if (P.caps.modes.includes('edit')) s.mode = 'nav';
+      if (s.mode === 'row') s.r = +td.dataset.r;
+    } else if (tr) s.r = +tr.dataset.r;
     pal.classList.remove('on');
+    draw();
+  });
+  /* Double-click reaches the same place in one gesture — and is the thing
+     G spends, since most grids use it to open the record. */
+  box.addEventListener('dblclick', (e) => {
+    const td = e.target.closest('td[data-c]');
+    if (!td || !P.pointer || COLS[+td.dataset.c]?.ro) return;
+    s.r = +td.dataset.r; s.c = +td.dataset.c; s.mode = 'edit';
+    setLog('double-click', { type: 'edit' });
     draw();
   });
   box.addEventListener('focus', () => setLog(null));
@@ -594,5 +696,10 @@ function showPalette(pal, scope, n) {
 }
 
 document.querySelectorAll('.stage[data-pattern]').forEach(buildStage);
+
+/* The bill under G is the pattern's own costs array — one list, so the page
+   cannot claim a cost the keymap record does not carry. */
+document.getElementById('cost-list').innerHTML = PATTERNS.G.costs
+  .map((c) => { const i = c.indexOf('.'); return `<li><b>${c.slice(0, i + 1)}</b> ${c.slice(i + 1).trim()}</li>`; }).join('');
 </script>
 </body></html>
