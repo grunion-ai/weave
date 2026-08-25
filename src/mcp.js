@@ -209,7 +209,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_space',
-    description: 'Rename a space or change its description or icon. Icon names come from weave_vocabulary.',
+    description: 'Rename a space or change its description or icon. An icon is `iconly:<name>` from weave_vocabulary — any other string renders as text, so an emoji works too.',
     inputSchema: {
       type: 'object',
       properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } },
@@ -223,7 +223,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_table',
-    description: 'Change a table: name, description, icon (weave_vocabulary), noun (what one record is called — "invoice" makes the create action read "New invoice"), hiddenFields (names kept out of the grid, data untouched), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the column order — every field exactly once).',
+    description: 'Change a table: name, description, icon (`iconly:<name>` from weave_vocabulary; any other string renders as text), noun (what one record is called — "invoice" makes the create action read "New invoice"), hiddenFields (names kept out of the grid, data untouched), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the column order — every field exactly once).',
     inputSchema: {
       type: 'object',
       properties: {

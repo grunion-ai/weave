@@ -45,8 +45,11 @@ export const OPTION_COLORS = [
   { value: '#d6409f', name: 'magenta' },
 ];
 
-// Iconly flat, vendored at public/vendor/iconly-flat.js. A space, a table and
-// a workflow state each take one of these names.
+/* Iconly flat, vendored at public/vendor/iconly-flat.js. The VALUE stored on a
+   space, a table or a workflow state is `iconly:<name>` — a bare name renders
+   as the literal text "ticksquare", which is what the fallback is for: any
+   other string paints as itself, so an emoji is a legal icon too. */
+export const ICON_FORM = 'iconly:<name>';
 export const ICONS = [
   '2user', '3user', 'activity', 'adduser', 'arrow-down', 'arrow-down2', 'arrow-down3', 'arrow-downcircle',
   'arrow-downsquare', 'arrow-left', 'arrow-left2', 'arrow-left3', 'arrow-leftcircle', 'arrow-leftsquare', 'arrow-right', 'arrow-right2',
@@ -66,7 +69,11 @@ export const ICONS = [
 export const VOCABULARY = {
   fieldTypes: FIELD_TYPE_VOCABULARY,
   optionColors: OPTION_COLORS,
-  icons: ICONS,
+  icons: {
+    form: ICON_FORM,
+    fallback: 'Any other string renders as text, so an emoji ("📦") is a legal icon too.',
+    names: ICONS,
+  },
   numberFormats: ['number', 'currency', 'percent'],
   dateFormats: ['iso', 'us', 'eu', 'long'],
   documentKinds: ['markdown', 'html', 'code'],

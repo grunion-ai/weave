@@ -89,11 +89,12 @@ Schema
   schema apply --file doc.json [--dry-run] [--allow-destructive]
                                       Grow the workspace to match the document
   vocabulary [section]                Every legal config value and what it looks like
+                                      (icons are iconly:<name>; colors are hex from the palette)
   space create <name> [--description]
-  space list | update <ref> [--name] [--description] [--icon] | delete <ref>
+  space list | update <ref> [--name] [--description] [--icon iconly:work] | delete <ref>
   table create <space> <name> [--description] [--icon]
   table list | delete <ref>
-  table update <ref> [--name] [--description] [--icon] [--noun invoice]
+  table update <ref> [--name] [--description] [--icon iconly:wallet] [--noun invoice]
               [--hidden A,B] [--system 'Created At'] [--order Name,A,B]
   field add <table> <name> <type> [--config '{json}']
   field list <table> | delete <table> <field>

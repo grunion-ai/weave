@@ -12,15 +12,15 @@ import { Weave } from '../src/engine.js';
 function fixture() {
   const w = new Weave();
   w.createSpace({ name: 'Ops', description: 'how work runs' });
-  w.updateSpace('Ops', { icon: 'work' });
+  w.updateSpace('Ops', { icon: 'iconly:work' });
   const t = w.createTable({ space: 'Ops', name: 'Invoice', description: 'one bill' });
-  w.updateTable(t.id, { icon: 'wallet', noun: 'invoice', systemFields: ['Created At'] });
+  w.updateTable(t.id, { icon: 'iconly:wallet', noun: 'invoice', systemFields: ['Created At'] });
   w.addField(t.id, { name: 'Stage', type: 'select', config: { options: [{ name: 'Draft', color: '#f59f00' }, { name: 'Sent', color: '#2ea043' }], width: 240 } });
   w.addField(t.id, { name: 'Amount', type: 'number', config: { format: 'currency', currency: 'USD', decimals: 2, width: 120 } });
   w.addField(t.id, { name: 'Due', type: 'date', config: { format: 'us', time: true } });
   w.addField(t.id, { name: 'Terms', type: 'document', config: { kind: 'html' } });
   w.addField(t.id, { name: 'Files', type: 'attachments', config: { multiple: false } });
-  w.addField(t.id, { name: 'State', type: 'workflow', config: { states: [{ name: 'Open', category: 'in-progress', default: true, icon: 'timecircle' }, { name: 'Paid', category: 'done' }] } });
+  w.addField(t.id, { name: 'State', type: 'workflow', config: { states: [{ name: 'Open', category: 'in-progress', default: true, icon: 'iconly:timecircle' }, { name: 'Paid', category: 'done' }] } });
   w.updateTable(t.id, { hiddenFields: ['Description'], fieldOrder: ['Name', 'Stage', 'Amount', 'Due', 'State', 'Terms', 'Files', 'Description'] });
   return { w, t };
 }
@@ -70,24 +70,24 @@ test('a document carries every costume back onto a field it creates', () => {
   assert.equal(by('Terms').kind, 'html');
   assert.equal(by('Files').multiple, false);
   assert.equal(by('Stage').optionsFull[0].color, '#f59f00');
-  assert.equal(by('State').states[0].icon, 'timecircle');
-  assert.equal(made.icon, 'wallet', 'a created table takes the icon the document names');
+  assert.equal(by('State').states[0].icon, 'iconly:timecircle');
+  assert.equal(made.icon, 'iconly:wallet', 'a created table takes the icon the document names');
   assert.equal(made.noun, 'invoice');
   assert.deepEqual(made.hiddenFields, ['Description']);
-  assert.equal(ops(fresh).icon, 'work', 'and the space takes its icon too');
+  assert.equal(ops(fresh).icon, 'iconly:work', 'and the space takes its icon too');
 });
 
 test('a table-level edit applies without touching the fields', () => {
   const { w, t } = fixture();
   const doc = w.describeSchema();
   const table = doc.find((s) => s.space === 'Ops').tables.find((x) => x.name === 'Invoice');
-  table.icon = 'paper';
+  table.icon = 'iconly:paper';
   table.noun = 'bill';
   table.hiddenFields = [];
   const plan = w.applySchema(doc);
   assert.ok(plan.some((p) => p.action === 'update-table'), `the plan names the table change: ${JSON.stringify(plan)}`);
   const after = ops(w).tables[0];
-  assert.equal(after.icon, 'paper');
+  assert.equal(after.icon, 'iconly:paper');
   assert.equal(after.noun, 'bill');
   assert.equal(after.hiddenFields, undefined);
   assert.equal(w.getTable(t.id).fields[w.getTable(t.id).nameFieldId].name, 'Name', 'fields are untouched');

@@ -27,15 +27,15 @@ test.after(() => rmSync(dir, { recursive: true, force: true }));
 
 test('the vocabulary is one command away', () => {
   const v = json('vocabulary');
-  assert.ok(v.icons.includes('wallet'));
+  assert.ok(v.icons.names.includes('wallet'));
   assert.equal(json('vocabulary', 'columnWidth').min, 60);
 });
 
 test('a table takes its icon, noun, hidden columns and order from the terminal', () => {
-  cli('table', 'update', 'Ops/Invoice', '--icon', 'wallet', '--noun', 'invoice',
+  cli('table', 'update', 'Ops/Invoice', '--icon', 'iconly:wallet', '--noun', 'invoice',
     '--hidden', 'Description', '--order', 'Stage,Name,Description');
   const t = table();
-  assert.equal(t.icon, 'wallet');
+  assert.equal(t.icon, 'iconly:wallet');
   assert.equal(t.noun, 'invoice');
   assert.deepEqual(t.hiddenFields, ['Description']);
   assert.deepEqual(t.fields.map((f) => f.name), ['Stage', 'Name', 'Description']);
@@ -52,8 +52,8 @@ test('a field is renamed, recolored and widened from the terminal', () => {
 });
 
 test('a space is updated and a schema document applies from a file', () => {
-  cli('space', 'update', 'Ops', '--icon', 'work');
-  assert.equal(schema().find((s) => s.space === 'Ops').icon, 'work');
+  cli('space', 'update', 'Ops', '--icon', 'iconly:work');
+  assert.equal(schema().find((s) => s.space === 'Ops').icon, 'iconly:work');
   const doc = schema();
   doc.find((s) => s.space === 'Ops').tables.find((t) => t.name === 'Invoice').description = 'one bill';
   const file = join(dir, 'schema.json');

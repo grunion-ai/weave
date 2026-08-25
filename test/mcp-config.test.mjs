@@ -19,12 +19,12 @@ function workspace() {
 test('a table takes its whole costume from one tool call', () => {
   const w = workspace();
   call(w, 'weave_update_table', {
-    db: 'Invoice', icon: 'wallet', noun: 'invoice',
+    db: 'Invoice', icon: 'iconly:wallet', noun: 'invoice',
     hiddenFields: ['Description'], systemFields: ['Created At'],
     fieldOrder: ['Stage', 'Name', 'Description'],
   });
   const t = call(w, 'weave_schema').find((s) => s.space === 'Ops').tables[0];
-  assert.equal(t.icon, 'wallet');
+  assert.equal(t.icon, 'iconly:wallet');
   assert.equal(t.noun, 'invoice');
   assert.deepEqual(t.hiddenFields, ['Description']);
   assert.deepEqual(t.systemFields, ['Created At']);
@@ -46,9 +46,9 @@ test('a field is renamed, recolored, widened and dropped without a browser', () 
 
 test('a space is renamed and re-iconed, and deleting it takes its tables', () => {
   const w = workspace();
-  call(w, 'weave_update_space', { space: 'Ops', name: 'Operations', icon: 'work' });
+  call(w, 'weave_update_space', { space: 'Ops', name: 'Operations', icon: 'iconly:work' });
   let sp = call(w, 'weave_schema').find((s) => s.space === 'Operations');
-  assert.equal(sp.icon, 'work');
+  assert.equal(sp.icon, 'iconly:work');
   call(w, 'weave_delete_space', { space: 'Operations' });
   assert.equal(call(w, 'weave_schema').some((s) => s.space === 'Operations'), false);
 });
@@ -120,7 +120,8 @@ test('the workspace record, accounts and keys are agent business', () => {
 test('the vocabulary is a tool, so the agent never guesses a color or an icon', () => {
   const v = call(workspace(), 'weave_vocabulary');
   assert.ok(v.fieldTypes.length >= 18);
-  assert.ok(v.icons.includes('discovery'));
+  assert.ok(v.icons.names.includes('discovery'));
+  assert.equal(v.icons.form, 'iconly:<name>', 'the value form, not just the name');
   assert.ok(v.optionColors.some((c) => c.name === 'green'));
   assert.equal(v.columnWidth.min, 60);
 });

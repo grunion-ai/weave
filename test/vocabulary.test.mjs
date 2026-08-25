@@ -43,6 +43,19 @@ test('the icon names are the vendored icon set', () => {
   assert.deepEqual([...ICONS].sort(), [...new Set(names)].sort());
 });
 
+test('the icon vocabulary gives the value form, not just the names', () => {
+  // A bare 'ticksquare' is a legal string that paints the word "ticksquare" in
+  // the nav — verified live, 2026-08-24. The stored value is prefixed.
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const renderer = app.slice(app.indexOf('function iconEl'), app.indexOf('function iconEl') + 400);
+  assert.match(renderer, /\^iconly:/, 'the renderer takes the prefixed form');
+  assert.equal(VOCABULARY.icons.form, 'iconly:<name>');
+  assert.match(VOCABULARY.icons.fallback, /renders as text/, 'and says what any other string does');
+  assert.ok(VOCABULARY.icons.names.includes('discovery'));
+  // The picker writes the same form the vocabulary promises.
+  assert.match(app, /id: `iconly:\$\{n\}`/, 'the UI picker stores the prefixed form');
+});
+
 test('the closed sets match the engine and the field dialog', () => {
   assert.deepEqual(VOCABULARY.stateCategories, list(ENGINE, 'STATE_CATEGORIES'));
   assert.deepEqual(VOCABULARY.aggregates, list(ENGINE, 'AGGREGATES'));
@@ -74,7 +87,8 @@ test('the vocabulary is served, so a remote agent has it too', async () => {
   const { server } = await startServer(new Weave(), { port: 0 });
   try {
     const got = await (await fetch(`http://127.0.0.1:${server.address().port}/api/vocabulary`)).json();
-    assert.deepEqual(got.icons, ICONS);
+    assert.deepEqual(got.icons.names, ICONS);
+    assert.equal(got.icons.form, 'iconly:<name>');
     assert.equal(got.fieldTypes.length, FIELD_TYPES.length);
     assert.equal(got.columnWidth.min, VOCABULARY.columnWidth.min);
   } finally { server.close(); }
