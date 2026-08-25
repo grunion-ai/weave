@@ -5,6 +5,7 @@
 // The adapter owns transport: reading the body stream, writing the response,
 // and static assets (node reads public/; Workers bind Static Assets).
 import { WeaveError } from './engine.js';
+import { VOCABULARY } from './vocabulary.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 import { renderDeck, newSlideVersion } from './deck.js';
@@ -257,6 +258,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // time vs commit/package version) instead of assuming "up" = "current".
         if (route === 'GET /api/health') return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()) });
         if (route === 'GET /api/schema') return out(200, weave.describeSchema());
+        // Every closed set a config value can come from, and what the choice
+        // looks like on screen — served so an agent never has to guess a
+        // color, an icon name or a format (src/vocabulary.js).
+        if (route === 'GET /api/vocabulary') return out(200, VOCABULARY);
 
         if (route === 'GET /api/workspaces') return out(200, hub.list());
         if (route === 'POST /api/workspaces') {
