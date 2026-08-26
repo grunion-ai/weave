@@ -24,6 +24,7 @@
   --tblr-bg-surface-secondary: #f3f1ec;
   --tblr-border-color: #e6e3dc;
   --tblr-body-bg: var(--wv-canvas);
+  --wv-code-bg: #ffffff;                     /* github's own ground */
 }
 [data-bs-theme="dark"] {
   --wv-canvas: #0c1b33;                      /* Kami Deep Navy Canvas */
@@ -37,6 +38,7 @@
   --tblr-bg-surface-secondary: #1a2d54;      /* Kami Elevated Surface */
   --tblr-border-color: #24375e;
   --tblr-body-color: #e0dcd4;                /* Kami Cream Primary */
+  --wv-code-bg: #0d1117;                     /* github-dark's own ground */
   --tblr-secondary: #b4b8c4;                 /* Kami Silver Secondary */
   --tblr-body-bg: var(--wv-canvas);
 }
@@ -792,19 +794,26 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    Its rendered twin steps aside while the source is on screen, so a focused
    code block is one block rather than two copies of the same code. */
 .doc-editor .vditor-ir__node--expand pre.vditor-ir__marker--pre { display: block; }
-/* One surface for code in both states and both themes. Three stylesheets have
-   an opinion here — Tabler paints every <pre> dark, highlight.js gives <code>
-   a light chip, and vditor greys anything carrying a marker class — and the
-   collision left the source text unreadable while editing and a blue band
-   across the rendered block in dark mode. weave settles it: the slab is the
-   slab, the ink is light, and <code> adds no surface of its own. */
+/* One surface for code in both states, and it follows the page (Kyle,
+   2026-08-26: "dark code block background in light mode dont make sense").
+   Three stylesheets have an opinion here — Tabler paints every <pre> dark,
+   highlight.js gives <code> a light chip, and vditor greys anything carrying
+   a marker class — and the collision left the source text unreadable while
+   editing and a blue band across the rendered block in dark mode. weave
+   settles it: the slab is weave's, the ink is the page's, and <code> adds no
+   surface of its own.
+
+   The slab is the exact ground the highlight.js palette on it was drawn for —
+   white for github, #0d1117 for github-dark — because a token colour answers
+   to the surface under it (Issue #81). On a tinted slab the github keyword
+   red measured 4.27:1, under AA by a hair. */
 .doc-editor .vditor-ir pre.vditor-ir__preview,
 .doc-editor .vditor-ir pre.vditor-ir__marker--pre {
-  color: var(--tblr-light);
-  background: var(--tblr-bg-surface-dark);
-  /* In dark mode that surface IS the page, so the slab needs an edge to be a
-     slab at all. */
-  border: 1px solid rgba(127, 127, 127, .22);
+  color: var(--tblr-body-color);
+  background: var(--wv-code-bg);
+  /* The slab sits close to the page in either theme, so the edge is what
+     makes it a block at all. */
+  border: 1px solid var(--tblr-border-color);
 }
 .doc-editor .vditor-ir pre.vditor-ir__preview > code,
 .doc-editor .vditor-ir pre.vditor-ir__marker--pre > code { background: transparent; color: inherit; }

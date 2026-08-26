@@ -69,11 +69,11 @@ if (!chromium) {
       const c = getComputedStyle(n).backgroundColor;
       if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) { bg = c; break; }
     }
-    let worst = { ratio: Infinity, token: 'none', color: '', bg };
+    let worst = { ratio: Infinity, token: 'none', color: '', bg, bgLum: lum(bg) };
     for (const span of code.querySelectorAll('span[class^="hljs-"]')) {
       const color = getComputedStyle(span).color;
       const r = ratio(color, bg);
-      if (r < worst.ratio) worst = { ratio: r, token: span.className, color, bg };
+      if (r < worst.ratio) worst = { ratio: r, token: span.className, color, bg, bgLum: lum(bg) };
     }
     return worst;
   }, selector);
@@ -100,13 +100,18 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
-  /* Issue #81, Kyle 2026-08-26: "code blocks are colored poorly". weave paints
-     the code slab dark in BOTH themes (Issue #36 settled that), so a token
-     palette built for a white page cannot carry on it: measured live in light
-     theme, `.hljs-title.function_` was #6f42c1 on #111827 — 2.75:1, against
-     4.5:1 for readable text. Whatever palette is loaded, every token has to
-     clear AA against the slab it actually lands on, in either theme. */
-  test('every code token clears 4.5:1 against the slab it lands on, in both themes', async () => {
+  /* Issue #81, Kyle 2026-08-26: "code blocks are colored poorly", then —
+     against the first fix — "dark code block background in light mode dont
+     make sense". Two rules, and the second decides the first:
+
+     1. The slab follows the page. A light theme gets a light code block.
+     2. The palette follows the SLAB, not the theme around it — which is what
+        was broken: a token set drawn for a white page was landing on a
+        near-black slab, `.hljs-title.function_` #6f42c1 at 2.72:1.
+
+     So the gate reads what the browser actually paints: the slab is light in
+     light and dark in dark, and every token on it clears AA either way. */
+  test('the code slab follows the theme and every token clears 4.5:1 on it', async () => {
     const id = entityWithDoc('Contrast', '```js\nconst pick = vis[state.active] ?? (state.query.trim() ? vis[0] : null);\nfunction toggle(state, option) { return { ...state, active: -1 }; }\n```\n');
     const page = await openEntity(id);
     try {
@@ -119,6 +124,11 @@ if (!chromium) {
         }, theme);
         await page.waitForTimeout(120); // setTheme swaps the hljs stylesheet
         const worst = await worstTokenContrast(page, '.vditor-ir__preview code.hljs');
+        // Rule 1: a light page gets a light slab. 0.5 relative luminance is
+        // the middle of the range — nothing near a judgement call sits there.
+        assert.ok(theme === 'light' ? worst.bgLum > 0.5 : worst.bgLum < 0.5,
+          `${theme}: the slab is ${worst.bg} (luminance ${worst.bgLum.toFixed(3)})`);
+        // Rule 2: whatever palette that slab calls for has to carry on it.
         assert.ok(worst.ratio >= 4.5,
           `${theme}: ${worst.token} is ${worst.color} on ${worst.bg} — ${worst.ratio.toFixed(2)}:1`);
       }
