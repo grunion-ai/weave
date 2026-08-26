@@ -43,7 +43,8 @@ test('every shape is one flat vector on the shared canvas', () => {
     // No number is bigger than the canvas. Relative segments carry negative
     // deltas, so this checks magnitude; the real overflow gate is the browser
     // bounding-box case in test/icon-vocabulary-browser.test.mjs.
-    for (const n of svg.match(/-?\d+(\.\d+)?/g) ?? []) {
+    // `.95.95` is two numbers, not one — a naive \d+ tokeniser reads 95.95.
+    for (const n of svg.match(/-?(?:\d+\.?\d*|\.\d+)/g) ?? []) {
       assert.ok(Math.abs(Number(n)) <= 24.5, `${g} has ${n} outside the canvas`);
     }
   }

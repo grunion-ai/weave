@@ -79,7 +79,7 @@ if (!chromium) {
       const choices = fieldDialogCore.iconChoices(Object.keys(window.ICONLY_FLAT ?? {}));
       return { total: choices.length, marks: choices.filter((c) => c.mark).length, flat: choices.filter((c) => c.iconly).length };
     });
-    assert.equal(picked.marks, 13, 'the thirteen marks survive the merge');
+    assert.equal(picked.marks, 18, 'thirteen originals plus the five Kyle accepted');
     assert.ok(picked.flat > 90, `the flat set is offered too, got ${picked.flat}`);
     await page.close();
   });
@@ -129,6 +129,33 @@ if (!chromium) {
       return out;
     });
     assert.deepEqual(bad, [], 'marks that overflow the canvas, or draw small inside it');
+    await page.close();
+  });
+
+  test('no icon draws small — the vendored set included', async () => {
+    const page = await entityPage();
+    const small = await page.evaluate(() => {
+      // Kyle, 2026-08-26: "bug looks too small". Iconly's own icons do not all
+      // fill the canvas; measured across 101 the median long axis is 20 of 24
+      // and five sat far under it. weaveMarkIcons.scaled corrects those.
+      var out = [];
+      var host = document.createElement('div');
+      host.style.cssText = 'position:fixed;left:0;top:0';
+      document.body.appendChild(host);
+      Object.keys(window.ICONLY_FLAT).forEach(function (n) {
+        host.innerHTML = '<svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor">'
+          + window.weaveMarkIcons.scaled(n, window.ICONLY_FLAT[n]) + '</svg>';
+        var b = host.firstChild.getBBox();
+        var span = Math.max(b.width, b.height);
+        if (span < 17) out.push(n + ' spans ' + span.toFixed(1) + ' of 24');
+        if (b.x < -0.5 || b.y < -0.5 || b.x + b.width > 24.5 || b.y + b.height > 24.5) {
+          out.push(n + ' overflows after scaling');
+        }
+      });
+      host.remove();
+      return out;
+    });
+    assert.deepEqual(small, [], 'icons drawing small beside their neighbours');
     await page.close();
   });
 

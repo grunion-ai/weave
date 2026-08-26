@@ -305,7 +305,7 @@ function iconEl(icon, cls = 'wv-icon') {
   const m = String(icon).match(/^iconly:(.+)$/);
   if (m && window.ICONLY_FLAT?.[m[1]]) {
     const span = el('span', { class: cls });
-    span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${window.ICONLY_FLAT[m[1]]}</svg>`;
+    span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${window.weaveMarkIcons.scaled(m[1], window.ICONLY_FLAT[m[1]])}</svg>`;
     return span;
   }
   return el('span', { class: cls }, String(icon));

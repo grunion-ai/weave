@@ -44,6 +44,16 @@
     '?': line('M8.7 8.9a3.4 3.4 0 1 1 3.9 3.5v1.9') + '<circle cx="12.4" cy="18.5" r="1.7"/>',
     '→': line('M4.6 12h13.6M12.8 6.6 18.2 12l-5.4 5.4'),
 
+    // ---- accepted 2026-08-26 (Kyle: blocked, link, running, automation,
+    // target). Drawn to the same weights and passing the same painted-extent
+    // gate as the originals. ----
+    '\u2298': fill(RING) + line('M7.3 16.7 16.7 7.3'),
+    '\u25b6': '<path d="M8.4 5.3 18.4 12 8.4 18.7Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>',
+    '\u26d3': line('M9.9 14.1a4.3 4.3 0 0 1 0-6.1l2.6-2.6a4.3 4.3 0 0 1 6.1 6.1l-1.3 1.3')
+       + line('M14.1 9.9a4.3 4.3 0 0 1 0 6.1l-2.6 2.6a4.3 4.3 0 0 1-6.1-6.1l1.3-1.3'),
+    '\u2301': fill('M13.9 2.4a.95.95 0 0 1 .92 1.17l-1.13 5.03h3.5a.95.95 0 0 1 .77 1.5l-7.9 11a.95.95 0 0 1-1.72-.72l1.13-5.03h-3.5a.95.95 0 0 1-.77-1.5l7.9-11a.95.95 0 0 1 .8-.45Z'),
+    '\u25ce': fill(RING) + fill('M12 7.6a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 1 0 0-8.8Zm0 2.2a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 1 1 0-4.4Z'),
+
     // ---- chrome: controls, not values, but the same weight and box ----
     '⟳': line('M19.2 12a7.2 7.2 0 1 1-2.2-5.2') + line('M19.6 3.6v3.9h-3.9'),
     '⛶': line('M9.2 4.4H5.8a1.4 1.4 0 0 0-1.4 1.4v3.4M14.8 4.4h3.4a1.4 1.4 0 0 1 1.4 1.4v3.4M19.6 14.8v3.4a1.4 1.4 0 0 1-1.4 1.4h-3.4M9.2 19.6H5.8a1.4 1.4 0 0 1-1.4-1.4v-3.4'),
@@ -57,9 +67,32 @@
   /* Marks that carry meaning as LETTERS stay letters — ƒ is a function, Σ is a
      sum, B is bold. Drawing those as pictures would lose the meaning the
      letterform already carries, so they are deliberately absent here. */
+  /* ---------- correcting the vendored set (Kyle, 2026-08-26: "bug looks too
+     small") ----------
+     Iconly's own icons do not all fill the canvas. Measured across all 101,
+     the median long axis is 20 of 24; five draw far short of it — the four
+     `arrow-*2` variants at 12, and `bug` at 14 — so they read as small beside
+     any neighbour. The vendor file is pinned and gets overwritten on update,
+     so the correction lives here: a uniform scale about the centre, taking
+     each one up to the size its siblings already are. */
+  const ICON_SCALE = {
+    bug: 1.42,             // 14.05 -> 20, the median
+    'arrow-down2': 1.5,    // 12 -> 18, matching arrow-down and arrow-down3
+    'arrow-up2': 1.5,
+    'arrow-left2': 1.5,
+    'arrow-right2': 1.5,
+  };
+  const scaleFor = (name) => ICON_SCALE[name] ?? null;
+  /* Wraps inner markup so the scale rides on the geometry, not on the box —
+     the icon still occupies exactly the same square. */
+  const scaled = (name, markup) => {
+    const s = scaleFor(name);
+    return s ? `<g transform="translate(12 12) scale(${s}) translate(-12 -12)">${markup}</g>` : markup;
+  };
+
   const has = (ch) => Object.prototype.hasOwnProperty.call(MARKS, String(ch));
   const markSvg = (ch) => (has(ch) ? MARKS[String(ch)] : null);
 
   root.WEAVE_MARKS = MARKS;
-  root.weaveMarkIcons = { MARKS, has, markSvg };
+  root.weaveMarkIcons = { MARKS, has, markSvg, ICON_SCALE, scaleFor, scaled };
 })(globalThis);

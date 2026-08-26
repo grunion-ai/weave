@@ -115,13 +115,17 @@
   // engine migrates anything still stored under it to in-progress.
   const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
   // Glyphs a state may wear in its chip; '' = none.
-  const STATE_ICONS = ['', '○', '◔', '◑', '◕', '●', '✓', '✕', '⏸', '⚑', '★', '!', '?', '→'];
+  // Kyle accepted five more on 2026-08-26; they sit with the meanings they
+  // belong to rather than in a pile at the end.
+  const STATE_ICONS = ['', '○', '◔', '◑', '◕', '●', '▶', '✓', '✕', '⏸', '⊘', '⚑', '★', '!', '?', '◎', '→', '⛓', '⌁'];
   /* What each mark is FOR, so a picker can be searched by word rather than
      by recognising a glyph (Issue #87). */
   const STATE_ICON_LABELS = {
     '○': 'empty · not started', '◔': 'a quarter done', '◑': 'half done', '◕': 'three quarters done',
     '●': 'full', '✓': 'tick · done · complete', '✕': 'cross · cancelled', '⏸': 'paused · on hold',
     '⚑': 'flag', '★': 'star', '!': 'urgent', '?': 'question · unknown', '→': 'arrow · next',
+    '▶': 'running', '⊘': 'blocked', '◎': 'target · milestone',
+    '⛓': 'link · related', '⌁': 'automation',
   };
 
   /* One catalogue for every icon an author picks: a space, a table, a select
