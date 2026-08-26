@@ -52,11 +52,18 @@ if (!chromium) {
     return weave.createEntity(parts, { name: 'Sensor board', values }).id;
   };
   const table = () => weave.getTable(parts);
-  // fieldOrder is a list of field ids; the page and the grid both read it
-  // through names, so the test compares what a reader would see.
-  const savedOrder = () => {
-    const t = table();
-    return t.fieldOrder.map((id) => t.fields[id].name);
+  /* A drag rewrites fieldOrder, so every dragging test gets a table of its
+     own: shared, they would each start from the previous test's leftovers. */
+  let n = 0;
+  const ownTable = () => {
+    const db = weave.createTable({ space: 'Showcase', name: `Drag ${++n}` });
+    for (const name of VALUES) weave.addField(db, { name, type: 'text' });
+    const values = Object.fromEntries(VALUES.map((v, i) => [v, `v${i}`]));
+    return { db, id: weave.createEntity(db, { name: 'Sensor board', values }).id };
+  };
+  const orderOf = (db) => {
+    const t = weave.getTable(db);
+    return t.fieldOrder.map((fid) => t.fields[fid].name).filter((x) => VALUES.includes(x));
   };
 
   const openEntity = async (id, width = 1280) => {
@@ -66,6 +73,15 @@ if (!chromium) {
     return page;
   };
   const order = (page) => page.$$eval('.entity-values [data-field]', (ns) => ns.map((n) => n.dataset.field));
+  const drag = (page, from, onto) => page.evaluate(([f, t]) => {
+    const dt = new DataTransfer();
+    const a = document.querySelector(`[data-field="${f}"]`);
+    const b = document.querySelector(`[data-field="${t}"]`);
+    a.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
+    b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    a.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
+  }, [from, onto]);
 
   test('value fields flow into columns; documents keep the full width', async () => {
     const page = await openEntity(fresh());
@@ -150,23 +166,77 @@ if (!chromium) {
   });
 
   test('a row still drags to reorder, through the same schema write', async () => {
-    const page = await openEntity(fresh());
-    await page.evaluate(() => {
-      const dt = new DataTransfer();
-      const from = document.querySelector('[data-field="Weight"]');
-      const onto = document.querySelector('[data-field="Vendor"]');
-      from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-      onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
-      onto.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
-    });
+    const { db, id } = ownTable();
+    const page = await openEntity(id);
+    await drag(page, 'Weight', 'Vendor');
     await page.waitForFunction(() =>
       [...document.querySelectorAll('.entity-values [data-field]')][0].dataset.field === 'Weight',
       null, { timeout: 4000 });
     assert.deepEqual(await order(page), ['Weight', 'Vendor', 'Batch', 'Price', 'Stage', 'Notes'],
       'the moved row lands where it was dropped');
-    const saved = savedOrder();
+    const saved = orderOf(db);
     assert.ok(saved.indexOf('Weight') < saved.indexOf('Vendor'),
       'the schema followed the drag — the grid view sees the same order');
+    await page.close();
+  });
+
+  test('a second drag lands where it was dropped, not where the page opened', async () => {
+    /* The drop read its direction from the field list captured when the page
+       was drawn, so once a drag had moved something the next one was judged
+       against an order that no longer existed. Dragging a field back over the
+       one it had just passed computed "after" from the stale list and put it
+       where it already was: the row did not move, which reads as a dead drag
+       rather than a wrong one. Direction has to come from the live DOM. */
+    const { db, id } = ownTable();
+    const page = await openEntity(id, 1800);
+    await drag(page, 'Weight', 'Vendor');
+    await page.waitForFunction(() => document.querySelector('.entity-values [data-field]').dataset.field === 'Weight');
+    assert.deepEqual(await order(page), ['Weight', 'Vendor', 'Batch', 'Price', 'Stage', 'Notes']);
+
+    await drag(page, 'Vendor', 'Weight');
+    await page.waitForFunction(() => document.querySelector('.entity-values [data-field]').dataset.field === 'Vendor',
+      null, { timeout: 4000 });
+    assert.deepEqual(await order(page), ['Vendor', 'Weight', 'Batch', 'Price', 'Stage', 'Notes'],
+      'dropping onto the row above puts the field above it');
+    assert.deepEqual(orderOf(db), ['Vendor', 'Weight', 'Batch', 'Price', 'Stage', 'Notes'],
+      'the schema agrees with what the page shows');
+    await page.close();
+  });
+
+  test('a field dropped in another column lands beside its target', async () => {
+    /* Three columns, so the drag crosses one: the field has to land next to
+       the row it was dropped on, wherever that row happens to sit. */
+    const page = await openEntity(ownTable().id, 1800);
+    assert.equal(await trackCount(page), 3);
+    await drag(page, 'Vendor', 'Stage');
+    await page.waitForFunction(() => document.querySelector('.entity-values [data-field]').dataset.field === 'Batch',
+      null, { timeout: 4000 });
+    assert.deepEqual(await order(page), ['Batch', 'Price', 'Weight', 'Stage', 'Vendor', 'Notes'],
+      'dragging forward lands the field just after the row it was dropped on');
+    await page.close();
+  });
+
+  test('the drop cue is one line on the edge the field will land against', async () => {
+    /* A tinted cell said "this row". The reader needs "this gap", so the cue
+       is the same 2px inset line the grid header draws for a column drop —
+       and it sits on the side the field will land on. */
+    const page = await openEntity(ownTable().id, 1800);
+    const cue = await page.evaluate(() => {
+      const dt = new DataTransfer();
+      const from = document.querySelector('[data-field="Vendor"]');
+      const onto = document.querySelector('[data-field="Stage"]');
+      const before = getComputedStyle(onto).backgroundColor;
+      from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
+      onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      const cs = getComputedStyle(onto);
+      return { shadow: cs.boxShadow, fill: cs.backgroundColor, before, marked: onto.classList.contains('drop-target') };
+    });
+    assert.ok(cue.marked, 'the row under the pointer is the drop target');
+    assert.equal(cue.fill, cue.before, 'the cue does not fill the cell');
+    assert.notEqual(cue.shadow, 'none', 'the cue is drawn');
+    const [, , x, y] = cue.shadow.match(/(rgba?\([^)]+\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px/) ?? [];
+    assert.ok(Math.abs(Number(x)) >= 2 && Number(y) === 0,
+      `in columns the gap is a vertical edge, got "${cue.shadow}"`);
     await page.close();
   });
 

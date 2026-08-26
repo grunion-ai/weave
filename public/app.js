@@ -4290,7 +4290,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       if (bodyKind(fromField) !== bodyKind(f)) return;
       e.preventDefault();
       const fromNode = fields.querySelector(`[data-field="${CSS.escape(from)}"]`);
-      const after = shown.findIndex((x) => x.name === from) < shown.findIndex((x) => x.name === f.name);
+      /* Direction comes from where the two rows sit NOW, not from the list
+         captured when the page was drawn. With the stale list, dragging a
+         field back over the one it had just passed computed "after" from an
+         order that no longer existed and dropped it where it already was —
+         a drag that read as dead rather than wrong. */
+      const after = !!(fromNode && (fromNode.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING));
       if (fromNode) node.insertAdjacentElement(after ? 'afterend' : 'beforebegin', fromNode);
       reorderField(db, from, f.name, { after, onFail: refresh });
     });
