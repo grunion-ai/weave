@@ -517,14 +517,29 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    The first thing in the body: label / value rows, a ⠿ grip that only shows
    on hover so the block reads as a form, not a list of handles. A drop moves
    the row in place and writes fieldOrder (the table's columns follow). */
-.entity-fields { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 22px; }
-/* Two columns for the value rows (Issue #89, Kyle 2026-08-26): the fields
-   stay whole — same rows, same editors, same ⠿ — they just stop being a
-   column that buries the document. Documents and attachments are siblings of
-   the grid, not cells in it, so they keep the full width. One column below
-   900px, where two would clip every value. */
-.entity-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 26px; }
-@media (max-width: 900px) { .entity-values { grid-template-columns: minmax(0, 1fr); } }
+.entity-fields { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 22px; container-type: inline-size; container-name: entity-body; }
+/* Columns for the value rows (Issue #89, Kyle 2026-08-26): the fields stay
+   whole — same rows, same editors, same ⠿ — they just stop being a column
+   that buries the document. Documents and attachments are siblings of the
+   grid, not cells in it, so they keep the full width.
+
+   The ladder is one, two, three, and it reads the CONTAINER, not the
+   viewport: this page gives room away to the activity rail and to a peek
+   panel, so a window-width media query would promise a third column the row
+   does not have. Both thresholds are measured, not chosen: 820px is where a
+   150px label and a value still fit two tracks, and 1220px is where three
+   tracks still hold the widest chip on the page — the masked key, which
+   wants 205px and clips by 3px at 1180. A date range is the one editor with
+   a floor no ellipsis can argue with, so at three columns it takes two. */
+.entity-values { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 26px; }
+@container entity-body (min-width: 820px) {
+  .entity-values { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container entity-body (min-width: 1220px) {
+  .entity-values { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 20px; }
+  .entity-values .fieldrow { grid-template-columns: 16px 118px minmax(0, 1fr); }
+  .entity-values .fieldrow[data-wide] { grid-column: span 2; }
+}
 .entity-fields .fieldrow { max-width: 720px; }
 .entity-fields .doc-section { margin: 10px 0 18px; border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
 .entity-fields .doc-section .opt-grip { opacity: 0; transition: opacity .12s; cursor: grab; }

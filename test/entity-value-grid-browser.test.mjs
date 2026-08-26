@@ -28,6 +28,8 @@ if (!chromium) {
   let server, base, browser, weave, parts;
 
   const VALUES = ['Vendor', 'Batch', 'Price', 'Weight', 'Stage', 'Notes'];
+  const trackCount = (page) => page.$eval('.entity-values',
+    (n) => getComputedStyle(n).gridTemplateColumns.trim().split(/\s+/).length);
 
   test.before(async () => {
     weave = new Weave();
@@ -65,10 +67,9 @@ if (!chromium) {
   };
   const order = (page) => page.$$eval('.entity-values [data-field]', (ns) => ns.map((n) => n.dataset.field));
 
-  test('value fields flow into two columns; documents keep the full width', async () => {
+  test('value fields flow into columns; documents keep the full width', async () => {
     const page = await openEntity(fresh());
-    const cols = await page.$eval('.entity-values', (n) => getComputedStyle(n).gridTemplateColumns);
-    assert.equal(cols.trim().split(/\s+/).length, 2, `two tracks, got "${cols}"`);
+    assert.equal(await trackCount(page), 2, 'a 1280px window carries two columns');
 
     const strays = await page.$$eval('.entity-fields > .fieldrow', (n) => n.length);
     assert.equal(strays, 0, 'every value row belongs to the grid');
@@ -83,6 +84,43 @@ if (!chromium) {
     ]);
     assert.ok(docBox >= gridBox - 1, 'the document starts below the value grid');
     await page.close();
+  });
+
+  test('the column count follows the width it actually has', async () => {
+    /* Container width, not viewport: the entity page gives room away to the
+       activity rail and to a peek panel, so a media query would promise a
+       third column the row does not have. */
+    const id = fresh();
+    for (const [width, want] of [[700, 1], [1280, 2], [1800, 3]]) {
+      const page = await openEntity(id, width);
+      assert.equal(await trackCount(page), want, `${width}px window wants ${want} column(s)`);
+      await page.close();
+    }
+  });
+
+  test('no value is clipped by the column it sits in', async () => {
+    /* The reason the ladder stops where it does. A date range is two inputs
+       and a dash — it has a floor no ellipsis can talk it out of, so it takes
+       two tracks, and every other editor has to fit the track it is given. */
+    const wide = weave.createTable({ space: 'Showcase', name: 'Wide' });
+    weave.addField(wide, { name: 'Vendor', type: 'text' });
+    weave.addField(wide, { name: 'Window', type: 'daterange' });
+    weave.addField(wide, { name: 'Secret', type: 'key' });
+    weave.addField(wide, { name: 'Batch', type: 'text' });
+    weave.addField(wide, { name: 'Stage', type: 'select', config: { options: ['Building', 'Shipped'] } });
+    weave.addField(wide, { name: 'Notes', type: 'text' });
+    const id = weave.createEntity(wide, {
+      name: 'Lot 7',
+      values: { Vendor: 'Nordic Assembly', Window: { start: '2026-08-01', end: '2026-09-15' }, Stage: 'Building' },
+    }).id;
+    for (const width of [700, 1280, 1600, 1800]) {
+      const page = await openEntity(id, width);
+      const tight = await page.$$eval('.entity-values .fieldrow', (ns) => ns
+        .map((n) => [n.dataset.field, n.children[2].scrollWidth - n.children[2].clientWidth])
+        .filter(([, over]) => over > 1));
+      assert.deepEqual(tight, [], `values overflow their column at ${width}px`);
+      await page.close();
+    }
   });
 
   test('reading order is the fieldOrder, left to right then down', async () => {

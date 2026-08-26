@@ -4302,7 +4302,11 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     // A collection relation is the grid in the body; a row of chips repeating
     // it here would be the same links twice, one of them worse.
     if (f.type === 'relation' && f.many) continue;
-    const node = f.type === 'document' ? docSection(f) : el('div', { class: 'fieldrow', draggable: 'true' },
+    // A date range is two inputs and a dash — an editor with a floor, not a
+    // string that can ellipsis. It says so, and the three-column grid gives
+    // it two tracks (Issue #89).
+    const wide = f.type === 'daterange' ? { 'data-wide': '' } : {};
+    const node = f.type === 'document' ? docSection(f) : el('div', { class: 'fieldrow', draggable: 'true', ...wide },
       el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
       el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) }, fieldNameLabel(f)),
       editorFor(f, entity, db, () => refresh()));
