@@ -63,3 +63,42 @@ test('letters stay letters — a pictograph would lose what the letterform says'
     assert.equal(marks.has(ch), false, `${ch} should stay type`);
   }
 });
+
+/* ---------- what the picker offers (Kyle, 2026-08-26) ----------
+   "pick the 15 most redundant covered icons and remove them", then "fewer
+   arrows", then "add more in the money section" and "what about dollar and
+   euro signs". Redundant names leave the OFFER; the vendor data stays, so a
+   row that already stored one keeps drawing it. */
+
+test('the near-duplicates are hidden from the offer, not from the data', () => {
+  const hidden = [...marks.ICON_HIDDEN];
+  assert.equal(hidden.length, 23);
+  const offered = marks.offered(hidden.concat(['bug', 'wallet']));
+  assert.deepEqual(offered, ['bug', 'wallet'], 'nothing hidden survives the filter');
+});
+
+test('four arrows say the four directions; sixteen more said them again', () => {
+  const arrows = [...marks.ICON_HIDDEN].filter((n) => n.startsWith('arrow-'));
+  assert.equal(arrows.length, 16);
+  for (const keep of ['arrow-up', 'arrow-down', 'arrow-left', 'arrow-right']) {
+    assert.equal(marks.ICON_HIDDEN.has(keep), false, `${keep} is the one that stays`);
+  }
+});
+
+test('money is no longer the thinnest corner of the set', () => {
+  const ours = Object.keys(marks.WEAVE_ICONS);
+  assert.deepEqual(ours, ['dollar', 'euro', 'card', 'coins', 'invoice', 'bank', 'trend', 'percent']);
+  for (const [name, svg] of Object.entries(marks.WEAVE_ICONS)) {
+    assert.doesNotMatch(svg, /<svg|viewBox/, `${name} carries its own svg element`);
+    assert.doesNotMatch(svg, /fill="#|stroke="#|rgb\(/, `${name} hard-codes a colour`);
+    assert.match(svg, /stroke-width="2\.6"/, `${name} must carry the set's weight`);
+  }
+});
+
+test('a name we drew never shadows one Iconly ships', async () => {
+  const { readFileSync } = await import('node:fs');
+  const vendor = readFileSync(new URL('../public/vendor/iconly-flat.js', import.meta.url), 'utf8');
+  for (const name of Object.keys(marks.WEAVE_ICONS)) {
+    assert.doesNotMatch(vendor, new RegExp(`"${name}"\\s*:`), `${name} collides with the vendored set`);
+  }
+});

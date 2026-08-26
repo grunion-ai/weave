@@ -67,6 +67,39 @@
   /* Marks that carry meaning as LETTERS stay letters — ƒ is a function, Σ is a
      sum, B is bold. Drawing those as pictures would lose the meaning the
      letterform already carries, so they are deliberately absent here. */
+  /* ---------- our own flat icons ----------
+     Iconly free is a closed set of 101 and money was the thinnest corner of
+     it: a wallet, a shopping cart and a discount rosette, with no way to draw
+     an invoice or a rate. These six fill that in, on the same canvas at the
+     same weights, and they live in the SAME `iconly:` namespace so there is
+     one value form rather than two. The vendored set is resolved first, so if
+     Iconly ever ships a real `card` it wins and nothing stored has to move. */
+  const WEAVE_ICONS = {
+    /* The two currency signs are drawn, not typed. A letterform normally
+       stays a letter — that is why ƒ and Σ are absent from the marks — but a
+       currency sign in an icon picker is not doing a letter's job in a
+       sentence; it is standing for money on a table header. Drawn, it holds
+       the size and weight of everything beside it instead of taking the
+       font's. £ and ¥ are the same shape work if they are ever wanted. */
+    dollar: line('M12 3.2v17.6')
+          + line('M16.6 7.8a3.7 3.7 0 0 0-3.7-2.6h-1.5a3.7 3.7 0 0 0 0 7.4h2.3a3.7 3.7 0 0 1 0 7.4h-1.6a3.7 3.7 0 0 1-3.7-2.6'),
+    euro: line('M18.4 6.9a7.1 7.1 0 1 0 0 10.2')
+        + line('M4.4 10.5h9.2') + line('M4.4 13.8h9.2'),
+  card: line('M5.4 5.4h13.2a3 3 0 0 1 3 3v7.2a3 3 0 0 1-3 3H5.4a3 3 0 0 1-3-3V8.4a3 3 0 0 1 3-3Z')
+      + line('M2.4 10.4h19.2'),
+  coins: line('M12 3.6c4.5 0 8.1 1.3 8.1 2.9s-3.6 2.9-8.1 2.9S3.9 8.1 3.9 6.5 7.5 3.6 12 3.6Z')
+       + line('M3.9 6.9v4.7c0 1.6 3.6 2.9 8.1 2.9s8.1-1.3 8.1-2.9V6.9')
+       + line('M3.9 11.9v4.7c0 1.6 3.6 2.9 8.1 2.9s8.1-1.3 8.1-2.9v-4.7'),
+  invoice: line('M5.2 3.2h13.6v16.4l-2.27-1.7-2.27 1.7-2.26-1.7-2.27 1.7-2.27-1.7-2.26 1.7Z')
+         + line('M8.6 8.2h6.8') + line('M8.6 12h6.8'),
+  bank: line('M2.9 9.8 12 4.2l9.1 5.6') + line('M5.6 11.2v7.2') + line('M9.9 11.2v7.2')
+      + line('M14.1 11.2v7.2') + line('M18.4 11.2v7.2') + line('M2.9 20.2h18.2'),
+  trend: line('M3.2 16.6 9.3 10.5l3.5 3.5 7.9-7.9') + line('M15.3 6.1h5.4v5.4'),
+  percent: line('M5.6 18.4 18.4 5.6')
+         + line('M8.1 5.1a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z')
+         + line('M15.9 12.9a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z'),
+  };
+
   /* ---------- correcting the vendored set (Kyle, 2026-08-26: "bug looks too
      small") ----------
      Iconly's own icons do not all fill the canvas. Measured across all 101,
@@ -90,9 +123,25 @@
     return s ? `<g transform="translate(12 12) scale(${s}) translate(-12 -12)">${markup}</g>` : markup;
   };
 
+  /* ---------- what the picker stops offering (Kyle, 2026-08-26) ----------
+     Twenty-three near-duplicates. Sixteen are arrows: the plain four say the
+     direction, and `2`, `3`, `circle` and `square` were four more ways to say
+     the same one. The other seven are a second drawing of an icon already in
+     the set. Hidden from the PICKER only — the vendor data stays, so a row
+     that stored one of these keeps rendering it. */
+  const ICON_HIDDEN = new Set([
+    'arrow-down2', 'arrow-down3', 'arrow-downcircle', 'arrow-downsquare',
+    'arrow-up2', 'arrow-up3', 'arrow-upcircle', 'arrow-upsquare',
+    'arrow-left2', 'arrow-left3', 'arrow-leftcircle', 'arrow-leftsquare',
+    'arrow-right2', 'arrow-right3', 'arrow-rightcircle', 'arrow-rightsquare',
+    'filter2', 'image2', 'voice2', 'bag2', 'moresquare', 'infosquare', 'timesquare',
+  ]);
+  const offered = (names) => names.filter((n) => !ICON_HIDDEN.has(n));
+
   const has = (ch) => Object.prototype.hasOwnProperty.call(MARKS, String(ch));
   const markSvg = (ch) => (has(ch) ? MARKS[String(ch)] : null);
 
   root.WEAVE_MARKS = MARKS;
-  root.weaveMarkIcons = { MARKS, has, markSvg, ICON_SCALE, scaleFor, scaled };
+  root.WEAVE_ICONS = WEAVE_ICONS;
+  root.weaveMarkIcons = { MARKS, has, markSvg, ICON_SCALE, scaleFor, scaled, WEAVE_ICONS, ICON_HIDDEN, offered };
 })(globalThis);

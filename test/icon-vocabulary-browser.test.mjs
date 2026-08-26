@@ -76,11 +76,12 @@ if (!chromium) {
     const picked = await page.evaluate(() => {
       // The picker's own list is what an author reads; both dialects come
       // from one catalogue now.
-      const choices = fieldDialogCore.iconChoices(Object.keys(window.ICONLY_FLAT ?? {}));
+      const choices = iconCatalogue();
       return { total: choices.length, marks: choices.filter((c) => c.mark).length, flat: choices.filter((c) => c.iconly).length };
     });
     assert.equal(picked.marks, 18, 'thirteen originals plus the five Kyle accepted');
-    assert.ok(picked.flat > 90, `the flat set is offered too, got ${picked.flat}`);
+    // 101 vendored, 23 near-duplicates hidden, 8 of our own added.
+    assert.equal(picked.flat, 101 - 23 + 8, `the offer is wrong, got ${picked.flat}`);
     await page.close();
   });
 
@@ -156,6 +157,37 @@ if (!chromium) {
       return out;
     });
     assert.deepEqual(small, [], 'icons drawing small beside their neighbours');
+    await page.close();
+  });
+
+  test('a hidden name still draws when a row already stored it', async () => {
+    const id = weave.createEntity(tasks, { name: 'Legacy icon' }).id;
+    weave.updateField(tasks, 'Priority', { config: { options: [
+      { name: 'Urgent', icon: 'iconly:arrow-upsquare' }, { name: 'Later', icon: '○' },
+    ] } });
+    weave.updateEntity(id, { Priority: 'Urgent' });
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.entity-fields .fieldrow');
+    const chip = page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first().locator('.k-select').first();
+    assert.equal(await chip.locator('svg').count(), 1, 'hiding a name from the picker must not blank an existing row');
+    const offered = await page.evaluate(() => iconCatalogue().some((c) => c.id === 'iconly:arrow-upsquare'));
+    assert.equal(offered, false, 'and it must be gone from the offer');
+    await page.close();
+  });
+
+  test('the money icons we drew resolve through the same prefix', async () => {
+    const page = await entityPage();
+    const drawn = await page.evaluate(() => {
+      var out = {};
+      ['dollar', 'euro', 'invoice', 'bank'].forEach(function (n) {
+        var el = iconEl('iconly:' + n);
+        out[n] = !!(el && el.querySelector('svg'));
+      });
+      out.offered = iconCatalogue().filter(function (c) { return c.id === 'iconly:dollar'; }).length;
+      return out;
+    });
+    assert.deepEqual(drawn, { dollar: true, euro: true, invoice: true, bank: true, offered: 1 });
     await page.close();
   });
 

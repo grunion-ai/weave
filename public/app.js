@@ -302,10 +302,14 @@ function iconEl(icon, cls = 'wv-icon') {
     span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${mark}</svg>`;
     return span;
   }
+  // `iconly:<name>` resolves against the vendored set FIRST, then the six we
+  // drew ourselves (Issue #87) — so if Iconly ever ships a real `card`, it
+  // wins and nothing stored has to move.
   const m = String(icon).match(/^iconly:(.+)$/);
-  if (m && window.ICONLY_FLAT?.[m[1]]) {
+  const flat = m && (window.ICONLY_FLAT?.[m[1]] ?? window.WEAVE_ICONS?.[m[1]]);
+  if (flat) {
     const span = el('span', { class: cls });
-    span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${window.weaveMarkIcons.scaled(m[1], window.ICONLY_FLAT[m[1]])}</svg>`;
+    span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${window.weaveMarkIcons.scaled(m[1], flat)}</svg>`
     return span;
   }
   return el('span', { class: cls }, String(icon));
@@ -316,7 +320,12 @@ function iconEl(icon, cls = 'wv-icon') {
    follows; the shape lives in field-dialog-core so it can be reasoned about
    without a browser. */
 function iconCatalogue() {
-  return fieldDialogCore.iconChoices(Object.keys(window.ICONLY_FLAT ?? {}));
+  // Hidden names are dropped from the OFFER, never from the data — a row that
+  // stored `arrow-upsquare` still draws it.
+  const mi = window.weaveMarkIcons;
+  const flat = mi.offered(Object.keys(window.ICONLY_FLAT ?? {}))
+    .concat(Object.keys(mi.WEAVE_ICONS));
+  return fieldDialogCore.iconChoices(flat);
 }
 
 /* The icon half of a naming edit: the current icon (or a ghost ring) beside
