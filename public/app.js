@@ -3818,18 +3818,40 @@ function refreshCodeAuto(st) {
     if ((st.tries = (st.tries ?? 0) + 1) < 20) st.schedule();
     return;
   }
+  let applied = false;
   for (const code of st.host.querySelectorAll('.vditor-ir__preview > code')) {
-    if (/language-\S/.test(code.className)) continue; // the fence named a language
+    /* A language WE detected is not a language the fence named. Both leave a
+       `language-x` class behind, and answering "already handled" to our own
+       class means never looking again — so the two are told apart by the
+       marker, not by the class.
+
+       The marker cannot be the whole answer either: this element belongs to
+       Vditor, which renders the preview again after it has fetched
+       highlight.js. That render replaces the tokens and leaves the class and
+       the marker sitting on the element, so the block reads as handled and
+       stays plain for good. The question is not "did we answer" but "is the
+       answer still on the page". */
+    const ours = code.dataset.autoLang;
+    if (!ours && /language-\S/.test(code.className)) continue; // the fence named a language
     const text = code.textContent ?? '';
-    if (code.dataset.autoFor === text) continue;       // already answered for this text
+    const answered = code.dataset.autoFor === text;
+    if (answered && (!ours || code.querySelector('span'))) continue;
     code.dataset.autoFor = text;
     const lang = globalThis.WeaveEditorLib?.detectCodeLanguage(text);
-    if (!lang) continue; // prose, a note, a diagram source — plain text
+    if (!lang) { delete code.dataset.autoLang; continue; } // prose, a note, a diagram source
     try {
       code.innerHTML = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
       code.classList.add('hljs', `language-${lang}`);
+      code.dataset.autoLang = lang;
+      applied = true;
     } catch { /* the language is not in the vendored bundle */ }
   }
+  /* Nothing types after a document loads, so no input or selection event
+     brings us back when that later render lands — look once more on our own.
+     The guard above makes the second pass free when the tokens survived, and
+     the counter stops the two of us trading renders forever. */
+  if (applied && (st.rechecks = (st.rechecks ?? 0) + 1) <= 3) st.schedule();
+  else if (!applied) st.rechecks = 0;
 }
 
 function attachRefChips(host) {

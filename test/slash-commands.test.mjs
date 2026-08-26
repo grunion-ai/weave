@@ -59,6 +59,33 @@ if (!chromium) {
   /* Runs one slash command end to end: clear the document, type the trigger,
      let the menu filter, take the highlighted item, and return the markdown
      the editor actually holds afterwards. */
+  /* The hint menu re-renders on every keystroke, and waitForSelector resolves
+     on whichever render happens to be up — usually the one for a character
+     earlier in the query. Reading it there measures the UNFILTERED catalogue,
+     which is why the failures named a random command ("/head" chose "Text")
+     and why they moved around under load.
+
+     Settling on "the rows stopped changing" is not enough: a stale menu is a
+     stable menu. Typing promotes the matches into their own group, so the
+     leading group no longer reading ALL COMMANDS is the positive signal that
+     the menu on screen belongs to the query that was typed. */
+  const hintFiltered = (page) => page.waitForFunction(() => {
+    const first = document.querySelector('.vditor-hint button');
+    return !!first && !/^ALL COMMANDS/.test(first.textContent.trim());
+  }, null, { timeout: 15000 });
+
+  async function hintSettled(page) {
+    let seen = null;
+    for (let i = 0; i < 60; i++) {
+      const now = await page.$$eval('.vditor-hint button',
+        (ns) => ns.map((n) => n.textContent).join('\u0000'));
+      if (seen !== null && now === seen) return now;
+      seen = now;
+      await page.waitForTimeout(50);
+    }
+    return seen;
+  }
+
   async function runSlash(query) {
     const page = await browser.newPage();
     try {
@@ -72,6 +99,7 @@ if (!chromium) {
     await page.click('.vditor-ir [contenteditable="true"]');
     await page.keyboard.type(`/${query}`);
     await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await hintFiltered(page);
     const label = await page.textContent('.vditor-hint button');
     await page.keyboard.press('Enter');
     /* Poll rather than sleep: a headless page is backgrounded, Chrome throttles
@@ -143,6 +171,7 @@ if (!chromium) {
     await page.click('.vditor-ir [contenteditable="true"]');
     await page.keyboard.type('/entity');
     await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await hintSettled(page);
     await page.keyboard.press('Enter');
     // The command hands off to the same search the ⌘K palette uses, rather
     // than inserting a placeholder the writer has to fix up by hand.
@@ -191,6 +220,7 @@ if (!chromium) {
     await page.click('.vditor-ir [contenteditable="true"]');
     await page.keyboard.type('/');
     await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await hintSettled(page);
 
     const menu = await page.evaluate(() => ({
       groups: [...document.querySelectorAll('.vditor-hint .slash-group')].map((g) => g.textContent),
@@ -227,6 +257,7 @@ if (!chromium) {
     await page.click('.vditor-ir [contenteditable="true"]');
     await page.keyboard.type('/ta');
     await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await hintSettled(page);
     const menu = await page.evaluate(() => ({
       groups: [...document.querySelectorAll('.vditor-hint .slash-group')].map((g) => g.textContent),
       labels: [...document.querySelectorAll('.vditor-hint .slash-item b')].map((b) => b.textContent),
@@ -262,6 +293,7 @@ if (!chromium) {
     await page.keyboard.up('Shift');
     await page.keyboard.type('/bold');
     await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await hintSettled(page);
     await page.keyboard.press('Enter');
     await page.waitForTimeout(150);
     const markdown = await page.evaluate(() =>
@@ -285,6 +317,7 @@ if (!chromium) {
     // The alias, because "table" itself belongs to the block that inserts one.
     await page.keyboard.type('/link table');
     await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await hintSettled(page);
     await page.keyboard.press('Enter');
     await page.waitForSelector('#cmdk', { state: 'visible' });
     await page.keyboard.type('Note');
@@ -323,6 +356,7 @@ if (!chromium) {
     await page.click('.vditor-ir [contenteditable="true"]');
     await page.keyboard.type('Blocked by #zeb');
     await page.waitForSelector('.vditor-hint button', { state: 'visible', timeout: 10000 });
+    await hintSettled(page);
     const labels = await page.evaluate(() =>
       [...document.querySelectorAll('.vditor-hint .slash-item b')].map((b) => b.textContent));
     assert.ok(labels.some((l) => /Zebrafish/.test(l)), `expected the fixture record, got ${labels.join(' | ')}`);
@@ -375,12 +409,15 @@ if (!chromium) {
       ed.setValue('```\n{ "a": 1, "b": [true, null] }\n```\n\n```\ngraph TD\n  A --> B\n```\n');
       ed.focus();
     });
-    // The detector waits for Vditor to fetch highlight.js, so poll for it.
+    /* The detector waits for Vditor to fetch highlight.js, so poll for it —
+       for the block the assertions actually read, not for any block. Breaking
+       on "some block has spans" let a half-applied highlight through, and a
+       four-second budget was not enough for the fetch on a loaded machine. */
     let blocks = [];
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 120; i++) {
       blocks = await page.evaluate(() => [...document.querySelectorAll('.vditor-ir__preview > code')]
         .map((c) => ({ cls: c.className, spans: c.querySelectorAll('span').length })));
-      if (blocks.some((b) => b.spans > 0)) break;
+      if (blocks[0]?.spans > 0) break;
       await page.waitForTimeout(100);
     }
     assert.equal(blocks.length, 2, 'both fences render');
