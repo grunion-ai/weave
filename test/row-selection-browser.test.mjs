@@ -188,6 +188,75 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
+  /* ── the puck (slice 2) ─────────────────────────────────────────────── */
+  test('there is no bar until a row is chosen, and none left once it is cleared', async () => {
+    const page = await grid();
+    try {
+      assert.equal(await page.locator('.sel-puck').count(), 0, 'an idle grid carries no bar');
+      await boxes(page).nth(0).check();
+      await page.waitForSelector('.sel-puck');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.sel-puck'), null, { timeout: 2000 });
+      assert.equal(await page.locator('.sel-puck').count(), 0);
+    } finally { await page.close(); }
+  });
+
+  test('the count says what the bar holds, and follows the selection', async () => {
+    const page = await grid();
+    try {
+      await boxes(page).nth(0).check();
+      assert.equal((await page.locator('.sel-count').textContent()).trim(), '1 row');
+      await boxes(page).nth(2).click({ modifiers: ['Shift'] });
+      assert.equal((await page.locator('.sel-count').textContent()).trim(), '3 rows');
+    } finally { await page.close(); }
+  });
+
+  test('the bar carries only built commands — no dead icons', async () => {
+    const page = await grid();
+    try {
+      await boxes(page).nth(0).check();
+      const labels = await page.locator('.sel-puck .sel-act').evaluateAll(
+        (bs) => bs.map((b) => b.getAttribute('aria-label')));
+      assert.deepEqual(labels, ['Duplicate', 'Move to trash'],
+        'Set a field… and Link to… are designed but unbuilt, so they are absent');
+      // Trash is past a hairline, and it is the only one wearing danger.
+      assert.equal(await page.locator('.sel-puck .sel-sep').count(), 1);
+      assert.equal(await page.locator('.sel-puck .sel-act.danger').count(), 1);
+    } finally { await page.close(); }
+  });
+
+  test('the grid grows a floor while the bar is up, so it never covers the last row', async () => {
+    const page = await grid();
+    try {
+      const lastRowBottom = () => page.evaluate(() => {
+        const rows = [...document.querySelectorAll('.wv-grid tbody tr.entity-row')];
+        return rows.at(-1).getBoundingClientRect().bottom;
+      });
+      await boxes(page).nth(0).check();
+      await page.waitForSelector('.sel-puck');
+      const gap = await page.evaluate((bottom) => {
+        const puck = document.querySelector('.sel-puck').getBoundingClientRect();
+        return puck.top - bottom;
+      }, await lastRowBottom());
+      assert.ok(gap > 0, `the bar clears the last row (overlap of ${-gap}px)`);
+    } finally { await page.close(); }
+  });
+
+  test('Duplicate copies the chosen rows and leaves the selection empty', async () => {
+    const page = await grid();
+    try {
+      const count = () => page.locator('.wv-grid tbody tr.entity-row').count();
+      const before = await count();
+      await boxes(page).nth(0).check();
+      await page.locator('.sel-puck .sel-act[aria-label="Duplicate"]').click();
+      await page.waitForFunction((n) =>
+        document.querySelectorAll('.wv-grid tbody tr.entity-row').length === n + 1,
+        before, { timeout: 4000 });
+      assert.equal(await count(), before + 1);
+      assert.equal(await page.locator('.sel-puck').count(), 0, 'the bar goes with the selection');
+    } finally { await page.close(); }
+  });
+
   /* ── 8 · the add-a-row line is not a row ────────────────────────────── */
   test('the "+ New" line carries no checkbox', async () => {
     const page = await grid();

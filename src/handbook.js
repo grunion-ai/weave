@@ -667,6 +667,25 @@ The table view is a ledger, not a form. The \`#id\` link navigates; **every othe
 
 ⌘-click opens a row in the **side peek**, so the table keeps its place while you read one record.
 
+## Working on many rows at once
+
+The checkbox column sits **left of the \`#\` link**, so the link never disappears while a selection is live. It draws nothing at rest: the box appears when the pointer is on the row, and every box in the column stays lit once anything is chosen.
+
+Because a bare cell click already means *edit this cell*, it cannot also mean *choose this row* — the box is the only way in. **Shift-click a second box** and everything between it and the last one is taken. The header box is select-all, and wears a dash while the selection is partial. \`Esc\` clears.
+
+| Gesture | What it does |
+| --- | --- |
+| Click a box | chooses that row |
+| Shift-click a box | takes the span from the last box hit |
+| Click the header box | all, then none |
+| \`Esc\` | clears the selection |
+
+A selection is a set of **records**, not of positions: sort the table and the same rows stay chosen. Rows that leave the page — trashed, filtered out — leave the selection with them. Trashed rows carry no box at all.
+
+Once a row is chosen, a bar floats over the bottom of the grid saying how many it holds. It carries **Duplicate** and, past a hairline, **Move to trash**. The bar shows only commands that can run, so it grows as more of them are built.
+
+Duplicate copies every writable field; computed fields and documents are not copied, because a computed field is a read and recomputes itself on the copy. If part of a bulk command fails, the bar says what did **not** land rather than reporting a success it cannot vouch for.
+
 ## Column order, width, and what is on screen at all
 
 | Control | Where | What it does |

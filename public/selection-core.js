@@ -50,14 +50,28 @@ globalThis.WeaveSelection = {
      State is deliberately absent: a table can carry more than one workflow
      field, so state is a field and lives inside "Set a field…" with the rest
      (the mockup's "Cut, and why", 2026-08-24). */
-  barCommands({ relations = [], writableFields = [] } = {}) {
+  barCommands({ relations = [], writableFields = [], built = null } = {}) {
     const cmds = [];
     if (writableFields.length) cmds.push({ id: 'fields', label: 'Set a field…', menu: 'fields' });
     if (relations.length) cmds.push({ id: 'link', label: 'Link to…', menu: 'rels' });
     cmds.push({ id: 'dup', label: 'Duplicate' });
     cmds.push({ id: 'more', label: 'More', menu: 'more' });
     cmds.push({ id: 'trash', label: 'Move to trash', danger: true });
-    return cmds;
+    // A button that cannot do its job yet is worse than an absent one: it
+    // reads as broken rather than unbuilt. `built` names what this release
+    // can actually run, and the bar carries nothing else.
+    return built ? cmds.filter((c) => built.includes(c.id)) : cmds;
+  },
+
+  /* The overflow, behind ⋯. Same rule: only what is built reaches it, and an
+     empty overflow means the ⋯ itself does not belong on the bar. */
+  moreCommands({ built = null } = {}) {
+    const cmds = [
+      { id: 'move', label: 'Move to table…' },
+      { id: 'rollup', label: 'Roll up into a new entity…' },
+      { id: 'copy', label: 'Copy links' },
+    ];
+    return built ? cmds.filter((c) => built.includes(c.id)) : cmds;
   },
 
   countLabel(n) {

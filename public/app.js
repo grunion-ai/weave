@@ -1992,6 +1992,10 @@ function renderTable(main, db, items, onSaved) {
     // While anything is chosen the whole column stays lit, so the reader can
     // work down it without hunting for a box that only exists under the mouse.
     if (sel.size) table.dataset.selecting = 'on'; else delete table.dataset.selecting;
+    // The bar floats over the grid, so the grid grows a floor while one is up
+    // — otherwise the puck covers the last row it is acting on.
+    wrap.classList.toggle('has-selection', sel.size > 0);
+    drawPuck();
   };
   const setChosen = (next) => { state.selected.set(db.id, next); paintSelection(); };
   const clearChosen = () => { anchor = null; setChosen(new Set()); };
@@ -2007,6 +2011,69 @@ function renderTable(main, db, items, onSaved) {
     }
     anchor = id;
     setChosen(next);
+  };
+
+  /* ---------- the puck ----------
+     Direction 2 of the five-bars study, chosen by Kyle on 2026-08-24: icon
+     only, hover labels, a count in an accent pill, and trash past a hairline.
+     It floats over the bottom of the grid and rises 14px on appear.
+
+     Only commands this release can actually RUN reach it. A designed-but-
+     unbuilt button reads as broken rather than forthcoming, so `BUILT` is the
+     gate and it grows as slice 3 lands. */
+  const BUILT = ['dup', 'trash'];
+  const CMD_ICON = { fields: 'iconly:edit', link: 'iconly:swap', dup: '⧉', more: 'iconly:moresquare', trash: 'iconly:delete' };
+  const puck = el('div', { class: 'sel-puck-wrap' });
+
+  const runOnSelection = async (verb, each) => {
+    const ids = [...chosen()];
+    const failed = [];
+    for (const id of ids) {
+      try { await each(id); } catch { failed.push(id); }
+    }
+    // What did NOT land is the part worth saying. A bulk command that half
+    // works and reports success is how a row goes missing quietly.
+    if (failed.length) toast(`${verb}: ${failed.length} of ${ids.length} failed`, true);
+    else toast(`${verb} ${SEL().countLabel(ids.length)}`);
+    clearChosen();
+    await onSaved?.();
+  };
+
+  const COMMANDS = {
+    dup: () => runOnSelection('Duplicated', async (id) => {
+      const row = await api('GET', `/entities/${id}`);
+      const values = { ...row.fields };
+      // Computed fields are reads, not values — writing one back is an error,
+      // and the copy recomputes them anyway.
+      for (const f of db.fields) {
+        if (READONLY_FIELD_TYPES.includes(f.type) || f.type === 'document') delete values[f.name];
+      }
+      await api('POST', `/tables/${db.id}/entities`, { values });
+    }),
+    trash: () => runOnSelection('Moved to trash', (id) => api('DELETE', `/entities/${id}`)),
+  };
+
+  const drawPuck = () => {
+    const sel = chosen();
+    if (!sel.size) { puck.replaceChildren(); return; }
+    const L = SEL();
+    const cmds = L.barCommands({
+      relations: db.fields.filter((f) => f.type === 'relation').map((f) => f.name),
+      writableFields: db.fields.filter((f) => !READONLY_FIELD_TYPES.includes(f.type)).map((f) => f.name),
+      built: BUILT,
+    });
+    puck.replaceChildren(el('div', { class: 'sel-puck glass' },
+      el('span', { class: 'sel-count' }, L.countLabel(sel.size)),
+      ...cmds.map((c) => [
+        // Trash is past a hairline: it is the one command on the bar that
+        // takes rows away, and it should not sit flush against Duplicate.
+        c.danger ? el('span', { class: 'sel-sep' }) : null,
+        el('button', {
+          class: 'sel-act' + (c.danger ? ' danger' : ''), type: 'button',
+          title: c.label, 'aria-label': c.label,
+          onclick: () => COMMANDS[c.id]?.(),
+        }, iconEl(CMD_ICON[c.id], 'wv-icon'), el('span', { class: 'sel-tip' }, c.label)),
+      ]).flat()));
   };
 
   // Escape is the way out of a selection, for the life of this grid.

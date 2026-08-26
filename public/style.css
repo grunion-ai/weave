@@ -219,6 +219,57 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid tbody tr.row-selected > td, .wv-grid tbody tr.row-selected:hover > td {
   background: color-mix(in srgb, var(--tblr-primary) 9%, transparent);
 }
+/* ---------- the puck ----------
+   Direction 2 of the five-bars study (Kyle, 2026-08-24): icon only, hover
+   labels, a count in an accent pill, trash past a hairline. It floats over the
+   bottom of the grid, so the grid grows a floor while one is up — otherwise
+   the bar covers the last row it is acting on. */
+.table-wrap.has-selection { padding-bottom: 62px; }
+.sel-puck-wrap { position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; pointer-events: none; z-index: 3; }
+.sel-puck {
+  pointer-events: auto; display: flex; align-items: center; gap: 2px;
+  padding: 6px; border-radius: 999px; max-width: 100%;
+  animation: sel-puck-rise .19s cubic-bezier(.22,1,.36,1);
+}
+/* Glass: the shell reads as a layer over the grid rather than a row of it. */
+.sel-puck.glass {
+  background: color-mix(in srgb, var(--tblr-bg-surface) 82%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid var(--tblr-border-color);
+  box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 18px rgba(0,0,0,.10), 0 18px 40px rgba(0,0,0,.10),
+              inset 0 1px 0 color-mix(in srgb, var(--tblr-body-color) 6%, transparent);
+}
+@keyframes sel-puck-rise { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+.sel-count {
+  display: inline-flex; align-items: center; min-width: 30px; height: 30px;
+  margin: 0 6px 0 4px; padding: 0 11px; border-radius: 999px;
+  background: color-mix(in srgb, var(--tblr-primary) 13%, transparent);
+  color: var(--tblr-primary); font-size: 12.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.sel-act {
+  appearance: none; border: 0; background: none; font: inherit; cursor: pointer;
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex: none; border-radius: 999px;
+  color: var(--tblr-body-color); transition: background .12s, color .12s;
+}
+.sel-act:hover { background: var(--tblr-bg-surface-secondary); }
+.sel-act .wv-icon { font-size: 17px; line-height: 1; }
+.sel-act.danger { color: var(--tblr-danger); }
+.sel-act.danger:hover { background: color-mix(in srgb, var(--tblr-danger) 12%, transparent); }
+.sel-sep { width: 1px; align-self: stretch; margin: 6px 5px; background: var(--tblr-border-color); }
+/* The label is the tooltip: an icon-only bar has to say what it does the
+   moment the pointer lands, without spending the width a label would cost. */
+.sel-tip {
+  position: absolute; bottom: calc(100% + 9px); left: 50%;
+  transform: translateX(-50%) translateY(3px);
+  background: var(--tblr-body-color); color: var(--tblr-bg-surface);
+  font-size: 11.5px; font-weight: 500; padding: 4px 8px; border-radius: 6px;
+  white-space: nowrap; opacity: 0; pointer-events: none;
+  transition: opacity .12s, transform .12s;
+}
+.sel-act:hover .sel-tip, .sel-act:focus-visible .sel-tip { opacity: 1; transform: translateX(-50%); }
 /* ---------- the Ledger grid (Kyle, 2026-08-24 — direction A) ----------
    The grid was a form: every cell wore a control and hovering drew a box
    around each one, so a row read as ruled between its fields. It is a record

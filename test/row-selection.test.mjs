@@ -105,3 +105,28 @@ test('the count reads as rows, singular at one — the puck says what it holds',
   assert.equal(SEL.countLabel(1), '1 row');
   assert.equal(SEL.countLabel(12), '12 rows');
 });
+
+/* ---------- the puck (slice 2) ----------
+   A command that is designed but not yet built must not reach the bar. An
+   icon that does nothing reads as broken, not as forthcoming — so the bar
+   carries what this release can actually run, and the rest waits. */
+test('the bar carries only what is built, in the designed order', () => {
+  const built = ['dup', 'trash'];
+  const cmds = SEL.barCommands({ relations: ['Project'], writableFields: ['Name'], built });
+  assert.deepEqual(cmds.map((c) => c.id), ['dup', 'trash'],
+    'Set a field… and Link to… are designed but unbuilt, so they are absent');
+  assert.equal(cmds.at(-1).id, 'trash', 'trash stays last');
+});
+
+test('with everything built the bar is the full designed set', () => {
+  const all = ['fields', 'link', 'dup', 'more', 'trash'];
+  assert.deepEqual(
+    SEL.barCommands({ relations: ['P'], writableFields: ['Name'], built: all }).map((c) => c.id),
+    all);
+});
+
+test('the overflow answers to the same rule, and can be empty', () => {
+  assert.deepEqual(SEL.moreCommands({ built: ['copy'] }).map((c) => c.id), ['copy']);
+  assert.deepEqual(SEL.moreCommands({ built: [] }), [], 'nothing built, no ⋯');
+  assert.deepEqual(SEL.moreCommands().map((c) => c.id), ['move', 'rollup', 'copy']);
+});
