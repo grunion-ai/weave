@@ -213,8 +213,11 @@ test('the field "+" opens the add tray directly — relation is a grid tile, Man
 
 test('full-width grid rows derive their span from one column count', () => {
   // The header gained a column; a restated `cols.length + N` would silently
-  // under-span the new-entity row.
-  assert.match(APP, /const colCount = cols\.length \+ 3;/, 'the table view derives it once');
+  // under-span the new-entity row. It gained another with row selection
+  // (Feature #132): checkbox + # + one per field + docs + the "+" control.
+  // What the span must actually EQUAL is proved against a live header in
+  // test/row-selection-browser.test.mjs — this only pins the single source.
+  assert.match(APP, /const colCount = cols\.length \+ 4;/, 'the table view derives it once');
   assert.match(APP, /const colCount = cols\.length \+ 2;/, 'so does the embedded related grid, from its own columns');
   assert.doesNotMatch(APP, /colspan: String\(cols\.length/, 'never restated at a use site');
   assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 2,

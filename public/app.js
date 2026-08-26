@@ -158,7 +158,11 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   return back;
 }
 
-const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: new Set() };
+const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: new Set(),
+  /* Feature #132: which rows are chosen, per table. A Set of ENTITY IDS —
+     the grid re-sorts on every draw, so a selection keyed on position would
+     quietly slide onto different records. */
+  selected: new Map() };
 
 // Single entry point for opening an entity. The page IS the destination
 // (Feature #117): a row click lands here; the side peek below is kept for
@@ -1941,11 +1945,80 @@ function visibleCols(db) {
 
 function renderTable(main, db, items, onSaved) {
   const cols = visibleCols(db);
-  // Header bar = id + one per field + docs + the "+" field control. Full-width
-  // rows span it, so it is derived once rather than restated per call site.
-  const colCount = cols.length + 3;
+  // Header bar = checkbox + id + one per field + docs + the "+" field control.
+  // Full-width rows span it, so it is derived once rather than restated per
+  // call site.
+  const colCount = cols.length + 4;
   let sortKey = null, sortDir = 1;
   const wrap = el('div', { class: 'card table-wrap' });
+
+  /* ---------- Feature #132: row selection ----------
+     The Puck won the five-bars study (Kyle, 2026-08-24). This is the layer
+     underneath it: a set of chosen ids, a checkbox column left of the # link,
+     and a header box that reads none / some / all.
+
+     One departure from that spec, forced by Ledger landing the same evening:
+     the mockup had a bare row click toggle the row, but Ledger's one rule is
+     that a bare row click raises THAT CELL's editor. Two meanings for one
+     gesture is one too many, so the checkbox owns selection outright and
+     shift extends from the last box hit. */
+  const SEL = () => globalThis.WeaveSelection;
+  const chosen = () => state.selected.get(db.id) ?? new Set();
+  let anchor = null;                       // the last box hit, for shift-range
+  // Read off the DOM rather than off `sorted`: what shift-click means is
+  // "everything between these two rows ON SCREEN", which is the drawn order.
+  const drawnIds = () => [...wrap.querySelectorAll('tbody tr.entity-row')].map((r) => r.dataset.eid);
+
+  /* Painting is deliberately not a redraw: a redraw would tear down whatever
+     editor the reader has open in a cell of the row they are selecting. */
+  const paintSelection = () => {
+    const sel = chosen();
+    const table = wrap.querySelector('.wv-grid');
+    if (!table) return;
+    for (const row of table.querySelectorAll('tbody tr.entity-row')) {
+      const on = sel.has(row.dataset.eid);
+      const box = row.querySelector('.sel-box');
+      if (box) box.checked = on;
+      // Selected rows carry the accent tint alone — Kyle took the leading
+      // accent stripe out on the second pass.
+      row.classList.toggle('row-selected', on);
+    }
+    const head = table.querySelector('thead .sel-box');
+    if (head) {
+      const st = SEL().headState(sel.size, table.querySelectorAll('tbody tr.entity-row').length);
+      head.checked = st === 'all';
+      head.indeterminate = st === 'some';
+    }
+    // While anything is chosen the whole column stays lit, so the reader can
+    // work down it without hunting for a box that only exists under the mouse.
+    if (sel.size) table.dataset.selecting = 'on'; else delete table.dataset.selecting;
+  };
+  const setChosen = (next) => { state.selected.set(db.id, next); paintSelection(); };
+  const clearChosen = () => { anchor = null; setChosen(new Set()); };
+
+  const onBox = (e, id) => {
+    const L = SEL();
+    let next;
+    if (e.shiftKey && anchor && anchor !== id) {
+      next = new Set(chosen());
+      for (const x of L.range(drawnIds(), anchor, id)) next.add(x);
+    } else {
+      next = L.toggle(chosen(), id);
+    }
+    anchor = id;
+    setChosen(next);
+  };
+
+  // Escape is the way out of a selection, for the life of this grid.
+  addEventListener('keydown', function esc(e) {
+    if (!wrap.isConnected) return removeEventListener('keydown', esc);
+    if (e.key !== 'Escape' || !chosen().size) return;
+    // A dialog, popover or open cell editor owns Escape first — clearing the
+    // selection out from under one of those would answer a keystroke the
+    // reader aimed somewhere else.
+    if (document.querySelector('.chip-pop, .tray-back, .modal-back')) return;
+    clearChosen();
+  });
 
   const draw = () => {
     const sorted = [...items];
@@ -1977,6 +2050,15 @@ function renderTable(main, db, items, onSaved) {
           if (cell) activateCell(cell);
         },
       },
+        // Left of the # link, so the link never disappears while a selection
+        // is live and a chosen row stays openable (mockup, 2026-08-24).
+        el('td', { class: 'sel-cell' },
+          item.deleted ? null : el('label', { class: 'sel-hit' },
+            el('input', {
+              class: 'sel-box', type: 'checkbox',
+              'aria-label': `Select #${item.publicId}`,
+              onclick: (e) => onBox(e, item.id),
+            }))),
         el('td', { class: 'pid-cell' },
           el('a', {
             class: 'open-link',
@@ -2020,6 +2102,20 @@ function renderTable(main, db, items, onSaved) {
       dataset: { density: gridDensity(db.id) },
     },
       el('thead', {}, el('tr', {},
+        // Select-all, with a dash for a partial selection. Same hit target as
+        // the body boxes so the column reads as one vertical line.
+        el('th', { class: 'sel-head' },
+          el('label', { class: 'sel-hit' },
+            el('input', {
+              class: 'sel-box', type: 'checkbox', 'aria-label': 'Select every row',
+              onclick: () => {
+                const drawn = drawnIds();
+                const L = SEL();
+                anchor = null;
+                setChosen(L.headState(chosen().size, drawn.length) === 'all'
+                  ? new Set() : L.selectAll(drawn));
+              },
+            }))),
         el('th', { class: 'pid-head' }, '#'),
         ...cols.map((c, i) => el('th', {
           class: 'col-head',
@@ -2058,6 +2154,10 @@ function renderTable(main, db, items, onSaved) {
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db)))),
       tbody);
     wrap.replaceChildren(table);
+    // A row that left the page — trashed, filtered out, sorted away — is no
+    // longer selected. Done after the draw so it reads the rows that exist.
+    if (chosen().size) setChosen(SEL().prune(chosen(), drawnIds()));
+    else paintSelection();
     // Measured after the browser has laid the columns out, so "clipped"
     // means clipped and the marker never claims there is more to read.
     requestAnimationFrame(() => markClippedCells(table));

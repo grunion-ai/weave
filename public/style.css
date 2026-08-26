@@ -196,6 +196,29 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 /* The id column carries a short "#12 ↗" link — collapse it to its content
    instead of letting the table hand it an equal share of the width. */
 .wv-grid th.pid-head, .wv-grid td.pid-cell { width: 1%; white-space: nowrap; text-align: left; padding-right: 6px; }
+/* ---------- row selection (Feature #132) ----------
+   The checkbox is its own column, LEFT of the # link, so the link never
+   disappears while a selection is live and a chosen row stays openable.
+   The column holds its width at rest and reveals its box on row hover, or on
+   every row once anything is selected — an idle grid stays clean. */
+.wv-grid th.sel-head, .wv-grid td.sel-cell { width: 1%; padding: 0 0 0 4px; text-align: left; }
+/* One padding rule at equal specificity for head and body, inside an
+   identical hit target, so the select-all box lands on the same vertical
+   line as every row's box (Kyle's second pass, 2026-08-24). */
+.wv-grid .sel-hit { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 26px; margin: 0; cursor: pointer; }
+.wv-grid .sel-box { opacity: 0; transition: opacity .12s ease; cursor: pointer; margin: 0; }
+.wv-grid tbody tr:hover .sel-box,
+.wv-grid thead:hover .sel-box,
+.wv-grid[data-selecting] .sel-box,
+.wv-grid .sel-box:focus-visible,
+.wv-grid .sel-box:checked,
+.wv-grid .sel-box:indeterminate { opacity: 1; }
+/* A chosen row carries the accent tint alone — Kyle removed the leading
+   accent stripe on the second pass. It has to out-rank Tabler's .table-hover
+   striping, which is what a row otherwise wears under the pointer. */
+.wv-grid tbody tr.row-selected > td, .wv-grid tbody tr.row-selected:hover > td {
+  background: color-mix(in srgb, var(--tblr-primary) 9%, transparent);
+}
 /* ---------- the Ledger grid (Kyle, 2026-08-24 — direction A) ----------
    The grid was a form: every cell wore a control and hovering drew a box
    around each one, so a row read as ruled between its fields. It is a record
