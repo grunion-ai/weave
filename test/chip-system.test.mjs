@@ -206,9 +206,12 @@ test('a pointer chip is an outline with no fill — Kyle chose none over faint',
     'a pointer must never borrow the value tier’s fill');
 });
 
+/* The relation chip's mark rides inside its <a>: on the chip it sat outside
+   the link, and the pixel that promised navigation did nothing (2026-08-26).
+   Doc and attachment chips ARE buttons, so theirs stays on the chip. */
 test('a pointer says it goes somewhere', () => {
-  for (const sel of ['.k-rel::after', '.k-doc::after', '.k-attach::after']) {
-    const r = rulesFor(['.k-rel::after', '.k-doc::after', '.k-attach::after'].join(', '));
+  for (const sel of ['.k-rel > a::after', '.k-doc::after', '.k-attach::after']) {
+    const r = rulesFor(['.k-rel > a::after', '.k-doc::after', '.k-attach::after'].join(', '));
     const merged = Object.keys(r).length ? r : rulesFor(sel);
     assert.match(merged.content ?? '', /↗/, `${sel} wears the open mark`);
   }
@@ -224,8 +227,10 @@ test('a computed value is never a chip', () => {
 test('an empty cell is an invitation, not a disabled control', () => {
   // Dimming to 50% reads as "you may not", which is the opposite of the truth.
   assert.match(rulesFor('.k-add')['border'] ?? '', /dashed/);
-  assert.match(CSS, /\.k-doc\.empty[^{]*\{[^}]*border-style:\s*dashed/,
+  // `is-empty`, not `empty`: Tabler owns the bare class name.
+  assert.match(CSS, /\.k-doc\.is-empty[^{]*\{[^}]*border-style:\s*dashed/,
     'an empty document chip is dashed too');
+  assert.ok(!/\.k-(doc|attach)\.empty\b/.test(CSS), 'and never answers to the framework global');
 });
 
 /* ---------- the new chips ---------- */

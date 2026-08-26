@@ -67,8 +67,13 @@ test('clicking a chip opens the entity peek, never a row expansion (Issue #74)',
 
 test('an empty document reads as empty rather than lying about a kind', () => {
   // Since the chip system (2026-08-25) the empty state is a dashed pointer,
-  // not a dimmed one — .doc-chip carries geometry only, .k-doc.empty the look.
-  assert.match(CSS, /\.k-doc\.empty/);
-  assert.doesNotMatch(CSS, /\.doc-chip\.empty\s*\{[^}]*opacity/,
+  // not a dimmed one — .doc-chip carries geometry only, .k-doc.is-empty the
+  // look. The modifier is `is-empty` because Tabler ships a global `.empty`
+  // (flex column, height 100%, 1rem pad) and the chip inherited it, which
+  // took a comfortable row from 43px to 85 (Kyle, 2026-08-26).
+  assert.match(CSS, /\.k-doc\.is-empty/);
+  assert.doesNotMatch(APP, /doc-chip' \+ \(kind \? '' : ' empty'\)/,
+    'the chip never wears the framework’s class name');
+  assert.doesNotMatch(CSS, /\.doc-chip\.is-empty\s*\{[^}]*opacity/,
     'dimming an empty field reads as disabled, not as an invitation');
 });

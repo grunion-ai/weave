@@ -1056,17 +1056,54 @@ function cellPopLayer(wrap) {
   return layer;
 }
 
+/* The type a cell sets, carried onto the copy. The clone lands OUTSIDE the
+   <td>, so every rule scoped to a cell — `td.name-cell .inline-edit` sets the
+   leading column at 15px/600 — stops matching it, and the value changed size
+   at the moment you hovered it to read it (Issue #67). Same technique as
+   cellFitProbe() below: read the computed value, write it on the clone. */
+const CELL_TYPE_PROPS = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
+  'letterSpacing', 'lineHeight', 'color', 'textAlign'];
+function copyCellType(src, dst) {
+  const cs = getComputedStyle(src);
+  for (const p of CELL_TYPE_PROPS) dst.style[p] = cs[p];
+}
+/* Where a box's content actually starts — the element it holds, or, for a
+   cell that is nothing but text, the text itself. Padding and borders differ
+   between a cell and the popover, so the boxes cannot be aligned; the
+   CONTENT can. */
+function contentRect(node) {
+  if (node.firstElementChild) return node.firstElementChild.getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  const r = range.getBoundingClientRect();
+  return r.width || r.height ? r : node.getBoundingClientRect();
+}
 function showCellPop(td, wrap) {
   const layer = cellPopLayer(wrap);
   const base = wrap.getBoundingClientRect();
   const r = td.getBoundingClientRect();
+  const left = r.left - base.left + wrap.scrollLeft;
+  const top = r.top - base.top + wrap.scrollTop;
   const pop = el('div', {
     class: 'cell-pop',
-    style: `left:${r.left - base.left + wrap.scrollLeft}px; top:${r.top - base.top + wrap.scrollTop}px; min-width:${r.width}px;`,
+    style: `left:${left}px; top:${top}px; min-width:${r.width}px;`,
   });
   // A copy, so the live cell keeps its controls and its place in the row.
   for (const node of td.childNodes) pop.append(node.cloneNode(true));
+  copyCellType(td, pop);
+  const src = td.querySelectorAll('*');
+  const clones = pop.querySelectorAll('*');
+  for (let i = 0; i < clones.length && i < src.length; i++) copyCellType(src[i], clones[i]);
   layer.replaceChildren(pop);
+  /* The expansion opens OVER the value, not beside it (Kyle, 2026-08-26): the
+     cell pads 9px/4px, the popover 8px/10px over a border, and the cell
+     centres its line in a row taller than one line — so pinning the two boxes
+     together put the value 8px right and 22px high, and reading a cell moved
+     the thing you were reading. Measure both after layout and close the gap. */
+  const want = contentRect(td);
+  const got = contentRect(pop);
+  pop.style.left = `${left + (want.left - got.left)}px`;
+  pop.style.top = `${top + (want.top - got.top)}px`;
 }
 
 function hideCellPop(wrap) {
@@ -1295,10 +1332,19 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     const current = compact && all.length > CAP ? all.slice(0, CAP) : all;
     const hidden = all.length - current.length;
     for (const s of current) {
-      box.append(el('span', { class: 'k k-rel' },
-        personAvatar(f, s),
-        el('a', { href: `#/entity/${s.id}`, onclick: (e) => e.stopPropagation() }, s.name || `#${s.publicId}`),
-        el('span', {
+      /* The whole chip is the link — avatar, name, and the ↗ that promises
+         it goes somewhere. The mark used to be a ::after on the chip, i.e.
+         OUTSIDE the <a>, so the one pixel advertising navigation was the one
+         pixel that did nothing (Kyle, 2026-08-26). */
+      const chip = el('span', { class: 'k k-rel' },
+        el('a', { href: `#/entity/${s.id}`, onclick: (e) => e.stopPropagation() },
+          personAvatar(f, s), s.name || `#${s.publicId}`));
+      /* Unlinking is an edit, and a grid is a record: in a table the × was
+         chrome on every chip of every row. The cell's picker owns removal
+         there; the entity page keeps its × because the page IS the edit
+         surface (Kyle, 2026-08-26). */
+      if (!compact) {
+        chip.append(el('span', {
           class: 'x',
           onclick: async () => {
             try {
@@ -1306,7 +1352,9 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
               await saved();
             } catch (err) { toast(err.message, true); }
           },
-        }, '×')), ' ');
+        }, '×'));
+      }
+      box.append(chip, ' ');
     }
     if (hidden > 0) {
       box.append(el('span', {
@@ -1396,7 +1444,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   // the entity page manages the list — upload lands blob and column together.
   if (f.type === 'attachments') {
     const ids = item.raw?.[f.name] ?? [];
-    const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' empty'), title: 'attachments' },
+    const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: 'attachments' },
       el('span', { class: 'ico' }, iconEl('iconly:paper', 'wv-icon')),
       ids.length ? String(val ?? `${ids.length}`) : '—');
     if (compact) return chip;
@@ -1478,7 +1526,7 @@ function docChips(item, db, onOpen) {
   for (const f of documentFields(db)) {
     const kind = globalThis.WeaveEditorLib.docKind(item.docs?.[f.name]);
     box.append(el('button', {
-      class: 'k k-doc doc-chip' + (kind ? '' : ' empty'),
+      class: 'k k-doc doc-chip' + (kind ? '' : ' is-empty'),
       type: 'button',
       title: kind ? `Open ${f.name} (${kind})` : `${f.name} is empty — click to write it`,
       onclick: (e) => { e.stopPropagation(); onOpen(f.name); },
