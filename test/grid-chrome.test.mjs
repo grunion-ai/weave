@@ -134,6 +134,23 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
+  /* The marker is measured, never assumed — so it has to be measured AGAIN
+     when the box changes. Narrowing the window puts cells over their columns
+     that were not over them before, and every one of those has to pick up its
+     ⤢ or the expansion cannot be opened at all. Guards the expansion the two
+     cases above are about: they only ever run on a cell that is marked. */
+  test('a cell that starts overflowing gets its marker without a redraw', async () => {
+    const page = await grid();
+    try {
+      await page.setViewportSize({ width: 420, height: 900 });
+      await page.waitForFunction(() => {
+        const tds = [...document.querySelectorAll('.wv-grid tbody td')];
+        const over = tds.filter((t) => t.scrollWidth > t.clientWidth + 1);
+        return over.length > 0 && over.every((t) => t.classList.contains('clipped'));
+      }, null, { timeout: 3000 });
+    } finally { await page.close(); }
+  });
+
   /* ── 2 · an empty document chip costs the row no height ──────────────── */
 
   for (const density of ['comfortable', 'compact']) {
