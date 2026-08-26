@@ -116,6 +116,27 @@
   const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
   // Glyphs a state may wear in its chip; '' = none.
   const STATE_ICONS = ['', '○', '◔', '◑', '◕', '●', '✓', '✕', '⏸', '⚑', '★', '!', '?', '→'];
+  /* What each mark is FOR, so a picker can be searched by word rather than
+     by recognising a glyph (Issue #87). */
+  const STATE_ICON_LABELS = {
+    '○': 'empty · not started', '◔': 'a quarter done', '◑': 'half done', '◕': 'three quarters done',
+    '●': 'full', '✓': 'tick · done · complete', '✕': 'cross · cancelled', '⏸': 'paused · on hold',
+    '⚑': 'flag', '★': 'star', '!': 'urgent', '?': 'question · unknown', '→': 'arrow · next',
+  };
+
+  /* One catalogue for every icon an author picks: a space, a table, a select
+     option, a workflow state. The marks lead because they carry progress and
+     outcome — a quarter-filled circle is not in any flat set — and the whole
+     flat set follows. `flat` is the vendored icon names; the caller owns the
+     set so this stays pure. */
+  function iconChoices(flat = []) {
+    return [
+      { id: '', label: 'No icon' },
+      ...STATE_ICONS.filter(Boolean).map((g) => ({ id: g, label: `${g}  ${STATE_ICON_LABELS[g] ?? g}`, mark: g })),
+      ...flat.map((n) => ({ id: `iconly:${n}`, label: n, iconly: n })),
+    ];
+  }
+
   const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
   const NUMBER_FORMATS = ['number', 'currency', 'percent'];
   // ISO 4217 codes offered in the picker (any valid code types in too).
@@ -307,7 +328,7 @@
   }
 
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, AGGREGATES, TYPE_MIGRATIONS, typeChoices, migrateState, moveItem,
+    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, AGGREGATES, TYPE_MIGRATIONS, typeChoices, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     blankState, definitionFromState, stateFromDefinition,
     serializeDefinition, parseDefinition,

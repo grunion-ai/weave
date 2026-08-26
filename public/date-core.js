@@ -24,6 +24,20 @@
     return dateText + timeText;
   }
 
+  /* A range wears the same costume at both ends (Issue #91). A long range
+     inside one year says the year once — 'Aug 1 \u2013 Sep 15, 2026' — which only
+     reads well without a time of day, so the collapse stops there. */
+  function formatDateRange(value, { format = 'iso', time = false } = {}) {
+    if (!value) return '';
+    const { start, end } = value;
+    if (!start && !end) return '';
+    const opts = { format, time };
+    if (format === 'long' && !time && start && end && String(start).slice(0, 4) === String(end).slice(0, 4)) {
+      return `${formatDate(start, opts).replace(`, ${String(start).slice(0, 4)}`, '')} \u2013 ${formatDate(end, opts)}`;
+    }
+    return `${start ? formatDate(start, opts) : ''} \u2013 ${end ? formatDate(end, opts) : ''}`.trim();
+  }
+
   const isoOf = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
   const daysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 
@@ -72,6 +86,6 @@
 
   root.weaveDateCore = {
     MONTHS, MONTHS_LONG, WEEKDAYS, DYNAMIC_DATE_DEFAULTS,
-    formatDate, calendarMonth, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
+    formatDate, formatDateRange, calendarMonth, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
   };
 })(globalThis);

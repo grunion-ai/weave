@@ -789,7 +789,7 @@ Folding the first level two leaves this one alone — the range stops at the nex
 
 ### Three headings is the threshold
 
-At three or more headings a document grows the dash rail down its edge. This page has six, so the rail is there.` },
+At three or more headings a document grows the dash rail down its edge. This section alone has six, so the rail is there.` },
 
   { name: 'Lists and task lists', construct: 'Block', syntax: '`-` · `1.` · `- [ ]`', doc: `# Lists
 
@@ -1063,6 +1063,28 @@ export function applyHandbook(w) {
 /* The document half of the Showcase space: every construct a document can
    hold, each row written in the construct it names. Needs the Showcase space,
    which seedFieldShowcase creates. */
+export const FORMATTING_PAGE = 'Every construct on one page';
+
+/* The showcase as one document (Issue #88): a lead-in, the syntax reference
+   as a table, then every sample body verbatim behind a divider. Nothing is
+   rewritten on the way in — a sample that demonstrates a construct has to
+   keep demonstrating it. */
+function formattingPage() {
+  const reference = [
+    '| Section | Construct | Syntax |',
+    '| --- | --- | --- |',
+    ...FORMATTING_SAMPLES.map((s) => `| ${s.name} | ${s.construct} | ${s.syntax} |`),
+  ].join('\n');
+  return [
+    '# Every construct a document can hold',
+    '',
+    'Each section below is written in the construct it names, so the page is its own proof. Read it in one scroll; fold a heading to skip what you already know.',
+    '',
+    reference,
+    ...FORMATTING_SAMPLES.map((s) => `\n---\n\n${s.doc}`),
+  ].join('\n');
+}
+
 export function applyFormattingShowcase(w) {
   ensureSpace(w, 'Showcase', 'Every field type, in several configurations — the range of what a field can be, visible in one grid');
 
@@ -1078,8 +1100,16 @@ export function applyFormattingShowcase(w) {
   });
   ensureField(w, t, { name: 'Syntax', type: 'text' });
 
-  for (const s of FORMATTING_SAMPLES) {
-    upsertRow(w, t, { name: s.name, values: { Construct: s.construct, Syntax: s.syntax }, doc: s.doc });
+  // One page, not twelve (Issue #88). Kyle: "formatting showcase could all be
+  // done in one entity's description." Twelve rows meant opening twelve
+  // records to see a renderer that one scroll proves, and the last of them
+  // already carried the whole demonstration on its own. Each sample's body
+  // moves over verbatim — every construct still demonstrates itself — and the
+  // Syntax column survives as a table inside the page it describes.
+  upsertRow(w, t, { name: FORMATTING_PAGE, values: {}, doc: formattingPage() });
+  // Rows from the twelve-row era go to the trash, not the void.
+  for (const row of w.query('Showcase/Formatting', { limit: 200 }).items) {
+    if (row.name !== FORMATTING_PAGE) w.deleteEntity(row.id);
   }
 
   w.save();

@@ -53,7 +53,11 @@ test('the icon vocabulary gives the value form, not just the names', () => {
   assert.match(VOCABULARY.icons.fallback, /renders as text/, 'and says what any other string does');
   assert.ok(VOCABULARY.icons.names.includes('discovery'));
   // The picker writes the same form the vocabulary promises.
-  assert.match(app, /id: `iconly:\$\{n\}`/, 'the UI picker stores the prefixed form');
+  // The catalogue moved into field-dialog-core with Issue #87 so one list
+  // serves a table, a select option and a workflow state alike.
+  const core = readFileSync(join(ROOT, 'public/field-dialog-core.js'), 'utf8');
+  assert.match(core, /id: `iconly:\$\{n\}`/, 'the UI picker stores the prefixed form');
+  assert.match(app, /fieldDialogCore\.iconChoices/, 'and the app picks from that catalogue');
 });
 
 test('the closed sets match the engine and the field dialog', () => {

@@ -73,14 +73,23 @@ async function copyText(text, label = 'Copied') {
 /* action = { label, run } adds an inline button and holds the toast open long
    enough to use it — the undo affordance for recoverable actions. */
 function toast(msg, isErr = false, action = null) {
-  const t = el('div', { class: 'toast' + (isErr ? ' err' : '') }, msg);
+  // `wv-toast`, not `toast`: Tabler ships `.toast:not(.show){display:none}` —
+  // Bootstrap's toast, waiting for JS to reveal it — so weave's hand-rolled
+  // toast inherited that switch and every message it raised was invisible
+  // (Issue #92, the sibling of the `.empty` collision).
+  const t = el('div', { class: 'wv-toast' + (isErr ? ' err' : '') }, msg);
   if (action) {
     t.append(el('button', {
-      class: 'toast-action', type: 'button',
+      class: 'wv-toast-action', type: 'button',
       onclick: async () => { t.remove(); await action.run(); },
     }, action.label));
   }
-  document.body.append(t);
+  // One layer, so a second message stacks above the first instead of landing
+  // on top of it — invisible toasts could overlap unnoticed, visible ones
+  // cannot (Issue #92).
+  let layer = document.querySelector('#wv-toasts');
+  if (!layer) document.body.append(layer = el('div', { id: 'wv-toasts' }));
+  layer.append(t);
   setTimeout(() => t.remove(), action ? 7000 : isErr ? 4200 : 1400);
 }
 
@@ -292,6 +301,14 @@ function iconEl(icon, cls = 'wv-icon') {
   return el('span', { class: cls }, String(icon));
 }
 
+/* The one catalogue every icon is picked from — a space, a table, a select
+   option, a workflow state (Issue #87). The marks lead, the flat set
+   follows; the shape lives in field-dialog-core so it can be reasoned about
+   without a browser. */
+function iconCatalogue() {
+  return fieldDialogCore.iconChoices(Object.keys(window.ICONLY_FLAT ?? {}));
+}
+
 /* The icon half of a naming edit: the current icon (or a ghost ring) beside
    the title, opening the one selection dialect over the flat set. */
 function iconButton(current, onPick) {
@@ -301,10 +318,7 @@ function iconButton(current, onPick) {
     e.stopPropagation();
     searchPicker({
       anchor: btn, title: 'Icon', placeholder: 'Search icons…',
-      options: [
-        { id: '', label: 'No icon' },
-        ...Object.keys(window.ICONLY_FLAT ?? {}).map((n) => ({ id: `iconly:${n}`, label: n, iconly: n })),
-      ],
+      options: iconCatalogue(),
       currentId: current ?? '',
       onPick: (o) => onPick(o.id || null),
     });
@@ -483,11 +497,24 @@ function fieldValueCell(value) {
   return String(value);
 }
 
-/* A state's chip text: its icon, when it has one, then the name. */
+/* A state's chip text: its icon, when it has one, then the name. A flat icon
+   has no text form, so in a text-only context the name stands alone rather
+   than dragging 'iconly:activity' along with it (Issue #87). */
 function stateLabel(fieldSchema, stateName) {
   if (stateName == null) return '—';
   const icon = fieldSchema.states?.find((s) => s.name === stateName)?.icon;
-  return icon ? `${icon} ${stateName}` : stateName;
+  return icon && !String(icon).startsWith('iconly:') ? `${icon} ${stateName}` : stateName;
+}
+/* The same label as nodes, for the chip itself: a flat icon has to be drawn,
+   not spelled (Issue #87). The picker's list keeps the string above, because
+   that is what its search ranks against. */
+function stateNodes(fieldSchema, stateName) {
+  if (stateName == null) return ['—'];
+  const icon = fieldSchema.states?.find((s) => s.name === stateName)?.icon;
+  if (!icon) return [stateName];
+  return String(icon).startsWith('iconly:')
+    ? [iconEl(icon, 'ico wv-icon'), stateName]
+    : [`${icon} ${stateName}`];
 }
 function stateCategory(fieldSchema, stateName) {
   const found = fieldSchema.states?.find((s) => s.name === stateName)?.category;
@@ -1263,7 +1290,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   // The glyph an option wears, if its author gave it one.
   function optionIcon(field, name) {
     const ico = (field.optionsFull ?? []).find((x) => x.name === name)?.icon;
-    return ico ? el('span', { class: 'ico' }, ico) : null;
+    return ico ? iconEl(ico, 'ico wv-icon') : null;
   }
 
   if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
@@ -1276,7 +1303,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   }
   if (f.type === 'workflow') {
     return chipPicker({
-      trigger: el('button', { class: stateChipClass(f, val), type: 'button', title: f.name }, stateLabel(f, val)),
+      trigger: el('button', { class: stateChipClass(f, val), type: 'button', title: f.name }, ...stateNodes(f, val)),
       options: f.states.map((s) => ({ name: s.name, cls: stateChipClass(f, s.name, true), label: stateLabel(f, s.name) })),
       current: val,
       onPick: async (name) => {
@@ -1417,9 +1444,22 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
         placeholder: '{} — config as JSON (options, states, depth…)',
       });
       cfgArea.value = JSON.stringify(def?.config ?? {}, null, 2);
+      // Clearing lives HERE, beside the definition it would take, and behind a
+      // held gesture (Issue #90). The bare `×` this replaces sat on the row at
+      // the same weight as the chip that merely opens this editor, so a click
+      // meant to find out what it did destroyed a definition that has no copy
+      // anywhere. What the clear takes, it offers straight back.
+      const clearRow = def == null ? [] : [el('div', { class: 'fielddef-clear' },
+        holdToConfirm(`Clear the ${String(val)} definition`, async () => {
+          document.querySelector('#modal-back')?.remove();
+          await patch(null);
+          toast(`Cleared the ${String(val)} definition.`, false,
+            { label: 'Undo', run: () => patch(def) });
+        }))];
       modal(`${f.name} — field definition`, [
         el('label', { class: 'form-label' }, 'Type'), typeSel,
         el('label', { class: 'form-label', style: 'margin-top:8px' }, 'Config'), cfgArea,
+        ...clearRow,
       ], async (fd) => {
         let config;
         try { config = JSON.parse(String(fd.get('config') || '{}')); }
@@ -1431,14 +1471,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
         await saved();
       }, 'Save');
     };
-    const box = el('span', { class: 'fielddef-edit' }, chip);
-    if (def != null) {
-      box.append(el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Clear the definition',
-        onclick: () => patch(null),
-      }, '×'));
-    }
-    return box;
+    return el('span', { class: 'fielddef-edit' }, chip);
   }
   // Attachments (Feature #16): the value is file ids; the cell shows names,
   // the entity page manages the list — upload lands blob and column together.
@@ -1487,6 +1520,29 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
       value: item.raw?.[f.name] ?? '', time: !!f.time, format: f.format ?? 'iso',
       placeholder: 'today, 15 sep, 9/15/26…', onChange: (iso) => patch(iso),
     });
+  }
+  /* A range is two of the same control (Issue #91). The generic text
+     fallback painted the stored `{ start, end }` as '[object Object]' and
+     could only ever hand the server a string it must refuse, so a range
+     edits end by end and commits once both ends read as dates. */
+  if (f.type === 'daterange') {
+    const cur = item.raw?.[f.name] ?? null;
+    const range = { start: cur?.start ?? '', end: cur?.end ?? '' };
+    const opts = { time: !!f.time, format: f.format ?? 'iso' };
+    if (compact) {
+      return el('span', { class: 'k k-range' + (cur ? '' : ' is-empty'), title: 'date range — edit on the entity page' },
+        cur ? String(val ?? weaveDateCore.formatDateRange(range, opts)) : '—');
+    }
+    const commit = () => {
+      // Half a range is not a range: the server refuses one end, so an
+      // unfinished edit stays in the box until the other end lands.
+      if (range.start && range.end) patch({ ...range });
+      else if (!range.start && !range.end) patch(null);
+    };
+    return el('span', { class: 'range-box' },
+      dateControl({ ...opts, value: range.start, placeholder: 'start', onChange: (iso) => { range.start = iso ?? ''; commit(); } }),
+      el('span', { class: 'range-sep' }, '–'),
+      dateControl({ ...opts, value: range.end, placeholder: 'end', onChange: (iso) => { range.end = iso ?? ''; commit(); } }));
   }
   const rawVal = item.raw?.[f.name] ?? val;
   const input = el('input', {
@@ -2381,14 +2437,14 @@ function huePopover(anchor, current, onPick) {
   showPopover(anchor, [grid, el('p', { class: 'pick-note' },
     'Stored as a name. A new option takes the next hue in ramp order.')]);
 }
+/* Was a fourteen-button strip of marks while a table next door searched 101
+   flat icons. One catalogue, one control, both dialects (Issue #87). */
 function glyphPopover(anchor, current, onPick) {
-  const grid = el('div', { class: 'glyph-grid' },
-    ...fieldDialogCore.STATE_ICONS.map((g) => el('button', {
-      type: 'button', class: `gl${g === (current ?? '') ? ' sel' : ''}`,
-      title: g || 'no glyph', 'aria-label': g || 'no glyph',
-      onclick: () => onPick(g),
-    }, g || '—')));
-  showPopover(anchor, [grid]);
+  searchPicker({
+    anchor, title: 'Icon', placeholder: 'Search icons…',
+    options: iconCatalogue(), currentId: current ?? '',
+    onPick: (o) => onPick(o.id || ''),
+  });
 }
 
 /* The chip a row is about to produce, shown beside the controls that produce
@@ -2396,14 +2452,14 @@ function glyphPopover(anchor, current, onPick) {
 function optionPreview(o) {
   return el('span', { class: 'opt-preview' },
     el('span', { class: `k k-select hue-${o.hue ?? 'slate'}` },
-      o.icon ? el('span', { class: 'ico' }, o.icon) : null,
+      o.icon ? iconEl(o.icon, 'ico wv-icon') : null,
       o.name || 'Option'));
 }
 function statePreview(st) {
   const cat = chipCore.categoryOrDefault(st.category ?? 'in-progress');
   return el('span', { class: 'opt-preview' },
     el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}` },
-      st.icon ? el('span', { class: 'ico' }, st.icon) : null,
+      st.icon ? iconEl(st.icon, 'ico wv-icon') : null,
       st.name || 'State'));
 }
 
@@ -2579,7 +2635,7 @@ function fieldDialog(db, existing, after) {
     if (f.type === 'select' || f.type === 'multiselect') c.options = f.optionsFull ?? (f.options ?? []).map((n) => ({ name: n, color: '' }));
     if (f.type === 'workflow') c.states = f.states ?? [];
     if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator']) { if (f[k] != null) c[k] = f[k]; }
-    if (f.type === 'date') { if (f.format) c.format = f.format; if (f.time) c.time = true; }
+    if (f.type === 'date' || f.type === 'daterange') { if (f.format) c.format = f.format; if (f.time) c.time = true; }
     if (f.type === 'formula') c.expression = f.expression ?? '';
     if (f.type === 'field') c.depth = f.depth ?? 1;
     if (f.type === 'attachments') c.multiple = f.multiple !== false;

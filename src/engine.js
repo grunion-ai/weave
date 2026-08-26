@@ -327,6 +327,37 @@ function dressNumber(c, value) {
   return c.unit ? `${text} ${c.unit}` : text;
 }
 
+/* The date costume, mirrored in public/date-core.js and contract-tested
+   against it. Format the stored wall-clock parts, never the local zone's
+   reading of them — '2026-08-21' must never render as Aug 20. */
+const COSTUME_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function dressDate(c, iso) {
+  const [datePart, timePart] = String(iso).split('T');
+  const [y, mo, day] = datePart.split('-').map(Number);
+  if (!y || !mo || !day) return String(iso);
+  const dateText = c.format === 'us' ? `${mo}/${day}/${y}`
+    : c.format === 'eu' ? `${day}.${mo}.${y}`
+    : c.format === 'long' ? `${COSTUME_MONTHS[mo - 1]} ${day}, ${y}`
+    : datePart;
+  const timeText = c.time && timePart ? ' ' + timePart.slice(0, 5) : '';
+  return dateText + timeText;
+}
+
+/* A range wears the same costume at both ends (Issue #91). The read side
+   had no case for daterange at all, so `{ start, end }` walked to the
+   browser and painted itself as '[object Object]'. A long range inside one
+   year says the year once — 'Aug 1 – Sep 15, 2026' — which only reads well
+   without a time of day, so the collapse stops there. */
+function dressDateRange(c, value) {
+  if (!value) return '';
+  const { start, end } = value;
+  if (!start && !end) return '';
+  if (c.format === 'long' && !c.time && start && end && String(start).slice(0, 4) === String(end).slice(0, 4)) {
+    return `${dressDate(c, start).replace(`, ${String(start).slice(0, 4)}`, '')} \u2013 ${dressDate(c, end)}`;
+  }
+  return `${start ? dressDate(c, start) : ''} \u2013 ${end ? dressDate(c, end) : ''}`.trim();
+}
+
 /* The single normaliser for every type whose config is self-contained. Used
    by addField AND by `field` value validation, so a definition can never
    describe a field the engine would refuse to create. */
@@ -380,7 +411,7 @@ function normalizeSelfContainedConfig(type, config = {}) {
     if (config.separator != null) out.separator = !!config.separator;
     return out;
   }
-  if (type === 'date') {
+  if (type === 'date' || type === 'daterange') {
     const out = {};
     if (config.format != null) {
       if (!['iso', 'us', 'eu', 'long'].includes(config.format)) {
@@ -1743,7 +1774,7 @@ export class Weave {
     if (type === 'relation') throw new WeaveError(`Use addRelation() to create relation fields`, 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
-    if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'attachments', 'document'].includes(type)) {
+    if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'daterange', 'attachments', 'document'].includes(type)) {
       // One normaliser, shared with `field` value validation — see the note on
       // normalizeSelfContainedConfig. If these drift, a definition can describe
       // a field addField would reject.
@@ -1878,8 +1909,8 @@ export class Weave {
         const kind = normalizeSelfContainedConfig('document', patch.config).kind;
         if (kind) field.config.kind = kind; else delete field.config.kind;
       }
-      if (field.type === 'date') {
-        const costume = normalizeSelfContainedConfig('date', { ...field.config, ...patch.config });
+      if (field.type === 'date' || field.type === 'daterange') {
+        const costume = normalizeSelfContainedConfig(field.type, { ...field.config, ...patch.config });
         for (const k of ['format', 'time']) {
           if (k in patch.config || k in costume) {
             if (costume[k] == null) delete field.config[k];
@@ -2594,10 +2625,20 @@ export class Weave {
       case 'workflow':
         return field.config.states.find((s) => s.id === resolved)?.name ?? resolved;
       case 'field': {
-        // A definition should read as a sentence in a grid cell, not as JSON.
-        const n = resolved.config?.options?.length ?? resolved.config?.states?.length ?? 0;
-        const unit = resolved.config?.states ? 'state' : 'option';
-        return n ? `${resolved.type} · ${n} ${unit}${n === 1 ? '' : 's'}` : resolved.type;
+        // A definition should read as a sentence in a grid cell, not as JSON —
+        // and the sentence is what a clear quotes back before it takes the
+        // definition away (Issue #90), so a costume belongs in it.
+        const c = resolved.config ?? {};
+        const n = c.options?.length ?? c.states?.length ?? 0;
+        const unit = c.states ? 'state' : 'option';
+        if (n) return `${resolved.type} · ${n} ${unit}${n === 1 ? '' : 's'}`;
+        const costume = resolved.type === 'number' || resolved.type === 'formula'
+          ? (c.format === 'currency' ? `currency ${c.currency ?? 'USD'}` : c.format === 'percent' ? 'percent' : c.unit ?? null)
+          : resolved.type === 'date' || resolved.type === 'daterange'
+            ? (c.format ?? (c.time ? 'with time' : null))
+            : resolved.type === 'document' ? c.kind ?? null
+              : resolved.type === 'field' ? `depth ${c.depth ?? 1}` : null;
+        return costume ? `${resolved.type} · ${costume}` : resolved.type;
       }
       case 'key':
         // The name and whether the keystore holds it — never the secret.
@@ -2612,20 +2653,11 @@ export class Weave {
       case 'date': {
         const c = field.config;
         if (!c.format && !c.time) return resolved;
-        const d = new Date(resolved);
-        if (Number.isNaN(d.getTime())) return resolved;
-        const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        // Format on the stored wall-clock parts, not the local zone's reading
-        // of them — '2026-08-21' must never render as Aug 20.
-        const [datePart, timePart] = String(resolved).split('T');
-        const [y, mo, day] = datePart.split('-').map(Number);
-        const dateText = c.format === 'us' ? `${mo}/${day}/${y}`
-          : c.format === 'eu' ? `${day}.${mo}.${y}`
-          : c.format === 'long' ? `${MONTHS[mo - 1]} ${day}, ${y}`
-          : datePart;
-        const timeText = c.time && timePart ? ' ' + timePart.slice(0, 5) : '';
-        return dateText + timeText;
+        if (Number.isNaN(new Date(resolved).getTime())) return resolved;
+        return dressDate(c, resolved);
       }
+      case 'daterange':
+        return dressDateRange(field.config, resolved);
       case 'number':
         return dressNumber(field.config, resolved);
       case 'formula':
@@ -3356,7 +3388,7 @@ export class Weave {
           }
           if (f.type === 'attachments') out.multiple = f.config.multiple !== false;
           if (f.type === 'document' && f.config.kind) out.kind = f.config.kind;
-          if (f.type === 'date') {
+          if (f.type === 'date' || f.type === 'daterange') {
             if (f.config.format) out.format = f.config.format;
             if (f.config.time) out.time = true;
           }

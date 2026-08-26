@@ -358,7 +358,7 @@ test('the entity menu moves to trash with an undo, not a hold-to-confirm', () =>
     'a recoverable delete must not demand a hold');
   assert.match(APP, /label: 'Undo'[\s\S]{0,200}\/restore/, 'the toast must offer restore');
   assert.match(APP, /function toast\(msg, isErr = false, action = null\)/);
-  assert.ok(rulesFor('.toast-action').cursor, '.toast-action must be styled as a control');
+  assert.ok(rulesFor('.wv-toast-action').cursor, '.wv-toast-action must be styled as a control');
 });
 
 test('purging keeps the hold-to-confirm and is the only hard delete in the UI', () => {
@@ -1486,9 +1486,15 @@ test('workflow states: rows drag to reorder, icon instead of a default radio, an
   // The vocabulary moved into glyphPopover when the cycle became a picker
   // (2026-08-25); the row still offers one glyph control per state.
   assert.match(ed, /glyphPopover\(/, 'an icon picker per state');
-  assert.match(fnBody('glyphPopover'), /fieldDialogCore\.STATE_ICONS/, 'over the shared vocabulary');
+  // One catalogue since Issue #87: the marks and the flat set are picked
+  // through the same control a table's icon uses.
+  assert.match(fnBody('glyphPopover'), /iconCatalogue\(\)/, 'over the shared vocabulary');
+  assert.match(fnBody('iconCatalogue'), /fieldDialogCore\.iconChoices/, 'which is the one catalogue');
   assert.doesNotMatch(ed, /type: 'radio'/, 'no default radio — the first state is the default');
-  assert.match(fnBody('stateLabel'), /icon \? `\$\{icon\} \$\{stateName\}`/, 'chips wear the icon');
+  // A mark rides in the label text; a flat icon has to be drawn, so the chip
+  // takes nodes and the picker's list keeps the string (Issue #87).
+  assert.match(fnBody('stateLabel'), /`\$\{icon\} \$\{stateName\}`/, 'chips wear the mark');
+  assert.match(fnBody('stateNodes'), /iconEl\(icon/, 'and draw a flat icon');
 });
 
 test('checkbox default is Unchecked / Checked, and checkboxes wear the house style (Kyle, 2026-08-23)', () => {

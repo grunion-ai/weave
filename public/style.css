@@ -600,10 +600,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 #modal input, #modal select { margin-bottom: 6px; }
 
 .wv-empty { color: var(--tblr-secondary); text-align: center; padding: 60px 0; }
-.toast { position: fixed; bottom: 18px; right: 18px; background: var(--tblr-body-color); color: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius); padding: 9px 16px; box-shadow: var(--tblr-box-shadow); z-index: 2000; }
-.toast.err { background: var(--tblr-danger); color: #fff; }
+#wv-toasts { position: fixed; bottom: 18px; right: 18px; z-index: 2000; display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 8px; }
+.wv-toast { background: var(--tblr-body-color); color: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius); padding: 9px 16px; box-shadow: var(--tblr-box-shadow); }
+.wv-toast.err { background: var(--tblr-danger); color: #fff; }
 /* Undo sits inside the toast: the action and the way back are one object. */
-.toast-action { margin-left: 12px; padding: 0; background: none; border: 0; border-bottom: 1px solid currentColor; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.wv-toast-action { margin-left: 12px; padding: 0; background: none; border: 0; border-bottom: 1px solid currentColor; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
 
 /* ---------- trash ---------- */
 .empty-note { padding: 18px; color: var(--tblr-secondary); }
@@ -612,6 +613,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* holdToConfirm renders a .dropdown-item; in a row it has to sit inline
    beside Restore rather than fill the cell like a menu entry. */
 .trash-acts .hold-btn { display: inline-flex; width: auto; margin-left: 6px; vertical-align: middle; }
+
+/* The definition editor's clear (Issue #90): holdToConfirm renders a
+   .dropdown-item, so in a dialog it needs the same inline treatment the trash
+   row gives it, set apart from the fields above by a rule. */
+.fielddef-clear { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--tblr-border-color); }
+.fielddef-clear .hold-btn { display: inline-flex; width: auto; }
 
 /* ---------- universal search results ---------- */
 #search-results { background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-box-shadow); max-height: 300px; overflow-y: auto; }
@@ -826,7 +833,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .slash-icon { flex: 0 0 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--tblr-secondary); }
 /* Flat icons, not emoji: one monochrome vocabulary that inherits text colour
    instead of a colour picture that ignores it. */
-.slash-icon svg { width: 15px; height: 15px; fill: currentColor; }
+.slash-icon svg { width: var(--wv-icon-md); height: var(--wv-icon-md); fill: currentColor; }
 .vditor-hint .slash-item b { font-weight: 500; font-size: 13px; }
 /* The syntax column is the teaching half of the menu: monospace, quiet, and
    never wrapped — it is the shape of the markdown, not prose. */
@@ -1071,9 +1078,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .def-code { width: 100%; font-family: var(--tblr-font-monospace); font-size: 12px; line-height: 1.55; background: var(--tblr-bg-surface-secondary); border: 1px solid var(--tblr-border-color); border-radius: 6px; padding: 8px 10px; color: var(--tblr-body-color); resize: vertical; }
 .def-err { min-height: 0; font-size: 11.5px; color: var(--tblr-danger); margin-top: 3px; white-space: pre-wrap; }
 .def-err:empty { display: none; }
-/* ---------- icons (Feature #101, Iconly flat) ---------- */
-.wv-icon { display: inline-flex; align-items: center; vertical-align: -2px; margin-right: 5px; }
-.wv-icon svg { display: block; }
+/* ---------- icons (Feature #101, Iconly flat) ----------
+   One size scale (Issue #87). Every icon box is set from it, so a mark and a
+   flat SVG beside each other occupy the same square instead of each surface
+   patching its own alignment. */
+:root { --wv-icon-sm: 12px; --wv-icon-md: 16px; --wv-icon-lg: 20px; }
+.wv-icon { display: inline-flex; align-items: center; justify-content: center; vertical-align: -2px; margin-right: 5px; width: var(--wv-icon-md); height: var(--wv-icon-md); }
+.wv-icon svg { display: block; width: var(--wv-icon-md); height: var(--wv-icon-md); }
 .nav-icon { font-size: 14px; color: var(--tblr-secondary); }
 .icon-btn { border: none; background: none; cursor: pointer; padding: 2px 4px; border-radius: 5px; font-size: 18px; color: var(--tblr-body-color); }
 .icon-btn:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
@@ -1108,6 +1119,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .date-cell { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
 .date-cell .date-text { min-width: 0; width: 120px; }
 .date-cell .date-text-wide { width: 200px; }
+/* A range is two date controls sharing one dash (Issue #91). */
+.range-box { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: 100%; }
+.range-sep { color: var(--tblr-secondary); }
+.k-range.is-empty { color: var(--tblr-secondary); }
 .date-pick-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--tblr-secondary); cursor: pointer; }
 .date-pick-btn:hover { color: var(--tblr-body-color); background: var(--tblr-bg-surface-secondary); border-color: var(--tblr-border-color); }
 .date-pop { position: fixed; z-index: 1200; width: 252px; padding: 8px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.18); font-size: 13px; }
@@ -1213,7 +1228,7 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .bug-fab { position: fixed; right: 12px; bottom: 34px; z-index: 1150; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.10); cursor: pointer; opacity: .62; transition: opacity .12s, border-color .12s; }
 .bug-fab:hover, .bug-fab[aria-expanded="true"] { opacity: 1; border-color: var(--tblr-secondary); }
 .bug-fab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
-.bug-fab-icon { display: flex; width: 16px; height: 16px; color: var(--tblr-body-color); }
+.bug-fab-icon { display: flex; width: var(--wv-icon-md); height: var(--wv-icon-md); color: var(--tblr-body-color); }
 .bug-fab-icon svg { width: 100%; height: 100%; fill: currentColor; }
 
 #bug-panel { position: fixed; z-index: 1160; width: 252px; max-width: calc(100vw - 24px); padding: 8px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 9px; box-shadow: 0 8px 26px rgba(0,0,0,.20); color: var(--tblr-body-color); }
@@ -1229,7 +1244,7 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .bug-cat:hover { color: var(--tblr-body-color); }
 .bug-cat.picked { background: var(--tblr-primary-lt, rgba(71,105,235,.12)); color: var(--tblr-primary); font-weight: 600; }
 .bug-cat:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
-.bug-cat-icon { display: flex; flex: 0 0 auto; width: 12px; height: 12px; }
+.bug-cat-icon { display: flex; flex: 0 0 auto; width: var(--wv-icon-sm); height: var(--wv-icon-sm); }
 .bug-cat-icon svg { width: 100%; height: 100%; fill: currentColor; }
 
 .bug-foot { display: flex; align-items: center; gap: 6px; margin-top: 7px; }

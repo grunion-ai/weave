@@ -220,3 +220,26 @@ test('field cells show the engine sentence, and the entity page edits the raw de
   // the modal, not go through patch() which swallows errors into a toast.
   assert.ok(branch.includes("await api('PATCH'"));
 });
+
+/* The sentence is what a confirm and an undo offer quote back (Issue #90).
+   'Clear the number definition' names nothing a reader could recognise, so a
+   definition wearing a costume says what the costume is. */
+test('a costume is part of the sentence, so a clear can name what it takes', () => {
+  const { w, fields } = ws();
+  const say = (definition) =>
+    w.readEntity(w.createEntity(fields, { name: 'F', values: { Definition: definition } }).id).fields.Definition;
+
+  assert.equal(say({ type: 'number', config: { format: 'currency', currency: 'EUR', decimals: 2 } }), 'number · currency EUR');
+  assert.equal(say({ type: 'number', config: { unit: 'days' } }), 'number · days');
+  assert.equal(say({ type: 'number', config: { format: 'percent' } }), 'number · percent');
+  assert.equal(say({ type: 'date', config: { format: 'long' } }), 'date · long');
+  assert.equal(say({ type: 'date', config: { time: true } }), 'date · with time');
+  assert.equal(say({ type: 'document', config: { kind: 'code' } }), 'document · code');
+  // A definition that IS a definition needs a host deep enough to hold one.
+  const deep = ws();
+  deep.w.addField(deep.fields, { name: 'Nested', type: 'field', config: { depth: 2 } });
+  const nested = deep.w.createEntity(deep.fields, { name: 'N', values: { Nested: { type: 'field', config: { depth: 1 } } } });
+  assert.equal(deep.w.readEntity(nested.id).fields.Nested, 'field · depth 1');
+  // A bare definition still reads as its bare type.
+  assert.equal(say({ type: 'checkbox', config: {} }), 'checkbox');
+});

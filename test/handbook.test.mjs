@@ -123,7 +123,7 @@ test('applying the handbook is idempotent and does not lose a page', () => {
 
   const count = (t) => w.query(t, { limit: 200 }).total;
   assert.equal(count('Handbook/Fields'), FIELD_DOCS.length);
-  assert.equal(count('Showcase/Formatting'), FORMATTING_SAMPLES.length);
+  assert.equal(count('Showcase/Formatting'), 1, 'the showcase is one page (Issue #88)');
 
   const before = w.findEntity(w.getTable('Handbook/Fields'), 'number').id;
 
@@ -131,7 +131,7 @@ test('applying the handbook is idempotent and does not lose a page', () => {
   applyFormattingShowcase(w);
 
   assert.equal(count('Handbook/Fields'), FIELD_DOCS.length, 'a second apply duplicated the field pages');
-  assert.equal(count('Showcase/Formatting'), FORMATTING_SAMPLES.length, 'a second apply duplicated the samples');
+  assert.equal(count('Showcase/Formatting'), 1, 'a second apply duplicated the showcase');
   assert.equal(count('Handbook/Guide'), GUIDES.length);
   assert.equal(
     w.findEntity(w.getTable('Handbook/Fields'), 'number').id, before,
@@ -158,7 +158,7 @@ test('the seeded weave workspace ships the pages, the guides and the samples', a
   const w = seedWeaver(new Weave());
 
   assert.equal(w.query('Handbook/Fields', { limit: 200 }).total, FIELD_DOCS.length);
-  assert.equal(w.query('Showcase/Formatting', { limit: 200 }).total, FORMATTING_SAMPLES.length);
+  assert.equal(w.query('Showcase/Formatting', { limit: 200 }).total, 1);
   const guides = w.query('Handbook/Guide', { limit: 200 }).items.map((e) => e.name);
   for (const g of GUIDES) assert.ok(guides.includes(g.name), `the seed ships no '${g.name}' guide`);
 
@@ -167,4 +167,40 @@ test('the seeded weave workspace ships the pages, the guides and the samples', a
   assert.ok(spaces.includes('Showcase'));
   assert.ok(w.findTable('Showcase/Field Types'));
   assert.ok(w.findTable('Showcase/Formatting'));
+});
+
+/* ---------- one page, not twelve (Issue #88) ----------
+   Kyle: "formatting showcase could all be done in one entity's description."
+   Twelve rows meant opening twelve records to see a renderer that one scroll
+   proves — and row twelve, 'One page using all of it', already carried the
+   whole demonstration on its own. */
+
+test('the showcase is one page carrying every construct', async () => {
+  const { Weave: W } = await import('../src/engine.js');
+  const w = new W();
+  applyFormattingShowcase(w);
+
+  const rows = w.query('Showcase/Formatting', { limit: 200 }).items;
+  assert.equal(rows.length, 1);
+  const page = w.readEntity(rows[0].id).docs.Description;
+
+  // Every sample's body survives the move, verbatim.
+  for (const s of FORMATTING_SAMPLES) {
+    assert.ok(page.includes(s.doc), `the page dropped '${s.name}'`);
+  }
+  // And the syntax column survives as a table inside the page it describes.
+  for (const s of FORMATTING_SAMPLES) {
+    assert.ok(page.includes(s.name), `the page never names '${s.name}'`);
+  }
+  assert.match(page, /\| Construct \| Syntax \|/, 'the syntax reference rides in the page');
+});
+
+test('re-applying keeps the one page rather than seeding twelve beside it', () => {
+  const w = new Weave();
+  applyFormattingShowcase(w);
+  const first = w.query('Showcase/Formatting', { limit: 200 }).items[0].id;
+  applyFormattingShowcase(w);
+  const rows = w.query('Showcase/Formatting', { limit: 200 }).items;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, first, 'the page was replaced instead of updated — inbound links would break');
 });

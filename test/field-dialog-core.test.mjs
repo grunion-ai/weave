@@ -293,3 +293,40 @@ test('states keep icons; no default is sent (the first state is the default); mo
   assert.deepEqual(core.moveItem(['a', 'b', 'c'], 2, 0), ['c', 'a', 'b']);
   assert.ok(core.STATE_ICONS.includes('') && core.STATE_ICONS.length >= 8);
 });
+
+/* ---------- one icon catalogue (Issue #87) ----------
+   A table picked from 101 flat SVGs; a select option picked from fourteen
+   typographic marks in a different file, through a different control, at a
+   different size. `iconChoices` is the one vocabulary both draw from: the
+   marks that carry meaning a glyph cannot, then the whole flat set. */
+
+test('one catalogue serves a table and a select option alike', () => {
+  const flat = ['activity', 'bug', 'star'];
+  const choices = core.iconChoices(flat);
+
+  assert.equal(choices[0].id, '', 'clearing the icon is the first choice');
+  const ids = choices.map((c) => c.id);
+  assert.ok(ids.includes('iconly:bug'), 'the flat set is in the catalogue');
+  assert.ok(ids.includes('✓'), 'the marks are in the same catalogue');
+  assert.equal(new Set(ids).size, ids.length, 'no choice appears twice');
+
+  // Every mark that a stored state already wears must still be offered, or
+  // opening the picker on an old row would drop its icon.
+  for (const mark of core.STATE_ICONS.filter(Boolean)) assert.ok(ids.includes(mark), mark);
+});
+
+test('a mark is labelled by what it means, so search finds it by word', () => {
+  const choices = core.iconChoices(['bug']);
+  const tick = choices.find((c) => c.id === '✓');
+  assert.match(tick.label, /done|complete|tick|check/i, 'a mark needs a searchable name');
+  const bug = choices.find((c) => c.id === 'iconly:bug');
+  assert.equal(bug.label, 'bug');
+  assert.equal(bug.iconly, 'bug', 'the picker draws the SVG, not the raw value');
+});
+
+test('the marks come first: an author choosing a state glyph sees them before the set', () => {
+  const choices = core.iconChoices(['activity', 'bug']);
+  const firstFlat = choices.findIndex((c) => c.id.startsWith('iconly:'));
+  const lastMark = choices.map((c) => c.id).lastIndexOf('→');
+  assert.ok(lastMark < firstFlat, 'marks precede the flat set');
+});

@@ -62,3 +62,58 @@ test('default choices: none, today()/now(), or a specific value — parsed back 
   assert.equal(core.defaultKind('2026-08-21'), 'specific');
   assert.deepEqual(core.DYNAMIC_DATE_DEFAULTS, ['today()', 'now()']);
 });
+
+/* ---------- date ranges (Issue #91) ----------
+   A daterange stores `{ start, end }`. The read side had no case for it, so
+   the object walked all the way to the browser and painted itself as
+   '[object Object]'. Same contract as a single date: the costume lives in
+   date-core, the engine renders through the same rule, and the tray's
+   examples are exactly what a cell shows. */
+
+const rangeField = (config) => {
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  const t = w.createTable({ space: 'S', name: 'T' });
+  w.addField(t, { name: 'Window', type: 'daterange', config });
+  return (value) => {
+    const e = w.createEntity(t, { name: 'x', values: { Window: value } });
+    return w.readEntity(e.id).fields.Window;
+  };
+};
+
+test('a daterange reads as text, never as an object (Issue #91)', () => {
+  const shown = rangeField({})({ start: '2026-08-01', end: '2026-09-15' });
+  assert.equal(typeof shown, 'string');
+  assert.equal(shown, '2026-08-01 – 2026-09-15');
+  assert.ok(!shown.includes('object'));
+});
+
+test('formatDateRange matches the engine costume for every format', () => {
+  for (const format of ['iso', 'us', 'eu', 'long']) {
+    const value = { start: '2026-08-01', end: '2026-09-15' };
+    assert.equal(core.formatDateRange(value, { format }), rangeField({ format })(value), format);
+  }
+});
+
+test('a long range inside one year prints the year once, across years prints both', () => {
+  assert.equal(core.formatDateRange({ start: '2026-08-01', end: '2026-09-15' }, { format: 'long' }), 'Aug 1 – Sep 15, 2026');
+  assert.equal(core.formatDateRange({ start: '2026-11-02', end: '2027-03-03' }, { format: 'long' }), 'Nov 2, 2026 – Mar 3, 2027');
+});
+
+test('numeric formats keep both ends whole', () => {
+  const value = { start: '2026-08-01', end: '2026-09-15' };
+  assert.equal(core.formatDateRange(value, { format: 'us' }), '8/1/2026 – 9/15/2026');
+  assert.equal(core.formatDateRange(value, { format: 'eu' }), '1.8.2026 – 15.9.2026');
+});
+
+test('time rides on both ends when the field asks for it', () => {
+  const value = { start: '2026-08-01T09:00', end: '2026-08-01T17:30' };
+  assert.equal(core.formatDateRange(value, { time: true }), '2026-08-01 09:00 – 2026-08-01 17:30');
+  assert.equal(rangeField({ time: true })(value), '2026-08-01 09:00 – 2026-08-01 17:30');
+});
+
+test('a half-written range says what it has rather than painting an object', () => {
+  assert.equal(core.formatDateRange(null, {}), '');
+  assert.equal(core.formatDateRange({ start: '2026-08-01', end: '' }, {}), '2026-08-01 –');
+  assert.equal(core.formatDateRange({ start: '', end: '2026-09-15' }, {}), '– 2026-09-15');
+});
