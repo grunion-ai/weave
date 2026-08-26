@@ -5121,6 +5121,11 @@ const bugGlyph = () => iconEl('iconly:bug', 'bug-fab-icon');
    of asking the reporter to remember them. bugCore owns the rules about what
    may be remembered (public/bug-core.js); this wires it to the page. */
 let bugRecorder = null;
+/* What has been written but not yet filed. A report is often several minutes
+   of someone's attention and the panel is not modal, so closing it — however
+   that happens — puts the writing down rather than throwing it away, and the
+   next open picks it back up (Issue #93). Filing clears it. */
+let bugDraft = { note: '', categories: [] };
 
 function installBugReporter() {
   if (bugRecorder) return;
@@ -5220,21 +5225,26 @@ function openBugPanel(fab) {
   closeBugPanel();
   fab.setAttribute('aria-expanded', 'true');
   const c = bugRecorder.counts();
-  let picked = [];
+  let picked = bugDraft.categories.slice();
 
   const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '' }, 'Send');
   const note = el('textarea', {
     class: 'form-control bug-note', rows: '2', maxlength: '600',
     placeholder: 'What went wrong?',
   });
-  const sync = () => { send.disabled = !bugCore.canSubmit(picked, note.value); };
+  note.value = bugDraft.note;
+  const sync = () => {
+    bugDraft = { note: note.value, categories: picked.slice() };
+    send.disabled = !bugCore.canSubmit(picked, note.value);
+  };
   note.addEventListener('input', sync);
 
   const cats = bugCore.CATEGORIES.map((cat) => {
     const btn = el('button', {
       class: 'bug-cat', type: 'button', title: cat.hint,
-      'aria-pressed': 'false', 'data-cat': cat.id,
+      'aria-pressed': String(picked.includes(cat.id)), 'data-cat': cat.id,
     }, iconEl(cat.icon, 'bug-cat-icon'), el('span', {}, cat.label));
+    btn.classList.toggle('picked', picked.includes(cat.id));
     btn.addEventListener('click', () => {
       picked = bugCore.toggleCategory(picked, cat.id);
       const on = picked.includes(cat.id);
@@ -5244,6 +5254,7 @@ function openBugPanel(fab) {
     });
     return btn;
   });
+  sync();
 
   const form = el('form', { class: 'bug-form' },
     note,
@@ -5270,6 +5281,7 @@ function openBugPanel(fab) {
       /* The button becomes the receipt (Kyle: "send should sent"). Confirming
          in the control that was pressed beats a toast that has already faded
          by the time anyone looks up. */
+      bugDraft = { note: '', categories: [] };
       send.textContent = 'Sent';
       send.classList.add('sent');
       panel.classList.add('sent');
@@ -5290,9 +5302,17 @@ function openBugPanel(fab) {
   panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
   panel.style.bottom = (innerHeight - r.top + 6) + 'px';
 
+  /* The panel is not modal on purpose, so clicking the page behind it is the
+     reporter checking the thing they are reporting — not a dismissal. A blank
+     panel still goes away on that click, because there is nothing to lose and
+     one opened by accident should not need a second gesture to put back.
+     Esc closes either way; the draft is kept, so nothing typed is gone. */
   const away = (ev) => {
     if (!panel.isConnected) return removeEventListener('click', away, true);
-    if (!panel.contains(ev.target) && !fab.contains(ev.target)) { closeBugPanel(); removeEventListener('click', away, true); }
+    if (panel.contains(ev.target) || fab.contains(ev.target)) return;
+    if (bugCore.canSubmit(picked, note.value)) return;
+    closeBugPanel();
+    removeEventListener('click', away, true);
   };
   addEventListener('click', away, true);
   addEventListener('keydown', function esc(ev) {
