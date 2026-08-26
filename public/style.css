@@ -44,6 +44,12 @@
 }
 
 * { box-sizing: border-box; }
+/* No horizontal rubber-band (Issue #76): in a narrow Safari window the page
+   h-overflows (rail + sidebar are 316px fixed) and a trackpad swipe can
+   leave the bounce STUCK ~16px in — dead space at the left edge until a
+   reload. Forbidding x-overscroll removes the state (and the accidental
+   back-swipe while scrolling a wide grid, with it). Vertical bounce stays. */
+html, body { overscroll-behavior-x: none; }
 body { font-size: 14px; background: var(--wv-canvas); }
 #app { display: flex; min-height: 100vh; }
 

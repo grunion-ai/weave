@@ -1147,6 +1147,14 @@ test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #
     'the nav keeps its comfortable width (264px), never compacted');
 });
 
+test('horizontal overscroll is forbidden (Issue #76)', () => {
+  // In a narrow Safari window the page h-overflows (rail + sidebar are 316px
+  // fixed) and a trackpad swipe could leave the rubber-band STUCK ~16px in —
+  // dead space at the left edge until a reload (Kyle's screenshot,
+  // 2026-08-26). No x-overscroll, no stuck state; vertical bounce stays.
+  assert.match(CSS, /html, body \{ overscroll-behavior-x: none; \}/);
+});
+
 test('clicking the open space in the nav folds it instead of navigating nowhere (Issue #72)', () => {
   const nav = fnBody('renderNav');
   assert.match(nav, /state\.route\?\.page === 'space' && state\.route\.spaceId === space\.spaceId/,
