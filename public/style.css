@@ -982,6 +982,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .picker-row { display: flex; align-items: center; gap: 8px; }
 .picker-row.active { background: rgba(var(--tblr-primary-rgb), .10); border-radius: 5px; }
 .picker-hint { color: var(--tblr-secondary); font-size: 11.5px; margin-left: auto; }
+/* The row's own number: ⌥1–⌥9 takes it. A fixed, tabular column so the labels
+   still line up under each other, and quiet enough that a reader scanning
+   names never reads the digits first. */
+.picker-num { flex: 0 0 11px; text-align: right; color: var(--tblr-secondary); font-size: 10.5px; font-variant-numeric: tabular-nums; opacity: .55; user-select: none; }
+.picker-row.active .picker-num, .picker-row:hover .picker-num { opacity: 1; }
 .picker-empty { color: var(--tblr-secondary); font-size: 12.5px; padding: 8px 6px; }
 .picker-face { text-align: left; cursor: pointer; width: 100%; }
 .picker-wrap { display: block; width: 100%; }

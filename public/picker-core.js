@@ -55,9 +55,21 @@
     return { mode, options, staged: chips, query: '', active: cur, caret: null, clearId, currentId };
   }
 
-  const visible = (state) => rankOptions(state.options, state.query);
   const ids = (state) => state.staged.map((x) => x.id);
   const has = (state, id) => state.staged.some((x) => x.id === id);
+
+  /* What is in the list. A multi picker drops what is already a chip in the
+     box (Issue #64): the chip says it, so the row would say it twice, and the
+     row you can still pick sits lower for no reason. Dropping it here rather
+     than in the DOM is what keeps the grammar and the drawn list from
+     disagreeing about which row a number or an arrow points at — and it is
+     why Enter after ↑↓ can only ever ADD (Issue #63). A single picker keeps
+     everything: a pick there overwrites, so its current value stays listed
+     and stays tickable. */
+  const visible = (state) => {
+    const ranked = rankOptions(state.options, state.query);
+    return state.mode === 'single' ? ranked : ranked.filter((o) => !has(state, o.id));
+  };
 
   /* Typing arms the top fit — Enter is then "add what I searched for". An
      empty search arms nothing, which is what makes Enter mean "done". */
@@ -95,9 +107,21 @@
      the key was never ours (plain typing, text navigation) and the input must
      keep it. Effects are the caller's to run — 'pick' overwrites and closes,
      'commit' saves the staged set, 'close' walks away. */
-  function keyDown(state, { key, atStart = true } = {}) {
+  function keyDown(state, { key, atStart = true, quick = null } = {}) {
     const vis = visible(state);
     const typed = state.query !== '';
+
+    /* Quick-pick: the rows are numbered and ⌥1–⌥9 takes one (Issue #65). The
+       core is handed the row NUMBER, never the chord — on a Mac ⌥1 arrives as
+       `¡`, so reading the physical key is the DOM's job. A number past the
+       end is still ours: swallowed, so the box never fills with ª. */
+    if (quick != null) {
+      const o = vis[quick - 1];
+      if (!o) return took(state);
+      if (state.mode === 'single') return took(state, { type: 'pick', option: o });
+      return took(toggle(state, o));
+    }
+
     if (key === 'ArrowDown') return took({ ...state, caret: null, active: Math.min(state.active + 1, vis.length - 1) });
     if (key === 'ArrowUp') return took({ ...state, caret: null, active: Math.max(state.active - 1, 0) });
 
@@ -126,10 +150,19 @@
       return took(removeAt(state, state.staged.length - 1, 'text'));
     }
 
+    /* Enter has one meaning per state of the box: something armed, add it (or
+       pick it); nothing armed and nothing typed, save. The third case is the
+       trap — a search that matches nothing addable must NOT fall through to
+       the save, or typing a tag you already have would close the picker. */
     if (key === 'Enter') {
       const pick = vis[state.active] ?? (state.query.trim() ? vis[0] : null);
-      if (state.mode === 'single') return took(state, pick ? { type: 'pick', option: pick } : { type: 'commit' });
-      return pick ? took(toggle(state, pick)) : took(state, { type: 'commit' });
+      if (pick) {
+        return state.mode === 'single'
+          ? took(state, { type: 'pick', option: pick })
+          : took(toggle(state, pick));
+      }
+      if (state.query.trim()) return took(state);
+      return took(state, { type: 'commit' });
     }
     if (key === 'Escape') return took(state, { type: 'close' });
     return pass();

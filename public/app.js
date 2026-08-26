@@ -847,21 +847,33 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     // The placeholder is the empty box's label; chips take its place.
     input.placeholder = st.staged.length ? '' : placeholder;
   };
+  /* The list draws exactly what core.visible() says is in it — in a multi
+     picker that is the options NOT already chipped in the box (Issue #64), so
+     no row wears a ✓ there and nothing the arrows land on can un-pick. A
+     single picker still ticks its current value: picking there overwrites.
+     The first nine rows carry their number, which is what ⌥1–⌥9 takes. */
   const draw = () => {
     const vis = core.visible(st);
     list.replaceChildren(...vis.map((o, i) => el('button', {
       class: 'chip-pop-row picker-row' + (i === st.active ? ' active' : ''), type: 'button',
+      title: i < 9 ? `⌥${i + 1}` : null,
       onclick: async () => {
         if (multi) { apply(core.toggle(st, o)); return; }
         await pick(o);
       },
     },
+      el('span', { class: 'picker-num' }, i < 9 ? String(i + 1) : ''),
       o.chip ? el('span', { class: o.cls ?? 'k k-multi hue-slate' }, o.label)
         : o.iconly ? el('span', { class: 'picker-label picker-iconly' }, iconEl(`iconly:${o.iconly}`), o.label)
         : el('span', { class: 'picker-label' }, o.label),
       o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
-      (multi ? core.has(st, o.id) : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
-    if (!vis.length) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
+      (multi ? false : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
+    // An empty list means two different things, and saying "No matches" to
+    // someone who has simply chosen everything is a lie.
+    if (!vis.length) {
+      list.append(el('div', { class: 'picker-empty' },
+        multi && st.staged.length && !st.query.trim() ? 'Everything is chosen' : 'No matches'));
+    }
   };
   // Clicking the box's empty space is aiming at the caret, not at a chip.
   box.addEventListener('click', (ev) => {
@@ -873,7 +885,11 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     // Where the text caret sits decides whether ← belongs to the text or to
     // the chips in front of it.
     const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
-    const r = core.keyDown(st, { key: ev.key, atStart });
+    // ⌥1–⌥9 takes the numbered row. The physical key is what counts: with
+    // Option down, ev.key is the character the chord types (⌥1 is `¡`), and a
+    // bare digit has to stay a digit — the box is a search field.
+    const quick = ev.altKey && /^Digit[1-9]$/.test(ev.code) ? Number(ev.code.slice(5)) : null;
+    const r = core.keyDown(st, { key: ev.key, atStart, quick });
     if (!r.handled) return;
     ev.preventDefault();
     if (r.state) { st = r.state; input.value = st.query; drawChips(); draw(); }

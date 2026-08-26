@@ -1273,6 +1273,24 @@ test('the picker is a token box: chips sit inside the field, ahead of the caret'
   assert.ok(HTML.indexOf('picker-core.js') < HTML.indexOf('"/app.js"'), 'picker-core.js loads first');
 });
 
+/* Issues #63/#64/#65, Kyle 2026-08-25. The behaviour is gated in a real
+   browser (test/picker-browser.test.mjs) because source reading is what missed
+   #63 in the first place; what belongs here is the styling the numbers wear. */
+test('the picker numbers its rows quietly, in a column of their own', () => {
+  const num = rulesFor('.picker-num');
+  assert.ok(num['flex'], 'the number holds a fixed column so the names still line up');
+  assert.equal(num['text-align'], 'right');
+  assert.equal(num['font-variant-numeric'], 'tabular-nums', '9 and 1 take the same width');
+  assert.ok(Number(num['opacity']) < 1, 'a reader scanning names must not read digits first');
+  assert.equal(rulesFor('.picker-row.active .picker-num')['opacity'], '1',
+    'the row you are on brings its number forward');
+  assert.equal(rulesFor('.picker-row:hover .picker-num')['opacity'], '1', 'and so does the row under the mouse');
+  const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+  const picker = app.slice(app.indexOf('function searchPicker('), app.indexOf('function pickerSelect('));
+  assert.match(picker, /ev\.altKey && \/\^Digit\[1-9\]\$\/\.test\(ev\.code\)/,
+    'the chord reads the physical key: ⌥1 arrives as `¡`');
+});
+
 /* Single select overwrites, so its box carries at most one chip and taking
    that chip out is a pick of the field's empty value — a select has one ('—'),
    a workflow state does not. */

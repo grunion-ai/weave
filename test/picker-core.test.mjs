@@ -58,9 +58,69 @@ test('Enter adds the armed option, clears the search, and stays open (multi)', (
   assert.equal(r.state.active, -1);
 });
 
-test('Enter on an option already in the box takes it back out (multi)', () => {
-  const r = key(core.search(multi([OPTIONS[3]]), 'done'), 'Enter');
-  assert.deepEqual(core.ids(r.state), [], 'a second Enter is a toggle');
+/* Issue #64, Kyle 2026-08-25: "it should remove the selected items from the
+   list rather than checking them". A chip in the box already says the option
+   is chosen; listing it again says it twice and pushes what you can still
+   pick further down. Issue #63 was the same bug wearing a keyboard: ↓ landed
+   on row 0, row 0 was usually something already chosen, and Enter TOOK IT
+   BACK OUT — which reads exactly as "Enter does not select after arrowing".
+   With the chosen ones gone from the list, every armed row is addable and
+   Enter has one meaning. Un-picking is ⌫ on the chip (Kyle, 2026-08-26). */
+test('a chosen option leaves the list, so an armed row is always one you can add (multi)', () => {
+  const s = multi([OPTIONS[3]]);
+  assert.deepEqual(core.visible(s).map((o) => o.id), ['Backlog', 'To do', 'Doing'],
+    'the chip in the box is not also a row in the list');
+  assert.equal(core.visible(core.search(s, 'done')).length, 0, 'searching cannot bring it back either');
+  assert.equal(core.has(s, 'Done'), true, 'membership is still knowable — the chips read it');
+  assert.deepEqual(core.visible(single('Done')).map((o) => o.id), OPTIONS.map((o) => o.id),
+    'single keeps its current value listed: a pick there overwrites rather than accumulates');
+});
+
+test('Enter after arrowing adds, and never un-picks what the arrow landed on (Issue #63)', () => {
+  // The reported gesture, on the data that produced it: one tag already set,
+  // ↓ to the first row, Enter.
+  const armed = key(multi([OPTIONS[0]]), 'ArrowDown').state;
+  assert.equal(core.visible(armed)[armed.active].id, 'To do', '↓ arms the first ADDABLE option');
+  assert.deepEqual(core.ids(key(armed, 'Enter').state), ['Backlog', 'To do'], 'Enter adds it to the set');
+});
+
+test('a pick disarms the list, so a second Enter saves', () => {
+  // The list reflows as the chosen row leaves it; arming resets rather than
+  // sliding, which makes pick → Enter mean "and save" in every picker.
+  const picked = key(key(multi(), 'ArrowDown').state, 'Enter').state;
+  assert.equal(picked.active, -1, 'nothing is armed under the cursor after a pick');
+  assert.deepEqual(key(picked, 'Enter').effect, { type: 'commit' }, 'so the next Enter is the save');
+});
+
+test('Enter on a search that matches only what is already chosen does nothing', () => {
+  // Without this the fall-through reads "nothing armed" and SAVES — typing a
+  // tag you already have would close the picker.
+  const typed = core.search(multi([OPTIONS[3]]), 'done');
+  const r = key(typed, 'Enter');
+  assert.equal(r.handled, true, 'the key is the picker’s, not the input’s');
+  assert.equal(r.effect, null, 'and it is not a save');
+  assert.deepEqual(core.ids(r.state), ['Done'], 'the set stands');
+  assert.equal(key(core.search(single('Doing'), 'zz'), 'Enter').effect, null,
+    'single holds the same line: a search with no match is not a pick and not a close');
+});
+
+/* Issue #65, settled with Kyle 2026-08-26: "numbering" means quick-pick keys.
+   The rows carry 1–9 and ⌥1–⌥9 picks one. Option and not a bare digit —
+   the box is a text input, and 1 has to be able to type a 1. The core takes
+   the row NUMBER; which chord produces it is the DOM's business. */
+test('⌥1–⌥9 picks the numbered row without arrowing', () => {
+  const r = core.keyDown(multi(), { key: '¡', quick: 2 });
+  assert.deepEqual(core.ids(r.state), ['To do'], 'the second visible row');
+  assert.equal(r.state.active, -1, 'and the list is disarmed after it, like any other pick');
+  const filtered = core.keyDown(core.search(multi(), 'do'), { key: '¡', quick: 1 });
+  assert.deepEqual(core.ids(filtered.state), ['Doing'], 'the number counts the VISIBLE rows, ranked');
+  const chosen = core.keyDown(multi([OPTIONS[0]]), { key: '¡', quick: 1 });
+  assert.deepEqual(core.ids(chosen.state), ['Backlog', 'To do'], 'and a chosen row is not one of them');
+  const one = core.keyDown(single(), { key: '¡', quick: 3 });
+  assert.deepEqual(one.effect, { type: 'pick', option: OPTIONS[2] }, 'single picks and closes on the spot');
+  const past = core.keyDown(multi(), { key: '¡', quick: 9 });
+  assert.equal(past.handled, true, 'a number past the end is still the picker’s key');
+  assert.deepEqual(core.ids(past.state), [], 'it simply picks nothing — never types ª into the box');
 });
 
 test('Enter on an empty search saves the set (multi)', () => {
@@ -153,8 +213,8 @@ test('Escape closes, and unknown keys belong to the input', () => {
 test('the mouse edits the same state: a row toggles, a chip’s × removes', () => {
   const s = core.toggle(multi(), OPTIONS[1]);
   assert.deepEqual(core.ids(s), ['To do']);
-  assert.equal(core.has(s, 'To do'), true, 'the row can show its ✓');
-  assert.deepEqual(core.ids(core.toggle(s, OPTIONS[1])), [], 'clicking it again takes it out');
+  assert.equal(core.visible(s).some((o) => o.id === 'To do'), false, 'the clicked row leaves the list with it');
+  assert.deepEqual(core.ids(core.toggle(s, OPTIONS[1])), [], 'toggle still takes one out — the × on the chip runs it');
   assert.deepEqual(core.ids(core.removeId(multi([OPTIONS[0], OPTIONS[1]]), 'Backlog')), ['To do']);
   assert.equal(core.removeId(multi([OPTIONS[0]]), 'Backlog').caret, null, 'a click never leaves the cursor on a chip');
 });
