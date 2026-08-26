@@ -295,6 +295,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
           if (route === 'GET /api/keys') return out(200, weave.listKeys());
           if (route === 'POST /api/keys') return out(201, weave.setKey(body?.name, body?.value));
+          /* Reveal is its own verb on its own path (Feature #143). It is a
+             POST because it is an act, not a read: the credential's access
+             list decides, and every call lands in the audit log. GET stays
+             a 404 so nothing that merely follows links can spend a reveal. */
+          if ((m = path.match(/^\/api\/keys\/([^/]+)\/reveal$/)) && rx.method === 'POST') {
+            return out(200, { name: decodeURIComponent(m[1]), value: weave.revealKey(decodeURIComponent(m[1]), { via: body?.via ?? 'show' }) });
+          }
+          if ((m = path.match(/^\/api\/keys\/([^/]+)\/share$/))) {
+            const name = decodeURIComponent(m[1]);
+            if (rx.method === 'POST') return out(200, weave.grantKey(name, body?.account));
+            if (rx.method === 'DELETE') return out(200, weave.revokeKey(name, body?.account));
+          }
           if ((m = path.match(/^\/api\/keys\/(.+)$/))) {
             if (rx.method === 'DELETE') return out(200, weave.deleteKey(decodeURIComponent(m[1])));
             return out(404, { error: 'Secrets cannot be read back', code: 'not-found' });

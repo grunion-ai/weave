@@ -325,10 +325,13 @@ export const TOOLS = [
   },
   {
     name: 'weave_keys',
-    description: 'The keystore behind `key` fields: a key field holds the NAME of a secret, and the secret lives in a chmod-600 file beside the workspace. action: list (names only) | set (name, value) | delete. No tool returns a secret value.',
+    description: 'The keystore behind `key` (credential) fields: the field holds the NAME of a secret; the secret lives encrypted in a chmod-600 file beside the workspace. action: list (names, owners, sharing) | set (name, value) | share (name, account) | unshare (name, account) | delete. No MCP tool returns a secret value — revealing one is a human act on the CLI or the HTTP surface, gated by that credential\'s own access list and written to the audit log.',
     inputSchema: {
       type: 'object',
-      properties: { action: { type: 'string' }, name: { type: 'string' }, value: { type: 'string' } },
+      properties: {
+        action: { type: 'string' }, name: { type: 'string' }, value: { type: 'string' },
+        account: { type: 'string', description: 'For share/unshare: the account the credential opens to.' },
+      },
       required: ['action'],
     },
   },
@@ -505,8 +508,13 @@ export function dispatchTool(weave, name, args = {}) {
       switch (args.action) {
         case 'list': return { keys: weave.listKeys() };
         case 'set': return weave.setKey(args.name, args.value);
+        case 'share': return weave.grantKey(args.name, args.account);
+        case 'unshare': return weave.revokeKey(args.name, args.account);
         case 'delete': return weave.deleteKey(args.name);
-        default: throw new Error(`Unknown keys action '${args.action}' (list, set, delete)`);
+        /* No `reveal`. An agent can name, set, share and drop a credential —
+           everything except carry the secret out (Feature #143). */
+        case 'reveal': throw new Error('Revealing a secret is not an agent action — use `weave key reveal` or the app.');
+        default: throw new Error(`Unknown keys action '${args.action}' (list, set, share, unshare, delete)`);
       }
     case 'weave_files':
       switch (args.action) {

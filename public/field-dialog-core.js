@@ -151,6 +151,9 @@
   ].map(([id, name]) => ({ id, label: `${id} — ${name}` }));
   const DATE_FORMATS = ['iso', 'us', 'eu', 'long'];
   const DOCUMENT_KINDS = ['markdown', 'html', 'code'];
+  // Mirrors the engine's CREDENTIAL_KINDS / KEYSTORES (contract-tested).
+  const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
+  const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
   const CARDINALITIES = ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'];
   const MAX_DEPTH = 4;
   const DEFAULTABLE = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
@@ -224,6 +227,12 @@
       if (state.multiple === false) config.multiple = false;
     } else if (t === 'document') {
       if (state.kind && state.kind !== 'markdown') config.kind = state.kind;
+    } else if (t === 'key') {
+      // Both always stated: a credential column whose kind is implicit reads
+      // as an API key, and an SSN column silently doing that is the mistake
+      // worth spending two JSON keys to prevent (Feature #143).
+      config.kind = state.credential?.kind ?? 'apikey';
+      config.keystore = state.credential?.keystore ?? 'local';
     } else if (t === 'relation') {
       // Not an addField config: the addRelation payload, sent to /relations.
       config.targetDb = state.relation?.targetDb ?? '';
@@ -270,6 +279,8 @@
       state.multiple = c.multiple !== false;
     } else if (def.type === 'document') {
       state.kind = c.kind ?? 'markdown';
+    } else if (def.type === 'key') {
+      state.credential = { kind: c.kind ?? 'apikey', keystore: c.keystore ?? 'local' };
     } else if (def.type === 'relation') {
       state.relation = { targetDb: c.targetDb ?? '', cardinality: c.cardinality ?? 'many-to-one', inverseName: c.inverseName ?? '' };
     } else if (def.type === 'lookup' || def.type === 'rollup') {
@@ -328,12 +339,17 @@
     if (def.type === 'rollup' && c.aggregate != null && !AGGREGATES.includes(c.aggregate)) {
       return fail(`Invalid aggregate '${c.aggregate}' (use ${AGGREGATES.join(', ')})`);
     }
+    if (def.type === 'key') {
+      if (c.kind != null && !CREDENTIAL_KINDS.includes(c.kind)) return fail(`Invalid credential kind '${c.kind}' (${CREDENTIAL_KINDS.join(', ')})`);
+      if (c.keystore != null && !KEYSTORES.includes(c.keystore)) return fail(`Invalid keystore '${c.keystore}' (${KEYSTORES.join(', ')})`);
+    }
     return { ok: true, def: { type: def.type, config: c } };
   }
 
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, AGGREGATES, TYPE_MIGRATIONS, typeChoices, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
+    CREDENTIAL_KINDS, KEYSTORES,
     blankState, definitionFromState, stateFromDefinition,
     serializeDefinition, parseDefinition,
   };

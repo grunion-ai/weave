@@ -1030,11 +1030,72 @@ function chipPickerMulti({ trigger, options, selected, onCommit }) {
   return trigger;
 }
 
+/* Where a remote keystore keeps the credential. Mirrors the engine's
+   credentialLink() — test/credential-chip.test.mjs pins the two together, so
+   a new keystore cannot land on one side only. */
+function credentialLinkFor(keystore, ref) {
+  const r = encodeURIComponent(String(ref ?? ''));
+  switch (keystore) {
+    case '1password': return `onepassword://search/?q=${r}`;
+    case 'aws-sm': return `https://console.aws.amazon.com/secretsmanager/secret?name=${r}`;
+    case 'google-sm': return `https://console.cloud.google.com/security/secret-manager/secret/${r}`;
+    case 'cloudflare': return 'https://dash.cloudflare.com/?to=/:account/workers/services';
+    case 'apple-passwords': return 'x-apple.systempreferences:com.apple.Passwords-Settings.extension';
+    default: return null;
+  }
+}
+
+/* The one control in weave that takes a secret out of the vault.
+
+   It lives on the entity page and nowhere else — a grid draws hundreds of
+   cells and none of them should be one press away from a credential. Copy is
+   the primary path because a value on the clipboard never lands on a screen
+   somebody else is looking at; the server treats copy and show as the same
+   act and logs both, so the softer path is not the quieter one. A refusal is
+   shown as written: the reason a credential is closed is the useful part.
+   (Feature #143.) */
+function credentialReveal(name, keystore) {
+  if (keystore && keystore !== 'local') {
+    return el('a', { class: 'cred-open', href: credentialLinkFor(keystore, name), target: '_blank', rel: 'noopener' },
+      `Open in ${KEYSTORE_LABELS[keystore] ?? keystore} ↗`);
+  }
+  const take = async (via) => {
+    try {
+      const { value } = await api('POST', `/keys/${encodeURIComponent(name)}/reveal`, { via });
+      if (via === 'copy') return copyText(value, 'Copied — the reveal is on the record');
+      shown.replaceChildren(el('code', { class: 'cred-plain' }, value));
+      // Back behind the mask on its own, so a screen left open does not keep
+      // showing it. Re-pressing costs another audited reveal, which is right.
+      setTimeout(() => shown.replaceChildren(), 15000);
+    } catch (e) {
+      toast(String(e.message).match(/not shared|forbidden/i)
+        ? `${name} is not shared with you — its owner has to grant it` : e.message, true);
+    }
+  };
+  const shown = el('span', { class: 'cred-shown' });
+  return el('span', { class: 'cred-actions' },
+    el('button', { class: 'btn btn-sm', type: 'button', onclick: () => take('copy') }, 'Copy'),
+    el('button', { class: 'btn btn-sm', type: 'button', onclick: () => take('show') }, 'Show'),
+    shown);
+}
+
 /* Field-type groupings the row/cell chrome keys off.
    PICKER: the cell's whole area opens a chooser. READONLY: computed values
    that render as text and must not look editable. */
 const PICKER_FIELD_TYPES = ['select', 'multiselect', 'workflow'];
 const READONLY_FIELD_TYPES = ['lookup', 'rollup', 'formula', 'document'];
+
+/* Credentials (Feature #143). The glyph says what SORT of secret the chip
+   stands for; the badge says whose store holds it. Both are read off the
+   field's config — the cell itself holds only a name, here as everywhere. */
+const CREDENTIAL_GLYPHS = { apikey: '✱', token: '⌘', password: '•••', id: '⛉', pair: '⚯' };
+const CREDENTIAL_KIND_LABELS = {
+  apikey: 'API key', token: 'token', password: 'password', id: 'protected id', pair: 'id + secret pair',
+};
+const KEYSTORE_LABELS = {
+  local: 'this workspace’s keystore', '1password': '1Password', 'aws-sm': 'AWS',
+  'google-sm': 'Google', cloudflare: 'Cloudflare', 'apple-passwords': 'Apple Passwords',
+};
 
 // Inline glyph marking how a read-only value is produced.
 function computedMark(type) {
@@ -1362,11 +1423,37 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     return box;
   }
   if (f.type === 'key') {
-    // A key is generated, not typed. It reads as a value chip in slate and
-    // in the monospace an identifier deserves — the identity treatment the
-    // row's own #41 ↗ already gets. (Feature: chip system, 2026-08-24.)
-    return el('span', { class: 'k k-key hue-slate', title: `${f.name} — generated` },
-      el('span', { class: 'ico' }, '✱'), fieldValueCell(val) || '—');
+    /* A credential is generated, not typed. It reads as a value chip in slate
+       and in the monospace an identifier deserves — the identity treatment the
+       row's own #41 ↗ already gets. (Feature: chip system, 2026-08-24.)
+       Since #143 the chip also says WHICH sort of credential and WHOSE store,
+       because "✱✱✱✱ acme-portal" alone left a reader guessing whether the
+       secret was here, in 1Password, or nowhere yet. The grid never reveals:
+       the mask is the whole point of the cell. */
+    const kind = f.kind ?? 'apikey';
+    const store = f.keystore ?? 'local';
+    /* The engine masks the value as `✱✱✱✱ name` for surfaces with no glyph —
+       CLI, CSV, export. The chip HAS a glyph, and wearing both read as
+       "✱✱✱✱✱ stripe-live" (or "•••✱✱✱✱ …" once kinds arrived), so the text
+       mask comes off here and the glyph carries it alone. */
+    const shown = String(fieldValueCell(val) ?? '').replace(/^✱+\s*/, '');
+    const chip = el('span', {
+      class: 'k k-key hue-slate',
+      title: `${f.name} — ${CREDENTIAL_KIND_LABELS[kind] ?? kind} in ${KEYSTORE_LABELS[store] ?? store}`,
+    }, el('span', { class: 'ico' }, CREDENTIAL_GLYPHS[kind] ?? '✱'), shown || '—');
+    if (store !== 'local' && val) chip.append(el('span', { class: 'store' }, KEYSTORE_LABELS[store]));
+    /* The NAME, not the dressed cell. `val` arrives masked and may carry
+       ' (unset)', and posting that to /reveal asked the keystore for a
+       credential called '✱✱✱✱ stripe-live'. item.raw is the undressed value,
+       which is what every other editor here already reaches for. */
+    const ref = item?.raw?.[f.name] ?? null;
+    if (compact || !ref) return chip;
+    // A local credential the keystore does not hold yet has nothing to reveal;
+    // offering the buttons would promise a secret that is not there.
+    if (store === 'local' && /\(unset\)$/.test(String(val ?? ''))) return chip;
+    // The entity page IS the edit surface, so it is where taking the secret
+    // out belongs — the same split the relation chip's × makes.
+    return el('span', { class: 'cred-cell' }, chip, credentialReveal(ref, store));
   }
   if (f.type === 'checkbox') {
     const cb = el('input', { type: 'checkbox', class: 'form-check-input', onchange: () => patch(cb.checked) });
@@ -2827,6 +2914,10 @@ function fieldDialog(db, existing, after) {
     if (f.type === 'field') c.depth = f.depth ?? 1;
     if (f.type === 'attachments') c.multiple = f.multiple !== false;
     if (f.type === 'document' && f.kind) c.kind = f.kind;
+    // The schema flattens a credential's config onto the field, so the tray
+    // has to fold it back or every existing column reopens claiming to be a
+    // local API key — which is the one wrong answer for an SSN column.
+    if (f.type === 'key') { c.kind = f.kind ?? 'apikey'; c.keystore = f.keystore ?? 'local'; }
     if (f.type === 'lookup' || f.type === 'rollup') { c.relationField = f.via ?? ''; c.targetField = f.targetField ?? ''; c.aggregate = f.aggregate; }
     if (f.default !== undefined) c.default = f.default;
     return { type: f.type, config: c };
@@ -2942,6 +3033,19 @@ function fieldDialog(db, existing, after) {
           el('span', { class: 'form-check-label' }, 'Allow multiple files')));
       } else if (t === 'document') {
         kids.push(dsection('Kind', segCtl(fdc.DOCUMENT_KINDS, state.kind ?? 'markdown', (v) => { state.kind = v; changed(); })));
+      } else if (t === 'key') {
+        /* Two picks, both stated rather than defaulted quietly (#143). The
+           note under them is the part that matters: someone reaching for this
+           type is deciding where a secret lives, and the answer to "who can
+           see it" is not the same answer the rest of the table gives. */
+        const cred = (state.credential ??= { kind: 'apikey', keystore: 'local' });
+        kids.push(dsection('Holds', segCtl(fdc.CREDENTIAL_KINDS.map((k) => ({ id: k, label: CREDENTIAL_KIND_LABELS[k] ?? k })),
+          cred.kind, (v) => { cred.kind = v; changed(); })));
+        kids.push(dsection('Kept in', segCtl(fdc.KEYSTORES.map((k) => ({ id: k, label: k === 'local' ? 'weave' : KEYSTORE_LABELS[k] })),
+          cred.keystore, (v) => { cred.keystore = v; drawCfg(); changed(); })));
+        kids.push(el('div', { class: 'modal-note full' }, cred.keystore === 'local'
+          ? 'The cell holds the credential’s name. The secret is encrypted outside the workspace, and reading it back is limited to whoever owns it — everyone else sees only the name.'
+          : `The cell holds a reference. ${KEYSTORE_LABELS[cred.keystore]} keeps the secret and decides who may see it; weave links out to it.`));
       } else if (t === 'field') {
         kids.push(dsection('Definition depth', el('input', {
           type: 'number', min: 1, max: fdc.MAX_DEPTH, class: 'form-control dlg-narrow', value: state.depth ?? 1,

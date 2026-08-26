@@ -68,7 +68,7 @@ or an entity view.
 | **Saved view** | `state.meta.views` | A saved arrangement of table blocks with filters and layouts, optionally shared by token. Distinct from the entity view every entity has by existing. |
 | **Automation** | `state.automations` | A rule bound to one table: a trigger, and the actions it fires. |
 | **Account** | `state.meta.accounts` | A named token holder with a role — admin, writer, reader. Only the hash is kept. |
-| **Key** | the keystore, *outside* the workspace | A named secret. A key field stores the NAME; the value never enters the .db. |
+| **Credential** | the keystore, *outside* the workspace | A named secret — API key, token, password, id or pair. A key field stores the NAME; the value never enters the .db, and reading it back is gated by the credential's own access list. |
 | **Audit entry** | `store.audit_log` | A workspace-level record of a structural change. |
 | **Undo step** | `store.undo_log` | A reversible before-image of one entity mutation. |
 
@@ -141,7 +141,7 @@ Tracked as weave Feature #121.
 | Row | `createEntity` | soft delete to trash, then `restoreEntity` or a hard delete |
 | Value, Document, Comment, File, Activity | writing to an entity | with their entity (files also individually) |
 | Saved view, Automation, Account | their `create*` verb | their `delete*` verb |
-| Key | `setKey` | `deleteKey` — the workspace still holds the name |
+| Credential | `setKey` | `deleteKey` — the workspace still holds the name |
 | Audit entry, Undo step | any qualifying mutation | never rewritten; undo steps are consumed by `undo()` |
 
 System spaces, system tables and system fields refuse deletion: the registries
@@ -242,9 +242,17 @@ the token's hash, never the token. An "account" row in a CRM table is a Row like
 any other; the Account kind here is a token holder with a role. Same word, two
 levels.
 
-### Key
+### Credential
 A named secret held in the keystore outside the workspace, so a workspace file
-can be copied without copying credentials.
+can be copied without copying credentials. Which sort it is — API key, token,
+password, protected id, or an id/secret pair — and which store holds it are
+column config; the cell holds only the name.
+
+Permission for a credential sits on the credential, not on the field. Weave has
+no field-level read rules and wants none: reaching a table reaches its values
+everywhere, and that stays true here because the secret was never in the table.
+Getting one out is a separate audited act, allowed to the credential's owner
+and whoever the owner granted.
 
 ### Audit entry
 A workspace-level record of a structural change — the schema's history, as

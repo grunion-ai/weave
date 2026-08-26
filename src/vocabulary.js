@@ -29,7 +29,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'document', renders: 'folded into the shared "Docs (n)" column — never a column of its own', config: ['kind'] },
   { type: 'attachments', renders: 'file chips', config: ['multiple'] },
   { type: 'field', renders: 'a field definition as a value — what the Fields registry\'s Definition is', config: ['types', 'depth'] },
-  { type: 'key', renders: 'the NAME of a secret, never the secret', config: [] },
+  { type: 'key', renders: 'a masked chip naming the credential, never the secret', config: ['kind', 'keystore', 'parts'] },
 ];
 
 /* An empty string is the honest default: color earns its place by carrying

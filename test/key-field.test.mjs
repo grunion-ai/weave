@@ -41,7 +41,10 @@ test('the keystore file is private and survives reopening', () => {
   w.setKey('a', 'one');
   const path = join(dir, 'keystore.json');
   assert.equal(statSync(path).mode & 0o777, 0o600, 'keystore is chmod 600');
-  assert.ok(readFileSync(path, 'utf8').includes('one'), 'the keystore holds the secret');
+  // Since #143 the secret is sealed rather than sitting in the file; the NAME
+  // stays in the clear so listing works without the key. The envelope itself
+  // is covered by test/keystore-crypto.test.mjs.
+  assert.ok(readFileSync(path, 'utf8').includes('"a"'), 'the keystore holds the name');
 
   const w2 = new Weave({ keystorePath: path });
   assert.equal(w2.resolveKey('a'), 'one');
@@ -69,7 +72,10 @@ test('the API sets and lists keys but can never read one back', async () => {
     });
     assert.equal(set.status, 201);
     const list = await (await fetch(`${base}/api/keys`)).json();
-    assert.deepEqual(list, [{ name: 'stripe', set: true }]);
+    // Since #143 a listing also says who owns each credential and whether it
+    // is shared — facts about access, never the secret itself.
+    assert.deepEqual(list.map((k) => k.name), ['stripe']);
+    assert.equal(list[0].set, true);
     assert.ok(!JSON.stringify(list).includes('hush'));
     assert.equal((await fetch(`${base}/api/keys/stripe`)).status, 404, 'no read-back endpoint');
     assert.equal((await fetch(`${base}/api/keys/stripe`, { method: 'DELETE' })).status, 200);

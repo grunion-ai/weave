@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
 import { Store, WeaveError } from './store.js';
@@ -54,6 +54,17 @@ const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
    always lived. */
 const DYNAMIC_DATE_DEFAULTS = ['today()', 'now()'];
 const DOCUMENT_KINDS = ['markdown', 'html', 'code'];
+/* What sort of credential a `key` column holds (Feature #143). The kind is
+   metadata — it changes the glyph, the label and the reveal default, never
+   what the cell stores, which is always a NAME. `pair` is the one kind whose
+   entry has named parts, so an OAuth id and its secret stay ONE credential
+   under ONE grant rather than two fields nobody keeps in step. */
+export const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
+/* Which store holds the secret the name points at. `local` is weave's own
+   keystore file; the rest are refs into a manager that keeps its own access
+   rules, which is the whole reason weave never has to become one. */
+export const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
+const DEFAULT_PAIR_PARTS = [{ name: 'id', secret: false }, { name: 'secret', secret: true }];
 const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator'];
 const DEFAULTABLE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
@@ -272,10 +283,10 @@ export const ONTOLOGY = {
       api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth'],
     },
     {
-      key: 'key', name: 'Key', storedIn: 'keystore',
-      definition: 'A named secret in the keystore outside the workspace. A key field stores the NAME; the value never enters the .db and is never read back.',
+      key: 'key', name: 'Credential', storedIn: 'keystore',
+      definition: 'A named secret — API key, token, password, id or pair — held outside the workspace, encrypted in weave\'s keystore or in the manager that owns it. A key field stores the NAME; the value never enters the .db. Reading it back is a separate audited act gated by the credential\'s own access list, never by a permission on the field.',
       identity: 'its name',
-      api: ['setKey', 'hasKey', 'listKeys', 'resolveKey', 'deleteKey'],
+      api: ['setKey', 'hasKey', 'listKeys', 'resolveKey', 'revealKey', 'grantKey', 'revokeKey', 'deleteKey'],
     },
     {
       key: 'audit', name: 'Audit entry', storedIn: 'store.audit_log',
@@ -436,6 +447,35 @@ function normalizeSelfContainedConfig(type, config = {}) {
     }
     return { types: [...DEFINABLE_TYPES], depth };
   }
+  /* Credentials: which sort, and whose store (Feature #143). Both are closed
+     sets with defaults, so every key field ever created — including the ones
+     that predate this config and carry `{}` — reads as an apikey in the local
+     keystore, which is exactly what #64 meant by a key. */
+  if (type === 'key') {
+    const kind = config.kind ?? 'apikey';
+    if (!CREDENTIAL_KINDS.includes(kind)) {
+      throw new WeaveError(`Invalid credential kind '${kind}' (${CREDENTIAL_KINDS.join(', ')})`, 'invalid');
+    }
+    const keystore = config.keystore ?? 'local';
+    if (!KEYSTORES.includes(keystore)) {
+      throw new WeaveError(`Invalid keystore '${keystore}' (${KEYSTORES.join(', ')})`, 'invalid');
+    }
+    const out = { kind, keystore };
+    if (kind === 'pair') {
+      const parts = config.parts?.length ? config.parts : DEFAULT_PAIR_PARTS;
+      if (parts.length !== 2) {
+        throw new WeaveError(`A pair names exactly two parts, got ${parts.length}`, 'invalid');
+      }
+      out.parts = parts.map((p) => {
+        const name = typeof p === 'string' ? p : p.name;
+        if (!name) throw new WeaveError('Every part of a pair needs a name', 'invalid');
+        return { name: String(name), secret: typeof p === 'string' ? false : !!p.secret };
+      });
+    } else if (config.parts != null) {
+      throw new WeaveError(`Only a 'pair' credential names parts; '${kind}' holds one value`, 'invalid');
+    }
+    return out;
+  }
   // Files: one or many (Kyle, 2026-08-23 — files are not documents).
   if (type === 'attachments') return { multiple: config.multiple == null ? true : !!config.multiple };
   // Documents: what kind of document. markdown is the unmarked default.
@@ -493,9 +533,11 @@ export class Weave {
 
   // `store` injects an alternate Store implementation (same interface) — the
   // Cloudflare Worker port (Feature #84) passes a Durable Object-backed one.
-  constructor({ path = null, actor = 'local', keystorePath = null, store = null } = {}) {
+  constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null } = {}) {
     this.actor = actor;
     this.keystorePath = keystorePath ?? process.env.WEAVE_KEYSTORE ?? join(process.env.HOME ?? '.', '.weave', 'keystore.json');
+    // Injected so a test can hold a passphrase without touching the process.
+    this.keystoreEnv = keystoreEnv ?? process.env;
     this.store = store ?? new Store(path);
     const loaded = this.store.load();
     // A pre-existing file must actually be a workspace — never adopt (and
@@ -1107,19 +1149,98 @@ export class Weave {
      the name resolves here — a chmod-600 file beside no workspace. There is
      deliberately no way to read a secret over HTTP; resolveKey exists for
      the engine's own consumers (automations, integrations). */
+  /* The key the envelope is sealed with (Feature #143, phase 2). A passphrase
+     in the environment wins — that is the deployment that keeps the secret off
+     the disk entirely. Otherwise a random key is generated once into a
+     chmod-600 file beside the keystore.
+
+     Be honest about what the key file buys: it does NOT stop someone who can
+     read the whole directory, because the key is in that directory. It stops
+     the leak that actually happens — the keystore copied out alone by a
+     backup, a sync folder, a support bundle, a `scp` of the data dir. For a
+     hosted instance, set WEAVE_KEYSTORE_PASSPHRASE and the key never lands. */
+  #keystoreKey() {
+    const pass = this.keystoreEnv?.WEAVE_KEYSTORE_PASSPHRASE;
+    if (pass) return scryptSync(String(pass), 'weave-keystore-v2', 32);
+    const keyPath = this.keystorePath.replace(/\.json$/, '') + '.key';
+    try {
+      const b = Buffer.from(readFileSync(keyPath, 'utf8').trim(), 'base64');
+      if (b.length === 32) return b;
+    } catch { /* not written yet */ }
+    const fresh = randomBytes(32);
+    mkdirSync(dirname(keyPath), { recursive: true });
+    writeFileSync(keyPath, fresh.toString('base64'), { mode: 0o600 });
+    return fresh;
+  }
+
+  #seal(plain) {
+    const iv = randomBytes(12);
+    const c = createCipheriv('aes-256-gcm', this.#keystoreKey(), iv);
+    const ct = Buffer.concat([c.update(String(plain), 'utf8'), c.final()]);
+    return { iv: iv.toString('base64'), ct: ct.toString('base64'), tag: c.getAuthTag().toString('base64') };
+  }
+
+  #open(entry, name) {
+    try {
+      const d = createDecipheriv('aes-256-gcm', this.#keystoreKey(), Buffer.from(entry.iv, 'base64'));
+      d.setAuthTag(Buffer.from(entry.tag, 'base64'));
+      return Buffer.concat([d.update(Buffer.from(entry.ct, 'base64')), d.final()]).toString('utf8');
+    } catch {
+      throw new WeaveError(
+        `Cannot decrypt '${name}' — wrong passphrase, or the keystore was edited outside weave`, 'invalid');
+    }
+  }
+
+  /* On disk: `{ v: 2, keys: { name: { iv, ct, tag, ...record } } }`. The NAMES
+     stay in the clear on purpose — a name is not a secret, and listing keys
+     must work without the key material. A v1 file (a flat name→secret map,
+     Feature #64) is read as-is and re-sealed the next time anything writes,
+     so an upgrade costs nothing and loses nothing. */
   #readKeystore() {
-    try { return JSON.parse(readFileSync(this.keystorePath, 'utf8')); } catch { return {}; }
+    let raw;
+    try { raw = JSON.parse(readFileSync(this.keystorePath, 'utf8')); } catch { return { v: 2, keys: {} }; }
+    if (raw && raw.v === 2 && raw.keys) return raw;
+    const keys = {};
+    for (const [name, secret] of Object.entries(raw ?? {})) keys[name] = { legacy: String(secret) };
+    return { v: 2, keys, migrated: true };
   }
 
   #writeKeystore(data) {
+    // Anything still carrying a v1 plaintext gets sealed on the way out.
+    for (const [name, entry] of Object.entries(data.keys)) {
+      if ('legacy' in entry) {
+        const { legacy, ...rest } = entry;
+        data.keys[name] = { ...rest, ...this.#seal(legacy) };
+      }
+    }
+    delete data.migrated;
     mkdirSync(dirname(this.keystorePath), { recursive: true });
     writeFileSync(this.keystorePath, JSON.stringify(data, null, 1), { mode: 0o600 });
+  }
+
+  /* A key field's config, with the #143 defaults filled in. Fields created
+     before #143 carry `{}`, and every reader — cell, chip, reveal — needs the
+     same answer for those as for a field created today. */
+  credentialConfig(field) {
+    const c = field?.config ?? {};
+    const kind = CREDENTIAL_KINDS.includes(c.kind) ? c.kind : 'apikey';
+    const keystore = KEYSTORES.includes(c.keystore) ? c.keystore : 'local';
+    return { kind, keystore, ...(kind === 'pair' ? { parts: c.parts ?? DEFAULT_PAIR_PARTS } : {}) };
   }
 
   setKey(name, secret) {
     if (!name) throw new WeaveError('Key name is required', 'invalid');
     const data = this.#readKeystore();
-    data[name] = String(secret ?? '');
+    const prior = data.keys[name];
+    data.keys[name] = {
+      ...this.#seal(secret ?? ''),
+      // The actor who first set a credential owns it; re-setting the secret is
+      // a rotation, not a change of hands (Feature #143, phase 3).
+      owner: prior?.owner ?? this.actor,
+      shared: prior?.shared ?? false,
+      createdAt: prior?.createdAt ?? nowISO(),
+      ...(prior ? { rotatedAt: nowISO() } : {}),
+    };
     this.#writeKeystore(data);
     this.#audit('key-set', { name });
     return { name, set: true };
@@ -1127,25 +1248,125 @@ export class Weave {
 
   deleteKey(name) {
     const data = this.#readKeystore();
-    if (!(name in data)) throw new WeaveError(`Key '${name}' not found`, 'not-found');
-    delete data[name];
+    if (!(name in data.keys)) throw new WeaveError(`Key '${name}' not found`, 'not-found');
+    delete data.keys[name];
     this.#writeKeystore(data);
     this.#audit('key-deleted', { name });
     return { name, deleted: true };
   }
 
   hasKey(name) {
-    return name in this.#readKeystore();
+    return name in this.#readKeystore().keys;
   }
 
+  /* Names, never values — and now who may see each one, which is the fact a
+     reader needs to know whether asking is worth it. */
   listKeys() {
-    return Object.keys(this.#readKeystore()).sort().map((name) => ({ name, set: true }));
+    const { keys } = this.#readKeystore();
+    return Object.keys(keys).sort().map((name) => ({
+      name,
+      set: true,
+      owner: keys[name].owner ?? null,
+      shared: keys[name].shared ?? false,
+    }));
   }
 
   resolveKey(name) {
+    const { keys } = this.#readKeystore();
+    const entry = keys[name];
+    if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
+    return 'legacy' in entry ? entry.legacy : this.#open(entry, name);
+  }
+
+  /* ---- reveal: the exception, and why it is not a field permission ----
+     Everywhere else in weave, reaching the table reaches the values. A
+     credential looks like an exception to that and is not one: the secret was
+     never IN the table. The cell holds a name — ordinary table data, visible
+     to anyone who can see the row — and the secret sits in the keystore behind
+     its own access list. So the rule lives on the credential, which is where
+     1Password (vaults) and AWS Secrets Manager (resource policies) put it too,
+     and no view, formula, export or MCP read has to learn a new check.
+
+     `shared`: false → the owner alone; an array → the owner and those actors;
+     true → anyone the surface has already authenticated. An entry carried over
+     from #64 has no owner and no grant, so nobody reveals it — the promise #64
+     made about everything it stored still holds. */
+  #mayReveal(entry) {
+    if (!entry) return false;
+    /* An access list needs someone to keep out. Until the workspace has
+       accounts it is one operator with the CLI, the data file and the
+       keystore already in hand, and refusing them their own credential in the
+       app would be theatre — the same reason /api/keys itself is ungated
+       until an account exists. The moment accounts appear, the list bites. */
+    if (!this.listAccounts().length) return true;
+    if (entry.shared === true) return true;
+    if (Array.isArray(entry.shared) && entry.shared.includes(this.actor)) return true;
+    return !!entry.owner && entry.owner === this.actor;
+  }
+
+  revealKey(name, { via = 'show' } = {}) {
     const data = this.#readKeystore();
-    if (!(name in data)) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
-    return data[name];
+    const entry = data.keys[name];
+    if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
+    if (!this.#mayReveal(entry)) {
+      throw new WeaveError(`'${name}' is not shared with you — its owner has to grant it`, 'forbidden');
+    }
+    /* Copying counts. A value on the clipboard has left the vault as surely as
+       one on the screen, so the two take the same path and the log says which
+       (Feature #143). The secret itself never enters the audit detail. */
+    this.#audit('key-revealed', { name, via });
+    return 'legacy' in entry ? entry.legacy : this.#open(entry, name);
+  }
+
+  /* Granting is the audited act that opens a credential. The owner may grant;
+     an ownerless entry (everything #64 left behind) may be claimed, or it
+     would be sealed forever with no way forward. Once #141 gives weave real
+     users, "admin may grant" becomes a role check rather than this. */
+  #mayGrant(entry) {
+    return !entry.owner || entry.owner === this.actor;
+  }
+
+  grantKey(name, account) {
+    if (!account) throw new WeaveError('Name the account the credential is shared with', 'invalid');
+    const data = this.#readKeystore();
+    const entry = data.keys[name];
+    if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
+    if (!this.#mayGrant(entry)) throw new WeaveError(`Only '${entry.owner}' can share '${name}'`, 'forbidden');
+    entry.owner ??= this.actor;
+    const list = Array.isArray(entry.shared) ? entry.shared : [];
+    if (account !== true && !list.includes(account)) list.push(account);
+    entry.shared = account === true ? true : list;
+    this.#writeKeystore(data);
+    this.#audit('key-granted', { name, to: account === true ? 'everyone' : account });
+    return { name, shared: entry.shared };
+  }
+
+  revokeKey(name, account) {
+    const data = this.#readKeystore();
+    const entry = data.keys[name];
+    if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
+    if (!this.#mayGrant(entry)) throw new WeaveError(`Only '${entry.owner}' can unshare '${name}'`, 'forbidden');
+    entry.shared = Array.isArray(entry.shared) ? entry.shared.filter((a) => a !== account) : false;
+    this.#writeKeystore(data);
+    this.#audit('key-revoked', { name, from: account });
+    return { name, shared: entry.shared };
+  }
+
+  /* Where to go for a credential weave does not hold. A remote keystore keeps
+     its own access rules, which is precisely why weave stores a ref and never
+     the value — and why the honest answer to "show me" is a door, not a
+     refusal (Feature #143, phase 4). */
+  credentialLink(field, ref) {
+    const { keystore } = this.credentialConfig(field);
+    const r = encodeURIComponent(String(ref ?? ''));
+    switch (keystore) {
+      case '1password': return `onepassword://search/?q=${r}`;
+      case 'aws-sm': return `https://console.aws.amazon.com/secretsmanager/secret?name=${r}`;
+      case 'google-sm': return `https://console.cloud.google.com/security/secret-manager/secret/${r}`;
+      case 'cloudflare': return `https://dash.cloudflare.com/?to=/:account/workers/services`;
+      case 'apple-passwords': return 'x-apple.systempreferences:com.apple.Passwords-Settings.extension';
+      default: return null; // local — weave holds it, so reveal is the door
+    }
   }
 
   // ---------------- accounts & audit (Feature #14) ----------------
@@ -1798,7 +2019,7 @@ export class Weave {
     if (type === 'relation') throw new WeaveError(`Use addRelation() to create relation fields`, 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
-    if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'daterange', 'attachments', 'document'].includes(type)) {
+    if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'daterange', 'attachments', 'document', 'key'].includes(type)) {
       // One normaliser, shared with `field` value validation — see the note on
       // normalizeSelfContainedConfig. If these drift, a definition can describe
       // a field addField would reject.
@@ -2687,11 +2908,17 @@ export class Weave {
               : resolved.type === 'field' ? `depth ${c.depth ?? 1}` : null;
         return costume ? `${resolved.type} · ${costume}` : resolved.type;
       }
-      case 'key':
-        // The name and whether the keystore holds it — never the secret.
-        // Redacted (Kyle, 2026-08-23): the secret is write-only by design; the
-        // cell shows asterisks and the key's NAME, never the value.
-        return `✱✱✱✱ ${resolved}${this.hasKey(resolved) ? '' : ' (unset)'}`;
+      case 'key': {
+        /* The name and — for the local store only — whether it holds it. Never
+           the secret: the value is write-only by design, so the cell shows
+           asterisks and the credential's NAME (Kyle, 2026-08-23).
+           A remote keystore gets no `(unset)`: weave cannot see inside
+           1Password, and a cell that guesses is worse than one that does not
+           say (Feature #143). */
+        const { keystore } = this.credentialConfig(field);
+        const unset = keystore === 'local' && !this.hasKey(resolved) ? ' (unset)' : '';
+        return `✱✱✱✱ ${resolved}${unset}`;
+      }
       case 'attachments': {
         if (!Array.isArray(resolved) || !resolved.length) return null;
         const names = resolved.map((id) => e?.files?.find((x) => x.id === id)?.name ?? '(missing)');
@@ -3436,6 +3663,11 @@ export class Weave {
           }
           if (f.type === 'attachments') out.multiple = f.config.multiple !== false;
           if (f.type === 'document' && f.config.kind) out.kind = f.config.kind;
+          /* A credential column tells the browser which sort it holds and
+             whose store holds it, so the chip can wear the right glyph and
+             offer the right door (Feature #143). Never a value — the secret
+             is not in the schema any more than it is in a cell. */
+          if (f.type === 'key') Object.assign(out, this.credentialConfig(f));
           if (f.type === 'date' || f.type === 'daterange') {
             if (f.config.format) out.format = f.config.format;
             if (f.config.time) out.time = true;

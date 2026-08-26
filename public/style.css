@@ -438,6 +438,35 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 [data-bs-theme="dark"] .k-state.cat-done        { --fill: rgba(70, 180, 110, .16);  --text: #71d083; }
 [data-bs-theme="dark"] .k-state.cat-canceled    { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
 .k-key { font-family: var(--tblr-font-monospace); font-size: 11px; letter-spacing: .02em; }
+/* Whose store holds the secret, riding inside the chip. Scoped under .k-key on
+   purpose — a bare `.store` would collide with Tabler the way `.toast` did
+   (Issue #92). Quiet: the badge is provenance, not a second value. */
+.k-key .store {
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid var(--tblr-border-color);
+  font-size: 9px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  opacity: .75;
+}
+
+/* The reveal control, entity page only. The cell is a flex row that wraps as
+   whole pieces: a link reading "Open in 1Password ↗" split across two lines
+   at the space before "1Password", which is the one place it must not break. */
+.cred-cell { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cred-actions { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cred-actions .btn { padding: 1px 8px; font-size: 11px; }
+.cred-plain {
+  font-family: var(--tblr-font-monospace);
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--tblr-bg-surface-secondary);
+  user-select: all;
+}
+.cred-open { font-size: 12px; white-space: nowrap; }
 
 /* tier 2 — pointer. Neutral by design: the moment a pointer carries a hue it
    reads as a value, and the row loses the one thing colour was meant to say. */

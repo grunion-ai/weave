@@ -158,8 +158,16 @@ Notes that save round trips:
 - **Deletes are recoverable.** `weave_delete_entity` is a soft delete by
   default; `weave_trash` lists what is recoverable and `weave_restore_entity`
   brings it back. Schema deletes are not: a dropped column takes its values.
-- **Secrets never come back.** A `key` field holds the *name* of a secret;
-  `weave_keys` lists names and sets values, and nothing returns one.
+- **Secrets never come back to an agent.** A `key` (credential) field holds the
+  *name* of a secret; the secret itself is encrypted in a keystore outside the
+  workspace, so it is never in a cell, an export, a formula or a query result.
+  `weave_keys` lists names, sets values and shares a credential with an
+  account — it has no `reveal`. Reading a secret back is a human act on the
+  CLI (`weave key reveal <name>`, which prints the bare value) or on
+  `POST /api/keys/:name/reveal`, and both are gated by that credential's own
+  access list — its owner plus whoever the owner granted — and written to the
+  audit log. Permission lives on the credential, not on the field: the field's
+  value was never the secret, so no view, formula or export needs a new check.
 - **One MCP server is one workspace**, because one workspace is one file. A
   *second* workspace is a second file — `node bin/weave.js --data ./other.db
   space create …` creates it on first write, and a running hub takes

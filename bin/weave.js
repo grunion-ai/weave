@@ -122,9 +122,12 @@ default is the table's first document field, usually "Description")
   doc append <ref> (--content 'md' | --file path) [--field Name]
   doc export <ref> --format md|html|pdf [--out path] [--field Name]
 
-Keys (Feature #64 — secrets live in ~/.weave/keystore.json, never in data)
+Credentials (#64, #143 — secrets live encrypted in ~/.weave/keystore.json, never in data)
   key set <name> (--value <secret> | reads stdin)
-  key list
+  key list                            Names, owners and who each is shared with
+  key reveal <name> [--copy]          Prints the secret — owner or grantee only, always audited
+  key share <name> --with <account>   Open one credential to one account
+  key unshare <name> --with <account>
   key delete <name>
 Accounts & audit (Feature #14)
   account create <name> [--role admin|writer|reader]
@@ -272,8 +275,17 @@ async function main() {
         return out(w.setKey(name, value));
       }
       if (sub === 'delete') return out(w.deleteKey(name));
+      /* Reveal is the one command that prints a secret, so it prints the
+         secret and nothing else — a bare value pipes into whatever needed it
+         without a JSON wrapper to strip (Feature #143). */
+      if (sub === 'reveal') {
+        process.stdout.write(w.revealKey(name, { via: flags.copy ? 'copy' : 'show' }) + '\n');
+        return;
+      }
+      if (sub === 'share') return out(w.grantKey(name, flags.with === true ? true : flags.with));
+      if (sub === 'unshare') return out(w.revokeKey(name, flags.with));
       if (sub === 'list' || !sub) return out(w.listKeys());
-      throw new WeaveError(`Unknown key subcommand '${sub}'. Try: set, list, delete`);
+      throw new WeaveError(`Unknown key subcommand '${sub}'. Try: set, list, reveal, share, unshare, delete`);
     }
     case 'audit':
       return out(w.listAudit({ limit: Number(flags.limit ?? 50) }));

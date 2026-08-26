@@ -71,6 +71,11 @@ const SURFACE = [
   ['workspace.logo', ['setWorkspaceLogo', 'getWorkspaceLogo', 'deleteWorkspaceLogo'], 'weave_workspace', 'workspace logo'],
   ['accounts', ['createAccount', 'listAccounts', 'deleteAccount', 'setRequireAuth'], 'weave_accounts', 'account'],
   ['keys', ['setKey', 'listKeys', 'deleteKey'], 'weave_keys', 'key'],
+  /* Reveal has no MCP tool ON PURPOSE (Feature #143). A human asking for their
+     own credential is the use case; an agent holding a token that can drain
+     the keystore is the threat. The CLI and the HTTP surface carry it, both
+     behind the credential's own access list, and both audited. */
+  ['keys.reveal', ['revealKey', 'grantKey', 'revokeKey'], null, 'key reveal'],
   ['registry', ['registryReport', 'rebuildRegistry'], 'weave_registry', 'registry'],
   ['relation.map', ['relationMapMmd'], 'weave_relation_map', 'map'],
 ];
@@ -82,6 +87,8 @@ const INTERNAL = {
   findSpace: 'ref resolver', getSpace: 'ref resolver', findTable: 'ref resolver', getTable: 'ref resolver',
   findField: 'ref resolver', getField: 'ref resolver', findEntity: 'ref resolver', qualifiedName: 'ref formatter',
   entityName: 'ref formatter', documentFields: 'ref helper', resolveField: 'read helper',
+  credentialConfig: 'read helper — a key field\'s config with the #143 defaults filled in',
+  credentialLink: 'read helper — where a remote keystore keeps the credential',
   bodyBlocks: 'read helper — the resolved body order already ships inside the schema payload',
   viewByShareToken: 'the share link IS this call', verifyToken: 'auth path',
   hasKey: 'keystore predicate', resolveKey: 'returns a secret — never leaves the process',

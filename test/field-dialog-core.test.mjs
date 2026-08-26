@@ -205,6 +205,44 @@ test('TYPE_MIGRATIONS mirrors the engine export exactly', async () => {
   assert.deepEqual(core.TYPE_MIGRATIONS, TYPE_MIGRATIONS);
 });
 
+/* ---------- credentials (Feature #143) ---------- */
+
+test('the credential sets mirror the engine, so the tray cannot offer a refused kind', async () => {
+  const { CREDENTIAL_KINDS, KEYSTORES } = await import('../src/engine.js');
+  assert.deepEqual(core.CREDENTIAL_KINDS, CREDENTIAL_KINDS);
+  assert.deepEqual(core.KEYSTORES, KEYSTORES);
+});
+
+test('a credential column always states its kind and its keystore', () => {
+  const blank = core.blankState('key');
+  assert.deepEqual(core.definitionFromState({ ...blank, type: 'key' }).config,
+    { kind: 'apikey', keystore: 'local' }, 'the defaults are written down, never implied');
+
+  const ssn = core.stateFromDefinition({ type: 'key', config: { kind: 'id', keystore: 'local' } });
+  assert.equal(ssn.credential.kind, 'id');
+  assert.deepEqual(core.definitionFromState({ ...ssn, type: 'key' }).config, { kind: 'id', keystore: 'local' },
+    'a definition round-trips through the form unchanged');
+});
+
+test('the dialog refuses a kind or keystore in the same words the engine would', async () => {
+  const { Weave } = await import('../src/engine.js');
+  const w = new Weave({ keystorePath: '/dev/null/nope' });
+  w.createSpace({ name: 'S' });
+  w.createTable({ space: 'S', name: 'T' });
+
+  for (const [config, key] of [[{ kind: 'passphrase' }, 'kind'], [{ keystore: 'lastpass' }, 'keystore']]) {
+    const mirrored = core.parseDefinition(JSON.stringify({ type: 'key', config }));
+    assert.equal(mirrored.ok, false, `the dialog catches a bad ${key}`);
+    const engine = assert.throws(() => w.addField('T', { name: `F-${key}`, type: 'key', config } ), Error);
+    void engine;
+    try {
+      w.addField('T', { name: `G-${key}`, type: 'key', config });
+    } catch (e) {
+      assert.equal(mirrored.error, e.message, 'the dialog repeats the engine verbatim');
+    }
+  }
+});
+
 test('typeChoices: a new field sees the whole grid; an existing one sees itself plus compatible moves', () => {
   assert.deepEqual(core.typeChoices(null).map((t) => t.id), core.FIELD_TYPES.map((t) => t.id));
   assert.deepEqual(core.typeChoices('select').map((t) => t.id), ['select', 'multiselect', 'workflow', 'text']);
