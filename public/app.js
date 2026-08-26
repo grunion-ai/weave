@@ -4260,6 +4260,10 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
      columns follow, through the one reorderField writer. The moved node
      relocates in place; the schema write happens behind the move. */
   const fields = el('div', { class: 'entity-fields' });
+  /* Value rows flow into two columns (Issue #89): twenty-eight of them in one
+     column put the document a screen down. Documents and attachments are not
+     cells — they keep the full width, below the grid. */
+  const values = el('div', { class: 'entity-values' });
   let dragFrom = null;
   /* Values in the table's column order, then documents, then files (Kyle,
      2026-08-23). Each group keeps fieldOrder; Array.sort is stable. A drag
@@ -4302,8 +4306,10 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
       el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) }, fieldNameLabel(f)),
       editorFor(f, entity, db, () => refresh()));
-    fields.append(dragRow(node, f.type === 'document' ? node.querySelector('.doc-section-head') : node, f));
+    const home = bodyKind(f) === 0 ? values : fields;
+    home.append(dragRow(node, f.type === 'document' ? node.querySelector('.doc-section-head') : node, f));
   }
+  if (values.childElementCount) fields.prepend(values);
   if (!fields.childElementCount) {
     fields.append(el('span', { class: 'wv-empty' }, 'This table has no fields beyond its name.'));
   }
@@ -5469,3 +5475,31 @@ wireSearchButton();
 buildWsRail();
 wireWsNew();
 wireNavCollapse();
+
+/* TEMP DIAG for Issue #76 — remove after capture. Appends real-browser layout
+   numbers onto the issue when the page is opened with ?diag=1. */
+if (new URLSearchParams(location.search).has('diag')) {
+  const post = async () => {
+    const r = (s) => { const n = document.querySelector(s); if (!n) return null; const b = n.getBoundingClientRect(); return `${s}[${Math.round(b.left)},${Math.round(b.top)},${Math.round(b.width)}]`; };
+    const vv = window.visualViewport;
+    const cs = getComputedStyle(document.body);
+    const hcs = getComputedStyle(document.documentElement);
+    const html = document.documentElement.getBoundingClientRect();
+    const lines = [
+      'ua=' + navigator.userAgent,
+      `inner=${innerWidth}x${innerHeight} dpr=${devicePixelRatio} scroll=${scrollX},${scrollY} scrollW=${document.documentElement.scrollWidth}`,
+      vv ? `vv scale=${vv.scale} off=${vv.offsetLeft},${vv.offsetTop} page=${vv.pageLeft},${vv.pageTop} w=${vv.width}` : 'no vv',
+      `html rect=[${Math.round(html.left)},${Math.round(html.top)},${Math.round(html.width)}] bodyMargin=${cs.margin} bodyPad=${cs.padding} htmlMargin=${hcs.margin} htmlPad=${hcs.padding}`,
+      [r('#ws-rail'), r('#rail-weave'), r('#ws-list .ws-icon'), r('#sidebar'), r('.search-like'), r('#main')].join(' '),
+    ].join('  |  ');
+    try {
+      await fetch(`${WS_PREFIX}/api/entities/11712934-da29-4847-97f1-18fa945f4140/doc`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc: '\n\n**diag** ' + lines }),
+      });
+    } catch (e) { console.error('diag post failed', e); }
+  };
+  addEventListener('load', () => setTimeout(post, 800));
+  let t = null;
+  addEventListener('resize', () => { clearTimeout(t); t = setTimeout(post, 600); });
+}

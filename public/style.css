@@ -518,6 +518,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    on hover so the block reads as a form, not a list of handles. A drop moves
    the row in place and writes fieldOrder (the table's columns follow). */
 .entity-fields { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 22px; }
+/* Two columns for the value rows (Issue #89, Kyle 2026-08-26): the fields
+   stay whole — same rows, same editors, same ⠿ — they just stop being a
+   column that buries the document. Documents and attachments are siblings of
+   the grid, not cells in it, so they keep the full width. One column below
+   900px, where two would clip every value. */
+.entity-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 26px; }
+@media (max-width: 900px) { .entity-values { grid-template-columns: minmax(0, 1fr); } }
 .entity-fields .fieldrow { max-width: 720px; }
 .entity-fields .doc-section { margin: 10px 0 18px; border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
 .entity-fields .doc-section .opt-grip { opacity: 0; transition: opacity .12s; cursor: grab; }
