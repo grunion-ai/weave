@@ -1046,7 +1046,10 @@ test('a collection relation renders as the target table grid, in the body', () =
   const body = fnBody('renderEntityView'); // the one entity rendering — page and peek both mount it
   assert.match(body, /relatedGrid\(entity, f, refresh\)/, 'the entity page mounts one per collection relation');
   assert.match(body, /x\.type === 'relation' && x\.many/, 'collections only — a single link stays a chip');
-  assert.match(body, /left\.append\(slot\)/, 'they live in the main body, under the documents');
+  assert.match(body, /wireBlock\(f\.name, el\('div', \{ class: 'related-block' \}\)/,
+    'they are blocks of the main body, movable like any other (Issue #89)');
+  assert.match(body, /grid\.querySelector\('\.related-head'\)\?\.prepend\(grip\)/,
+    'and the anchor lands in the head the grid draws for it');
   assert.match(body, /if \(f\.type === 'relation' && f\.many\) continue;/,
     'and are not repeated as chips in the fields block');
 });
@@ -1056,39 +1059,56 @@ test('a collection relation renders as the target table grid, in the body', () =
    not a card in the side column), and their order is the table's fieldOrder:
    drag ⠿ on a row and the column order in the table view follows, because
    reorderField is the one writer for both. */
-test('the entity page heads its body with a draggable fields block that writes fieldOrder', () => {
+test('the entity body is blocks, and every block carries a reposition anchor', () => {
   const body = fnBody('renderEntityView');
-  assert.match(body, /class: 'entity-fields'/, 'fields render as one block');
-  assert.match(body, /left\.prepend\(fields\)|left\.append\(fields\)/, 'in the main column');
-  assert.match(body, /left\.prepend\(fields\)/, 'above the documents');
-  assert.doesNotMatch(body, /card-title' \}, 'Fields'/, 'and no longer as a side card (Feature #82 superseded)');
-  assert.match(body, /class: 'fieldrow', draggable: 'true'/, 'each row is draggable');
-  assert.match(body, /class: 'opt-grip'/, 'wearing the same ⠿ grip the states editor uses');
-  assert.match(body, /reorderField\(db, /, 'a drop is a fieldOrder write through the one reorder function');
-  assert.match(body, /onFail/, 'and a failed write redraws the entity, not the table');
+  assert.match(body, /class: 'entity-fields'/, 'the value fields are one block');
+  assert.match(body, /left\.classList\.add\('entity-body'\)/, 'the main column IS the body');
+  assert.doesNotMatch(body, /card-title' \}, 'Fields'/, 'and no longer a side card (Feature #82 superseded)');
+
+  /* Two drags, and they do not mix: a value field moves inside the field
+     block and writes fieldOrder; a block moves among blocks and writes
+     bodyOrder. A field promoted to a block would be a field the grid view
+     could not show (Issue #89, Kyle 2026-08-26). */
+  assert.match(body, /let dragFrom = null;/, 'a field drag');
+  assert.match(body, /let blockFrom = null;/, 'and a block drag, tracked apart');
+  assert.match(body, /if \(!dragFrom \|\| dragFrom === f\.name\) return;/, 'a field drop ignores a block drag');
+  assert.match(body, /if \(!blockFrom \|\| blockFrom === key\) return;/, 'and a block drop ignores a field drag');
+  assert.match(body, /reorderField\(db, from, f\.name, \{ after, onFail: refresh \}\)/,
+    'a field drop is a fieldOrder write through the one reorder function');
+  assert.match(body, /reorderBlocks\(db, left, refresh\)/, 'a block drop is a bodyOrder write');
+
+  /* Direction is read from the live DOM. Taken from the list captured at
+     draw time, a second drag was judged against an order that no longer
+     existed and dropped the field where it already sat. */
+  const live = /compareDocumentPosition\(node\) & Node\.DOCUMENT_POSITION_FOLLOWING/g;
+  assert.equal((body.match(live) ?? []).length, 2, 'both drags read their direction from where things sit now');
+
+  assert.match(body, /const anchor = \(what\) => el\('span', \{ class: 'opt-grip', draggable: 'true'/,
+    'the anchor is a ⠿ that is itself draggable — the thing you grab is the thing that moves');
+  assert.match(body, /wireBlock\(VALUES_BLOCK, fields,/, 'the field block is anchored');
+  assert.match(body, /wireBlock\(f\.name, section, \[section\.querySelector\('\.opt-grip'\), section\.querySelector\('\.doc-section-head'\)\]\)/,
+    'a document is anchored, and still draggable by its whole head');
+  assert.match(body, /node\.classList\.add\('attach-block'\)/, 'an attachment row is a block too');
+
+  /* The order is the table's, resolved by the engine so one rule fills in
+     what nobody placed. */
+  assert.match(body, /const named = db\.bodyBlocks \?\? \[VALUES_BLOCK\];/, 'the page renders the order it is handed');
+  const rb = fnBody('reorderBlocks');
+  assert.match(rb, /\[\.\.\.body\.children\]\.map\(\(n\) => n\.dataset\.block\)/,
+    'the move already happened, so the DOM is the new order');
+  assert.match(rb, /bodyOrder/, 'and it is a table write');
+
   const rf = fnBody('reorderField');
   assert.match(rf, /onFail = \(\) => showDatabase\(db\.id\)/, 'reorderField defaults its failure redraw to the table view');
   assert.match(rf, /onFail\(\)/, 'and calls whatever the caller gave it');
-  // Documents are fields too (Kyle, 2026-08-23: "be reorderable with other
-  // fields"): one ordered body over db.fields, a document rendering as its
-  // section in that sequence, draggable by its head, droppable anywhere.
-  // Kyle, 2026-08-23: "by default the order of the entity view should be
-  // fields in the order they appear on the table, then description, then
-  // files." Three groups, each in fieldOrder; a drag reorders within its
-  // group (a drop across groups is refused) so the grid's column order and
-  // the page never disagree about where a value field sits.
-  assert.match(body, /const bodyKind = \(f\) => f\.type === 'document' \? 1 : f\.type === 'attachments' \? 2 : 0;/,
-    'values, then documents, then files');
-  assert.match(body, /const shown = db\.fields\.filter\(\(f\) => !\(f\.name === 'Name' \|\| \(f\.type === 'relation' && f\.many\)\) && !hidden\.has\(f\.name\)\)\s*\.sort\(\(a, b\) => bodyKind\(a\) - bodyKind\(b\)\);/,
-    'the ordered body is every field but Name and collections, grouped by kind, fieldOrder within a group (stable sort)');
-  assert.match(body, /if \(bodyKind\(fromField\) !== bodyKind\(f\)\) return;/, 'a drop across groups is refused');
-  assert.match(body, /f\.type === 'document' \? docSection\(f\) :/, 'a document field renders as its section, in sequence');
-  assert.match(body, /class: 'doc-section-head', draggable: 'true'/, 'a document is dragged by its head');
-  assert.match(body, /const dragRow = \(node, handle, f\)/, 'one drag wiring serves rows and sections');
-  assert.doesNotMatch(body, /for \(const f of documentFields\(db\)\)/, 'no separate documents loop');
+
+  assert.match(body, /f\.type === 'document'/, 'a document field renders as its section');
+  assert.match(body, /class: 'doc-section-head', draggable: 'true'/, 'and is dragged by its head');
+  assert.match(body, /const dragRow = \(node, handle, f\)/, 'one drag wiring serves the value rows');
   assert.match(CSS, /\.entity-fields \.fieldrow\.dragging/, 'a dragged row is ghosted');
   assert.match(CSS, /\.entity-fields \.fieldrow\.drop-target/, 'and the drop target is marked');
-  assert.match(CSS, /\.entity-fields \.doc-section\.drop-target/, 'a section too');
+  assert.match(CSS, /\.entity-body > \[data-block\]\.drop-target/, 'a block too');
+
   // The label is the field: clicking it opens the same tray the table's
   // header click opens (Feature #109), so a field is editable from the one
   // place a reader already is.

@@ -82,6 +82,7 @@ const INTERNAL = {
   findSpace: 'ref resolver', getSpace: 'ref resolver', findTable: 'ref resolver', getTable: 'ref resolver',
   findField: 'ref resolver', getField: 'ref resolver', findEntity: 'ref resolver', qualifiedName: 'ref formatter',
   entityName: 'ref formatter', documentFields: 'ref helper', resolveField: 'read helper',
+  bodyBlocks: 'read helper — the resolved body order already ships inside the schema payload',
   viewByShareToken: 'the share link IS this call', verifyToken: 'auth path',
   hasKey: 'keystore predicate', resolveKey: 'returns a secret — never leaves the process',
 };

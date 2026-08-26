@@ -3094,6 +3094,20 @@ function editFieldDialog(db, f) {
    it is still there tomorrow. The order sent covers every field, document
    columns included, because the engine refuses a partial order rather than
    silently dropping what the grid cannot see. */
+/* Blocks are reordered by reading the body back after the move: the nodes
+   have already been put where the reader dropped them, so the DOM is the new
+   order and no index arithmetic can disagree with it (Issue #89). */
+async function reorderBlocks(db, body, onFail) {
+  const bodyOrder = [...body.children].map((n) => n.dataset.block).filter(Boolean);
+  try {
+    await api('PATCH', `/tables/${db.id}`, { bodyOrder });
+    await loadSchema();
+  } catch (err) {
+    toast(err.message, true);
+    onFail();
+  }
+}
+
 async function reorderField(db, fromName, toName, { after = false, onFail = () => showDatabase(db.id) } = {}) {
   const order = db.fields.map((f) => f.name).filter((n) => n !== fromName);
   const at = order.indexOf(toName);
@@ -4396,17 +4410,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     return section;
   };
 
-  /* Collections of related records go under the documents, in the body rather
-     than the side panel: they are work to do, not attributes to read. Each is
-     fetched on its own so a slow one cannot hold up the page. */
-  for (const f of db.fields.filter((x) => x.type === 'relation' && x.many)) {
-    const slot = el('div', {});
-    left.append(slot);
-    relatedGrid(entity, f, refresh)
-      .then((grid) => { if (grid) slot.replaceWith(grid); })
-      .catch((err) => toast(err.message, true));
-  }
-
   /* Comments panel */
   const commentsBody = el('div', { class: 'card-body' });
   const commentsPanel = el('div', { class: 'card panel' },
@@ -4429,43 +4432,72 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   });
   commentsBody.append(el('div', { style: 'margin-top:8px' }, commentInput));
 
-  /* The ordered body (Feature #117) — every field but Name and collections,
-     in the table's fieldOrder, documents included: a value field is a
-     Fibery-style label / value row, a document field is its section, in
-     sequence. Drag ⠿ (a row, or a section by its head) and the table view's
-     columns follow, through the one reorderField writer. The moved node
-     relocates in place; the schema write happens behind the move. */
+  /* The body is BLOCKS (Feature #117; blocks since Issue #89, Kyle
+     2026-08-26): the field block, each document, each attachment row, each
+     related table. A block carries a reposition anchor and moves among its
+     peers through bodyOrder; a value field moves inside the field block
+     through fieldOrder. The two drags never reach into each other — a field
+     promoted to a block would be a field the grid view could not show — so
+     each ignores the other's dragstart. */
+  const VALUES_BLOCK = '@values';
+  left.classList.add('entity-body');
   const fields = el('div', { class: 'entity-fields' });
-  /* Value rows flow into two columns (Issue #89): twenty-eight of them in one
-     column put the document a screen down. Documents and attachments are not
-     cells — they keep the full width, below the grid. */
+  /* Value rows flow into columns (Issue #89): twenty-eight of them in one
+     column put the document a screen down. */
   const values = el('div', { class: 'entity-values' });
-  let dragFrom = null;
-  /* Values in the table's column order, then documents, then files (Kyle,
-     2026-08-23). Each group keeps fieldOrder; Array.sort is stable. A drag
-     moves within its group only — across groups the grid and the page would
-     disagree about where a field sits. */
-  const bodyKind = (f) => f.type === 'document' ? 1 : f.type === 'attachments' ? 2 : 0;
+  let dragFrom = null;   // a value field, moving inside the field block
+  let blockFrom = null;  // a whole block, moving among the blocks
   const hidden = new Set(db.hiddenFields ?? []);
-  const shown = db.fields.filter((f) => !(f.name === 'Name' || (f.type === 'relation' && f.many)) && !hidden.has(f.name))
-    .sort((a, b) => bodyKind(a) - bodyKind(b));
+  const shown = db.fields.filter((f) => f.name !== 'Name' && !hidden.has(f.name));
+  const blocks = new Map();
+
+  /* Every block wears the same anchor — a ⠿ that is itself draggable, so the
+     thing you grab is the thing that moves. */
+  const anchor = (what) => el('span', { class: 'opt-grip', draggable: 'true', title: `Drag to move ${what}` });
+  const wireBlock = (key, node, handles) => {
+    node.dataset.block = key;
+    for (const h of handles.filter(Boolean)) {
+      h.setAttribute('draggable', 'true');
+      h.addEventListener('dragstart', (e) => {
+        blockFrom = key; e.dataTransfer.effectAllowed = 'move'; e.stopPropagation();
+        node.classList.add('dragging');
+      });
+      h.addEventListener('dragend', () => { blockFrom = null; node.classList.remove('dragging'); });
+    }
+    node.addEventListener('dragover', (e) => {
+      if (!blockFrom || blockFrom === key) return;
+      e.preventDefault(); e.stopPropagation(); node.classList.add('drop-target');
+    });
+    node.addEventListener('dragleave', () => node.classList.remove('drop-target'));
+    node.addEventListener('drop', (e) => {
+      node.classList.remove('drop-target');
+      const from = blockFrom; blockFrom = null;
+      if (!from || from === key) return;
+      e.preventDefault(); e.stopPropagation();
+      const fromNode = blocks.get(from);
+      const after = !!(fromNode && (fromNode.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING));
+      if (fromNode) node.insertAdjacentElement(after ? 'afterend' : 'beforebegin', fromNode);
+      reorderBlocks(db, left, refresh);
+    });
+    blocks.set(key, node);
+    return node;
+  };
+
   const dragRow = (node, handle, f) => {
     node.dataset.field = f.name;
     handle.addEventListener('dragstart', (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; node.classList.add('dragging'); });
-    handle.addEventListener('dragend', () => node.classList.remove('dragging'));
+    handle.addEventListener('dragend', () => { dragFrom = null; node.classList.remove('dragging'); });
     node.addEventListener('dragover', (e) => {
-      if (!dragFrom || bodyKind(shown.find((x) => x.name === dragFrom)) !== bodyKind(f)) return;
-      e.preventDefault(); node.classList.add('drop-target');
+      if (!dragFrom || dragFrom === f.name) return;
+      e.preventDefault(); e.stopPropagation(); node.classList.add('drop-target');
     });
     node.addEventListener('dragleave', () => node.classList.remove('drop-target'));
     node.addEventListener('drop', (e) => {
       node.classList.remove('drop-target');
       const from = dragFrom; dragFrom = null;
       if (!from || from === f.name) return;
-      const fromField = shown.find((x) => x.name === from);
-      if (bodyKind(fromField) !== bodyKind(f)) return;
-      e.preventDefault();
-      const fromNode = fields.querySelector(`[data-field="${CSS.escape(from)}"]`);
+      e.preventDefault(); e.stopPropagation();
+      const fromNode = values.querySelector(`[data-field="${CSS.escape(from)}"]`);
       /* Direction comes from where the two rows sit NOW, not from the list
          captured when the page was drawn. With the stale list, dragging a
          field back over the one it had just passed computed "after" from an
@@ -4476,29 +4508,68 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       reorderField(db, from, f.name, { after, onFail: refresh });
     });
     // Editors inside a draggable node must keep their own mouse events.
-    for (const ctl of handle.querySelectorAll('input,button,textarea,select,.picker-wrap,[contenteditable]')) ctl.addEventListener('mousedown', (e) => e.stopPropagation());
+    for (const stop of node.querySelectorAll('input, select, textarea, .picker-wrap')) {
+      stop.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    }
     return node;
   };
+
   for (const f of shown) {
-    // A collection relation is the grid in the body; a row of chips repeating
-    // it here would be the same links twice, one of them worse.
-    if (f.type === 'relation' && f.many) continue;
-    // A date range is two inputs and a dash — an editor with a floor, not a
-    // string that can ellipsis. It says so, and the three-column grid gives
-    // it two tracks (Issue #89).
-    const wide = f.type === 'daterange' ? { 'data-wide': '' } : {};
-    const node = f.type === 'document' ? docSection(f) : el('div', { class: 'fieldrow', draggable: 'true', ...wide },
-      el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
+    if (f.type === 'relation' && f.many) continue;   // a related table is its own block, below
+    if (f.type === 'document') {
+      const section = docSection(f);
+      wireBlock(f.name, section, [section.querySelector('.opt-grip'), section.querySelector('.doc-section-head')]);
+      continue;
+    }
+    const node = el('div', { class: 'fieldrow' },
+      f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
       el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) }, fieldNameLabel(f)),
       editorFor(f, entity, db, () => refresh()));
-    const home = bodyKind(f) === 0 ? values : fields;
-    home.append(dragRow(node, f.type === 'document' ? node.querySelector('.doc-section-head') : node, f));
+    if (f.type === 'attachments') {
+      // An attachment row is a block: it is as wide as its chips, and it
+      // belongs wherever the reader put it, not always last.
+      node.classList.add('attach-block');
+      wireBlock(f.name, node, [node.querySelector('.opt-grip')]);
+      continue;
+    }
+    node.setAttribute('draggable', 'true');
+    values.append(dragRow(node, node, f));
   }
-  if (values.childElementCount) fields.prepend(values);
-  if (!fields.childElementCount) {
+
+  if (values.childElementCount) {
+    const valuesHead = el('div', { class: 'block-head' },
+      anchor('the fields'), el('span', { class: 'block-name' }, 'Fields'));
+    fields.append(valuesHead, values);
+    wireBlock(VALUES_BLOCK, fields, [valuesHead.querySelector('.opt-grip'), valuesHead]);
+  } else {
     fields.append(el('span', { class: 'wv-empty' }, 'This table has no fields beyond its name.'));
+    left.append(fields);
   }
-  left.prepend(fields);
+
+  /* Collections of related records are blocks in the body rather than the
+     side panel: they are work to do, not attributes to read. Each is fetched
+     on its own so a slow one cannot hold up the page, and its anchor lands in
+     the head the grid draws for it. */
+  for (const f of shown.filter((x) => x.type === 'relation' && x.many)) {
+    const grip = anchor(f.name);
+    const slot = wireBlock(f.name, el('div', { class: 'related-block' }), [grip]);
+    relatedGrid(entity, f, refresh)
+      .then((grid) => {
+        if (!grid) { slot.remove(); blocks.delete(f.name); return; }
+        grid.querySelector('.related-head')?.prepend(grip);
+        slot.append(grid);
+      })
+      .catch((err) => toast(err.message, true));
+  }
+
+  // The order the table remembers, resolved by the engine; anything it does
+  // not name (a block just added, a field just unhidden) still has a node,
+  // and lands after the ones it does.
+  const named = db.bodyBlocks ?? [VALUES_BLOCK];
+  for (const key of [...named, ...blocks.keys()]) {
+    const node = blocks.get(key);
+    if (node && !node.isConnected) left.append(node);
+  }
   /* A deck is composed on read, so the frame IS the deck: the same editable
      file /e/:id/deck.html serves, live over whatever the slides say right now.
      A deck entity shows its whole composition; a slide shows itself, wearing

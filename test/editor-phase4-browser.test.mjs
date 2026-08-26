@@ -323,9 +323,8 @@ if (!chromium) {
         document.querySelector('.doc-rail-track').getBoundingClientRect().top);
       const resting = await top();
       await page.evaluate(() => window.scrollBy(0, 600));
-      await page.waitForFunction((t) =>
-        document.querySelector('.doc-rail-track').getBoundingClientRect().top > t - 300,
-      resting, { timeout: 20000 });
+      await page.waitForFunction(() => window.scrollY >= 590, null, { timeout: 20000 });
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       const scrolled = await top();
       assert.ok(scrolled > 0, 'the track never scrolls off the top of the viewport');
       assert.ok(scrolled < 200, 'it holds at the reading line instead of riding the document down');

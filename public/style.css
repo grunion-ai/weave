@@ -615,13 +615,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   .entity-values .fieldrow[data-wide] { grid-column: span 2; }
 }
 .entity-fields .fieldrow { max-width: 720px; }
-.entity-fields .doc-section { margin: 10px 0 18px; border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
-.entity-fields .doc-section .opt-grip { opacity: 0; transition: opacity .12s; cursor: grab; }
-.entity-fields .doc-section:hover .opt-grip { opacity: 1; }
-.entity-fields .doc-section-head { cursor: grab; }
-.entity-fields .doc-section.dragging { opacity: .4; }
-.entity-fields .doc-section.drop-target { border-top-color: var(--tblr-primary); }
-.entity-fields .dragging ~ .doc-section.drop-target { border-top-color: transparent; border-bottom-color: var(--tblr-primary); }
+.entity-body > .doc-section { margin: 10px 0 18px; }
+.entity-body > .doc-section .opt-grip { opacity: 0; transition: opacity .12s; cursor: grab; }
+.entity-body > .doc-section:hover .opt-grip { opacity: 1; }
+.entity-body .doc-section-head { cursor: grab; }
 .entity-fields .fieldrow { grid-template-columns: 16px 150px minmax(0, 1fr); gap: 0 10px; padding: 3px 6px 3px 0; margin-left: -6px; border-radius: var(--tblr-border-radius); border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
 .entity-fields .fieldrow:hover { background: var(--wv-pill-hover); }
 .entity-fields .fieldrow .opt-grip { opacity: 0; text-align: center; transition: opacity .12s; }
@@ -636,6 +633,23 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-fields .fieldrow > input.inline-edit, .entity-fields .fieldrow > select.inline-edit { width: min(100%, 360px); min-height: 26px; padding: 2px 6px; margin-left: -7px; }
 .entity-fields .fieldrow > .picker-wrap { width: min(100%, 360px); }
 .entity-fields .fieldrow.dragging { opacity: .4; }
+/* A block wears its anchor the way a document section does: quiet until the
+   block is hovered, and the ⠿ is the thing you grab (Issue #89). */
+.entity-body > [data-block] { border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
+.entity-body > [data-block].dragging { opacity: .4; }
+.entity-body > [data-block].drop-target { box-shadow: inset 0 2px 0 var(--tblr-primary); }
+.entity-body > [data-block].dragging ~ [data-block].drop-target { box-shadow: inset 0 -2px 0 var(--tblr-primary); }
+.block-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; cursor: grab; }
+.block-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
+.block-head .opt-grip, .related-head .opt-grip, .attach-block .opt-grip { opacity: 0; cursor: grab; transition: opacity .12s; }
+.entity-body > [data-block]:hover .opt-grip, .entity-body > [data-block]:focus-within .opt-grip { opacity: 1; }
+.related-block { margin: 0 0 18px; }
+.entity-body > .attach-block { grid-template-columns: 16px 150px minmax(0, 1fr); gap: 0 10px; align-items: center;
+  min-height: 32px; padding: 3px 6px 3px 0; margin: 4px 0 14px -6px; border-radius: var(--tblr-border-radius); }
+.entity-body > .attach-block:hover { background: var(--wv-pill-hover); }
+.entity-body > .attach-block label { color: var(--tblr-secondary); font-size: 13px; }
+@media (max-width: 600px) { .entity-body > .attach-block { grid-template-columns: 16px 110px minmax(0, 1fr); } }
+
 /* The insertion cue is ONE line, on the edge the field will land against —
    the same 2px inset the grid header draws for a column drop. A tinted cell
    said "this row"; the reader needs "this gap" (Kyle, 2026-08-26). Stacked,

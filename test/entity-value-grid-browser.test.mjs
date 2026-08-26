@@ -92,7 +92,8 @@ if (!chromium) {
 
     const docInGrid = await page.$$eval('.entity-values .doc-section', (n) => n.length);
     assert.equal(docInGrid, 0, 'a document is not a grid cell');
-    assert.ok(await page.$('.entity-fields > .doc-section'), 'the document sits under the grid, full width');
+    assert.ok(await page.$('.entity-body > .doc-section[data-block]'),
+      'the document is a block of its own, full width');
 
     const [gridBox, docBox] = await page.evaluate(() => [
       document.querySelector('.entity-values').getBoundingClientRect().bottom,

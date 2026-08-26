@@ -40,6 +40,13 @@ export function parseCSV(text) {
   return rows.filter((r) => !(r.length === 1 && r[0] === ''));
 }
 
+/* The entity body is blocks, not fields: a document, an attachment row and a
+   related table each stand alone, and every other field belongs to the one
+   value block that `@values` names. */
+const VALUES_BLOCK = '@values';
+const isBodyBlock = (f) => f.type === 'document' || f.type === 'attachments'
+  || (f.type === 'relation' && !!(f.many ?? f.config?.many));
+
 const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments'];
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
 /* Types whose definition can name the value a new row starts with. Workflow is
@@ -711,6 +718,23 @@ export class Weave {
         if (!system.includes(n) && !this.findField(db, n)) throw new WeaveError(`'${n}' is not a field of ${db.name}`, 'invalid');
       }
       if (patch.hiddenFields.length) db.hiddenFields = [...patch.hiddenFields]; else delete db.hiddenFields;
+    }
+    /* Body order (Issue #89): where the field block sits among the documents
+       and the related tables on an entity page. The value fields are one
+       block — `@values` stands for the run of them — because the grid is a
+       thing you move, not a thing you take apart. Stored by id like
+       fieldOrder, so a rename cannot orphan a placement, and a short list is
+       fine here: bodyBlocks() appends whatever nobody placed. */
+    if (patch.bodyOrder != null) {
+      if (!Array.isArray(patch.bodyOrder)) throw new WeaveError('bodyOrder is a list of block keys', 'invalid');
+      const keys = patch.bodyOrder.map((ref2) => {
+        if (ref2 === VALUES_BLOCK) return VALUES_BLOCK;
+        const f = this.getField(db.id, ref2);
+        if (!isBodyBlock(f)) throw new WeaveError(`'${f.name}' is not a body block — value fields move inside ${VALUES_BLOCK}`, 'invalid');
+        return f.id;
+      });
+      if (new Set(keys).size !== keys.length) throw new WeaveError('bodyOrder lists every block at most once, and it repeated one', 'invalid');
+      if (keys.length) db.bodyOrder = keys; else delete db.bodyOrder;
     }
     // Column order is fieldOrder — describeSchema() reads it — so a reorder is
     // a schema write. Demand a full permutation: a short list would silently
@@ -1857,6 +1881,29 @@ export class Weave {
     this.#syncTableRow(target);
     if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, target: target.name });
     return { field: a, inverse: b };
+  }
+
+  /* The blocks of an entity body, in the order a reader will meet them:
+     whatever bodyOrder placed, then everything it did not, in the default
+     order — the field block first, then documents, attachments and related
+     tables as the table declares them. A document added after someone set an
+     order appends rather than jumping the queue. */
+  bodyBlocks(dbRef) {
+    const db = this.getTable(dbRef);
+    const known = [VALUES_BLOCK];
+    for (const id of db.fieldOrder) {
+      const f = db.fields[id];
+      if (f && isBodyBlock(f)) known.push(id);
+    }
+    const seen = new Set();
+    const out = [];
+    for (const key of db.bodyOrder ?? []) {
+      if (seen.has(key) || !known.includes(key)) continue;
+      seen.add(key);
+      out.push(key);
+    }
+    for (const key of known) if (!seen.has(key)) out.push(key);
+    return out.map((key) => key === VALUES_BLOCK ? VALUES_BLOCK : db.fields[key].name);
   }
 
   updateField(dbRef, fieldRef, patch) {
@@ -3347,6 +3394,7 @@ export class Weave {
         ...(db.icon ? { icon: db.icon } : {}),
         ...(db.systemFields?.length ? { systemFields: [...db.systemFields] } : {}),
         ...(db.hiddenFields?.length ? { hiddenFields: [...db.hiddenFields] } : {}),
+        bodyBlocks: this.bodyBlocks(db),
         ...(db.noun ? { noun: db.noun } : {}),
         qualified: this.qualifiedName(db),
         entityCount: this.listEntities(db.id).length,
