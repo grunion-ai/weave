@@ -66,11 +66,20 @@ export const ICONS = [
   'volumeoff', 'volumeup', 'wallet', 'work',
 ];
 
+/* The marks an author may pick, read from the drawn set so this list and the
+   shapes cannot drift apart. */
+await import('../public/mark-icons.js');
+const MARK_CHARS = Object.keys(globalThis.weaveMarkIcons.MARKS);
+
 export const VOCABULARY = {
   fieldTypes: FIELD_TYPE_VOCABULARY,
   optionColors: OPTION_COLORS,
   icons: {
     form: ICON_FORM,
+    // A mark is stored as its own character and drawn as a vector from the
+    // same canvas as the flat set (Issue #87), so the two forms are one
+    // vocabulary rather than two.
+    marks: MARK_CHARS,
     fallback: 'Any other string renders as text, so an emoji ("📦") is a legal icon too.',
     names: ICONS,
   },

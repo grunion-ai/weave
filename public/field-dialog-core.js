@@ -132,7 +132,7 @@
   function iconChoices(flat = []) {
     return [
       { id: '', label: 'No icon' },
-      ...STATE_ICONS.filter(Boolean).map((g) => ({ id: g, label: `${g}  ${STATE_ICON_LABELS[g] ?? g}`, mark: g })),
+      ...STATE_ICONS.filter(Boolean).map((g) => ({ id: g, label: STATE_ICON_LABELS[g] ?? g, mark: g })),
       ...flat.map((n) => ({ id: `iconly:${n}`, label: n, iconly: n })),
     ];
   }

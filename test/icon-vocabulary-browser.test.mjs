@@ -84,6 +84,54 @@ if (!chromium) {
     await page.close();
   });
 
+  test('a mark draws as a vector, at the size a flat icon draws', async () => {
+    const page = await entityPage();
+    const row = page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first();
+    // 'Later' wears '○'. Open the picker so both dialects are on screen at once.
+    const box = await page.evaluate(() => {
+      var out = {};
+      var svgs = [].slice.call(document.querySelectorAll('.wv-icon svg, .ico svg'));
+      out.count = svgs.length;
+      out.widths = svgs.map(function (s) { return Math.round(s.getBoundingClientRect().width); });
+      return out;
+    });
+    assert.ok(box.count >= 2);
+    assert.equal(new Set(box.widths).size, 1, `icons drew at ${box.widths.join(', ')}px — one scale means one width`);
+    await page.close();
+  });
+
+  test('every mark fills its canvas — none of them draws small', async () => {
+    const page = await entityPage();
+    const bad = await page.evaluate(() => {
+      // getBBox measures path geometry, so a stroked mark is painted half a
+      // stroke wider on each side than its box says.
+      var out = [];
+      var marks = window.weaveMarkIcons.MARKS;
+      var host = document.createElement('div');
+      host.style.cssText = 'position:fixed;left:0;top:0';
+      document.body.appendChild(host);
+      Object.keys(marks).forEach(function (k) {
+        var sw = /stroke-width="([\d.]+)"/.exec(marks[k]);
+        var pad = sw ? Number(sw[1]) / 2 : 0;
+        host.innerHTML = '<svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor">' + marks[k] + '</svg>';
+        var b = host.firstChild.getBBox();
+        var x0 = b.x - pad, y0 = b.y - pad, x1 = b.x + b.width + pad, y1 = b.y + b.height + pad;
+        if (x0 < -0.5 || y0 < -0.5 || x1 > 24.5 || y1 > 24.5) {
+          out.push(k + ' overflows: ' + [x0, y0, x1, y1].map(Math.round).join(','));
+        }
+        // Kyle's report was optical: a quarter-filled circle and a refresh
+        // glyph that came out visibly smaller than the marks beside them.
+        // Every mark has to span most of the canvas in its long axis.
+        var span = Math.max(x1 - x0, y1 - y0);
+        if (span < 15) out.push(k + ' spans only ' + Math.round(span) + ' of 24');
+      });
+      host.remove();
+      return out;
+    });
+    assert.deepEqual(bad, [], 'marks that overflow the canvas, or draw small inside it');
+    await page.close();
+  });
+
   test('every icon on the page is drawn to the one size scale', async () => {
     const page = await entityPage();
     const sizes = await page.evaluate(() => {

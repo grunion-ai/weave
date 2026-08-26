@@ -47,11 +47,16 @@ test('the icon vocabulary gives the value form, not just the names', () => {
   // A bare 'ticksquare' is a legal string that paints the word "ticksquare" in
   // the nav — verified live, 2026-08-24. The stored value is prefixed.
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
-  const renderer = app.slice(app.indexOf('function iconEl'), app.indexOf('function iconEl') + 400);
+  const renderer = app.slice(app.indexOf('function iconEl'), app.indexOf('function iconEl') + 900);
   assert.match(renderer, /\^iconly:/, 'the renderer takes the prefixed form');
   assert.equal(VOCABULARY.icons.form, 'iconly:<name>');
   assert.match(VOCABULARY.icons.fallback, /renders as text/, 'and says what any other string does');
   assert.ok(VOCABULARY.icons.names.includes('discovery'));
+  // Marks are the other half of the one vocabulary (Issue #87): stored as
+  // the character, drawn as a vector on the same canvas as the flat set.
+  assert.ok(VOCABULARY.icons.marks.includes('✓'));
+  assert.ok(VOCABULARY.icons.marks.includes('◔'));
+  assert.match(renderer, /weaveMarkIcons/, 'the renderer draws a mark rather than spelling it');
   // The picker writes the same form the vocabulary promises.
   // The catalogue moved into field-dialog-core with Issue #87 so one list
   // serves a table, a select option and a workflow state alike.

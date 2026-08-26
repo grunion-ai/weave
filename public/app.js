@@ -146,7 +146,7 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   });
   back.append(el('div', { id: 'tray' },
     el('div', { class: 'tray-head' }, el('h2', {}, title),
-      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: () => back.remove() }, '✕')),
+      el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: () => back.remove() }, iconEl('✕'))),
     form));
   document.body.append(back);
   addEventListener('keydown', function esc(e) {
@@ -234,7 +234,7 @@ function peekEntity(id) {
     body.append(el('div', { class: 'peek-head' },
       el('span', { style: 'flex:1' }),
       el('button', { class: 'btn btn-sm btn-ghost-secondary', onclick: () => { close(); openEntity(id); } }, 'Open'),
-      el('button', { class: 'btn btn-sm btn-ghost-secondary', title: 'Close', onclick: () => close() }, '✕')));
+      el('button', { class: 'btn btn-sm btn-ghost-secondary', title: 'Close', onclick: () => close() }, iconEl('✕'))));
     const host = el('div', { class: 'peek-entity' });
     // Any in-panel navigation (crumb, related rows, activity links) moves the
     // page underneath — the panel must not linger over it.
@@ -292,6 +292,16 @@ function inlineNameInput(placeholder, onCommit) {
    text, which keeps old emoji icons working (Feature #101). */
 function iconEl(icon, cls = 'wv-icon') {
   if (!icon) return null;
+  // A mark is stored as its character — '✓', '◔' — and drawn as a vector on
+  // the same canvas as the flat set (Issue #87). Rendered as type it took the
+  // font's optical size, so a quarter-filled circle came out visibly smaller
+  // than the tick beside it. The KEY IS THE CHARACTER: nothing migrates.
+  const mark = window.weaveMarkIcons?.markSvg(icon);
+  if (mark) {
+    const span = el('span', { class: cls });
+    span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${mark}</svg>`;
+    return span;
+  }
   const m = String(icon).match(/^iconly:(.+)$/);
   if (m && window.ICONLY_FLAT?.[m[1]]) {
     const span = el('span', { class: cls });
@@ -597,7 +607,7 @@ function expandDocument(grid, url, title, { node = null } = {}) {
       el('button', { class: 'btn btn-sm', title: 'Collapse (Esc)', onclick: collapse }, '‹ Collapse'),
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),
-      node ? null : el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, '⟳'),
+      node ? null : el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')),
       node ? null : el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, '↗')),
     node ?? frame);
   grid.classList.add('hidden');
@@ -632,12 +642,12 @@ function fullscreenViewer(title, { url = null, mount = null } = {}) {
   };
   const back = el('div', { id: 'fsv-back' },
     el('div', { class: 'fsv-bar' },
-      url ? el('button', { class: 'btn btn-sm', title: 'Back', onclick: goBack }, '‹') : null,
-      url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, '⟳') : null,
+      url ? el('button', { class: 'btn btn-sm', title: 'Back', onclick: goBack }, iconEl('‹')) : null,
+      url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')) : null,
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),
       url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, '↗') : null,
-      el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, '✕')),
+      el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, iconEl('✕'))),
     frame ?? el('div', { class: 'fsv-body' }));
   document.body.append(back);
   const onKey = (e) => { if (e.key === 'Escape') close(); };
@@ -725,7 +735,7 @@ function renderMermaidIn(container) {
       el('button', {
         class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Open as a whiteboard',
         onclick: () => openWhiteboard(pre.dataset.mmd, 'Whiteboard'),
-      }, '⛶'));
+      }, iconEl('⛶')));
     if (!pre.previousElementSibling?.classList?.contains('mmd-tools')) pre.before(holder);
   }
   mermaidLoading.then(() => window.mermaid?.run({ nodes }));
@@ -892,6 +902,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
       el('span', { class: 'picker-num' }, i < 9 ? String(i + 1) : ''),
       o.chip ? el('span', { class: o.cls ?? 'k k-multi hue-slate' }, o.label)
         : o.iconly ? el('span', { class: 'picker-label picker-iconly' }, iconEl(`iconly:${o.iconly}`), o.label)
+        : o.mark ? el('span', { class: 'picker-label picker-iconly' }, iconEl(o.mark), o.label)
         : el('span', { class: 'picker-label' }, o.label),
       o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
       (multi ? false : o.id === currentId) ? el('span', { class: 'chip-pop-check' }, '✓') : null)));
@@ -2367,8 +2378,8 @@ function datePopover({ anchor, value, time, format, onPick }) {
       body.append(el('div', { class: 'date-pop-head' },
         el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'days'; draw(); } }, `${y}`),
         el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, '↑'),
-        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y++; draw(); } }, '↓')));
+        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, iconEl('↑')),
+        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y++; draw(); } }, iconEl('↓'))));
       body.append(el('div', { class: 'date-pick-grid' }, ...dc.MONTHS.map((name, i) => el('button', {
         type: 'button', class: 'date-pick-cell' + (i + 1 === m ? ' sel' : ''),
         onclick: () => { m = i + 1; view = 'days'; draw(); },
@@ -2378,8 +2389,8 @@ function datePopover({ anchor, value, time, format, onPick }) {
       body.append(el('div', { class: 'date-pop-head' },
         el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'days'; draw(); } }, `${years[0]}–${years[years.length - 1]}`),
         el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase -= 10; draw(); } }, '↑'),
-        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase += 10; draw(); } }, '↓')));
+        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase -= 10; draw(); } }, iconEl('↑')),
+        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase += 10; draw(); } }, iconEl('↓'))));
       body.append(el('div', { class: 'date-pick-grid' }, ...years.map((yr) => el('button', {
         type: 'button', class: 'date-pick-cell' + (yr === y ? ' sel' : ''),
         onclick: () => { y = yr; view = 'months'; draw(); },
@@ -4171,11 +4182,11 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         el('span', {
           class: 'doc-anchor', title: 'Expand',
           onclick: () => expandDocument(grid, `${fmtBase}.html`, f.name, isApp ? {} : { node: host }),
-        }, '⛶'),
+        }, iconEl('⛶')),
         el('span', {
           class: 'doc-anchor permalink-copy', title: 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
-        }, '⧉'),
+        }, iconEl('⧉')),
         status, dl),
       body);
 
@@ -4336,12 +4347,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       el('div', { class: 'doc-section-head' },
         caret,
         el('span', { class: 'doc-section-name' }, label),
-        el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, '⟳'),
-        el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, '⛶'),
+        el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, iconEl('⟳')),
+        el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, iconEl('⛶')),
         el('span', {
           class: 'doc-anchor permalink-copy', title: 'Copy link to this deck',
           onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
-        }, '⧉'),
+        }, iconEl('⧉')),
         menu),
       body);
     left.prepend(section);
@@ -4812,7 +4823,7 @@ function resultRow(hit, onPick) {
           e.stopPropagation();
           copyText(permalink, 'Permalink copied');
         },
-      }, '⧉')),
+      }, iconEl('⧉'))),
     el('div', { class: 'snip mono' }, permalink),
     hit.snippet ? el('div', { class: 'snip' }, hit.snippet) : null);
 }
@@ -5190,7 +5201,7 @@ function wireThemeToggle() {
     document.documentElement.dataset.bsTheme = resolved;
     if (pref === 'auto') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = pref;
-    btn.textContent = icons[pref];
+    btn.replaceChildren(iconEl(icons[pref]) ?? icons[pref]);
     btn.title = `Theme: ${pref} (click to switch)`;
     retheme(); // live document editors follow the page, not their birth theme
   };
