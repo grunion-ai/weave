@@ -317,9 +317,9 @@ export function renderDocumentPage({ title, subtitle = '', markdown, resolveMent
 <title>${escapeHtml(title)}</title>
 <link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg">
 <style>
-:root { --fg: #1a1d23; --muted: #6b7280; --line: #e5e7eb; --accent: #4f46e5; --bg: #ffffff; --soft: #f6f7f9; }
+:root { --fg: #1a1d23; --muted: #6b7280; --line: #e5e7eb; --accent: #4f46e5; --bg: #ffffff; --soft: #f6f7f9; --code-bg: #ffffff; }
 @media (prefers-color-scheme: dark) {
-  :root { --fg: #e5e7eb; --muted: #9ca3af; --line: #30343c; --accent: #818cf8; --bg: #111318; --soft: #1a1d23; }
+  :root { --fg: #e5e7eb; --muted: #9ca3af; --line: #30343c; --accent: #818cf8; --bg: #111318; --soft: #1a1d23; --code-bg: #0d1117; }
 }
 * { box-sizing: border-box; }
 body { margin: 0 auto; max-width: 760px; padding: 48px 24px; background: var(--bg); color: var(--fg);
@@ -339,7 +339,12 @@ a.mention { background: var(--soft); border: 1px solid var(--line); border-radiu
 .mention-space::before { content: "◇"; }
 .mention-workspace::before { content: "⬡"; }
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-pre { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; position: relative; }
+/* A code block sits on the ground its palette was drawn for — white for
+   github, #0d1117 for github-dark — because a token colour answers to the
+   surface under it, not to the theme around it (Issue #81). On --soft's grey
+   the github keyword red measured 4.27:1, under AA by a hair. The border is
+   what makes the block a block when the slab matches the page. */
+pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; position: relative; }
 pre code { background: none; padding: 0; }
 /* hljs contributes token colours only; the block chrome (background, border,
    padding, copy button) stays the page's own. */

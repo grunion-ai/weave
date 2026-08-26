@@ -3293,7 +3293,13 @@ function escapeHtmlText(text) {
 // document sitting inside a dark page.
 function vditorTheme() {
   const dark = document.documentElement.dataset.bsTheme === 'dark';
-  return { ui: dark ? 'dark' : 'classic', content: dark ? 'dark' : 'light', hljs: dark ? 'github-dark' : 'github' };
+  /* The hljs palette does NOT follow the page: weave paints the code slab dark
+     in both themes (Issue #36 — "the slab is the slab, the ink is light"), so
+     the tokens have to be built for a dark ground either way. Following the
+     page put github's white-page palette on a near-black slab in light theme
+     and #6f42c1 landed at 2.7:1 (Issue #81). A palette answers to the surface
+     under it, not to the theme around it. */
+  return { ui: dark ? 'dark' : 'classic', content: dark ? 'dark' : 'light', hljs: 'github-dark' };
 }
 
 /* Every `new Vditor` appends another copy of the hidden 53-symbol icon

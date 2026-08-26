@@ -46,6 +46,38 @@ if (!chromium) {
     return page;
   }
 
+  /* The worst-contrasting token in a code block, measured against the slab it
+     actually sits on and on the colours the browser actually paints — a
+     stylesheet can be loaded and still lose to another one. WCAG relative
+     luminance; 4.5:1 is AA for text this size. */
+  const worstTokenContrast = (page, selector) => page.evaluate((sel) => {
+    const lum = (c) => {
+      const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map((n) => {
+        const v = Number(n) / 255;
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const ratio = (a, b) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    const code = document.querySelector(sel);
+    // The slab is whichever ancestor paints — <pre> here, the page elsewhere.
+    let bg = 'rgb(255, 255, 255)';
+    for (let n = code; n; n = n.parentElement) {
+      const c = getComputedStyle(n).backgroundColor;
+      if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) { bg = c; break; }
+    }
+    let worst = { ratio: Infinity, token: 'none', color: '', bg };
+    for (const span of code.querySelectorAll('span[class^="hljs-"]')) {
+      const color = getComputedStyle(span).color;
+      const r = ratio(color, bg);
+      if (r < worst.ratio) worst = { ratio: r, token: span.className, color, bg };
+    }
+    return worst;
+  }, selector);
+
   /* ---------- Issue #35: syntax highlighting ---------- */
 
   test('a ```js block tokenizes in the IR editor preview', async () => {
@@ -65,6 +97,31 @@ if (!chromium) {
       assert.ok(r.spans >= 3, `expected token spans, got ${r.spans}`);
       assert.ok(r.keyword, 'const/function must tokenize as keywords');
       assert.ok(r.visible, 'the highlighted preview must be the visible copy at rest');
+    } finally { await page.close(); }
+  });
+
+  /* Issue #81, Kyle 2026-08-26: "code blocks are colored poorly". weave paints
+     the code slab dark in BOTH themes (Issue #36 settled that), so a token
+     palette built for a white page cannot carry on it: measured live in light
+     theme, `.hljs-title.function_` was #6f42c1 on #111827 — 2.75:1, against
+     4.5:1 for readable text. Whatever palette is loaded, every token has to
+     clear AA against the slab it actually lands on, in either theme. */
+  test('every code token clears 4.5:1 against the slab it lands on, in both themes', async () => {
+    const id = entityWithDoc('Contrast', '```js\nconst pick = vis[state.active] ?? (state.query.trim() ? vis[0] : null);\nfunction toggle(state, option) { return { ...state, active: -1 }; }\n```\n');
+    const page = await openEntity(id);
+    try {
+      await page.waitForFunction(() =>
+        document.querySelector('.vditor-ir__preview code.hljs')?.querySelectorAll('span').length > 2);
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate((want) => {
+          const btn = document.querySelector('#theme-toggle');
+          for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== want; i++) btn.click();
+        }, theme);
+        await page.waitForTimeout(120); // setTheme swaps the hljs stylesheet
+        const worst = await worstTokenContrast(page, '.vditor-ir__preview code.hljs');
+        assert.ok(worst.ratio >= 4.5,
+          `${theme}: ${worst.token} is ${worst.color} on ${worst.bg} — ${worst.ratio.toFixed(2)}:1`);
+      }
     } finally { await page.close(); }
   });
 
@@ -375,6 +432,17 @@ if (!chromium) {
       const spans = await page.evaluate(() =>
         document.querySelector('pre > code.hljs').querySelectorAll('span').length);
       assert.ok(spans >= 2, `expected token spans on the rendered page, got ${spans}`);
+      /* This page carries its own chrome — a light slab in light, dark in dark
+         — and switches the hljs stylesheet on prefers-color-scheme to match.
+         Same rule as the editor (Issue #81), read against a different surface:
+         the tokens answer to the slab, whichever way that slab goes. */
+      for (const colorScheme of ['light', 'dark']) {
+        await page.emulateMedia({ colorScheme });
+        await page.waitForTimeout(80);
+        const worst = await worstTokenContrast(page, 'pre > code.hljs');
+        assert.ok(worst.ratio >= 4.5,
+          `${colorScheme}: ${worst.token} is ${worst.color} on ${worst.bg} — ${worst.ratio.toFixed(2)}:1`);
+      }
     } finally { await page.close(); }
   });
 }
