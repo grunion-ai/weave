@@ -74,6 +74,18 @@ if (!chromium) {
     assert.deepEqual(row.inputs, ['Aug 1, 2026', 'Sep 15, 2026']);
   });
 
+  test('the activity feed says which dates changed, not [object Object]', async () => {
+    const id = freshSprint({ Window: { start: '2026-08-01', end: '2026-09-15' } });
+    weave.updateEntity(id, { Window: { start: '2026-08-03', end: '2026-09-15' } });
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.activity-item', { state: 'attached' });
+    const leaks = await page.locator('text=[object Object]').count();
+    assert.equal(leaks, 0, 'the history painted the stored object');
+    assert.match(await page.locator('.activity-item').first().textContent(), /2026-08-03/);
+    await page.close();
+  });
+
   test('typing both ends commits one range; a half-written range commits nothing', async () => {
     const id = freshSprint({});
     const page = await browser.newPage();

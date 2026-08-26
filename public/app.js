@@ -4562,7 +4562,18 @@ function activitySummary(a) {
   }
 }
 
-const fmtValue = (v) => (v == null || v === '' ? '—' : Array.isArray(v) ? v.join(', ') : String(v));
+/* A history line has to name what changed. `String(v)` on a stored object
+   printed '[object Object]' — a date range is the shape that hits it, and any
+   other object would have too (Issue #91). */
+const fmtValue = (v) => {
+  if (v == null || v === '') return '—';
+  if (Array.isArray(v)) return v.join(', ');
+  if (typeof v === 'object') {
+    if ('start' in v || 'end' in v) return weaveDateCore.formatDateRange(v, {});
+    return v.name ?? JSON.stringify(v);
+  }
+  return String(v);
+};
 
 /* `#/activity` is the whole table; `#/activity/<entityId>` narrows it to one
    entity; `#/activity/<entityId>:<n>` is one event's own page. */
