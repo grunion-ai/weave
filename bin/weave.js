@@ -2,7 +2,7 @@
 // Weave CLI — full workspace access from the terminal (and for agents).
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -74,7 +74,9 @@ const HELP = `weave — local, open-source, agent-accessible work platform
 Usage: weave <command> [args] [--data path]
 
 Server
-  serve [--port 4400]                 Start the web app + REST API
+  serve [--port 4400] [--host 127.0.0.1]
+                                      Start the web app + REST API
+                                      (--host 0.0.0.0 exposes it to this network)
   mcp                                 Start the MCP stdio server (for agents)
 
 Service (macOS launchd — auto-start on login, restart on crash)
@@ -191,9 +193,17 @@ async function main() {
       }
     }
     const port = Number(flags.port ?? process.env.PORT ?? 4400);
-    const { port: actual } = await startServer(w, { port });
-    console.log(`Weave running at http://127.0.0.1:${actual}  (workspace: ${w.state.meta.name}, data: ${dataPath})`);
-    console.log(`Docs workspace: http://127.0.0.1:${actual}/w/weave/`);
+    // Loopback unless asked otherwise. --host 0.0.0.0 puts every workspace on
+    // the local network with no authentication in front of /api/*; it exists
+    // so a phone on the same wifi can reach the task applet, and it should be
+    // turned off again when it is not needed.
+    const host = String(flags.host ?? process.env.WEAVE_HOST ?? '127.0.0.1');
+    const { port: actual } = await startServer(w, { port, host });
+    const wide = host === '0.0.0.0' || host === '::';
+    const shown = wide ? hostname() : host;
+    console.log(`Weave running at http://${shown}:${actual}  (workspace: ${w.state.meta.name}, data: ${dataPath})`);
+    if (wide) console.log(`Bound to ${host} — every workspace on this network can reach it.`);
+    console.log(`Docs workspace: http://${shown}:${actual}/w/weave/`);
     return;
   }
   if (command === 'mcp') {

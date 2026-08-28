@@ -5,6 +5,7 @@
 // The adapter owns transport: reading the body stream, writing the response,
 // and static assets (node reads public/; Workers bind Static Assets).
 import { WeaveError } from './engine.js';
+import { handleApplet } from './applet.js';
 import { VOCABULARY } from './vocabulary.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
@@ -90,6 +91,29 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }</tbody></table>`;
         return out(200, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(resolved.name)}</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:960px;margin:2rem auto;padding:0 16px;color:#1a1d21}table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0 0 24px}th,td{border:1px solid #d9dde3;padding:5px 9px;text-align:left}th{background:#f4f6f8}h1{font-size:22px}h2{font-size:15px;margin:20px 0 6px}footer{color:#6b7280;font-size:12px;margin-top:32px}</style><h1>${esc(resolved.name)}</h1>${resolved.blocks.map(block).join('')}<footer>Shared read-only from a weave workspace.</footer>`,
           { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      }
+    }
+
+    // The task applet (mobile, passcode-gated). Like a share link it carries
+    // its own authorization, so it sits ahead of the auth wall — and it is
+    // generated here rather than dropped in public/, which the Cloudflare
+    // assets binding would serve before this dispatcher ever runs.
+    if (path === '/t' || path.startsWith('/t/')) {
+      const appletBody = ['POST', 'PUT', 'PATCH'].includes(rx.method) ? await rx.readBody().catch(() => ({})) : {};
+      try {
+        const hit = handleApplet({
+          weave,
+          rx: { method: rx.method, header: (n) => rx.header(n), searchParams: rx.searchParams, body: appletBody },
+          path,
+          out,
+          mount: `${wsPrefix}/t`,
+        });
+        if (hit) return hit;
+      } catch (err) {
+        // The applet sits ahead of the dispatcher's own try/catch; without
+        // this a throw here would leave the phone waiting forever.
+        return out(err instanceof WeaveError && err.code === 'not-found' ? 404 : 500,
+          { error: err.message, code: err.code ?? 'error' });
       }
     }
 
