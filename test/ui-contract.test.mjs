@@ -1168,11 +1168,12 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
     'a field drop is a fieldOrder write through the one reorder function');
   assert.match(body, /reorderBlocks\(db, left, refresh\)/, 'a block drop is a bodyOrder write');
 
-  /* Direction is read from the live DOM. Taken from the list captured at
-     draw time, a second drag was judged against an order that no longer
-     existed and dropped the field where it already sat. */
+  /* Direction: a field drop reads the pointer's height against the row's
+     midpoint — the cue line and the landing side are the same fact (Kyle,
+     2026-08-28). A block drop still reads the live DOM order. */
+  assert.match(body, /e\.clientY > r\.top \+ r\.height \/ 2/, 'a field drop lands on the side the pointer picked');
   const live = /compareDocumentPosition\(node\) & Node\.DOCUMENT_POSITION_FOLLOWING/g;
-  assert.equal((body.match(live) ?? []).length, 2, 'both drags read their direction from where things sit now');
+  assert.equal((body.match(live) ?? []).length, 1, 'a block drag reads its direction from where blocks sit now');
 
   assert.match(body, /const anchor = \(what\) => el\('span', \{ class: 'opt-grip', draggable: 'true'/,
     'the anchor is a ⠿ that is itself draggable — the thing you grab is the thing that moves');
@@ -1197,7 +1198,8 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
   assert.match(body, /class: 'doc-section-head', draggable: 'true'/, 'and is dragged by its head');
   assert.match(body, /const dragRow = \(node, handle, f\)/, 'one drag wiring serves the value rows');
   assert.match(CSS, /\.entity-fields \.fieldrow\.dragging/, 'a dragged row is ghosted');
-  assert.match(CSS, /\.entity-fields \.fieldrow\.drop-target/, 'and the drop target is marked');
+  assert.match(CSS, /\.entity-fields \.fieldrow\.drop-before/, 'the insertion line above is marked');
+  assert.match(CSS, /\.entity-fields \.fieldrow\.drop-after/, 'and below');
   assert.match(CSS, /\.entity-body > \[data-block\]\.drop-target/, 'a block too');
 
   // The label is the field: clicking it opens the same tray the table's

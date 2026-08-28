@@ -4793,27 +4793,34 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     return node;
   };
 
+  /* One line, not a tinted row: the cue is the gap the field will land in,
+     and the pointer's height against the row's midpoint picks the side —
+     top half inserts before, bottom half after (Kyle, 2026-08-28: the
+     highlighted row read as a swap, and the DOM-order direction left gaps
+     the pointer could not reach). */
+  const sweepCues = () => {
+    for (const n of values.querySelectorAll('.drop-before, .drop-after')) n.classList.remove('drop-before', 'drop-after');
+  };
   const dragRow = (node, handle, f) => {
     node.dataset.field = f.name;
     handle.addEventListener('dragstart', (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; node.classList.add('dragging'); });
-    handle.addEventListener('dragend', () => { dragFrom = null; node.classList.remove('dragging'); });
+    handle.addEventListener('dragend', () => { dragFrom = null; node.classList.remove('dragging'); sweepCues(); });
     node.addEventListener('dragover', (e) => {
       if (!dragFrom || dragFrom === f.name) return;
-      e.preventDefault(); e.stopPropagation(); node.classList.add('drop-target');
+      e.preventDefault(); e.stopPropagation();
+      const r = node.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height / 2;
+      node.classList.toggle('drop-after', after);
+      node.classList.toggle('drop-before', !after);
     });
-    node.addEventListener('dragleave', () => node.classList.remove('drop-target'));
+    node.addEventListener('dragleave', () => node.classList.remove('drop-before', 'drop-after'));
     node.addEventListener('drop', (e) => {
-      node.classList.remove('drop-target');
+      const after = node.classList.contains('drop-after');
+      sweepCues();
       const from = dragFrom; dragFrom = null;
       if (!from || from === f.name) return;
       e.preventDefault(); e.stopPropagation();
       const fromNode = values.querySelector(`[data-field="${CSS.escape(from)}"]`);
-      /* Direction comes from where the two rows sit NOW, not from the list
-         captured when the page was drawn. With the stale list, dragging a
-         field back over the one it had just passed computed "after" from an
-         order that no longer existed and dropped it where it already was —
-         a drag that read as dead rather than wrong. */
-      const after = !!(fromNode && (fromNode.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING));
       if (fromNode) node.insertAdjacentElement(after ? 'afterend' : 'beforebegin', fromNode);
       reorderField(db, from, f.name, { after, onFail: refresh });
     });
@@ -4824,8 +4831,32 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     return node;
   };
 
+  /* The space under a column's last row belongs to the container, not to any
+     row — without its own target, the bottom of the list is a gap the drag
+     cannot reach. Dropping there lands the field after the last row. */
+  values.addEventListener('dragover', (e) => {
+    if (!dragFrom || e.target !== values) return;
+    e.preventDefault();
+    sweepCues();
+    const last = values.lastElementChild;
+    if (last && last.dataset.field !== dragFrom) last.classList.add('drop-after');
+  });
+  values.addEventListener('drop', (e) => {
+    if (!dragFrom || e.target !== values) return;
+    e.preventDefault();
+    sweepCues();
+    const from = dragFrom; dragFrom = null;
+    const last = values.lastElementChild;
+    if (!last || last.dataset.field === from) return;
+    const fromNode = values.querySelector(`[data-field="${CSS.escape(from)}"]`);
+    if (fromNode) last.insertAdjacentElement('afterend', fromNode);
+    reorderField(db, from, last.dataset.field, { after: true, onFail: refresh });
+  });
+
   for (const f of shown) {
-    if (f.type === 'relation' && f.many) continue;   // a related table is its own block, below
+    // A related table is its own block, below — but a target-set relation has
+    // no one table to render as a grid, so its chips stay here in the panel.
+    if (f.type === 'relation' && f.many && !f.targetDbIds) continue;
     if (f.type === 'document') {
       const section = docSection(f);
       wireBlock(f.name, section, [section.querySelector('.opt-grip'), section.querySelector('.doc-section-head')]);

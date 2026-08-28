@@ -29,7 +29,15 @@ if (!chromium) {
 
   const VALUES = ['Vendor', 'Batch', 'Price', 'Weight', 'Stage', 'Notes'];
   const trackCount = (page) => page.$eval('.entity-values',
-    (n) => getComputedStyle(n).gridTemplateColumns.trim().split(/\s+/).length);
+    (n) => Number(getComputedStyle(n).columnCount) || 1);
+  /* Which column each field sits in, read off the page: rows sharing a left
+     edge share a column. */
+  const columnsOf = (page) => page.$$eval('.entity-values [data-field]', (ns) => {
+    const lefts = [...new Set(ns.map((n) => Math.round(n.getBoundingClientRect().left)))].sort((a, b) => a - b);
+    const cols = lefts.map(() => []);
+    for (const n of ns) cols[lefts.indexOf(Math.round(n.getBoundingClientRect().left))].push(n.dataset.field);
+    return cols;
+  });
 
   test.before(async () => {
     weave = new Weave();
@@ -73,15 +81,19 @@ if (!chromium) {
     return page;
   };
   const order = (page) => page.$$eval('.entity-values [data-field]', (ns) => ns.map((n) => n.dataset.field));
-  const drag = (page, from, onto) => page.evaluate(([f, t]) => {
+  /* The pointer's height on the target row decides the side: above the
+     midpoint inserts before, below it inserts after. */
+  const drag = (page, from, onto, side = 'above') => page.evaluate(([f, t, s]) => {
     const dt = new DataTransfer();
     const a = document.querySelector(`[data-field="${f}"]`);
     const b = document.querySelector(`[data-field="${t}"]`);
+    const r = b.getBoundingClientRect();
+    const clientY = s === 'below' ? r.bottom - 2 : r.top + 2;
     a.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-    b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
-    b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientY }));
+    b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientY }));
     a.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
-  }, [from, onto]);
+  }, [from, onto, side]);
 
   test('value fields flow into columns; documents keep the full width', async () => {
     const page = await openEntity(fresh());
@@ -140,13 +152,17 @@ if (!chromium) {
     }
   });
 
-  test('reading order is the fieldOrder, left to right then down', async () => {
+  test('reading order is the fieldOrder, down each column then across', async () => {
+    /* Column-major, not row-major: a field's neighbours in the order are the
+       fields above and below it, so a reorder ripples only at the column
+       boundary instead of reshuffling every later field across columns. */
     const page = await openEntity(fresh());
     assert.deepEqual(await order(page), VALUES);
-    const tops = await page.$$eval('.entity-values [data-field]', (ns) =>
-      ns.map((n) => Math.round(n.getBoundingClientRect().top)));
-    assert.equal(tops[0], tops[1], 'the first two fields share a row');
-    assert.ok(tops[2] > tops[0], 'the third field starts the next row');
+    const cols = await columnsOf(page);
+    assert.equal(cols.length, 2, 'a 1280px window carries two columns');
+    assert.deepEqual(cols.flat(), VALUES, 'columns read top to bottom, left to right');
+    assert.deepEqual(cols[0], VALUES.slice(0, cols[0].length),
+      'the first column is a prefix of the fieldOrder — the order flows down, not across');
     await page.close();
   });
 
@@ -209,7 +225,7 @@ if (!chromium) {
        the row it was dropped on, wherever that row happens to sit. */
     const page = await openEntity(ownTable().id, 1800);
     assert.equal(await trackCount(page), 3);
-    await drag(page, 'Vendor', 'Stage');
+    await drag(page, 'Vendor', 'Stage', 'below');
     await page.waitForFunction(() => document.querySelector('.entity-values [data-field]').dataset.field === 'Batch',
       null, { timeout: 4000 });
     assert.deepEqual(await order(page), ['Batch', 'Price', 'Weight', 'Stage', 'Vendor', 'Notes'],
@@ -217,48 +233,57 @@ if (!chromium) {
     await page.close();
   });
 
-  test('the drop cue is one line on the edge the field will land against', async () => {
-    /* A tinted cell said "this row". The reader needs "this gap", so the cue
-       is the same 2px inset line the grid header draws for a column drop —
-       and it sits on the side the field will land on. */
+  test('the drop cue is a horizontal line on the side the field will land', async () => {
+    /* A tinted cell said "this row"; a swap highlight said "we trade". The
+       reader needs "this gap": one line above or below the row under the
+       pointer, picked by where the pointer sits against the row's midpoint. */
     const page = await openEntity(ownTable().id, 1800);
     const cue = await page.evaluate(() => {
       const dt = new DataTransfer();
       const from = document.querySelector('[data-field="Vendor"]');
       const onto = document.querySelector('[data-field="Stage"]');
-      const before = getComputedStyle(onto).backgroundColor;
+      const fill = getComputedStyle(onto).backgroundColor;
+      const r = onto.getBoundingClientRect();
+      const at = (clientY) => {
+        onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientY }));
+        const cs = getComputedStyle(onto);
+        return {
+          before: onto.classList.contains('drop-before'), after: onto.classList.contains('drop-after'),
+          top: cs.borderTopColor, bottom: cs.borderBottomColor, fill: cs.backgroundColor,
+        };
+      };
       from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-      onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
-      const cs = getComputedStyle(onto);
-      return { shadow: cs.boxShadow, fill: cs.backgroundColor, before, marked: onto.classList.contains('drop-target') };
+      const idle = getComputedStyle(onto).borderTopColor;
+      const above = at(r.top + 2);
+      const below = at(r.bottom - 2);
+      from.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
+      const swept = onto.classList.contains('drop-before') || onto.classList.contains('drop-after');
+      return { idle, fill, above, below, swept };
     });
-    assert.ok(cue.marked, 'the row under the pointer is the drop target');
-    assert.equal(cue.fill, cue.before, 'the cue does not fill the cell');
-    assert.notEqual(cue.shadow, 'none', 'the cue is drawn');
-    const [, , x, y] = cue.shadow.match(/(rgba?\([^)]+\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px/) ?? [];
-    assert.ok(Math.abs(Number(x)) >= 2 && Number(y) === 0,
-      `in columns the gap is a vertical edge, got "${cue.shadow}"`);
+    assert.ok(cue.above.before && !cue.above.after, 'above the midpoint the cue sits on top');
+    assert.ok(cue.below.after && !cue.below.before, 'below the midpoint it moves to the bottom');
+    assert.notEqual(cue.above.top, cue.idle, 'the top line is drawn');
+    assert.notEqual(cue.below.bottom, cue.idle, 'the bottom line is drawn');
+    assert.equal(cue.above.fill, cue.fill, 'the cue does not fill the cell');
+    assert.ok(!cue.swept, 'dragend clears every cue');
     await page.close();
   });
 
-  test('a short row keeps the baseline of the tall row beside it', async () => {
-    /* A date pair is taller than a line of text. With the cells top-aligned,
-       the short label floated above its neighbour and every second row read
-       as crooked — the grid has to stretch its cells so both rows centre. */
-    const dated = weave.createTable({ space: 'Showcase', name: 'Dated' });
-    weave.addField(dated, { name: 'Vendor', type: 'text' });
-    weave.addField(dated, { name: 'Due', type: 'date' });
-    weave.addField(dated, { name: 'Batch', type: 'text' });
-    weave.addField(dated, { name: 'Start', type: 'date' });
-    const id = weave.createEntity(dated, { name: 'Lot 4', values: { Vendor: 'Nordic', Due: '2026-09-15' } }).id;
+  test('a move inside one column leaves the other column alone', async () => {
+    /* The point of column-major flow: a field's column is stable under
+       reorders that stay in the column, because only the boundary between
+       columns can move — nothing reshuffles across the page. */
+    const { id } = ownTable();
     const page = await openEntity(id);
-    const drift = await page.$$eval('.entity-values .fieldrow label', (ls) => {
-      const tops = ls.map((l) => l.getBoundingClientRect().top);
-      const out = [];
-      for (let i = 0; i + 1 < tops.length; i += 2) out.push(Math.abs(tops[i] - tops[i + 1]));
-      return out;
-    });
-    for (const d of drift) assert.ok(d <= 1, `labels in a row must share a baseline, off by ${d}px`);
+    const before = await columnsOf(page);
+    assert.equal(before.length, 2);
+    const [top, next] = before[0];
+    await drag(page, next, top, 'above');
+    await page.waitForFunction((f) =>
+      document.querySelector('.entity-values [data-field]').dataset.field === f, next, { timeout: 4000 });
+    const after = await columnsOf(page);
+    assert.deepEqual(after[1], before[1], 'the second column never moved');
+    assert.deepEqual(after[0].slice(0, 2), [next, top], 'the two rows traded places in their own column');
     await page.close();
   });
 

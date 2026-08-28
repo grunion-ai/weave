@@ -704,16 +704,19 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    does not have. Both thresholds are measured, not chosen: 820px is where a
    150px label and a value still fit two tracks, and 1220px is where three
    tracks still hold the widest chip on the page — the masked key, which
-   wants 205px and clips by 3px at 1180. A date range is the one editor with
-   a floor no ellipsis can argue with, so at three columns it takes two. */
-.entity-values { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 26px; }
+   wants 205px and clips by 3px at 1180. */
+.entity-values { column-gap: 26px; }
+/* Column-major: the order flows DOWN a column before it moves to the next,
+   so a field keeps its column under any reorder that stays inside it — only
+   the boundary row can change columns. Multicol gives that for free where
+   the old grid's row-major auto-flow reshuffled every later field. */
+.entity-values .fieldrow { break-inside: avoid; margin-bottom: 2px; }
 @container entity-body (min-width: 820px) {
-  .entity-values { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .entity-values { column-count: 2; }
 }
 @container entity-body (min-width: 1220px) {
-  .entity-values { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 20px; }
+  .entity-values { column-count: 3; column-gap: 20px; }
   .entity-values .fieldrow { grid-template-columns: 16px 118px minmax(0, 1fr); }
-  .entity-values .fieldrow[data-wide] { grid-column: span 2; }
 }
 .entity-fields .fieldrow { max-width: 720px; }
 .entity-body > .doc-section { margin: 10px 0 18px; }
@@ -751,17 +754,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-body > .attach-block label { color: var(--tblr-secondary); font-size: 13px; }
 @media (max-width: 600px) { .entity-body > .attach-block { grid-template-columns: 16px 110px minmax(0, 1fr); } }
 
-/* The insertion cue is ONE line, on the edge the field will land against —
-   the same 2px inset the grid header draws for a column drop. A tinted cell
-   said "this row"; the reader needs "this gap" (Kyle, 2026-08-26). Stacked,
-   the gap is horizontal; in columns the fields flow left to right, so the
-   gap is a vertical edge. */
-.entity-fields .fieldrow.drop-target { box-shadow: inset 0 2px 0 var(--tblr-primary); }
-.entity-fields .fieldrow.dragging ~ .fieldrow.drop-target { box-shadow: inset 0 -2px 0 var(--tblr-primary); }
-@container entity-body (min-width: 820px) {
-  .entity-values .fieldrow.drop-target { box-shadow: inset 2px 0 0 var(--tblr-primary); }
-  .entity-values .fieldrow.dragging ~ .fieldrow.drop-target { box-shadow: inset -2px 0 0 var(--tblr-primary); }
-}
+/* The insertion cue is ONE horizontal line in the gap the field will land
+   in — above or below the row under the pointer, picked by the pointer's
+   height against the row's midpoint (Kyle, 2026-08-28: a highlighted row
+   read as a swap). The fields flow down their columns, so the gap is always
+   horizontal; the rows already wear 2px transparent borders to light up. */
+.entity-fields .fieldrow.drop-before { border-top-color: var(--tblr-primary); }
+.entity-fields .fieldrow.drop-after { border-bottom-color: var(--tblr-primary); }
 @media (max-width: 600px) { .entity-fields .fieldrow { grid-template-columns: 16px 110px minmax(0, 1fr); } }
 .doc-toolbar { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
 .comment { border-top: 1px solid var(--tblr-border-color); padding: 8px 0; }
