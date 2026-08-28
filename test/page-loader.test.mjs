@@ -48,18 +48,19 @@ test('a fast route never pays for the loader', () => {
   assert.match(APP, /if \(loading\.showTimer\) \{[\s\S]*?clearTimeout\(loading\.showTimer\)/);
 });
 
-test('the rope is reserved for full page loads; hash routes ride the skeleton', () => {
-  // Feature #148: the API answers in milliseconds, so an in-app nav that
-  // showed the rope paid the full-cycle rule (up to ~2.2s) for a wait that
-  // wasn't there — and the wash hid the skeleton it painted over. The rope
-  // now only covers boot, which is also every workspace switch, since those
-  // are full page navigations to /w/<id>/.
-  assert.match(APP, /function route\(\) \{\s*return renderRoute\(\);/);
-  assert.doesNotMatch(APP, /withPageLoader\(renderRoute\)/,
-    'a hash route must never enter the loader — the skeleton is its cover');
+test('the rope waits 500ms; the skeleton covers everything shorter', () => {
+  // Feature #148 (Kyle, 2026-08-28): the rope is for loads genuinely
+  // expected to run long — longer than 500ms. Every route still goes
+  // through the loader so a slow one earns the rope, but the API answers
+  // in milliseconds, so routine navs finish on the skeleton alone. At the
+  // old 200ms threshold the full-cycle rule WAS the wait: navs paid up to
+  // ~2.2s for fetches a tenth that long.
+  assert.match(APP, /function route\(\) \{\s*return withPageLoader\(renderRoute\);/);
   assert.match(APP, /window\.addEventListener\('hashchange', route\)/);
   assert.match(APP, /withPageLoader\(\(\) => loadSchema\(\)\.then\(renderRoute\)\)/);
-  // Overlapping boots must not let the first one to finish hide the loader.
+  const after = Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]);
+  assert.equal(after, 500, 'the rope belongs to loads longer than 500ms');
+  // Overlapping routes must not let the first one to finish hide the loader.
   assert.match(APP, /if \(loading\.depth > 0\) return;/);
 });
 

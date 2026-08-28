@@ -5470,9 +5470,13 @@ document.addEventListener('keydown', (e) => {
 
 /* ---------- page loader ---------- */
 
-/* The weave-on rope (brand decision 7) covers FULL page loads: boot, which
-   is also every workspace switch, since those navigate to /w/<id>/. Hash
-   routes never enter it (Feature #148) — their cover is the skeleton.
+/* The weave-on rope (brand decision 7) covers any load expected to run
+   long: it appears only once a wait passes LOADER_SHOW_AFTER_MS (500ms —
+   Kyle, 2026-08-28). Hash routes paint their skeleton instantly and almost
+   always finish well inside the threshold (the API answers in single-digit
+   ms), so in practice the rope belongs to boot — which is also every
+   workspace switch, since those navigate to /w/<id>/ — and to the rare
+   genuinely slow route (Feature #148).
 
    Two rules, and they pull against each other:
    - It must not tax fast navigation, so it only appears once a wait passes
@@ -5487,7 +5491,7 @@ document.addEventListener('keydown', (e) => {
    makes "one whole cycle" true rather than approximately true — an <img>
    timeline free-runs from page load, so it would be at an arbitrary phase. */
 const LOADER_CYCLE_MS = 2000; // must match LOADER_CYCLE_MS in brand/build-logos.mjs
-const LOADER_SHOW_AFTER_MS = 200;
+const LOADER_SHOW_AFTER_MS = 500;
 const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, ready: false };
 
 async function initPageLoader() {
@@ -5609,13 +5613,13 @@ function renderRoute() {
   return showHome();
 }
 
-// Hash routes ride the skeleton alone (Feature #148): the API answers in
-// milliseconds, so the rope's full-cycle rule was the wait, not the cover
-// for one — and its wash hid the skeleton. The rope now belongs to full
-// page loads only: boot, which is also every workspace switch, since those
-// navigate to /w/<id>/.
+// Every route change may earn the rope, but only past LOADER_SHOW_AFTER_MS
+// (500ms): the skeleton covers the wait until a load proves it is genuinely
+// long (Feature #148). At the old 200ms threshold the full-cycle rule WAS
+// the wait — routine navs paid up to ~2.2s for fetches that took a quarter
+// of that.
 function route() {
-  return renderRoute();
+  return withPageLoader(renderRoute);
 }
 
 window.addEventListener('hashchange', route);
