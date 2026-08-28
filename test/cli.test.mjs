@@ -69,3 +69,12 @@ test('CLI end-to-end flow', () => {
   // errors exit non-zero
   assert.throws(() => cli('get', 'Task#999'));
 });
+
+test('CLI target-set relation: --target-dbs makes a one-way polymorphic field', () => {
+  cli('db', 'create', 'Work', 'Ticket');
+  const made = JSON.parse(cli('relation', 'add', 'Ticket', 'Scope', '--target-dbs', 'Work/Task,Work/Project'));
+  assert.deepEqual(made.field.config.targetDbs.length, 2);
+  assert.equal(made.inverse, null);
+  const t = JSON.parse(cli('create', 'Ticket', 'Bug', '--values', '{"Scope": ["Apollo"]}'));
+  assert.equal(t.fields.Scope.db, 'Work/Project'); // resolved across the set, single cardinality
+});

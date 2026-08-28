@@ -101,7 +101,7 @@ Schema
   field add <table> <name> <type> [--config '{json}']
   field list <table> | delete <table> <field>
   field update <table> <field> [--name] [--type] [--config '{json}'] [--width 240|null]
-  relation add <table> <name> <targetTable> [--cardinality many-to-one] [--inverse Name]
+  relation add <table> <name> <targetTable> [--cardinality many-to-one] [--inverse Name] [--target-dbs 'A,B,C']
   registry [report|rebuild]           The meta-model rows that mirror the schema
   map                                 Relation map as mermaid
 
@@ -349,7 +349,9 @@ async function main() {
     case 'relation': {
       const [sub, db, name, targetDb] = args;
       if (sub === 'add') {
-        return out(w.addRelation(db, { name, targetDb, cardinality: flags.cardinality ?? 'many-to-one', inverseName: flags.inverse }));
+        // --target-dbs 'A,B,C' makes a target-set (polymorphic) relation.
+        const targetDbs = flags['target-dbs'] ? String(flags['target-dbs']).split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+        return out(w.addRelation(db, { name, targetDb, targetDbs, cardinality: flags.cardinality ?? 'many-to-one', inverseName: flags.inverse }));
       }
       throw new WeaveError(`Unknown relation subcommand '${sub}'`);
     }
