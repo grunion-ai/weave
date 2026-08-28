@@ -577,7 +577,7 @@ test('applet: the first tap is spent raising the keyboard, not wasted', async ()
 
   // A coarse pointer must not be given the caret without a gesture: it would
   // spend the first tap on a field that is already focused.
-  const warm = src.slice(src.indexOf('const touch = matchMedia'), src.indexOf('})();'));
+  const warm = src.slice(src.indexOf('const touch = matchMedia'));
   assert.match(warm, /if \(!touch\)/, 'only a mouse gets the un-gestured caret');
 });
 
@@ -591,7 +591,7 @@ test('applet: a date can be tapped, typed, or picked', async () => {
   assert.match(ed, /Tomorrow/);
   assert.match(ed, /Next week/);
   assert.match(ed, /parseNaturalDate/, "weave's own parser reads what they type");
-  assert.match(ed, /type="date"/, 'and the native picker is still there for a real calendar');
+  assert.match(ed, /wv-calgrid/, 'and a month you can see, rather than a wheel you have to spin');
   assert.match(src, /nl-date\.js/, 'the parser is the shipped one, not a second opinion');
 });
 
@@ -646,4 +646,31 @@ test('applet: the keyboard is armed on touchend, which iOS always fires', async 
   assert.match(arm, /addEventListener\('touchend', grab, true\)/,
     'WebKit synthesises no click on a plain div, so a click listener waits forever');
   assert.match(arm, /addEventListener\('click', grab, true\)/, 'click still covers the desktop');
+});
+
+/* Kyle, 2026-08-28: "add task bar should be on the bottom" and "in addition
+   to type or select pro preselected ate chips, we should ahve a mini
+   calendar". */
+test('applet: the field sits under the thumb and rides the keyboard', async () => {
+  const s2 = await stand();
+  try {
+    const cookie = cookieFrom(await unlock(s2.base));
+    const html = await (await fetch(`${s2.base}/t`, { headers: { cookie } })).text();
+    const list = html.indexOf('class="wv-list"');
+    const compose = html.indexOf('class="wv-compose"');
+    assert.ok(list > 0 && compose > list, 'the compose bar comes after the list, so it sits at the bottom');
+    assert.match(html, /visualViewport/, 'the keyboard overlays the viewport; the bar has to follow the visual one');
+    assert.match(html, /\.wv-bug\{[^}]*bottom:calc\(70px/, 'and the bug button clears the bar');
+  } finally { s2.stop(); }
+});
+
+test('applet: the date sheet offers chips, typing, and a month', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  const ed = src.slice(src.indexOf('function editDate'), src.indexOf('The document, written'));
+  assert.match(ed, /data-q=/, 'the quick chips');
+  assert.match(ed, /parseNaturalDate/, 'the typed answer');
+  assert.match(ed, /for \(let i = 0; i < 42; i\+\+\)/, 'six rows always, so the sheet never jumps height');
+  assert.match(ed, /data-mo="-1"/, 'and it pages by month');
+  assert.match(ed, /done\(b\.dataset\.d\)/, 'a tapped day is the answer, not a step towards it');
 });

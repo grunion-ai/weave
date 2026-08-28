@@ -323,7 +323,7 @@ button,input,textarea{font:inherit; color:inherit}
   color:var(--muted); display:grid; place-items:center; flex:none}
 .wv-iconbtn:active{background:var(--slate-soft)}
 
-.wv-compose{flex:none; margin:0 16px 10px; background:var(--surface); border:1px solid var(--line);
+.wv-compose{flex:none; margin:8px 16px calc(10px + var(--safe-b)); background:var(--surface); border:1px solid var(--line);
   border-radius:12px; padding:11px 13px; display:flex; align-items:center; gap:10px;
   transition:border-color .15s, box-shadow .15s}
 .wv-compose.on{border-color:var(--accent-line); box-shadow:0 0 0 3px var(--accent-soft)}
@@ -338,7 +338,7 @@ button,input,textarea{font:inherit; color:inherit}
 .wv-clip.has{color:var(--accent)}
 
 .wv-list{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
-  padding:0 16px calc(30px + var(--safe-b)); display:flex; flex-direction:column; gap:8px}
+  padding:0 16px 14px; display:flex; flex-direction:column; gap:8px}
 .wv-group{font-family:var(--mono); font-size:10px; letter-spacing:.11em; text-transform:uppercase;
   color:var(--faint); padding:12px 4px 3px; display:flex; align-items:center; gap:8px}
 .wv-group .line{flex:1; height:1px; background:var(--line)}
@@ -392,6 +392,21 @@ button,input,textarea{font:inherit; color:inherit}
   font-size:12.5px; line-height:22px; padding:2px 9px}
 .k-more{background:none; color:var(--faint); padding:2px 4px; font-size:12.5px}
 .k-empty{font-size:11.5px; line-height:18px; padding:1px 8px; color:var(--faint); border-style:dashed}
+.wv-cal{padding:2px 18px 10px}
+.wv-calhead{display:flex; align-items:center; gap:6px; padding:2px 4px 10px}
+.wv-calhead .m{flex:1; text-align:center; font-size:15px; font-weight:600; color:var(--ink)}
+.wv-calhead button{width:36px; height:36px; border-radius:9px; border:0; background:none;
+  color:var(--muted); font-size:19px; display:grid; place-items:center}
+.wv-calhead button:active{background:var(--slate-soft)}
+.wv-calgrid{display:grid; grid-template-columns:repeat(7,1fr); gap:2px}
+.wv-calgrid .dow{text-align:center; font-size:10px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--faint); padding-bottom:4px; font-family:var(--mono)}
+.wv-day{height:40px; border-radius:10px; border:0; background:none; font-size:16px; color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.wv-day:active{background:var(--slate-soft)}
+.wv-day.out{color:var(--faint); opacity:.5}
+.wv-day.today{box-shadow:inset 0 0 0 1.5px var(--accent-line); color:var(--accent); font-weight:600}
+.wv-day.on{background:var(--accent); color:#fff; font-weight:600}
 .wv-doc-empty{display:block; width:100%; text-align:left; color:var(--faint); border-style:dashed; font-size:14px}
 
 .wv-donebar{display:flex; align-items:center; gap:8px; padding:11px 13px; border-radius:12px; flex:none;
@@ -399,7 +414,7 @@ button,input,textarea{font:inherit; color:inherit}
 .wv-donebar .n{margin-left:auto; font-variant-numeric:tabular-nums; color:var(--faint)}
 .wv-empty{text-align:center; color:var(--faint); font-size:13.5px; padding:38px 20px; line-height:1.6}
 
-.wv-toast{position:fixed; left:16px; right:16px; bottom:calc(24px + var(--safe-b)); z-index:40;
+.wv-toast{position:fixed; left:16px; right:16px; bottom:calc(84px + var(--safe-b)); z-index:40;
   background:var(--ink); color:var(--ground); border-radius:11px; padding:12px 15px;
   display:flex; align-items:center; gap:12px; font-size:14px; box-shadow:var(--shadow);
   transform:translateY(18px); opacity:0; pointer-events:none;
@@ -407,12 +422,15 @@ button,input,textarea{font:inherit; color:inherit}
 .wv-toast.up{transform:translateY(0); opacity:1; pointer-events:auto}
 .wv-toast button{margin-left:auto; background:none; border:0; color:var(--ground);
   font-weight:600; text-decoration:underline}
-.wv-scrim{position:fixed; inset:0; background:rgba(15,15,20,.34); z-index:44; opacity:0;
+.wv-scrim{position:fixed; inset:0; background:rgba(15,15,20,.34); z-index:54; opacity:0;
   pointer-events:none; transition:opacity .2s}
 .wv-scrim.on{opacity:1; pointer-events:auto}
-.wv-sheet{position:fixed; left:0; right:0; bottom:0; z-index:46; background:var(--surface);
+/* Above the bug button, and never taller than the screen: a month grid plus
+   chips plus a field is more than a sheet used to have to hold. */
+.wv-sheet{position:fixed; left:0; right:0; bottom:0; z-index:56; background:var(--surface);
   border-radius:22px 22px 0 0; border-top:1px solid var(--line);
-  padding:10px 0 calc(24px + var(--safe-b));
+  padding:10px 0 calc(24px + var(--safe-b)); max-height:88vh; overflow-y:auto;
+  overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
   transform:translateY(102%); transition:transform .26s cubic-bezier(.2,.9,.3,1)}
 .wv-sheet.up{transform:translateY(0)}
 .wv-sheet .grab{width:38px; height:4px; border-radius:3px; background:var(--line); margin:2px auto 12px}
@@ -463,7 +481,7 @@ button,input,textarea{font:inherit; color:inherit}
 .wv-doc img{max-width:100%}
 .wv-dfoot{font-size:12px; color:var(--faint); display:flex; flex-direction:column; gap:3px}
 
-.wv-bug{position:fixed; right:3px; bottom:calc(15px + var(--safe-b)); z-index:50; width:44px; height:44px;
+.wv-bug{position:fixed; right:3px; bottom:calc(70px + var(--safe-b)); z-index:50; width:44px; height:44px;
   border:0; background:none; padding:0; display:grid; place-items:center; opacity:.62; color:var(--ink)}
 .wv-bug:active{opacity:1}
 .wv-bug .face{width:26px; height:26px; border-radius:7px; background:var(--surface);
@@ -484,9 +502,9 @@ const GATE_CSS = `
   .wv-head{padding:8px 18px 6px}
   .wv-head h1{font-size:16px}
   .wv-mark{width:20px; height:20px}
-  .wv-compose{margin:0 14px 8px; padding:7px 11px; border-radius:10px}
+  .wv-compose{margin:6px 14px calc(8px + var(--safe-b)); padding:7px 11px; border-radius:10px}
   .wv-input{font-size:16px}
-  .wv-list{padding:0 14px 18px; display:grid; grid-template-columns:repeat(2, minmax(0,1fr));
+  .wv-list{padding:0 14px 8px; display:grid; grid-template-columns:repeat(2, minmax(0,1fr));
     gap:8px; align-content:start}
   .wv-donebar{grid-column:1 / -1}
   .wv-row{padding:9px 11px 9px 10px; gap:10px}
@@ -497,7 +515,7 @@ const GATE_CSS = `
   .wv-dhead{padding:6px 12px 4px}
   .wv-dtitle{font-size:20px; margin-bottom:10px}
   .wv-dbody{padding:2px 18px 24px}
-  .wv-sheet{max-height:86vh; overflow-y:auto}
+  .wv-sheet{max-height:92vh}
   .wv-opt{padding:10px 22px}
   .wv-key{height:44px; border-radius:22px; font-size:20px}
   .wv-pad{gap:8px 20px; max-width:300px}
@@ -560,13 +578,13 @@ function appPage(mount, locked) {
   return `${HEAD(mount, 'Tasks', locked ? GATE_CSS : '')}
 <div class="wv">
   <div class="wv-head">${MARK}<h1>Tasks</h1><span class="spacer"></span><span class="tally" id="tally"></span></div>
+  <div class="wv-list" id="list"></div>
   <form class="wv-compose" id="compose">
     <span class="plus"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
     <input class="wv-input" id="new" type="text" placeholder="What needs doing?" enterkeyhint="send"
       autocapitalize="sentences" autocorrect="off" spellcheck="false" aria-label="New task">
     <button class="wv-clip" id="clip" type="button" aria-label="Attach a file"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 9.5l-7.1 7.1a3.2 3.2 0 0 1-4.5-4.5l7.7-7.7a2.1 2.1 0 0 1 3 3l-7.7 7.7a1 1 0 0 1-1.4-1.4l6.9-6.9"/></svg></button>
   </form>
-  <div class="wv-list" id="list"></div>
 </div>
 <div class="wv-toast" id="toast"><span class="msg"></span><button type="button">Undo</button></div>
 <div class="wv-scrim" id="scrim"></div>
@@ -743,7 +761,7 @@ const CLIENT = `
     if (wfField()) temp.fields[wfField()] = byCat('not-started');
     tasks.unshift(temp);
     paint();
-    list.scrollTop = 0;
+    list.scrollTop = 0;                              // newest first, so the top
     const files = staged; staged = [];
     $('clip').classList.remove('has');
     try {
@@ -1007,38 +1025,74 @@ const CLIENT = `
 
   function editDate(name, cur, done) {
     const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const next = new Date(); next.setDate(next.getDate() + 1);
     const quick = [
       ['Today', plusDays(0)],
       ['Tomorrow', plusDays(1)],
       [dow[new Date(plusDays(2) + 'T12:00:00').getDay()], plusDays(2)],
       ['Next week', plusDays(7)],
     ];
+    const today = plusDays(0);
+    let picked = cur || null;
+    let cursor = new Date((picked || today) + 'T12:00:00');
+    cursor.setDate(1);
+
     openSheet('<h4>' + esc(name) + '</h4>'
       + '<div style="padding:0 20px 12px;display:flex;flex-wrap:wrap;gap:7px">'
       + quick.map(([label, iso]) => '<button class="k blue" data-q="' + iso + '" style="padding:7px 13px;font-size:14px">' + label + '</button>').join('')
       + (cur ? '<button class="k-add" data-q="" style="padding:6px 12px;font-size:14px">Clear</button>' : '')
       + '</div>'
-      + '<div style="padding:0 20px 6px"><input id="dnl" type="text" placeholder="or type — fri, sep 5, in 3 days" '
+      + '<div style="padding:0 20px 8px"><input id="dnl" type="text" placeholder="or type — fri, sep 5, in 3 days" '
       + 'autocapitalize="off" autocorrect="off" spellcheck="false" '
       + 'style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground)"></div>'
-      + '<div id="dread" style="padding:0 20px 10px;font-size:13px;color:var(--faint);min-height:19px"></div>'
-      + '<div style="padding:0 20px 8px"><input id="dpick" type="date" value="' + esc(cur || '') + '" '
-      + 'style="width:100%;font-size:17px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground)"></div>'
-      + '<button class="wv-opt" data-save style="color:var(--accent);font-weight:600">Save</button>',
+      + '<div id="dread" style="padding:0 20px 4px;font-size:13px;color:var(--faint);min-height:19px"></div>'
+      + '<div class="wv-cal" id="dcal"></div>',
       (sh) => {
-        const nl = sh.querySelector('#dnl'), pick = sh.querySelector('#dpick'), read = sh.querySelector('#dread');
+        const nl = sh.querySelector('#dnl'), read = sh.querySelector('#dread'), cal = sh.querySelector('#dcal');
         const parse = globalThis.parseNaturalDate;
+
+        /* A month you can see beats a wheel you have to spin. Six rows always,
+           so the sheet does not jump height as you page through. */
+        function drawCal() {
+          const y = cursor.getFullYear(), mo = cursor.getMonth();
+          const first = new Date(y, mo, 1);
+          const start = new Date(y, mo, 1 - first.getDay());
+          const label = cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+          let cells = '';
+          for (let i = 0; i < 42; i++) {
+            const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+            const iso = isoOf(d);
+            const cls = ['wv-day'];
+            if (d.getMonth() !== mo) cls.push('out');
+            if (iso === today) cls.push('today');
+            if (iso === picked) cls.push('on');
+            cells += '<button class="' + cls.join(' ') + '" data-d="' + iso + '">' + d.getDate() + '</button>';
+          }
+          cal.innerHTML = '<div class="wv-calhead"><button data-mo="-1" aria-label="Previous month">‹</button>'
+            + '<span class="m">' + esc(label) + '</span>'
+            + '<button data-mo="1" aria-label="Next month">›</button></div>'
+            + '<div class="wv-calgrid">'
+            + ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((x) => '<span class="dow">' + x + '</span>').join('')
+            + cells + '</div>';
+          cal.querySelectorAll('[data-mo]').forEach((b) => b.addEventListener('click', () => {
+            cursor.setMonth(cursor.getMonth() + Number(b.dataset.mo));
+            drawCal();
+          }));
+          // A day is the answer, not a step towards it: tapping one commits.
+          cal.querySelectorAll('[data-d]').forEach((b) => b.addEventListener('click', () => done(b.dataset.d)));
+        }
+        drawCal();
+
         sh.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => done(b.dataset.q || null)));
         nl.addEventListener('input', () => {
           const hit = parse ? parse(nl.value) : null;
-          read.textContent = nl.value.trim() ? (hit ? day(hit) + '  \u00b7  ' + hit : 'not a date yet') : '';
-          if (hit) pick.value = hit;
+          read.textContent = nl.value.trim() ? (hit ? day(hit) + '  ·  ' + hit : 'not a date yet') : '';
+          if (hit) { picked = hit; cursor = new Date(hit + 'T12:00:00'); cursor.setDate(1); drawCal(); }
         });
-        nl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); sh.querySelector('[data-save]').click(); } });
-        sh.querySelector('[data-save]').addEventListener('click', () => {
-          const typed = parse && nl.value.trim() ? parse(nl.value) : null;
-          done(typed || pick.value || null);
+        nl.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          const hit = parse && nl.value.trim() ? parse(nl.value) : null;
+          if (hit) done(hit);
         });
       });
   }
@@ -1243,6 +1297,24 @@ const CLIENT = `
     } catch { say('Offline \\u2014 showing what was here'); }
     paint();
   }
+
+  /* The keyboard overlays the viewport rather than resizing it, so a bar
+     pinned to the bottom ends up underneath it. Rather than resize the shell
+     to the visual viewport — which collapses it to nothing if the reading
+     arrives as zero, as it did once — measure only the overlap and pad by
+     it. A bad reading then costs nothing at all. */
+  (() => {
+    const vv = globalThis.visualViewport;
+    if (!vv) return;
+    const shell = document.querySelector('.wv');
+    const fit = () => {
+      const overlap = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+      shell.style.paddingBottom = overlap > 24 ? overlap + 'px' : '';
+    };
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+    fit();
+  })();
 
   // A tab coming back to the front has stale rows; a phone that has been in a
   // pocket for an hour has very stale rows.
