@@ -48,12 +48,34 @@ test('a fast route never pays for the loader', () => {
   assert.match(APP, /if \(loading\.showTimer\) \{[\s\S]*?clearTimeout\(loading\.showTimer\)/);
 });
 
-test('every route change goes through the loader, including boot', () => {
-  assert.match(APP, /function route\(\) \{\s*return withPageLoader\(renderRoute\);/);
+test('the rope is reserved for full page loads; hash routes ride the skeleton', () => {
+  // Feature #148: the API answers in milliseconds, so an in-app nav that
+  // showed the rope paid the full-cycle rule (up to ~2.2s) for a wait that
+  // wasn't there — and the wash hid the skeleton it painted over. The rope
+  // now only covers boot, which is also every workspace switch, since those
+  // are full page navigations to /w/<id>/.
+  assert.match(APP, /function route\(\) \{\s*return renderRoute\(\);/);
+  assert.doesNotMatch(APP, /withPageLoader\(renderRoute\)/,
+    'a hash route must never enter the loader — the skeleton is its cover');
   assert.match(APP, /window\.addEventListener\('hashchange', route\)/);
   assert.match(APP, /withPageLoader\(\(\) => loadSchema\(\)\.then\(renderRoute\)\)/);
-  // Overlapping routes must not let the first one to finish hide the loader.
+  // Overlapping boots must not let the first one to finish hide the loader.
   assert.match(APP, /if \(loading\.depth > 0\) return;/);
+});
+
+test('the table skeleton draws the destination table\'s real columns', () => {
+  // The skeleton is only convincing when it has the shape of where you are
+  // going; the schema is already client-side, so the real column count is
+  // free (Feature #148).
+  assert.match(APP, /function paintSkeleton\(kind, db\)/);
+  const fn = APP.slice(APP.indexOf('function paintSkeleton'));
+  assert.match(fn.slice(0, 1200), /visibleCols\(db\)/,
+    'db skeletons take their column count from the destination table');
+});
+
+test('the app still parses after the loader-policy edits', () => {
+  // Source-regex assertions are not a parse gate; this is.
+  assert.doesNotThrow(() => new Function(APP));
 });
 
 test('the loader host survives a page render', () => {

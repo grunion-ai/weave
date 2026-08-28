@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Not found — weave</title>
+<link rel="icon" href="/brand/weave-favicon.svg">
+<style>
+  /* Standalone on purpose: a 404 must not depend on the app bundle it may
+     have failed to reach. Colors mirror the Tabler tokens the app uses. */
+  :root { --bg: #f6f8fb; --fg: #1d273b; --muted: #667085; --line: #dce1e7; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151f2c; --fg: #dce1e7; --muted: #8a97ab; --line: #2c3a4f; }
+    .mark-light { display: none; }
+  }
+  @media (prefers-color-scheme: light) { .mark-dark { display: none; } }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex; align-items: center; justify-content: center;
+  }
+  main { text-align: center; padding: 24px; }
+  .mark-light, .mark-dark { width: 72px; height: 72px; }
+  h1 { font-size: 20px; margin: 18px 0 6px; }
+  p { margin: 0 0 20px; color: var(--muted); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  a.home {
+    display: inline-block; padding: 7px 16px; border: 1px solid var(--line);
+    border-radius: 6px; color: var(--fg); text-decoration: none; font-weight: 600;
+  }
+  a.home:hover, a.home:focus-visible { border-color: var(--muted); outline: none; }
+</style>
+</head>
+<body>
+<main>
+  <img class="mark-light" src="/brand/weave-mark-light.svg" alt="weave">
+  <img class="mark-dark" src="/brand/weave-mark-dark.svg" alt="weave">
+  <h1>This thread leads nowhere</h1>
+  <p>The page <code id="where"></code> is not part of this workspace — the
+     record may have moved, or the address lost a character on the way.</p>
+  <a class="home" href="/">Back to the workspace</a>
+</main>
+<script>
+  document.getElementById('where').textContent = location.pathname;
+</script>
+</body>
+</html>

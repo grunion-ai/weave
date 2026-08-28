@@ -1,5 +1,5 @@
 import { createServer as createHttpServer } from 'node:http';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
@@ -136,7 +136,7 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
   // Node adapter around the runtime-agnostic dispatcher (src/routes.js): this
   // side owns the body stream, the response socket, and static files from
   // public/. The Worker adapter (src/worker.js) wraps the same dispatcher.
-  const serveStatic = (path) => {
+  const serveStatic = (path, rx) => {
     /* Vditor lazy-loads mermaid from inside its own dist tree. weave already
        vendors a mermaid build for document pages, so that path is aliased
        onto it rather than shipping a second 3.5MB copy of the same library. */
@@ -148,14 +148,21 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
     // no-cache, not no-store: the browser may keep a copy but must
     // revalidate. Without it heuristic caching serves a stale app.js or
     // style.css after an edit, so UI changes only appear on a hard reload.
-    return {
-      status: 200,
-      headers: {
-        'Content-Type': MIME[extname(full)] ?? 'application/octet-stream',
-        'Cache-Control': 'no-cache',
-      },
-      body: readFileSync(full),
+    // Last-Modified lets that revalidation answer 304 (Feature #148): a
+    // workspace switch is a full page load, and without it every switch
+    // re-downloaded ~1MB of unchanged vendor JS/CSS.
+    const mtime = statSync(full).mtime;
+    const headers = {
+      'Content-Type': MIME[extname(full)] ?? 'application/octet-stream',
+      'Cache-Control': 'no-cache',
+      'Last-Modified': mtime.toUTCString(),
     };
+    const since = Date.parse(rx?.header?.('if-modified-since') ?? '');
+    // HTTP dates carry whole seconds; compare at that grain or nothing matches.
+    if (since && Math.floor(mtime.getTime() / 1000) <= Math.floor(since / 1000)) {
+      return { status: 304, headers, body: '' };
+    }
+    return { status: 200, headers, body: readFileSync(full) };
   };
 
   const handle = createRequestHandler(hub, {

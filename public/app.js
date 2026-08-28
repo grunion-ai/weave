@@ -5470,11 +5470,13 @@ document.addEventListener('keydown', (e) => {
 
 /* ---------- page loader ---------- */
 
-/* The weave-on rope (brand decision 7) covers every page-load wait.
+/* The weave-on rope (brand decision 7) covers FULL page loads: boot, which
+   is also every workspace switch, since those navigate to /w/<id>/. Hash
+   routes never enter it (Feature #148) — their cover is the skeleton.
 
    Two rules, and they pull against each other:
    - It must not tax fast navigation, so it only appears once a wait passes
-     LOADER_SHOW_AFTER_MS. Most route changes are local and never show it.
+     LOADER_SHOW_AFTER_MS.
    - Once it does appear it always finishes at least one whole cycle, so the
      rope is never caught half-woven. Hiding therefore waits out the remainder
      of the cycle it is in — which is a full cycle when it has only just
@@ -5556,18 +5558,23 @@ async function withPageLoader(work) {
    starts — grid rows at grid rhythm, an entity page's two columns — so the
    wait looks like the thing being waited for (0xGF/boneyard's idea; the
    library itself is framework+build-time and cannot ride a vanilla no-build
-   UI). The route's own render replaces it; the rope overlay still covers
-   loads long enough to earn animation. */
-function paintSkeleton(kind) {
+   UI). The route's own render replaces it. Since Feature #148 the skeleton
+   is the ONLY cover for hash routes — the rope belongs to full page loads —
+   so a table skeleton takes its column count from the destination table:
+   the schema is already client-side, which makes the real shape free. */
+function paintSkeleton(kind, db) {
   const main = $('#main');
   if (!main) return;
   const line = (w, h = 12) => el('div', { class: 'sk sk-line', style: `width:${w};height:${h}px` });
-  const bar = () => el('div', { class: 'sk-row' }, line('28px'), line('34%', 14), line('12%'), line('10%'), line('8%'));
   if (kind === 'db') {
+    // First column wide like a Name, the rest tapering like real fields.
+    const n = Math.max(2, Math.min(db ? visibleCols(db).length : 4, 8));
+    const widths = Array.from({ length: n }, (_, i) => (i === 0 ? '22%' : `${Math.max(12 - i, 7)}%`));
+    const bar = () => el('div', { class: 'sk-row' }, line('28px'), ...widths.map((w, i) => line(w, i === 0 ? 14 : 12)));
     main.replaceChildren(
       el('div', { class: 'sk-toolbar' }, line('180px', 22), line('120px', 22)),
       el('div', { class: 'card panel sk-card' },
-        el('div', { class: 'sk-row sk-head' }, line('30px'), line('20%', 13), line('14%', 13), line('12%', 13), line('10%', 13)),
+        el('div', { class: 'sk-row sk-head' }, line('30px'), ...widths.map((w) => line(w, 13))),
         ...Array.from({ length: 8 }, bar)));
   } else if (kind === 'entity') {
     main.replaceChildren(el('div', { class: 'sk-entity' },
@@ -5588,7 +5595,9 @@ function renderRoute() {
   teardownDocEditors();
   const hash = location.hash || '#/';
   // The skeleton of where we're going, painted before we go (Feature #49).
-  paintSkeleton(/^#\/(?:table|db)\//.test(hash) ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list');
+  const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
+  paintSkeleton(dbM ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list',
+    dbM ? allTables().find((d) => d.id === dbM[1]) : null);
   let m;
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
   if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)/))) return showDatabase(m[1]);
@@ -5600,9 +5609,13 @@ function renderRoute() {
   return showHome();
 }
 
-// Every route change is a page-load wait, including the one boot performs.
+// Hash routes ride the skeleton alone (Feature #148): the API answers in
+// milliseconds, so the rope's full-cycle rule was the wait, not the cover
+// for one — and its wash hid the skeleton. The rope now belongs to full
+// page loads only: boot, which is also every workspace switch, since those
+// navigate to /w/<id>/.
 function route() {
-  return withPageLoader(renderRoute);
+  return renderRoute();
 }
 
 window.addEventListener('hashchange', route);

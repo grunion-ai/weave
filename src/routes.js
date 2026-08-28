@@ -52,6 +52,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       };
     };
 
+    /* A browser navigation deserves a page, not a JSON shrug (Feature #148):
+       GET on a non-API path answers with the branded 404 page when the
+       platform serves statics; API callers keep the JSON error. */
+    const notFound = (json) => {
+      const isPage = rx.method === 'GET' && serveStatic && !path.includes('/api/');
+      const page = isPage ? serveStatic('/404.html') : null;
+      return page ? { ...page, status: 404 } : out(404, json);
+    };
+
     // Workspace scoping: /w/<name>/... targets a sibling workspace.
     let weave = hub.get(hub.defaultName);
     let wsPrefix = '';
@@ -59,7 +68,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (wsM && wsM[1] !== 'undefined') {
       // Back-compat: the docs workspace was renamed weaver → weave.
       const target = hub.get(wsM[1]) ?? (wsM[1] === 'weaver' ? hub.get('weave') : null);
-      if (!target) return out(404, { error: `Workspace '${wsM[1]}' not found`, code: 'not-found' });
+      if (!target) return notFound({ error: `Workspace '${wsM[1]}' not found`, code: 'not-found' });
       weave = target;
       wsPrefix = `/w/${wsM[1]}`;
       path = wsM[2] || '/';
@@ -681,10 +690,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
       // ---------- static UI ----------
       if (serveStatic) {
-        const hit = serveStatic(path);
+        const hit = serveStatic(path, rx);
         if (hit) return hit;
       }
-      return out(404, 'Not found');
+      return notFound('Not found');
     } catch (err) {
       const status = statusFor(err);
       if (status === 500 && typeof console !== 'undefined') console.error(err);
