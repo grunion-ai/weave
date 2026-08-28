@@ -225,6 +225,10 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-toolbar h1 { font-size: 19px; margin: 0 auto 0 0; }
 
 /* ---------- table view ---------- */
+
+/* Open ledger, not a closed cell: rows are ruled, the page is the surface.
+   Any card hosting a grid loses its side walls (Kyle, 2026-08-28). */
+.card:has(.wv-grid) { border-left: 0; border-right: 0; border-radius: 0; box-shadow: none; }
 /* position:relative so the clipped-cell overlay can hang off the wrapper —
    a cell clips its own overflow, and the expansion must not be clipped. */
 .table-wrap { overflow-x: auto; position: relative; }
