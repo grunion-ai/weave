@@ -1141,13 +1141,32 @@ const CLIENT = `
      first touch anywhere that is not aimed at a row does the same job. */
   const LOCKED = __LOCKED__;
 
+  /* Raising the keyboard on iOS.
+
+     focus() only summons the keyboard from inside a user gesture, and WebKit
+     grants that on click/touchend — not on pointerdown. Worse, focusing
+     without a gesture is actively harmful: the caret lands in the field, and
+     the user's first tap is then a tap on an already-focused input, which
+     raises nothing. So on a warm open we deliberately leave the field alone
+     and spend the first tap on it instead.
+
+     blur-then-focus, synchronously in the handler, is what actually makes
+     WebKit re-present the keyboard for a field it thinks is already current. */
+  function raiseKeyboard() {
+    try { input.blur(); } catch {}
+    input.focus();
+    try { input.setSelectionRange(input.value.length, input.value.length); } catch {}
+  }
+
   function armFirstTouch() {
     const grab = (e) => {
-      if (e.target.closest('.wv-row, .wv-glyph, .wv-donebar, .wv-bug, .wv-sheet, .wv-detail, .wv-clip, input, textarea, a, button')) return;
-      input.focus();
-      document.removeEventListener('pointerdown', grab);
+      // A tap aimed at something is that thing's tap. Everything else — the
+      // header, the gaps, the empty space under the list — lands in the field.
+      if (e.target.closest('.wv-row, .wv-glyph, .wv-donebar, .wv-bug, .wv-sheet, .wv-detail, .wv-clip, a, button')) return;
+      raiseKeyboard();
+      document.removeEventListener('click', grab, true);
     };
-    document.addEventListener('pointerdown', grab);
+    document.addEventListener('click', grab, true);
   }
 
   if (LOCKED) {
@@ -1170,7 +1189,7 @@ const CLIENT = `
       draw();
       if (buf.length !== 8) return;
       busy = true;
-      input.focus();                                 // ← still inside the tap
+      raiseKeyboard();                               // ← still inside the tap
       try {
         const res = await fetch(MOUNT + '/unlock', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1180,7 +1199,7 @@ const CLIENT = `
           gate.classList.add('gone');
           setTimeout(() => gate.remove(), 320);
           await load();
-          input.focus();                             // the caret, after the rows
+          raiseKeyboard();                           // the caret, after the rows
           return;
         }
         input.blur();
@@ -1189,8 +1208,11 @@ const CLIENT = `
       busy = false;
     }));
   } else {
+    // No focus() here on purpose — see raiseKeyboard(). A desktop browser
+    // has no such rule, so it gets the caret straight away.
+    const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
     load().then(() => {
-      try { input.focus({ preventScroll: true }); } catch {}
+      if (!touch) { try { input.focus({ preventScroll: true }); } catch {} }
       armFirstTouch();
     });
   }

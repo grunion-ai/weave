@@ -481,7 +481,7 @@ test('applet: the unlock tap is spent on the caret before the request', async ()
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
   const tap = src.slice(src.indexOf("if (buf.length !== 8) return;"), src.indexOf("MOUNT + '/unlock'"));
-  assert.match(tap, /input\.focus\(\)/, 'focus happens inside the tap, before any await');
+  assert.match(tap, /raiseKeyboard\(\)/, 'focus happens inside the tap, before any await');
   assert.doesNotMatch(src, /location\.replace\(MOUNT\)/, 'navigating away would spend the gesture');
   assert.match(src, /armFirstTouch/, 'a warm open has no gesture; the first touch supplies one');
 });
@@ -540,4 +540,26 @@ test('applet: a blank deadline or tag set is still a chip you can tap', async ()
   assert.match(src, /emptyOnRow: \['date', 'multiselect'\]/, 'triage happens in the list');
   assert.match(src, /k-empty/, 'and the blank reads as a chip, not as nothing');
   assert.match(src, /editDoc/, 'the description is editable from the task page');
+});
+
+/* Kyle, 2026-08-28, from the phone: "cursor doesnt automatically drop me in
+   new task with keyboard". Two causes, both pinned here. WebKit grants the
+   gesture on click, not pointerdown; and focusing without a gesture puts the
+   caret in the field so the user's first real tap lands on an already-focused
+   input and raises nothing. */
+test('applet: the first tap is spent raising the keyboard, not wasted', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  const arm = src.slice(src.indexOf('function armFirstTouch'), src.indexOf('if (LOCKED)'));
+  assert.match(arm, /addEventListener\('click'/, 'WebKit grants the gesture on click, not pointerdown');
+  assert.doesNotMatch(arm, /addEventListener\('pointerdown'/);
+
+  const raise = src.slice(src.indexOf('function raiseKeyboard'), src.indexOf('function armFirstTouch'));
+  assert.match(raise, /input\.blur\(\)/, 'blur then focus is what re-presents the keyboard');
+  assert.match(raise, /input\.focus\(\)/);
+
+  // A coarse pointer must not be given the caret without a gesture: it would
+  // spend the first tap on a field that is already focused.
+  const warm = src.slice(src.indexOf('const touch = matchMedia'), src.indexOf('})();'));
+  assert.match(warm, /if \(!touch\)/, 'only a mouse gets the un-gestured caret');
 });
