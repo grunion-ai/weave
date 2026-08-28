@@ -16,7 +16,7 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { renderMarkdown } from './markdown.js';
-import { markParts, PALETTE } from '../brand/build-logos.mjs';
+import { markParts, PALETTE } from './mark.js';
 
 const COOKIE = 'wv_applet';
 const YEAR = 31536000;
