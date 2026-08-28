@@ -3475,8 +3475,13 @@ export class Weave {
   // ---------------- search ----------------
 
   search(text, { limit = 25 } = {}) {
-    const needle = String(text).toLowerCase();
+    const needle = String(text).toLowerCase().trim();
     if (!needle) return [];
+    // '#143', '143', or 'task #143' — an exact publicId hit outranks any text
+    // match, so numbered entities land on top of the ⌘K palette.
+    const idm = /^(.*?)#\s*(\d+)$/.exec(needle) ?? /^()(\d+)$/.exec(needle);
+    const idNum = idm ? Number(idm[2]) : null;
+    const idTable = idm ? idm[1].trim() : '';
     const results = [];
     for (const e of Object.values(this.state.entities)) {
       if (e.deletedAt) continue; // the trash is not searchable
@@ -3485,6 +3490,12 @@ export class Weave {
       const comments = e.comments.map((c) => c.text).join('\n');
       let score = 0;
       let snippet = '';
+      if (idNum !== null && e.publicId === idNum) {
+        const db = this.state.tables[e.dbId];
+        if (!idTable
+          || db.name.toLowerCase().startsWith(idTable)
+          || this.qualifiedName(db).toLowerCase().includes(idTable)) score += 20;
+      }
       if (name.toLowerCase().includes(needle)) score += 10;
       const hay = docText + '\n' + comments;
       const idx = hay.toLowerCase().indexOf(needle);

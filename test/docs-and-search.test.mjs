@@ -113,6 +113,41 @@ test('universalSearch returns permalinks for all kinds', () => {
   assert.equal(ws[0].url, '/');
 });
 
+test('search ranks an exact publicId match above text matches', () => {
+  const { w, tasks } = build();
+  const first = w.createEntity(tasks, { name: 'Alpha' });             // #1
+  w.createEntity(tasks, { name: 'Beta' });                            // #2
+  const target = w.createEntity(tasks, { name: 'Ship the release' }); // #3
+  w.createEntity(tasks, { name: 'Contains 3 items', doc: 'mentions 3 twice: 3' }); // #4, text-matches "3"
+
+  // '#3' finds the entity whose number is 3, ranked first.
+  const byHash = w.search('#3');
+  assert.equal(byHash[0].publicId, target.publicId);
+  assert.ok(byHash[0].score > 10, 'id match outranks a name match');
+
+  // A bare number works too, and still beats entities merely containing it.
+  const byNum = w.search('3');
+  assert.equal(byNum[0].publicId, target.publicId);
+  assert.ok(byNum.some((h) => h.name === 'Contains 3 items'), 'text matches still surface');
+
+  // Table-qualified: 'task #1' scopes the id to the named table.
+  const scoped = w.search('task #1');
+  assert.equal(scoped[0].publicId, first.publicId);
+
+  // A wrong table prefix does not id-match.
+  const wrong = w.search('nosuchtable #3');
+  assert.ok(!wrong.length || wrong[0].publicId !== target.publicId || wrong[0].score <= 10);
+});
+
+test('universalSearch puts a #id entity hit on top', () => {
+  const { w, tasks } = build();
+  w.createEntity(tasks, { name: 'One' });
+  const e2 = w.createEntity(tasks, { name: 'Two' });
+  const hits = w.universalSearch('#2');
+  assert.equal(hits[0].kind, 'entity');
+  assert.equal(hits[0].publicId, e2.publicId);
+});
+
 test('describeAutomations resolves names for the map', () => {
   const { w, tasks } = build();
   w.addField(tasks, {
