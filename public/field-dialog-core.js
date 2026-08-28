@@ -72,6 +72,16 @@
     multiselect: ['select', 'text'],
     workflow: ['select'],
   };
+  /* The one word for a type, for anywhere a field has to say what it is —
+     the field menu's title line names the field and then this. FIELD_TYPES
+     already carries the label the type grid prints, so there is no second
+     list to drift; a computed type that has no tile ('formula') falls back
+     to its own id, which is already the word. */
+  function typeLabel(type) {
+    if (!type) return '';
+    return (FIELD_TYPES.find((t) => t.id === type) ?? {}).label ?? String(type);
+  }
+
   /* Grid tiles to offer: every type for a new field; for an existing one its
      current type first, then the compatible migrations in matrix order.
      Computed types (formula/lookup/rollup/relation) have no tile set — their
@@ -347,7 +357,7 @@
   }
 
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, AGGREGATES, TYPE_MIGRATIONS, typeChoices, migrateState, moveItem,
+    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES,
     blankState, definitionFromState, stateFromDefinition,

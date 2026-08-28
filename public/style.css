@@ -183,6 +183,34 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 /* Keyboard focus needs to be as loud as hover — arrows move focus, not hover. */
 .chip-pop-row:focus-visible { box-shadow: inset 0 0 0 2px var(--tblr-primary); }
 .chip-pop-check { margin-left: auto; color: var(--tblr-primary); font-weight: 700; }
+/* The popover arrives rather than appears — the same idiom as the selection
+   puck's rise, at half the distance because it hangs off a 18px ⋮ and a big
+   move would read as a different object landing. */
+.chip-pop { animation: wv-pop-in .12s ease-out both; transform-origin: top left; }
+@keyframes wv-pop-in { from { opacity: 0; transform: translateY(-4px) scale(.985); } }
+@media (prefers-reduced-motion: reduce) { .chip-pop { animation: none; } }
+
+/* ---------- the field menu (redesign 2026-08-27) ----------
+   One row metric for every row in the panel, destructive included: the icon
+   box is the same width whatever it holds, so every label starts on one left
+   edge. Before this the icons were characters in the label string and the
+   delete row was a Tabler .dropdown-item, which is why the screenshot showed
+   four different indents in a five-row menu. */
+.wv-menu-head { display: flex; align-items: baseline; gap: 8px; padding: 4px 8px 7px; margin: 0 0 3px; border-bottom: 1px solid var(--tblr-border-color); }
+.wv-menu-title { font-size: 12.5px; font-weight: 600; letter-spacing: .01em; color: var(--tblr-body-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 178px; }
+.wv-menu-kind { margin-left: auto; font-size: 10.5px; color: var(--tblr-secondary); font-variant: small-caps; letter-spacing: .04em; }
+.wv-menu-sep { height: 1px; margin: 4px 2px; background: var(--tblr-border-color); }
+.chip-pop-row.wv-menu-row { gap: 9px; width: 100%; padding: 5px 8px; font: inherit; font-size: 13.5px; line-height: 20px; }
+/* The icon box never collapses: an empty one still holds the label's left
+   edge, so a row without a glyph lines up with the rows that have one. */
+.wv-menu-icon { flex: 0 0 var(--wv-icon-md); margin-right: 0; color: var(--tblr-secondary); }
+.wv-menu-row:hover .wv-menu-icon, .wv-menu-row:focus .wv-menu-icon { color: inherit; }
+.wv-menu-label { flex: 1 1 auto; white-space: nowrap; }
+.wv-menu-row.is-current, .wv-menu-row.is-current .wv-menu-icon { color: var(--tblr-primary); }
+.wv-menu-row .chip-pop-check { display: inline-flex; margin-left: auto; }
+/* Destructive rows are the same row, tinted — not a different control. */
+.wv-menu-row.wv-menu-danger, .wv-menu-row.wv-menu-danger .wv-menu-icon { color: var(--tblr-danger); }
+.wv-menu-row.wv-menu-danger:hover, .wv-menu-row.wv-menu-danger:focus { background: color-mix(in srgb, var(--tblr-danger) 11%, transparent); }
 
 /* ---------- main + toolbar ---------- */
 /* The content panel is THE surface: white, big rounded corners, floating on
@@ -1017,9 +1045,20 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* Hold-to-confirm: the fill IS the confirmation, so there is no browser
    dialog. Collapsing is untransitioned — releasing early cannot complete it. */
 .hold-btn { position: relative; overflow: hidden; cursor: pointer; }
-.hold-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; transform: scaleX(0); transform-origin: left; background: rgba(214, 57, 57, .25); transition: transform 0s; }
+/* The sweep darkens toward its leading edge, so the gesture reads as a front
+   travelling across the row rather than a block growing out of the left. The
+   gradient is painted once and scaled with the fill, which keeps it composited
+   — no repaint per frame. The tint comes off the danger token, not a literal
+   rgb, so it holds in both themes. */
+.hold-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; transform: scaleX(0); transform-origin: left; background: linear-gradient(90deg, color-mix(in srgb, var(--tblr-danger) 14%, transparent), color-mix(in srgb, var(--tblr-danger) 34%, transparent)); transition: transform 0s; }
 .hold-btn.holding .hold-fill { transform: scaleX(1); transition: transform .9s linear; }
 .hold-btn .hold-label { position: relative; }
+.hold-btn .hold-icon { position: relative; }
+/* A hold nobody knows about is a button that does nothing: the chip says the
+   gesture at rest and gets out of the way once the press starts, where the
+   swapped label ("Hold to delete…") is carrying the message instead. */
+.hold-hint { position: relative; margin-left: auto; padding: 0 5px; border: 1px solid var(--tblr-border-color); border-radius: 4px; font-size: 10px; line-height: 15px; letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); transition: opacity .12s ease; }
+.hold-btn.holding .hold-hint { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .hold-btn.holding .hold-fill { transition-duration: .6s; } }
 /* Header-toolbar menus sit at the right edge; left-aligning the panel would
    hang it off-screen. */

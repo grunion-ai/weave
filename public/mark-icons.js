@@ -62,6 +62,11 @@
     '‹': line('M14.6 5.6 8.2 12l6.4 6.4'),
     '↑': line('M12 19.4V5.2M6.4 10.8 12 5.2l5.6 5.6'),
     '↓': line('M12 4.6v14.2M17.6 13.2 12 18.8l-5.6-5.6'),
+    /* Iconly's only plus is `plus`, a filled rounded square, and beside a
+       hairline pencil in the field menu it was the darkest thing on the panel
+       (Kyle, 2026-08-27). A bare cross at the set's weight is what that row
+       wanted, and the set did not have one. */
+    '+': line('M12 5.4v13.2M5.4 12h13.2'),
   };
 
   /* Marks that carry meaning as LETTERS stay letters — ƒ is a function, Σ is a

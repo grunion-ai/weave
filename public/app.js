@@ -800,11 +800,23 @@ function showPopover(trigger, rows) {
 /* Press-and-hold destructive action: the button fills over ~900ms and fires
    only when the fill completes; letting go early cancels. The confirmation is
    the gesture, so there is no window.confirm() dialog to break the page's
-   design. Keyboard users hold Enter or Space, which works the same way. */
-function holdToConfirm(label, onConfirm, { holdingLabel = 'Hold to confirm…' } = {}) {
+   design. Keyboard users hold Enter or Space, which works the same way.
+
+   `rowClass` lets the caller hand it the row metric of the surface it lands
+   in — a hold button inside the chip popover has to BE a .chip-pop-row or it
+   wears Tabler's padding beside weave's and falls outside the arrow-key walk
+   (Kyle, 2026-08-27). `icon` draws through the one icon path (Issue #87)
+   rather than a character typed into the label, and `hint` is the quiet
+   trailing chip that says the gesture out loud — a hold nobody knows about
+   is a button that does nothing. */
+function holdToConfirm(label, onConfirm, {
+  holdingLabel = 'Hold to confirm…', rowClass = 'dropdown-item', icon = null, hint = null,
+} = {}) {
   const fill = el('span', { class: 'hold-fill' });
   const text = el('span', { class: 'hold-label' }, label);
-  const btn = el('button', { class: 'dropdown-item text-danger hold-btn', type: 'button' }, fill, text);
+  const btn = el('button', { class: `${rowClass} text-danger hold-btn`, type: 'button' },
+    fill, icon ? iconEl(icon, 'wv-icon wv-menu-icon hold-icon') : null, text,
+    hint ? el('span', { class: 'hold-hint' }, hint) : null);
   let armed = false;
   const start = () => {
     if (armed) return;
@@ -2307,7 +2319,7 @@ function renderTable(main, db, items, onSaved) {
         // Adding a field lives where the fields are: the end of the header bar.
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db)))),
       tbody);
-    wrap.replaceChildren(table);
+    wrap.replaceChildren(table, puck);
     // A row that left the page — trashed, filtered out, sorted away — is no
     // longer selected. Done after the draw so it reads the rows that exist.
     if (chosen().size) setChosen(SEL().prune(chosen(), drawnIds()));
@@ -2488,6 +2500,63 @@ async function setColumnWidth(db, f, width, th = null) {
    edit, move, insert, delete — on the header it belongs to, reusing the chip
    popover so it matches every other picker in the grid. */
 
+/* Redesigned 2026-08-27 (Kyle: "match weave design language"). What the old
+   panel got wrong, all of it visible in one screenshot:
+
+   1. The icons were CHARACTERS typed into the label — '✎ Edit field…',
+      '↑ Sort ascending'. A font gives each glyph its own advance width and
+      its own optical size, so the pencil, the plus and the arrows never
+      shared a box and the labels never shared a left edge. That is the exact
+      defect Issue #87 is about, and this was the surface it had not reached:
+      every mark here now draws through iconEl() at --wv-icon-md, on the same
+      0 0 24 24 canvas as the rest of the app.
+   2. The delete row was a Tabler `.dropdown-item` sitting among weave
+      `.chip-pop-row`s — different padding, different radius, no icon column,
+      so it hung off the left edge of the labels above it. Worse than the
+      look: showPopover walks `.chip-pop-row` for ↑↓, so the one row that
+      needed the most deliberate aim was the one the keyboard could not reach.
+      Every row is the same row now, destructive included.
+   3. Sort state was a '✓ ' PREFIX pasted onto the label, which shunted the
+      whole row right when it was on. The popover already has a cue for "this
+      is the current value" — the trailing .chip-pop-check — and using it also
+      opens the menu focused on the active sort, free.
+   4. Nothing said which column the panel belonged to. The ⋮ paints at its
+      column's right edge, millimetres from the NEXT column's label; the
+      hovered-header tint was the only cue (live check, 2026-08-16). The panel
+      now opens by naming the field and its type.
+
+   The hold-to-delete gesture and its sweep are kept, and made discoverable:
+   the row carries a quiet HOLD chip at rest, so the gesture is advertised
+   before the press rather than discovered by it. */
+
+/* Picked by eye off a contact sheet of every candidate in both vocabularies,
+   not by name. `iconly:arrow-up` is a solid teardrop that reads as a map pin
+   at 16px — the drawn '↑' and '↓' marks are the actual arrows, and being
+   stroked at 2.6 they sit at the density Issue #87 matched the filled set to.
+   Iconly's only plus is a filled rounded square, which came out the darkest
+   thing on the panel beside a hairline pencil, so the set gained a bare '+'
+   at 2.6 — the same move Issue #87 made for the five marks it drew.
+   edit and delete stay on iconly because that is what the entity command bar
+   already draws for the same two verbs (CMD_ICON), and a menu that renames a
+   field must not label it differently from the bar that deletes it. */
+const FIELD_MENU_ICONS = {
+  edit: 'iconly:edit', insert: '+',
+  asc: '↑', desc: '↓', clear: '✕',
+  delete: 'iconly:delete',
+};
+
+/* One row shape for the whole menu: icon box, label, and the check slot the
+   popover already uses. `current` both tints the row and drops the check in,
+   which is what showPopover reads to open focus on it. */
+function fieldMenuRow(icon, label, run, { current = false } = {}) {
+  const row = el('button', {
+    class: `chip-pop-row wv-menu-row${current ? ' is-current' : ''}`, type: 'button',
+    onclick: () => { document.querySelector('.chip-pop')?.remove(); run(); },
+  }, iconEl(icon, 'wv-icon wv-menu-icon'), el('span', { class: 'wv-menu-label' }, label));
+  if (current) row.append(el('span', { class: 'chip-pop-check' }, iconEl('✓', 'wv-icon')));
+  return row;
+}
+
 function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
   const btn = el('button', {
     class: 'field-menu', type: 'button',
@@ -2495,24 +2564,25 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
   }, '⋮');
   btn.addEventListener('click', (e) => {
     e.stopPropagation();   // configuring a column must not also sort it
-    const row = (label, run) => el('button', {
-      class: 'chip-pop-row', type: 'button',
-      onclick: () => { document.querySelector('.chip-pop')?.remove(); run(); },
-    }, label);
+    const row = fieldMenuRow;
     // No move rows: the header itself is the reorder control, and a dragged
     // column lands where the gap opened. Two ways to do one thing is one too
     // many when the direct one is the one people reach for.
     const rows = [
-      row('✎ Edit field…', () => editFieldDialog(db, f)),
-      row('+ Insert field…', () => addFieldDialog(db)),
+      el('div', { class: 'wv-menu-head' },
+        el('span', { class: 'wv-menu-title', title: f.name }, f.name),
+        el('span', { class: 'wv-menu-kind' }, fieldDialogCore.typeLabel(f.type))),
+      row(FIELD_MENU_ICONS.edit, 'Edit field…', () => editFieldDialog(db, f)),
+      row(FIELD_MENU_ICONS.insert, 'Insert field…', () => addFieldDialog(db)),
     ];
     if (onSort) {
-      rows.push(
-        row((sorted > 0 ? '✓ ' : '') + '↑ Sort ascending', () => onSort(1)),
-        row((sorted < 0 ? '✓ ' : '') + '↓ Sort descending', () => onSort(-1)));
-      if (sorted) rows.push(row('Clear sort', () => onSort(0)));
+      rows.push(el('div', { class: 'wv-menu-sep' }),
+        row(FIELD_MENU_ICONS.asc, 'Sort ascending', () => onSort(1), { current: sorted > 0 }),
+        row(FIELD_MENU_ICONS.desc, 'Sort descending', () => onSort(-1), { current: sorted < 0 }));
+      if (sorted) rows.push(row(FIELD_MENU_ICONS.clear, 'Clear sort', () => onSort(0)));
     }
     if (f.name !== 'Name') {
+      rows.push(el('div', { class: 'wv-menu-sep' }));
       rows.push(holdToConfirm('Delete field', async () => {
         document.querySelector('.chip-pop')?.remove();
         try {
@@ -2520,7 +2590,12 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
           await loadSchema();
           showDatabase(db.id);
         } catch (err) { toast(err.message, true); }
-      }, { holdingLabel: 'Hold to delete…' }));
+      }, {
+        holdingLabel: 'Hold to delete…',
+        rowClass: 'chip-pop-row wv-menu-row wv-menu-danger',
+        icon: FIELD_MENU_ICONS.delete,
+        hint: 'hold',
+      }));
     }
     showPopover(btn, rows);
   });
@@ -3929,12 +4004,14 @@ function refreshCodeAuto(st) {
        class means never looking again — so the two are told apart by the
        marker, not by the class.
 
-       The marker cannot be the whole answer either: this element belongs to
-       Vditor, which renders the preview again after it has fetched
-       highlight.js. That render replaces the tokens and leaves the class and
-       the marker sitting on the element, so the block reads as handled and
-       stays plain for good. The question is not "did we answer" but "is the
-       answer still on the page". */
+       The same marker cannot be the whole answer either: this element belongs
+       to Vditor, which re-renders the preview from the markdown. A re-render
+       replaces the tokens while leaving the class and the marker on the
+       element, and the block would then read as handled and stay plain for
+       good. So the question is not "did we answer" but "is the answer still
+       on the page". Under load that is the state a flaky
+       `slash-commands` case has been landing in; it is a hypothesis, not a
+       proven cause, and this guard costs nothing when it is wrong. */
     const ours = code.dataset.autoLang;
     if (!ours && /language-\S/.test(code.className)) continue; // the fence named a language
     const text = code.textContent ?? '';
@@ -3950,8 +4027,9 @@ function refreshCodeAuto(st) {
       applied = true;
     } catch { /* the language is not in the vendored bundle */ }
   }
-  /* Nothing types after a document loads, so no input or selection event
-     brings us back when that later render lands — look once more on our own.
+  /* Vditor renders the preview again after it has fetched highlight.js, which
+     can land after this pass and take the tokens with it. Nothing types, so
+     no input or selection event brings us back — look once more on our own.
      The guard above makes the second pass free when the tokens survived, and
      the counter stops the two of us trading renders forever. */
   if (applied && (st.rechecks = (st.rechecks ?? 0) + 1) <= 3) st.schedule();
@@ -5857,31 +5935,3 @@ wireSearchButton();
 buildWsRail();
 wireWsNew();
 wireNavCollapse();
-
-/* TEMP DIAG for Issue #76 — remove after capture. Appends real-browser layout
-   numbers onto the issue when the page is opened with ?diag=1. */
-if (new URLSearchParams(location.search).has('diag')) {
-  const post = async () => {
-    const r = (s) => { const n = document.querySelector(s); if (!n) return null; const b = n.getBoundingClientRect(); return `${s}[${Math.round(b.left)},${Math.round(b.top)},${Math.round(b.width)}]`; };
-    const vv = window.visualViewport;
-    const cs = getComputedStyle(document.body);
-    const hcs = getComputedStyle(document.documentElement);
-    const html = document.documentElement.getBoundingClientRect();
-    const lines = [
-      'ua=' + navigator.userAgent,
-      `inner=${innerWidth}x${innerHeight} dpr=${devicePixelRatio} scroll=${scrollX},${scrollY} scrollW=${document.documentElement.scrollWidth}`,
-      vv ? `vv scale=${vv.scale} off=${vv.offsetLeft},${vv.offsetTop} page=${vv.pageLeft},${vv.pageTop} w=${vv.width}` : 'no vv',
-      `html rect=[${Math.round(html.left)},${Math.round(html.top)},${Math.round(html.width)}] bodyMargin=${cs.margin} bodyPad=${cs.padding} htmlMargin=${hcs.margin} htmlPad=${hcs.padding}`,
-      [r('#ws-rail'), r('#rail-weave'), r('#ws-list .ws-icon'), r('#sidebar'), r('.search-like'), r('#main')].join(' '),
-    ].join('  |  ');
-    try {
-      await fetch(`${WS_PREFIX}/api/entities/11712934-da29-4847-97f1-18fa945f4140/doc`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doc: '\n\n**diag** ' + lines }),
-      });
-    } catch (e) { console.error('diag post failed', e); }
-  };
-  addEventListener('load', () => setTimeout(post, 800));
-  let t = null;
-  addEventListener('resize', () => { clearTimeout(t); t = setTimeout(post, 600); });
-}

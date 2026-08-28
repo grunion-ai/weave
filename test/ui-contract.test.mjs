@@ -609,6 +609,97 @@ test('deleting a field from the header is guarded and never offered for Name', (
   assert.match(menu, /'Name'/, 'the Name field must not offer a delete row');
 });
 
+/* ---------- the field menu redesign (Kyle, 2026-08-27) ----------
+   The screenshot that started it: five rows, four different left edges, four
+   glyph sizes, and the red row wearing another design system's padding. Each
+   test below pins one of the four defects so the panel cannot drift back. */
+
+test('the field menu draws its icons, it never types them into a label', () => {
+  // Issue #87: a unicode mark carries its own advance width and optical size,
+  // so '✎' and '↑' never shared a box with each other or with anything drawn.
+  const menu = fnBody('fieldMenuButton') + fnBody('fieldMenuRow');
+  assert.match(menu, /iconEl\(/, 'every mark resolves through the one icon path');
+  for (const typed of ['✎ Edit', '+ Insert', '↑ Sort', '↓ Sort']) {
+    assert.ok(!menu.includes(typed), `'${typed}' is a glyph pasted into a label — draw it instead`);
+  }
+  assert.match(APP, /const FIELD_MENU_ICONS = \{/, 'the menu names its icons in one place');
+});
+
+test('every row of the field menu is the same row, destructive included', () => {
+  // The delete row was a Tabler .dropdown-item among weave .chip-pop-rows:
+  // different padding and radius, no icon column — AND outside showPopover's
+  // ↑↓ walk, which reads `.chip-pop-row`. The keyboard could not reach the
+  // one row that most deserves deliberate aim.
+  const menu = fnBody('fieldMenuButton');
+  assert.match(menu, /rowClass: 'chip-pop-row wv-menu-row wv-menu-danger'/,
+    'the hold row must carry the popover row class so ↑↓ reaches it');
+  const hold = fnBody('holdToConfirm');
+  assert.match(hold, /rowClass = 'dropdown-item'/, 'and the menu-less call sites keep their old row');
+  const walk = fnBody('showPopover');
+  assert.match(walk, /querySelectorAll\('\.chip-pop-row'\)/,
+    'the walk is over .chip-pop-row — that is why the delete row has to be one');
+  const rowCss = rulesFor('.chip-pop-row.wv-menu-row');
+  assert.ok(rowCss.padding && rowCss.gap, 'one metric declared once, for all of them');
+  assert.equal(rulesFor('.wv-menu-icon').flex, '0 0 var(--wv-icon-md)',
+    'the icon box never collapses, or a row without a glyph loses the left edge');
+});
+
+test('sort state is the popover check, not a character prefixed to the label', () => {
+  // '✓ Sort ascending' shunted the whole row right whenever it was on.
+  const menu = fnBody('fieldMenuButton') + fnBody('fieldMenuRow');
+  assert.ok(!menu.includes("'✓ '"), 'no check pasted onto the front of a label');
+  assert.match(menu, /chip-pop-check/, 'the popover already has a current-value cue');
+  assert.match(menu, /current: sorted > 0/, 'ascending is marked when it is the live sort');
+  assert.match(menu, /current: sorted < 0/, 'and descending too');
+  // Free consequence, and the reason to use the house cue: showPopover opens
+  // focus on the row carrying a check.
+  assert.match(fnBody('showPopover'), /findIndex\(\(o\) => o\.querySelector\('\.chip-pop-check'\)\)/);
+});
+
+test('the menu names the column it belongs to', () => {
+  // The ⋮ paints millimetres from the NEXT column's label (live check,
+  // 2026-08-16); the hovered tint was the only thing tying panel to column.
+  const menu = fnBody('fieldMenuButton');
+  assert.match(menu, /wv-menu-head/, 'a title line opens the panel');
+  assert.match(menu, /fieldDialogCore\.typeLabel\(f\.type\)/, 'naming the type as well as the name');
+  const head = rulesFor('.wv-menu-head');
+  assert.match(head['border-bottom'] ?? '', /var\(--tblr-border-color\)/, 'it is a header, so it is ruled off');
+  assert.equal(rulesFor('.wv-menu-title')['text-overflow'], 'ellipsis', 'a long field name must not stretch the panel');
+});
+
+test('the hold gesture is advertised before it is pressed', () => {
+  // Kyle keeps the hold and its sweep; a hold nobody knows about is a button
+  // that does nothing, so the row says so at rest.
+  assert.match(fnBody('fieldMenuButton'), /hint: 'hold'/);
+  const hint = rulesFor('.hold-hint');
+  assert.ok(hint['border-radius'], 'the hint is a chip, in the chip idiom');
+  assert.equal(rulesFor('.hold-btn.holding .hold-hint').opacity, '0',
+    'and it clears once the press starts — the swapped label carries it from there');
+});
+
+test('the sweep is themed and reads as a travelling front', () => {
+  const fill = rulesFor('.hold-fill');
+  assert.match(fill.background, /var\(--tblr-danger\)/, 'the tint comes off the token, not a literal rgb');
+  assert.match(fill.background, /linear-gradient/, 'darkening toward the leading edge, so it reads as a front');
+  // The contract from Feature #75 is untouched by the restyle.
+  assert.equal(fill.transition, 'transform 0s');
+  assert.equal(fill.transform, 'scaleX(0)');
+});
+
+test('a popover arrives rather than appears, and stops for reduced motion', () => {
+  // rulesFor merges every block for a selector and does not see @media
+  // nesting, so the reduced-motion override would mask the base rule here:
+  // read the two declarations from the source instead.
+  assert.match(CSS, /\.chip-pop \{[^}]*animation: wv-pop-in [^}]*\}/, 'the base rule animates it in');
+  assert.match(CSS, /@keyframes wv-pop-in/);
+  // The entrance is a transform + opacity pair: neither one costs a layout,
+  // and offsetHeight (which showPopover measures to decide the flip) is
+  // unchanged by a transform, so placement is not disturbed.
+  assert.doesNotMatch(CSS.slice(CSS.indexOf('@keyframes wv-pop-in')).slice(0, 160), /width|height|top:|left:/);
+  const reduced = CSS.match(/@media \(prefers-reduced-motion: reduce\) \{[^}]*\.chip-pop[^}]*\}/);
+  assert.ok(reduced, 'an entrance animation needs a reduced-motion opt-out');
+});
+
 test('column reorder is persisted as fieldOrder, not page state', () => {
   const move = fnBody('reorderField');
   assert.match(move, /fieldOrder/, 'reorder writes the schema…');
