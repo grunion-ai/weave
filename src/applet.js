@@ -52,26 +52,49 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
 
-/* The row shape the applet speaks. Deliberately small: the phone gets what
-   it draws and nothing else. */
+/* What the phone needs to know about the table it is pointed at. The applet
+   bakes in no field names: the workflow field is whichever one has that type,
+   the states are its own, and every other field is drawn from its type. Point
+   WEAVE_APPLET_TABLE somewhere else and the page follows. */
+function schemaOf(weave, table) {
+  const db = weave.getTable(table);
+  const order = db.fieldOrder ?? Object.keys(db.fields);
+  const all = order.map((id) => db.fields[id]).filter(Boolean);
+  const nameField = db.fields[db.nameFieldId]?.name ?? 'Name';
+  const wf = all.find((f) => f.type === 'workflow');
+  return {
+    table: weave.qualifiedName(db),
+    nameField,
+    workflow: wf
+      ? { field: wf.name, states: (wf.config?.states ?? []).map((x) => ({ id: x.id, name: x.name, category: x.category })) }
+      : null,
+    fields: all
+      .filter((f) => f.name !== nameField)
+      .map((f) => ({ name: f.name, type: f.type, config: f.config ?? {} })),
+  };
+}
+
+/* A row is its name, its fields as they are, and its files. No allowlist. */
 function rowOf(weave, e) {
-  const f = e.fields ?? {};
-  const rel = (v) => (v && typeof v === 'object' ? v.name : v ?? null);
+  const flat = (v) => (Array.isArray(v)
+    ? v.map((x) => (x && typeof x === 'object' ? x.name ?? '' : x))
+    : (v && typeof v === 'object' ? v.name ?? null : v ?? null));
+  const fields = {};
+  for (const [k, v] of Object.entries(e.fields ?? {})) fields[k] = flat(v);
   return {
     id: e.id,
     publicId: e.publicId,
     name: e.name,
-    state: f.State ?? null,
-    priority: f.Priority ?? null,
-    tags: Array.isArray(f.Tags) ? f.Tags : [],
-    due: f.Due ?? null,
-    estimate: f.Estimate ?? null,
-    project: rel(f.Project),
-    assignee: rel(f.Assignee),
+    fields,
     files: (e.files ?? []).map((x) => ({ id: x.id, name: x.name, size: x.size, mime: x.mime })),
     updatedAt: e.updatedAt,
   };
 }
+
+/* Active is a question about categories, not about the word "Open". */
+const activeStates = (schema) => (schema.workflow?.states ?? [])
+  .filter((x) => x.category !== 'done' && x.category !== 'canceled')
+  .map((x) => x.name);
 
 /* Handle everything under <prefix>/t. Returns a response, or null so the
    dispatcher carries on. Mounted ahead of the auth wall, like a share link:
@@ -110,7 +133,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
 
   // ---- the page ----------------------------------------------------------
   if (path === '/t' && rx.method === 'GET') {
-    return out(200, unlocked ? appPage(mount) : gatePage(mount), {
+    return out(200, appPage(mount, !unlocked), {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-cache',
     });
@@ -130,25 +153,25 @@ export function handleApplet({ weave, rx, path, out, mount }) {
     return e.dbId === db.id ? e : null;
   };
 
+  const schema = schemaOf(weave, table);
+
   if (path === '/t/data' && rx.method === 'GET') {
     const scope = rx.searchParams.get('scope') ?? 'active';
-    const where = scope === 'all' ? [] : [['State', 'in', ACTIVE]];
+    const wf = schema.workflow;
+    const where = scope === 'all' || !wf ? [] : [[wf.field, 'in', activeStates(schema)]];
     // query() cannot sort on the update stamp (#pathValue has no entry for
     // it), so the order the applet is built around is applied here.
     const res = weave.query(table, { where, limit: 300 });
     const items = res.items
       .map((e) => rowOf(weave, e))
       .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-    return out(200, { total: res.total, items });
+    return out(200, { schema, total: res.total, items });
   }
 
   if (path === '/t/data' && rx.method === 'POST') {
     const name = String(body.name ?? '').trim();
     if (!name) return out(400, { error: 'A task needs a name', code: 'invalid' });
-    const values = { Name: name };
-    if (body.priority) values.Priority = body.priority;
-    if (Array.isArray(body.tags) && body.tags.length) values.Tags = body.tags;
-    if (body.due) values.Due = body.due;
+    const values = { [schema.nameField]: name, ...(body.values ?? {}) };
     const e = weave.createEntity(table, values);
     return out(201, rowOf(weave, weave.readEntity(e.id)));
   }
@@ -156,10 +179,11 @@ export function handleApplet({ weave, rx, path, out, mount }) {
   if (path === '/t/state' && rx.method === 'POST') {
     const e = mine(body.id);
     if (!e) return out(404, { error: 'No such task', code: 'not-found' });
-    const field = weave.getField(weave.getTable(table).id, 'State');
-    const known = (field.config?.states ?? []).some((s) => s.name === body.state || s.id === body.state);
+    const wf = schema.workflow;
+    if (!wf) return out(400, { error: 'This table has no workflow field', code: 'invalid' });
+    const known = wf.states.some((x) => x.name === body.state || x.id === body.state);
     if (!known) return out(400, { error: `Unknown state '${body.state}'`, code: 'invalid' });
-    weave.setState(e.id, 'State', body.state);
+    weave.setState(e.id, wf.field, body.state);
     return out(200, rowOf(weave, weave.readEntity(e.id)));
   }
 
@@ -176,9 +200,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
       ...rowOf(weave, full),
       docHtml: renderMarkdown(full.doc ?? ''),
       createdAt: full.createdAt,
-      states: (weave.getField(weave.getTable(table).id, 'State').config?.states ?? [])
-        .map((s) => ({ id: s.id, name: s.name, category: s.category })),
-      priorities: (weave.getField(weave.getTable(table).id, 'Priority')?.config?.options ?? []),
+      schema,
     });
   }
 
@@ -213,7 +235,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
 const HEAD = (mount, title, extra) => `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Tasks">
@@ -252,6 +274,9 @@ const CSS = `
   --shadow:0 1px 4px rgba(0,0,0,.4);
 }}
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+/* Rotating the phone must not reflow the type: Safari inflates text on a
+   landscape turn unless it is told the page already knows its own size. */
+html{-webkit-text-size-adjust:100%; text-size-adjust:100%; touch-action:manipulation}
 html,body{height:100%}
 body{
   margin:0; background:var(--ground); color:var(--body);
@@ -267,7 +292,12 @@ button,input,textarea{font:inherit; color:inherit}
 .wv-head h1{font-size:19px; font-weight:600; color:var(--ink); letter-spacing:-.015em; margin:0}
 .wv-head .spacer{flex:1}
 .wv-head .tally{font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums}
-.wv-mark{width:22px; height:11px; flex:none; opacity:.9; color:var(--ink)}
+.wv-mark{width:26px; height:26px; flex:none; display:block}
+.wv-mark-dark{display:none}
+@media (prefers-color-scheme: dark){
+  .wv-mark-light{display:none}
+  .wv-mark-dark{display:block}
+}
 .wv-iconbtn{width:34px; height:34px; border-radius:8px; border:1px solid transparent; background:none;
   color:var(--muted); display:grid; place-items:center; flex:none}
 .wv-iconbtn:active{background:var(--slate-soft)}
@@ -293,9 +323,16 @@ button,input,textarea{font:inherit; color:inherit}
 .wv-group .line{flex:1; height:1px; background:var(--line)}
 .wv-rowwrap{position:relative; border-radius:12px; overflow:hidden; flex:none}
 .wv-reveal{position:absolute; inset:0; display:flex; align-items:center; justify-content:space-between;
-  padding:0 20px; font-size:13px; font-weight:600; border-radius:12px}
-.wv-reveal .rv-done{color:var(--ok); display:flex; align-items:center; gap:6px}
-.wv-reveal .rv-prog{color:var(--accent); margin-left:auto; display:flex; align-items:center; gap:6px}
+  padding:0 22px; font-size:13px; font-weight:600; border-radius:12px; opacity:0;
+  transition:opacity .12s linear, background-color .12s linear}
+.wv-reveal span{display:flex; align-items:center; gap:7px; transform:scale(.82); opacity:.55;
+  transition:transform .16s cubic-bezier(.2,1.4,.4,1), opacity .16s}
+.wv-reveal .rv-done{color:var(--ok)}
+.wv-reveal .rv-prog{color:var(--accent); margin-left:auto}
+.wv-rowwrap[data-arm="done"] .rv-done, .wv-rowwrap[data-arm="prog"] .rv-prog{transform:scale(1); opacity:1}
+.wv-rowwrap.leaving{transition:height .26s cubic-bezier(.4,0,.2,1), opacity .2s, margin .26s; overflow:hidden}
+@keyframes wv-pop{0%{transform:scale(1)}38%{transform:scale(1.42)}100%{transform:scale(1)}}
+.wv-glyph.pop{animation:wv-pop .34s cubic-bezier(.2,1.3,.4,1)}
 .wv-row{position:relative; display:flex; align-items:flex-start; gap:12px; background:var(--surface);
   border:1px solid var(--line); border-radius:12px; padding:13px 13px 13px 12px; touch-action:pan-y;
   transition:transform .18s cubic-bezier(.2,.8,.3,1), opacity .2s}
@@ -403,6 +440,37 @@ button,input,textarea{font:inherit; color:inherit}
 `;
 
 const GATE_CSS = `
+.wv-mark-dark{display:none}
+@media (prefers-color-scheme: dark){.wv-mark-light{display:none}.wv-mark-dark{display:block}}
+/* Landscape on a phone is 400-ish points tall with the keyboard gone: every
+   band of chrome costs a row. The list takes the width instead. */
+@media (orientation: landscape) and (max-height: 520px){
+  .wv{padding-left:env(safe-area-inset-left,0px); padding-right:env(safe-area-inset-right,0px)}
+  .wv-head{padding:8px 18px 6px}
+  .wv-head h1{font-size:16px}
+  .wv-mark{width:20px; height:20px}
+  .wv-compose{margin:0 14px 8px; padding:7px 11px; border-radius:10px}
+  .wv-input{font-size:16px}
+  .wv-list{padding:0 14px 18px; display:grid; grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:8px; align-content:start}
+  .wv-donebar{grid-column:1 / -1}
+  .wv-row{padding:9px 11px 9px 10px; gap:10px}
+  .wv-title{font-size:15px}
+  .wv-glyph{width:22px; height:22px}
+  .wv-glyph svg{width:16px; height:16px}
+  .wv-detail{padding-left:env(safe-area-inset-left,0px); padding-right:env(safe-area-inset-right,0px)}
+  .wv-dhead{padding:6px 12px 4px}
+  .wv-dtitle{font-size:20px; margin-bottom:10px}
+  .wv-dbody{padding:2px 18px 24px}
+  .wv-sheet{max-height:86vh; overflow-y:auto}
+  .wv-opt{padding:10px 22px}
+  .wv-key{height:44px; border-radius:22px; font-size:20px}
+  .wv-pad{gap:8px 20px; max-width:300px}
+  .wv-gate .logo{margin-top:4vh}
+  .wv-gate h2{margin:10px 0 2px; font-size:17px}
+  .wv-dots{margin:14px 0 4px}
+}
+
 .wv-gate{position:fixed; inset:0; z-index:70; background:var(--ground); display:flex; flex-direction:column;
   align-items:center; padding:var(--safe-t) 34px calc(24px + var(--safe-b));
   transition:opacity .3s, transform .3s}
@@ -424,12 +492,15 @@ const GATE_CSS = `
 .wv-key.flat{background:none; border-color:transparent; font-size:15px; color:var(--muted)}
 `;
 
-const MARK = '<svg class="wv-mark" viewBox="0 0 64 32" fill="none" stroke="currentColor" stroke-width="4.6" stroke-linecap="round" aria-hidden="true"><path d="M4 22c7-16 14-16 21 0M18 22c7-16 14-16 21 0M32 22c7-16 14-16 21 0" opacity=".85"/></svg>';
+const MARK = '<img class="wv-mark wv-mark-light" src="/brand/weave-mark-light.svg" alt="weave">'
+  + '<img class="wv-mark wv-mark-dark" src="/brand/weave-mark-dark.svg" alt="">';
 
-function gatePage(mount) {
-  return `${HEAD(mount, 'Tasks', GATE_CSS)}
+const BIG_MARK = '<img class="wv-mark-light" src="/brand/weave-mark-light.svg" alt="weave" width="56" height="56">'
+  + '<img class="wv-mark-dark" src="/brand/weave-mark-dark.svg" alt="" width="56" height="56">';
+
+const GATE_HTML = (mount) => `
 <div class="wv-gate" id="gate">
-  <div class="logo"><svg viewBox="0 0 64 32" width="52" height="26" fill="none" stroke="currentColor" stroke-width="4.6" stroke-linecap="round"><path d="M4 22c7-16 14-16 21 0M18 22c7-16 14-16 21 0M32 22c7-16 14-16 21 0" opacity=".85"/></svg></div>
+  <div class="logo">${BIG_MARK}</div>
   <h2>uno tasks</h2>
   <p>Enter the passcode</p>
   <div class="wv-dots" id="dots">${'<span class="wv-dot"></span>'.repeat(8)}</div>
@@ -440,45 +511,10 @@ function gatePage(mount) {
     <button class="wv-key" data-k="0">0</button>
     <button class="wv-key flat" data-k="del">&#9003;</button>
   </div>
-</div>
-<script>
-(() => {
-  const MOUNT = ${JSON.stringify(mount)};
-  let buf = '', busy = false;
-  const dots = [...document.querySelectorAll('.wv-dot')];
-  const hint = document.getElementById('hint');
-  const draw = () => dots.forEach((d, i) => d.classList.toggle('on', i < buf.length));
-  const fail = (msg) => {
-    const row = document.getElementById('dots');
-    row.classList.add('bad'); hint.textContent = msg;
-    setTimeout(() => { row.classList.remove('bad'); buf = ''; draw(); }, 500);
-  };
-  document.querySelectorAll('.wv-key').forEach((b) => b.addEventListener('click', async () => {
-    if (busy) return;
-    const k = b.dataset.k;
-    if (k === 'clear') buf = '';
-    else if (k === 'del') buf = buf.slice(0, -1);
-    else if (buf.length < 8) buf += k;
-    draw();
-    if (buf.length !== 8) return;
-    busy = true;
-    try {
-      const res = await fetch(MOUNT + '/unlock', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passcode: buf }),
-      });
-      if (res.ok) { location.replace(MOUNT); return; }
-      fail(res.status === 429 ? 'too many tries' : 'wrong passcode');
-    } catch { fail('no connection'); }
-    busy = false;
-  }));
-})();
-</script>
-</body></html>`;
-}
+</div>`;
 
-function appPage(mount) {
-  return `${HEAD(mount, 'Tasks')}
+function appPage(mount, locked) {
+  return `${HEAD(mount, 'Tasks', locked ? GATE_CSS : '')}
 <div class="wv">
   <div class="wv-head">${MARK}<h1>Tasks</h1><span class="spacer"></span><span class="tally" id="tally"></span></div>
   <form class="wv-compose" id="compose">
@@ -493,9 +529,18 @@ function appPage(mount) {
 <div class="wv-scrim" id="scrim"></div>
 <div class="wv-sheet" id="sheet"></div>
 <div class="wv-detail" id="detail"></div>
+${locked ? GATE_HTML(mount) : ''}
 <button class="wv-bug" id="bug" type="button" title="Report a problem" aria-label="Report a problem"><span class="face"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 3.2a3 3 0 0 0-2.8 2H8a1 1 0 0 0 0 2h.4a5 5 0 0 0-.9 1.6L6 8.2a1 1 0 1 0-.8 1.8l1.4.6a6.7 6.7 0 0 0 0 1.3l-1.5.6A1 1 0 0 0 6 14.3l1.4-.6c.2.6.5 1.1.9 1.6l-1.1 1a1 1 0 1 0 1.4 1.4l1.1-1a4.6 4.6 0 0 0 4.6 0l1.1 1a1 1 0 0 0 1.4-1.4l-1.1-1c.4-.5.7-1 .9-1.6l1.4.6a1 1 0 0 0 .8-1.8l-1.5-.6a6.7 6.7 0 0 0 0-1.3l1.5-.6a1 1 0 0 0-.8-1.8l-1.5.6a5 5 0 0 0-.9-1.6h.4a1 1 0 0 0 0-2h-1.2a3 3 0 0 0-2.8-2zm0 2a1 1 0 0 1 .9.6h-1.8a1 1 0 0 1 .9-.6zm-1 5.3h2v6h-2z"/></svg></span></button>
 <input type="file" id="picker" accept="image/*,application/pdf,text/*" multiple hidden>
-<script>${CLIENT.replace('__MOUNT__', mount)}</script>
+<script src="/chip-core.js"></script>
+<script>
+// Safari ignores user-scalable=no in a tab; refusing the gesture is the only
+// way a swipe-driven list stops turning into a zoom.
+['gesturestart', 'gesturechange', 'gestureend'].forEach((g) =>
+  document.addEventListener(g, (e) => e.preventDefault(), { passive: false }));
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+</script>
+<script>${CLIENT.replace('__MOUNT__', mount).replace('__LOCKED__', String(!!locked))}</script>
 </body></html>`;
 }
 
@@ -505,39 +550,41 @@ const CLIENT = `
 (() => {
   const MOUNT = '__MOUNT__';
   const CFG = {
-    swipe: true,        // right -> Done, left -> In Progress
+    swipe: true,        // right -> the done state, left -> the in-progress one
     attach: true,       // paperclip on compose, files on the task
     fieldView: 'rail',  // 'rail' | 'rows'
     scope: 'all',       // fetch everything, show the active ones; Done tucks
-                        // into a bar at the end. 'active' asks the server to
-                        // send only the live rows, for a very long table.
-    doneTuck: true,     // finished rows behind a bar at the end
+    doneTuck: true,
     undo: true,
+    rowChips: 4,        // how many field chips a row shows before it says "+n"
   };
-  const CYCLE = ['Open', 'In Progress', 'Done'];
-  const HUE = { 'not-started': 'slate', 'in-progress': 'blue', done: 'green', canceled: 'slate' };
-  const PRI_HUE = { P0: 'red', P1: 'amber', P2: 'slate', P3: 'slate' };
-  const CAT = { 'Open': 'not-started', 'In Progress': 'in-progress', 'Review': 'in-progress', 'Done': 'done', 'Canceled': 'canceled' };
-  const cat = (s) => CAT[s] || 'not-started';
+
+  // The hue ramp is weave's own (public/chip-core.js), not a second opinion.
+  const CC = globalThis.chipCore ?? {};
+  const hueForIndex = CC.hueForIndex ?? (() => 'slate');
+  const categoryHue = CC.categoryHue ?? (() => 'slate');
+  const hueFromHex = CC.hueFromHex ?? (() => null);
+
   const svg = (d, n) => '<svg viewBox="0 0 24 24" width="' + (n||18) + '" height="' + (n||18) + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
   const I = {
     circle: svg('<circle cx="12" cy="12" r="8.5"/>'),
     half: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/>'),
     check: svg('<circle cx="12" cy="12" r="8.5" fill="currentColor" stroke="none"/><path d="M8.3 12.2l2.6 2.6 5-5.4" stroke="var(--surface)" stroke-width="2.1"/>'),
+    cross: svg('<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>'),
     chev: svg('<path d="M9 5l7 7-7 7"/>', 15),
     back: svg('<path d="M15 5l-7 7 7 7"/>', 19),
     tick: svg('<path d="M4.5 12.5l4.5 4.5 10-11"/>', 17),
     clip: svg('<path d="M17.5 9.5l-7.1 7.1a3.2 3.2 0 0 1-4.5-4.5l7.7-7.7a2.1 2.1 0 0 1 3 3l-7.7 7.7a1 1 0 0 1-1.4-1.4l6.9-6.9"/>', 14),
     plus: svg('<path d="M12 5v14M5 12h14"/>', 15),
   };
-  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const ago = (iso) => {
     const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
     return m < 1 ? 'now' : m < 60 ? m + 'm' : m < 1440 ? Math.round(m / 60) + 'h' : Math.round(m / 1440) + 'd';
   };
   const day = (iso) => {
     if (!iso) return '';
-    const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso + 'T12:00:00' : iso);
+    const d = new Date(/^\\d{4}-\\d{2}-\\d{2}$/.test(iso) ? iso + 'T12:00:00' : iso);
     return isNaN(d) ? String(iso) : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
   const kb = (n) => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
@@ -545,7 +592,36 @@ const CLIENT = `
   const $ = (id) => document.getElementById(id);
   const list = $('list'), input = $('new'), compose = $('compose'), toast = $('toast');
   const scrim = $('scrim'), sheet = $('sheet'), detail = $('detail'), picker = $('picker');
-  let tasks = [], showDone = false, staged = [], toastTimer = null, offline = false;
+  let tasks = [], S = null, showDone = false, staged = [], toastTimer = null;
+
+  // ---- what the table says about itself ---------------------------------
+  const wfField = () => S && S.workflow && S.workflow.field;
+  const states = () => (S && S.workflow ? S.workflow.states : []);
+  const stateOf = (t) => (t.fields || {})[wfField()] || null;
+  const catOf = (name) => { const x = states().find((y) => y.name === name); return x ? x.category : 'not-started'; };
+  const byCat = (c) => { const x = states().find((y) => y.category === c); return x ? x.name : null; };
+  const cycleNames = () => ['not-started', 'in-progress', 'done'].map(byCat).filter(Boolean);
+  const isActive = (t) => { const c = catOf(stateOf(t)); return c !== 'done' && c !== 'canceled'; };
+  // Fields the phone draws as chips: everything except the name, the prose,
+  // and the attachments — those have their own places on the page.
+  const chipFields = () => (S ? S.fields.filter((f) => !['document', 'attachments'].includes(f.type)) : []);
+  /* A row has space for four chips, so the ones that answer "what is this and
+     when" go first. Still no field names — the order is by type, and the
+     table's own order breaks ties. */
+  const CHIP_WEIGHT = { select: 0, multiselect: 1, date: 2, relation: 3, number: 4, checkbox: 5 };
+  const rowFields = () => chipFields()
+    .map((f, i) => ({ f, i, w: CHIP_WEIGHT[f.type] ?? 6 }))
+    .sort((a, b) => a.w - b.w || a.i - b.i)
+    .map((x) => x.f);
+
+  const optionNames = (f) => (f.config.options || []).map((o) => (o && typeof o === 'object' ? o.name : o));
+  const hueForValue = (f, v) => {
+    const opts = f.config.options || [];
+    const i = optionNames(f).indexOf(v);
+    if (i < 0) return 'slate';
+    const stored = opts[i] && typeof opts[i] === 'object' ? opts[i].color : null;
+    return (stored && hueFromHex(stored)) || hueForIndex(i);
+  };
 
   const api = async (path, opts) => {
     const res = await fetch(MOUNT + path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
@@ -573,21 +649,32 @@ const CLIENT = `
 
   // ---- writes, optimistic ------------------------------------------------
   async function setState(t, state) {
-    const was = t.state;
+    const was = stateOf(t);
     if (was === state) return;
-    t.state = state; t.updatedAt = new Date().toISOString();
+    t.fields[wfField()] = state; t.updatedAt = new Date().toISOString();
     paint();
     try {
       const row = await api('/state', { method: 'POST', body: JSON.stringify({ id: t.id, state }) });
       Object.assign(t, row);
-    } catch (e) { t.state = was; say('Could not save — still ' + was); }
+    } catch { t.fields[wfField()] = was; say('Could not save — still ' + was); }
     paint();
     if (CFG.undo) say(state, () => setState(t, was));
   }
   const advance = (t) => {
-    const i = CYCLE.indexOf(t.state);
-    setState(t, i === -1 ? 'In Progress' : CYCLE[(i + 1) % CYCLE.length]);
+    const c = cycleNames();
+    const i = c.indexOf(stateOf(t));
+    if (c.length) setState(t, i === -1 ? (byCat('in-progress') || c[0]) : c[(i + 1) % c.length]);
   };
+  async function setField(t, name, value) {
+    const was = t.fields[name];
+    t.fields[name] = value;
+    paint();
+    try {
+      const row = await api('/entity/' + t.id, { method: 'PATCH', body: JSON.stringify({ values: { [name]: value } }) });
+      Object.assign(t, row);
+    } catch { t.fields[name] = was; say('Could not set ' + name); }
+    paint();
+  }
 
   compose.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -595,8 +682,9 @@ const CLIENT = `
     if (!name) return;
     input.value = '';
     input.focus();                                   // the loop: never give up focus
-    const temp = { id: 'tmp-' + Math.random().toString(36).slice(2), name, state: 'Open', tags: [],
+    const temp = { id: 'tmp-' + Math.random().toString(36).slice(2), name, fields: {},
                    files: [], updatedAt: new Date().toISOString(), pending: true };
+    if (wfField()) temp.fields[wfField()] = byCat('not-started');
     tasks.unshift(temp);
     paint();
     list.scrollTop = 0;
@@ -609,9 +697,9 @@ const CLIENT = `
         const file = await api('/file', { method: 'POST', body: JSON.stringify(Object.assign({ id: temp.id }, f)) });
         temp.files.push(file);
       }
-    } catch (err) {
+    } catch {
       temp.failed = true; temp.pending = false;
-      say('Not saved — tap to retry');
+      say('Not saved — still here, try again');
     }
     paint();
   });
@@ -635,12 +723,11 @@ const CLIENT = `
     const payloads = [];
     for (const f of files) payloads.push(await readFile(f));
     if (pickInto) {
-      for (const p of payloads) {
-        const file = await api('/file', { method: 'POST', body: JSON.stringify(Object.assign({ id: pickInto.id }, p)) });
+      for (const pl of payloads) {
+        const file = await api('/file', { method: 'POST', body: JSON.stringify(Object.assign({ id: pickInto.id }, pl)) });
         pickInto.files.push(file);
       }
-      openDetail(pickInto);
-      paint();
+      openDetail(pickInto); paint();
     } else {
       staged = staged.concat(payloads);
       $('clip').classList.add('has');
@@ -649,164 +736,242 @@ const CLIENT = `
   });
 
   // ---- swipe -------------------------------------------------------------
+  const THRESH = 72;
+  let popNext = null;
+
   function wireSwipe(wrap, node, t) {
-    let x0 = null, dx = 0;
+    let x0 = null, dx = 0, armed = null;
+    const reveal = wrap.querySelector('.wv-reveal');
     node.addEventListener('pointerdown', (e) => {
       if (e.clientX < 24) return;                    // leave Safari's back gesture alone
-      x0 = e.clientX; dx = 0; node.classList.add('swiping');
+      x0 = e.clientX; dx = 0; armed = null;
+      node.classList.add('swiping');
       try { node.setPointerCapture(e.pointerId); } catch {}
     });
     node.addEventListener('pointermove', (e) => {
       if (x0 === null) return;
-      dx = e.clientX - x0;
-      if (Math.abs(dx) < 4) return;
-      node.style.transform = 'translateX(' + dx + 'px)';
-      wrap.querySelector('.wv-reveal').style.background = dx > 0 ? 'var(--ok-soft)' : 'var(--accent-soft)';
+      const raw = e.clientX - x0;
+      // Past the threshold the row keeps moving, but grudgingly: the drag
+      // stops feeling free exactly where the gesture has already committed.
+      dx = Math.abs(raw) <= THRESH ? raw : Math.sign(raw) * (THRESH + (Math.abs(raw) - THRESH) * 0.32);
+      if (Math.abs(dx) < 3) return;
+      node.style.transform = 'translateX(' + dx.toFixed(1) + 'px)';
+      reveal.style.opacity = Math.min(1, Math.abs(dx) / THRESH).toFixed(2);
+      reveal.style.backgroundColor = dx > 0 ? 'var(--ok-soft)' : 'var(--accent-soft)';
+      const nowArmed = Math.abs(raw) >= THRESH ? (dx > 0 ? 'done' : 'prog') : null;
+      if (nowArmed !== armed) { armed = nowArmed; wrap.dataset.arm = armed || ''; }
     });
+    const settle = () => {
+      node.classList.remove('swiping');
+      node.style.transform = ''; reveal.style.opacity = ''; wrap.dataset.arm = '';
+    };
     const end = () => {
       if (x0 === null) return;
-      node.classList.remove('swiping');
-      node.style.transform = '';
-      if (dx > 74) setState(t, 'Done');
-      else if (dx < -74) setState(t, 'In Progress');
-      x0 = null;
+      const hit = armed;
+      x0 = null; armed = null;
+      if (!hit) { settle(); return; }
+      const next = hit === 'done' ? byCat('done') : byCat('in-progress');
+      if (!next || stateOf(t) === next) { settle(); return; }
+      // A row about to leave this view should be seen leaving it; one that
+      // stays gets its glyph changed under the returning row instead.
+      if (catOf(next) === 'done' && !showDone) {
+        const h = wrap.offsetHeight;
+        node.classList.remove('swiping');
+        node.style.transform = 'translateX(' + (wrap.offsetWidth * 0.34) + 'px)';
+        node.style.opacity = '0';
+        wrap.style.height = h + 'px';
+        requestAnimationFrame(() => {
+          wrap.classList.add('leaving');
+          wrap.style.height = '0px'; wrap.style.opacity = '0'; wrap.style.marginBottom = '-8px';
+        });
+        setTimeout(() => setState(t, next), 250);
+      } else {
+        settle(); popNext = t.id; setState(t, next);
+      }
     };
     node.addEventListener('pointerup', end);
     node.addEventListener('pointercancel', end);
   }
 
-  // ---- the task page -----------------------------------------------------
+  // ---- one chip, drawn from the field's type -----------------------------
+  function chipHTML(f, v, opts) {
+    const o = opts || {};
+    const tap = o.editable ? ' data-edit="' + esc(f.name) + '"' : '';
+    const one = (cls, txt) => '<button class="k ' + cls + '"' + tap + '>' + esc(txt) + '</button>';
+    if (v == null || v === '' || (Array.isArray(v) && !v.length)) return '';
+    switch (f.type) {
+      case 'workflow': return one(categoryHue(catOf(v)), v);
+      case 'select': return one(hueForValue(f, v), v);
+      case 'multiselect': return [].concat(v).map((x) => one(hueForValue(f, x), x)).join('');
+      case 'date': return one('ghost', day(v));
+      case 'checkbox': return v ? one('slate', f.name) : '';
+      case 'number': return one('ghost', f.name + ' ' + v);
+      case 'relation': return [].concat(v).map((x) => '<span class="k pointer">' + esc(x) + '</span>').join('');
+      case 'formula': case 'lookup': case 'rollup':
+        return '<span class="k k-more">\\u25e6 ' + esc(v) + '</span>';
+      case 'email': case 'url': case 'text': return one('ghost', v);
+      default: return one('ghost', v);
+    }
+  }
+  const editableType = (t) => ['workflow', 'select', 'multiselect', 'date', 'number', 'text', 'email', 'url', 'checkbox'].includes(t);
+
+  // ---- editing a field, in this page, never on another one ---------------
+  function editField(t, name, after) {
+    const f = chipFields().find((x) => x.name === name) || (S.workflow && name === wfField()
+      ? { name, type: 'workflow', config: {} } : null);
+    if (!f || !editableType(f.type)) return;
+    const cur = t.fields[name];
+    const done = (v) => { closeSheet(); setField(t, name, v).then(after); };
+
+    if (f.type === 'workflow') {
+      openSheet('<h4>' + esc(name) + '</h4>' + states().map((x) =>
+        '<button class="wv-opt" data-v="' + esc(x.name) + '"><span class="k ' + categoryHue(x.category) + '">' + esc(x.name) + '</span>'
+        + (cur === x.name ? '<span class="tick">' + I.tick + '</span>' : '') + '</button>').join(''),
+        (sh) => sh.querySelectorAll('[data-v]').forEach((b) => b.addEventListener('click', () => {
+          closeSheet(); setState(t, b.dataset.v).then(after);
+        })));
+      return;
+    }
+    if (f.type === 'select') {
+      openSheet('<h4>' + esc(name) + '</h4>' + optionNames(f).map((o) =>
+        '<button class="wv-opt" data-v="' + esc(o) + '"><span class="k ' + hueForValue(f, o) + '">' + esc(o) + '</span>'
+        + (cur === o ? '<span class="tick">' + I.tick + '</span>' : '') + '</button>').join('')
+        + '<button class="wv-opt" data-clear style="color:var(--muted)">Clear</button>',
+        (sh) => {
+          sh.querySelectorAll('[data-v]').forEach((b) => b.addEventListener('click', () => done(b.dataset.v)));
+          sh.querySelector('[data-clear]').addEventListener('click', () => done(null));
+        });
+      return;
+    }
+    if (f.type === 'multiselect') {
+      const picked = new Set([].concat(cur || []));
+      openSheet('<h4>' + esc(name) + '</h4>' + optionNames(f).map((o) =>
+        '<button class="wv-opt" data-v="' + esc(o) + '"><span class="k ' + hueForValue(f, o) + '">' + esc(o) + '</span>'
+        + '<span class="tick" data-mark' + (picked.has(o) ? '' : ' hidden') + '>' + I.tick + '</span></button>').join('')
+        + '<button class="wv-opt" data-save style="color:var(--accent);font-weight:600">Done</button>',
+        (sh) => {
+          sh.querySelectorAll('[data-v]').forEach((b) => b.addEventListener('click', () => {
+            const o = b.dataset.v;
+            if (picked.has(o)) picked.delete(o); else picked.add(o);
+            b.querySelector('[data-mark]').hidden = !picked.has(o);
+          }));
+          sh.querySelector('[data-save]').addEventListener('click', () => done([...picked]));
+        });
+      return;
+    }
+    const kind = f.type === 'date' ? 'date' : f.type === 'number' ? 'number'
+      : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text';
+    if (f.type === 'checkbox') { done(!cur); return; }
+    openSheet('<h4>' + esc(name) + '</h4>'
+      + '<div style="padding:0 22px 8px"><input id="fv" type="' + kind + '" value="' + esc(cur == null ? '' : cur) + '" '
+      + 'style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground)"></div>'
+      + '<button class="wv-opt" data-save style="color:var(--accent);font-weight:600">Save</button>',
+      (sh) => {
+        const el = sh.querySelector('#fv');
+        setTimeout(() => el.focus(), 60);
+        sh.querySelector('[data-save]').addEventListener('click', () => {
+          const raw = el.value.trim();
+          done(raw === '' ? null : (kind === 'number' ? Number(raw) : raw));
+        });
+      });
+  }
+
+  // ---- the task page (an overlay on this page, not a navigation) ---------
   let dView = CFG.fieldView;
   async function openDetail(t) {
     let full = t;
     try { full = await api('/entity/' + t.id); } catch {}
-    const c = cat(full.state);
-    const empties = [['Priority', !full.priority], ['Due', !full.due], ['Estimate', full.estimate == null],
-                     ['Tags', !(full.tags || []).length], ['Project', !full.project], ['Assignee', !full.assignee]]
-                    .filter(([, e]) => e).length;
-    const chip = (cls, txt, attr) => '<button class="k ' + cls + '"' + (attr || '') + '>' + esc(txt) + '</button>';
+    const live = tasks.find((x) => x.id === full.id);
+    if (live) Object.assign(live, full);
+    const target = live || full;
+    const fs = chipFields();
+    const set = fs.filter((f) => { const v = target.fields[f.name]; return !(v == null || v === '' || (Array.isArray(v) && !v.length)); });
+    const empty = fs.filter((f) => !set.includes(f) && editableType(f.type));
+
     const rail = '<div class="wv-vrail">'
-      + chip(HUE[c], full.state || 'Open', ' data-f="State"')
-      + (full.priority ? chip(PRI_HUE[full.priority] || 'slate', full.priority, ' data-f="Priority"') : '')
-      + (full.due ? chip('ghost', day(full.due)) : '')
-      + (full.estimate != null ? chip('ghost', full.estimate + ' pts') : '')
-      + (full.tags || []).map((g) => chip('slate', g)).join('')
-      + (full.project ? chip('pointer', full.project) : '')
-      + (full.assignee ? chip('pointer', full.assignee) : '')
-      + (empties ? '<button class="k-add" disabled>+ ' + empties + ' empty</button>' : '')
+      + set.map((f) => chipHTML(f, target.fields[f.name], { editable: editableType(f.type) })).join('')
+      + empty.map((f) => '<button class="k-add" data-edit="' + esc(f.name) + '">+ ' + esc(f.name) + '</button>').join('')
       + '</div>';
-    const rows = '<div class="wv-vrail" style="flex-direction:column;align-items:stretch;gap:0">'
-      + [['State', full.state], ['Priority', full.priority], ['Due', day(full.due)], ['Estimate', full.estimate],
-         ['Tags', (full.tags || []).join(', ')], ['Project', full.project], ['Assignee', full.assignee]]
-        .map(([k, v]) => '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-soft)">'
-          + '<span style="color:var(--muted);font-size:13px;width:96px">' + k + '</span>'
-          + '<span style="flex:1;text-align:right;color:' + (v ? 'var(--ink)' : 'var(--faint)') + '">' + esc(v || '—') + '</span></div>').join('')
+    const rows = '<div class="wv-values">'
+      + fs.map((f) => '<div class="wv-val"' + (editableType(f.type) ? ' data-edit="' + esc(f.name) + '"' : '') + '>'
+          + '<span class="lab">' + esc(f.name) + '</span>'
+          + '<span class="v">' + (chipHTML(f, target.fields[f.name], {}) || '<span style="color:var(--faint)">—</span>') + '</span></div>').join('')
       + '</div>';
+
     detail.innerHTML =
       '<div class="wv-dhead"><button type="button" class="back">' + I.back + '<span>Tasks</span></button>'
-      + '<span class="pid">Task #' + esc(full.publicId) + ' · ' + ago(full.updatedAt) + '</span></div>'
+      + '<span class="pid">#' + esc(target.publicId) + ' \\u00b7 ' + ago(target.updatedAt) + '</span></div>'
       + '<div class="wv-dbody">'
-      + '<div class="wv-crumbs"><span>uno</span><span>›</span><span>Product</span><span>›</span><span>Task</span></div>'
-      + '<textarea class="wv-dtitle" rows="2">' + esc(full.name) + '</textarea>'
+      + '<textarea class="wv-dtitle" rows="2">' + esc(target.name) + '</textarea>'
       + '<p class="wv-dsec">Fields<span class="line"></span><button type="button" class="k-add" data-view style="padding:1px 7px">'
       + (dView === 'rail' ? 'rows' : 'rail') + '</button></p>'
       + (dView === 'rail' ? rail : rows)
       + (CFG.attach ? '<p class="wv-dsec">Files<span class="line"></span></p><div class="wv-files">'
-          + (full.files || []).map((f) => '<a class="wv-file" href="' + MOUNT + '/file/' + f.id + '" target="_blank" rel="noopener">'
+          + (target.files || []).map((f) => '<a class="wv-file" href="' + MOUNT + '/file/' + f.id + '" target="_blank" rel="noopener">'
               + '<span class="thumb">' + esc((f.name.split('.').pop() || 'file').slice(0, 4)) + '</span>'
               + '<span class="nm">' + esc(f.name) + '</span><span class="sz">' + kb(f.size) + '</span></a>').join('')
           + '<button class="wv-file add" data-addfile>' + I.plus + '<span class="nm">Add file</span></button></div>' : '')
       + (full.docHtml ? '<p class="wv-dsec">Description<span class="line"></span></p><div class="wv-doc">' + full.docHtml + '</div>' : '')
-      + '<div class="wv-dfoot"><span>Created ' + new Date(full.createdAt || full.updatedAt).toLocaleDateString() + '</span>'
-      + '<span>Updated ' + ago(full.updatedAt) + ' ago</span></div></div>';
+      + '<div class="wv-dfoot"><span>Created ' + new Date(full.createdAt || target.updatedAt).toLocaleDateString() + '</span>'
+      + '<span>Updated ' + ago(target.updatedAt) + ' ago</span></div></div>';
     requestAnimationFrame(() => detail.classList.add('in'));
 
     detail.querySelector('.back').addEventListener('click', () => detail.classList.remove('in'));
     detail.querySelector('[data-view]').addEventListener('click', () => {
-      dView = dView === 'rail' ? 'rows' : 'rail'; openDetail(full);
+      dView = dView === 'rail' ? 'rows' : 'rail';
+      openDetail(target); detail.classList.add('in');
     });
-    const st = detail.querySelector('[data-f="State"]');
-    if (st) st.addEventListener('click', () => stateSheet(full, () => openDetail(full)));
-    const pr = detail.querySelector('[data-f="Priority"]');
-    if (pr) pr.addEventListener('click', () => prioritySheet(full, () => openDetail(full)));
+    detail.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () =>
+      editField(target, b.dataset.edit, () => { openDetail(target); detail.classList.add('in'); })));
     const add = detail.querySelector('[data-addfile]');
-    if (add) add.addEventListener('click', () => { pickInto = full; picker.click(); });
+    if (add) add.addEventListener('click', () => { pickInto = target; picker.click(); });
     const title = detail.querySelector('.wv-dtitle');
     title.addEventListener('blur', async () => {
       const v = title.value.trim();
-      if (!v || v === full.name) return;
+      if (!v || v === target.name) return;
       try {
-        const row = await api('/entity/' + full.id, { method: 'PATCH', body: JSON.stringify({ values: { Name: v } }) });
-        Object.assign(full, row);
-        const live = tasks.find((x) => x.id === full.id);
-        if (live) Object.assign(live, row);
-        paint();
+        const row = await api('/entity/' + target.id, { method: 'PATCH', body: JSON.stringify({ values: { [S.nameField]: v } }) });
+        Object.assign(target, row); paint();
       } catch { say('Could not rename'); }
     });
   }
 
-  function stateSheet(t, after) {
-    const states = t.states || [{ id: 'open', name: 'Open', category: 'not-started' },
-      { id: 'in-progress', name: 'In Progress', category: 'in-progress' },
-      { id: 'review', name: 'Review', category: 'in-progress' },
-      { id: 'done', name: 'Done', category: 'done' },
-      { id: 'canceled', name: 'Canceled', category: 'canceled' }];
-    openSheet('<h4>State</h4>' + states.map((s) =>
-      '<button class="wv-opt" data-s="' + esc(s.name) + '"><span class="k ' + (HUE[s.category] || 'slate') + '">' + esc(s.name) + '</span>'
-      + (t.state === s.name ? '<span class="tick">' + I.tick + '</span>' : '') + '</button>').join(''),
-      (sh) => sh.querySelectorAll('[data-s]').forEach((b) => b.addEventListener('click', async () => {
-        closeSheet();
-        const live = tasks.find((x) => x.id === t.id) || t;
-        await setState(live, b.dataset.s);
-        t.state = live.state;
-        after && after();
-      })));
-  }
-  function prioritySheet(t, after) {
-    const opts = t.priorities && t.priorities.length ? t.priorities : ['P0', 'P1', 'P2', 'P3'];
-    openSheet('<h4>Priority</h4>' + opts.map((p) =>
-      '<button class="wv-opt" data-p="' + esc(p) + '"><span class="k ' + (PRI_HUE[p] || 'slate') + '">' + esc(p) + '</span>'
-      + (t.priority === p ? '<span class="tick">' + I.tick + '</span>' : '') + '</button>').join(''),
-      (sh) => sh.querySelectorAll('[data-p]').forEach((b) => b.addEventListener('click', async () => {
-        closeSheet();
-        try {
-          const row = await api('/entity/' + t.id, { method: 'PATCH', body: JSON.stringify({ values: { Priority: b.dataset.p } }) });
-          Object.assign(t, row);
-          const live = tasks.find((x) => x.id === t.id);
-          if (live) Object.assign(live, row);
-          paint(); after && after();
-        } catch { say('Could not set priority'); }
-      })));
-  }
-
   // ---- bug report --------------------------------------------------------
+  const BUG_CATS = [['slow', 'Slow'], ['broken-ui', 'Looks broken'], ['wrong-data', 'Wrong data'], ['error', 'Error']];
   $('bug').addEventListener('click', () => {
     openSheet('<h4>Report a problem</h4>'
       + '<div style="padding:2px 22px 10px;display:flex;flex-wrap:wrap;gap:6px">'
-      + ['wrong data', 'slow', 'layout broken', 'it crashed', 'keyboard', 'other']
-          .map((s) => '<button class="k slate" data-sym="' + s + '" style="padding:6px 11px;font-size:13px">' + s + '</button>').join('')
+      + BUG_CATS.map(([id, label]) => '<button class="k slate" data-cat="' + id + '" style="padding:6px 11px;font-size:13px">' + label + '</button>').join('')
       + '</div><textarea id="bugtext" placeholder="What happened?" style="margin:0 22px;width:calc(100% - 44px);min-height:74px;'
       + 'border:1px solid var(--line);border-radius:10px;background:var(--ground);padding:10px;font-size:16px"></textarea>'
       + '<button class="wv-opt" data-send style="color:var(--accent);font-weight:600">Send to weave</button>',
       (sh) => {
         const picked = new Set();
-        sh.querySelectorAll('[data-sym]').forEach((b) => b.addEventListener('click', () => {
-          const s = b.dataset.sym;
-          if (picked.has(s)) { picked.delete(s); b.className = 'k slate'; }
-          else { picked.add(s); b.className = 'k blue'; }
+        sh.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => {
+          const id = b.dataset.cat;
+          if (picked.has(id)) picked.delete(id); else picked.add(id);
+          b.className = 'k ' + (picked.has(id) ? 'blue' : 'slate');
           b.style.padding = '6px 11px'; b.style.fontSize = '13px';
         }));
         sh.querySelector('[data-send]').addEventListener('click', async () => {
-          const text = sh.querySelector('#bugtext').value.trim();
+          const note = sh.querySelector('#bugtext').value.trim();
+          if (!picked.size && !note) { say('Pick a symptom or write a line'); return; }
           closeSheet();
           try {
-            await fetch('/api/bug-report', {
+            // The endpoint's own contract: categories + note, not a title and
+            // a description. Asked at the root, because the Issue is filed
+            // into the weave docs workspace, not this one.
+            const res = await fetch('/api/bug-report', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ title: 'Applet: ' + (text.slice(0, 60) || [...picked].join(', ') || 'problem'),
-                                     description: text, symptoms: [...picked],
-                                     context: { surface: 'task applet', ua: navigator.userAgent, url: location.href } }),
+              body: JSON.stringify({
+                categories: [...picked], note, events: [],
+                client: { surface: 'task applet', url: location.href, ua: navigator.userAgent,
+                          viewport: innerWidth + 'x' + innerHeight, filedAt: new Date().toISOString() },
+              }),
             });
-            say('Reported');
+            if (!res.ok) { say('Not reported \\u2014 ' + res.status); return; }
+            const filed = await res.json();
+            say('Reported as Issue #' + filed.publicId);
           } catch { say('Could not send the report'); }
         });
       });
@@ -814,36 +979,52 @@ const CLIENT = `
 
   // ---- render ------------------------------------------------------------
   function rowNode(t) {
-    const c = cat(t.state);
+    const st = stateOf(t);
+    const c = catOf(st);
     const wrap = document.createElement('div');
     wrap.className = 'wv-rowwrap';
-    if (CFG.swipe) wrap.insertAdjacentHTML('beforeend',
-      '<div class="wv-reveal"><span class="rv-done">' + I.tick + ' Done</span><span class="rv-prog">In Progress ' + I.half + '</span></div>');
+    if (CFG.swipe && wfField()) wrap.insertAdjacentHTML('beforeend',
+      '<div class="wv-reveal"><span class="rv-done">' + I.tick + ' ' + esc(byCat('done') || 'Done') + '</span>'
+      + '<span class="rv-prog">' + esc(byCat('in-progress') || 'Doing') + ' ' + I.half + '</span></div>');
     const node = document.createElement('div');
     node.className = 'wv-row' + (t.pending ? ' pending' : '');
     node.dataset.cat = c;
-    const glyph = c === 'done' ? I.check : c === 'in-progress' ? I.half : I.circle;
+    const glyph = c === 'done' ? I.check : c === 'canceled' ? I.cross : c === 'in-progress' ? I.half : I.circle;
     const colour = c === 'done' ? 'var(--ok)' : c === 'in-progress' ? 'var(--accent)' : 'var(--faint)';
-    const meta = [];
-    if (t.priority) meta.push('<span class="k ' + (PRI_HUE[t.priority] || 'slate') + '">' + esc(t.priority) + '</span>');
-    if (c === 'in-progress' && t.state !== 'In Progress') meta.push('<span class="k blue">' + esc(t.state) + '</span>');
-    (t.tags || []).slice(0, 2).forEach((g) => meta.push('<span class="k slate">' + esc(g) + '</span>'));
-    if (t.due) meta.push('<span class="k ghost">' + esc(day(t.due)) + '</span>');
-    if ((t.files || []).length) meta.push('<span class="k ghost" style="gap:3px">' + I.clip + ((t.files.length > 1) ? t.files.length : '') + '</span>');
-    if (t.failed) meta.push('<span class="k red">not saved</span>');
-    node.innerHTML = '<button class="wv-glyph" type="button" aria-label="' + esc(t.state || 'Open') + '" style="color:' + colour + '">' + glyph + '</button>'
+
+    // The row shows the fields the table has, in the table's own order.
+    const chips = [];
+    for (const f of rowFields()) {
+      if (f.name === wfField()) {
+        // The glyph already says not-started/in-progress/done; only a state
+        // the glyph cannot spell earns a chip of its own.
+        const spelled = cycleNames().includes(st);
+        if (!spelled && st) chips.push(chipHTML(f, st, {}));
+        continue;
+      }
+      const html = chipHTML(f, t.fields[f.name], {});
+      if (html) chips.push(html);
+    }
+    const shown = chips.slice(0, CFG.rowChips);
+    if (chips.length > shown.length) shown.push('<span class="k k-more">+' + (chips.length - shown.length) + '</span>');
+    if ((t.files || []).length) shown.push('<span class="k ghost" style="gap:3px">' + I.clip + ((t.files.length > 1) ? t.files.length : '') + '</span>');
+    if (t.failed) shown.push('<span class="k red">not saved</span>');
+
+    node.innerHTML = '<button class="wv-glyph" type="button" aria-label="' + esc(st || 'state') + '" style="color:' + colour + '">' + glyph + '</button>'
       + '<div class="wv-rowmain"><div class="wv-title">' + esc(t.name) + '</div>'
-      + (meta.length ? '<div class="wv-meta">' + meta.join('') + '</div>' : '') + '</div>'
+      + (shown.length ? '<div class="wv-meta">' + shown.join('') + '</div>' : '') + '</div>'
       + '<span class="wv-chev">' + I.chev + '</span>';
-    node.querySelector('.wv-glyph').addEventListener('click', (e) => { e.stopPropagation(); advance(t); });
+    const gbtn = node.querySelector('.wv-glyph');
+    gbtn.addEventListener('click', (e) => { e.stopPropagation(); advance(t); });
+    if (popNext === t.id) { gbtn.classList.add('pop'); popNext = null; }
     node.addEventListener('click', () => { if (!String(t.id).startsWith('tmp-')) openDetail(t); });
     wrap.appendChild(node);
-    if (CFG.swipe) wireSwipe(wrap, node, t);
+    if (CFG.swipe && wfField()) wireSwipe(wrap, node, t);
     return wrap;
   }
 
   function paint() {
-    const active = tasks.filter((t) => cat(t.state) !== 'done' && cat(t.state) !== 'canceled');
+    const active = tasks.filter(isActive);
     $('tally').textContent = active.length + ' open';
     list.innerHTML = '';
     if (!tasks.length) {
@@ -851,11 +1032,12 @@ const CLIENT = `
       return;
     }
     active.forEach((t) => list.appendChild(rowNode(t)));
-    const done = tasks.filter((t) => cat(t.state) === 'done' || cat(t.state) === 'canceled');
+    const done = tasks.filter((t) => !isActive(t));
     if (CFG.doneTuck && done.length) {
       const bar = document.createElement('button');
       bar.type = 'button'; bar.className = 'wv-donebar';
-      bar.innerHTML = '<span style="color:var(--ok);display:grid">' + I.tick + '</span><span>Done</span><span class="n">' + done.length + '</span>';
+      bar.innerHTML = '<span style="color:var(--ok);display:grid">' + I.tick + '</span><span>'
+        + esc(byCat('done') || 'Done') + '</span><span class="n">' + done.length + '</span>';
       bar.addEventListener('click', () => { showDone = !showDone; paint(); });
       list.appendChild(bar);
       if (showDone) done.forEach((t) => list.appendChild(rowNode(t)));
@@ -865,9 +1047,9 @@ const CLIENT = `
   async function load() {
     try {
       const data = await api('/data?scope=' + CFG.scope);
+      S = data.schema;
       tasks = data.items;
-      offline = false;
-    } catch { offline = true; say('Offline — showing what was here'); }
+    } catch { say('Offline \\u2014 showing what was here'); }
     paint();
   }
 
@@ -875,11 +1057,70 @@ const CLIENT = `
   // pocket for an hour has very stale rows.
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 
-  load().then(() => {
-    // iOS will not raise the keyboard without a gesture; the unlock tap is
-    // spent by the time we get here on a cold open. Try anyway — it works on
-    // a warm reload and on desktop — and leave the field one tap away.
-    try { input.focus({ preventScroll: true }); } catch {}
-  });
+  /* Getting the keyboard up on open.
+
+     Safari refuses focus() outside a user gesture, and an await breaks the
+     gesture chain — so the focus call happens FIRST, synchronously inside the
+     tap that enters the last digit, and the unlock request follows it. That
+     one ordering is the whole reason the gate is an overlay on this page
+     rather than a page of its own: a navigation would spend the gesture.
+
+     A warm open has no gesture at all and nothing can conjure one, so the
+     first touch anywhere that is not aimed at a row does the same job. */
+  const LOCKED = __LOCKED__;
+
+  function armFirstTouch() {
+    const grab = (e) => {
+      if (e.target.closest('.wv-row, .wv-glyph, .wv-donebar, .wv-bug, .wv-sheet, .wv-detail, .wv-clip, input, textarea, a, button')) return;
+      input.focus();
+      document.removeEventListener('pointerdown', grab);
+    };
+    document.addEventListener('pointerdown', grab);
+  }
+
+  if (LOCKED) {
+    const gate = $('gate');
+    const dots = [...gate.querySelectorAll('.wv-dot')];
+    const hint = $('hint');
+    let buf = '', busy = false;
+    const draw = () => dots.forEach((d, i) => d.classList.toggle('on', i < buf.length));
+    const fail = (msg) => {
+      const row = $('dots');
+      row.classList.add('bad'); hint.textContent = msg;
+      setTimeout(() => { row.classList.remove('bad'); buf = ''; draw(); hint.textContent = ''; }, 500);
+    };
+    gate.querySelectorAll('.wv-key').forEach((b) => b.addEventListener('click', async () => {
+      if (busy) return;
+      const k = b.dataset.k;
+      if (k === 'clear') buf = '';
+      else if (k === 'del') buf = buf.slice(0, -1);
+      else if (buf.length < 8) buf += k;
+      draw();
+      if (buf.length !== 8) return;
+      busy = true;
+      input.focus();                                 // ← still inside the tap
+      try {
+        const res = await fetch(MOUNT + '/unlock', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ passcode: buf }),
+        });
+        if (res.ok) {
+          gate.classList.add('gone');
+          setTimeout(() => gate.remove(), 320);
+          await load();
+          input.focus();                             // the caret, after the rows
+          return;
+        }
+        input.blur();
+        fail(res.status === 429 ? 'too many tries' : 'wrong passcode');
+      } catch { input.blur(); fail('no connection'); }
+      busy = false;
+    }));
+  } else {
+    load().then(() => {
+      try { input.focus({ preventScroll: true }); } catch {}
+      armFirstTouch();
+    });
+  }
 })();
 `;

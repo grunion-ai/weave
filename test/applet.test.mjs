@@ -73,8 +73,9 @@ test('applet: the page is the keypad until the passcode is entered', async () =>
     const res = await fetch(`${s.base}/t`);
     assert.equal(res.status, 200);
     const html = await res.text();
-    assert.match(html, /wv-pad/, 'the locked page is the keypad');
+    assert.match(html, /wv-pad/, 'the locked page shows the keypad');
     assert.doesNotMatch(html, /Design onboarding wizard/, 'no task may leak into the locked page');
+    assert.doesNotMatch(html, /Priority|In Progress/, 'nor may the schema');
     assert.doesNotMatch(html, new RegExp(PASSCODE), 'the passcode must never be served to the client');
   } finally { s.stop(); }
 });
@@ -120,7 +121,7 @@ test('applet: the page renders the app once the cookie is present', async () => 
     const cookie = cookieFrom(await unlock(s.base));
     const html = await (await fetch(`${s.base}/t`, { headers: { cookie } })).text();
     assert.match(html, /wv-compose/, 'the unlocked page is the task list');
-    assert.doesNotMatch(html, /wv-pad/, 'the keypad is gone once unlocked');
+    assert.doesNotMatch(html, /id="gate"/, 'the keypad is gone once unlocked');
   } finally { s.stop(); }
 });
 
@@ -184,7 +185,7 @@ test('applet: creating a task needs only a name and starts Open', async () => {
     assert.equal(res.status, 201);
     const row = await res.json();
     assert.equal(row.name, 'Call the roof adjuster');
-    assert.equal(row.state, 'Open');
+    assert.equal(row.fields.State, 'Open', 'the default state comes from the field, not from the applet');
     const data = await (await fetch(`${s.base}/t/data`, { headers: { cookie } })).json();
     assert.equal(data.items[0].name, 'Call the roof adjuster', 'a new task is the newest edit');
   } finally { s.stop(); }
@@ -220,7 +221,7 @@ test('applet: a state change is refused unless the state is one the table knows'
       body: JSON.stringify({ id, state: 'Done' }),
     });
     assert.equal(ok.status, 200);
-    assert.equal((await ok.json()).state, 'Done');
+    assert.equal((await ok.json()).fields.State, 'Done');
   } finally { s.stop(); }
 });
 
@@ -306,4 +307,190 @@ test('serve: the host is a choice, and loopback is the default', async () => {
     server.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+/* Kyle, 2026-08-28: "bug from the [applet] not captured". The applet was
+   posting {title, description, symptoms, context} at an endpoint that speaks
+   {categories, note, events, client} — every report 400ed, and the applet
+   said "Reported" anyway because it never looked at the status. Both halves
+   are pinned here. */
+test('applet: the bug sheet speaks the shape /api/bug-report accepts', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  assert.match(src, /categories:/, 'the endpoint reads body.categories');
+  assert.match(src, /\bnote[,:]/, 'the endpoint reads body.note');
+  assert.doesNotMatch(src, /symptoms: \[\.\.\.picked\]/, 'symptoms/description was the shape that 400ed');
+  // Never claim a report landed without looking.
+  assert.match(src, /res\.ok/, 'the applet must check the response before saying it was reported');
+
+  const { BUG_CATEGORIES } = await import('../src/bugreport.js');
+  const ids = BUG_CATEGORIES.map((c) => c.id);
+  for (const id of ids) {
+    assert.ok(src.includes(`'${id}'`), `the sheet offers the real category '${id}'`);
+  }
+});
+
+test('applet: a report filed the way the applet files it becomes an Issue', async () => {
+  const { seedWeaver } = await import('../src/weaver-seed.js');
+  const dir = mkdtempSync(join(tmpdir(), 'weave-bug-'));
+  const prior = process.env.WEAVE_APPLET_PASSCODE;
+  process.env.WEAVE_APPLET_PASSCODE = PASSCODE;
+  const w = new Weave({ path: join(dir, 'uno.json') });
+  w.state.meta.name = 'uno';
+  const docs = new Weave({ path: join(dir, 'weave.json') });
+  seedWeaver(docs);
+  const { server } = await startServer(w, { port: 0, workspaces: { weave: docs } });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const res = await fetch(`${base}/api/bug-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        categories: ['broken-ui'],
+        note: 'The chips wrap onto three lines on the phone',
+        events: [],
+        client: { surface: 'task applet', url: '/w/uno/t', ua: 'iPhone' },
+      }),
+    });
+    const raw = await res.text();
+    assert.equal(res.status, 201, raw);
+    const filed = JSON.parse(raw);
+    assert.ok(filed.publicId, 'a filed report comes back with the issue number to show the reporter');
+    const issues = docs.query('Development/Issue');
+    assert.ok(issues.items.some((i) => /chips wrap/.test(JSON.stringify(i))), 'the note reaches the Issue');
+  } finally {
+    server.close();
+    if (prior === undefined) delete process.env.WEAVE_APPLET_PASSCODE;
+    else process.env.WEAVE_APPLET_PASSCODE = prior;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* Kyle, 2026-08-28: "make sure this page is field driven". The applet must
+   read the table it is pointed at, not a list of field names baked into it —
+   a workflow called Stage, a select called Urgency, a field added tomorrow. */
+async function standStage() {
+  const dir = mkdtempSync(join(tmpdir(), 'weave-applet-stage-'));
+  const w = new Weave({ path: join(dir, 'work.json') });
+  w.state.meta.name = 'work';
+  const space = w.createSpace({ name: 'Ops' });
+  const db = w.createTable({ space: space.id, name: 'Job' });
+  w.addField(db.id, { name: 'Urgency', type: 'select', config: { options: ['Now', 'Soon', 'Whenever'] } });
+  w.addField(db.id, { name: 'Crew', type: 'text' });
+  w.addField(db.id, {
+    name: 'Stage',
+    type: 'workflow',
+    config: {
+      states: [
+        { id: 'backlog', name: 'Backlog', category: 'not-started', default: true },
+        { id: 'doing', name: 'Doing', category: 'in-progress' },
+        { id: 'shipped', name: 'Shipped', category: 'done' },
+      ],
+    },
+  });
+  const job = w.createEntity(db.id, { Name: 'Re-flash the sign', Stage: 'Doing', Urgency: 'Now', Crew: 'Ada' });
+  const priorPass = process.env.WEAVE_APPLET_PASSCODE;
+  const priorTable = process.env.WEAVE_APPLET_TABLE;
+  process.env.WEAVE_APPLET_PASSCODE = PASSCODE;
+  process.env.WEAVE_APPLET_TABLE = 'Ops/Job';
+  const { server } = await startServer(w, { port: 0 });
+  return {
+    base: `http://127.0.0.1:${server.address().port}`, weave: w, db, job,
+    stop() {
+      server.close();
+      if (priorPass === undefined) delete process.env.WEAVE_APPLET_PASSCODE; else process.env.WEAVE_APPLET_PASSCODE = priorPass;
+      if (priorTable === undefined) delete process.env.WEAVE_APPLET_TABLE; else process.env.WEAVE_APPLET_TABLE = priorTable;
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+test('applet: the workflow field is discovered, not assumed to be called State', async () => {
+  const s = await standStage();
+  try {
+    const cookie = cookieFrom(await unlock(s.base));
+    const data = await (await fetch(`${s.base}/t/data`, { headers: { cookie } })).json();
+    assert.equal(data.schema.workflow.field, 'Stage');
+    assert.deepEqual(data.schema.workflow.states.map((x) => x.name), ['Backlog', 'Doing', 'Shipped']);
+    assert.equal(data.items[0].fields.Stage, 'Doing');
+
+    const res = await fetch(`${s.base}/t/state`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', cookie },
+      body: JSON.stringify({ id: s.job.id, state: 'Shipped' }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).fields.Stage, 'Shipped');
+  } finally { s.stop(); }
+});
+
+test('applet: the active view follows the workflow categories, not state names', async () => {
+  const s = await standStage();
+  try {
+    const cookie = cookieFrom(await unlock(s.base));
+    await fetch(`${s.base}/t/state`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', cookie },
+      body: JSON.stringify({ id: s.job.id, state: 'Shipped' }),
+    });
+    const active = await (await fetch(`${s.base}/t/data?scope=active`, { headers: { cookie } })).json();
+    assert.equal(active.items.length, 0, 'a done-category state is not active, whatever it is called');
+    const all = await (await fetch(`${s.base}/t/data?scope=all`, { headers: { cookie } })).json();
+    assert.equal(all.items.length, 1);
+  } finally { s.stop(); }
+});
+
+test('applet: a field added to the table shows up with no code change', async () => {
+  const s = await standStage();
+  try {
+    const cookie = cookieFrom(await unlock(s.base));
+    s.weave.addField(s.db.id, { name: 'Bay', type: 'number' });
+    s.weave.updateEntity(s.job.id, { Bay: 7 });
+    const data = await (await fetch(`${s.base}/t/data`, { headers: { cookie } })).json();
+    assert.ok(data.schema.fields.some((f) => f.name === 'Bay' && f.type === 'number'), 'the schema carries the new field');
+    assert.equal(data.items[0].fields.Bay, 7, 'and the row carries its value');
+  } finally { s.stop(); }
+});
+
+test('applet: the client renders from the schema rather than a field allowlist', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  const client = src.slice(src.indexOf('const CLIENT = `'));
+  for (const baked of ['t.priority', 't.due', 't.project', 't.assignee', "'State'"]) {
+    assert.ok(!client.includes(baked), `the client must not bake in ${baked}`);
+  }
+  assert.match(client, /S = data\.schema/, 'the client takes its shape from the schema the server sends');
+  assert.match(client, /S\.workflow/, 'the glyph and the swipe read the workflow field from it');
+});
+
+test('applet: the page cannot be pinched, and wears the real mark', async () => {
+  const s = await stand();
+  try {
+    const cookie = cookieFrom(await unlock(s.base));
+    const html = await (await fetch(`${s.base}/t`, { headers: { cookie } })).text();
+    assert.match(html, /maximum-scale=1/, 'a task list is not a document to zoom around');
+    assert.match(html, /gesturestart/, 'Safari ignores user-scalable, so the gesture is refused directly');
+    assert.match(html, /brand\/weave-mark-light\.svg/, 'the real mark, not a hand-drawn stand-in');
+    assert.match(html, /brand\/weave-mark-dark\.svg/);
+  } finally { s.stop(); }
+});
+
+/* Kyle, 2026-08-28: "when the page opens always default to opening with
+   keyboard up and cursor in new task". Safari only grants focus() inside a
+   user gesture and an await spends it, so the order is load-bearing: the
+   focus call must come before the unlock request, on the same page. */
+test('applet: the unlock tap is spent on the caret before the request', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  const tap = src.slice(src.indexOf("if (buf.length !== 8) return;"), src.indexOf("MOUNT + '/unlock'"));
+  assert.match(tap, /input\.focus\(\)/, 'focus happens inside the tap, before any await');
+  assert.doesNotMatch(src, /location\.replace\(MOUNT\)/, 'navigating away would spend the gesture');
+  assert.match(src, /armFirstTouch/, 'a warm open has no gesture; the first touch supplies one');
+});
+
+test('applet: the locked page is the same page, with the keypad over it', async () => {
+  const s = await stand();
+  try {
+    const locked = await (await fetch(`${s.base}/t`)).text();
+    assert.match(locked, /wv-compose/, 'the field must exist to be focused inside the unlock tap');
+    assert.match(locked, /id="gate"/);
+  } finally { s.stop(); }
 });
