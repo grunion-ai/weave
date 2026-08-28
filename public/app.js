@@ -1539,7 +1539,10 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
          pixel that did nothing (Kyle, 2026-08-26). */
       const chip = el('span', { class: 'k k-rel' },
         el('a', { href: `#/entity/${s.id}`, onclick: (e) => e.stopPropagation() },
-          personAvatar(f, s), s.name || `#${s.publicId}`));
+          personAvatar(f, s), s.name || `#${s.publicId}`,
+          /* A target-set chip says where it lives — a Task and a Space can
+             share a name, and the table is the disambiguator. */
+          f.targetDbIds && s.db ? el('span', { class: 'k-home' }, s.db.split('/').pop()) : ''));
       /* Unlinking is an edit, and a grid is a record: in a table the × was
          chrome on every chip of every row. The cell's picker owns removal
          there; the entity page keeps its × because the page IS the edit
@@ -1566,12 +1569,21 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
       class: 'btn btn-sm btn-ghost-secondary tiny',
       onclick: async (e2) => {
         const btn = e2?.currentTarget ?? null;
-        const target = allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb);
-        const list = await api('POST', `/tables/${target.id}/query`, { select: ['Name'] });
+        /* A target-set field draws candidates from every member table, each
+           option wearing its home table so a Task and a Space with the same
+           name stay tellable apart. */
+        const targets = f.targetDbIds
+          ? f.targetDbIds.map((tid) => allTables().find((d) => d.id === tid)).filter(Boolean)
+          : [allTables().find((d) => d.qualified === f.targetDb || `${d.space}/${d.name}` === f.targetDb)];
+        const lists = await Promise.all(targets.map((t) => api('POST', `/tables/${t.id}/query`, { select: ['Name'] })));
+        const options = targets.flatMap((t, i) => lists[i].items.map((o) => ({
+          id: o.id, label: o.name || '(unnamed)',
+          hint: f.targetDbIds ? `${t.qualified} · #${o.publicId}` : `#${o.publicId}`,
+        })));
         const before = current.map((sm) => sm.id);
         searchPicker({
           anchor: btn, title: `${f.name}`, placeholder: 'Search records…',
-          options: list.items.map((o) => ({ id: o.id, label: o.name || '(unnamed)', hint: `#${o.publicId}` })),
+          options,
           multi: {
             selected: current.map((sm) => ({ id: sm.id, label: sm.name || '(unnamed)' })),
             onCommit: async (ids) => {
@@ -3197,16 +3209,48 @@ function fieldDialog(db, existing, after) {
         } else {
           const r = state.relation;
           const tables = allTables();
-          r.targetDb = r.targetDb || (tables[0]?.id ?? '');
-          const target = pickerSelect({ name: 'targetDb', placeholder: 'Choose a table…', options: tables.map((d) => ({ id: d.id, label: d.qualified })), value: r.targetDb });
-          target.input.addEventListener('change', () => { r.targetDb = target.input.value; changed(); });
-          kids.push(dsection('Target table', target));
+          /* One target: the classic paired relation. More: a target-set
+             (polymorphic) relation — one-way, values may point at rows of any
+             member table, the registry's Spaces/Tables included. */
+          r.targets = r.targets?.length ? r.targets : [r.targetDb || (tables[0]?.id ?? '')];
+          const targetsBox = el('div', { class: 'target-set' });
+          const drawTargets = () => {
+            targetsBox.replaceChildren();
+            r.targets.forEach((tid, i) => {
+              const sel = pickerSelect({ name: `target-${i}`, placeholder: 'Choose a table…', options: tables.map((d) => ({ id: d.id, label: d.qualified })), value: tid });
+              sel.input.addEventListener('change', () => { r.targets[i] = sel.input.value; syncTargets(); });
+              const row = el('div', { class: 'target-set-row' }, sel);
+              if (r.targets.length > 1) {
+                row.append(el('button', {
+                  type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove this target',
+                  onclick: () => { r.targets.splice(i, 1); syncTargets(); drawTargets(); drawCfg(); },
+                }, '×'));
+              }
+              targetsBox.append(row);
+            });
+            targetsBox.append(el('button', {
+              type: 'button', class: 'btn btn-sm btn-ghost-secondary',
+              onclick: () => { r.targets.push(tables[0]?.id ?? ''); syncTargets(); drawTargets(); drawCfg(); },
+            }, '+ another target table'));
+          };
+          const syncTargets = () => {
+            r.targetDb = r.targets[0];
+            r.targetDbs = r.targets.length > 1 ? [...r.targets] : undefined;
+            changed();
+          };
+          syncTargets();
+          drawTargets();
+          kids.push(dsection(r.targets.length > 1 ? 'Target tables (target set)' : 'Target table', targetsBox));
           kids.push(dsection('Cardinality', segCtl(fdc.CARDINALITIES.map((c) => ({ id: c, label: c.replace('-to-', ' → ') })), r.cardinality ?? 'many-to-one', (v) => { r.cardinality = v; changed(); })));
-          // The inverse is a NEW field the engine creates on the target table
-          // — a name, not a pick — and it has a sensible default, so the
-          // input only exists to override it.
-          const autoName = db.name + (['many-to-one', 'many-to-many'].includes(r.cardinality ?? 'many-to-one') ? 's' : '');
-          kids.push(dsection('Inverse field on the target', el('input', { class: 'form-control', value: r.inverseName ?? '', placeholder: `${autoName} (created automatically — rename here)`, oninput: (e) => { r.inverseName = e.target.value; changed(); } })));
+          if (r.targets.length > 1) {
+            kids.push(el('div', { class: 'modal-note full' }, 'A target set is one-way: no inverse field is created on the member tables.'));
+          } else {
+            // The inverse is a NEW field the engine creates on the target table
+            // — a name, not a pick — and it has a sensible default, so the
+            // input only exists to override it.
+            const autoName = db.name + (['many-to-one', 'many-to-many'].includes(r.cardinality ?? 'many-to-one') ? 's' : '');
+            kids.push(dsection('Inverse field on the target', el('input', { class: 'form-control', value: r.inverseName ?? '', placeholder: `${autoName} (created automatically — rename here)`, oninput: (e) => { r.inverseName = e.target.value; changed(); } })));
+          }
         }
       } else if (t === 'attachments') {
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
@@ -4891,7 +4935,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
      side panel: they are work to do, not attributes to read. Each is fetched
      on its own so a slow one cannot hold up the page, and its anchor lands in
      the head the grid draws for it. */
-  for (const f of shown.filter((x) => x.type === 'relation' && x.many)) {
+  for (const f of shown.filter((x) => x.type === 'relation' && x.many && !x.targetDbIds)) {
     const grip = anchor(f.name);
     const slot = wireBlock(f.name, el('div', { class: 'related-block' }), [grip]);
     relatedGrid(entity, f, refresh)
@@ -4995,6 +5039,7 @@ function openSchemaEditor(db) {
       el('td', { class: 'type' },
         f.options ? f.options.join(', ')
           : f.states ? f.states.map((s) => s.name).join(' → ')
+          : f.targetDbs ? `→ ${f.targetDbs.join(' | ')}${f.many ? ' (many)' : ''}`
           : f.targetDb ? `→ ${f.targetDb}${f.many ? ' (many)' : ''}`
           : f.via ? `via ${f.via}${f.targetField ? ` . ${f.targetField}` : ''}${f.aggregate ? ` (${f.aggregate})` : ''}`
           : f.expression ?? ''),

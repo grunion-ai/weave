@@ -168,11 +168,11 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_relation',
-    description: 'Create a bidirectional relation between two tables. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one. The inverse field is created automatically on the target table.',
+    description: 'Create a relation field. One targetDb: bidirectional — the inverse field is created automatically on the target table. targetDbs (a list of 2+ tables, which may include Workspace/Spaces and Workspace/Tables): a target-set (polymorphic) relation — one field whose values may point at rows of any member table, one-way, no inverse; lookups/rollups need a single target. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one.',
     inputSchema: {
       type: 'object',
-      properties: { db: { type: 'string' }, name: { type: 'string' }, targetDb: { type: 'string' }, cardinality: { type: 'string' }, inverseName: { type: 'string' } },
-      required: ['db', 'name', 'targetDb'],
+      properties: { db: { type: 'string' }, name: { type: 'string' }, targetDb: { type: 'string' }, targetDbs: { type: 'array', items: { type: 'string' } }, cardinality: { type: 'string' }, inverseName: { type: 'string' } },
+      required: ['db', 'name'],
     },
   },
   {
@@ -434,7 +434,7 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_add_field':
       return weave.addField(args.db, { name: args.name, type: args.type, config: args.config ?? {} });
     case 'weave_add_relation':
-      return weave.addRelation(args.db, { name: args.name, targetDb: args.targetDb, cardinality: args.cardinality ?? 'many-to-one', inverseName: args.inverseName });
+      return weave.addRelation(args.db, { name: args.name, targetDb: args.targetDb, targetDbs: args.targetDbs, cardinality: args.cardinality ?? 'many-to-one', inverseName: args.inverseName });
     case 'weave_create_automation':
       return weave.createAutomation(args.db, { name: args.name, trigger: args.trigger, actions: args.actions });
     case 'weave_export_csv':

@@ -245,9 +245,16 @@
       config.keystore = state.credential?.keystore ?? 'local';
     } else if (t === 'relation') {
       // Not an addField config: the addRelation payload, sent to /relations.
-      config.targetDb = state.relation?.targetDb ?? '';
-      config.cardinality = state.relation?.cardinality ?? 'many-to-one';
-      if (state.relation?.inverseName) config.inverseName = state.relation.inverseName;
+      // A target set (2+ tables) makes a one-way polymorphic relation — no
+      // inverse to name, so the inverse rides only the single-target shape.
+      if (state.relation?.targetDbs?.length > 1) {
+        config.targetDbs = [...state.relation.targetDbs];
+        config.cardinality = state.relation?.cardinality ?? 'many-to-one';
+      } else {
+        config.targetDb = state.relation?.targetDb ?? '';
+        config.cardinality = state.relation?.cardinality ?? 'many-to-one';
+        if (state.relation?.inverseName) config.inverseName = state.relation.inverseName;
+      }
     } else if (t === 'lookup') {
       config.relationField = state.relationField;
       config.targetField = state.targetField;

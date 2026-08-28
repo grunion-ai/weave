@@ -2,6 +2,10 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.3 — 2026-08-28
+
+- **Target-set (polymorphic) relations** (#150): one relation field may target SEVERAL tables — `targetDbs` — including the registry's `Workspace/Spaces` and `Workspace/Tables`, so a row can point at a space or a table as easily as at another row (a bug scoped to a whole space, a dependency on an entire workstream, an agenda mixing rows with structure). One-way by design (no inverse spray); lookups/rollups keep the single-target contract; filters traverse per-row; chips carry their home table; the picker searches every member; the relation map draws one edge per member. Rollback-safe: singleton relations are bit-for-bit unchanged, and removing multi-target fields restores the pre-feature shape exactly.
+
 ## v0.4.1 — 2026-08-21
 
 - **Skeleton loading** (#49, inspired by 0xGF/boneyard): navigation paints a skeleton of the real destination — natively, the library being framework-bound.

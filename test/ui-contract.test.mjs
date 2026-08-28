@@ -1141,8 +1141,8 @@ test('a collection relation renders as the target table grid, in the body', () =
     'they are blocks of the main body, movable like any other (Issue #89)');
   assert.match(body, /grid\.querySelector\('\.related-head'\)\?\.prepend\(grip\)/,
     'and the anchor lands in the head the grid draws for it');
-  assert.match(body, /if \(f\.type === 'relation' && f\.many\) continue;/,
-    'and are not repeated as chips in the fields block');
+  assert.match(body, /if \(f\.type === 'relation' && f\.many && !f\.targetDbIds\) continue;/,
+    'and are not repeated as chips in the fields block — except a target set, which has no one grid and stays chips');
 });
 
 /* Feature #117 — the entity page is the destination. Fields are the first
@@ -1593,7 +1593,10 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
 test('relation is a tile in the add tray and posts to /relations; files and documents carry their options', () => {
   const dlg = fnBody('fieldDialog');
   assert.match(dlg, /def\.type === 'relation'\) \{\s*await api\('POST', `\/tables\/\$\{db\.id\}\/relations`/, 'a relation tile creates through addRelation');
-  assert.match(dlg, /dsection\('Target table', target\)/);
+  assert.match(dlg, /'Target tables \(target set\)' : 'Target table', targetsBox\)/,
+    'one select is the classic pair; adding more makes a target set');
+  assert.match(dlg, /\+ another target table/, 'the set grows one select at a time');
+  assert.match(dlg, /A target set is one-way/, 'and says out loud that no inverse is minted');
   assert.match(dlg, /fdc\.CARDINALITIES/);
   assert.match(dlg, /'Allow multiple files'/);
   assert.match(dlg, /dsection\('Kind', segCtl\(fdc\.DOCUMENT_KINDS/);

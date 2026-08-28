@@ -906,6 +906,22 @@ export class Weave {
         if (other && other.id !== db.id) this.#removeFieldRaw(other, field.config.inverseFieldId);
       }
     }
+    // Prune this table from every target set pointing here; a set emptied by
+    // the prune takes its field with it — a relation with nowhere to point is
+    // not a field.
+    for (const other of Object.values(this.state.tables)) {
+      if (other.id === db.id) continue;
+      for (const f of [...Object.values(other.fields)]) {
+        if (f.type !== 'relation' || !f.config.targetDbs?.includes(db.id)) continue;
+        f.config.targetDbs = f.config.targetDbs.filter((id) => id !== db.id);
+        if (!f.config.targetDbs.length) {
+          this.#removeFieldRaw(other, f.id);
+          this.#dropFieldRow(f.id);
+        } else {
+          this.#syncFieldRow(other, f);
+        }
+      }
+    }
     for (const [id, auto] of Object.entries(this.state.automations)) {
       if (auto.dbId === db.id) delete this.state.automations[id];
     }
@@ -940,9 +956,12 @@ export class Weave {
         if (f.type !== 'relation' || seen.has(f.id)) continue;
         seen.add(f.id);
         seen.add(f.config.inverseFieldId);
-        const target = this.state.tables[f.config.targetDb];
-        if (!target || target.system) continue;
-        lines.push(`  ${nid(db)} -- ${JSON.stringify(f.name)} --> ${nid(target)}`);
+        // A target-set relation is one field but one edge per member table.
+        for (const tid of this.relationTargetDbIds(f)) {
+          const target = this.state.tables[tid];
+          if (!target || target.system) continue;
+          lines.push(`  ${nid(db)} -- ${JSON.stringify(f.name)} --> ${nid(target)}`);
+        }
       }
     }
     return lines.join('\n') + '\n';
@@ -2165,11 +2184,14 @@ export class Weave {
     } else if (type === 'lookup') {
       const rel = this.getField(db.id, config.relationField ?? config.relation);
       if (rel.type !== 'relation') throw new WeaveError('Lookup must point at a relation field', 'invalid');
+      // A target set has no one far table to read a field from.
+      if (rel.config.targetDbs) throw new WeaveError('Lookup needs a single-target relation', 'invalid');
       const target = this.getField(rel.config.targetDb, config.targetField);
       field.config = { relationField: rel.id, targetField: target.id };
     } else if (type === 'rollup') {
       const rel = this.getField(db.id, config.relationField ?? config.relation);
       if (rel.type !== 'relation') throw new WeaveError('Rollup must point at a relation field', 'invalid');
+      if (rel.config.targetDbs) throw new WeaveError('Rollup needs a single-target relation', 'invalid');
       const aggregate = config.aggregate ?? 'count';
       if (!AGGREGATES.includes(aggregate)) throw new WeaveError(`Invalid aggregate '${aggregate}' (use ${AGGREGATES.join(', ')})`, 'invalid');
       let targetFieldId = null;
@@ -2206,9 +2228,8 @@ export class Weave {
     return field;
   }
 
-  addRelation(dbRef, { name, targetDb, cardinality = 'many-to-one', inverseName }) {
+  addRelation(dbRef, { name, targetDb, targetDbs, cardinality = 'many-to-one', inverseName }) {
     const db = this.getTable(dbRef);
-    const target = this.getTable(targetDb);
     if (!name) throw new WeaveError('Relation field name is required', 'invalid');
     if (this.findField(db, name)) throw new WeaveError(`Field '${name}' already exists`, 'conflict');
     const cards = {
@@ -2219,6 +2240,33 @@ export class Weave {
     };
     const card = cards[cardinality];
     if (!card) throw new WeaveError(`Invalid cardinality '${cardinality}'`, 'invalid');
+
+    /* Target-set relation (polymorphic): several legal target tables in one
+       field — the registry's Spaces/Tables rows are legal members, so a row
+       can point at a space or a table as easily as at another row. One-way by
+       design: an inverse would have to be sprayed across every member table,
+       so the reverse direction is a computed read, not a stored field. A
+       singleton set falls through to the classic paired relation below. */
+    if (targetDbs !== undefined) {
+      const members = (Array.isArray(targetDbs) ? targetDbs : [targetDbs]).map((r) => this.getTable(r));
+      if (!members.length) throw new WeaveError('A relation needs at least one target table', 'invalid');
+      if (new Set(members.map((m) => m.id)).size !== members.length) {
+        throw new WeaveError('Duplicate table in the target set', 'invalid');
+      }
+      if (members.length > 1) {
+        const a = { id: uuid(), name, type: 'relation', config: { targetDbs: members.map((m) => m.id), many: card.thisMany } };
+        db.fields[a.id] = a;
+        db.fieldOrder.push(a.id);
+        this.save();
+        this.#syncFieldRow(db, a);
+        this.#syncTableRow(db);
+        if (!db.system) this.#audit('relation-added', { table: db.name, name: a.name, targets: members.map((m) => this.qualifiedName(m)) });
+        return { field: a, inverse: null };
+      }
+      targetDb = members[0].id;
+    }
+    if (targetDb == null) throw new WeaveError('A relation needs a targetDb (or a targetDbs list)', 'invalid');
+    const target = this.getTable(targetDb);
     const invName = inverseName ?? db.name + (card.targetMany ? 's' : '');
     if (this.findField(target, invName)) throw new WeaveError(`Field '${invName}' already exists in target table`, 'conflict');
 
@@ -2783,12 +2831,26 @@ export class Weave {
       ?? options.find((o) => o.name.toLowerCase() === String(ref).toLowerCase());
   }
 
+  // The tables a relation field may point at — one for the classic paired
+  // field, several for a target-set (polymorphic) field.
+  relationTargetDbIds(field) {
+    return field.config.targetDbs ?? [field.config.targetDb];
+  }
+
   #normalizeRelationInput(field, raw) {
     const arr = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
+    const memberIds = this.relationTargetDbIds(field);
     return arr.map((r) => {
-      const target = this.findEntity(field.config.targetDb, r);
+      let target = null;
+      for (const dbId of memberIds) {
+        target = this.findEntity(dbId, r);
+        if (target) break;
+      }
+      // A uuid of a live entity outside the set resolves nowhere above but is
+      // a sharper error than 'not found': the row exists, just not here.
+      if (!target && this.state.entities[r]) throw new WeaveError(`Entity '${r}' is not in a related table`, 'invalid');
       if (!target) throw new WeaveError(`Related entity '${r}' not found`, 'not-found');
-      if (target.dbId !== field.config.targetDb) throw new WeaveError(`Entity '${r}' is not in the related table`, 'invalid');
+      if (!memberIds.includes(target.dbId)) throw new WeaveError(`Entity '${r}' is not in the related table`, 'invalid');
       return target.id;
     });
   }
@@ -2802,27 +2864,33 @@ export class Weave {
     const added = newIds.filter((id) => !oldIds.includes(id));
     if (!removed.length && !added.length) return;
 
-    const targetDb = this.state.tables[field.config.targetDb];
-    const inverse = targetDb.fields[field.config.inverseFieldId];
+    // A target-set relation is one-way: no inverse to keep in step — the
+    // shared tail below still writes the value and the activity entry.
+    if (!field.config.inverseFieldId) {
+      for (const rid of added) this.#mark(this.getEntity(rid)); // linked-to, even without a field of its own
+    } else {
+      const targetDb = this.state.tables[field.config.targetDb];
+      const inverse = targetDb.fields[field.config.inverseFieldId];
 
-    for (const rid of removed) {
-      const t = this.state.entities[rid];
-      if (t) this.#pluck(t, inverse, e.id);
-    }
-    for (const rid of added) {
-      const t = this.getEntity(rid);
-      this.#mark(t); // inverse side changes without its own activity entry
-      if (inverse.config.many) {
-        const cur = this.#relationIds(t, inverse);
-        if (!cur.includes(e.id)) t.values[inverse.id] = [...cur, e.id];
-      } else {
-        // Steal from the previous holder: t's old single parent loses t.
-        const prevHolder = t.values[inverse.id];
-        if (prevHolder && prevHolder !== e.id) {
-          const p = this.state.entities[prevHolder];
-          if (p) this.#pluck(p, field, t.id);
+      for (const rid of removed) {
+        const t = this.state.entities[rid];
+        if (t) this.#pluck(t, inverse, e.id);
+      }
+      for (const rid of added) {
+        const t = this.getEntity(rid);
+        this.#mark(t); // inverse side changes without its own activity entry
+        if (inverse.config.many) {
+          const cur = this.#relationIds(t, inverse);
+          if (!cur.includes(e.id)) t.values[inverse.id] = [...cur, e.id];
+        } else {
+          // Steal from the previous holder: t's old single parent loses t.
+          const prevHolder = t.values[inverse.id];
+          if (prevHolder && prevHolder !== e.id) {
+            const p = this.state.entities[prevHolder];
+            if (p) this.#pluck(p, field, t.id);
+          }
+          t.values[inverse.id] = e.id;
         }
-        t.values[inverse.id] = e.id;
       }
     }
     e.values[field.id] = field.config.many ? newIds : (newIds[0] ?? null);
@@ -3237,10 +3305,11 @@ export class Weave {
           results.push(this.#displayValue(cdb, f, resolved));
         } else {
           if (f.type !== 'relation') throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');
-          const tdb = this.state.tables[f.config.targetDb];
+          // Each target knows its own table — a target-set relation's members
+          // live in different ones, so the hop resolves per row, not per field.
           for (const rid of resolved) {
             const t = this.#liveEntity(rid);
-            if (t) next.push({ e: t, db: tdb });
+            if (t) next.push({ e: t, db: this.state.tables[t.dbId] });
           }
         }
       }
@@ -3813,7 +3882,13 @@ export class Weave {
             }));
           }
           if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default, ...(s.icon ? { icon: s.icon } : {}) }));
-          if (f.type === 'relation') {
+          if (f.type === 'relation' && f.config.targetDbs) {
+            // Target-set (polymorphic): every member named, no single targetDb.
+            const members = f.config.targetDbs.map((tid) => this.state.tables[tid]).filter(Boolean);
+            out.targetDbs = members.map((t) => this.qualifiedName(t));
+            out.targetDbIds = members.map((t) => t.id);
+            out.many = f.config.many;
+          } else if (f.type === 'relation') {
             const target = this.state.tables[f.config.targetDb];
             out.targetDb = this.qualifiedName(target);
             out.targetDbId = target.id;

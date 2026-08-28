@@ -94,6 +94,7 @@ const INTERNAL = {
   viewByShareToken: 'the share link IS this call', verifyToken: 'auth path',
   hasKey: 'keystore predicate', resolveKey: 'returns a secret — never leaves the process',
   storageStats: 'read helper — /api/health already ships it for the nav stats strip',
+  relationTargetDbIds: 'read helper — the tables a relation may point at; describeSchema already ships them',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));

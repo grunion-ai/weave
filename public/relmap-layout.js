@@ -51,13 +51,16 @@
     if (o.spaceId) {
       for (const t of inScope) {
         for (const f of t.fields ?? []) {
-          if (f.type === 'relation' && byId.has(f.targetDbId)) scope.set(f.targetDbId, byId.get(f.targetDbId));
+          for (const tid of (f.type === 'relation' ? (f.targetDbIds ?? [f.targetDbId]) : [])) {
+            if (byId.has(tid)) scope.set(tid, byId.get(tid));
+          }
         }
       }
       for (const t of all) {
         if (scope.has(t.id)) continue;
         for (const f of t.fields ?? []) {
-          if (f.type === 'relation' && scope.has(f.targetDbId) && inScope.some((x) => x.id === f.targetDbId)) {
+          const tids = f.type === 'relation' ? (f.targetDbIds ?? [f.targetDbId]) : [];
+          if (tids.some((tid) => scope.has(tid) && inScope.some((x) => x.id === tid))) {
             scope.set(t.id, t);
             break;
           }
@@ -121,10 +124,12 @@
         if (f.type !== 'relation' || seen.has(f.id) || seen.has(f.inverseFieldId)) continue;
         seen.add(f.id);
         if (f.inverseFieldId) seen.add(f.inverseFieldId);
-        const b = pos.get(f.targetDbId);
+        // A target-set relation is one field but one edge per member table.
+        for (const tid of (f.targetDbIds ?? [f.targetDbId])) {
+        const b = pos.get(tid);
         if (!b) continue;
         const a = pos.get(t.id);
-        const inv = byId.get(f.targetDbId)?.fields?.find((x) => x.id === f.inverseFieldId);
+        const inv = byId.get(tid)?.fields?.find((x) => x.id === f.inverseFieldId);
         const label = `${f.name} ${card(inv?.many)}–${card(f.many)}`;
         if (a.id === b.id) {
           // The loop arcs off the right edge into the column gap; its label
@@ -145,6 +150,7 @@
           x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
           lx: (p1.x + p2.x) / 2, ly: (p1.y + p2.y) / 2,
         });
+        }
       }
     }
 

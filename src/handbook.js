@@ -273,13 +273,15 @@ A select becomes a workflow the moment its values describe progress rather than 
 
   { name: 'relation', kind: 'Relation', doc: `# relation
 
-A link between two tables, always created as a bidirectional pair — the inverse field appears on the other table in the same write.
+A link between tables. One target table makes the classic bidirectional pair — the inverse field appears on the other table in the same write. A **target set** (\`targetDbs\`, two or more tables) makes a polymorphic relation: one field whose values may point at rows of ANY member table — the registry's \`Workspace/Spaces\` and \`Workspace/Tables\` are legal members, so a row can point at a space or a table as easily as at another row.
 
 ## Config
 
-Created with its own verb, not \`add_field\`: \`targetDb\`, \`cardinality\`, \`inverseName\`.
+Created with its own verb, not \`add_field\`: \`targetDb\` (or \`targetDbs\`, a list), \`cardinality\`, \`inverseName\`.
 
-Cardinalities: \`many-to-one\` (the default), \`one-to-many\`, \`many-to-many\`, \`one-to-one\`.
+Cardinalities: \`many-to-one\` (the default), \`one-to-many\`, \`many-to-many\`, \`one-to-one\`. For a target set only this side's arity matters: \`many-to-one\` holds one chip, \`many-to-many\` holds a set.
+
+A target set is **one-way**: no inverse field is minted (it would have to be sprayed across every member table). The reverse direction is a read, not a stored field. Chips from a target set carry their home table, and the picker searches every member.
 
 ## Usage
 
@@ -299,7 +301,9 @@ Traverse with a dotted path: \`[["Project.Name", "=", "Apollo"]]\`.
 
 Name the field for **what is on the other end** (\`Project\`, \`Assignee\`), and the inverse for what this side is, plural (\`Tasks\`). The field name is what the chip reads and what every lookup path starts with — \`Task-Project\` makes both unreadable.
 
-Deleting a relation deletes both ends.` },
+Deleting a relation deletes both ends. Deleting a member table of a target set prunes it from the set; the last member takes the field with it.
+
+Lookups and rollups need a single-target relation — a target set has no one far table to read a field from. Filters still traverse it: each linked row resolves against its own table, so \`[["Scope.Name", "=", "Apollo"]]\` matches whichever member table Apollo lives in.` },
 
   { name: 'lookup', kind: 'Computed', doc: `# lookup
 

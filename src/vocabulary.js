@@ -22,7 +22,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'select', renders: 'one soft chip; click picks from the options', config: ['options', 'default'] },
   { type: 'multiselect', renders: 'a row of chips', config: ['options', 'default'] },
   { type: 'workflow', renders: 'one state chip, colored by its category; a board groups on it', config: ['states'] },
-  { type: 'relation', renders: 'chips carrying the target\'s name, each with ×, plus "+ link"', config: ['targetDb', 'cardinality', 'inverseName'], verb: 'add_relation' },
+  { type: 'relation', renders: 'chips carrying the target\'s name, each with ×, plus "+ link"', config: ['targetDb', 'targetDbs', 'cardinality', 'inverseName'], verb: 'add_relation' },
   { type: 'lookup', renders: 'read-only cell on a tinted background, marked ↗', config: ['relationField', 'targetField'] },
   { type: 'rollup', renders: 'read-only cell on a tinted background, marked Σ', config: ['relationField', 'targetField', 'aggregate'] },
   { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator'] },
