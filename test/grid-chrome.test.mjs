@@ -212,6 +212,28 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
+  test('a description reads at full strength, not dimmed like a computed cell', async () => {
+    // `cell-computed` paints --tblr-secondary and a default cursor: "nothing
+    // to do here". A description is the row's own prose and one click opens
+    // it, so it must read like the Name beside it, not like a rollup.
+    const page = await grid();
+    try {
+      const look = await page.evaluate(() => {
+        const td = document.querySelector('.wv-grid tbody td:has(> .doc-preview)');
+        const name = document.querySelector('.wv-grid tbody td.name-cell');
+        return {
+          computed: td.classList.contains('cell-computed'),
+          color: getComputedStyle(td.querySelector('.doc-preview')).color,
+          nameColor: getComputedStyle(name.querySelector('.text-dressed') ?? name).color,
+          cursor: getComputedStyle(td.querySelector('.doc-preview')).cursor,
+        };
+      });
+      assert.equal(look.computed, false, 'the description cell is not tagged computed');
+      assert.equal(look.color, look.nameColor, 'it is as legible as the name beside it');
+      assert.equal(look.cursor, 'pointer', 'and it advertises that clicking does something');
+    } finally { await page.close(); }
+  });
+
   test('an empty description is a dashed invitation, not a dim', async () => {
     const page = await grid();
     try {

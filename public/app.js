@@ -2308,8 +2308,12 @@ function renderTable(main, db, items, onSaved) {
           }, `#${item.publicId} ↗`)),
         ...cols.map((c) => {
           const f = db.fields.find((x) => x.name === c);
+          /* A description is not computed. `cell-computed` dims a value to
+             --tblr-secondary and says "nothing to do here"; the description is
+             the row's own prose and one click opens it (Kyle, 2026-08-27), so
+             it takes the plain cell every text value takes. */
           const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
-            : READONLY_FIELD_TYPES.includes(f.type) ? ' cell-computed' : '';
+            : (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') ? ' cell-computed' : '';
           return el('td', {
             dataset: { ftype: f.type, field: f.name },
             // The leading column carries the row's identity — Name by default,
