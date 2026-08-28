@@ -609,6 +609,36 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
   background: rgba(var(--tblr-primary-rgb), .08); }
 .text-dressed s { color: var(--tblr-secondary); }
 
+/* A description at rest: its first few lines, formatted (Kyle, 2026-08-27).
+   The cell shows ONE of them, because a comfortable row is 48px and a compact
+   one 34px and those numbers are Kyle's. The rest are in the same cell,
+   display:none — showCellPop copies the cell, so hovering wraps them out at
+   380px and the grid never grows to hold what only hover needs. */
+/* 3px, where .text-dressed pads 4: the description is the tallest thing in
+   its row, so its box has to fit the row rather than the row grow to it —
+   43px comfortable, and the caps in grid-chrome are the gate. */
+.doc-preview { display: block; max-width: 100%; padding: 3px 7px; border: 1px solid transparent;
+  border-radius: var(--tblr-border-radius); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-preview:hover { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
+.doc-preview .doc-preview-line ~ .doc-preview-line { display: none; }
+.cell-pop .doc-preview { white-space: normal; }
+.cell-pop .doc-preview .doc-preview-line { display: block; }
+.cell-pop .doc-preview .doc-preview-line + .doc-preview-line { margin-top: 2px; }
+.doc-preview code { font-size: .92em; padding: 0 4px; border-radius: 4px; background: var(--tblr-bg-surface-secondary); color: inherit; }
+.doc-preview .md-link { color: var(--tblr-primary); text-decoration: underline; text-underline-offset: 2px; }
+.doc-preview .md-ref { color: var(--tblr-primary); padding: 0 4px; border-radius: 4px;
+  background: rgba(var(--tblr-primary-rgb), .08); }
+.doc-preview s { color: var(--tblr-secondary); }
+/* Empty is an invitation, never a dim: a dashed border says "write here",
+   opacity says "you may not". `is-empty`, not `empty` — Tabler's global. */
+.doc-preview.is-empty > .doc-preview-line {
+  /* inline, not inline-block: an inline box paints its border without adding
+     to the line box, so the invitation and a written line are the same height
+     and the row stays under its cap. */
+  display: inline; padding: 0 6px; border: 1px dashed var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius); color: var(--tblr-secondary);
+}
+
 .inline-edit { border-color: transparent; background: transparent; max-width: 100%; }
 .inline-edit:not(:focus) { box-shadow: none; }
 .inline-edit:hover { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }

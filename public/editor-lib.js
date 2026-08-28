@@ -64,6 +64,66 @@ globalThis.WeaveEditorLib = {
     return 'md';
   },
 
+  /* ---------- the first few lines of a description, as prose ----------
+     Kyle, 2026-08-27: a description "should always show a preview of the
+     properly formatted first few lines, not an md document chip". A chip said
+     the field existed and what kind it was; it never said what it SAID.
+
+     This is the BLOCK pass, and the only one: it decides which lines are
+     worth showing and hands back their text with the block syntax gone —
+     hashes off headings, bullets off list items, quote carets dropped, table
+     rows and rules and fenced code skipped whole. The caller runs each line
+     through inlineTokens(), so bold arrives as bold and there is still exactly
+     one inline grammar in the browser.
+
+     A document that is not prose is NAMED, never flattened: a doctype makes a
+     terrible summary of a page, and `{"slides":[` a worse one of a deck. The
+     classification is docKind()'s, so a preview and a chip can never disagree
+     about what a document is.
+
+     Returns { kind, lines, label } — kind null and lines empty for an empty
+     document, so the cell can draw its invitation instead of a lie. */
+  docPreview(md, { lines: budget = 3 } = {}) {
+    const src = String(md ?? '');
+    const kind = this.docKind(src);
+    if (!kind) return { kind: null, lines: [], label: '' };
+    if (kind === 'html') {
+      const title = src.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim();
+      return { kind, lines: [], label: title || 'HTML app' };
+    }
+    if (kind === 'json') {
+      let shape = '';
+      try {
+        const v = JSON.parse(src.trim());
+        shape = Array.isArray(v) ? `${v.length} items` : `${Object.keys(v).length} keys`;
+      } catch { /* docKind already parsed it; a race here is not worth a throw */ }
+      return { kind, lines: [], label: shape ? `JSON model · ${shape}` : 'JSON model' };
+    }
+    if (kind === 'mmd') {
+      const word = src.trim().match(/^\w+/)?.[0] ?? 'mermaid';
+      return { kind, lines: [], label: `${word} diagram` };
+    }
+    const out = [];
+    let fenced = false;
+    for (const raw of src.split('\n')) {
+      if (out.length >= budget) break;
+      const line = raw.trim();
+      if (/^(?:```|~~~)/.test(line)) { fenced = !fenced; continue; }
+      if (fenced) continue;
+      if (!line) continue;
+      if (/^(?:[-*_]\s*){3,}$/.test(line)) continue;      // a horizontal rule says nothing
+      if (line.startsWith('|')) continue;                 // nor does one row of a table
+      const text = line
+        .replace(/^#{1,6}\s+/, '')                        // a heading is its words
+        .replace(/^>\s?/, '')                             // a quote is what was quoted
+        .replace(/^(?:[-*+]|\d+[.)])\s+/, '')             // a list item is the item
+        .replace(/^\[[ xX]\]\s+/, '')                     // including a checked one
+        .trim();
+      if (text) out.push(text);
+    }
+    return { kind, lines: out, label: '' };
+  },
+
   /* ---------- one line of markdown, as marks instead of syntax ----------
      For places that show a markdown value without editing it — the text
      cells of the registry grids, where a space description was reading

@@ -1656,12 +1656,33 @@ test('system columns are toggled only from the eye — not from the table ⋮ me
    several documents, so the snip described one of them and hid the rest.
    Now every document field is a chip carrying its name and its kind
    (test/doc-chips.test.mjs owns that behavior). */
+/* And 2026-08-27, the third turn this surface has taken: the description is
+   back as a preview — "the properly formatted first few lines, not an md
+   document chip" — but in a COLUMN, not in the Docs cell. Both of Kyle's
+   earlier rulings survive that: the row says what its description says, and
+   no document stands in for the others, because the others still have their
+   chips. */
 test('the table grid names every document in the Docs cell', () => {
   const grid = fnBody('renderTable');
   assert.match(grid, /class: 'docs-cell'/, 'the cell is addressable');
-  assert.match(grid, /docChips\(item, db,/, 'the cell is chips, one per document field');
+  assert.match(grid, /docChips\(item, db,/, 'the cell is chips, one per document field but the description');
   assert.ok(!grid.includes("class: 'doc-snip'"), 'the one-document snip is gone');
   assert.ok(rulesFor('.doc-chip')['max-width'], 'a chip is width-capped');
+});
+
+test('the description is a column of its own, previewed and formatted (Kyle, 2026-08-27)', () => {
+  const cols = fnBody('visibleCols');
+  assert.match(cols, /descriptionFieldOf\(/, 'exactly one document is admitted to the columns');
+  assert.match(cols, /f\.type !== 'document' \|\| f\.id === described\?\.id/, 'and it is the one holding the role');
+
+  const cell = fnBody('docPreviewCell');
+  assert.match(cell, /WeaveEditorLib\.docPreview\(/, 'the block pass is the shared one');
+  assert.match(cell, /dressTokens\(/, 'and the inline pass is the one dressedText uses');
+  assert.match(cell, /inlineTokens\(/, 'there is no second inline grammar in the browser');
+  assert.match(cell, /onOpen\(\)/, 'clicking opens the peek');
+  assert.ok(!/replaceWith\(input\)/.test(cell), 'a document is never edited in a cell (Issue #74)');
+  assert.ok(rulesFor('.doc-preview')['white-space'] === 'nowrap', 'the cell holds one line');
+  assert.equal(rulesFor('.cell-pop .doc-preview')['white-space'], 'normal', 'the expansion wraps the rest');
 });
 
 /* ---------- the slash menu reads as a menu ----------

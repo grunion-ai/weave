@@ -26,7 +26,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'lookup', renders: 'read-only cell on a tinted background, marked ↗', config: ['relationField', 'targetField'] },
   { type: 'rollup', renders: 'read-only cell on a tinted background, marked Σ', config: ['relationField', 'targetField', 'aggregate'] },
   { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator'] },
-  { type: 'document', renders: 'folded into the shared "Docs (n)" column — never a column of its own', config: ['kind'] },
+  { type: 'document', renders: 'the description previews its first lines in a column of its own; every other document folds into the shared "Docs (n)" chips', config: ['kind'] },
   { type: 'attachments', renders: 'file chips', config: ['multiple'] },
   { type: 'field', renders: 'a field definition as a value — what the Fields registry\'s Definition is', config: ['types', 'depth'] },
   { type: 'key', renders: 'a masked chip naming the credential, never the secret', config: ['kind', 'keystore', 'parts'] },

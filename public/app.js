@@ -575,6 +575,21 @@ function documentFields(db) {
   return db.fields.filter((f) => f.type === 'document');
 }
 
+/* The description, by the role the schema marks — never by the name, which is
+   Kyle's to change (2026-08-27). Null once he deletes it. */
+function descriptionFieldOf(db) {
+  return db?.fields?.find((f) => f.type === 'document' && f.role === 'description') ?? null;
+}
+
+/* The documents that stay chips. Kyle's 2026-08-24 ruling — one chip per
+   document, named, with its kind — still governs Spec, Model and test; the
+   description left the cell for a column of its own, where it can say what it
+   actually says. */
+function chipDocumentFields(db) {
+  const described = descriptionFieldOf(db);
+  return documentFields(db).filter((f) => f.id !== described?.id);
+}
+
 /* What this table is to the slide composer (Feature #118): a table with a
    many-relation named Slides is a deck, a table with a Model document is a
    slide. The same convention the server composes on, read off the schema so
@@ -1238,7 +1253,12 @@ function hideCellPop(wrap) {
    the marker always means there is more to see. */
 function markClippedCells(grid) {
   for (const td of grid.querySelectorAll('tbody td')) {
-    td.classList.toggle('clipped', td.scrollWidth > td.clientWidth + 1);
+    // A description holds lines the row has no height for; they are in the
+    // cell, hidden, and only the pop can show them. Width alone would call
+    // that cell unclipped and the rest of the description would never be
+    // reachable, so having more than one line counts as clipped too.
+    const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > 1;
+    td.classList.toggle('clipped', td.scrollWidth > td.clientWidth + 1 || hasHiddenLines);
   }
 }
 
@@ -1342,6 +1362,17 @@ function hasInlineMarkup(text) {
 
 const INLINE_TAG = { strong: 'strong', em: 'em', code: 'code', strike: 's', link: 'span', ref: 'span' };
 
+/* One line of markdown painted into one node: the marks as marks, the syntax
+   gone. Shared by the text costume and the description preview so there is a
+   single place the browser turns tokens into elements. */
+function dressTokens(into, tokens) {
+  for (const t of tokens) {
+    const cls = t.mark === 'link' ? 'md-link' : t.mark === 'ref' ? 'md-ref' : null;
+    into.append(t.mark ? el(INLINE_TAG[t.mark], cls ? { class: cls } : {}, t.text) : t.text);
+  }
+  return into;
+}
+
 /* The costume: marks painted, syntax gone, and one click back to the source.
    Focus follows the click so typing continues where it was aimed. */
 function dressedText(md, input) {
@@ -1349,10 +1380,7 @@ function dressedText(md, input) {
   // The tooltip is the whole value the cell had to ellipsise — as prose, for
   // the same reason the cell is: nobody wants to read markers in a tooltip.
   const dressed = el('span', { class: 'text-dressed', tabindex: 0, title: tokens.map((t) => t.text).join('') });
-  for (const t of tokens) {
-    const cls = t.mark === 'link' ? 'md-link' : t.mark === 'ref' ? 'md-ref' : null;
-    dressed.append(t.mark ? el(INLINE_TAG[t.mark], cls ? { class: cls } : {}, t.text) : t.text);
-  }
+  dressTokens(dressed, tokens);
   dressed.addEventListener('click', (e) => {
     e.stopPropagation();
     dressed.replaceWith(input);
@@ -1538,11 +1566,8 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     return box;
   }
   if (f.type === 'document') {
-    // Documents are edited through the doc editor surfaces, not a cell input.
-    const text = String(val ?? '');
-    return el('span', { class: 'computed k k-computed', title: 'document — edit in the doc editor' },
-      el('span', { class: 'computed-mark' }, computedMark('document')),
-      text ? text.slice(0, 60).replace(/\n/g, ' ') + (text.length > 60 ? '…' : '') : '—');
+    // Only the description reaches a cell, and it reaches it as prose.
+    return docPreviewCell(item.docs?.[f.name], f.name, () => peekEntity(id));
   }
   if (f.type === 'field') {
     // A field definition. In compact surfaces (grid, board, list) the value
@@ -1695,14 +1720,55 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   return input;
 }
 
+/* ---------- the description, as its first few lines (Kyle, 2026-08-27) ----
+   "it should always show a preview of the properly formatted first few lines,
+   not an md document chip." The chip said the field was there; the preview
+   says what it says.
+
+   The row holds one line, because a row holds one line: a comfortable row is
+   48px and a compact one 34px, and Kyle drove those numbers down himself on
+   2026-08-26. The rest of the budget rides along in the same cell, hidden,
+   and showCellPop's cloneNode copy reveals it on hover — so "the first few
+   lines" arrive without the grid growing to hold them.
+
+   A document that is not prose is named, not flattened: docPreview hands back
+   a label for an HTML app, a JSON model or a mermaid diagram, and the cell
+   wears it as the chip's kind rather than pretending a doctype is a sentence.
+   Clicking opens the side peek, never an inline input — a document is not
+   edited in a cell (Issue #74). */
+function docPreviewCell(md, name, onOpen) {
+  const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md);
+  const box = el('span', {
+    class: 'doc-preview' + (kind ? '' : ' is-empty'),
+    tabindex: 0,
+    title: kind ? `Open ${name}` : `${name} is empty — click to write it`,
+    onclick: (e) => { e.stopPropagation(); onOpen(); },
+  });
+  if (!kind) {
+    box.append(el('span', { class: 'doc-preview-line' }, `Add ${name.toLowerCase()}…`));
+    return box;
+  }
+  if (!lines.length) {
+    box.append(el('span', { class: 'doc-preview-line k k-doc' }, label || kind));
+    return box;
+  }
+  for (const line of lines) {
+    box.append(dressTokens(el('span', { class: 'doc-preview-line' }), globalThis.WeaveEditorLib.inlineTokens(line)));
+  }
+  return box;
+}
+
 /* ---------- a row's documents, as chips (Kyle, 2026-08-24) ----------
    A row can carry several documents; a 90-character slice of the first one
    said nothing about the rest. One chip per document field instead: its
    name, and the kind of thing it holds — md, an html app, a json model, a
-   mermaid diagram — with the empty ones dimmed and labelled as empty. */
+   mermaid diagram — with the empty ones dimmed and labelled as empty.
+
+   Narrowed 2026-08-27: the description is not among them any more. It has a
+   column, and in it the first few lines of what it says. */
 function docChips(item, db, onOpen) {
   const box = el('span', { class: 'doc-chips' });
-  for (const f of documentFields(db)) {
+  for (const f of chipDocumentFields(db)) {
     const kind = globalThis.WeaveEditorLib.docKind(item.docs?.[f.name]);
     box.append(el('button', {
       class: 'k k-doc doc-chip' + (kind ? '' : ' is-empty'),
@@ -2035,11 +2101,20 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
   showPopover(anchor, rows);
 }
 
-/* The columns a table shows: every non-document field minus the table's
-   hidden set (the eyeball, Feature #114). reorderField mirrors this. */
+/* The columns a table shows: every non-document field, plus the ONE document
+   that carries the description role, minus the table's hidden set (the
+   eyeball, Feature #114). reorderField mirrors this.
+
+   The description is a column because Kyle asked for its first few lines to be
+   readable in the grid (2026-08-27), and a column is where a value that says
+   something belongs — it resizes, hides and reorders like every other. Every
+   other document stays in the shared Docs cell as a chip. */
 function visibleCols(db) {
   const hidden = new Set(db.hiddenFields ?? []);
-  return db.fields.filter((f) => f.type !== 'document' && !hidden.has(f.name)).map((f) => f.name);
+  const described = descriptionFieldOf(db);
+  return db.fields
+    .filter((f) => (f.type !== 'document' || f.id === described?.id) && !hidden.has(f.name))
+    .map((f) => f.name);
 }
 
 function renderTable(main, db, items, onSaved) {
@@ -2314,8 +2389,8 @@ function renderTable(main, db, items, onSaved) {
           columnResizeGrip(db, colField(db, c)))),
         ...(db.systemFields ?? []).map((n) => el('th', { class: 'sys-head', title: `${n} — system field, read-only` },
           el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·')))),
-        el('th', { title: documentFields(db).map((f) => f.name).join(', ') },
-          `Docs (${documentFields(db).length})`),
+        el('th', { title: chipDocumentFields(db).map((f) => f.name).join(', ') },
+          `Docs (${chipDocumentFields(db).length})`),
         // Adding a field lives where the fields are: the end of the header bar.
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db)))),
       tbody);

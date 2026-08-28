@@ -87,6 +87,7 @@ const INTERNAL = {
   findSpace: 'ref resolver', getSpace: 'ref resolver', findTable: 'ref resolver', getTable: 'ref resolver',
   findField: 'ref resolver', getField: 'ref resolver', findEntity: 'ref resolver', qualifiedName: 'ref formatter',
   entityName: 'ref formatter', documentFields: 'ref helper', resolveField: 'read helper',
+  descriptionField: 'ref helper — which document a table calls its description, by role rather than by name',
   credentialConfig: 'read helper — a key field\'s config with the #143 defaults filled in',
   credentialLink: 'read helper — where a remote keystore keeps the credential',
   bodyBlocks: 'read helper — the resolved body order already ships inside the schema payload',

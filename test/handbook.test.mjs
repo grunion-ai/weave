@@ -41,6 +41,21 @@ test('each page carries the sections a reader looks for, and a known kind', () =
   }
 });
 
+/* Where a page tells the reader HOW a value is drawn, the vocabulary is the
+   source and the page must not contradict it. Added 2026-08-27, after the
+   document page went on claiming "Documents never take a column of their own"
+   for as long as it took someone to read it: nothing in this suite pinned the
+   sentence, so the description could take a column with every test green. */
+test('a page never contradicts the vocabulary about how its type is drawn', () => {
+  const doc = page('document').doc;
+  const renders = VOCAB.fieldTypes.find((f) => f.type === 'document').renders;
+  assert.match(renders, /column of its own/, 'the vocabulary says where a description is drawn');
+  assert.doesNotMatch(doc, /never take a column of their own/,
+    'the document page still says documents never take a column — the description does');
+  assert.match(doc, /column of its own/, 'and the page has to say so too');
+  assert.match(doc, /role/, 'the page names the description as a role, so a rename is not a surprise');
+});
+
 test('the closed vocabularies a page quotes match the engine', () => {
   // A page that lists a set has to list the whole set — a stale option colour
   // or a fifth workflow category is exactly the kind of drift this catches.

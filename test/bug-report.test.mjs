@@ -383,6 +383,30 @@ test('the reporter is named as the actor, so the audit log shows who filed it', 
   assert.equal(issue.createdBy, 'bug-report');
 });
 
+test('a report still files when the Issue description has been renamed', async () => {
+  /* The handler named the field 'Description' and did not catch, so the
+     engine's "not a document field" threw the whole report away the moment
+     someone renamed it — on the one workspace where renaming things is the
+     point. Its own server, because the rename is destructive to the shared
+     fixture's assertions. */
+  const docs = new Weave();
+  seedWeaver(docs);
+  const issues = docs.getTable('Development/Issue');
+  docs.updateField(issues.id, 'Description', { name: 'Notes' });
+  const { server: srv } = await startServer(new Weave(), { port: 0, workspaces: { weave: docs } });
+  try {
+    const at = `http://127.0.0.1:${srv.address().port}`;
+    const res = await fetch(`${at}/api/bug-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ categories: ['error'], note: 'filed after a rename', events: [], client: CLIENT }),
+    });
+    assert.equal(res.status, 201, 'a label edit does not lose a report');
+    const { id } = await res.json();
+    assert.match(docs.readEntity(id).docs.Notes, /## Replay/, 'the markdown landed in the renamed field');
+  } finally { srv.close(); }
+});
+
 test('an empty report is refused, and so is a made-up symptom', async () => {
   assert.equal((await post('/api/bug-report', { events: [] })).status, 400, 'nothing picked, nothing typed');
   assert.equal((await post('/api/bug-report', { categories: ['made-up'], events: [] })).status, 400);

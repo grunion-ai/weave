@@ -12,9 +12,13 @@ function build() {
 
 test('every table gets a default Description document field', () => {
   const { w, tasks } = build();
-  const fields = w.documentFields(w.getTable(tasks));
+  const db = w.getTable(tasks);
+  const fields = w.documentFields(db);
   assert.equal(fields.length, 1);
   assert.equal(fields[0].name, 'Description');
+  // The name is only the seed. Without the role, this assertion cannot tell
+  // the engine that MEANS it from the one that guessed (test/description-field).
+  assert.equal(db.descriptionFieldId, fields[0].id);
 });
 
 test('multiple document fields per entity', () => {
@@ -85,6 +89,8 @@ test('v1 workspace migrates: databases key and entity.doc', () => {
   assert.equal(w2.state.version, 2);
   assert.equal(w2.getDoc(e.id), 'legacy body');
   assert.equal(w2.documentFields(w2.getTable('Item'))[0].name, 'Description');
+  assert.equal(w2.getTable('Item').descriptionFieldId, w2.documentFields(w2.getTable('Item'))[0].id,
+    'a v1 workspace comes up with the role set, not merely the field');
 });
 
 test('universalSearch returns permalinks for all kinds', () => {

@@ -210,6 +210,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
     return out(200, {
       ...rowOf(weave, full),
       doc: full.doc ?? '',
+      docField: full.docField,
       docHtml: renderMarkdown(full.doc ?? ''),
       createdAt: full.createdAt,
       schema,
@@ -944,11 +945,12 @@ const CLIENT = `
               + '<span class="thumb">' + esc((f.name.split('.').pop() || 'file').slice(0, 4)) + '</span>'
               + '<span class="nm">' + esc(f.name) + '</span><span class="sz">' + kb(f.size) + '</span></a>').join('')
           + '<button class="wv-file add" data-addfile>' + I.plus + '<span class="nm">Add file</span></button></div>' : '')
-      + '<p class="wv-dsec">Description<span class="line"></span>'
+      // The description answers to whatever it is called now (Kyle, 2026-08-27).
+      + '<p class="wv-dsec">' + esc(full.docField || 'Description') + '<span class="line"></span>'
       + '<button type="button" class="k-add" data-doc style="padding:1px 7px">' + (full.docHtml ? 'edit' : 'add') + '</button></p>'
       + (full.docHtml
           ? '<div class="wv-doc" data-doc>' + full.docHtml + '</div>'
-          : '<button class="wv-doc wv-doc-empty" data-doc>Add a description</button>')
+          : '<button class="wv-doc wv-doc-empty" data-doc>Add ' + esc((full.docField || 'a description').toLowerCase()) + '</button>')
       + '<div class="wv-dfoot"><span>Created ' + new Date(full.createdAt || target.updatedAt).toLocaleDateString() + '</span>'
       + '<span>Updated ' + ago(target.updatedAt) + ' ago</span></div></div>';
     requestAnimationFrame(() => detail.classList.add('in'));
@@ -1023,7 +1025,7 @@ const CLIENT = `
      an inline caret: a phone keyboard takes half the screen, and markdown
      wants the other half. */
   function editDoc(t, full) {
-    openSheet('<h4>Description</h4>'
+    openSheet('<h4>' + esc(full.docField || 'Description') + '</h4>'
       + '<div style="padding:0 18px 10px"><textarea id="docedit" placeholder="Markdown" '
       + 'style="width:100%;min-height:46vh;font-size:16px;line-height:1.5;padding:12px;border:1px solid var(--line);'
       + 'border-radius:12px;background:var(--ground);font-family:var(--mono)">' + esc(full.doc || '') + '</textarea></div>'

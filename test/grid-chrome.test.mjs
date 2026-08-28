@@ -63,6 +63,11 @@ if (!chromium) {
     // clip at all — the same 60px Kyle had dragged the Site column to.
     weave.updateField(tasks, 'Name', { config: { width: 60 } });
     weave.link(task.id, 'Lead', [mia.id]);
+    // A description with marks and more lines than a row can hold, so the
+    // preview has something to format and the hover has something to reveal
+    // (Kyle, 2026-08-27). The second row leaves its description empty, which
+    // is what the equal-height assertion below is really measuring.
+    weave.setDoc(task.id, '# Title\n\n**bold** body\n\n- third line');
     // A second row, with its Brief written, to compare row heights against.
     const full = weave.createEntity(tasks, { name: 'Short' });
     weave.setDoc(full.id, '# Written\n\nthis one is not empty', 'Brief');
@@ -167,6 +172,61 @@ if (!chromium) {
       } finally { await page.close(); }
     });
   }
+
+  /* ── 2b · the description reads as prose, in a row's worth of space ──────
+     Kyle, 2026-08-27: a description "should always show a preview of the
+     properly formatted first few lines, not an md document chip". A row holds
+     one of those lines — the caps above are why — and hover holds the rest. */
+
+  test('the description preview shows its marks, not its syntax', async () => {
+    const page = await grid();
+    try {
+      const seen = await page.evaluate(() => {
+        const box = document.querySelector('.wv-grid tbody .doc-preview');
+        if (!box) return null;
+        return { text: box.textContent, strong: !!box.querySelector('strong') };
+      });
+      assert.ok(seen, 'the description has a cell of its own');
+      assert.ok(!seen.text.includes('#'), `a heading arrives as its words (${seen.text})`);
+      assert.ok(!seen.text.includes('**'), 'and bold as bold');
+      assert.ok(seen.strong, 'the mark is really a <strong>');
+    } finally { await page.close(); }
+  });
+
+  test('hovering a description shows the lines the row had no room for', async () => {
+    const page = await grid();
+    try {
+      const lines = await page.evaluate(() => {
+        const td = document.querySelector('.wv-grid tbody td:has(> .doc-preview)');
+        if (!td) return null;
+        const visible = (n) => [...n.querySelectorAll('.doc-preview-line')]
+          .filter((l) => getComputedStyle(l).display !== 'none').length;
+        const inCell = visible(td);
+        td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        const pop = document.querySelector('.cell-pop');
+        return pop ? { inCell, inPop: visible(pop) } : { inCell, inPop: 0 };
+      });
+      assert.ok(lines, 'the description cell is there to hover');
+      assert.equal(lines.inCell, 1, 'the row shows one line, whatever the document holds');
+      assert.ok(lines.inPop > lines.inCell, `the expansion shows more (${lines.inPop} vs ${lines.inCell})`);
+    } finally { await page.close(); }
+  });
+
+  test('an empty description is a dashed invitation, not a dim', async () => {
+    const page = await grid();
+    try {
+      const look = await page.evaluate(() => {
+        const box = [...document.querySelectorAll('.wv-grid tbody .doc-preview.is-empty')][0];
+        if (!box) return null;
+        const cs = getComputedStyle(box.querySelector('.doc-preview-line'));
+        return { style: cs.borderTopStyle, opacity: getComputedStyle(box).opacity, framework: box.classList.contains('empty') };
+      });
+      assert.ok(look, 'an unwritten description still draws something');
+      assert.equal(look.style, 'dashed', 'dashed says "write here"');
+      assert.equal(look.opacity, '1', 'opacity would say "you may not"');
+      assert.equal(look.framework, false, 'never Tabler’s global `.empty`');
+    } finally { await page.close(); }
+  });
 
   /* The cause: Tabler's global `.empty` is a full-height flex column with a
      1rem pad. A chip must not answer to it. */

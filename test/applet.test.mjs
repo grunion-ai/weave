@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
@@ -514,6 +514,23 @@ test('applet: the description is written from the page it is read on', async () 
     assert.equal((await fetch(`${s.base}/t/entity/${id}/doc`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doc: 'x' }),
     })).status, 401, 'writing prose is still writing');
+  } finally { s.stop(); }
+});
+
+test('applet: the description answers to the name it has now', async () => {
+  // Kyle can rename the description (2026-08-27), and the applet printed the
+  // word 'Description' over whatever it was actually showing. The heading and
+  // the sheet read the name off the row instead.
+  const s = await stand();
+  try {
+    s.weave.updateField(s.db.id, 'Description', { name: 'Notes' });
+    const cookie = cookieFrom(await unlock(s.base));
+    const one = await (await fetch(`${s.base}/t/entity/${s.tasks[1].id}`, { headers: { cookie } })).json();
+    assert.equal(one.docField, 'Notes', 'the payload says which field the prose came from');
+
+    const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+    assert.match(src, /full\.docField \|\| 'Description'/, 'the detail heading reads the name, not a literal');
+    assert.ok(!/<h4>Description<\/h4>/.test(src), 'and neither does the edit sheet');
   } finally { s.stop(); }
 });
 

@@ -383,6 +383,8 @@ A formula cannot cross a relation. That is what \`lookup\` and \`rollup\` are fo
 
 A markdown document that belongs to one row. Every table has one — \`Description\` — and a table may carry as many more as it needs.
 
+The first one is a **role**, not a name. Rename it to \`Notes\` and it is still the description: the table points at it by id, so \`weave doc set Task#5\` without a \`--field\` still finds it, and the schema descriptor carries \`role: "description"\`. Delete it and it stays deleted — no migration puts it back.
+
 ## Config
 
 \`kind\` — \`markdown\` (the unmarked default), \`html\`, or \`code\`.
@@ -390,11 +392,14 @@ A markdown document that belongs to one row. Every table has one — \`Descripti
 \`\`\`bash
 weave field add Task Spec document
 weave field add Workflow Script document --config '{"kind":"code"}'
+weave field update Task Description --name Notes   # still the description
 \`\`\`
 
 ## Usage
 
-Documents never take a column of their own. They fold into the shared \`Docs (n)\` control in the grid, and open in full on the entity page and in the side peek.
+The description takes a column of its own and previews what it says: the first line, formatted — a heading as its words, bold as bold, never a hash or a pair of asterisks — and the first few lines when you hover it. A document that is not prose is named instead of flattened: \`HTML app\`, \`JSON model\`, \`graph diagram\`.
+
+Every OTHER document folds into the shared \`Docs (n)\` control in the grid, one chip each. All of them open in full on the entity page and in the side peek.
 
 \`\`\`bash
 weave doc set Task#5 --field Spec --content '# Spec'

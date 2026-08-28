@@ -5,7 +5,16 @@
    one of them and no sign of the other two. A row now carries one chip per
    document field, named, with the kind of thing that document actually is —
    markdown, an HTML app, a JSON model, a mermaid diagram — and clicking a
-   chip opens that document, not the first one. */
+   chip opens that document, not the first one.
+
+   Narrowed 2026-08-27, and the narrowing keeps the ruling rather than undoing
+   it. Kyle: a description "should always show a preview of the properly
+   formatted first few lines, not an md document chip." What he rejected in
+   August was a raw slice of ONE document standing in for all of them; what he
+   wants now is the description saying what it says. So the description leaves
+   the Docs cell for a column of its own — one dressed line, the rest on hover
+   — and Spec, Model and test keep exactly the chips this file was written to
+   defend. Both rulings hold at once, and neither cell has to compromise. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -47,12 +56,27 @@ test('a model is json, a diagram is mermaid', () => {
 
 /* ---------- the cell ---------- */
 
-test('the Docs cell is chips, one per document field', () => {
+test('the Docs cell is chips, one per document field except the description', () => {
   assert.match(APP, /function docChips\(/, 'one builder for the chips');
   const fn = APP.match(/function docChips\([^]*?\n\}/)[0];
-  assert.match(fn, /documentFields\(/, 'every document field gets a chip, not just the first');
+  assert.match(fn, /chipDocumentFields\(/, 'every document field but the description gets a chip, not just the first');
   assert.match(fn, /docKind\(/, 'and the chip says what kind it is');
-  assert.ok(!/docPreview\(item\.docs/.test(APP), 'the flattened snippet of one document is gone');
+  // The ban survives the narrowing: what Kyle rejected was a FLATTENED raw
+  // slice of one document standing in for the row. The description's preview
+  // is a block-stripped, mark-dressed read of a named, role-marked field, and
+  // it must not be spelled like the thing that was thrown out — satisfying the
+  // letter of this gate by renaming the old helper would be gaming it.
+  assert.ok(!/docPreview\(item\.docs/.test(APP), 'the flattened raw snippet of one document is still gone');
+  assert.ok(!/\.slice\(0, 60\)/.test(APP), 'and so is the 60-character document slice it left behind');
+});
+
+test('the description leaves the chips for a column of its own (Kyle, 2026-08-27)', () => {
+  assert.match(APP, /function chipDocumentFields\(/, 'one place decides which documents are chips');
+  const fn = APP.match(/function chipDocumentFields\([^]*?\n\}/)[0];
+  assert.match(fn, /descriptionFieldOf\(/, 'the description is found by role, never by the name Kyle can change');
+  const cols = APP.match(/function visibleCols\([^]*?\n\}/)[0];
+  assert.match(cols, /descriptionFieldOf\(/, 'and the column list admits exactly that one document');
+  assert.match(APP, /`Docs \(\$\{chipDocumentFields\(db\)\.length\}\)`/, 'the Docs count stops counting it');
 });
 
 test('clicking a chip opens the entity peek, never a row expansion (Issue #74)', () => {

@@ -461,10 +461,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const declared = new Set((field?.config?.options ?? []).map((o) => o?.name ?? o));
             const settable = report.symptoms.filter((s) => declared.has(s));
             if (settable.length) values[SYMPTOM_FIELD] = settable;
+            /* The report goes to whatever the Issue table calls its
+               description. Naming it 'Description' threw 'not a document
+               field' the moment someone renamed it, and the handler above
+               does not catch — the whole report was lost over a label edit.
+               A table with no description at all files the row anyway. */
+            const described = docs.descriptionField(issues);
             const issue = docs.createEntity(issues.id, {
               name: report.title,
               values,
-              docs: { Description: report.markdown },
+              ...(described ? { docs: { [described.name]: report.markdown } } : {}),
             });
             return out(201, {
               id: issue.id,

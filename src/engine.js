@@ -239,7 +239,7 @@ export const ONTOLOGY = {
       key: 'document', name: 'Document', storedIn: 'entity.docs',
       definition: 'A long-form body — markdown, HTML or code — held in a document-typed field. An entity may carry any number.',
       identity: 'the entity plus the document field it fills',
-      api: ['getDoc', 'setDoc', 'appendDoc', 'documentFields'],
+      api: ['getDoc', 'setDoc', 'appendDoc', 'documentFields', 'descriptionField'],
     },
     {
       key: 'comment', name: 'Comment', storedIn: 'entity.comments',
@@ -576,20 +576,14 @@ export class Weave {
       // syncs with the real space/table description — backfilling a document
       // field here would give them a second, colliding 'Description'.
       if (db.system) continue;
-      let docField = Object.values(db.fields).find((f) => f.type === 'document');
-      if (!docField) {
-        docField = { id: uuid(), name: 'Description', type: 'document', config: {} };
-        db.fields[docField.id] = docField;
-        db.fieldOrder.push(docField.id);
-        changed = true;
-      }
+      if (this.#ensureDescriptionField(db)) changed = true;
     }
     for (const e of Object.values(s.entities ?? {})) {
       if (e.docs) continue;
       e.docs = {};
       if (e.doc) {
         const db = s.tables[e.dbId];
-        const docField = Object.values(db.fields).find((f) => f.type === 'document');
+        const docField = this.descriptionField(db);
         if (docField) e.docs[docField.id] = e.doc;
       }
       delete e.doc;
@@ -603,6 +597,45 @@ export class Weave {
       this.#dirtyAll = true;
       this.save();
     }
+  }
+
+  /* The one place a table's description role is settled, so the three states
+     never get read three ways. Returns whether the table changed.
+
+       null       the owner deleted it — leave the table without one
+       a live id  nothing to do
+       undefined  the table predates the role: adopt the document field that
+                  WAS the default (first in field order — the old positional
+                  rule, so no existing workspace changes shape on first open),
+                  or mint one when the table has no document at all. */
+  #ensureDescriptionField(db) {
+    if (db.descriptionFieldId === null) return false;
+    if (db.descriptionFieldId && db.fields[db.descriptionFieldId]?.type === 'document') return false;
+    const adopted = this.documentFields(db)[0];
+    if (adopted) {
+      db.descriptionFieldId = adopted.id;
+      return true;
+    }
+    const docField = { id: uuid(), name: 'Description', type: 'document', config: {} };
+    db.fields[docField.id] = docField;
+    db.fieldOrder.push(docField.id);
+    db.descriptionFieldId = docField.id;
+    return true;
+  }
+
+  /* A table's description field, or null when it has been deleted. Every
+     "the default document" reader goes through here, so reordering columns
+     no longer silently reassigns which document is the description. */
+  descriptionField(db) {
+    if (!db?.fields) return null;
+    // A registry table's 'Description' is the TEXT column mirroring the real
+    // space/table description, and its documents (Workflows' Script, Diagram)
+    // are structure, not prose. No registry table has a description role.
+    if (db.system) return null;
+    if (db.descriptionFieldId === null) return null;
+    const f = db.fields[db.descriptionFieldId];
+    if (f?.type === 'document') return f;
+    return this.documentFields(db)[0] ?? null;
   }
 
   save() {
@@ -693,6 +726,14 @@ export class Weave {
       icon,
       publicIdCounter: 0,
       nameFieldId: nameField.id,
+      /* The description is a ROLE, held by id (Kyle, 2026-08-27: "description
+         should be a default field in all entities. it can be renamed or
+         deleted"). An id survives the rename for free; deleteField sets this
+         to null, and that null is the tombstone #ensureDescriptionField reads
+         as "the owner removed it" rather than "this table predates the role".
+         Unlike nameFieldId, nothing here is defended — renaming and deleting
+         are exactly what Kyle asked to keep working. */
+      descriptionFieldId: docField.id,
       fields: { [nameField.id]: nameField, [docField.id]: docField },
       fieldOrder: [nameField.id, docField.id],
       createdAt: nowISO(),
@@ -1014,8 +1055,25 @@ export class Weave {
         if (!db) {
           act('create-table', qualified, () => {
             db = this.createTable({ space: spDoc.space, name: tDoc.name, description: tDoc.description ?? '', icon: tDoc.icon ?? '' });
+            /* createTable already minted Name and a description. Match the
+               descriptor that claims the description ROLE — falling back to
+               one literally named 'Description' for schema documents written
+               before roles — and RENAME the minted field to it. Matching on
+               the literal name alone used to leave a renamed description
+               ('Notes') beside a spurious second 'Description'. When no
+               descriptor claims the role the source table had none, so the
+               minted field goes, tombstone and all. */
+            const described = (tDoc.fields ?? []).find((f) => f.role === 'description')
+              ?? (tDoc.fields ?? []).find((f) => f.type === 'document' && f.name === 'Description');
+            if (described) {
+              if (described.name !== 'Description') this.updateField(db.id, db.descriptionFieldId, { name: described.name });
+              const cfg = configFromDescriptor(described);
+              if (cfg && Object.keys(cfg).length) this.updateField(db.id, db.descriptionFieldId, { config: cfg });
+            } else {
+              this.deleteField(db.id, db.descriptionFieldId);
+            }
             for (const f of tDoc.fields ?? []) {
-              if (['Name', 'Description'].includes(f.name)) continue;
+              if (f.name === 'Name' || f === described) continue;
               this.addField(db.id, { name: f.name, type: f.type, config: configFromDescriptor(f) });
             }
             this.#applyTableCostume(db, tDoc);
@@ -2287,6 +2345,9 @@ export class Weave {
     const field = this.getField(db.id, fieldRef);
     if (field.id === db.nameFieldId) throw new WeaveError('Cannot delete the Name field', 'invalid');
     if (field.system) throw new WeaveError(`Field '${field.name}' is part of the system registry`, 'invalid');
+    // The description may go, and it must STAY gone: null is what tells the
+    // next open that the owner removed it (Kyle, 2026-08-27).
+    if (field.id === db.descriptionFieldId) db.descriptionFieldId = null;
     if (field.type === 'relation') {
       // Unlink all values first so inverse sides stay consistent, then drop both ends.
       for (const e of this.listEntities(db.id)) {
@@ -2324,16 +2385,20 @@ export class Weave {
     }
   }
 
-  // Document fields on a table, in field order. The first one is the default.
+  // Document fields on a table, in field order. The description is the default
+  // one — descriptionField(), not whichever happens to sort first.
   documentFields(db) {
     return db.fieldOrder.map((id) => db.fields[id]).filter((f) => f.type === 'document');
   }
 
   #resolveDocField(db, fieldRef = null) {
     if (fieldRef == null) {
-      const first = this.documentFields(db)[0];
-      if (!first) throw new WeaveError(`Table '${db.name}' has no document field`, 'not-found');
-      return first;
+      // The description is the default document. A table that never had one —
+      // a registry table, or one whose description the owner deleted — falls
+      // back to the old positional rule so its documents stay reachable.
+      const described = this.descriptionField(db) ?? this.documentFields(db)[0];
+      if (!described) throw new WeaveError(`Table '${db.name}' has no document field`, 'not-found');
+      return described;
     }
     const f = this.findField(db, fieldRef);
     if (!f || f.type !== 'document') throw new WeaveError(`'${fieldRef}' is not a document field of '${db.name}'`, 'invalid');
@@ -2969,7 +3034,7 @@ export class Weave {
     }
     const docs = {};
     for (const f of this.documentFields(db)) docs[f.name] = e.docs?.[f.id] ?? '';
-    const defaultDocField = this.documentFields(db)[0];
+    const defaultDocField = this.descriptionField(db) ?? this.documentFields(db)[0];
     return {
       id: e.id,
       publicId: e.publicId,
@@ -2979,6 +3044,10 @@ export class Weave {
       fields,
       raw,
       doc: defaultDocField ? (e.docs?.[defaultDocField.id] ?? '') : '',
+      // `docs` is keyed by field NAME, and Kyle may rename the description
+      // (2026-08-27). Saying which key `doc` came from is what lets a client
+      // label the thing it is showing without hard-coding 'Description'.
+      docField: defaultDocField ? defaultDocField.name : null,
       docs,
       comments: e.comments,
       activity: e.activity,
@@ -3318,7 +3387,8 @@ export class Weave {
         trigger,
         actions: auto.actions.map((a) => {
           if (a.type === 'set-field') return { type: a.type, field: fieldName(a.fieldId) };
-          if (a.type === 'append-doc') return { type: a.type, field: a.fieldId ? fieldName(a.fieldId) : 'Description' };
+          // No field named means the description, whatever it is called now.
+          if (a.type === 'append-doc') return { type: a.type, field: a.fieldId ? fieldName(a.fieldId) : (db ? this.descriptionField(db)?.name ?? null : null) };
           if (a.type === 'webhook') return { type: a.type, url: a.url };
           return { type: a.type };
         }),
@@ -3663,6 +3733,10 @@ export class Weave {
           }
           if (f.type === 'attachments') out.multiple = f.config.multiple !== false;
           if (f.type === 'document' && f.config.kind) out.kind = f.config.kind;
+          // Which document is the description, said out loud, so applying a
+          // schema onto a fresh workspace reproduces the role rather than
+          // guessing it from the name (Kyle, 2026-08-27).
+          if (f.id === db.descriptionFieldId) out.role = 'description';
           /* A credential column tells the browser which sort it holds and
              whose store holds it, so the chip can wear the right glyph and
              offer the right door (Feature #143). Never a value — the secret

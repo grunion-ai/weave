@@ -114,3 +114,66 @@ test('workspace name and description are engine verbs, not server-only', () => {
   assert.equal(w.getWorkspace().description, 'the hub');
   assert.throws(() => w.updateWorkspace({ name: 'not a name' }), /alphanumeric/i);
 });
+
+/* ---------- the description survives the round trip (Kyle, 2026-08-27) ----
+   Losing it was the same bug twice. The create path skipped any descriptor
+   literally named 'Description' on the assumption createTable had already made
+   one, so a table whose description had been RENAMED to 'Notes' came back as
+   Name + Notes + a spurious second Description, and a table whose description
+   had been DELETED came back with one anyway. A descriptor now carries
+   `role: 'description'` and applying it renames the minted field. */
+
+function described() {
+  const w = new Weave();
+  w.createSpace({ name: 'Product' });
+  const tasks = w.createTable({ space: 'Product', name: 'Task' });
+  w.addField(tasks, { name: 'Estimate', type: 'number' });
+  return { w, tasks };
+}
+const names = (w, qualified) => {
+  const db = w.getTable(qualified);
+  return db.fieldOrder.map((id) => db.fields[id].name);
+};
+
+test('a renamed description round-trips without duplicating', () => {
+  const { w, tasks } = described();
+  w.updateField(tasks, 'Description', { name: 'Notes' });
+
+  const fresh = new Weave();
+  fresh.applySchema(w.describeSchema().filter((s) => !s.system));
+  assert.deepEqual(names(fresh, 'Product/Task'), ['Name', 'Notes', 'Estimate']);
+  assert.equal(fresh.descriptionField(fresh.getTable('Product/Task')).name, 'Notes');
+});
+
+test('a schema document says which field is the description', () => {
+  const { w } = described();
+  for (const sp of w.describeSchema()) {
+    for (const db of sp.tables) {
+      const roles = db.fields.filter((f) => f.role === 'description');
+      assert.equal(roles.length, db.system ? 0 : 1, `${db.qualified} claims ${roles.length} descriptions`);
+      if (!db.system) assert.equal(roles[0].type, 'document');
+    }
+  }
+});
+
+test('applying a schema with no description leaves none', () => {
+  const { w, tasks } = described();
+  w.deleteField(tasks, 'Description');
+
+  const fresh = new Weave();
+  fresh.applySchema(w.describeSchema().filter((s) => !s.system));
+  assert.deepEqual(names(fresh, 'Product/Task'), ['Name', 'Estimate']);
+  assert.equal(fresh.getTable('Product/Task').descriptionFieldId, null,
+    'absence is expressible, not always re-minted');
+});
+
+test('a schema written before roles is still understood', () => {
+  const { w } = described();
+  const doc = w.describeSchema().filter((s) => !s.system);
+  for (const sp of doc) for (const db of sp.tables) for (const f of db.fields) delete f.role;
+
+  const fresh = new Weave();
+  fresh.applySchema(doc);
+  assert.deepEqual(names(fresh, 'Product/Task'), ['Name', 'Description', 'Estimate'], 'adopted, not duplicated');
+  assert.equal(fresh.descriptionField(fresh.getTable('Product/Task')).name, 'Description');
+});
