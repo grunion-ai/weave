@@ -16,6 +16,7 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { renderMarkdown } from './markdown.js';
+import { markParts, PALETTE } from '../brand/build-logos.mjs';
 
 const COOKIE = 'wv_applet';
 const YEAR = 31536000;
@@ -553,11 +554,21 @@ const BUG_GLYPH = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="curre
   + '<g transform="translate(1.5000,3.9818) scale(0.095455) translate(0,168.0) scale(0.1,-0.1)">'
   + '<path d="M1520 1664 c0 -8 -16 -22 -35 -30 -19 -8 -35 -18 -35 -22 0 -4 -11 -20 -25 -36 -14 -16 -25 -33 -25 -38 0 -40 -54 -87 -112 -97 -34 -6 -68 -17 -77 -26 -9 -9 -30 -28 -47 -44 -17 -15 -34 -36 -37 -45 -9 -23 -34 -30 -63 -18 -29 14 -34 83 -8 121 54 77 -7 180 -62 104 -38 -53 -70 -186 -50 -214 9 -13 16 -31 16 -41 0 -9 6 -23 13 -30 63 -67 84 -128 50 -146 -65 -34 -71 -31 -198 97 -129 131 -161 149 -197 113 -27 -26 -11 -50 124 -184 110 -109 122 -129 102 -176 -14 -35 -37 -41 -63 -17 -52 47 -62 55 -70 55 -4 0 -21 10 -37 23 -35 27 -132 29 -182 3 -17 -9 -42 -16 -56 -16 -47 0 -68 -52 -38 -91 18 -22 20 -22 59 -6 61 24 137 32 173 17 38 -16 38 -16 -8 -72 -146 -176 -180 -401 -76 -499 33 -31 247 -37 280 -8 11 9 32 19 48 23 16 4 41 16 54 27 14 10 31 19 38 19 8 0 14 3 14 8 0 17 71 63 89 57 33 -10 45 -56 27 -100 -33 -78 -31 -160 4 -165 30 -5 38 1 58 34 55 93 52 229 -7 303 -73 93 -74 133 -4 133 45 0 47 -1 164 -120 121 -123 153 -142 187 -108 25 25 8 53 -105 168 -137 140 -137 139 -130 197 9 79 11 78 158 -22 54 -37 175 -43 219 -12 13 9 32 17 40 17 20 0 60 41 60 61 -1 38 -48 52 -99 30 -117 -50 -228 -21 -155 41 89 74 124 129 138 209 7 41 18 53 56 62 63 15 170 145 170 206 0 43 -81 46 -97 4 -20 -55 -88 -113 -130 -113 -33 1 -153 125 -153 159 0 33 47 96 81 106 86 27 96 115 14 115 -43 0 -55 -3 -55 -16z m-90 -335 c130 -65 135 -234 8 -307 -160 -93 -338 130 -214 266 61 66 130 80 206 41z m-299 -353 c74 -59 69 -140 -13 -193 -45 -30 -69 -27 -122 19 -115 100 16 270 135 174z m-239 -245 c129 -128 122 -191 -30 -269 -204 -105 -338 -14 -243 164 12 21 21 44 21 51 0 7 10 27 23 45 75 111 124 113 229 9z"></path></g></g></svg>';
 
-const MARK = '<img class="wv-mark wv-mark-light" src="/brand/weave-mark-light.svg" alt="weave">'
-  + '<img class="wv-mark wv-mark-dark" src="/brand/weave-mark-dark.svg" alt="">';
+/* The marks are inlined, not <img>-referenced: WebKit rasterizes an SVG mask
+   inside an <img> with ragged, feathered edges — the rope's under-gaps render
+   as dark smears on iOS. The same document inlined is clean in every engine.
+   markParts namespaces the mask ids, so four marks share one page safely. */
+const inlineMark = (cls, id, c2, size) => {
+  const { defs, body } = markParts({ c1: PALETTE.blue, c2, id });
+  return `<svg class="${cls}" viewBox="0 0 48 48"${size ? ` width="${size}" height="${size}"` : ''}`
+    + ` role="img" aria-label="weave"><defs>${defs}</defs>${body}</svg>`;
+};
 
-const BIG_MARK = '<img class="wv-mark-light" src="/brand/weave-mark-light.svg" alt="weave" width="56" height="56">'
-  + '<img class="wv-mark-dark" src="/brand/weave-mark-dark.svg" alt="" width="56" height="56">';
+const MARK = inlineMark('wv-mark wv-mark-light', 'mL', PALETTE.ink)
+  + inlineMark('wv-mark wv-mark-dark', 'mD', PALETTE.sky);
+
+const BIG_MARK = inlineMark('wv-mark-light', 'gL', PALETTE.ink, 56)
+  + inlineMark('wv-mark-dark', 'gD', PALETTE.sky, 56);
 
 const GATE_HTML = (mount) => `
 <div class="wv-gate" id="gate">
@@ -1318,7 +1329,15 @@ const CLIENT = `
 
   // A tab coming back to the front has stale rows; a phone that has been in a
   // pocket for an hour has very stale rows.
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+  /* On background iOS drops the keyboard but leaves the field focused, and a
+     tap on an already-focused input raises nothing (see raiseKeyboard). Blur
+     on hide so the next tap is a fresh focus, and re-arm the first-touch grab
+     so a tap on empty space works again too. */
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { try { input.blur(); } catch {} return; }
+    load();
+    armFirstTouch();
+  });
 
   /* Getting the keyboard up on open.
 
@@ -1349,20 +1368,28 @@ const CLIENT = `
     try { input.setSelectionRange(input.value.length, input.value.length); } catch {}
   }
 
+  let grabArmed = null;
   function armFirstTouch() {
     /* touchend, not click. WebKit only synthesises a click on elements it
        considers clickable — a link, a button, an input, or something wearing
        a handler or cursor:pointer. Tapping the empty half of a list of divs
        produces no click at all, so a document-level click listener waits
        forever. touchend always fires, and WebKit grants the activation on it.
-       click stays for the desktop, where there is no touch to end. */
+       click stays for the desktop, where there is no touch to end.
+       Re-armable: a resume from the app switcher gets a fresh first tap. */
+    if (grabArmed) {
+      document.removeEventListener('touchend', grabArmed, true);
+      document.removeEventListener('click', grabArmed, true);
+    }
     const grab = (e) => {
       const t = e.target;
       if (t.closest && t.closest('.wv-row, .wv-glyph, .wv-donebar, .wv-bug, .wv-sheet, .wv-detail, .wv-clip, a, button, input, textarea')) return;
       raiseKeyboard();
       document.removeEventListener('touchend', grab, true);
       document.removeEventListener('click', grab, true);
+      grabArmed = null;
     };
+    grabArmed = grab;
     document.addEventListener('touchend', grab, true);
     document.addEventListener('click', grab, true);
   }

@@ -124,10 +124,10 @@ a.nav-space:hover { color: var(--tblr-primary); }
    (also when active — .ws-icon.active must not repaint it). The mark fills
    nearly the whole 52px rail — it is the brand, not one more chip. */
 .ws-icon.ws-weave, .ws-icon.ws-weave.active { background: none; border: none; box-shadow: none; width: 46px; height: 46px; }
-.ws-weave img { width: 42px; height: 42px; object-fit: contain; }
-.ws-weave:hover img { transform: scale(1.08); }
-.ws-weave img { transition: transform .12s ease; }
-.ws-weave.active img { filter: drop-shadow(0 0 3px rgba(37, 99, 235, .6)); }
+.ws-weave img, .ws-weave svg { width: 42px; height: 42px; object-fit: contain; }
+.ws-weave:hover img, .ws-weave:hover svg { transform: scale(1.08); }
+.ws-weave img, .ws-weave svg { transition: transform .12s ease; }
+.ws-weave.active img, .ws-weave.active svg { filter: drop-shadow(0 0 3px rgba(37, 99, 235, .6)); }
 .ws-weave .mark-dark { display: none; }
 [data-bs-theme="dark"] .ws-weave .mark-light { display: none; }
 [data-bs-theme="dark"] .ws-weave .mark-dark { display: inline; }

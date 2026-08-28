@@ -468,8 +468,11 @@ test('applet: the page cannot be pinched, and wears the real mark', async () => 
     const html = await (await fetch(`${s.base}/t`, { headers: { cookie } })).text();
     assert.match(html, /maximum-scale=1/, 'a task list is not a document to zoom around');
     assert.match(html, /gesturestart/, 'Safari ignores user-scalable, so the gesture is refused directly');
-    assert.match(html, /brand\/weave-mark-light\.svg/, 'the real mark, not a hand-drawn stand-in');
-    assert.match(html, /brand\/weave-mark-dark\.svg/);
+    // The mark is INLINED, never an <img>: WebKit renders SVG masks inside
+    // an <img> with smeared edges on iOS, which is where this page lives.
+    assert.doesNotMatch(html, /<img[^>]*weave-mark/, 'an <img> mark smears on iOS — inline it');
+    assert.match(html, /class="wv-mark wv-mark-light"[^>]*>[\s\S]*?<mask id="mLA"/, 'the real mark, inlined, masks namespaced');
+    assert.match(html, /class="wv-mark wv-mark-dark"[^>]*>[\s\S]*?<mask id="mDA"/);
   } finally { s.stop(); }
 });
 
@@ -484,6 +487,18 @@ test('applet: the unlock tap is spent on the caret before the request', async ()
   assert.match(tap, /raiseKeyboard\(\)/, 'focus happens inside the tap, before any await');
   assert.doesNotMatch(src, /location\.replace\(MOUNT\)/, 'navigating away would spend the gesture');
   assert.match(src, /armFirstTouch/, 'a warm open has no gesture; the first touch supplies one');
+});
+
+/* Kyle, 2026-08-28: after a resume from the app switcher the keyboard was
+   dead. iOS drops the keyboard on background but keeps the field focused, so
+   the next tap lands on an already-focused input and raises nothing. */
+test('applet: a resume gets a fresh first tap — blur on hide, re-arm on show', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  const vis = src.slice(src.indexOf("addEventListener('visibilitychange'"), src.indexOf('armFirstTouch();') + 20);
+  assert.match(vis, /input\.blur\(\)/, 'hide blurs the field so the next tap is a fresh focus');
+  assert.match(vis, /armFirstTouch\(\)/, 'show re-arms the empty-space tap');
+  assert.match(src, /grabArmed/, 'armFirstTouch is re-armable without stacking listeners');
 });
 
 test('applet: the locked page is the same page, with the keypad over it', async () => {
