@@ -75,9 +75,10 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .nav-add-table { margin-left: auto; opacity: 0; }
 .nav-space-row:hover .nav-add-table, .nav-add-table:focus-visible { opacity: 1; }
 .nav-foot { border-top: 1px solid var(--wv-pill-hover); margin-top: 12px; padding-top: 8px; }
-/* The stats strip: workspace entity count + on-disk size, tucked under the
-   foot's "+ New space" — quiet metadata, same register as the version chip. */
-.nav-stats { margin-top: 6px; padding: 2px 10px; font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); }
+/* The stats strip: workspace entity count + on-disk size, pinned to the
+   sidebar's bottom edge — quiet metadata, same register as the version chip.
+   Sticky with the canvas behind it, so a long nav scrolls under the strip. */
+.nav-stats { position: sticky; bottom: 0; margin-top: auto; padding: 6px 10px 2px; font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--wv-canvas); }
 .nav-map { margin-bottom: 4px; }
 /* Nav rows are soft ink-tint pills on the canvas — the active row darkens
    the cream rather than turning brand-blue (Buzz idiom; blue stays for

@@ -506,7 +506,10 @@ function renderNav() {
   const entityTotal = state.schema.reduce((n, s) => n + s.tables.reduce((m, d) => m + (d.entityCount ?? 0), 0), 0);
   const stats = el('div', { class: 'nav-stats', title: 'Entities in this workspace · storage on disk' },
     `${entityTotal.toLocaleString()} ${entityTotal === 1 ? 'entity' : 'entities'}`);
-  foot.append(stats);
+  // Pinned to the sidebar's bottom edge — a sibling AFTER #nav (which carries
+  // flex:1), sticky so a long nav scrolls under it rather than pushing it away.
+  document.querySelector('#sidebar .nav-stats')?.remove();
+  $('#sidebar').append(stats);
   (state.healthP ??= api('GET', '/health')).then((h) => {
     if (h.sizeBytes != null) stats.append(` · ${fmtSize(h.sizeBytes)}`);
   }).catch(() => {});

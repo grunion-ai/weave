@@ -69,8 +69,11 @@ test('fmtSize speaks GB and TB, never MB', () => {
   assert.equal(fmtSize(1_500_000_000_000), '1.50 TB');
 });
 
-test('the strip renders in the nav foot and style.css dresses it', () => {
+test('the strip pins to the sidebar bottom and style.css dresses it', () => {
   assert.ok(APP.includes("class: 'nav-stats'"), 'renderNav builds the strip');
+  assert.ok(APP.includes("$('#sidebar').append(stats)"), 'the strip is a sidebar sibling after #nav, not a foot child');
   const CSS = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
-  assert.ok(/\.nav-stats\s*{/.test(CSS), 'style.css has a .nav-stats rule');
+  const rule = CSS.match(/\.nav-stats\s*{([^}]*)}/)?.[1] ?? '';
+  assert.ok(/position:\s*sticky/.test(rule) && /bottom:\s*0/.test(rule), 'sticky at the bottom edge');
+  assert.ok(/margin-top:\s*auto/.test(rule), 'pushed to the bottom when the nav is short');
 });
