@@ -563,3 +563,23 @@ test('applet: the first tap is spent raising the keyboard, not wasted', async ()
   const warm = src.slice(src.indexOf('const touch = matchMedia'), src.indexOf('})();'));
   assert.match(warm, /if \(!touch\)/, 'only a mouse gets the un-gestured caret');
 });
+
+/* Kyle, 2026-08-28: "mobile date selector needs work". A wheel picker is the
+   right tool for "the 14th" and the wrong one for "friday". */
+test('applet: a date can be tapped, typed, or picked', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  const ed = src.slice(src.indexOf('function editDate'), src.indexOf('The document, written'));
+  assert.match(ed, /Today/, 'the answers people actually give come first');
+  assert.match(ed, /Tomorrow/);
+  assert.match(ed, /Next week/);
+  assert.match(ed, /parseNaturalDate/, "weave's own parser reads what they type");
+  assert.match(ed, /type="date"/, 'and the native picker is still there for a real calendar');
+  assert.match(src, /nl-date\.js/, 'the parser is the shipped one, not a second opinion');
+});
+
+test('applet: the natural-language parser it leans on is the one weave ships', async () => {
+  const { readFileSync } = await import('node:fs');
+  const nl = readFileSync(new URL('../public/nl-date.js', import.meta.url), 'utf8');
+  assert.match(nl, /root\.parseNaturalDate = parseNaturalDate/, 'the applet reads it off the window');
+});

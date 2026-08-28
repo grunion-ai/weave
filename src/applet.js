@@ -564,6 +564,7 @@ ${locked ? GATE_HTML(mount) : ''}
 <button class="wv-bug" id="bug" type="button" title="Report a problem" aria-label="Report a problem"><span class="face"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 3.2a3 3 0 0 0-2.8 2H8a1 1 0 0 0 0 2h.4a5 5 0 0 0-.9 1.6L6 8.2a1 1 0 1 0-.8 1.8l1.4.6a6.7 6.7 0 0 0 0 1.3l-1.5.6A1 1 0 0 0 6 14.3l1.4-.6c.2.6.5 1.1.9 1.6l-1.1 1a1 1 0 1 0 1.4 1.4l1.1-1a4.6 4.6 0 0 0 4.6 0l1.1 1a1 1 0 0 0 1.4-1.4l-1.1-1c.4-.5.7-1 .9-1.6l1.4.6a1 1 0 0 0 .8-1.8l-1.5-.6a6.7 6.7 0 0 0 0-1.3l1.5-.6a1 1 0 0 0-.8-1.8l-1.5.6a5 5 0 0 0-.9-1.6h.4a1 1 0 0 0 0-2h-1.2a3 3 0 0 0-2.8-2zm0 2a1 1 0 0 1 .9.6h-1.8a1 1 0 0 1 .9-.6zm-1 5.3h2v6h-2z"/></svg></span></button>
 <input type="file" id="picker" accept="image/*,application/pdf,text/*" multiple hidden>
 <script src="/chip-core.js"></script>
+<script src="/nl-date.js"></script>
 <script>
 // Safari ignores user-scalable=no in a tab; refusing the gesture is the only
 // way a swipe-driven list stops turning into a zoom.
@@ -890,9 +891,10 @@ const CLIENT = `
         });
       return;
     }
-    const kind = f.type === 'date' ? 'date' : f.type === 'number' ? 'number'
-      : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text';
     if (f.type === 'checkbox') { done(!cur); return; }
+    if (f.type === 'date') { editDate(name, cur, done); return; }
+    const kind = f.type === 'number' ? 'number'
+      : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text';
     openSheet('<h4>' + esc(name) + '</h4>'
       + '<div style="padding:0 22px 8px"><input id="fv" type="' + kind + '" value="' + esc(cur == null ? '' : cur) + '" '
       + 'style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground)"></div>'
@@ -970,6 +972,51 @@ const CLIENT = `
         Object.assign(target, row); paint();
       } catch { say('Could not rename'); }
     });
+  }
+
+  /* A date on a phone. The wheel picker is the right tool for "the 14th" and
+     the wrong one for "friday", so both are here: quick chips for the answers
+     people actually give, weave's own natural-language parser for the ones
+     they type, and the native picker underneath for a real calendar. */
+  const isoOf = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const plusDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return isoOf(d); };
+
+  function editDate(name, cur, done) {
+    const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const next = new Date(); next.setDate(next.getDate() + 1);
+    const quick = [
+      ['Today', plusDays(0)],
+      ['Tomorrow', plusDays(1)],
+      [dow[new Date(plusDays(2) + 'T12:00:00').getDay()], plusDays(2)],
+      ['Next week', plusDays(7)],
+    ];
+    openSheet('<h4>' + esc(name) + '</h4>'
+      + '<div style="padding:0 20px 12px;display:flex;flex-wrap:wrap;gap:7px">'
+      + quick.map(([label, iso]) => '<button class="k blue" data-q="' + iso + '" style="padding:7px 13px;font-size:14px">' + label + '</button>').join('')
+      + (cur ? '<button class="k-add" data-q="" style="padding:6px 12px;font-size:14px">Clear</button>' : '')
+      + '</div>'
+      + '<div style="padding:0 20px 6px"><input id="dnl" type="text" placeholder="or type — fri, sep 5, in 3 days" '
+      + 'autocapitalize="off" autocorrect="off" spellcheck="false" '
+      + 'style="width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground)"></div>'
+      + '<div id="dread" style="padding:0 20px 10px;font-size:13px;color:var(--faint);min-height:19px"></div>'
+      + '<div style="padding:0 20px 8px"><input id="dpick" type="date" value="' + esc(cur || '') + '" '
+      + 'style="width:100%;font-size:17px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground)"></div>'
+      + '<button class="wv-opt" data-save style="color:var(--accent);font-weight:600">Save</button>',
+      (sh) => {
+        const nl = sh.querySelector('#dnl'), pick = sh.querySelector('#dpick'), read = sh.querySelector('#dread');
+        const parse = globalThis.parseNaturalDate;
+        sh.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => done(b.dataset.q || null)));
+        nl.addEventListener('input', () => {
+          const hit = parse ? parse(nl.value) : null;
+          read.textContent = nl.value.trim() ? (hit ? day(hit) + '  \u00b7  ' + hit : 'not a date yet') : '';
+          if (hit) pick.value = hit;
+        });
+        nl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); sh.querySelector('[data-save]').click(); } });
+        sh.querySelector('[data-save]').addEventListener('click', () => {
+          const typed = parse && nl.value.trim() ? parse(nl.value) : null;
+          done(typed || pick.value || null);
+        });
+      });
   }
 
   /* The document, written where it is read. A full-height sheet rather than
