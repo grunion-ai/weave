@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 
 // node:sqlite is the storage engine (zero runtime deps — it ships inside Node).
 // The missing-module throw is deferred to first file-backed use: an in-memory
@@ -262,6 +262,18 @@ export class Store {
     const docs = Object.values(e.docs ?? {}).join('\n');
     const comments = (e.comments ?? []).map((c) => c.text).join('\n');
     return [name, docs, comments].filter(Boolean).join('\n');
+  }
+
+  // On-disk weight of this workspace's database — main file plus WAL/SHM
+  // sidecars. Attachment blobs are the engine's ledger (entity.files carries
+  // each size), not ours: files/ is shared by every sibling workspace.
+  sizeBytes() {
+    if (!this.path) return null;
+    let total = 0;
+    for (const p of [this.path, `${this.path}-wal`, `${this.path}-shm`]) {
+      try { total += statSync(p).size; } catch { /* sidecar absent */ }
+    }
+    return total;
   }
 
   #pragmaDataVersion() {

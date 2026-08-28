@@ -93,6 +93,7 @@ const INTERNAL = {
   bodyBlocks: 'read helper — the resolved body order already ships inside the schema payload',
   viewByShareToken: 'the share link IS this call', verifyToken: 'auth path',
   hasKey: 'keystore predicate', resolveKey: 'returns a secret — never leaves the process',
+  storageStats: 'read helper — /api/health already ships it for the nav stats strip',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));

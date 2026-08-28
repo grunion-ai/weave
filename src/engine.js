@@ -3525,6 +3525,20 @@ export class Weave {
     return results.sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
+  /* What this workspace weighs: live entity count plus bytes on disk — the
+     .db (with sidecars) from the store, attachment blobs from each entity's
+     own file ledger (files/ is shared between workspaces, so the directory
+     itself can never be the measure). Feeds /api/health and the nav strip. */
+  storageStats() {
+    let entities = 0;
+    let fileBytes = 0;
+    for (const e of Object.values(this.state.entities)) {
+      if (!e.deletedAt) entities += 1;
+      for (const f of e.files ?? []) fileBytes += f.size ?? 0;
+    }
+    return { entities, sizeBytes: (this.store.sizeBytes?.() ?? 0) + fileBytes };
+  }
+
   // ---------------- files ----------------
 
   // Attach a file to an entity. bytes is a Buffer (or base64 string). Blobs are

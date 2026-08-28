@@ -426,6 +426,16 @@ function wsHomeHref() {
   return (WS_PREFIX || '') + '/';
 }
 
+/* Workspace weight in the units the strip speaks: GB, or TB past 1000 GB.
+   A small workspace shows "0.02 GB" rather than switching units downward. */
+function fmtSize(bytes) {
+  const gb = bytes / 1e9;
+  if (gb >= 1000) return `${(gb / 1000).toFixed(2)} TB`;
+  if (gb >= 100) return `${Math.round(gb)} GB`;
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  return `${gb.toFixed(2)} GB`;
+}
+
 function renderNav() {
   const nav = $('#nav');
   nav.replaceChildren();
@@ -490,6 +500,16 @@ function renderNav() {
         await loadSchema();
       })),
     }, '+ New space'));
+  // The stats strip: what this workspace holds and what it weighs. Count is
+  // the same per-table figure the rows above show, summed; size arrives with
+  // /api/health (one shared fetch — the instance chip drinks from it too).
+  const entityTotal = state.schema.reduce((n, s) => n + s.tables.reduce((m, d) => m + (d.entityCount ?? 0), 0), 0);
+  const stats = el('div', { class: 'nav-stats', title: 'Entities in this workspace · storage on disk' },
+    `${entityTotal.toLocaleString()} ${entityTotal === 1 ? 'entity' : 'entities'}`);
+  foot.append(stats);
+  (state.healthP ??= api('GET', '/health')).then((h) => {
+    if (h.sizeBytes != null) stats.append(` · ${fmtSize(h.sizeBytes)}`);
+  }).catch(() => {});
   // Instance status (Feature #54): version + uptime from /api/health, so a
   // stale server is visible at a glance instead of masquerading as a broken
   // feature. startedAt arrives with the same payload for tooling to compare.
@@ -498,7 +518,7 @@ function renderNav() {
   // 2026-08-22) — out of the nav, always visible, never in the way.
   if (!document.querySelector('.nav-health')) {
     const status = el('div', { class: 'nav-health', title: 'This weave instance' }, '…');
-    api('GET', '/health').then((h) => {
+    (state.healthP ??= api('GET', '/health')).then((h) => {
       const up = h.uptime == null ? '' : ` · up ${h.uptime < 3600 ? Math.round(h.uptime / 60) + 'm' : Math.round(h.uptime / 3600) + 'h'}`;
       status.textContent = `v${h.version}${up}`;
       if (h.startedAt) status.title = `This weave instance — started ${h.startedAt}`;

@@ -286,7 +286,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         // startedAt + uptime let callers spot a stale server (process start
         // time vs commit/package version) instead of assuming "up" = "current".
-        if (route === 'GET /api/health') return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()) });
+        if (route === 'GET /api/health') return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...weave.storageStats() });
         if (route === 'GET /api/schema') return out(200, weave.describeSchema());
         // Every closed set a config value can come from, and what the choice
         // looks like on screen — served so an agent never has to guess a
