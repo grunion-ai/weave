@@ -1499,3 +1499,9 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 /* Sent is a receipt, not a disabled button: it keeps the primary weight so
    the eye lands on the confirmation it was already looking at. */
 .bug-send.sent, .bug-send.sent:disabled { opacity: 1; background: var(--tblr-success); border-color: var(--tblr-success); color: #fff; }
+
+/* Target-set builder in the field dialog: each member row is a select with
+   its remove control beside it, never wrapped beneath. */
+.target-set { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.target-set-row { display: flex; align-items: center; gap: 6px; width: 100%; }
+.target-set-row .picker-wrap { flex: 1; }
