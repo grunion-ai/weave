@@ -468,6 +468,9 @@ button,input,textarea{font:inherit; color:inherit}
 .wv-bug:active{opacity:1}
 .wv-bug .face{width:26px; height:26px; border-radius:7px; background:var(--surface);
   border:1px solid var(--line); box-shadow:var(--shadow); display:grid; place-items:center}
+.wv-bug[aria-expanded="true"]{opacity:1}
+.bug-fab-icon{display:flex; width:16px; height:16px; color:var(--ink)}
+.bug-fab-icon svg{width:100%; height:100%; fill:currentColor}
 
 `;
 
@@ -524,6 +527,14 @@ const GATE_CSS = `
 .wv-key.flat{background:none; border-color:transparent; font-size:15px; color:var(--muted)}
 `;
 
+/* The desktop's own glyph, transform stack and all (public/app.js →
+   mark-icons.js → vendor/iconly-flat.js). Same mark, same corner, same
+   opacity — the applet is weave, not a lookalike. */
+const BUG_GLYPH = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">'
+  + '<g transform="translate(12 12) scale(1.42) translate(-12 -12)">'
+  + '<g transform="translate(1.5000,3.9818) scale(0.095455) translate(0,168.0) scale(0.1,-0.1)">'
+  + '<path d="M1520 1664 c0 -8 -16 -22 -35 -30 -19 -8 -35 -18 -35 -22 0 -4 -11 -20 -25 -36 -14 -16 -25 -33 -25 -38 0 -40 -54 -87 -112 -97 -34 -6 -68 -17 -77 -26 -9 -9 -30 -28 -47 -44 -17 -15 -34 -36 -37 -45 -9 -23 -34 -30 -63 -18 -29 14 -34 83 -8 121 54 77 -7 180 -62 104 -38 -53 -70 -186 -50 -214 9 -13 16 -31 16 -41 0 -9 6 -23 13 -30 63 -67 84 -128 50 -146 -65 -34 -71 -31 -198 97 -129 131 -161 149 -197 113 -27 -26 -11 -50 124 -184 110 -109 122 -129 102 -176 -14 -35 -37 -41 -63 -17 -52 47 -62 55 -70 55 -4 0 -21 10 -37 23 -35 27 -132 29 -182 3 -17 -9 -42 -16 -56 -16 -47 0 -68 -52 -38 -91 18 -22 20 -22 59 -6 61 24 137 32 173 17 38 -16 38 -16 -8 -72 -146 -176 -180 -401 -76 -499 33 -31 247 -37 280 -8 11 9 32 19 48 23 16 4 41 16 54 27 14 10 31 19 38 19 8 0 14 3 14 8 0 17 71 63 89 57 33 -10 45 -56 27 -100 -33 -78 -31 -160 4 -165 30 -5 38 1 58 34 55 93 52 229 -7 303 -73 93 -74 133 -4 133 45 0 47 -1 164 -120 121 -123 153 -142 187 -108 25 25 8 53 -105 168 -137 140 -137 139 -130 197 9 79 11 78 158 -22 54 -37 175 -43 219 -12 13 9 32 17 40 17 20 0 60 41 60 61 -1 38 -48 52 -99 30 -117 -50 -228 -21 -155 41 89 74 124 129 138 209 7 41 18 53 56 62 63 15 170 145 170 206 0 43 -81 46 -97 4 -20 -55 -88 -113 -130 -113 -33 1 -153 125 -153 159 0 33 47 96 81 106 86 27 96 115 14 115 -43 0 -55 -3 -55 -16z m-90 -335 c130 -65 135 -234 8 -307 -160 -93 -338 130 -214 266 61 66 130 80 206 41z m-299 -353 c74 -59 69 -140 -13 -193 -45 -30 -69 -27 -122 19 -115 100 16 270 135 174z m-239 -245 c129 -128 122 -191 -30 -269 -204 -105 -338 -14 -243 164 12 21 21 44 21 51 0 7 10 27 23 45 75 111 124 113 229 9z"></path></g></g></svg>';
+
 const MARK = '<img class="wv-mark wv-mark-light" src="/brand/weave-mark-light.svg" alt="weave">'
   + '<img class="wv-mark wv-mark-dark" src="/brand/weave-mark-dark.svg" alt="">';
 
@@ -562,10 +573,11 @@ function appPage(mount, locked) {
 <div class="wv-sheet" id="sheet"></div>
 <div class="wv-detail" id="detail"></div>
 ${locked ? GATE_HTML(mount) : ''}
-<button class="wv-bug" id="bug" type="button" title="Report a problem" aria-label="Report a problem"><span class="face"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 3.2a3 3 0 0 0-2.8 2H8a1 1 0 0 0 0 2h.4a5 5 0 0 0-.9 1.6L6 8.2a1 1 0 1 0-.8 1.8l1.4.6a6.7 6.7 0 0 0 0 1.3l-1.5.6A1 1 0 0 0 6 14.3l1.4-.6c.2.6.5 1.1.9 1.6l-1.1 1a1 1 0 1 0 1.4 1.4l1.1-1a4.6 4.6 0 0 0 4.6 0l1.1 1a1 1 0 0 0 1.4-1.4l-1.1-1c.4-.5.7-1 .9-1.6l1.4.6a1 1 0 0 0 .8-1.8l-1.5-.6a6.7 6.7 0 0 0 0-1.3l1.5-.6a1 1 0 0 0-.8-1.8l-1.5.6a5 5 0 0 0-.9-1.6h.4a1 1 0 0 0 0-2h-1.2a3 3 0 0 0-2.8-2zm0 2a1 1 0 0 1 .9.6h-1.8a1 1 0 0 1 .9-.6zm-1 5.3h2v6h-2z"/></svg></span></button>
+<button class="wv-bug" id="bug" type="button" title="Report a problem" aria-label="Report a problem" aria-expanded="false"><span class="face"><span class="bug-fab-icon">${BUG_GLYPH}</span></span></button>
 <input type="file" id="picker" accept="image/*,application/pdf,text/*" multiple hidden>
 <script src="/chip-core.js"></script>
 <script src="/nl-date.js"></script>
+<script src="/bug-core.js"></script>
 <script>
 // Safari ignores user-scalable=no in a tab; refusing the gesture is the only
 // way a swipe-driven list stops turning into a zoom.
@@ -628,6 +640,12 @@ const CLIENT = `
   const scrim = $('scrim'), sheet = $('sheet'), detail = $('detail'), picker = $('picker');
   let tasks = [], S = null, showDone = false, staged = [], toastTimer = null;
 
+  // The desktop's own recorder, started before the first request so a bug
+  // report carries the minute that led to it.
+  const BC = globalThis.bugCore ?? null;
+  const rec = BC ? BC.createRecorder() : null;
+  const now = () => Date.now();
+
   // ---- what the table says about itself ---------------------------------
   const wfField = () => S && S.workflow && S.workflow.field;
   const states = () => (S && S.workflow ? S.workflow.states : []);
@@ -658,7 +676,11 @@ const CLIENT = `
   };
 
   const api = async (path, opts) => {
+    const started = Date.now();
     const res = await fetch(MOUNT + path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
+    if (rec) {
+      rec.record({ kind: 'api', method: (opts && opts.method) || 'GET', path, status: res.status, ms: Date.now() - started, t: Date.now() });
+    }
     if (res.status === 401) { location.reload(); throw new Error('locked'); }
     if (!res.ok) throw new Error(await res.text());
     return res.status === 204 ? null : res.json();
@@ -1045,46 +1067,94 @@ const CLIENT = `
       });
   }
 
-  // ---- bug report --------------------------------------------------------
-  const BUG_CATS = [['slow', 'Slow'], ['broken-ui', 'Looks broken'], ['wrong-data', 'Wrong data'], ['error', 'Error']];
+  /* The bug reporter, with the desktop's own parts: bug-core's categories,
+     its ring-buffer recorder, its client context, and the payload
+     /api/bug-report actually reads. The applet is a weave surface; a report
+     from it should be indistinguishable from one filed at a desk.
+
+     The report goes to /w/weave/api/bug-report, not /api/bug-report. The
+     Issue is filed into the weave docs workspace, and on Cloudflare each
+     workspace is its own Durable Object with a single-member hub — asked
+     from uno, hub.get('weave') is null and the endpoint answers 501. Asking
+     the weave workspace directly works on both adapters. */
+  if (rec) {
+    rec.record({ kind: 'nav', to: location.pathname, t: now() });
+    addEventListener('error', (e) => rec.record({
+      kind: 'error', message: String(e.message ?? e), source: e.filename, line: e.lineno, t: now(),
+    }));
+    addEventListener('unhandledrejection', (e) => rec.record({
+      kind: 'error', message: 'unhandled rejection: ' + String(e.reason && e.reason.message ? e.reason.message : e.reason), t: now(),
+    }));
+    document.addEventListener('click', (e) => {
+      const node = e.target.closest('button, a, .wv-row, input, textarea');
+      if (node) rec.record({ kind: 'click', target: BC.describeTarget(node), t: now() });
+    }, true);
+  }
+
+  let bugPicked = [];
   $('bug').addEventListener('click', () => {
+    const cats = BC ? BC.CATEGORIES : [
+      { id: 'slow', label: 'Slow' }, { id: 'broken-ui', label: 'Looks broken' },
+      { id: 'wrong-data', label: 'Wrong data' }, { id: 'error', label: 'Error' }];
+    $('bug').setAttribute('aria-expanded', 'true');
+    const counts = rec ? rec.counts() : null;
     openSheet('<h4>Report a problem</h4>'
       + '<div style="padding:2px 22px 10px;display:flex;flex-wrap:wrap;gap:6px">'
-      + BUG_CATS.map(([id, label]) => '<button class="k slate" data-cat="' + id + '" style="padding:6px 11px;font-size:13px">' + label + '</button>').join('')
+      + cats.map((c) => '<button class="k ' + (bugPicked.includes(c.id) ? 'blue' : 'slate') + '" data-cat="' + c.id + '" '
+          + 'title="' + esc(c.hint || '') + '" style="padding:6px 11px;font-size:13px">' + esc(c.label) + '</button>').join('')
       + '</div><textarea id="bugtext" placeholder="What happened?" style="margin:0 22px;width:calc(100% - 44px);min-height:74px;'
       + 'border:1px solid var(--line);border-radius:10px;background:var(--ground);padding:10px;font-size:16px"></textarea>'
+      + (counts ? '<div style="padding:8px 22px 2px;font-size:12px;color:var(--faint)">'
+          + counts.actions + ' actions · ' + counts.errors + ' errors · ' + counts.failedRequests + ' failed requests ride along</div>' : '')
       + '<button class="wv-opt" data-send style="color:var(--accent);font-weight:600">Send to weave</button>',
       (sh) => {
-        const picked = new Set();
+        const send = sh.querySelector('[data-send]');
+        const note = sh.querySelector('#bugtext');
+        const sync = () => {
+          const ok = BC ? BC.canSubmit(bugPicked, note.value) : (bugPicked.length || note.value.trim());
+          send.style.opacity = ok ? '1' : '.45';
+        };
         sh.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => {
-          const id = b.dataset.cat;
-          if (picked.has(id)) picked.delete(id); else picked.add(id);
-          b.className = 'k ' + (picked.has(id) ? 'blue' : 'slate');
+          bugPicked = BC ? BC.toggleCategory(bugPicked, b.dataset.cat)
+            : (bugPicked.includes(b.dataset.cat) ? bugPicked.filter((x) => x !== b.dataset.cat) : bugPicked.concat(b.dataset.cat));
+          b.className = 'k ' + (bugPicked.includes(b.dataset.cat) ? 'blue' : 'slate');
           b.style.padding = '6px 11px'; b.style.fontSize = '13px';
+          sync();
         }));
-        sh.querySelector('[data-send]').addEventListener('click', async () => {
-          const note = sh.querySelector('#bugtext').value.trim();
-          if (!picked.size && !note) { say('Pick a symptom or write a line'); return; }
-          closeSheet();
+        note.addEventListener('input', sync);
+        sync();
+        send.addEventListener('click', async () => {
+          if (BC && !BC.canSubmit(bugPicked, note.value)) { say('Pick a symptom or write a line'); return; }
+          send.textContent = 'Sending…';
+          const body = {
+            categories: bugPicked,
+            note: note.value.trim(),
+            events: rec ? rec.events() : [],
+            client: BC ? BC.clientContext() : { url: location.href, ua: navigator.userAgent },
+          };
           try {
-            // The endpoint's own contract: categories + note, not a title and
-            // a description. Asked at the root, because the Issue is filed
-            // into the weave docs workspace, not this one.
-            const res = await fetch('/api/bug-report', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                categories: [...picked], note, events: [],
-                client: { surface: 'task applet', url: location.href, ua: navigator.userAgent,
-                          viewport: innerWidth + 'x' + innerHeight, filedAt: new Date().toISOString() },
-              }),
+            const res = await fetch('/w/weave/api/bug-report', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
             });
-            if (!res.ok) { say('Not reported \\u2014 ' + res.status); return; }
-            const filed = await res.json();
-            say('Reported as Issue #' + filed.publicId);
-          } catch { say('Could not send the report'); }
+            const text = await res.text();
+            if (!res.ok) {
+              send.textContent = 'Send to weave';
+              say('Not filed — ' + res.status + ' ' + text.slice(0, 60));
+              return;
+            }
+            const filed = JSON.parse(text);
+            bugPicked = []; if (rec) rec.clear();
+            send.textContent = 'Sent';
+            closeSheet();
+            say('Issue #' + filed.publicId + ' filed');
+          } catch (err) {
+            send.textContent = 'Send to weave';
+            say('Could not reach weave');
+          }
         });
       });
   });
+  scrim.addEventListener('click', () => $('bug').setAttribute('aria-expanded', 'false'));
 
   // ---- render ------------------------------------------------------------
   function rowNode(t) {
@@ -1208,13 +1278,20 @@ const CLIENT = `
   }
 
   function armFirstTouch() {
+    /* touchend, not click. WebKit only synthesises a click on elements it
+       considers clickable — a link, a button, an input, or something wearing
+       a handler or cursor:pointer. Tapping the empty half of a list of divs
+       produces no click at all, so a document-level click listener waits
+       forever. touchend always fires, and WebKit grants the activation on it.
+       click stays for the desktop, where there is no touch to end. */
     const grab = (e) => {
-      // A tap aimed at something is that thing's tap. Everything else — the
-      // header, the gaps, the empty space under the list — lands in the field.
-      if (e.target.closest('.wv-row, .wv-glyph, .wv-donebar, .wv-bug, .wv-sheet, .wv-detail, .wv-clip, a, button')) return;
+      const t = e.target;
+      if (t.closest && t.closest('.wv-row, .wv-glyph, .wv-donebar, .wv-bug, .wv-sheet, .wv-detail, .wv-clip, a, button, input, textarea')) return;
       raiseKeyboard();
+      document.removeEventListener('touchend', grab, true);
       document.removeEventListener('click', grab, true);
     };
+    document.addEventListener('touchend', grab, true);
     document.addEventListener('click', grab, true);
   }
 

@@ -600,3 +600,50 @@ test('applet: the natural-language parser it leans on is the one weave ships', a
   const nl = readFileSync(new URL('../public/nl-date.js', import.meta.url), 'utf8');
   assert.match(nl, /root\.parseNaturalDate = parseNaturalDate/, 'the applet reads it off the window');
 });
+
+/* Kyle, 2026-08-28, from the phone: "bug submission bugs are not being
+   captured" and "bug icon should be the same as desktop and with same
+   funcitnoality". Two causes and one parity gap. */
+test('applet: bug reports are asked of the workspace that can file them', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  assert.match(src, /'\/w\/weave\/api\/bug-report'/,
+    "on Cloudflare each workspace is its own DO: asked from uno, hub.get('weave') is null and the endpoint 501s");
+  assert.doesNotMatch(src, /fetch\('\/api\/bug-report'/, 'the un-prefixed path only works on the node adapter');
+});
+
+test('applet: the bug reporter is the desktop one, parts and all', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  for (const part of ['bugCore', 'createRecorder', 'describeTarget', 'clientContext', 'toggleCategory', 'canSubmit']) {
+    assert.ok(src.includes(part), `the applet uses bug-core's ${part} rather than its own`);
+  }
+  assert.match(src, /bug-core\.js/, 'and loads the shipped file, not a copy of it');
+  assert.match(src, /rec\.record\(\{ kind: 'api'/, 'requests ride along like they do on the desktop');
+
+  // The face is the desktop's, to the pixel. The box around it is not: a
+  // 26px target fails on a finger, so the applet wraps the same face in a
+  // 44pt box — right:3px + (44-26)/2 puts the visible mark back on the
+  // desktop's own 12px margin, and the bottom offset clears the home
+  // indicator the desktop does not have.
+  const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  const fab = css.slice(css.indexOf('.bug-fab {'), css.indexOf('.bug-fab {') + 400);
+  const flat = src.replace(/\s+/g, ' ');
+  for (const prop of ['width: 26px', 'height: 26px', 'border-radius: 7px', 'opacity: .62']) {
+    assert.ok(fab.includes(prop), `the desktop FAB is ${prop}`);
+    assert.ok(flat.includes(prop.replace(': ', ':')), `and the applet's face matches on ${prop}`);
+  }
+  assert.ok(fab.includes('right: 12px'), 'the desktop sits 12px in');
+  assert.match(flat, /\.wv-bug\{[^}]*right:3px[^}]*width:44px/,
+    'the applet sits 3px in with a 44pt box — the same face, back on the same margin');
+  assert.match(src, /translate\(12 12\) scale\(1\.42\)/, 'same glyph, same correction scale');
+});
+
+test('applet: the keyboard is armed on touchend, which iOS always fires', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  const arm = src.slice(src.indexOf('function armFirstTouch'), src.indexOf('if (LOCKED)'));
+  assert.match(arm, /addEventListener\('touchend', grab, true\)/,
+    'WebKit synthesises no click on a plain div, so a click listener waits forever');
+  assert.match(arm, /addEventListener\('click', grab, true\)/, 'click still covers the desktop');
+});
