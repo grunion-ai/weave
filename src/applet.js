@@ -342,17 +342,26 @@ button,input,textarea{font:inherit; color:inherit}
   color:var(--faint); padding:12px 4px 3px; display:flex; align-items:center; gap:8px}
 .wv-group .line{flex:1; height:1px; background:var(--line)}
 .wv-rowwrap{position:relative; border-radius:12px; overflow:hidden; flex:none}
+.wv-list.landscape-grid .wv-rowwrap{width:100%}
 .wv-reveal{position:absolute; inset:0; display:flex; align-items:center; justify-content:space-between;
   padding:0 22px; font-size:13px; font-weight:600; border-radius:12px; opacity:0;
   transition:opacity .12s linear, background-color .12s linear}
 .wv-reveal span{display:flex; align-items:center; gap:7px; transform:scale(.82); opacity:.55;
-  transition:transform .16s cubic-bezier(.2,1.4,.4,1), opacity .16s}
+  transition:transform .16s cubic-bezier(.25,1,.5,1), opacity .16s}
 .wv-reveal .rv-done{color:var(--ok)}
 .wv-reveal .rv-prog{color:var(--accent); margin-left:auto}
 .wv-rowwrap[data-arm="done"] .rv-done, .wv-rowwrap[data-arm="prog"] .rv-prog{transform:scale(1); opacity:1}
-.wv-rowwrap.leaving{transition:height .26s cubic-bezier(.4,0,.2,1), opacity .2s, margin .26s; overflow:hidden}
-@keyframes wv-pop{0%{transform:scale(1)}38%{transform:scale(1.42)}100%{transform:scale(1)}}
-.wv-glyph.pop{animation:wv-pop .34s cubic-bezier(.2,1.3,.4,1)}
+/* A row leaves by closing its own grid track: grid-template-rows animates on
+   the compositor's terms, where height and margin would have thrashed layout
+   for every row below it. */
+.wv-rowwrap{display:grid; grid-template-rows:1fr}
+.wv-rowwrap > *{min-height:0}
+.wv-rowwrap.leaving{transition:grid-template-rows .26s cubic-bezier(.4,0,.2,1), opacity .2s}
+/* One pulse, decelerating — the glyph confirms the change, it does not
+   celebrate it. An overshoot curve on top of an overshoot keyframe was two
+   bounces where the eye wanted none. */
+@keyframes wv-pop{0%{transform:scale(1)}34%{transform:scale(1.24)}100%{transform:scale(1)}}
+.wv-glyph.pop{animation:wv-pop .3s cubic-bezier(.22,1,.36,1)}
 .wv-row{position:relative; display:flex; align-items:flex-start; gap:12px; background:var(--surface);
   border:1px solid var(--line); border-radius:12px; padding:13px 13px 13px 12px; touch-action:pan-y;
   transition:transform .18s cubic-bezier(.2,.8,.3,1), opacity .2s}
@@ -798,14 +807,13 @@ const CLIENT = `
       // A row about to leave this view should be seen leaving it; one that
       // stays gets its glyph changed under the returning row instead.
       if (catOf(next) === 'done' && !showDone) {
-        const h = wrap.offsetHeight;
         node.classList.remove('swiping');
         node.style.transform = 'translateX(' + (wrap.offsetWidth * 0.34) + 'px)';
         node.style.opacity = '0';
-        wrap.style.height = h + 'px';
         requestAnimationFrame(() => {
           wrap.classList.add('leaving');
-          wrap.style.height = '0px'; wrap.style.opacity = '0'; wrap.style.marginBottom = '-8px';
+          wrap.style.gridTemplateRows = '0fr';
+          wrap.style.opacity = '0';
         });
         setTimeout(() => setState(t, next), 250);
       } else {
