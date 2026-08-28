@@ -512,6 +512,29 @@ function normalizeDefinition(raw, depth) {
   }
   return { type, config };
 }
+/* The text the Tables registry row shows for a table's filter and sort —
+   `State: Open, Doing; Priority: High` and `Due desc, Name asc`. Round-trip
+   partners: #syncTableRow formats, #interceptUpdate parses, and updateTable
+   validates whatever the parse produced, so a malformed row edit fails the
+   same way a malformed API call does. */
+const formatFilters = (filters) =>
+  Object.entries(filters ?? {}).map(([f, states]) => `${f}: ${states.join(', ')}`).join('; ');
+const parseFilters = (text) => {
+  const out = {};
+  for (const part of String(text ?? '').split(';').map((x) => x.trim()).filter(Boolean)) {
+    const i = part.indexOf(':');
+    if (i < 0) throw new WeaveError(`A filter is 'Field: State, State' — got '${part}'`, 'invalid');
+    out[part.slice(0, i).trim()] = part.slice(i + 1).split(',').map((x) => x.trim()).filter(Boolean);
+  }
+  return out;
+};
+const formatSort = (sort) => (sort ?? []).map((s) => `${s.field} ${s.dir}`).join(', ');
+const parseSort = (text) => String(text ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+  .map((part) => {
+    const m = part.match(/^(.+)\s+(asc|desc)$/i);
+    return m ? { field: m[1].trim(), dir: m[2].toLowerCase() } : { field: part, dir: 'asc' };
+  });
+
 // Narrower than this and a column can hold neither a chip nor a resize grip.
 const MIN_COLUMN_WIDTH = 60;
 
@@ -794,6 +817,38 @@ export class Weave {
     }
     // Hidden fields (Feature #114): a per-table view setting, by name, over
     // the table's own fields and the system columns. Nothing else changes.
+    /* View config as data (Kyle, 2026-08-28): the workflow-state filter and
+       the sort are table truth, not browser truth — stored here, mirrored to
+       the Tables registry row as text, edited from either side. Density is
+       deliberately absent: a per-person reading preference, not schema. */
+    if (patch.filters != null) {
+      if (typeof patch.filters !== 'object' || Array.isArray(patch.filters)) {
+        throw new WeaveError('filters is an object of { workflowFieldName: [stateNames] }', 'invalid');
+      }
+      const out = {};
+      for (const [fname, states] of Object.entries(patch.filters)) {
+        const f = this.findField(db, fname);
+        if (!f || f.type !== 'workflow') throw new WeaveError(`'${fname}' is not a workflow field of ${db.name}`, 'invalid');
+        if (!Array.isArray(states)) throw new WeaveError(`The filter on '${fname}' is a list of state names`, 'invalid');
+        for (const s of states) {
+          if (!f.config.states.some((st) => st.name === s)) {
+            throw new WeaveError(`'${s}' is not a state of ${db.name}.${f.name}`, 'invalid');
+          }
+        }
+        if (states.length) out[f.name] = [...states];
+      }
+      if (Object.keys(out).length) db.filters = out; else delete db.filters;
+    }
+    if (patch.sort != null) {
+      if (!Array.isArray(patch.sort)) throw new WeaveError('sort is a list of { field, dir }', 'invalid');
+      const out = patch.sort.map((s) => {
+        const f = this.getField(db.id, s.field);
+        const dir = s.dir ?? 'asc';
+        if (!['asc', 'desc'].includes(dir)) throw new WeaveError(`Sort direction is asc or desc, got '${s.dir}'`, 'invalid');
+        return { field: f.name, dir };
+      });
+      if (out.length) db.sort = out; else delete db.sort;
+    }
     if (patch.hiddenFields != null) {
       if (!Array.isArray(patch.hiddenFields)) throw new WeaveError('hiddenFields is a list of field names', 'invalid');
       const system = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
@@ -1090,6 +1145,12 @@ export class Weave {
         if ('systemFields' in tDoc && JSON.stringify(tDoc.systemFields ?? []) !== JSON.stringify(db.systemFields ?? [])) {
           tPatch.systemFields = tDoc.systemFields ?? [];
         }
+        if ('filters' in tDoc && JSON.stringify(tDoc.filters ?? {}) !== JSON.stringify(db.filters ?? {})) {
+          tPatch.filters = tDoc.filters ?? {};
+        }
+        if ('sort' in tDoc && JSON.stringify(tDoc.sort ?? []) !== JSON.stringify(db.sort ?? [])) {
+          tPatch.sort = tDoc.sort ?? [];
+        }
         if (Object.keys(tPatch).length) act('update-table', qualified, () => this.updateTable(db.id, tPatch));
         for (const fDoc of tDoc.fields ?? []) {
           const existing = Object.values(db.fields).find((x) => x.name === fDoc.name);
@@ -1172,6 +1233,8 @@ export class Weave {
     if (tDoc.noun) patch.noun = tDoc.noun;
     if (tDoc.hiddenFields?.length) patch.hiddenFields = [...tDoc.hiddenFields];
     if (tDoc.systemFields?.length) patch.systemFields = [...tDoc.systemFields];
+    if (tDoc.filters && Object.keys(tDoc.filters).length) patch.filters = tDoc.filters;
+    if (tDoc.sort?.length) patch.sort = tDoc.sort;
     const wanted = [];
     for (const fDoc of tDoc.fields ?? []) {
       const f = Object.values(db.fields).find((x) => x.name === fDoc.name);
@@ -1676,6 +1739,8 @@ export class Weave {
     // updateTable, which validates exactly as the schema verb does.
     if (!this.#sysField(tablesT, 'Field Order')) this.addField(tablesT.id, { name: 'Field Order', type: 'text' }).system = true;
     if (!this.#sysField(tablesT, 'Hidden Fields')) this.addField(tablesT.id, { name: 'Hidden Fields', type: 'text' }).system = true;
+    if (!this.#sysField(tablesT, 'Filter')) this.addField(tablesT.id, { name: 'Filter', type: 'text' }).system = true;
+    if (!this.#sysField(tablesT, 'Sort')) this.addField(tablesT.id, { name: 'Sort', type: 'text' }).system = true;
     const fieldsT = this.#sysTable('fields')
       ?? mkTable('Fields', 'fields', 'Every field of every table, as a row related to its table and carrying its definition. Creating a row creates the column; renaming it renames the column; editing its Definition changes the config; hard-deleting it deletes the column.');
     if (!this.#sysField(fieldsT, 'Table')) {
@@ -1859,6 +1924,16 @@ export class Weave {
       const hidden = (db.hiddenFields ?? []).join(', ');
       if ((row.values[hiddenF.id] ?? '') !== hidden) patch['Hidden Fields'] = hidden;
     }
+    const filterF = this.#sysField(t, 'Filter');
+    if (filterF) {
+      const txt = formatFilters(db.filters);
+      if ((row.values[filterF.id] ?? '') !== txt) patch.Filter = txt;
+    }
+    const sortF = this.#sysField(t, 'Sort');
+    if (sortF) {
+      const txt = formatSort(db.sort);
+      if ((row.values[sortF.id] ?? '') !== txt) patch.Sort = txt;
+    }
     if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
     return row;
   }
@@ -2011,6 +2086,8 @@ export class Weave {
         const split = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
         if ('Field Order' in patch) { structural.fieldOrder = split(patch['Field Order']); delete patch['Field Order']; }
         if ('Hidden Fields' in patch) { structural.hiddenFields = split(patch['Hidden Fields']); delete patch['Hidden Fields']; }
+        if ('Filter' in patch) { structural.filters = parseFilters(patch.Filter); delete patch.Filter; }
+        if ('Sort' in patch) { structural.sort = parseSort(patch.Sort); delete patch.Sort; }
       }
       if (Object.keys(structural).length) {
         if (db.system === 'spaces') this.updateSpace(e.sysId, structural);
@@ -3716,6 +3793,8 @@ export class Weave {
         ...(db.icon ? { icon: db.icon } : {}),
         ...(db.systemFields?.length ? { systemFields: [...db.systemFields] } : {}),
         ...(db.hiddenFields?.length ? { hiddenFields: [...db.hiddenFields] } : {}),
+        ...(db.filters ? { filters: Object.fromEntries(Object.entries(db.filters).map(([k, v]) => [k, [...v]])) } : {}),
+        ...(db.sort?.length ? { sort: db.sort.map((s) => ({ ...s })) } : {}),
         bodyBlocks: this.bodyBlocks(db),
         ...(db.noun ? { noun: db.noun } : {}),
         qualified: this.qualifiedName(db),

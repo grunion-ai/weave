@@ -1870,22 +1870,20 @@ async function showTrash(dbId) {
 
 
 /* ---------- filters (Feature #38) ----------
-   Per-table workflow-state filters, persisted per browser. The selection
-   drives the ENGINE's where-language over POST /query — the grid never
-   filters client-side, so board/list/table all obey the same truth. */
-const FILTERS_KEY = 'weave-filters';
-function tableFilters(dbId) {
-  try { return JSON.parse(localStorage.getItem(FILTERS_KEY) ?? '{}')[dbId] ?? {}; } catch { return {}; }
+   Per-table workflow-state filters. Table truth since 2026-08-28: the
+   selection lives on the table itself and mirrors to the Tables registry
+   row's Filter field, so every browser — and the row — shows the same
+   filter. The selection drives the ENGINE's where-language over POST /query
+   — the grid never filters client-side. */
+function tableFilters(db) {
+  return db.filters ?? {};
 }
-function setTableFilters(dbId, filters) {
-  let all = {};
-  try { all = JSON.parse(localStorage.getItem(FILTERS_KEY) ?? '{}'); } catch { /* fresh */ }
-  if (Object.keys(filters).length) all[dbId] = filters;
-  else delete all[dbId];
-  localStorage.setItem(FILTERS_KEY, JSON.stringify(all));
+async function setTableFilters(db, filters) {
+  await api('PATCH', `/tables/${db.id}`, { filters });
+  await loadSchema();
 }
 function filterWhere(db) {
-  const active = tableFilters(db.id);
+  const active = tableFilters(db);
   const conds = Object.entries(active)
     .filter(([field, states]) => states?.length && db.fields.some((f) => f.name === field && f.type === 'workflow'))
     .map(([field, states]) => [field, 'in', states]);
@@ -1894,7 +1892,7 @@ function filterWhere(db) {
 function filterStrip(db, onChange) {
   const wfFields = db.fields.filter((f) => f.type === 'workflow');
   if (!wfFields.length) return null;
-  const active = tableFilters(db.id);
+  const active = tableFilters(db);
   const strip = el('div', { class: 'filter-strip' });
   for (const f of wfFields) {
     const row = el('span', { class: 'filter-group' },
@@ -1903,12 +1901,12 @@ function filterStrip(db, onChange) {
       const on = (active[f.name] ?? []).includes(st.name);
       row.append(el('button', {
         class: `filter-chip cat-${st.category}${on ? ' on' : ''}`,
-        onclick: () => {
+        onclick: async () => {
           const cur = new Set(active[f.name] ?? []);
           cur.has(st.name) ? cur.delete(st.name) : cur.add(st.name);
           const next = { ...active };
           if (cur.size) next[f.name] = [...cur]; else delete next[f.name];
-          setTableFilters(db.id, next);
+          await setTableFilters(db, next);
           onChange();
         },
       }, st.name));
@@ -1918,7 +1916,7 @@ function filterStrip(db, onChange) {
   if (Object.keys(active).length) {
     strip.append(el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny',
-      onclick: () => { setTableFilters(db.id, {}); onChange(); },
+      onclick: async () => { await setTableFilters(db, {}); onChange(); },
     }, 'Clear'));
   }
   return strip;
@@ -2146,7 +2144,10 @@ function renderTable(main, db, items, onSaved) {
   // Full-width rows span it, so it is derived once rather than restated per
   // call site.
   const colCount = cols.length + 4;
-  let sortKey = null, sortDir = 1;
+  // Sort is table truth (2026-08-28): read from the schema, written back on
+  // change, mirrored to the Tables registry row's Sort field. The grid still
+  // sorts locally for the instant redraw; the PATCH makes it survive.
+  let sortKey = db.sort?.[0]?.field ?? null, sortDir = db.sort?.[0]?.dir === 'desc' ? -1 : 1;
   const wrap = el('div', { class: 'card table-wrap' });
 
   /* ---------- Feature #132: row selection ----------
@@ -2411,7 +2412,10 @@ function renderTable(main, db, items, onSaved) {
             sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : ''),
           fieldMenuButton(db, colField(db, c), {
             sorted: sortKey === c ? sortDir : 0,
-            onSort: (dir) => { sortKey = dir ? c : null; sortDir = dir || 1; draw(); },
+            onSort: (dir) => {
+              sortKey = dir ? c : null; sortDir = dir || 1; draw();
+              api('PATCH', `/tables/${db.id}`, { sort: dir ? [{ field: c, dir: dir > 0 ? 'asc' : 'desc' }] : [] }).then(loadSchema);
+            },
           }),
           columnResizeGrip(db, colField(db, c)))),
         ...(db.systemFields ?? []).map((n) => el('th', { class: 'sys-head', title: `${n} — system field, read-only` },
