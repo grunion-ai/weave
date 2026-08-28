@@ -31,12 +31,23 @@ const tries = new WeakMap();
 
 const passcodeOf = () => (process.env.WEAVE_APPLET_PASSCODE ?? '').trim();
 const tableOf = () => (process.env.WEAVE_APPLET_TABLE ?? 'Product/Task').trim();
+/* Values every task made here starts with — WEAVE_APPLET_DEFAULTS as JSON,
+   e.g. {"Assignee":"Kyle"}. Field names, not a hardcoded notion of "me". */
+const defaultsOf = () => {
+  try { return JSON.parse(process.env.WEAVE_APPLET_DEFAULTS ?? '{}'); } catch { return {}; }
+};
 
 const tokenFor = (pass) => createHash('sha256').update(`wv-applet-v1:${pass}`).digest('hex');
 
+/* TextEncoder, not Buffer.from: Buffer pools its memory, so a short Buffer is
+   a window onto a shared 8KB arena — and workerd's timingSafeEqual compares
+   the backing store, which makes two identical passcodes disagree. Verified
+   live on the hosted instance, 2026-08-28: both sides 8 bytes, still false.
+   TextEncoder hands back a tight array, and the comparison tells the truth. */
 const sameSecret = (a, b) => {
-  const x = Buffer.from(String(a));
-  const y = Buffer.from(String(b));
+  const enc = new TextEncoder();
+  const x = enc.encode(String(a));
+  const y = enc.encode(String(b));
   return x.length === y.length && timingSafeEqual(x, y);
 };
 
@@ -154,6 +165,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
   };
 
   const schema = schemaOf(weave, table);
+  let m;
 
   if (path === '/t/data' && rx.method === 'GET') {
     const scope = rx.searchParams.get('scope') ?? 'active';
@@ -171,7 +183,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
   if (path === '/t/data' && rx.method === 'POST') {
     const name = String(body.name ?? '').trim();
     if (!name) return out(400, { error: 'A task needs a name', code: 'invalid' });
-    const values = { [schema.nameField]: name, ...(body.values ?? {}) };
+    const values = { ...defaultsOf(), [schema.nameField]: name, ...(body.values ?? {}) };
     const e = weave.createEntity(table, values);
     return out(201, rowOf(weave, weave.readEntity(e.id)));
   }
@@ -187,7 +199,6 @@ export function handleApplet({ weave, rx, path, out, mount }) {
     return out(200, rowOf(weave, weave.readEntity(e.id)));
   }
 
-  let m;
   if ((m = path.match(/^\/t\/entity\/([^/]+)$/))) {
     const e = mine(m[1]);
     if (!e) return out(404, { error: 'No such task', code: 'not-found' });
@@ -198,10 +209,19 @@ export function handleApplet({ weave, rx, path, out, mount }) {
     const full = weave.readEntity(e.id);
     return out(200, {
       ...rowOf(weave, full),
+      doc: full.doc ?? '',
       docHtml: renderMarkdown(full.doc ?? ''),
       createdAt: full.createdAt,
       schema,
     });
+  }
+
+  if ((m = path.match(/^\/t\/entity\/([^/]+)\/doc$/)) && (rx.method === 'PUT' || rx.method === 'POST')) {
+    const e = mine(m[1]);
+    if (!e) return out(404, { error: 'No such task', code: 'not-found' });
+    weave.setDoc(e.id, String(body.doc ?? body.markdown ?? ''), body.field ?? null);
+    const full = weave.readEntity(e.id);
+    return out(200, { ok: true, doc: full.doc ?? '', docHtml: renderMarkdown(full.doc ?? '') });
   }
 
   if (path === '/t/file' && rx.method === 'POST') {
@@ -361,6 +381,8 @@ button,input,textarea{font:inherit; color:inherit}
 .k-add{background:none; border:1px dashed var(--line); color:var(--faint); border-radius:4px;
   font-size:12.5px; line-height:22px; padding:2px 9px}
 .k-more{background:none; color:var(--faint); padding:2px 4px; font-size:12.5px}
+.k-empty{font-size:11.5px; line-height:18px; padding:1px 8px; color:var(--faint); border-style:dashed}
+.wv-doc-empty{display:block; width:100%; text-align:left; color:var(--faint); border-style:dashed; font-size:14px}
 
 .wv-donebar{display:flex; align-items:center; gap:8px; padding:11px 13px; border-radius:12px; flex:none;
   border:1px dashed var(--line); background:none; font-size:13.5px; color:var(--muted); margin-top:4px}
@@ -557,6 +579,7 @@ const CLIENT = `
     doneTuck: true,
     undo: true,
     rowChips: 4,        // how many field chips a row shows before it says "+n"
+    emptyOnRow: ['date', 'multiselect'],   // types worth a tappable blank on the row
   };
 
   // The hue ramp is weave's own (public/chip-core.js), not a second opinion.
@@ -890,7 +913,7 @@ const CLIENT = `
 
     const rail = '<div class="wv-vrail">'
       + set.map((f) => chipHTML(f, target.fields[f.name], { editable: editableType(f.type) })).join('')
-      + empty.map((f) => '<button class="k-add" data-edit="' + esc(f.name) + '">+ ' + esc(f.name) + '</button>').join('')
+      + empty.map((f) => '<button class="k-add k-empty" data-edit="' + esc(f.name) + '">' + esc(f.name) + '</button>').join('')
       + '</div>';
     const rows = '<div class="wv-values">'
       + fs.map((f) => '<div class="wv-val"' + (editableType(f.type) ? ' data-edit="' + esc(f.name) + '"' : '') + '>'
@@ -911,7 +934,11 @@ const CLIENT = `
               + '<span class="thumb">' + esc((f.name.split('.').pop() || 'file').slice(0, 4)) + '</span>'
               + '<span class="nm">' + esc(f.name) + '</span><span class="sz">' + kb(f.size) + '</span></a>').join('')
           + '<button class="wv-file add" data-addfile>' + I.plus + '<span class="nm">Add file</span></button></div>' : '')
-      + (full.docHtml ? '<p class="wv-dsec">Description<span class="line"></span></p><div class="wv-doc">' + full.docHtml + '</div>' : '')
+      + '<p class="wv-dsec">Description<span class="line"></span>'
+      + '<button type="button" class="k-add" data-doc style="padding:1px 7px">' + (full.docHtml ? 'edit' : 'add') + '</button></p>'
+      + (full.docHtml
+          ? '<div class="wv-doc" data-doc>' + full.docHtml + '</div>'
+          : '<button class="wv-doc wv-doc-empty" data-doc>Add a description</button>')
       + '<div class="wv-dfoot"><span>Created ' + new Date(full.createdAt || target.updatedAt).toLocaleDateString() + '</span>'
       + '<span>Updated ' + ago(target.updatedAt) + ' ago</span></div></div>';
     requestAnimationFrame(() => detail.classList.add('in'));
@@ -923,6 +950,7 @@ const CLIENT = `
     });
     detail.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () =>
       editField(target, b.dataset.edit, () => { openDetail(target); detail.classList.add('in'); })));
+    detail.querySelectorAll('[data-doc]').forEach((b) => b.addEventListener('click', () => editDoc(target, full)));
     const add = detail.querySelector('[data-addfile]');
     if (add) add.addEventListener('click', () => { pickInto = target; picker.click(); });
     const title = detail.querySelector('.wv-dtitle');
@@ -934,6 +962,30 @@ const CLIENT = `
         Object.assign(target, row); paint();
       } catch { say('Could not rename'); }
     });
+  }
+
+  /* The document, written where it is read. A full-height sheet rather than
+     an inline caret: a phone keyboard takes half the screen, and markdown
+     wants the other half. */
+  function editDoc(t, full) {
+    openSheet('<h4>Description</h4>'
+      + '<div style="padding:0 18px 10px"><textarea id="docedit" placeholder="Markdown" '
+      + 'style="width:100%;min-height:46vh;font-size:16px;line-height:1.5;padding:12px;border:1px solid var(--line);'
+      + 'border-radius:12px;background:var(--ground);font-family:var(--mono)">' + esc(full.doc || '') + '</textarea></div>'
+      + '<button class="wv-opt" data-save style="color:var(--accent);font-weight:600">Save</button>',
+      (sh) => {
+        const el = sh.querySelector('#docedit');
+        setTimeout(() => el.focus(), 60);
+        sh.querySelector('[data-save]').addEventListener('click', async () => {
+          const md = el.value;
+          closeSheet();
+          try {
+            const res = await api('/entity/' + t.id + '/doc', { method: 'PUT', body: JSON.stringify({ doc: md }) });
+            full.doc = md; full.docHtml = res.docHtml;
+            openDetail(t); detail.classList.add('in');
+          } catch { say('Could not save the description'); }
+        });
+      });
   }
 
   // ---- bug report --------------------------------------------------------
@@ -1005,7 +1057,15 @@ const CLIENT = `
       const html = chipHTML(f, t.fields[f.name], {});
       if (html) chips.push(html);
     }
-    const shown = chips.slice(0, CFG.rowChips);
+    // An empty deadline or tag set still earns a slot: triage happens in the
+    // list, and a chip you can tap beats opening the task to find it blank.
+    for (const f of rowFields()) {
+      if (!CFG.emptyOnRow.includes(f.type) || f.name === wfField()) continue;
+      const v = t.fields[f.name];
+      if (!(v == null || v === '' || (Array.isArray(v) && !v.length))) continue;
+      chips.push('<button class="k-add k-empty" data-edit="' + esc(f.name) + '">' + esc(f.name) + '</button>');
+    }
+    const shown = chips.slice(0, CFG.rowChips + CFG.emptyOnRow.length);
     if (chips.length > shown.length) shown.push('<span class="k k-more">+' + (chips.length - shown.length) + '</span>');
     if ((t.files || []).length) shown.push('<span class="k ghost" style="gap:3px">' + I.clip + ((t.files.length > 1) ? t.files.length : '') + '</span>');
     if (t.failed) shown.push('<span class="k red">not saved</span>');
@@ -1017,6 +1077,10 @@ const CLIENT = `
     const gbtn = node.querySelector('.wv-glyph');
     gbtn.addEventListener('click', (e) => { e.stopPropagation(); advance(t); });
     if (popNext === t.id) { gbtn.classList.add('pop'); popNext = null; }
+    node.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();                           // set the field, stay in the list
+      editField(t, b.dataset.edit);
+    }));
     node.addEventListener('click', () => { if (!String(t.id).startsWith('tmp-')) openDetail(t); });
     wrap.appendChild(node);
     if (CFG.swipe && wfField()) wireSwipe(wrap, node, t);

@@ -494,3 +494,50 @@ test('applet: the locked page is the same page, with the keypad over it', async 
     assert.match(locked, /id="gate"/);
   } finally { s.stop(); }
 });
+
+test('applet: the description is written from the page it is read on', async () => {
+  const s = await stand();
+  try {
+    const cookie = cookieFrom(await unlock(s.base));
+    const id = s.tasks[1].id;
+    const res = await fetch(`${s.base}/t/entity/${id}/doc`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', cookie },
+      body: JSON.stringify({ doc: '## Plan\n\n- call the vendor\n' }),
+    });
+    assert.equal(res.status, 200);
+    assert.match((await res.json()).docHtml, /<h2/, 'it comes back rendered, ready to show');
+
+    const one = await (await fetch(`${s.base}/t/entity/${id}`, { headers: { cookie } })).json();
+    assert.match(one.doc, /call the vendor/, 'and raw, ready to edit again');
+
+    assert.equal((await fetch(`${s.base}/t/entity/${id}/doc`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doc: 'x' }),
+    })).status, 401, 'writing prose is still writing');
+  } finally { s.stop(); }
+});
+
+test('applet: every task it makes starts with the defaults it was given', async () => {
+  const prior = process.env.WEAVE_APPLET_DEFAULTS;
+  process.env.WEAVE_APPLET_DEFAULTS = JSON.stringify({ Priority: 'P2' });
+  const s = await stand();
+  try {
+    const cookie = cookieFrom(await unlock(s.base));
+    const row = await (await fetch(`${s.base}/t/data`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', cookie },
+      body: JSON.stringify({ name: 'Swap the filter' }),
+    })).json();
+    assert.equal(row.fields.Priority, 'P2', 'the default is applied without the phone asking');
+  } finally {
+    s.stop();
+    if (prior === undefined) delete process.env.WEAVE_APPLET_DEFAULTS; else process.env.WEAVE_APPLET_DEFAULTS = prior;
+  }
+});
+
+test('applet: a blank deadline or tag set is still a chip you can tap', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  assert.match(src, /emptyOnRow: \['date', 'multiselect'\]/, 'triage happens in the list');
+  assert.match(src, /k-empty/, 'and the blank reads as a chip, not as nothing');
+  assert.match(src, /editDoc/, 'the description is editable from the task page');
+});

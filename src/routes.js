@@ -9,7 +9,11 @@ import { handleApplet } from './applet.js';
 import { VOCABULARY } from './vocabulary.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
-import { renderDeck, newSlideVersion } from './deck.js';
+// Loaded on demand: the vendored decklet engine resolves its own directory
+// from import.meta.url at module scope, which is undefined inside a bundled
+// Worker — evaluating it there fails the whole upload. Deck routes are rare
+// and node-only anyway, so they pay for the import when they are asked for.
+const deckModule = () => import('./deck.js');
 import { handleMcpMessage } from './mcp.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
 
@@ -259,6 +263,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
          its deck's chrome. .json is the composed model plus what the decklet
          validator says about it. */
       if ((m = path.match(/^\/e\/([^/]+)\/deck\.(html|json)$/))) {
+        const { renderDeck } = await deckModule();
         const built = renderDeck(weave, m[1]);
         if (m[2] === 'json') {
           return out(200, { model: built.model, errors: built.errors, warnings: built.warnings });
@@ -566,6 +571,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // old row sat in, keeping its place in each running order.
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/version$/)) && rx.method === 'POST') {
           const promote = ['1', 'true'].includes(rx.searchParams.get('promote') ?? '') || body.promote === true;
+          const { newSlideVersion } = await deckModule();
           const made = newSlideVersion(weave, m[1], { promote });
           return out(201, weave.readEntity(made.id));
         }
