@@ -316,6 +316,17 @@ function iconEl(icon, cls = 'wv-icon') {
     span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${window.weaveMarkIcons.scaled(m[1], flat)}</svg>`
     return span;
   }
+  // A bare string paints itself, which is what keeps an emoji working. A
+  // string carrying the `iconly:` prefix is a different thing: a REFERENCE
+  // that did not resolve — a name that was removed, renamed, or never
+  // existed. Painting it printed the literal "iconly:slides" into the icon
+  // slot (Kyle, 2026-08-29). A ghost ring says "something was set and it is
+  // not here", and the tooltip names it so the value is still recoverable.
+  if (m) {
+    return el('span', {
+      class: `${cls} icon-ghost`, title: `${m[1]} — this icon is no longer in the set`,
+    }, '◌');
+  }
   return el('span', { class: cls }, String(icon));
 }
 
@@ -970,20 +981,21 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     const vis = core.visible(st);
     const groups = fieldDialogCore.iconGroups(vis);
     const clear = vis.find((o) => !o.id);
-    list.replaceChildren(...groups.flatMap((g) => [
-      el('div', { class: 'picker-cat' }, g.name),
-      el('div', { class: 'picker-cells' }, ...g.items.map((o) => el('button', {
-        class: 'picker-cell' + (o.id === currentId ? ' on' : ''), type: 'button',
-        title: o.label, 'aria-label': o.label,
-        onclick: async () => { await pick(o); },
-      }, o.iconly ? iconEl(`iconly:${o.iconly}`) : iconEl(o.mark) ?? el('span', {}, o.label)))),
-    ]));
-    if (clear) {
-      list.append(el('button', {
-        class: 'picker-clear', type: 'button', onclick: async () => { await pick(clear); },
-      }, clear.label));
-    }
-    if (!groups.length) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
+    const cell = (o, extra = '') => el('button', {
+      class: `picker-cell${extra}` + (o.id === currentId ? ' on' : ''), type: 'button',
+      title: o.label, 'aria-label': o.label,
+      onclick: async () => { await pick(o); },
+    }, o.iconly ? iconEl(`iconly:${o.iconly}`) : iconEl(o.mark) ?? el('span', { class: 'wv-icon icon-ghost' }, '◌'));
+    // Clearing is the FIRST cell, not a footer (Kyle, 2026-08-29): setting an
+    // icon back to none is the same gesture as setting it to anything else,
+    // and it is the one people reach for after a mistake.
+    list.replaceChildren(
+      ...(clear ? [el('div', { class: 'picker-cells' }, cell(clear, ' picker-none'))] : []),
+      ...groups.flatMap((g) => [
+        el('div', { class: 'picker-cat' }, g.name),
+        el('div', { class: 'picker-cells' }, ...g.items.map((o) => cell(o))),
+      ]));
+    if (!groups.length && !clear) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
   };
   const draw = () => {
     if (grid) return drawGrid();

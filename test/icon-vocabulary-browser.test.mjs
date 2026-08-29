@@ -213,15 +213,22 @@ if (!chromium) {
 
     const cells = page.locator('.picker-cell');
     assert.ok(await cells.count() > 90, 'the whole catalogue is offered');
-    // Every cell draws an icon and says nothing.
-    const text = (await cells.allTextContents()).join('').trim();
-    assert.equal(text, '', `a cell is carrying a label: ${text.slice(0, 60)}`);
-    assert.equal(await cells.first().locator('svg').count(), 1);
+    // Every cell draws a shape and names nothing. The leading clear cell wears
+    // a ghost ring, which is a glyph, not a label — so the assertion is that
+    // no WORD reaches a cell.
+    const text = (await cells.allTextContents()).join('');
+    assert.doesNotMatch(text, /[a-z0-9]/i, `a cell is carrying a label: ${text.slice(0, 60)}`);
+    // The first cell is the clear control; the icons start after it.
+    assert.equal(await cells.nth(1).locator('svg').count(), 1);
     // The name is not gone, it moved to the tooltip.
-    assert.ok(await cells.first().getAttribute('title'), 'a cell must name itself on hover');
+    assert.ok(await cells.nth(1).getAttribute('title'), 'a cell must name itself on hover');
     // The current value is the ring on a cell, not a chip eating the search
     // box — an unset icon used to stage a "No icon" chip there.
     assert.equal(await page.locator('.picker-chip').count(), 0, 'the grid stages no chips');
+    // Clearing is the first cell, not a footer (Kyle, 2026-08-29).
+    assert.equal(await page.locator('.picker-clear').count(), 0, 'no footer clear survives');
+    assert.equal(await cells.first().getAttribute('title'), 'No icon', 'clearing leads the grid');
+    assert.ok(await cells.first().locator('.icon-ghost').count(), 'and wears the ghost ring');
     assert.equal(await page.locator('.picker-search').getAttribute('placeholder'), 'Search by name or category…');
     await page.close();
   });
@@ -255,6 +262,28 @@ if (!chromium) {
     await page.waitForTimeout(400);
     const db = weave.getTable(typeof tasks === 'string' ? tasks : tasks.id);
     assert.equal(db.icon, 'iconly:wallet');
+    await page.close();
+  });
+
+  test('an icon name that no longer resolves shows a ring, not its own prefix', async () => {
+    // Kyle, 2026-08-29, from a screenshot: an option was rendering the literal
+    // text `iconly:slides` into its icon slot, clipped to "iconl". A reference
+    // that does not resolve is not an emoji and must not paint itself.
+    const page = await entityPage();
+    const drawn = await page.evaluate(() => {
+      const dead = iconEl('iconly:slides');
+      const emoji = iconEl('🎉');
+      return {
+        deadText: dead.textContent,
+        deadTitle: dead.getAttribute('title'),
+        deadGhost: dead.classList.contains('icon-ghost'),
+        emojiText: emoji.textContent,
+      };
+    });
+    assert.doesNotMatch(drawn.deadText, /iconly:/, 'the prefix must never reach the screen');
+    assert.equal(drawn.deadGhost, true);
+    assert.match(drawn.deadTitle, /slides/, 'the tooltip still names what was set');
+    assert.equal(drawn.emojiText, '🎉', 'a bare string still paints itself');
     await page.close();
   });
 
