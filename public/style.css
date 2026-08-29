@@ -1260,6 +1260,39 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    names never reads the digits first. */
 .picker-num { flex: 0 0 11px; text-align: right; color: var(--tblr-secondary); font-size: 10.5px; font-variant-numeric: tabular-nums; opacity: .55; user-select: none; }
 .picker-row.active .picker-num, .picker-row:hover .picker-num { opacity: 1; }
+/* ---------- the icon grid (Kyle, 2026-08-29) ----------
+   Icons rest in the same grey a protected glyph wears and come up to full ink
+   under the cursor, so the grid reads as texture until you aim at something.
+   Category headings are the only labels; the name is the tooltip. */
+.picker-cat {
+  padding: 9px 6px 3px; font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--tblr-secondary); font-family: var(--tblr-font-monospace);
+}
+.picker-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap: 2px; }
+.picker-cell {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; aspect-ratio: 1; padding: 0; border: 0; border-radius: 5px;
+  background: none; color: var(--tblr-secondary); cursor: pointer;
+}
+.picker-cell:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); color: var(--tblr-body-color); }
+.picker-cell.on {
+  color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .10);
+  box-shadow: inset 0 0 0 1px var(--tblr-primary);
+}
+.picker-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--tblr-primary); color: var(--tblr-body-color); }
+.picker-cell .wv-icon { margin-right: 0; }
+/* Clearing is not an icon, so it sits under the grid rather than inside a
+   category pretending to be one. */
+.picker-clear {
+  display: block; width: 100%; margin-top: 6px; padding: 5px 6px;
+  border: 0; border-top: 1px solid var(--tblr-border-color); border-radius: 0;
+  background: none; color: var(--tblr-secondary); font: inherit; font-size: 12.5px;
+  text-align: left; cursor: pointer;
+}
+.picker-clear:hover { color: var(--tblr-body-color); }
+/* A grid wants more room than a name list did. */
+.picker-pop:has(.picker-cells) { min-width: 292px; }
+
 .picker-empty { color: var(--tblr-secondary); font-size: 12.5px; padding: 8px 6px; }
 .picker-face { text-align: left; cursor: pointer; width: 100%; }
 .picker-wrap { display: block; width: 100%; }

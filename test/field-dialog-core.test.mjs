@@ -362,9 +362,57 @@ test('a mark is labelled by what it means, so search finds it by word', () => {
   assert.equal(bug.iconly, 'bug', 'the picker draws the SVG, not the raw value');
 });
 
-test('the marks come first: an author choosing a state glyph sees them before the set', () => {
-  const choices = core.iconChoices(['activity', 'bug']);
-  const firstFlat = choices.findIndex((c) => c.id.startsWith('iconly:'));
-  const lastMark = choices.map((c) => c.id).lastIndexOf('→');
-  assert.ok(lastMark < firstFlat, 'marks precede the flat set');
+test('inside a category the marks come first — they say a state, the icons name a thing', () => {
+  // Since 2026-08-29 marks no longer sit in one block ahead of everything;
+  // they sort into their categories and lead within each.
+  const choices = core.iconChoices(['activity', 'bug', 'chart']);
+  const status = choices.filter((c) => c.hint === 'status');
+  const firstFlat = status.findIndex((c) => c.iconly);
+  const lastMark = status.map((c) => !!c.mark).lastIndexOf(true);
+  assert.ok(lastMark < firstFlat, 'marks lead their own category');
+  assert.equal(choices.find((c) => c.id === 'iconly:bug').hint, 'status');
+  assert.equal(choices.find((c) => c.id === 'iconly:chart').hint, 'data');
+});
+
+/* ---------- categories (Kyle, 2026-08-29) ----------
+   "Icons should be shown in a grid not a list, no names are needed next to
+   each." A grid needs somewhere to break, so every choice carries the
+   category it belongs to. The category rides in `hint`, which pickerCore
+   already ranks against, so searching 'money' finds the whole group without
+   a second search path. */
+
+test('every offered icon lands in exactly one category', () => {
+  const flat = ['wallet', 'dollar', 'profile', 'calendar', 'arrow-up', 'chat', 'lock', 'camera', 'home', 'paper', 'chart'];
+  const choices = core.iconChoices(flat).filter((c) => c.id);
+  for (const c of choices) {
+    assert.ok(c.hint, `${c.id} has no category`);
+    assert.ok(core.ICON_CATEGORIES.some((g) => g.name === c.hint), `${c.hint} is not a category`);
+  }
+  assert.equal(choices.find((c) => c.id === 'iconly:dollar').hint, 'money');
+  assert.equal(choices.find((c) => c.id === 'iconly:profile').hint, 'people');
+  assert.equal(choices.find((c) => c.id === 'iconly:arrow-up').hint, 'arrows');
+});
+
+test('the marks sort into the same categories — there is no "marks" group', () => {
+  const choices = core.iconChoices([]);
+  assert.equal(choices.find((c) => c.id === '✓').hint, 'status');
+  assert.equal(choices.find((c) => c.id === '⛓').hint, 'data');
+  assert.equal(choices.find((c) => c.id === '→').hint, 'arrows');
+  assert.equal(core.ICON_CATEGORIES.some((g) => /mark|flat/i.test(g.name)), false);
+});
+
+test('choices come out grouped, in category order, ready for a grid', () => {
+  const flat = ['wallet', 'profile', 'arrow-up'];
+  const groups = core.iconGroups(core.iconChoices(flat));
+  assert.deepEqual(groups.map((g) => g.name), core.ICON_CATEGORIES.map((g) => g.name).filter((n) => groups.some((g) => g.name === n)));
+  for (const g of groups) assert.ok(g.items.length, `${g.name} is empty and should not be a group`);
+  // 'No icon' is a control, not an icon, and never sits inside a category.
+  assert.equal(groups.some((g) => g.items.some((i) => i.id === '')), false);
+});
+
+test('a name nobody classified still gets offered rather than vanishing', () => {
+  const choices = core.iconChoices(['not-a-real-icon']);
+  const odd = choices.find((c) => c.id === 'iconly:not-a-real-icon');
+  assert.ok(odd, 'an unclassified name must still reach the picker');
+  assert.ok(odd.hint, 'and must still land in some category');
 });

@@ -340,8 +340,8 @@ function iconButton(current, onPick) {
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     searchPicker({
-      anchor: btn, title: 'Icon', placeholder: 'Search icons…',
-      options: iconCatalogue(),
+      anchor: btn, title: 'Icon', placeholder: 'Search by name or category…',
+      options: iconCatalogue(), grid: true,
       currentId: current ?? '',
       onPick: (o) => onPick(o.id || null),
     });
@@ -908,7 +908,7 @@ function restoreGridFocus() {
    the spot — and `clearId` is the empty value Backspace picks for a field
    that has one (a select does; a workflow state does not).
    The keyboard grammar itself is pure and lives in public/picker-core.js. */
-function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null, clearId = null }) {
+function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null, clearId = null, grid = false }) {
   document.querySelector('.chip-pop')?.remove();
   const core = globalThis.pickerCore;
   let st = core.blank({
@@ -933,6 +933,14 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   const apply = (next) => { st = next; input.value = st.query; drawChips(); draw(); input.focus(); };
 
   const drawChips = () => {
+    // A grid shows the current icon as a ring on its own cell, so staging it
+    // as a chip says the same thing twice and takes the search box with it —
+    // an unset icon put a "No icon" chip in the field (Kyle, 2026-08-29).
+    if (grid) {
+      chips.replaceChildren();
+      input.placeholder = placeholder;
+      return;
+    }
     chips.replaceChildren(...st.staged.map((x, i) => el('span', {
       class: `${x.cls ?? 'k k-multi hue-slate'} picker-chip${st.caret === i ? ' sel' : ''}`,
       onclick: (ev) => { ev.stopPropagation(); apply({ ...st, caret: i, active: -1 }); },
@@ -952,7 +960,33 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
      no row wears a ✓ there and nothing the arrows land on can un-pick. A
      single picker still ticks its current value: picking there overwrites.
      The first nine rows carry their number, which is what ⌥1–⌥9 takes. */
+  /* Icons draw as a grid, not a list (Kyle, 2026-08-29). A name beside every
+     icon is a column you read instead of a set you scan, and 119 of them was
+     a very long column. The name still does its work: it is what the search
+     matches and it is the tooltip. Categories are the only labels, and a
+     heading leaves with its icons. Nothing is numbered — ⌥1–9 is for a list
+     you read down, not a field you aim at. */
+  const drawGrid = () => {
+    const vis = core.visible(st);
+    const groups = fieldDialogCore.iconGroups(vis);
+    const clear = vis.find((o) => !o.id);
+    list.replaceChildren(...groups.flatMap((g) => [
+      el('div', { class: 'picker-cat' }, g.name),
+      el('div', { class: 'picker-cells' }, ...g.items.map((o) => el('button', {
+        class: 'picker-cell' + (o.id === currentId ? ' on' : ''), type: 'button',
+        title: o.label, 'aria-label': o.label,
+        onclick: async () => { await pick(o); },
+      }, o.iconly ? iconEl(`iconly:${o.iconly}`) : iconEl(o.mark) ?? el('span', {}, o.label)))),
+    ]));
+    if (clear) {
+      list.append(el('button', {
+        class: 'picker-clear', type: 'button', onclick: async () => { await pick(clear); },
+      }, clear.label));
+    }
+    if (!groups.length) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
+  };
   const draw = () => {
+    if (grid) return drawGrid();
     const vis = core.visible(st);
     list.replaceChildren(...vis.map((o, i) => el('button', {
       class: 'chip-pop-row picker-row' + (i === st.active ? ' active' : ''), type: 'button',
@@ -2908,8 +2942,8 @@ function huePopover(anchor, current, onPick) {
    flat icons. One catalogue, one control, both dialects (Issue #87). */
 function glyphPopover(anchor, current, onPick) {
   searchPicker({
-    anchor, title: 'Icon', placeholder: 'Search icons…',
-    options: iconCatalogue(), currentId: current ?? '',
+    anchor, title: 'Icon', placeholder: 'Search by name or category…',
+    options: iconCatalogue(), grid: true, currentId: current ?? '',
     onPick: (o) => onPick(o.id || ''),
   });
 }

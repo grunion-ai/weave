@@ -1517,7 +1517,14 @@ test('spaces and tables wear Iconly flat icons, picked beside their name (Featur
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.ok(html.includes('vendor/iconly-flat.js'), 'the flat set is vendored and loaded');
   assert.ok(app.includes('function iconEl(') && app.includes('function iconButton('));
-  assert.ok(app.includes("searchPicker({") && app.includes("Search icons…"), 'the icon picker speaks the one dialect');
+  // Since 2026-08-29 the one dialect is a GRID: no name beside each icon, no
+  // numbered quick-select, and the search takes a category as readily as a
+  // name. The rendering contract itself is asserted in a browser, in
+  // test/icon-vocabulary-browser.test.mjs.
+  assert.ok(app.includes('searchPicker({') && app.includes('Search by name or category…'),
+    'the icon picker speaks the one dialect');
+  assert.match(fnBody('iconButton'), /grid: true/, 'the table gate opens the grid');
+  assert.match(fnBody('glyphPopover'), /grid: true/, 'the option and state gate opens the same grid');
   assert.ok(app.includes("iconEl(space.icon") && app.includes("iconEl(db.icon"), 'nav renders both');
   const icons = (await import('../public/vendor/iconly-flat.js'), globalThis.ICONLY_FLAT);
   assert.ok(Object.keys(icons).length >= 90, 'the whole free set rides along');

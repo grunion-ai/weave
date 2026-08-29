@@ -191,6 +191,73 @@ if (!chromium) {
     await page.close();
   });
 
+  /* Kyle, 2026-08-29: "Icons should be shown in a grid not a list, no names
+     are needed next to each, this takes up too much space." */
+  async function openIconPicker(page) {
+    await page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first().locator('.k-select').first().click();
+    await page.waitForSelector('.chip-pop');
+  }
+
+  test('the icon picker is a grid of icons, with no name beside any of them', async () => {
+    const page = await entityPage();
+    // The field dialog is where a state or option icon is chosen; the table
+    // header is the other gate. Both open the same control.
+    await page.goto(`${base}/#/table/${tasks.id ?? tasks}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.icon-btn');
+    await page.locator('.icon-btn').first().click();
+    await page.waitForSelector('.chip-pop');
+
+    assert.ok(await page.locator('.picker-cells').count() > 0, 'the icons must draw as a grid');
+    assert.equal(await page.locator('.picker-row').count(), 0, 'no list rows survive in grid mode');
+    assert.equal(await page.locator('.picker-num').count(), 0, 'no numbered quick-select');
+
+    const cells = page.locator('.picker-cell');
+    assert.ok(await cells.count() > 90, 'the whole catalogue is offered');
+    // Every cell draws an icon and says nothing.
+    const text = (await cells.allTextContents()).join('').trim();
+    assert.equal(text, '', `a cell is carrying a label: ${text.slice(0, 60)}`);
+    assert.equal(await cells.first().locator('svg').count(), 1);
+    // The name is not gone, it moved to the tooltip.
+    assert.ok(await cells.first().getAttribute('title'), 'a cell must name itself on hover');
+    // The current value is the ring on a cell, not a chip eating the search
+    // box — an unset icon used to stage a "No icon" chip there.
+    assert.equal(await page.locator('.picker-chip').count(), 0, 'the grid stages no chips');
+    assert.equal(await page.locator('.picker-search').getAttribute('placeholder'), 'Search by name or category…');
+    await page.close();
+  });
+
+  test('category headings label the grid, and search takes a category', async () => {
+    const page = await entityPage();
+    await page.goto(`${base}/#/table/${tasks.id ?? tasks}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.icon-btn');
+    await page.locator('.icon-btn').first().click();
+    await page.waitForSelector('.picker-cells');
+    const cats = await page.locator('.picker-cat').allTextContents();
+    assert.ok(cats.includes('money'), `categories are the labels, got ${cats.join(', ')}`);
+
+    await page.locator('.picker-search').fill('money');
+    await page.waitForTimeout(150);
+    assert.deepEqual(await page.locator('.picker-cat').allTextContents(), ['money'],
+      'a heading leaves with its icons');
+    assert.ok(await page.locator('.picker-cell').count() >= 10, 'the whole money group survives the search');
+    await page.close();
+  });
+
+  test('clicking a cell commits that icon', async () => {
+    const page = await entityPage();
+    await page.goto(`${base}/#/table/${tasks.id ?? tasks}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.icon-btn');
+    await page.locator('.icon-btn').first().click();
+    await page.waitForSelector('.picker-cells');
+    await page.locator('.picker-search').fill('wallet');
+    await page.waitForTimeout(150);
+    await page.locator('.picker-cell').first().click();
+    await page.waitForTimeout(400);
+    const db = weave.getTable(typeof tasks === 'string' ? tasks : tasks.id);
+    assert.equal(db.icon, 'iconly:wallet');
+    await page.close();
+  });
+
   test('every icon on the page is drawn to the one size scale', async () => {
     const page = await entityPage();
     const sizes = await page.evaluate(() => {

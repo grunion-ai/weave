@@ -143,11 +143,73 @@
      outcome — a quarter-filled circle is not in any flat set — and the whole
      flat set follows. `flat` is the vendored icon names; the caller owns the
      set so this stays pure. */
+  /* ---------- one set of categories (Kyle, 2026-08-29) ----------
+     A grid needs somewhere to break, and "marks" versus "flat set" was never a
+     distinction a person picking an icon cares about. The drawn marks and the
+     vendored names sort into the same eleven groups, marks first inside each
+     because they say a state where the flat icons name a thing.
+
+     The category rides on each choice as `hint`, which pickerCore already
+     ranks against — so typing 'money' finds the whole group without a second
+     search path, and the grid groups on the same field. */
+  const ICON_CATEGORIES = [
+    { name: 'status', marks: ['○', '◔', '◐', '◑', '◕', '●', '▶', '✓', '✕', '⏸', '⊘', '⚑', '★', '!', '?', '◎'],
+      flat: ['danger', 'infocircle', 'closesquare', 'ticksquare', 'shielddone', 'shieldfail',
+             'paperfail', 'papernegative', 'bug'] },
+    { name: 'people', marks: [], flat: ['profile', '2user', '3user', 'adduser', 'work', 'heart'] },
+    { name: 'documents', marks: [], flat: ['document', 'paper', 'paperplus', 'paperupload', 'paperdownload',
+             'folder', 'bookmark', 'edit', 'editsquare', 'upload', 'download'] },
+    { name: 'data', marks: ['⛓', '⌁'], flat: ['chart', 'graph', 'activity', 'category', 'filter',
+             'search', 'scan', 'discovery', 'swap'] },
+    { name: 'money', marks: [], flat: ['dollar', 'euro', 'card', 'coins', 'invoice', 'bank', 'trend',
+             'percent', 'wallet', 'buy', 'bag', 'discount', 'ticket', 'ticketstar'] },
+    { name: 'time', marks: [], flat: ['calendar', 'timecircle'] },
+    { name: 'messages', marks: [], flat: ['message', 'chat', 'send', 'notification', 'call', 'calling',
+             'callmissed', 'callsilent'] },
+    { name: 'media', marks: [], flat: ['camera', 'image', 'play', 'video', 'voice', 'volumeup',
+             'volumedown', 'volumeoff'] },
+    { name: 'access', marks: [], flat: ['lock', 'unlock', 'password', 'login', 'logout', 'show', 'hide'] },
+    { name: 'arrows', marks: ['→'], flat: ['arrow-up', 'arrow-down', 'arrow-left', 'arrow-right'] },
+    /* The last group is also the fallback: a name nobody classified is still
+       offered here rather than dropped, because a missing icon is worse than
+       one filed loosely. */
+    { name: 'other', marks: ['+'], flat: ['home', 'location', 'star', 'game', 'setting', 'plus',
+             'delete', 'morecircle'] },
+  ];
+  const CATEGORY_OF = new Map();
+  for (const g of ICON_CATEGORIES) {
+    for (const m of g.marks) CATEGORY_OF.set(m, g.name);
+    for (const f of g.flat) CATEGORY_OF.set(`iconly:${f}`, g.name);
+  }
+  const FALLBACK_CATEGORY = ICON_CATEGORIES[ICON_CATEGORIES.length - 1].name;
+  const categoryOf = (id) => CATEGORY_OF.get(id) ?? FALLBACK_CATEGORY;
+
+  /* Choices, in category order, ready to draw as a grid. The empty 'No icon'
+     control is left out: it is not an icon and belongs beside the grid, not
+     inside a category. */
+  function iconGroups(choices) {
+    const by = new Map();
+    for (const c of choices) {
+      if (!c.id) continue;
+      if (!by.has(c.hint)) by.set(c.hint, []);
+      by.get(c.hint).push(c);
+    }
+    return ICON_CATEGORIES
+      .map((g) => ({ name: g.name, items: by.get(g.name) ?? [] }))
+      .filter((g) => g.items.length);
+  }
+
   function iconChoices(flat = []) {
+    const mark = (g) => ({ id: g, label: STATE_ICON_LABELS[g] ?? g, mark: g, hint: categoryOf(g) });
+    const flatOf = (n) => ({ id: `iconly:${n}`, label: n, iconly: n, hint: categoryOf(`iconly:${n}`) });
+    const order = (a, b) => {
+      const ai = ICON_CATEGORIES.findIndex((g) => g.name === a.hint);
+      const bi = ICON_CATEGORIES.findIndex((g) => g.name === b.hint);
+      return ai - bi;
+    };
     return [
       { id: '', label: 'No icon' },
-      ...STATE_ICONS.filter(Boolean).map((g) => ({ id: g, label: STATE_ICON_LABELS[g] ?? g, mark: g })),
-      ...flat.map((n) => ({ id: `iconly:${n}`, label: n, iconly: n })),
+      ...[...STATE_ICONS.filter(Boolean).map(mark), ...flat.map(flatOf)].sort(order),
     ];
   }
 
@@ -364,7 +426,8 @@
   }
 
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
+    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices,
+    ICON_CATEGORIES, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES,
     blankState, definitionFromState, stateFromDefinition,
