@@ -549,6 +549,10 @@ There is no edit mode, no preview pane and no save button. A heading becomes a h
 
 Nothing in a document is a proprietary block. Copy it into a file, hand it to an agent, put it under version control; it stays what it is.
 
+## The toolbar
+
+A compact strip above the document holds the everyday controls — headings, bold, italic, strikethrough, inline code, link, the three list kinds, quote, code block, table, divider, undo and redo. The full catalogue (references, mermaid, raw HTML, math) stays in the slash menu.
+
 ## The slash menu
 
 Type \`/\` on an empty line. Three groups:
@@ -622,7 +626,7 @@ The fold lives in an overlay layer, never inside the document itself, so **the s
 
 ## The dash rail
 
-A document with three or more headings grows a minimap down its edge: one dash per heading, longer for higher levels, a tracker that follows the scroll, click to jump. Below three headings a map explains nothing, so no rail appears.
+A document with three or more headings grows a minimap down its edge: one dash per heading, longer for higher levels, a tracker that follows the scroll. Click the rail and the headings open in a panel floated at the middle of the viewport; click a heading to jump, press Escape or click away to close. Below three headings a map explains nothing, so no rail appears.
 
 ## Full screen
 

@@ -70,14 +70,14 @@ if (!chromium) {
      leading group no longer reading ALL COMMANDS is the positive signal that
      the menu on screen belongs to the query that was typed. */
   const hintFiltered = (page) => page.waitForFunction(() => {
-    const first = document.querySelector('.vditor-hint button');
+    const first = document.querySelector('.vditor-hint:not(.vditor-panel--arrow) button');
     return !!first && !/^ALL COMMANDS/.test(first.textContent.trim());
   }, null, { timeout: 15000 });
 
   async function hintSettled(page) {
     let seen = null;
     for (let i = 0; i < 60; i++) {
-      const now = await page.$$eval('.vditor-hint button',
+      const now = await page.$$eval('.vditor-hint:not(.vditor-panel--arrow) button',
         (ns) => ns.map((n) => n.textContent).join('\u0000'));
       if (seen !== null && now === seen) return now;
       seen = now;
@@ -98,9 +98,9 @@ if (!chromium) {
     });
     await page.click('.vditor-ir [contenteditable="true"]');
     await page.keyboard.type(`/${query}`);
-    await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintFiltered(page);
-    const label = await page.textContent('.vditor-hint button');
+    const label = await page.textContent('.vditor-hint:not(.vditor-panel--arrow) button');
     await page.keyboard.press('Enter');
     /* Poll rather than sleep: a headless page is backgrounded, Chrome throttles
        the timers Vditor dispatches its input event on, and a command that
@@ -170,7 +170,7 @@ if (!chromium) {
     await page.waitForSelector('.vditor-ir [contenteditable="true"]');
     await page.click('.vditor-ir [contenteditable="true"]');
     await page.keyboard.type('/entity');
-    await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintSettled(page);
     await page.keyboard.press('Enter');
     // The command hands off to the same search the ⌘K palette uses, rather
@@ -219,18 +219,18 @@ if (!chromium) {
     await page.waitForSelector('.vditor-ir [contenteditable="true"]');
     await page.click('.vditor-ir [contenteditable="true"]');
     await page.keyboard.type('/');
-    await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintSettled(page);
 
     const menu = await page.evaluate(() => ({
-      groups: [...document.querySelectorAll('.vditor-hint .slash-group')].map((g) => g.textContent),
-      rows: document.querySelectorAll('.vditor-hint button').length,
-      labels: [...document.querySelectorAll('.vditor-hint .slash-item b')].map((b) => b.textContent),
-      syntax: [...document.querySelectorAll('.vditor-hint .slash-item')]
+      groups: [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-group')].map((g) => g.textContent),
+      rows: document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) button').length,
+      labels: [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-item b')].map((b) => b.textContent),
+      syntax: [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-item')]
         .map((i) => i.querySelector('.slash-syntax')?.textContent ?? null),
       // A glyph is either a typographic mark (B, I, H, ¶) or a flat icon —
       // never an emoji, which is why an <svg> counts and text is optional.
-      icons: [...document.querySelectorAll('.vditor-hint .slash-item')]
+      icons: [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-item')]
         .map((i) => {
           const slot = i.querySelector('.slash-icon');
           return slot ? (slot.querySelector('svg') ? 'svg' : slot.textContent) : null;
@@ -256,11 +256,11 @@ if (!chromium) {
     await page.waitForSelector('.vditor-ir [contenteditable="true"]');
     await page.click('.vditor-ir [contenteditable="true"]');
     await page.keyboard.type('/ta');
-    await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintSettled(page);
     const menu = await page.evaluate(() => ({
-      groups: [...document.querySelectorAll('.vditor-hint .slash-group')].map((g) => g.textContent),
-      labels: [...document.querySelectorAll('.vditor-hint .slash-item b')].map((b) => b.textContent),
+      groups: [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-group')].map((g) => g.textContent),
+      labels: [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-item b')].map((b) => b.textContent),
     }));
     assert.equal(menu.groups[0], 'INSERT', 'matches lead the menu');
     assert.deepEqual(menu.labels.slice(0, 2).sort(), ['Table', 'Task list'],
@@ -292,7 +292,7 @@ if (!chromium) {
     await page.keyboard.press('Home');
     await page.keyboard.up('Shift');
     await page.keyboard.type('/bold');
-    await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintSettled(page);
     await page.keyboard.press('Enter');
     await page.waitForTimeout(150);
@@ -316,7 +316,7 @@ if (!chromium) {
     await page.click('.vditor-ir [contenteditable="true"]');
     // The alias, because "table" itself belongs to the block that inserts one.
     await page.keyboard.type('/link table');
-    await page.waitForSelector('.vditor-hint button', { state: 'visible' });
+    await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintSettled(page);
     await page.keyboard.press('Enter');
     await page.waitForSelector('#cmdk', { state: 'visible' });
@@ -355,10 +355,10 @@ if (!chromium) {
     });
     await page.click('.vditor-ir [contenteditable="true"]');
     await page.keyboard.type('Blocked by #zeb');
-    await page.waitForSelector('.vditor-hint button', { state: 'visible', timeout: 10000 });
+    await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible', timeout: 10000 });
     await hintSettled(page);
     const labels = await page.evaluate(() =>
-      [...document.querySelectorAll('.vditor-hint .slash-item b')].map((b) => b.textContent));
+      [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow) .slash-item b')].map((b) => b.textContent));
     assert.ok(labels.some((l) => /Zebrafish/.test(l)), `expected the fixture record, got ${labels.join(' | ')}`);
 
     // Arrow keys move the highlight, exactly as they do in the command menu.
@@ -392,7 +392,7 @@ if (!chromium) {
     await page.keyboard.type('# Heading');
     await page.waitForTimeout(500);
     const open = await page.evaluate(() =>
-      [...document.querySelectorAll('.vditor-hint')].some((n) => getComputedStyle(n).display !== 'none'));
+      [...document.querySelectorAll('.vditor-hint:not(.vditor-panel--arrow)')].some((n) => getComputedStyle(n).display !== 'none'));
     assert.equal(open, false, 'the search must not hijack a heading');
     await page.close();
   });

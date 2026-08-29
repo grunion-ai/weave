@@ -934,9 +934,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    heading, longer for higher levels; the active dash is the section under
    the reading line. The rail spans the whole section but its track is
    sticky, so the map floats beside the reader instead of scrolling away.
-   Hovering it opens the headings themselves. Narrow screens have no
-   gutter, so no rail. */
-.doc-rail { position: absolute; left: -26px; top: 0; bottom: 0; width: 22px; }
+   Clicking it opens the headings themselves in a panel floated at the
+   viewport midpoint; hover only hints that the rail is pressable. Narrow
+   screens have no gutter, so no rail. */
+.doc-rail { position: absolute; left: -26px; top: 0; bottom: 0; width: 22px; cursor: pointer; }
 .doc-rail-track { position: sticky; top: 88px; width: max-content; display: flex; flex-direction: column;
   gap: 1px; align-items: flex-start; padding: 8px 10px; margin: 26px -10px 0; border-radius: 10px;
   border: 1px solid transparent; transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
@@ -944,8 +945,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
      active dash is kept in it. No scrollbar — this is chrome, not a pane. */
   max-height: calc(100vh - 120px); overflow-y: auto; scrollbar-width: none; }
 .doc-rail-track::-webkit-scrollbar { display: none; }
-.doc-rail:hover .doc-rail-track { background: var(--tblr-bg-surface); border-color: var(--tblr-border-color);
-  box-shadow: var(--tblr-box-shadow); z-index: 6; max-width: 260px; }
+.doc-rail:hover .doc-rail-track { background: var(--tblr-bg-surface); border-color: var(--tblr-border-color); }
+/* Open: the track leaves the sticky gutter for a fixed panel centred on the
+   viewport's middle. Its x stays the rail's own (set inline on open) — only
+   the y is the viewport's. */
+.doc-rail.open .doc-rail-track { position: fixed; top: 50%; transform: translateY(-50%); margin: 0;
+  background: var(--tblr-bg-surface); border-color: var(--tblr-border-color);
+  box-shadow: var(--tblr-box-shadow); z-index: 6; max-width: 260px; max-height: min(70vh, calc(100vh - 40px)); }
 .doc-rail-dash { border: 0; padding: 3px 0; background: none; cursor: pointer; display: flex;
   align-items: center; gap: 9px; color: var(--tblr-secondary); font-size: 12px; line-height: 15px; text-align: left; }
 .doc-rail-tick { height: 4px; border-radius: 2px; flex: none; background: var(--tblr-border-color);
@@ -953,7 +959,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-rail-dash:hover .doc-rail-tick { background: var(--tblr-secondary); transform: scaleX(1.3); }
 .doc-rail-dash.active .doc-rail-tick { background: var(--tblr-primary); }
 .doc-rail-label { display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
-.doc-rail:hover .doc-rail-label { display: block; }
+.doc-rail.open .doc-rail-label { display: block; }
 .doc-rail-dash:hover .doc-rail-label { color: var(--tblr-body-color); }
 .doc-rail-dash.active .doc-rail-label { color: var(--tblr-primary); font-weight: 600; }
 @media (max-width: 900px) { .doc-rail { display: none; } }
@@ -993,8 +999,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-status { margin-left: auto; font-size: 11px; color: var(--tblr-secondary); min-width: 10px; text-align: right; }
 .doc-editor { border: 0; }
 .doc-editor .vditor { border: 0; background: transparent; }
-/* toolbar: [] still leaves an empty 5px strip above the document. */
-.doc-editor .vditor-toolbar { display: none; }
+/* The toolbar is a quiet strip on the page ground, not Vditor's boxed bar.
+   Vditor writes its 35px gutter padding inline, hence the !important. */
+.doc-editor .vditor-toolbar { background: transparent; border-bottom: 1px solid var(--tblr-border-color);
+  padding: 0 0 2px !important; }
+.doc-editor .vditor-toolbar__item { padding: 0 1px; }
 /* Vditor's content themes paint their own surface — and do it from
    `.vditor-ir pre.vditor-reset`, so the element selector has to be matched or
    the document keeps sitting on a slab lighter than the page in dark mode. */

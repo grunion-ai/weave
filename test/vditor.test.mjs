@@ -113,9 +113,14 @@ test('every keystroke is persisted without the user asking', () => {
     'saves must be debounced rather than fired per keystroke');
 });
 
-test('the toolbar is gone so the document is the only chrome', () => {
-  assert.match(APP, /toolbar:\s*\[\]/, 'no toolbar items');
-  assert.match(APP, /hide:\s*true/, 'and the toolbar bar itself is hidden');
+test('a compact toolbar rides above the document', () => {
+  const from = APP.indexOf('toolbar: [');
+  const conf = APP.slice(from, APP.indexOf('toolbarConfig', from) + 80);
+  for (const item of ['headings', 'bold', 'italic', 'strike', 'inline-code', 'link',
+    'list', 'ordered-list', 'check', 'quote', 'code', 'table', 'line', 'undo', 'redo']) {
+    assert.ok(conf.includes(`'${item}'`), `toolbar is missing: ${item}`);
+  }
+  assert.match(conf, /toolbarConfig:\s*\{\s*hide:\s*false/, 'the bar itself is visible');
 });
 
 /* ---------- slash menu ---------- */

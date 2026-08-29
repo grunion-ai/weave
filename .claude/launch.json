@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "weave",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["bin/weave.js", "serve", "--port", "4400", "--data", "./uno.json"],
+      "port": 4400
+    }
+  ]
+}

@@ -4033,8 +4033,15 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }
     // compete with that and resurrect stale text.
     cache: { enable: false },
     counter: { enable: false },
-    toolbar: [],
-    toolbarConfig: { hide: true, pin: false },
+    // A compact strip of the everyday controls; the slash menu stays the
+    // full catalogue (blocks, references, mermaid) the toolbar never holds.
+    toolbar: [
+      'headings', 'bold', 'italic', 'strike', 'inline-code', 'link', '|',
+      'list', 'ordered-list', 'check', '|',
+      'quote', 'code', 'table', 'line', '|',
+      'undo', 'redo',
+    ],
+    toolbarConfig: { hide: false, pin: true },
     // The outline lives outside the editor (the dash rail), so Vditor's own
     // panel stays off rather than fighting it for the left gutter.
     outline: { enable: false, position: 'left' },
@@ -4206,6 +4213,9 @@ window.addEventListener('scroll', () => {
   for (const st of refChipLayers) st.schedule();
   for (const st of docRails) st.schedule();
 }, true);
+window.addEventListener('resize', () => {
+  for (const st of docRails) st.schedule(); // an open outline re-pins its x
+});
 
 async function refreshRefChips(st) {
   if (!document.body.contains(st.host)) { refChipLayers.delete(st); return; }
@@ -4283,6 +4293,29 @@ function attachDashRail(section, host) {
     section, host, track, timer: 0,
     rail: el('nav', { class: 'doc-rail', title: 'Document outline' }, track),
   };
+  /* The outline opens on click, never on hover: the resting rail stays a
+     minimap, and the first click anywhere on it floats the headings at the
+     viewport midpoint. Capture phase, so a dash click while closed opens
+     the panel instead of jumping blind. */
+  const onAway = (e) => { if (!st.rail.contains(e.target)) st.close(); };
+  const onKey = (e) => { if (e.key === 'Escape') st.close(); };
+  st.close = () => {
+    st.rail.classList.remove('open');
+    st.track.style.left = '';
+    document.removeEventListener('click', onAway, true);
+    document.removeEventListener('keydown', onKey);
+  };
+  st.rail.addEventListener('click', (e) => {
+    if (st.rail.classList.contains('open')) return; // open: dash clicks jump
+    e.stopPropagation();
+    // Fixed positioning drops the gutter context, so the panel keeps the
+    // rail's own x and only its y is the viewport's middle (see the CSS).
+    st.track.style.left = `${st.rail.getBoundingClientRect().left}px`;
+    st.rail.classList.add('open');
+    st.schedule(); // refresh re-measures the x — a click can beat layout
+    document.addEventListener('click', onAway, true);
+    document.addEventListener('keydown', onKey);
+  }, { capture: true });
   st.schedule = () => {
     clearTimeout(st.timer);
     st.timer = setTimeout(() => refreshDashRail(st), REF_CHIP_DEBOUNCE);
@@ -4301,7 +4334,7 @@ function headText(h) {
 }
 
 function refreshDashRail(st) {
-  if (!document.body.contains(st.section)) { docRails.delete(st); return; }
+  if (!document.body.contains(st.section)) { st.close(); docRails.delete(st); return; }
   const root = st.host.querySelector('.vditor-ir .vditor-reset');
   if (!root) return;
   // Block headings only — direct children of the surface, never something a
@@ -4311,8 +4344,11 @@ function refreshDashRail(st) {
     .filter((h) => h.offsetParent !== null);
   const lib = globalThis.WeaveEditorLib;
   const spec = lib.railSpec(heads.map((h) => ({ level: +h.tagName[1], text: headText(h) })));
-  if (!spec.length) { st.rail.remove(); return; } // < 3 headings: no rail
+  if (!spec.length) { st.close(); st.rail.remove(); return; } // < 3 headings: no rail
   if (!st.rail.isConnected) st.section.append(st.rail);
+  // While open the track is fixed and carries the rail's x inline; the rail
+  // itself keeps moving with layout, so every refresh re-pins the panel.
+  if (st.rail.classList.contains('open')) st.track.style.left = `${st.rail.getBoundingClientRect().left}px`;
   const current = lib.currentSection(heads.map((h) => h.getBoundingClientRect().top), DASH_READING_LINE);
   // A dash is a tick plus its heading's words. The words are display:none
   // until the rail is hovered, so the resting rail stays a minimap and the
@@ -4323,7 +4359,7 @@ function refreshDashRail(st) {
     title: d.text,
     // Instant, not smooth: a backgrounded tab never runs the animation
     // frames a smooth scroll rides on, and the jump is the point anyway.
-    onclick: () => heads[i].scrollIntoView({ block: 'start' }),
+    onclick: () => { heads[i].scrollIntoView({ block: 'start' }); st.close(); },
   },
   el('i', { class: 'doc-rail-tick', style: `width:${d.width}px` }),
   el('span', { class: 'doc-rail-label' }, d.text))));

@@ -86,11 +86,29 @@ test('the rail floats: its track is sticky inside a full-height gutter', () => {
   assert.match(APP, /class:\s*'doc-rail-track'/, 'the rail is built with a track to stick');
 });
 
-test('each dash carries its heading, hidden until the rail is hovered', () => {
+test('each dash carries its heading, hidden until the rail is clicked open', () => {
   assert.match(APP, /doc-rail-label'\s*\}\s*,\s*d\.text/, 'the label is the heading text');
   assert.match(CSS, /\.doc-rail-label\s*\{[^}]*display:\s*none/, 'resting rail is a minimap');
-  assert.match(CSS, /\.doc-rail:hover\s+\.doc-rail-label\s*\{\s*display:\s*block/,
-    'hovering the rail opens the headings');
+  assert.match(CSS, /\.doc-rail\.open\s+\.doc-rail-label\s*\{\s*display:\s*block/,
+    'clicking the rail opens the headings');
+  assert.doesNotMatch(CSS, /\.doc-rail:hover\s+\.doc-rail-label/,
+    'hover reveals nothing — the outline is click-to-open');
+});
+
+test('the open outline floats at the viewport midpoint', () => {
+  const rule = CSS.match(/\.doc-rail\.open\s+\.doc-rail-track\s*\{[^}]*\}/)?.[0];
+  assert.ok(rule, 'an .open state restyles the track');
+  assert.match(rule, /position:\s*fixed/, 'the open track leaves the gutter flow');
+  assert.match(rule, /top:\s*50%/, 'anchored to the viewport middle');
+  assert.match(rule, /translateY\(-50%\)/, 'centred on it, not hanging from it');
+});
+
+test('the outline opens on click and closes on Escape or a click away', () => {
+  const from = APP.indexOf('function attachDashRail');
+  const rail = APP.slice(from, APP.indexOf('function refreshDashRail'));
+  assert.match(rail, /classList\.add\('open'\)/, 'a click opens the rail');
+  assert.match(rail, /Escape/, 'Escape closes it');
+  assert.match(rail, /contains\(e\.target\)/, 'so does clicking anywhere else');
 });
 
 test('a hovered dash grows its tick', () => {
