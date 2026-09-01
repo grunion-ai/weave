@@ -4043,7 +4043,7 @@ function attachTableKeys(host) {
   }, { capture: true });
 }
 
-function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }) {
+function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, entityId }) {
   const t = vditorTheme();
   const chips = attachRefChips(host);
   attachCodeAuto(host);
@@ -4064,15 +4064,25 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }
     // compete with that and resurrect stale text.
     cache: { enable: false },
     counter: { enable: false },
-    // A compact strip of the everyday controls; the slash menu stays the
-    // full catalogue (blocks, references, mermaid) the toolbar never holds.
+    // Kyle's Toolbar Lab pick (2026-08-30): the full set as a selection
+    // bubble — the bar floats over selected text (attachToolbarBubble)
+    // instead of sitting in the flow, so the document keeps a clean top
+    // edge. The slash menu stays the full catalogue (references, mermaid,
+    // raw HTML, math) the toolbar never holds. hide stays false: Vditor
+    // must never fight the bubble layer for visibility.
     toolbar: [
       'headings', 'bold', 'italic', 'strike', 'inline-code', 'link', '|',
-      'list', 'ordered-list', 'check', '|',
+      'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
       'quote', 'code', 'table', 'line', '|',
-      'undo', 'redo',
+      'undo', 'redo', 'upload',
     ],
-    toolbarConfig: { hide: false, pin: true },
+    toolbarConfig: { hide: false, pin: false },
+    upload: {
+      multiple: true,
+      // Everything weave stores is uploadable — the files API takes any
+      // mime. Images embed, everything else links.
+      handler: (files) => uploadDocFiles(files, entityId, () => editor, onInput),
+    },
     // The outline lives outside the editor (the dash rail), so Vditor's own
     // panel stays off rather than fighting it for the left gutter.
     outline: { enable: false, position: 'left' },
@@ -4106,6 +4116,7 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }
         requestAnimationFrame(() =>
           host.querySelector('.vditor-hint--current')?.scrollIntoView({ block: 'nearest' }));
       });
+      attachToolbarBubble(host);
       if (autoFocus) editor.focus();
     },
     ...(onBlur ? { blur: () => onBlur() } : {}),
@@ -4133,6 +4144,78 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus }
   });
   liveEditors.add(editor);
   return editor;
+}
+
+/* ---------- toolbar bubble + uploads (Kyle's Toolbar Lab pick, 2026-08-30) ----
+   The toolbar never sits in the flow: it floats over the selection like
+   Fibery's, and only while a selection exists in this editor. Vditor keeps
+   owning every button; weave only owns where and when the bar is. */
+
+const docBubbles = new Set();
+
+function attachToolbarBubble(host) {
+  const st = { host };
+  st.place = () => placeToolbarBubble(st);
+  docBubbles.add(st);
+  st.place();
+}
+
+function placeToolbarBubble(st) {
+  if (!document.body.contains(st.host)) { docBubbles.delete(st); return; }
+  const bar = st.host.querySelector('.vditor-toolbar');
+  const root = st.host.querySelector('.vditor-ir .vditor-reset');
+  if (!bar || !root) return;
+  const sel = getSelection();
+  const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
+  // The bubble stays while the writer is inside it — a headings-dropdown or
+  // link-input click collapses the document selection, and the bar must not
+  // vanish under the cursor mid-gesture.
+  const inBar = bar.contains(document.activeElement) || bar.matches(':hover');
+  const on = (range && !range.collapsed && root.contains(range.startContainer)
+    && root.contains(range.endContainer)) || (inBar && bar.classList.contains('wv-show'));
+  bar.classList.toggle('wv-show', !!on);
+  if (!on || inBar) return;
+  const r = range.getBoundingClientRect();
+  const base = st.host.getBoundingClientRect();
+  const barW = bar.offsetWidth, barH = bar.offsetHeight;
+  const left = Math.max(0, Math.min(base.width - barW, r.left - base.left + r.width / 2 - barW / 2));
+  // Above the selection; below it when the selection touches the host's top.
+  const above = r.top - base.top - barH - 8;
+  bar.style.left = `${left}px`;
+  bar.style.top = `${above >= 0 ? above : r.bottom - base.top + 8}px`;
+}
+
+/* A microtask, not a frame: backgrounded pages throttle rAF to never, and
+   the bubble must still work in a hidden tab under test. */
+document.addEventListener('selectionchange', () => {
+  for (const st of docBubbles) queueMicrotask(st.place);
+});
+
+/* Toolbar uploads land on the entity through the same files API every other
+   surface uses; the doc then links what was stored — an image embeds, any
+   other type gets a plain link. Returning a string is Vditor's error tip. */
+async function uploadDocFiles(files, entityId, getEditor, onInput) {
+  if (!entityId) return 'This document has no entity to attach to';
+  const editor = getEditor();
+  for (const f of files) {
+    const contentBase64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1] ?? '');
+      r.onerror = () => rej(r.error);
+      r.readAsDataURL(f);
+    });
+    let meta;
+    try {
+      meta = await api('POST', `/entities/${entityId}/files`, {
+        name: f.name, mime: f.type || 'application/octet-stream', contentBase64,
+      });
+    } catch (e) { return `Upload failed: ${e.message}`; }
+    const url = `${WS_PREFIX}/api/files/${meta.id}`;
+    const md = (f.type || '').startsWith('image/') ? `![${f.name}](${url})` : `[${f.name}](${url})`;
+    editor.insertValue(md + '\n');
+  }
+  onInput?.(editor.getValue());
+  return null;
 }
 
 
@@ -4814,6 +4897,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const mountEditor = () => {
       const ed = mountDocEditor(host, {
         value: entity.docs?.[f.name] ?? '',
+        entityId: id, // toolbar uploads attach to this entity
         placeholder: `Write ${f.name}… press / for blocks`,
         onInput: (value) => {
           scheduleDocSave(id, f.name, value, status);
