@@ -222,7 +222,12 @@ export const TOOLS = [
   },
   {
     name: 'weave_delete_space',
-    description: 'Delete a space and every table in it. Not recoverable.',
+    description: 'Move a space to the trash (recoverable — its tables and rows go dark with it). Pass hard: true to purge it and every table in it for good.',
+    inputSchema: { type: 'object', properties: { space: { type: 'string' }, hard: { type: 'boolean' } }, required: ['space'] },
+  },
+  {
+    name: 'weave_restore_space',
+    description: 'Restore a trashed space; its tables and rows come back with it.',
     inputSchema: { type: 'object', properties: { space: { type: 'string' } }, required: ['space'] },
   },
   {
@@ -242,7 +247,12 @@ export const TOOLS = [
   },
   {
     name: 'weave_delete_table',
-    description: 'Delete a table and its entities. Not recoverable.',
+    description: 'Move a table to the trash (recoverable — its rows go dark with it). Pass hard: true to purge table and rows for good.',
+    inputSchema: { type: 'object', properties: { db: { type: 'string' }, hard: { type: 'boolean' } }, required: ['db'] },
+  },
+  {
+    name: 'weave_restore_table',
+    description: 'Restore a table out of the trash: the table, its rows and their relations come back exactly as they were.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
   },
   {
@@ -448,13 +458,17 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_update_space':
       return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon']));
     case 'weave_delete_space':
-      weave.deleteSpace(args.space);
-      return { space: args.space, deleted: true };
+      weave.deleteSpace(args.space, { hard: Boolean(args.hard) });
+      return { space: args.space, deleted: true, hard: Boolean(args.hard) };
+    case 'weave_restore_space':
+      return weave.restoreSpace(args.space);
     case 'weave_update_table':
       return weave.updateTable(args.db, pick(args, ['name', 'description', 'icon', 'noun', 'hiddenFields', 'systemFields', 'fieldOrder']));
     case 'weave_delete_table':
-      weave.deleteTable(args.db);
-      return { table: args.db, deleted: true };
+      weave.deleteTable(args.db, { hard: Boolean(args.hard) });
+      return { table: args.db, deleted: true, hard: Boolean(args.hard) };
+    case 'weave_restore_table':
+      return weave.restoreTable(args.db);
     case 'weave_update_field':
       return weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config']));
     case 'weave_delete_field':

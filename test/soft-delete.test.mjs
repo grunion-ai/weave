@@ -127,23 +127,23 @@ test('a soft-deleted entity can be purged from the trash', () => {
   assert.throws(() => w.getEntity(a.id), /not found/);
 });
 
-/* Dropping the container is not a soft delete: there is nothing left to
-   restore into. Soft-deleting the rows instead would leave them in state
-   pointing at a table that no longer exists — listTrash() then reads a
-   missing table and throws. */
-test('deleting a table purges its rows, live and trashed alike', () => {
+/* Purging the container really drops it: a hard table delete takes every
+   row with it, live and trashed alike, so nothing is left pointing at a
+   table that no longer exists. (The soft default is structure-trash.test.mjs
+   territory.) */
+test('hard-deleting a table purges its rows, live and trashed alike', () => {
   const { w, tasks, a } = buildWorkspace();
   w.deleteEntity(a.id); // one already in the trash, one still live
-  w.deleteTable(tasks.id);
+  w.deleteTable(tasks.id, { hard: true });
 
   assert.deepEqual(w.listTrash(), [], 'no orphans may survive their table');
   assert.throws(() => w.getEntity(a.id), /not found/);
 });
 
-test('deleting a space purges every row it contained', () => {
+test('hard-deleting a space purges every row it contained', () => {
   const { w, a, apollo } = buildWorkspace();
   w.deleteEntity(a.id);
-  w.deleteSpace('Product');
+  w.deleteSpace('Product', { hard: true });
 
   assert.deepEqual(w.listTrash(), []);
   assert.throws(() => w.getEntity(apollo.id), /not found/);

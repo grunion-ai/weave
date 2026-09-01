@@ -119,11 +119,16 @@ test('the registry is protected structure', () => {
   assert.throws(() => w.deleteField('Tables', spaceField.id), /system/i);
 });
 
-test('deleting a registry row is the real, unrecoverable delete — so it must be said', () => {
+/* Re-ruled 2026-08-31 (lifecycle regression gate): a registry-row delete is
+   soft and recoverable like any other delete; `hard` remains the real,
+   unrecoverable one. */
+test('deleting a registry row is soft; hard is still the real, unrecoverable delete', () => {
   const w = fresh();
   const row = w.listEntities(w.getTable('Spaces').id)[0];
-  assert.throws(() => w.deleteEntity(row.id), /hard/i);
-  assert.ok(w.getSpace('Dev'), 'the refused soft delete changed nothing');
+  w.deleteEntity(row.id); // soft — the space moves to the trash
+  assert.equal(w.findSpace('Dev'), undefined, 'a trashed space is hidden');
+  w.restoreEntity(row.id);
+  assert.ok(w.getSpace('Dev'), 'and restore brings it back whole');
   w.deleteEntity(row.id, { hard: true });
   assert.equal(w.findSpace('Dev'), undefined);
   assert.equal(w.findTable('Dev/Task'), undefined, 'the space took its tables with it');

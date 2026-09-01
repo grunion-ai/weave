@@ -687,6 +687,8 @@ export class Weave {
     if (this.findSpace(name)) throw new WeaveError(`Space '${name}' already exists`, 'conflict');
     // A table has taken its icon at creation since Feature #51; a space had to
     // be created and then updated, which is a second call for one field.
+    const held = Object.values(this.state.spaces).find((s) => s.deletedAt && s.name.toLowerCase() === name.toLowerCase());
+    if (held) throw new WeaveError(`Space '${name}' is in the trash — restore or purge it first`, 'conflict');
     const space = { id: uuid(), name, description, ...(icon ? { icon } : {}), createdAt: nowISO() };
     this.state.spaces[space.id] = space;
     this.save();
@@ -695,14 +697,19 @@ export class Weave {
     return space;
   }
 
-  listSpaces() {
-    return Object.values(this.state.spaces);
+  listSpaces({ includeDeleted = false } = {}) {
+    const all = Object.values(this.state.spaces);
+    return includeDeleted ? all : all.filter((s) => !s.deletedAt);
   }
 
+  /* An id finds a space even in the trash — restore and the registry need
+     that, the same way readEntity works on a trashed row. Name lookups see
+     only live spaces. */
   findSpace(ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
-    return this.state.spaces[ref] ?? Object.values(this.state.spaces).find((s) => s.name === ref)
-      ?? Object.values(this.state.spaces).find((s) => s.name.toLowerCase() === String(ref).toLowerCase());
+    const live = Object.values(this.state.spaces).filter((s) => !s.deletedAt);
+    return this.state.spaces[ref] ?? live.find((s) => s.name === ref)
+      ?? live.find((s) => s.name.toLowerCase() === String(ref).toLowerCase());
   }
 
   getSpace(ref) {
@@ -722,14 +729,41 @@ export class Weave {
     return s;
   }
 
-  deleteSpace(ref) {
+  /* Recoverable by default, like an entity: a soft delete tombstones the
+     space and leaves its tables and rows exactly where they are, hidden by
+     the parent. `hard` is the old cascading purge. */
+  deleteSpace(ref, { hard = false } = {}) {
     const s = this.getSpace(ref);
     if (s.system) throw new WeaveError(`Space '${s.name}' is part of the system registry`, 'invalid');
-    for (const db of this.listTables(s.id)) this.deleteTable(db.id);
+    if (!hard) {
+      if (s.deletedAt) return s;
+      s.deletedAt = nowISO();
+      this.#trashSysRow('spaces', s.id);
+      this.#audit('space-trashed', { name: s.name });
+      this.save();
+      return s;
+    }
+    for (const db of this.listTables(s.id, { includeDeleted: true })) this.deleteTable(db.id, { hard: true });
     delete this.state.spaces[s.id];
     this.#dropSysRow('spaces', s.id);
     this.#audit('space-deleted', { name: s.name });
     this.save();
+  }
+
+  restoreSpace(ref) {
+    if (ref && typeof ref === 'object') ref = ref.id;
+    // The live-name resolver cannot see the trash, so reach in by hand.
+    const s = this.state.spaces[ref]
+      ?? Object.values(this.state.spaces).find((x) => x.name.toLowerCase() === String(ref).toLowerCase());
+    if (!s) throw new WeaveError(`Space '${ref}' not found`, 'not-found');
+    if (!s.deletedAt) return s;
+    const clash = Object.values(this.state.spaces).find((x) => !x.deletedAt && x.name.toLowerCase() === s.name.toLowerCase());
+    if (clash) throw new WeaveError(`A live space already holds the name '${s.name}'`, 'conflict');
+    s.deletedAt = null;
+    this.#restoreSysRow('spaces', s.id);
+    this.#audit('space-restored', { name: s.name });
+    this.save();
+    return s;
   }
 
   // ---------------- tables ----------------
@@ -739,6 +773,8 @@ export class Weave {
     if (!name) throw new WeaveError('Table name is required', 'invalid');
     const qualified = `${sp.name}/${name}`;
     if (this.findTable(qualified)) throw new WeaveError(`Table '${qualified}' already exists`, 'conflict');
+    const held = Object.values(this.state.tables).find((d) => d.deletedAt && d.spaceId === sp.id && d.name.toLowerCase() === name.toLowerCase());
+    if (held) throw new WeaveError(`Table '${qualified}' is in the trash — restore or purge it first`, 'conflict');
     const nameField = { id: uuid(), name: 'Name', type: 'text', config: {} };
     const docField = { id: uuid(), name: 'Description', type: 'document', config: {} };
     const db = {
@@ -769,8 +805,9 @@ export class Weave {
     return db;
   }
 
-  listTables(spaceId = null) {
-    const all = Object.values(this.state.tables);
+  listTables(spaceId = null, { includeDeleted = false } = {}) {
+    let all = Object.values(this.state.tables);
+    if (!includeDeleted) all = all.filter((d) => !d.deletedAt && !this.state.spaces[d.spaceId]?.deletedAt);
     return spaceId ? all.filter((d) => d.spaceId === spaceId) : all;
   }
 
@@ -782,7 +819,7 @@ export class Weave {
   findTable(ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
     if (this.state.tables[ref]) return this.state.tables[ref];
-    const all = Object.values(this.state.tables);
+    const all = Object.values(this.state.tables).filter((d) => !d.deletedAt && !this.state.spaces[d.spaceId]?.deletedAt);
     if (String(ref).includes('/')) {
       const [spName, dbName] = String(ref).split('/');
       return all.find((d) => d.name.toLowerCase() === dbName.toLowerCase()
@@ -890,9 +927,20 @@ export class Weave {
     return db;
   }
 
-  deleteTable(ref) {
+  /* Recoverable by default (structure trash): a soft delete tombstones the
+     table and keeps every row exactly where it is, hidden by the tombstone.
+     `hard` is the old purge. */
+  deleteTable(ref, { hard = false } = {}) {
     const db = this.getTable(ref);
     if (db.system) throw new WeaveError(`Table '${db.name}' is part of the system registry`, 'invalid');
+    if (!hard) {
+      if (db.deletedAt) return db;
+      db.deletedAt = nowISO();
+      this.#trashSysRow('tables', db.id);
+      this.#audit('table-trashed', { name: db.name });
+      this.save();
+      return db;
+    }
     // Purge, not trash: the table itself is going away, so a soft-deleted row
     // would be left pointing at a table that no longer exists — unrestorable
     // and fatal to any read of the trash. Trashed rows go too.
@@ -930,6 +978,27 @@ export class Weave {
     this.#dropSysRow('tables', db.id);
     this.#audit('table-deleted', { name: db.name });
     this.save();
+  }
+
+  restoreTable(ref) {
+    if (ref && typeof ref === 'object') ref = ref.id;
+    let db = this.state.tables[ref];
+    if (!db) {
+      const [spName, dbName] = String(ref).includes('/') ? String(ref).split('/') : [null, String(ref)];
+      db = Object.values(this.state.tables).find((d) => d.name.toLowerCase() === String(dbName).toLowerCase()
+        && (!spName || this.state.spaces[d.spaceId]?.name.toLowerCase() === spName.toLowerCase()));
+    }
+    if (!db) throw new WeaveError(`Table '${ref}' not found`, 'not-found');
+    if (!db.deletedAt) return db;
+    const sp = this.state.spaces[db.spaceId];
+    if (sp?.deletedAt) throw new WeaveError(`Table '${db.name}' is inside the trashed space '${sp.name}' — restore the space first`, 'invalid');
+    const clash = Object.values(this.state.tables).find((x) => !x.deletedAt && x.spaceId === db.spaceId && x.name.toLowerCase() === db.name.toLowerCase());
+    if (clash) throw new WeaveError(`A live table already holds the name '${this.qualifiedName(db)}'`, 'conflict');
+    db.deletedAt = null;
+    this.#restoreSysRow('tables', db.id);
+    this.#audit('table-restored', { name: db.name });
+    this.save();
+    return db;
   }
 
   // ---------------- fields ----------------
@@ -1708,7 +1777,9 @@ export class Weave {
   #sysRow(kind, sysId) {
     const t = this.#sysTable(kind);
     if (!t) return undefined;
-    return Object.values(this.state.entities).find((e) => e.dbId === t.id && e.sysId === sysId && !e.deletedAt);
+    // Trashed rows count: a trashed table's row still IS its row, and a sync
+    // that cannot see it would mint a duplicate.
+    return Object.values(this.state.entities).find((e) => e.dbId === t.id && e.sysId === sysId);
   }
 
   /* The ids a registry row's relation points at, however it is stored. */
@@ -2008,6 +2079,19 @@ export class Weave {
     if (row) this.#metaSync(() => this.deleteEntity(row.id, { hard: true }));
   }
 
+  /* Structure trash mirrored onto the registry: the row is soft-deleted with
+     the structure and restored with it, so the registry trash lists trashed
+     tables and spaces the way a table's trash lists its rows. */
+  #trashSysRow(kind, sysId) {
+    const row = this.#sysRow(kind, sysId);
+    if (row && !row.deletedAt) this.#metaSync(() => this.deleteEntity(row.id));
+  }
+
+  #restoreSysRow(kind, sysId) {
+    const row = this.#sysRow(kind, sysId);
+    if (row?.deletedAt) this.#metaSync(() => this.restoreEntity(row.id));
+  }
+
   /* Row-side verbs arriving at a system table translate into the structural
      verb; that verb's own sync writes the row, so both directions share one
      path. Returns undefined when the call should proceed as a plain row op. */
@@ -2121,21 +2205,20 @@ export class Weave {
     if (!db.system || this.#inMetaSync) return undefined;
     if (!['spaces', 'tables', 'fields'].includes(db.system)) return undefined; // ordinary rows
 
-    const noun = { spaces: 'space', tables: 'table', fields: 'column' }[db.system];
-    if (!hard) {
-      throw new WeaveError(`Deleting a ${noun} is not recoverable — pass hard to confirm`, 'invalid');
-    }
-    if (db.system === 'spaces') this.deleteSpace(e.sysId);
-    else if (db.system === 'tables') this.deleteTable(e.sysId);
-    else {
+    if (db.system === 'fields') {
+      // A column has no trash — its values would dangle. Hard-only, said out loud.
+      if (!hard) throw new WeaveError('Deleting a column is not recoverable — pass hard to confirm', 'invalid');
       const owner = this.#fieldOwner(e.sysId);
       if (owner && owner.nameFieldId === e.sysId) {
         throw new WeaveError('Cannot delete the Name field', 'invalid');
       }
       if (owner) this.deleteField(owner.id, e.sysId);
       else this.#metaSync(() => this.deleteEntity(e.id, { hard: true })); // orphaned row
+      return { id: e.id, purged: true };
     }
-    return { id: e.id, purged: true };
+    if (db.system === 'spaces') this.deleteSpace(e.sysId, { hard });
+    else this.deleteTable(e.sysId, { hard });
+    return hard ? { id: e.id, purged: true } : this.readEntity(e.id);
   }
 
   findField(db, ref) {
@@ -2554,7 +2637,10 @@ export class Weave {
   // restore is lossless) but must not be seen by anything reading through it.
   #liveEntity(id) {
     const e = this.state.entities[id];
-    return e && !e.deletedAt ? e : null;
+    if (!e || e.deletedAt) return null;
+    const db = this.state.tables[e.dbId];
+    if (!db || db.deletedAt || this.state.spaces[db.spaceId]?.deletedAt) return null;
+    return e;
   }
 
   getEntity(id) {
@@ -3008,6 +3094,16 @@ export class Weave {
 
   restoreEntity(id) {
     const e = this.getEntity(id);
+    {
+      // A registry row's restore is the structural restore, same one path as
+      // its delete — #inMetaSync marks which side started it.
+      const db = this.state.tables[e.dbId];
+      if (db?.system && !this.#inMetaSync && ['spaces', 'tables'].includes(db.system)) {
+        if (db.system === 'spaces') this.restoreSpace(e.sysId);
+        else this.restoreTable(e.sysId);
+        return this.readEntity(id);
+      }
+    }
     if (!e.deletedAt) return this.readEntity(id);
     e.deletedAt = null;
     e.updatedAt = nowISO();
@@ -3631,6 +3727,8 @@ export class Weave {
     const results = [];
     for (const e of Object.values(this.state.entities)) {
       if (e.deletedAt) continue; // the trash is not searchable
+      const home = this.state.tables[e.dbId];
+      if (!home || home.deletedAt || this.state.spaces[home.spaceId]?.deletedAt) continue; // nor a trashed container
       const name = this.entityName(e);
       const docText = Object.values(e.docs ?? {}).join('\n');
       const comments = e.comments.map((c) => c.text).join('\n');

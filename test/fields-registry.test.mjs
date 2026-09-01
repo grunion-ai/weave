@@ -100,7 +100,7 @@ test('deleting a Fields row deletes the real column — hard only', () => {
 test('a deleted table takes its field rows with it', () => {
   const w = fresh();
   w.addField('Task', { name: 'Estimate', type: 'number' });
-  w.deleteTable('Dev/Task');
+  w.deleteTable('Dev/Task', { hard: true });
   assert.equal(rowsOf(w).length, 0);
 });
 

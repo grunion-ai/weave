@@ -511,7 +511,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
           if (rx.method === 'PATCH') return out(200, weave.updateSpace(m[1], body));
-          if (rx.method === 'DELETE') { weave.deleteSpace(m[1]); return out(200, { ok: true }); }
+          if (rx.method === 'DELETE') {
+            const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
+            weave.deleteSpace(m[1], { hard });
+            return out(200, { ok: true });
+          }
+        }
+        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
+          return out(200, weave.restoreSpace(m[1]));
         }
 
         if (route === 'GET /api/tables') {
@@ -524,10 +531,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (rx.method === 'GET') {
             const db = weave.getTable(m[1]);
             const schema = weave.describeSchema().flatMap((s) => s.tables).find((d) => d.id === db.id);
-            return out(200, schema);
+            return out(200, schema ?? { id: db.id, name: db.name, spaceId: db.spaceId, deletedAt: db.deletedAt ?? null });
           }
           if (rx.method === 'PATCH') return out(200, weave.updateTable(m[1], body));
-          if (rx.method === 'DELETE') { weave.deleteTable(m[1]); return out(200, { ok: true }); }
+          if (rx.method === 'DELETE') {
+            const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
+            weave.deleteTable(m[1], { hard });
+            return out(200, { ok: true });
+          }
+        }
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/restore$/)) && rx.method === 'POST') {
+          return out(200, weave.restoreTable(m[1]));
         }
 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields$/)) && rx.method === 'POST') {

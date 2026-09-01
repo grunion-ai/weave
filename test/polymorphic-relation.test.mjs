@@ -150,10 +150,10 @@ test('deleting a multi-target field leaves the member tables untouched', () => {
 test('deleting a member table prunes it from the target set; the last member takes the field with it', () => {
   const { w, projects, tasks, tickets } = build();
   const { field } = w.addRelation(tickets, { name: 'Scope', targetDbs: [tasks, projects], cardinality: 'many-to-many' });
-  w.deleteTable(tasks.id);
+  w.deleteTable(tasks.id, { hard: true });
   const f = w.getTable(tickets.id).fields[field.id];
   assert.deepEqual(f.config.targetDbs, [projects.id]);
-  w.deleteTable(projects.id);
+  w.deleteTable(projects.id, { hard: true });
   assert.ok(!w.getTable(tickets.id).fields[field.id], 'field gone with its last target');
 });
 

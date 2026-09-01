@@ -307,9 +307,10 @@ async function main() {
       const [sub, name] = args;
       if (sub === 'create') return out(w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '' }));
       if (sub === 'update') return out(w.updateSpace(name, pickFlags(['name', 'description', 'icon'])));
-      if (sub === 'delete') { w.deleteSpace(name); return out({ space: name, deleted: true }); }
+      if (sub === 'delete') { w.deleteSpace(name, { hard: Boolean(flags.hard) }); return out({ space: name, deleted: true }); }
+      if (sub === 'restore') return out(w.restoreSpace(name));
       if (sub === 'list' || !sub) return out(w.listSpaces());
-      throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, delete`);
+      throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, delete, restore`);
     }
     case 'table':
     case 'db': { // `db` kept as an alias
@@ -323,9 +324,10 @@ async function main() {
         if (flags.order != null) patch.fieldOrder = splitList(flags.order);
         return out(w.updateTable(space, patch));
       }
-      if (sub === 'delete') { w.deleteTable(space); return out({ table: space, deleted: true }); }
+      if (sub === 'delete') { w.deleteTable(space, { hard: Boolean(flags.hard) }); return out({ table: space, deleted: true }); }
+      if (sub === 'restore') return out(w.restoreTable(space));
       if (sub === 'list' || !sub) return out(w.listTables().map((d) => w.qualifiedName(d)));
-      throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, delete`);
+      throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, delete, restore`);
     }
     case 'field': {
       const [sub, db, name, type] = args;
