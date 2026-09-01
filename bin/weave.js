@@ -418,6 +418,13 @@ async function main() {
       if (sub === 'list' || !sub) return out(w.getTable(db).fieldOrder.map((id) => w.getTable(db).fields[id]));
       throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, delete`);
     }
+    case 'formula': {
+      // weave formula check <db> '<expression>' [--entity id] [--exclude-field name]
+      // Validate before saving; previews on a real row when the table has one.
+      const [sub, db, expression] = args;
+      if (sub === 'check') return out(w.checkFormula(db, expression, { entity: flags.entity ?? null, excludeField: flags['exclude-field'] ?? null }));
+      throw new WeaveError(`Unknown formula subcommand '${sub}'. Try: check`);
+    }
     case 'relation': {
       const [sub, db, name, targetDb] = args;
       if (sub === 'add') {

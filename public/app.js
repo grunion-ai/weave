@@ -3065,27 +3065,60 @@ function stateListEditor(state, onChange) {
 
 /* The formula builder: expression plus insertable chips for this table's
    fields and the engine's functions — the two vocabularies a formula has. */
-function formulaBuilder(db, state, onChange) {
+function formulaBuilder(db, state, onChange, { selfName = null } = {}) {
   const ta = el('textarea', {
     class: 'fx-expr', rows: 3, spellcheck: 'false',
     placeholder: 'e.g. if(Estimate > 5, "big", "small")',
   });
   ta.value = state.expression ?? '';
-  ta.addEventListener('input', () => { state.expression = ta.value; onChange(); });
-  const insert = (text) => {
+  /* Live verdict under the expression: the same check the save runs, so
+     nothing is a surprise at submit. Valid + a row → a real preview value;
+     invalid → the parser's message, in place, while typing. */
+  const status = el('div', { class: 'fx-status' });
+  let seq = 0, timer;
+  const runCheck = async () => {
+    const expr = (state.expression ?? '').trim();
+    const mine = ++seq;
+    if (!expr) { status.className = 'fx-status'; status.textContent = ''; return; }
+    try {
+      const r = await api('POST', `/tables/${db.id}/formula-check`, { expression: expr, excludeField: selfName });
+      if (mine !== seq) return;
+      status.className = 'fx-status ' + (r.ok ? 'ok' : 'err');
+      status.textContent = r.ok
+        ? ('preview' in r ? `= ${typeof r.preview === 'string' ? JSON.stringify(r.preview) : r.preview}${r.previewEntity ? `   (${r.previewEntity})` : ''}` : '✓ valid')
+        : r.error;
+    } catch (err) {
+      if (mine !== seq) return;
+      status.className = 'fx-status err';
+      status.textContent = err.message;
+    }
+  };
+  const queueCheck = () => { clearTimeout(timer); timer = setTimeout(runCheck, 250); };
+  ta.addEventListener('input', () => { state.expression = ta.value; onChange(); queueCheck(); });
+  const insert = (text, cursorBack = 0) => {
     const at = ta.selectionStart ?? ta.value.length;
     ta.setRangeText(text, at, ta.selectionEnd ?? at, 'end');
+    if (cursorBack) {
+      const p = ta.selectionStart - cursorBack;
+      ta.setSelectionRange(p, p);
+    }
     state.expression = ta.value;
     ta.focus();
     onChange();
+    queueCheck();
   };
+  // The field being edited never offers itself — a formula that reads
+  // itself never converges, and the engine rejects it anyway.
   const fieldChips = db.fields
-    .filter((x) => !['document', 'attachments'].includes(x.type))
+    .filter((x) => !['document', 'attachments'].includes(x.type) && x.name !== selfName)
     .map((x) => el('button', { type: 'button', class: 'fx-chip', title: x.type, onclick: () => insert(fieldDialogCore.formulaFieldToken(x.name)) }, x.name));
+  // Function chips land the caret between the parens, not after a dangling '('.
   const fnChips = fieldDialogCore.FORMULA_FUNCTIONS
-    .map((fn) => el('button', { type: 'button', class: 'fx-chip fn', title: fn.sig, onclick: () => insert(`${fn.name}(`) }, `${fn.name}()`));
+    .map((fn) => el('button', { type: 'button', class: 'fx-chip fn', title: fn.sig, onclick: () => insert(`${fn.name}()`, 1) }, `${fn.name}()`));
+  if ((state.expression ?? '').trim()) runCheck();
   return el('div', {},
     ta,
+    status,
     el('div', { class: 'fx-chip-rows' },
       el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'fields'), ...fieldChips),
       el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'functions'), ...fnChips)));
@@ -3211,7 +3244,7 @@ function fieldDialog(db, existing, after) {
     const kids = [];
     if (state.computed === 'formula') {
       // The script editor lives in the tray (Kyle, 2026-08-23), not a window.
-      kids.push(dsection('Script', formulaBuilder(db, state, changed)));
+      kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null })));
       // A numeric result wears the same costume a number field does.
       kids.push(...numberCostumeControls(state, drawCfg, changed, { label: 'Result format' }));
     } else {

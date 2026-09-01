@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="kind" content="design-review"><meta name="generated-at" content="2026-09-01T03:00:00Z"><meta name="repo" content="grunion-ai/weave"><meta name="branch" content="formula-builder">
+<title>weave — the formula builder, agent-first</title>
+<style>
+:root{--bg:#0d141d;--soft:#16202c;--soft2:#1c2836;--line:#2a3849;--fg:#d7e0e9;--muted:#8298ab;--accent:#3f8cff;--accent-soft:#1b3a63;--ok:#2fb344;--warn:#f59f00;--bad:#e05252;--mono:ui-monospace,'SF Mono',Menlo,monospace}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding:0 28px 90px}
+.plan-header{border-bottom:1px solid var(--line);margin-bottom:30px}
+.topbar{display:flex;align-items:baseline;gap:14px;padding:22px 28px 10px;font-family:var(--mono)}
+.kind{background:var(--accent-soft);color:var(--accent);font-size:11px;letter-spacing:.08em;padding:3px 8px;border-radius:4px;font-weight:700}
+.topbar h1{font-size:16px;margin:0;font-weight:600;font-family:inherit}.topbar time{margin-left:auto;color:var(--muted);font-size:12px}
+dl.meta{display:grid;grid-template-columns:repeat(4,auto);gap:0 28px;padding:8px 28px 16px;margin:0;font-family:var(--mono);font-size:11.5px}
+dl.meta div{display:flex;flex-direction:column}dl.meta dt{color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-size:10px}dl.meta dd{margin:0}
+.intro{color:var(--muted);max-width:860px}.intro b{color:var(--fg);font-weight:600}
+.settled{border:1px solid #2fb34440;border-left:3px solid var(--ok);border-radius:9px;background:rgba(47,179,68,.045);padding:14px 20px;margin:22px 0 0;font-size:13px;color:var(--muted)}
+.settled b{color:var(--ok);font-weight:600}
+.settled ul{margin:8px 0 0;padding-left:19px}.settled li{margin:3px 0}
+section.dir{margin:52px 0}
+.dir-head{display:flex;align-items:baseline;gap:12px;margin-bottom:2px;flex-wrap:wrap}
+.tag{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 9px}
+.dir-head h2{font-size:19px;margin:0;font-weight:700}
+.thesis{color:var(--muted);margin:2px 0 14px;max-width:860px}
+.stage{background:linear-gradient(180deg,#0a1119,#0c1420);border:1px solid var(--line);border-radius:12px;padding:20px;overflow-x:auto}
+.notes{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:14px;font-size:12.5px}
+.notes>div{color:var(--muted)}.notes b{font-weight:600;display:block;margin-bottom:2px}
+.win b{color:var(--ok)}.fit b{color:var(--accent)}
+code{font-family:var(--mono);font-size:12px;background:var(--soft2);border-radius:4px;padding:1px 5px}
+/* ------- dialog facsimile ------- */
+.dlg{max-width:520px;background:#f6f7f9;color:#1b2733;border-radius:10px;padding:18px 20px;font-size:13px;margin:0 auto}
+.dlg .lbl{font-size:10px;letter-spacing:.07em;color:#7a8794;font-weight:700;margin:14px 0 4px;text-transform:uppercase}
+.dlg textarea,.dlg .expr{width:100%;border:1px solid #d4dae1;border-radius:6px;background:#fff;font-family:var(--mono);font-size:12.5px;padding:8px 10px;color:#1b2733;min-height:56px;white-space:pre-wrap}
+.expr .err-span{background:#ffd9d9;border-bottom:2px solid #d63939;border-radius:2px}
+.expr .caret{display:inline-block;width:1px;height:13px;background:#1b2733;vertical-align:text-bottom;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.status{font-family:var(--mono);font-size:11.5px;margin-top:5px;min-height:16px}
+.status.ok{color:#2fb344}.status.err{color:#d63939}
+.chips{display:flex;flex-wrap:wrap;gap:4px;align-items:baseline;margin-top:5px}
+.chips .cl{font-size:10px;letter-spacing:.06em;color:#7a8794;text-transform:uppercase;margin-right:2px}
+.chip{font-family:var(--mono);font-size:11px;padding:1px 8px;border-radius:10px;border:1px solid #d4dae1;background:#fff;color:#1b2733}
+.chip.fn{color:#2f5fd0;border-color:#c3d2f0}
+.chip.dim{opacity:.45}
+.grp{font-size:10px;color:#98a4b0;text-transform:uppercase;letter-spacing:.06em;width:100%;margin-top:6px}
+.sigcard{border:1px solid #d4dae1;background:#fff;border-radius:8px;padding:9px 12px;margin-top:8px;box-shadow:0 6px 18px rgba(10,20,35,.12);max-width:340px}
+.sigcard .sig{font-family:var(--mono);font-size:12px;color:#2f5fd0}
+.sigcard .doc{font-size:12px;color:#5a6975;margin-top:2px}
+.sigcard .eg{font-family:var(--mono);font-size:11px;color:#7a8794;margin-top:5px}
+.rowpick{display:flex;align-items:center;gap:8px;margin-top:6px;font-family:var(--mono);font-size:11.5px;color:#5a6975}
+.rowpick button{border:1px solid #d4dae1;background:#fff;border-radius:5px;font-size:11px;padding:0 6px;color:#5a6975}
+.badge{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:4px;background:#e8f0ff;color:#2f5fd0;margin-left:6px}
+.agentpanel{margin-top:14px;border-top:1px dashed #d4dae1;padding-top:10px}
+.agentpanel summary{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#7a8794;font-weight:700;cursor:pointer}
+.agentpanel pre{background:#101825;color:#cfe0f2;border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:11px;line-height:1.6;overflow-x:auto;margin:8px 0 0}
+.agentpanel pre b{color:#6ea8ff;font-weight:600}
+.ac{position:relative}
+.acpop{border:1px solid #d4dae1;background:#fff;border-radius:8px;margin-top:4px;box-shadow:0 6px 18px rgba(10,20,35,.12);max-width:300px;font-family:var(--mono);font-size:12px}
+.acpop .it{display:flex;justify-content:space-between;gap:14px;padding:5px 10px;border-bottom:1px solid #eef1f4}
+.acpop .it:last-child{border-bottom:none}
+.acpop .it.sel{background:#e8f0ff}
+.acpop .k{color:#1b2733}.acpop .t{color:#98a4b0;font-size:10.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="plan-header">
+  <div class="topbar"><span class="kind">DESIGN-REVIEW</span><h1>The formula builder, agent-first</h1><time>2026-09-01</time></div>
+  <dl class="meta">
+    <div><dt>Repo</dt><dd>grunion-ai/weave</dd></div>
+    <div><dt>Branch</dt><dd>formula-builder</dd></div>
+    <div><dt>Kind</dt><dd>design-review</dd></div>
+    <div><dt>Surface</dt><dd>field dialog · REST · MCP · CLI</dd></div>
+  </dl>
+</header>
+
+<p class="intro">The builder accepted <code>if(upper(</code>, saved it, and the first anyone heard of it
+was <code>#ERR</code> in every cell. Three directions below, on top of what this branch already lands.
+The premise for all three: <b>a human and an agent author a formula through the same check</b>.
+The engine produces one verdict; the dialog shows it and the API returns it.</p>
+
+<div class="settled"><b>Landed on this branch (not a proposal)</b>
+<ul>
+  <li><code>check()</code> in src/formula.js: static validation of syntax, function names, field names.</li>
+  <li>Engine rejects a bad expression at save; a formula can no longer reference itself.</li>
+  <li><code>POST /api/tables/:id/formula-check</code> + <code>weave_check_formula</code> (MCP) + <code>weave formula check</code> (CLI): validate and preview on a real row before saving. Documented in AGENTS.md; agent-surface gate green.</li>
+  <li>Dialog: live verdict line under the script (parse error in red, or <code>= value</code> from row 1), function chips land the caret inside the parens, the edited field's own chip is gone.</li>
+</ul></div>
+
+<!-- ================= DIRECTION A ================= -->
+<section class="dir">
+  <div class="dir-head"><span class="tag">A</span><h2>Chips that teach: groups + signature card</h2></div>
+  <p class="thesis">22 flat chips make the vocabulary look bigger than it is. Group them the way the grammar groups them, and let hover/focus show the one thing a chip never says: the signature, what it does, one example. The title-attribute tooltip today is invisible on touch and to agents reading the DOM.</p>
+  <div class="stage">
+    <div class="dlg">
+      <div class="lbl">Script</div>
+      <div class="expr">if([Amount] &gt; 10000, "major", "minor")<span class="caret"></span></div>
+      <div class="status ok">= "major"&nbsp;&nbsp;(Acme deal)</div>
+      <div class="chips"><span class="cl">fields</span><span class="chip">Amount</span><span class="chip">Stage</span><span class="chip">[Close Date]</span><span class="chip dim" title="document fields don't compute">¶ Notes</span></div>
+      <div class="chips"><span class="grp">logic</span><span class="chip fn">if()</span><span class="chip fn">empty()</span><span class="chip fn">contains()</span></div>
+      <div class="chips"><span class="grp">text</span><span class="chip fn">concat()</span><span class="chip fn">upper()</span><span class="chip fn">lower()</span><span class="chip fn">trim()</span><span class="chip fn">len()</span><span class="chip fn">text()</span></div>
+      <div class="chips"><span class="grp">number</span><span class="chip fn">round()</span><span class="chip fn">abs()</span><span class="chip fn">min()</span><span class="chip fn">max()</span><span class="chip fn">number()</span></div>
+      <div class="chips"><span class="grp">date</span><span class="chip fn" style="outline:2px solid #2f5fd0">dateadd()</span><span class="chip fn">datediff()</span><span class="chip fn">today()</span><span class="chip fn">now()</span><span class="chip fn">days()</span><span class="chip fn">year()</span><span class="chip fn">month()</span><span class="chip fn">day()</span></div>
+      <div class="sigcard">
+        <div class="sig">dateadd(date, n, unit)</div>
+        <div class="doc">Shift a date by n days, weeks, months or years. A date in, a date out.</div>
+        <div class="eg">dateadd([Close Date], 2, "weeks")</div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <div class="win"><b>The win</b>Signature + example at the moment of choice, with no trip to the handbook. The chip catalog stays the FORMULA_FUNCTIONS list the contract test pins to FUNCS; each entry gains a <code>doc</code> and an <code>example</code>, and the MCP vocabulary tool serves both verbatim.</div>
+    <div class="fit"><b>Fit</b>Pure client + one data change in field-dialog-core.js. Field chips also show excluded fields greyed with the reason (document/attachments don't compute) instead of hiding them; a silent absence reads as a bug.</div>
+  </div>
+</section>
+
+<!-- ================= DIRECTION B ================= -->
+<section class="dir">
+  <div class="dir-head"><span class="tag">B</span><h2>Preview you can steer: row cycler + typed result</h2></div>
+  <p class="thesis">One preview row is proof the formula parses; it is not proof it is right. Let the author step through rows, pick the pathological one, and see what type came back. The number costume section below only applies to a numeric result, and today nothing says so.</p>
+  <div class="stage">
+    <div class="dlg">
+      <div class="lbl">Script</div>
+      <div class="expr">datediff([Close Date], today(), "days")</div>
+      <div class="status ok">= 41 <span class="badge">number</span></div>
+      <div class="rowpick"><button>‹</button> row 3 of 51 — “Meridian Group renewal” <button>›</button> <span style="margin-left:auto;color:#98a4b0">⚠ 2 rows → null (empty Close Date)</span></div>
+    </div>
+  </div>
+  <div class="notes">
+    <div class="win"><b>The win</b>The null count is the real catch. A formula valid on row 1 and null on a third of the table is exactly the bug one preview row cannot show. One extra engine pass over N rows (capped, say 200) returns <code>{nulls, errors, sampleByOutcome}</code>, the same numbers an agent gets from the API to assert against.</div>
+    <div class="fit"><b>Fit</b>Extends <code>checkFormula</code> with a <code>scan: true</code> option; the dialog and the CLI both consume it. Result-type badge falls out of the preview value's typeof, and it drives whether the number costume section renders at all.</div>
+  </div>
+</section>
+
+<!-- ================= DIRECTION C ================= -->
+<section class="dir">
+  <div class="dir-head"><span class="tag">C</span><h2>The agent panel: the dialog shows its own API</h2></div>
+  <p class="thesis">Agent-first means the browser is never the only place a thing can be done, and the fastest way to keep that true is to print the equivalent calls where the human is standing. The dialog becomes its own documentation: what you just built by clicking is one command away from a script.</p>
+  <div class="stage">
+    <div class="dlg">
+      <div class="lbl">Script</div>
+      <div class="expr">if([Amount] &gt; 10000, "major", "minor")</div>
+      <div class="status ok">= "major"&nbsp;&nbsp;(Acme deal)</div>
+      <div class="agentpanel">
+        <details open><summary>As an agent would do it</summary>
+<pre><b># 1 · check until ok:true (previews on a real row)</b>
+weave formula check Deals 'if([Amount] > 10000, "major", "minor")'
+<b># 2 · save — an invalid expression is rejected with the same error</b>
+weave field add Deals Health formula --config '{"expression":"if([Amount] > 10000, \"major\", \"minor\")"}'
+<b># 3 · verify the cell</b>
+weave get Deals#1
+<b># MCP: weave_check_formula → weave_add_field → weave_get_entity</b></pre>
+        </details>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <div class="win"><b>The win</b>Every formula authored in the UI teaches the API loop; copy-paste is the onboarding. It also keeps the team honest: a panel that cannot express what the dialog just did means a browser-only gate slipped past the agent-surface suite.</div>
+    <div class="fit"><b>Fit</b>Static render from what the dialog already knows (table, expression). Same pattern later for selects, workflows, relations: the field dialog grows one shared "as an agent" footer.</div>
+  </div>
+</section>
+
+<!-- ================= DIRECTION D ================= -->
+<section class="dir">
+  <div class="dir-head"><span class="tag">D</span><h2>Autocomplete in the expression itself</h2></div>
+  <p class="thesis">Chips are discovery; typing is speed. Once you know the vocabulary, <code>[</code> should offer fields and two letters should offer functions, drawn from the same two lists the chips draw from, ranked by prefix.</p>
+  <div class="stage">
+    <div class="dlg">
+      <div class="lbl">Script</div>
+      <div class="ac">
+        <div class="expr">concat([St<span class="caret"></span></div>
+        <div class="acpop">
+          <div class="it sel"><span class="k">[Stage]</span><span class="t">select</span></div>
+          <div class="it"><span class="k">[Start Date]</span><span class="t">date</span></div>
+        </div>
+      </div>
+      <div class="status err">Unclosed [field] reference</div>
+    </div>
+  </div>
+  <div class="notes">
+    <div class="win"><b>The win</b>Misspelled field names die at the keystroke instead of at the check. The error line stays live underneath; the two mechanisms answer different moments.</div>
+    <div class="fit"><b>Fit</b>Plain contenteditable-free implementation: a positioned popover over the textarea using selectionStart, no editor dependency. Ship after A, whose enriched catalog supplies the ranked list.</div>
+  </div>
+</section>
+
+<p class="intro" style="margin-top:40px"><b>Suggested order:</b> A (catalog + card, smallest) → C (agent panel, pure render) → B (scan preview, one engine option) → D (autocomplete, reuses A). Each lands independently behind the existing suite; none blocks the branch that fixed the actual breakage.</p>
+</div>
+</body>
+</html>

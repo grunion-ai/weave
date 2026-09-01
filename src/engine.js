@@ -3,7 +3,7 @@ import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync }
 import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
 import { Store, WeaveError } from './store.js';
-import { evaluate } from './formula.js';
+import { evaluate, check as checkExpression } from './formula.js';
 
 // Minimal CSV parser handling quoted cells and embedded newlines.
 export function parseCSV(text) {
@@ -2327,6 +2327,8 @@ export class Weave {
       field.config = { relationField: rel.id, targetField: targetFieldId, aggregate };
     } else if (type === 'formula') {
       if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
+      const checked = checkExpression(config.expression, Object.values(db.fields).map((f) => f.name));
+      if (!checked.ok) throw new WeaveError(checked.error, 'invalid');
       // A numeric result wears the number costume (unit / currency / decimals).
       field.config = { expression: config.expression, ...normalizeSelfContainedConfig('number', config) };
     }
@@ -2500,7 +2502,14 @@ export class Weave {
             normaliseOption(o));
         }
       } else if (field.type === 'formula') {
-        if (patch.config.expression) field.config.expression = patch.config.expression;
+        if (patch.config.expression) {
+          // The field's own name is off the list: a formula that reads
+          // itself never converges, so it fails as an unknown field.
+          const names = Object.values(db.fields).filter((f) => f.id !== field.id).map((f) => f.name);
+          const checked = checkExpression(patch.config.expression, names);
+          if (!checked.ok) throw new WeaveError(checked.error, 'invalid');
+          field.config.expression = patch.config.expression;
+        }
       } else if (field.type === 'workflow') {
         if (patch.config.states) {
           // Same normaliser as addField: categories checked, icons kept,
@@ -2514,6 +2523,21 @@ export class Weave {
     this.save();
     if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) });
     return field;
+  }
+
+  /* The authoring loop for formulas — validate an expression against a
+     table's fields and, when the table has rows, evaluate it on one so the
+     author (human or agent) sees a real result before saving. Never throws
+     on a bad expression: the verdict is the return value. */
+  checkFormula(dbRef, expression, { entity = null, excludeField = null } = {}) {
+    const db = this.getTable(dbRef);
+    const names = Object.values(db.fields).filter((f) => f.id !== excludeField && f.name !== excludeField).map((f) => f.name);
+    const checked = checkExpression(expression, names);
+    if (!checked.ok) return checked;
+    const e = entity ? this.getEntity(entity) : this.listEntities(db.id)[0];
+    if (!e) return { ok: true };
+    const temp = { id: '__preview', name: '__preview', type: 'formula', config: { expression } };
+    return { ok: true, preview: this.#resolve(e, db, temp, 0), previewEntity: String(e.values[db.nameFieldId] ?? '') };
   }
 
   /* Change a field's type along TYPE_MIGRATIONS, coercing every row's value

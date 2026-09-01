@@ -1358,6 +1358,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .seg-opt.on { background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); font-weight: 600; }
 
 .fx-expr { width: 100%; font-family: var(--tblr-font-monospace); font-size: 12.5px; background: var(--tblr-bg-forms, var(--tblr-bg-surface)); border: 1px solid var(--tblr-border-color); border-radius: 6px; padding: 8px 10px; color: var(--tblr-body-color); resize: vertical; }
+.fx-status { min-height: 18px; margin-top: 4px; font-family: var(--tblr-font-monospace); font-size: 11.5px; }
+.fx-status.ok { color: var(--tblr-success, #2fb344); }
+.fx-status.err { color: var(--tblr-danger, #d63939); }
 .fx-chip-rows { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
 .fx-chip-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
 .fx-chip-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--tblr-secondary); margin-right: 2px; }

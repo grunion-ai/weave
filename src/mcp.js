@@ -167,6 +167,15 @@ export const TOOLS = [
     },
   },
   {
+    name: 'weave_check_formula',
+    description: 'Validate a formula expression against a table BEFORE saving it — syntax, function names, field names — and, when the table has rows, preview the computed value on one real entity. The authoring loop: check → fix until ok:true → weave_add_field/weave_update_field with {expression} → read the cell back. Returns {ok, error?, preview?, previewEntity?}; never throws on a bad expression. Pass excludeField (field name or id) when editing an existing formula field so it cannot reference itself; pass entity (id) to preview a specific row.',
+    inputSchema: {
+      type: 'object',
+      properties: { db: { type: 'string' }, expression: { type: 'string' }, entity: { type: 'string' }, excludeField: { type: 'string' } },
+      required: ['db', 'expression'],
+    },
+  },
+  {
     name: 'weave_add_relation',
     description: 'Create a relation field. One targetDb: bidirectional — the inverse field is created automatically on the target table. targetDbs (a list of 2+ tables, which may include Workspace/Spaces and Workspace/Tables): a target-set (polymorphic) relation — one field whose values may point at rows of any member table, one-way, no inverse; lookups/rollups need a single target. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one.',
     inputSchema: {
@@ -443,6 +452,8 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.createTable(pick(args, ['space', 'name', 'description', 'icon']));
     case 'weave_add_field':
       return weave.addField(args.db, { name: args.name, type: args.type, config: args.config ?? {} });
+    case 'weave_check_formula':
+      return weave.checkFormula(args.db, args.expression, { entity: args.entity ?? null, excludeField: args.excludeField ?? null });
     case 'weave_add_relation':
       return weave.addRelation(args.db, { name: args.name, targetDb: args.targetDb, targetDbs: args.targetDbs, cardinality: args.cardinality ?? 'many-to-one', inverseName: args.inverseName });
     case 'weave_create_automation':
