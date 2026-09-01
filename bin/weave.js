@@ -85,8 +85,12 @@ Service (macOS launchd — auto-start on login, restart on crash)
   service uninstall [--label name]    Stop the agent and remove its plist
   service status [--port 4400]        Plist, launchctl state, live /api/health probe
   service promote [--serve-dir ~/.weave-serve] [--remote gerrit] [--label ...] [--port 4400]
-                                      Checkout gerrit/main clean, run the lifecycle
-                                      regression pack, restart, probe, roll back on red
+                  [--no-rehearse] [--rehearse-db path]
+                                      Checkout main clean, run the lifecycle pack, then
+                                      rehearse on a COPY of the weave docs workspace +
+                                      a fresh one; restart, probe, roll back on red
+  rehearse --data path                Run the promote rehearsal battery against a COPY
+                                      (mutates its target — never the live file)
 
 Schema
   schema                              Describe spaces, tables, fields
@@ -230,6 +234,20 @@ async function main() {
     return; // stays alive on stdin
   }
 
+  if (command === 'rehearse') {
+    // The promote rehearsal, runnable by hand. Mutates (and then cleans) the
+    // workspace it opens, so it demands an explicit --data: pointing it at
+    // the live default workspace by accident must be impossible.
+    if (!flags.data || flags.data === true) {
+      console.error('rehearse mutates its target — pass an explicit --data pointing at a COPY');
+      process.exit(1);
+    }
+    const { rehearse } = await import('../src/rehearse.js');
+    const result = rehearse(String(flags.data));
+    out(result);
+    process.exit(result.ok ? 0 : 1);
+  }
+
   if (command === 'service') {
     // Never opens the workspace — install/status must work while another
     // process owns the data file, and must not create one as a side effect.
@@ -303,6 +321,42 @@ async function main() {
       if (!tap.pass) {
         if (prevSha) git(serveDir, 'checkout', '--detach', '--force', prevSha);
         return out({ promoted: false, sha, verdict: 'REJECTED by the lifecycle regression gate before restart', failed: tap.failed });
+      }
+
+      /* Rehearsal (gap 3): the pack proved the code on toy fixtures; now
+         prove it on a COPY of the built-in weave workspace — the most data
+         any workspace carries — plus a fresh workspace built from nothing.
+         Red here rejects before restart, same as the pack. --no-rehearse
+         skips; --rehearse-db points at a different source file. */
+      if (!flags['no-rehearse']) {
+        const { mkdtempSync, copyFileSync, rmSync: rmTmp } = await import('node:fs');
+        const { tmpdir } = await import('node:os');
+        const srcDb = flags['rehearse-db'] && flags['rehearse-db'] !== true
+          ? String(flags['rehearse-db'])
+          : join(homedir(), '.weave', 'weave.db');
+        if (existsSync(srcDb)) {
+          const scratch = mkdtempSync(join(tmpdir(), 'weave-rehearse-'));
+          try {
+            const copy = join(scratch, 'copy.db');
+            for (const suffix of ['', '-wal', '-shm']) {
+              if (existsSync(srcDb + suffix)) copyFileSync(srcDb + suffix, copy + suffix);
+            }
+            const run = spawnSync('node', [join(serveDir, 'bin', 'weave.js'), 'rehearse', '--data', copy], { encoding: 'utf8' });
+            let steps = [];
+            try { steps = JSON.parse(run.stdout).steps ?? []; } catch { /* older builds have no rehearse */ }
+            if (run.status !== 0 && steps.length) {
+              if (prevSha) git(serveDir, 'checkout', '--detach', '--force', prevSha);
+              return out({
+                promoted: false,
+                sha,
+                verdict: 'REJECTED by the promote rehearsal (real-data copy) before restart',
+                failed: steps.filter((s) => !s.ok),
+              });
+            }
+          } finally {
+            rmTmp(scratch, { recursive: true, force: true });
+          }
+        }
       }
 
       launchctl('kickstart', '-k', `${domain}/${opts.label}`);
