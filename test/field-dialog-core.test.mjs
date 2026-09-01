@@ -317,8 +317,19 @@ test('select and files wear distinct icons from multiselect and document', () =>
 });
 
 test('url wears a link icon, not the command glyph (Kyle, 2026-08-23)', () => {
-  assert.equal(core.FIELD_TYPES.find((t) => t.id === 'url').icon, '🔗');
+  // Still a link, no longer an emoji: the mark set draws it, so the tile is
+  // monochrome and the same size as the marks beside it (#138).
+  assert.equal(core.FIELD_TYPES.find((t) => t.id === 'url').icon, '⛓');
   assert.equal(core.FIELD_TYPES.find((t) => t.id === 'key').icon, '✱', 'a key reads as redacted text');
+});
+
+test('no field-type tile is a colour emoji (Feature #138)', () => {
+  // Emoji_Presentation, not Extended_Pictographic: the ballot box is a dingbat
+  // that renders as monochrome text and belongs beside the other typed marks.
+  const emoji = /\p{Emoji_Presentation}/u;
+  for (const t of core.FIELD_TYPES) {
+    assert.doesNotMatch(t.icon, emoji, `${t.id} still wears an emoji`);
+  }
 });
 
 /* ---------- workflow states: icons, reorder, no default radio (2026-08-23) ---------- */

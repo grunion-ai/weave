@@ -3202,7 +3202,10 @@ function fieldDialog(db, existing, after) {
       disabled: isEdit && choices.length <= 1 ? '' : undefined,
       title: isEdit && t.id !== existing.type ? `Convert to ${t.id} — values are migrated in place` : (t.computed ? `${t.id} (computed)` : t.id),
       onclick: () => pickType(t.id),
-    }, el('span', { class: 'type-ic' }, t.icon), t.label));
+      // The tile draws whatever the catalogue can draw and types the rest:
+      // Aa, #, @ and the sum sign are letters doing a letter's job, while url
+      // and files were colour emoji sitting among monochrome marks (#138).
+    }, el('span', { class: 'type-ic' }, iconEl(t.icon) ?? t.icon), t.label));
     // Formula is a checkbox (Kyle, 2026-08-23): ticking it opens the script
     // dialog; the tray then shows the expression with an edit link.
     const fx = el('label', { class: 'fx-toggle' + (state.computed ? ' on' : '') },
