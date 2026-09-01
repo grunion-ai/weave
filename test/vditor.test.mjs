@@ -128,6 +128,18 @@ test('the toolbar carries the full set Kyle picked in the Toolbar Lab', () => {
     'Vditor never hides the bar itself — visibility belongs to the bubble layer');
 });
 
+test('the toolbar draws the Toolbar Lab icon set, not the sprite icons', () => {
+  const from = APP.indexOf('const WV_TB_ICONS');
+  assert.ok(from > 0, 'the approved icon map exists');
+  const map = APP.slice(from, APP.indexOf('};', from));
+  for (const item of ['headings', 'bold', 'italic', 'strike', 'inline-code', 'link',
+    'list', 'ordered-list', 'check', 'outdent', 'indent',
+    'quote', 'code', 'table', 'line', 'undo', 'redo', 'upload']) {
+    assert.ok(new RegExp(`'?${item}'?:`).test(map), `no lab icon for: ${item}`);
+  }
+  assert.match(APP, /icon:\s*WV_TB_ICONS\[n\]/, 'every toolbar item takes its lab icon');
+});
+
 test('the toolbar is a selection bubble, not a fixed strip', () => {
   assert.match(APP, /attachToolbarBubble/, 'a bubble layer positions the bar');
   assert.match(CSS_TOOLBAR, /position:\s*absolute/, 'the bar leaves the flow');

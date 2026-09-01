@@ -4043,6 +4043,32 @@ function attachTableKeys(host) {
   }, { capture: true });
 }
 
+/* The icon set Kyle approved in the Toolbar Lab artifact (2026-08-30) —
+   the mockup's stroke-drawn glyphs, not Vditor's sprite icons. Each entry
+   overrides the built-in item's icon via mergeToolbar's Object.assign;
+   hotkeys, tips and behavior stay Vditor's. */
+const WV_TB_SVG = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const WV_TB_ICONS = {
+  headings: WV_TB_SVG('<path d="M6 4v16M18 4v16M6 12h12"/>'),
+  bold: WV_TB_SVG('<path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z"/>'),
+  italic: WV_TB_SVG('<path d="M11 5h6M7 19h6M14 5l-4 14"/>'),
+  strike: WV_TB_SVG('<path d="M5 12h14M16 6.5C15.3 5.6 13.8 5 12 5c-2.5 0-4 1.2-4 2.8 0 .8.3 1.4.9 1.9M8 17.5c.7.9 2.2 1.5 4 1.5 2.5 0 4-1.2 4-2.8 0-.8-.3-1.4-.9-1.9"/>'),
+  'inline-code': WV_TB_SVG('<path d="M9 8l-4 4 4 4M15 8l4 4-4 4"/>'),
+  link: WV_TB_SVG('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 1 0-5.7-5.6l-1.2 1.2M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 1 0 5.7 5.6l1.2-1.2"/>'),
+  list: WV_TB_SVG('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="18" r="1" fill="currentColor"/>'),
+  'ordered-list': WV_TB_SVG('<path d="M10 6h10M10 12h10M10 18h10M4 5l1.5-1v5M3.8 11.5a1.5 1.5 0 0 1 2.7 1c0 1-2.7 1.6-2.7 3h3"/>'),
+  check: WV_TB_SVG('<rect x="3" y="4" width="7" height="7" rx="1.5"/><path d="M5 7.5l1.5 1.5 2.5-3M14 7.5h7M14 16.5h7M3.5 16.5l2 2 3.5-4"/>'),
+  outdent: WV_TB_SVG('<path d="M13 6h8M13 12h8M13 18h8M8 9l-4 3 4 3"/>'),
+  indent: WV_TB_SVG('<path d="M13 6h8M13 12h8M13 18h8M4 9l4 3-4 3"/>'),
+  quote: WV_TB_SVG('<path d="M9 7c-2.5.7-4 2.6-4 5.5V17h5v-5H7c0-2 .8-3.2 2-3.8zM19 7c-2.5.7-4 2.6-4 5.5V17h5v-5h-3c0-2 .8-3.2 2-3.8z" fill="currentColor" stroke="none"/>'),
+  code: WV_TB_SVG('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 10l-2 2 2 2M15 10l2 2-2 2"/>'),
+  table: WV_TB_SVG('<rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 10h18M9 5v14M15 5v14"/>'),
+  line: WV_TB_SVG('<path d="M4 12h16"/>'),
+  undo: WV_TB_SVG('<path d="M8 7L4 11l4 4M4 11h10a5 5 0 0 1 0 10h-3"/>'),
+  redo: WV_TB_SVG('<path d="M16 7l4 4-4 4M20 11H10a5 5 0 0 0 0 10h3"/>'),
+  upload: WV_TB_SVG('<path d="M12 16V5M8 9l4-4 4 4M4 19h16"/>'),
+};
+
 function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, entityId }) {
   const t = vditorTheme();
   const chips = attachRefChips(host);
@@ -4075,7 +4101,7 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
       'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
       'quote', 'code', 'table', 'line', '|',
       'undo', 'redo', 'upload',
-    ],
+    ].map((n) => (n === '|' ? n : { name: n, icon: WV_TB_ICONS[n] })),
     toolbarConfig: { hide: false, pin: false },
     upload: {
       multiple: true,

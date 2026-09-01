@@ -121,6 +121,17 @@ if (!chromium) {
         assert.ok(r.items.includes(it), `toolbar is missing: ${it}`);
       }
       assert.ok(r.labeled >= 15, `hover labels ride the buttons (found ${r.labeled})`);
+      // The buttons draw the Toolbar Lab glyphs — inline stroked paths, not
+      // Vditor's <use> sprite references.
+      const icons = await page.evaluate(() => {
+        const bar = document.querySelector('.doc-editor .vditor-toolbar');
+        return {
+          sprites: bar.querySelectorAll('svg use').length,
+          strokes: bar.querySelectorAll('svg[stroke="currentColor"]').length,
+        };
+      });
+      assert.equal(icons.sprites, 0, 'no sprite icons remain');
+      assert.ok(icons.strokes >= 15, `the lab glyphs are in place (found ${icons.strokes})`);
     } finally { await page.close(); }
   });
 
