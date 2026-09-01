@@ -416,3 +416,19 @@ test('a name nobody classified still gets offered rather than vanishing', () => 
   assert.ok(odd, 'an unclassified name must still reach the picker');
   assert.ok(odd.hint, 'and must still land in some category');
 });
+
+/* Issue #128 — the formula builder's field chips must insert a token the
+   parser accepts: bare only when the name is a safe identifier, [bracketed]
+   for spaces, punctuation, keywords, and function-name collisions. */
+test('formulaFieldToken quotes exactly what the grammar cannot take bare', () => {
+  const t = core.formulaFieldToken;
+  assert.equal(t('Estimate'), 'Estimate');
+  assert.equal(t('_private2'), '_private2');
+  assert.equal(t('Due Date'), '[Due Date]');
+  assert.equal(t('Owner email'), '[Owner email]');
+  assert.equal(t('P&L'), '[P&L]');
+  assert.equal(t('2nd'), '[2nd]');
+  assert.equal(t('or'), '[or]', 'keywords never go bare');
+  assert.equal(t('True'), '[True]');
+  assert.equal(t('min'), '[min]', 'a function name would parse as a call');
+});

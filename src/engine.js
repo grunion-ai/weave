@@ -335,8 +335,13 @@ function dressNumber(c, value) {
       return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
     } catch { return `${currency} ${n.toFixed(digits)}`; }
   }
+  // Percent follows the spreadsheet convention (Issue #127): the stored
+  // value is the fraction, the display is ×100 — 0.325 reads "32.5%". The
+  // scale is rounded before toFixed so float noise (0.1 × 100 =
+  // 10.000000000000002) never reaches the reader.
+  const scaled = c.format === 'percent' ? Math.round(n * 100 * 1e8) / 1e8 : n;
   // Zero decimals unless the field says otherwise (currency above: two).
-  let text = n.toFixed(c.decimals ?? 0);
+  let text = scaled.toFixed(c.decimals ?? 0);
   if (c.separator) {
     const [int, frac] = text.split('.');
     text = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (frac ? '.' + frac : '');
@@ -614,6 +619,28 @@ export class Weave {
     }
     if (s.version !== 2) {
       s.version = 2;
+      changed = true;
+    }
+    /* Percent semantics flipped to the spreadsheet convention (Issue #127):
+       the stored value is now the fraction and the display is ×100. Values
+       written under the old rule (stored 32.5, shown "32.5%") divide once so
+       every existing cell keeps reading exactly as it did. The flag on meta
+       makes this a one-time pass, not a per-load rescale. */
+    if (!s.meta.percentFractional) {
+      for (const db of Object.values(s.tables)) {
+        for (const f of Object.values(db.fields ?? {})) {
+          if (f.type !== 'number' || f.config?.format !== 'percent') continue;
+          for (const e of Object.values(s.entities ?? {})) {
+            if (e.dbId !== db.id) continue;
+            const v = e.values?.[f.id];
+            if (typeof v === 'number' && Number.isFinite(v)) {
+              e.values[f.id] = v / 100;
+              this.#mark(e);
+            }
+          }
+        }
+      }
+      s.meta.percentFractional = true;
       changed = true;
     }
     if (changed) {
@@ -1961,7 +1988,9 @@ export class Weave {
   }
 
   #syncSpaceRow(space) {
-    if (space.system) return undefined;
+    // The system Workspace space gets a row too (Issue #126): the table says
+    // "every space in this workspace, as a row", and it meant it. Deleting
+    // the row is refused downstream — deleteSpace guards system spaces.
     const t = this.#sysTable('spaces');
     if (!t) return undefined; // mid-bootstrap
     let row = this.#sysRow('spaces', space.id);
@@ -1981,7 +2010,9 @@ export class Weave {
   }
 
   #syncTableRow(db) {
-    if (db.system) return undefined;
+    // System tables register themselves like any other (Issue #126) — the
+    // registry describes the whole workspace, its own plumbing included.
+    // deleteTable refuses system tables, so the row cannot take them down.
     const t = this.#sysTable('tables');
     if (!t) return undefined;
     const spaceRow = this.#sysRow('spaces', db.spaceId);
@@ -2113,6 +2144,11 @@ export class Weave {
       if (spaceRef == null) throw new WeaveError(`A Tables row needs its 'Space' — which space the table lives in`, 'invalid');
       const spaceRow = this.findEntity(this.#sysTable('spaces').id, spaceRef);
       if (!spaceRow) throw new WeaveError(`Space row '${spaceRef}' not found`, 'not-found');
+      // The Workspace space registers itself as a row (Issue #126); user
+      // tables still belong in user spaces.
+      if (this.state.spaces[spaceRow.sysId]?.system) {
+        throw new WeaveError(`Space '${this.entityName(spaceRow)}' is part of the system registry — create tables in your own spaces`, 'invalid');
+      }
       made = this.#sysRow('tables', this.createTable({ space: spaceRow.sysId, name, description }).id);
     } else if (db.system === 'fields') {
       const tableRef = values.Table;
@@ -2124,6 +2160,12 @@ export class Weave {
       if (!def || typeof def !== 'object' || !def.type) throw new WeaveError(`A Fields row needs its 'Definition' — the column's shape`, 'invalid');
       const tableRow = this.findEntity(this.#sysTable('tables').id, tableRef);
       if (!tableRow) throw new WeaveError(`Table row '${tableRef}' not found`, 'not-found');
+      // System tables register rows too (Issue #126), so this door now sees
+      // them — their columns are weave's own plumbing, not a place for user
+      // fields, and a field row would never sync back (#syncFieldRow skips).
+      if (this.state.tables[tableRow.sysId]?.system) {
+        throw new WeaveError(`Table '${this.entityName(tableRow)}' is part of the system registry — its columns are fixed`, 'invalid');
+      }
       const f = this.addField(tableRow.sysId, { name, type: def.type, config: def.config ?? {} });
       made = this.#sysRow('fields', f.id);
     } else {

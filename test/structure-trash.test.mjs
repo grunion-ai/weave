@@ -115,7 +115,10 @@ test('hard delete still purges — rows, registry rows, trash and all', () => {
 
   w.deleteSpace('Product', { hard: true });
   assert.equal(w.findSpace('Product'), undefined);
-  assert.equal(w.listEntities(w.getTable('Tables').id, { includeDeleted: true }).length, 0);
+  // The four system tables keep their registry rows (Issue #126) — only the
+  // user structure is gone.
+  const left = w.listEntities(w.getTable('Tables').id, { includeDeleted: true });
+  assert.equal(left.filter((e) => !w.state.tables[e.sysId]?.system).length, 0);
 });
 
 test('registry rows speak the same contract: soft by default, hard purges, restore restores', () => {

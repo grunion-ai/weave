@@ -1774,13 +1774,21 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
       dateControl({ ...opts, value: range.end, placeholder: 'end', onChange: (iso) => { range.end = iso ?? ''; commit(); } }));
   }
   const rawVal = item.raw?.[f.name] ?? val;
+  /* A percent field stores the fraction and talks to people in percent
+     (Issue #127): the box shows 32.5 for a stored 0.325 and typing 50
+     stores 0.5 — the number in the box is the number in the "32.5%" the
+     cell shows at rest. Rounding strips float noise both ways. */
+  const isPercent = f.type === 'number' && f.format === 'percent';
+  const boxVal = isPercent && typeof rawVal === 'number' ? Math.round(rawVal * 100 * 1e8) / 1e8 : rawVal;
   const input = el('input', {
     class: 'form-control form-control-sm inline-edit',
     type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text',
-    value: rawVal ?? '',
+    value: boxVal ?? '',
     onclick: (e) => e.stopPropagation(),
   });
-  input.addEventListener('change', () => patch(input.value === '' ? null : f.type === 'number' ? Number(input.value) : input.value));
+  input.addEventListener('change', () => patch(input.value === '' ? null
+    : f.type === 'number' ? (isPercent ? Math.round(Number(input.value) * 1e8) / 1e10 : Number(input.value))
+    : input.value));
   // Space and table descriptions are markdown living in a text field. A grid
   // that paints them raw reads `**Official docs** — the pages`, so the cell
   // wears the marks and hands over the source on click (the #97 pattern).
@@ -3099,7 +3107,7 @@ function formulaBuilder(db, state, onChange) {
   };
   const fieldChips = db.fields
     .filter((x) => !['document', 'attachments'].includes(x.type))
-    .map((x) => el('button', { type: 'button', class: 'fx-chip', title: x.type, onclick: () => insert(x.name) }, x.name));
+    .map((x) => el('button', { type: 'button', class: 'fx-chip', title: x.type, onclick: () => insert(fieldDialogCore.formulaFieldToken(x.name)) }, x.name));
   const fnChips = fieldDialogCore.FORMULA_FUNCTIONS
     .map((fn) => el('button', { type: 'button', class: 'fx-chip fn', title: fn.sig, onclick: () => insert(`${fn.name}(`) }, `${fn.name}()`));
   return el('div', {},
@@ -5008,10 +5016,9 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       anchor('the fields'), el('span', { class: 'block-name' }, 'Fields'));
     fields.append(valuesHead, values);
     wireBlock(VALUES_BLOCK, fields, [valuesHead.querySelector('.opt-grip'), valuesHead]);
-  } else {
-    fields.append(el('span', { class: 'wv-empty' }, 'This table has no fields beyond its name.'));
-    left.append(fields);
   }
+  // A table with no fields beyond its name shows nothing here — the banner
+  // that used to fill the space read as breakage, not help (Issue #124).
 
   /* Collections of related records are blocks in the body rather than the
      side panel: they are work to do, not attributes to read. Each is fetched
@@ -5459,6 +5466,12 @@ async function showHome() {
   const dbs = allTables();
   let ws = { name: $('#ws-name').textContent || 'workspace', description: '' };
   try { ws = await api('GET', '/workspace'); } catch { /* older server */ }
+  // Deleting a workspace lives on the workspace's own page (Issue #122) —
+  // the same place a space and a table keep their destructive act. The
+  // default and the weave docs workspaces cannot go; theirs shows no menu.
+  let wsRow = null;
+  try { wsRow = (await api('GET', '/workspaces')).find((w) => w.name === ws.name); } catch { /* single-workspace hub */ }
+  const deletable = wsRow && !wsRow.default && ws.name !== 'weave';
   main.replaceChildren(
     viewHeader({
       crumbs: [],
@@ -5471,6 +5484,17 @@ async function showHome() {
       },
       description: ws.description,
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
+      ...(deletable ? {
+        actions: [dotsMenu([{
+          hold: 'Delete workspace', holdingLabel: 'Hold to delete workspace…',
+          run: async () => {
+            try {
+              await api('DELETE', `/workspaces/${wsRow.id}`);
+              location.href = '/';
+            } catch (err) { toast(err.message, true); }
+          },
+        }], { title: 'Workspace actions', align: 'right' })],
+      } : {}),
     }),
     ...(dbs.length
       ? []
@@ -5791,15 +5815,21 @@ window.addEventListener('hashchange', route);
    unreachable and styled differently, so the same action had two competing
    designs — weave Issue #16. */
 
-/* Shift+Enter anywhere on a table view = quick-create in the current table. */
+/* Shift+Enter anywhere on a table view = quick-create in the current table.
+   From inside a grid cell editor it is save-and-create-another (Issue #125):
+   the blur commits the cell (change fires before keydown resolves), and the
+   focus lands in the new row's Name cell instead of being dropped. Editors
+   outside the grid — filters, dialogs, pickers — keep their keys. */
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' || !e.shiftKey) return;
   if (state.route?.page !== 'db') return;
-  if (e.target.closest?.('input,select,textarea,[contenteditable]')) return;
+  const editing = e.target.closest?.('input,select,textarea,[contenteditable]');
+  if (editing && !editing.closest('tr[data-eid]')) return;
   if ($('#modal-back') || $('#cmdk-back')) return;
   const db = allTables().find((d) => d.id === state.route.dbId);
   if (!db) return;
   e.preventDefault();
+  if (editing) editing.blur();
   if (state.inlineAdd) state.inlineAdd();
   else quickCreate(db);
 });

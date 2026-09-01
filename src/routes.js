@@ -308,6 +308,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/` });
         }
 
+        /* Removing a workspace (Issue #122): the hub moves its file to
+           trash/, recoverable by hand. Hubs without a remove (the Worker's)
+           refuse rather than pretend. */
+        if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
+          if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
+          return out(200, hub.remove(m[1]));
+        }
+
         if (route === 'GET /api/workspace') {
           const ws = weave.getWorkspace();
           return out(200, { ...ws, url: `/w/${ws.id}/` });

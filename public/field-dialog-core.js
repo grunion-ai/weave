@@ -425,8 +425,23 @@
     return { ok: true, def: { type: def.type, config: c } };
   }
 
+  /* The exact token the formula language accepts for a field name (Issue
+     #128). A bare identifier only parses when it looks like one AND cannot
+     be read as something else — a keyword, or a function name the parser
+     would treat as a call. Everything else rides in [brackets], which the
+     tokenizer takes verbatim to the first ']'. A name containing ']' cannot
+     be bracketed and has no formula spelling at all — the chip still inserts
+     the bracketed form, and the expression preview shows the parse error. */
+  const FORMULA_KEYWORDS = ['or', 'and', 'true', 'false', 'null'];
+  function formulaFieldToken(name) {
+    const bareSafe = /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+      && !FORMULA_KEYWORDS.includes(name.toLowerCase())
+      && !FORMULA_FUNCTIONS.some((fn) => fn.name === name);
+    return bareSafe ? name : `[${name}]`;
+  }
+
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices,
+    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES,
