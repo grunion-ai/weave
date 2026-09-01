@@ -22,6 +22,9 @@ import { startServer } from '../src/server.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
+// The toolbar's own rule block, so assertions don't match unrelated rules.
+const CSS_TOOLBAR = CSS.match(/\.doc-editor \.vditor-toolbar\s*\{[^}]*\}/)?.[0] ?? '';
 const VENDOR = 'public/vendor/vditor';
 const PINNED = '3.11.3';
 
@@ -113,14 +116,24 @@ test('every keystroke is persisted without the user asking', () => {
     'saves must be debounced rather than fired per keystroke');
 });
 
-test('a compact toolbar rides above the document', () => {
+test('the toolbar carries the full set Kyle picked in the Toolbar Lab', () => {
   const from = APP.indexOf('toolbar: [');
   const conf = APP.slice(from, APP.indexOf('toolbarConfig', from) + 80);
   for (const item of ['headings', 'bold', 'italic', 'strike', 'inline-code', 'link',
-    'list', 'ordered-list', 'check', 'quote', 'code', 'table', 'line', 'undo', 'redo']) {
+    'list', 'ordered-list', 'check', 'outdent', 'indent',
+    'quote', 'code', 'table', 'line', 'undo', 'redo', 'upload']) {
     assert.ok(conf.includes(`'${item}'`), `toolbar is missing: ${item}`);
   }
-  assert.match(conf, /toolbarConfig:\s*\{\s*hide:\s*false/, 'the bar itself is visible');
+  assert.match(conf, /toolbarConfig:\s*\{\s*hide:\s*false/,
+    'Vditor never hides the bar itself — visibility belongs to the bubble layer');
+});
+
+test('the toolbar is a selection bubble, not a fixed strip', () => {
+  assert.match(APP, /attachToolbarBubble/, 'a bubble layer positions the bar');
+  assert.match(CSS_TOOLBAR, /position:\s*absolute/, 'the bar leaves the flow');
+  assert.match(APP, /upload:\s*\{/, 'uploads route through a custom handler');
+  assert.match(APP, /contentBase64/, 'files land on the entity via the files API');
+  assert.ok(CSS_TOOLBAR, 'the toolbar has its own rule block in style.css');
 });
 
 /* ---------- slash menu ---------- */

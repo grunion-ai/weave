@@ -999,11 +999,20 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-status { margin-left: auto; font-size: 11px; color: var(--tblr-secondary); min-width: 10px; text-align: right; }
 .doc-editor { border: 0; }
 .doc-editor .vditor { border: 0; background: transparent; }
-/* The toolbar is a quiet strip on the page ground, not Vditor's boxed bar.
-   Vditor writes its 35px gutter padding inline, hence the !important. */
-.doc-editor .vditor-toolbar { background: transparent; border-bottom: 1px solid var(--tblr-border-color);
-  padding: 0 0 2px !important; }
-.doc-editor .vditor-toolbar__item { padding: 0 1px; }
+/* The toolbar is a selection bubble (Kyle's Toolbar Lab pick, 2026-08-30):
+   hidden at rest, floated over the selection by placeToolbarBubble. Vditor
+   writes its own toolbar padding inline, hence the !important. */
+.doc-editor { position: relative; }
+.doc-editor .vditor-toolbar { display: none; position: absolute; z-index: 7; width: max-content;
+  max-width: 100%; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color);
+  border-radius: 8px; box-shadow: var(--tblr-box-shadow); padding: 2px 5px !important; }
+.doc-editor .vditor-toolbar.wv-show { display: flex; flex-wrap: wrap; }
+.doc-editor .vditor-toolbar__item { padding: 0 1px; float: none; }
+/* Kyle, 2026-08-30: the ordered-list and check glyphs were hard to read at
+   Vditor's default size — every toolbar icon draws at 16px minimum. */
+.doc-editor .vditor-toolbar svg { width: 16px; height: 16px; }
+/* Hover labels (Vditor's aria-label tooltips) must clear the bubble border. */
+.doc-editor .vditor-toolbar .vditor-tooltipped::after { z-index: 8; }
 /* Vditor's content themes paint their own surface — and do it from
    `.vditor-ir pre.vditor-reset`, so the element selector has to be matched or
    the document keeps sitting on a slab lighter than the page in dark mode. */

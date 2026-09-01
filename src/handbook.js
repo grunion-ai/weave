@@ -551,7 +551,7 @@ Nothing in a document is a proprietary block. Copy it into a file, hand it to an
 
 ## The toolbar
 
-A compact strip above the document holds the everyday controls — headings, bold, italic, strikethrough, inline code, link, the three list kinds, quote, code block, table, divider, undo and redo. The full catalogue (references, mermaid, raw HTML, math) stays in the slash menu.
+Select some text and the toolbar floats in over the selection — headings (with a level dropdown), bold, italic, strikethrough, inline code, link, the three list kinds, outdent and indent, quote, code block, table, divider, undo, redo, and file upload. Hover any button for its name and shortcut. The bar leaves when the selection does; the document keeps a clean top edge. Uploads attach to the entity and link into the document — an image embeds, any other file type gets a plain link. The full catalogue (references, mermaid, raw HTML, math) stays in the slash menu.
 
 ## The slash menu
 

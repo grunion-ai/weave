@@ -356,27 +356,26 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
-  /* ---------- toolbar (2026-08-29) ---------- */
+  /* ---------- toolbar (2026-08-30: a selection bubble, not a strip) ---------- */
 
-  test('the editor shows a toolbar with the core formatting controls', async () => {
+  test('the toolbar exists but stays out of the flow until text is selected', async () => {
     const id = entityWithDoc('Toolbar', '# T\n\ntext\n');
     const page = await openEntity(id);
     try {
-      await page.waitForSelector('.doc-editor .vditor-toolbar', { timeout: 20000 });
+      await page.waitForSelector('.doc-editor .vditor-toolbar', { state: 'attached', timeout: 20000 });
       const r = await page.evaluate(() => {
         const bar = document.querySelector('.doc-editor .vditor-toolbar');
         return {
           display: getComputedStyle(bar).display,
-          height: bar.getBoundingClientRect().height,
           buttons: bar.querySelectorAll('.vditor-toolbar__item').length,
           bold: !!bar.querySelector('[data-type="bold"]'),
           table: !!bar.querySelector('[data-type="table"]'),
         };
       });
-      assert.notEqual(r.display, 'none', 'the toolbar is visible');
-      assert.ok(r.height > 10, 'and takes real space');
-      assert.ok(r.buttons >= 12, `a real strip of controls, found ${r.buttons}`);
+      assert.equal(r.display, 'none', 'no selection: the bubble is hidden, the document is the only chrome');
+      assert.ok(r.buttons >= 15, `the full control set is mounted, found ${r.buttons}`);
       assert.ok(r.bold && r.table, 'bold and table are reachable from it');
+      // The full show-on-selection behavior lives in test/toolbar-browser.test.mjs.
     } finally { await page.close(); }
   });
 

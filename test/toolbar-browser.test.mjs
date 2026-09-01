@@ -1,0 +1,347 @@
+/* The document toolbar as a selection bubble (Kyle's Toolbar Lab pick,
+   2026-08-30): the full item set floats over selected text instead of
+   sitting in the flow. Everything here is runtime behavior — bubble
+   geometry, Vditor's own commands, the headings dropdown, real uploads —
+   so it runs through Playwright like the phase 4 suite, and skips clean
+   when Playwright is absent. */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { writeFileSync, mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { Weave } from '../src/engine.js';
+import { startServer } from '../src/server.js';
+
+const chromium = await import('playwright')
+  .then((pw) => pw.chromium)
+  .catch(() => null);
+
+if (!chromium) {
+  test('toolbar (browser)', { skip: 'playwright not installed' }, () => {});
+} else {
+  let server, base, browser, weave, tableRef;
+
+  test.before(async () => {
+    weave = new Weave();
+    weave.createSpace({ name: 'Scratch' });
+    tableRef = weave.createTable({ space: 'Scratch', name: 'Note' });
+    ({ server } = await startServer(weave, { port: 0 }));
+    base = `http://127.0.0.1:${server.address().port}`;
+    browser = await chromium.launch();
+  });
+
+  test.after(async () => {
+    await browser?.close();
+    server?.close();
+  });
+
+  function entityWithDoc(name, md) {
+    const e = weave.createEntity(tableRef, { name });
+    weave.setDoc(e.id, md, 'Description');
+    return e.id;
+  }
+
+  async function openEntity(id) {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    return page;
+  }
+
+  // Select the first `len` characters of the first paragraph — the gesture
+  // that summons the bubble.
+  const selectStart = (page, len = 8) => page.evaluate((n) => {
+    // First text node, not firstChild: after an edit the paragraph may lead
+    // with a marker span, and a Range refuses element offsets.
+    const p = document.querySelector('.vditor-ir .vditor-reset p');
+    const t = document.createTreeWalker(p, NodeFilter.SHOW_TEXT).nextNode();
+    const r = document.createRange();
+    r.setStart(t, 0); r.setEnd(t, Math.min(n, t.length));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  }, len);
+
+  const barVisible = (page) => page.evaluate(() => {
+    const bar = document.querySelector('.doc-editor .vditor-toolbar');
+    return !!bar && getComputedStyle(bar).display !== 'none' && bar.offsetHeight > 0;
+  });
+
+  const value = (page) => page.evaluate(() =>
+    window.__weaveEditors.values().next().value.getValue());
+
+  /* ---------- the bubble itself ---------- */
+
+  test('the toolbar is hidden at rest and floats over a selection', async () => {
+    const id = entityWithDoc('Bubble', 'plain paragraph of text to select\n');
+    const page = await openEntity(id);
+    try {
+      assert.equal(await barVisible(page), false, 'no selection, no bar');
+      await selectStart(page, 10);
+      await page.waitForFunction(() => {
+        const bar = document.querySelector('.doc-editor .vditor-toolbar');
+        return bar && bar.offsetHeight > 0;
+      }, null, { timeout: 20000 });
+      const geom = await page.evaluate(() => {
+        const bar = document.querySelector('.doc-editor .vditor-toolbar');
+        const host = document.querySelector('.doc-editor').getBoundingClientRect();
+        const sel = getSelection().getRangeAt(0).getBoundingClientRect();
+        const b = bar.getBoundingClientRect();
+        return {
+          clear: b.bottom <= sel.top + 1 || b.top >= sel.bottom - 1,
+          inHost: b.left >= host.left - 1 && b.right <= host.right + 1,
+        };
+      });
+      // Above by default; below when the selection touches the host's top —
+      // either way it floats beside the text, never over it.
+      assert.ok(geom.clear, 'the bubble does not cover the selected text');
+      assert.ok(geom.inHost, 'and stays inside the editor');
+      // collapse: the bar goes away
+      await page.evaluate(() => getSelection().removeAllRanges());
+      await page.waitForFunction(() => {
+        const bar = document.querySelector('.doc-editor .vditor-toolbar');
+        return !bar || bar.offsetHeight === 0;
+      }, null, { timeout: 20000 });
+    } finally { await page.close(); }
+  });
+
+  test('every configured control is present, with a hover label', async () => {
+    const id = entityWithDoc('Controls', 'select me please\n');
+    const page = await openEntity(id);
+    try {
+      await selectStart(page);
+      await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="bold"]', { timeout: 20000 });
+      const r = await page.evaluate(() => {
+        const bar = document.querySelector('.doc-editor .vditor-toolbar');
+        const items = [...bar.querySelectorAll('[data-type]')].map((b) => b.dataset.type);
+        const labeled = [...bar.querySelectorAll('.vditor-tooltipped')].filter((b) => b.getAttribute('aria-label'));
+        return { items, labeled: labeled.length };
+      });
+      for (const it of ['headings', 'bold', 'italic', 'strike', 'inline-code', 'link',
+        'list', 'ordered-list', 'check', 'outdent', 'indent',
+        'quote', 'code', 'table', 'line', 'undo', 'redo', 'upload']) {
+        assert.ok(r.items.includes(it), `toolbar is missing: ${it}`);
+      }
+      assert.ok(r.labeled >= 15, `hover labels ride the buttons (found ${r.labeled})`);
+    } finally { await page.close(); }
+  });
+
+  test('list and check icons are drawn at a legible size', async () => {
+    const id = entityWithDoc('Legible', 'select me please\n');
+    const page = await openEntity(id);
+    try {
+      await selectStart(page);
+      await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="ordered-list"]', { timeout: 20000 });
+      for (const t of ['ordered-list', 'check']) {
+        const w = await page.evaluate((type) =>
+          document.querySelector(`.doc-editor .vditor-toolbar [data-type="${type}"] svg`)?.getBoundingClientRect().width, t);
+        assert.ok(w >= 16, `${t} icon is ${w}px wide — Kyle flagged it as hard to see below 16`);
+      }
+    } finally { await page.close(); }
+  });
+
+  /* ---------- marks ---------- */
+
+  for (const [type, mark] of [['bold', '**'], ['italic', '*'], ['strike', '~~'], ['inline-code', '`']]) {
+    test(`${type} wraps the selection in ${mark}`, async () => {
+      const id = entityWithDoc(`Mark-${type}`, 'wrapme rest of the line\n');
+      const page = await openEntity(id);
+      try {
+        await selectStart(page, 6);
+        await page.waitForSelector(`.doc-editor .vditor-toolbar [data-type="${type}"]`, { timeout: 20000 });
+        await page.click(`.doc-editor .vditor-toolbar [data-type="${type}"]`);
+        await page.waitForFunction((m) =>
+          window.__weaveEditors.values().next().value.getValue().includes(`${m}wrapme${m}`),
+        mark, { timeout: 20000 });
+      } finally { await page.close(); }
+    });
+  }
+
+  test('link wraps the selection in []()', async () => {
+    const id = entityWithDoc('Mark-link', 'wrapme rest of the line\n');
+    const page = await openEntity(id);
+    try {
+      await selectStart(page, 6);
+      await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="link"]', { timeout: 20000 });
+      await page.click('.doc-editor .vditor-toolbar [data-type="link"]');
+      await page.waitForFunction(() =>
+        /\[wrapme\]\(/.test(window.__weaveEditors.values().next().value.getValue()),
+      null, { timeout: 20000 });
+    } finally { await page.close(); }
+  });
+
+  /* ---------- the headings dropdown ---------- */
+
+  test('headings opens a dropdown and applies the picked level', async () => {
+    const id = entityWithDoc('Heads', 'make me a heading\n');
+    const page = await openEntity(id);
+    try {
+      await selectStart(page, 4);
+      await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="headings"]', { timeout: 20000 });
+      await page.click('.doc-editor .vditor-toolbar [data-type="headings"]');
+      // The dropdown is Vditor's arrow panel, distinct from the slash hint.
+      await page.waitForSelector('.vditor-hint.vditor-panel--arrow button[data-value="## "]', { state: 'visible', timeout: 20000 });
+      await page.click('.vditor-hint.vditor-panel--arrow button[data-value="## "]');
+      await page.waitForFunction(() =>
+        window.__weaveEditors.values().next().value.getValue().startsWith('## make me a heading'),
+      null, { timeout: 20000 });
+    } finally { await page.close(); }
+  });
+
+  /* ---------- lists, indent, blocks ---------- */
+
+  for (const [type, prefix] of [['list', '* '], ['ordered-list', '1. '], ['check', '* [ ] ']]) {
+    test(`${type} turns the line into "${prefix.trim()}"`, async () => {
+      const id = entityWithDoc(`List-${type}`, 'a plain line\n');
+      const page = await openEntity(id);
+      try {
+        await selectStart(page, 5);
+        await page.waitForSelector(`.doc-editor .vditor-toolbar [data-type="${type}"]`, { timeout: 20000 });
+        await page.click(`.doc-editor .vditor-toolbar [data-type="${type}"]`);
+        await page.waitForFunction((p) =>
+          window.__weaveEditors.values().next().value.getValue().startsWith(p),
+        prefix, { timeout: 20000 });
+      } finally { await page.close(); }
+    });
+  }
+
+  test('quote, code block, table and divider insert their blocks', async () => {
+    for (const [type, probe] of [['quote', /^>/m], ['code', /```/], ['table', /\|.*\|/], ['line', /^---/m]]) {
+      const id = entityWithDoc(`Block-${type}`, 'block target line\n');
+      const page = await openEntity(id);
+      try {
+        await selectStart(page, 5);
+        await page.waitForSelector(`.doc-editor .vditor-toolbar [data-type="${type}"]`, { timeout: 20000 });
+        await page.click(`.doc-editor .vditor-toolbar [data-type="${type}"]`);
+        await page.waitForFunction((src) =>
+          new RegExp(src.source, src.flags).test(window.__weaveEditors.values().next().value.getValue()),
+        { source: probe.source, flags: probe.flags }, { timeout: 20000 });
+      } finally { await page.close(); }
+    }
+  });
+
+  test('indent and outdent move a list item', async () => {
+    const id = entityWithDoc('Indent', '* one\n* two\n');
+    const page = await openEntity(id);
+    try {
+      // A real click first: Vditor arms outdent/indent from its own caret
+      // handlers, which a programmatic selection never runs.
+      await page.click('.vditor-ir .vditor-reset li:last-child');
+      // Then select the word "two" so the bubble shows.
+      await page.evaluate(() => {
+        const root = document.querySelector('.vditor-ir .vditor-reset');
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let node;
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          if (n.nodeValue.includes('two')) node = n;
+        }
+        const i = node.nodeValue.indexOf('two');
+        const r = document.createRange();
+        r.setStart(node, i); r.setEnd(node, i + 3);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      });
+      await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="indent"]:not(.vditor-menu--disabled)', { timeout: 20000 });
+      await page.click('.doc-editor .vditor-toolbar [data-type="indent"]');
+      await page.waitForFunction(() =>
+        /\n(?: {2,4}|\t)\* two/.test(window.__weaveEditors.values().next().value.getValue()),
+      null, { timeout: 20000 });
+      await page.click('.doc-editor .vditor-toolbar [data-type="outdent"]');
+      await page.waitForFunction(() =>
+        /\n\* two/.test(window.__weaveEditors.values().next().value.getValue()),
+      null, { timeout: 20000 });
+    } finally { await page.close(); }
+  });
+
+  /* ---------- undo / redo ---------- */
+
+  test('the undo and redo buttons revert and replay a typed edit', async () => {
+    // Vditor arms its undo stack from the typing pipeline (a toolbar-applied
+    // format alone never arms it — a Vditor quirk, ⌘Z behaves the same), so
+    // the undoable edit here is typed and the BUTTONS do the reverting.
+    const id = entityWithDoc('Undo', 'wrapme rest of the line\n');
+    const page = await openEntity(id);
+    try {
+      await page.click('.vditor-ir [contenteditable="true"]');
+      // lastText is Vditor's own caret-annotated snapshot — capture it
+      // before the edit, exactly what the debounce would have diffed against.
+      const before = await page.evaluate(() =>
+        window.__weaveEditors.values().next().value.vditor.undo.ir.lastText);
+      await page.keyboard.press('End');
+      await page.keyboard.type(' typed');
+      /* Vditor snapshots its undo stack on an 800ms setTimeout AND refreshes
+         lastText on every keydown while the stack is fresh; a throttled
+         headless page may never run the timer, so the stack never grows
+         there. Rebuild the snapshot the debounce would have taken — looped
+         synchronously, since the first diff can be absorbed — then let the
+         BUTTONS do all the work; that policy is Chrome's, not weave's. */
+      await page.evaluate((pre) => {
+        const ed = window.__weaveEditors.values().next().value;
+        const u = ed.vditor.undo.ir;
+        for (let i = 0; i < 3 && u.undoStack.length < 2; i++) {
+          u.lastText = pre;
+          ed.vditor.undo.addToUndoStack(ed.vditor);
+        }
+      }, before);
+      // Summon the bubble on a word that exists in both document states.
+      const selectWord = () => page.evaluate(() => {
+        const root = document.querySelector('.vditor-ir .vditor-reset');
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const i = n.nodeValue.indexOf('wrapme');
+          if (i < 0) continue;
+          const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 6);
+          const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+          return;
+        }
+      });
+      const clickUntil = async (type, want) => {
+        for (let i = 0; i < 5; i++) {
+          await selectWord();
+          await page.click(`.doc-editor .vditor-toolbar [data-type="${type}"]`);
+          const done = await page.waitForFunction((w) =>
+            window.__weaveEditors.values().next().value.getValue().includes('typed') === w,
+          want, { timeout: 4000 }).then(() => true, () => false);
+          if (done) return;
+        }
+        assert.fail(`${type} never ${want ? 'replayed' : 'reverted'} the edit`);
+      };
+      await clickUntil('undo', false);
+      await clickUntil('redo', true);
+    } finally { await page.close(); }
+  });
+
+  /* ---------- upload: every kind of file weave stores ---------- */
+
+  test('upload attaches png, pdf and txt to the entity and links them in the doc', async () => {
+    const id = entityWithDoc('Upload', 'upload target paragraph\n');
+    const page = await openEntity(id);
+    const dir = mkdtempSync(join(tmpdir(), 'weave-up-'));
+    // A real 1×1 PNG, a minimal PDF header, plain text — three mimes, three
+    // renderings: image embeds, the rest link.
+    const png = join(dir, 'dot.png');
+    writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==', 'base64'));
+    const pdf = join(dir, 'note.pdf');
+    writeFileSync(pdf, '%PDF-1.4\n%%EOF\n');
+    const txt = join(dir, 'read.txt');
+    writeFileSync(txt, 'plain words\n');
+    try {
+      await selectStart(page, 6);
+      await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', { timeout: 20000 });
+      await page.setInputFiles('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', [png, pdf, txt]);
+      await page.waitForFunction(() => {
+        const v = window.__weaveEditors.values().next().value.getValue();
+        return v.includes('![dot.png](') && v.includes('[note.pdf](') && v.includes('[read.txt](');
+      }, null, { timeout: 20000 });
+      const v = await value(page);
+      const urls = [...v.matchAll(/\]\((\/[^)]+)\)/g)].map((m) => m[1]).filter((u) => u.includes('/api/files/'));
+      assert.equal(urls.length, 3, 'three attached files, three links');
+      // The links resolve: every uploaded byte stream comes back with its mime.
+      for (const [u, mime] of [[urls[0], 'image/png'], [urls[1], 'application/pdf'], [urls[2], 'text/plain']]) {
+        const rsp = await fetch(base + u);
+        assert.equal(rsp.status, 200, `${u} serves`);
+        assert.ok((rsp.headers.get('content-type') ?? '').startsWith(mime), `${u} keeps mime ${mime}`);
+      }
+      // And the entity's file list carries all three.
+      const entity = weave.readEntity(id);
+      assert.equal(entity.files.length, 3, 'all three files attached to the entity');
+    } finally { await page.close(); }
+  });
+}
