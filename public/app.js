@@ -2446,7 +2446,14 @@ function renderTable(main, db, items, onSaved) {
             e.preventDefault();
             e.currentTarget.classList.remove('drop-target');
             const from = e.dataTransfer.getData('text/plain');
-            if (from && from !== c) reorderField(db, from, c, { after: cols.indexOf(from) < i });
+            // The side is judged against the LIVE order, not the order this
+            // header was drawn with: a previous drag moves columns in place
+            // without a redraw, so `cols` and `i` here can be stale and a
+            // second drag would land on the wrong side of the target.
+            const live = visibleCols(db);
+            if (from && from !== c && live.includes(from) && live.includes(c)) {
+              reorderField(db, from, c, { after: live.indexOf(from) < live.indexOf(c) });
+            }
           },
         },
           el('span', { class: 'col-label' },
@@ -3485,8 +3492,10 @@ async function reorderField(db, fromName, toName, { after = false, onFail = () =
   if (table && fromIdx >= 0 && toIdx >= 0) {
     for (const row of table.querySelectorAll('tr')) {
       const cells = row.children;
-      const from = cells[1 + fromIdx];
-      const to = cells[1 + toIdx];
+      // Two anchored cells sit before the first field in every row — the
+      // selection box and the # link — so field i lives at cell 2 + i.
+      const from = cells[2 + fromIdx];
+      const to = cells[2 + toIdx];
       if (from && to) to.insertAdjacentElement(after || fromIdx < toIdx ? 'afterend' : 'beforebegin', from);
     }
   }
