@@ -4047,7 +4047,10 @@ function attachTableKeys(host) {
    the mockup's stroke-drawn glyphs, not Vditor's sprite icons. Each entry
    overrides the built-in item's icon via mergeToolbar's Object.assign;
    hotkeys, tips and behavior stay Vditor's. */
-const WV_TB_SVG = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+// Stroke width rides inline so it beats Vditor's stroke-width:0 reset AND
+// can thin per glyph — the dense ones (numbered list, checklist) read as
+// clots at 2px in a 16px box (Kyle, 2026-08-31).
+const WV_TB_SVG = (d, w = 2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" style="stroke-width:${w}px">${d}</svg>`;
 const WV_TB_ICONS = {
   headings: WV_TB_SVG('<path d="M6 4v16M18 4v16M6 12h12"/>'),
   bold: WV_TB_SVG('<path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z"/>'),
@@ -4056,8 +4059,8 @@ const WV_TB_ICONS = {
   'inline-code': WV_TB_SVG('<path d="M9 8l-4 4 4 4M15 8l4 4-4 4"/>'),
   link: WV_TB_SVG('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 1 0-5.7-5.6l-1.2 1.2M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 1 0 5.7 5.6l1.2-1.2"/>'),
   list: WV_TB_SVG('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="18" r="1" fill="currentColor"/>'),
-  'ordered-list': WV_TB_SVG('<path d="M10 6h10M10 12h10M10 18h10M4 5l1.5-1v5M3.8 11.5a1.5 1.5 0 0 1 2.7 1c0 1-2.7 1.6-2.7 3h3"/>'),
-  check: WV_TB_SVG('<rect x="3" y="4" width="7" height="7" rx="1.5"/><path d="M5 7.5l1.5 1.5 2.5-3M14 7.5h7M14 16.5h7M3.5 16.5l2 2 3.5-4"/>'),
+  'ordered-list': WV_TB_SVG('<path d="M10 6h10M10 12h10M10 18h10M4 5l1.5-1v5M3.8 11.5a1.5 1.5 0 0 1 2.7 1c0 1-2.7 1.6-2.7 3h3"/>', 1.4),
+  check: WV_TB_SVG('<rect x="3" y="4" width="7" height="7" rx="1.5"/><path d="M5 7.5l1.5 1.5 2.5-3M14 7.5h7M14 16.5h7M3.5 16.5l2 2 3.5-4"/>', 1.4),
   outdent: WV_TB_SVG('<path d="M13 6h8M13 12h8M13 18h8M8 9l-4 3 4 3"/>'),
   indent: WV_TB_SVG('<path d="M13 6h8M13 12h8M13 18h8M4 9l4 3-4 3"/>'),
   quote: WV_TB_SVG('<path d="M9 7c-2.5.7-4 2.6-4 5.5V17h5v-5H7c0-2 .8-3.2 2-3.8zM19 7c-2.5.7-4 2.6-4 5.5V17h5v-5h-3c0-2 .8-3.2 2-3.8z" fill="currentColor" stroke="none"/>'),

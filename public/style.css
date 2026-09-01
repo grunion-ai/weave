@@ -1010,7 +1010,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-editor .vditor-toolbar__item { padding: 0 1px; float: none; }
 /* Kyle, 2026-08-30: the ordered-list and check glyphs were hard to read at
    Vditor's default size — every toolbar icon draws at 16px minimum. */
-.doc-editor .vditor-toolbar svg { width: 16px; height: 16px; fill: none; stroke-width: 2px; }
+.doc-editor .vditor-toolbar svg { width: 16px; height: 16px; fill: none; }
 /* Vditor's own sheet paints toolbar svgs with fill: currentColor, which
    turns the lab's stroke glyphs into blobs — fill lives on the elements
    that ask for it (the quote glyph, the bullet dots), not the frame. */

@@ -142,10 +142,19 @@ if (!chromium) {
       await selectStart(page);
       await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="ordered-list"]', { timeout: 20000 });
       for (const t of ['ordered-list', 'check']) {
-        const w = await page.evaluate((type) =>
-          document.querySelector(`.doc-editor .vditor-toolbar [data-type="${type}"] svg`)?.getBoundingClientRect().width, t);
-        assert.ok(w >= 16, `${t} icon is ${w}px wide — Kyle flagged it as hard to see below 16`);
+        const r = await page.evaluate((type) => {
+          const svg = document.querySelector(`.doc-editor .vditor-toolbar [data-type="${type}"] svg`);
+          return { w: svg?.getBoundingClientRect().width,
+            stroke: getComputedStyle(svg.querySelector('path')).strokeWidth };
+        }, t);
+        assert.ok(r.w >= 16, `${t} icon is ${r.w}px wide — Kyle flagged it as hard to see below 16`);
+        // The dense glyphs draw finer than the rest — 2px reads as a clot
+        // in a 16px box (Kyle, 2026-08-31: "still too thick").
+        assert.equal(r.stroke, '1.4px', `${t} draws at the fine stroke, got ${r.stroke}`);
       }
+      const bold = await page.evaluate(() =>
+        getComputedStyle(document.querySelector('.doc-editor .vditor-toolbar [data-type="bold"] svg path')).strokeWidth);
+      assert.equal(bold, '2px', 'the simple glyphs keep the full stroke');
     } finally { await page.close(); }
   });
 
