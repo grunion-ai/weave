@@ -30,7 +30,7 @@ test('every user field is a row: defaults, adds, renames, deletes', () => {
   const w = fresh();
   // Task arrives with Name + Description; both are rows bound to Task's row.
   assert.deepEqual(rowsOf(w).map((e) => w.entityName(e)).sort(), ['Description', 'Name']);
-  const tableRow = w.listEntities(w.getTable('Tables').id)[0];
+  const tableRow = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Task');
   assert.equal(valOf(w, rowsOf(w)[0], 'Table'), tableRow.id);
 
   w.addField('Task', { name: 'Estimate', type: 'number' });
@@ -54,7 +54,7 @@ test('the registry excludes the registry: system tables have no field rows', () 
 
 test('creating a Fields row materializes the real column', () => {
   const w = fresh();
-  const tableRow = w.listEntities(w.getTable('Tables').id)[0];
+  const tableRow = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Task');
   const row = w.createEntity('Fields', {
     name: 'Priority',
     values: { Table: tableRow.id, Definition: { type: 'select', config: { options: [{ name: 'P0' }, { name: 'P1' }] } } },

@@ -83,7 +83,7 @@ export function seedFieldShowcase(w) {
   const rows = [
     { name: 'Sensor board', values: {
       Notes: 'Rev C, lead-free', Site: 'https://example.com/sensor', Contact: 'sales@example.com',
-      Count: 12, Price: 149.5, Share: 32.5, Weight: 2,
+      Count: 12, Price: 149.5, Share: 0.325, Weight: 2,
       Due: '2026-09-15', Start: '2026-08-01', Published: '2026-08-20T14:30:00Z', Window: { start: '2026-08-01', end: '2026-09-15' },
       Done: false, Priority: 'High', Category: 'Hardware', Tags: ['alpha', 'stable'],
       Definition: { type: 'number', config: { format: 'currency', unit: 'EUR', decimals: 2 } },
@@ -92,7 +92,7 @@ export function seedFieldShowcase(w) {
     }, stage: 'Building', review: 'Approved' },
     { name: 'Sync service', values: {
       Notes: 'Runs hourly', Site: 'https://example.com/sync', Contact: 'ops@example.com',
-      Count: 3, Price: 1200, Share: 50, Weight: 0,
+      Count: 3, Price: 1200, Share: 0.5, Weight: 0,
       Due: '2026-08-10', Start: '2026-07-12', Published: '2026-07-30T09:00:00Z', Window: { start: '2026-07-12', end: '2026-08-10' },
       Done: true, Priority: 'Medium', Category: 'Software', Tags: ['beta'],
       Definition: { type: 'select', config: { options: ['on', 'off'] } },
@@ -303,4 +303,56 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
   applyFormattingShowcase(w);
   w.save();
   return w;
+}
+
+/* ---------- development sync (2026-08-31) ----------
+   Every build ships docs/development.json — the canonical Issue and Feature
+   lists exported at release time. On boot the server applies it to the local
+   weave docs workspace, so updating weave updates the known/resolved issue
+   list and the roadmap without touching anything the local user filed:
+   rows are matched by NAME; matched rows get the shipped status (and
+   severity / milestone / symptom), unmatched manifest rows are created, and
+   local-only rows are left exactly as they are. The manifest's hash on
+   meta makes the pass one write per build, not one per boot. */
+export function syncDevelopment(w, manifest) {
+  if (!manifest || !Array.isArray(manifest.issues)) return { applied: false };
+  const stamp = `${manifest.version}:${manifest.generatedAt}:${(manifest.issues.length + (manifest.features?.length ?? 0))}`;
+  if (w.state.meta.developmentSync === stamp) return { applied: false };
+  const table = (qualified) => w.listTables().find((t) => `${w.getSpace(t.spaceId)?.name}/${t.name}` === qualified);
+  const issuesT = table('Development/Issue');
+  const featuresT = table('Development/Feature');
+  if (!issuesT || !featuresT) return { applied: false };
+  let created = 0, updated = 0;
+  const apply = (db, entries, selects) => {
+    const byName = new Map(w.listEntities(db.id).map((e) => [w.entityName(e), e]));
+    for (const entry of entries ?? []) {
+      const existing = byName.get(entry.name);
+      const values = {};
+      for (const sel of selects) {
+        const v = entry[sel.toLowerCase()];
+        if (v != null) values[sel] = v;
+      }
+      if (!existing) {
+        const e = w.createEntity(db.id, { name: entry.name, values, ...(entry.description ? { doc: entry.description } : {}) });
+        if (entry.status) w.setState(e.id, 'Status', entry.status);
+        created++;
+        continue;
+      }
+      const read = w.readEntity(existing.id);
+      let touched = false;
+      if (entry.status && read.fields.Status !== entry.status) { w.setState(existing.id, 'Status', entry.status); touched = true; }
+      const patch = {};
+      for (const [k, v] of Object.entries(values)) {
+        const cur = read.fields[k];
+        if (JSON.stringify(cur ?? null) !== JSON.stringify(v ?? null)) patch[k] = v;
+      }
+      if (Object.keys(patch).length) { w.updateEntity(existing.id, patch); touched = true; }
+      if (touched) updated++;
+    }
+  };
+  apply(issuesT, manifest.issues, ['Severity', 'Symptom']);
+  apply(featuresT, manifest.features, ['Milestone']);
+  w.state.meta.developmentSync = stamp;
+  w.save();
+  return { applied: true, created, updated };
 }

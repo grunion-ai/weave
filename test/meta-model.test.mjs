@@ -24,31 +24,38 @@ test('every workspace carries the Workspace system space with Spaces and Tables'
   assert.equal(ws.system, 'workspace');
   assert.equal(w.getTable('Spaces').system, 'spaces');
   assert.equal(w.getTable('Tables').system, 'tables');
-  // The registry describes user structure; the registry itself is not a row.
-  assert.equal(w.listEntities(w.getTable('Spaces').id).length, 0);
+  // The registry describes the whole workspace, itself included (Issue
+  // #126): the Workspace space is a row, and so are the four system tables.
+  const names = w.listEntities(w.getTable('Spaces').id).map((e) => w.entityName(e));
+  assert.deepEqual(names, ['Workspace']);
+  const tNames = w.listEntities(w.getTable('Tables').id).map((e) => w.entityName(e)).sort();
+  assert.deepEqual(tNames, ['Fields', 'Spaces', 'Tables', 'Workflows']);
 });
 
 test('creating structure creates its row; the row follows renames and deletes', () => {
   const w = fresh();
   const spacesRows = () => w.listEntities(w.getTable('Spaces').id);
   const tablesRows = () => w.listEntities(w.getTable('Tables').id);
-  assert.deepEqual(spacesRows().map((e) => w.entityName(e)), ['Dev']);
-  assert.deepEqual(tablesRows().map((e) => w.entityName(e)), ['Task']);
+  const userSpaces = () => spacesRows().filter((e) => !w.state.spaces[e.sysId]?.system);
+  const userTables = () => tablesRows().filter((e) => !w.state.tables[e.sysId]?.system);
+  assert.deepEqual(userSpaces().map((e) => w.entityName(e)), ['Dev']);
+  assert.deepEqual(userTables().map((e) => w.entityName(e)), ['Task']);
 
   // The Tables row is RELATED to its space's row — the hierarchy is a relation.
   const spaceField = Object.values(w.getTable('Tables').fields).find((f) => f.name === 'Space');
   assert.equal(spaceField.type, 'relation');
-  assert.equal(tablesRows()[0].values[spaceField.id], spacesRows()[0].id);
+  const rowNamed = (rows, name) => rows.find((e) => w.entityName(e) === name);
+  assert.equal(rowNamed(tablesRows(), 'Task').values[spaceField.id], rowNamed(spacesRows(), 'Dev').id);
 
   w.updateSpace('Dev', { name: 'Engineering' });
-  assert.deepEqual(spacesRows().map((e) => w.entityName(e)), ['Engineering']);
+  assert.deepEqual(userSpaces().map((e) => w.entityName(e)), ['Engineering']);
   w.updateTable('Engineering/Task', { name: 'Job', description: 'work items' });
-  assert.equal(w.entityName(tablesRows()[0]), 'Job');
+  assert.equal(w.entityName(userTables()[0]), 'Job');
 
   w.deleteTable('Engineering/Job');
-  assert.equal(tablesRows().length, 0);
+  assert.equal(userTables().length, 0);
   w.deleteSpace('Engineering');
-  assert.equal(spacesRows().length, 0);
+  assert.equal(rowNamed(spacesRows(), 'Engineering'), undefined);
 });
 
 test('a legacy workspace is backfilled with registry rows on load', () => {
@@ -66,9 +73,10 @@ test('a legacy workspace is backfilled with registry rows on load', () => {
   const w2 = new Weave();
   w2.importJSON(json);
   assert.equal(w2.getTable('Spaces').system, 'spaces');
-  const names = w2.listEntities(w2.getTable('Spaces').id).map((e) => w2.entityName(e));
-  assert.deepEqual(names, ['Dev']);
-  assert.deepEqual(w2.listEntities(w2.getTable('Tables').id).map((e) => w2.entityName(e)), ['Task']);
+  const names = w2.listEntities(w2.getTable('Spaces').id).map((e) => w2.entityName(e)).sort();
+  assert.deepEqual(names, ['Dev', 'Workspace']);
+  const t2 = w2.listEntities(w2.getTable('Tables').id).filter((e) => !w2.state.tables[e.sysId]?.system);
+  assert.deepEqual(t2.map((e) => w2.entityName(e)), ['Task']);
 });
 
 test('creating a Spaces row creates the real space; a Tables row creates the real table', () => {
@@ -89,12 +97,12 @@ test('creating a Spaces row creates the real space; a Tables row creates the rea
 test('renaming a registry row renames the real structure', () => {
   const w = fresh();
   const spacesT = w.getTable('Spaces');
-  const row = w.listEntities(spacesT.id)[0];
+  const row = w.listEntities(spacesT.id).find((e) => w.entityName(e) === 'Dev');
   w.updateEntity(row.id, { Name: 'Platform' });
   assert.ok(w.getSpace('Platform'));
   assert.ok(w.getTable('Platform/Task'), 'qualified refs follow the rename');
 
-  const tRow = w.listEntities(w.getTable('Tables').id)[0];
+  const tRow = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Task');
   w.updateEntity(tRow.id, { Name: 'Ticket' });
   assert.ok(w.getTable('Platform/Ticket'));
 });
@@ -124,7 +132,7 @@ test('the registry is protected structure', () => {
    unrecoverable one. */
 test('deleting a registry row is soft; hard is still the real, unrecoverable delete', () => {
   const w = fresh();
-  const row = w.listEntities(w.getTable('Spaces').id)[0];
+  const row = w.listEntities(w.getTable('Spaces').id).find((e) => w.entityName(e) === 'Dev');
   w.deleteEntity(row.id); // soft — the space moves to the trash
   assert.equal(w.findSpace('Dev'), undefined, 'a trashed space is hidden');
   w.restoreEntity(row.id);
@@ -132,7 +140,10 @@ test('deleting a registry row is soft; hard is still the real, unrecoverable del
   w.deleteEntity(row.id, { hard: true });
   assert.equal(w.findSpace('Dev'), undefined);
   assert.equal(w.findTable('Dev/Task'), undefined, 'the space took its tables with it');
-  assert.equal(w.listEntities(w.getTable('Tables').id).length, 0);
+  assert.equal(w.listEntities(w.getTable('Tables').id).filter((e) => !w.state.tables[e.sysId]?.system).length, 0);
+  // The system rows stay, and refuse to take the registry down (Issue #126).
+  const sysRow = w.listEntities(w.getTable('Spaces').id).find((e) => w.entityName(e) === 'Workspace');
+  assert.throws(() => w.deleteEntity(sysRow.id, { hard: true }), /system/i);
 });
 
 test('moving a table between spaces is refused with a clear reason', () => {
@@ -229,7 +240,7 @@ test('the description at the top of the table is the row Description, both ways'
    system-registry rows. */
 test('registry rows expose sysId so a row can open its structure', () => {
   const w = fresh();
-  const spaceRow = w.listEntities(w.getTable('Spaces').id)[0];
+  const spaceRow = w.listEntities(w.getTable('Spaces').id).find((e) => w.entityName(e) === 'Dev');
   assert.equal(w.readEntity(spaceRow.id).sysId, w.getSpace('Dev').id);
   const tableRow = tableRowOf(w, 'Task');
   assert.equal(w.readEntity(tableRow.id).sysId, w.getTable('Task').id);

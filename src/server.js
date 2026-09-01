@@ -1,5 +1,5 @@
 import { createServer as createHttpServer } from 'node:http';
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
@@ -114,19 +114,39 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
           deletedAt: w.state.meta.deletedAt ?? null,
         }));
     },
-    /* Workspace trash (lifecycle gate, Phase 0b): the tombstone lives in the
-       workspace's own meta, so it survives restarts and rescans. The .db file
-       is never touched — removing it is a human filesystem act, so there is
-       no hard delete at this level. The URL keeps answering, the same
-       readable-by-id rule trashed entities and tables follow. */
-    remove(ref) {
+    /* Workspace trash, two rungs (lifecycle gate Phase 0b + Issue #122).
+       Soft (default): a deletedAt tombstone in the workspace's own meta — it
+       leaves the hub list but keeps its file and its URL, survives restarts
+       and rescans, and restore() undoes it; the readable-by-id rule trashed
+       entities and tables follow. Hard: the .db (with WAL/SHM sidecars)
+       moves to <dataDir>/trash/, where scan() never looks — recoverable only
+       by moving it back by hand. The default workspace and the weave docs
+       workspace refuse both: the app is standing on them. */
+    remove(ref, { hard = false } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
-      if (w === defaultWeave) throw new WeaveError('The default workspace cannot be deleted', 'invalid');
-      if (w.state.meta.deletedAt) return w;
-      w.state.meta.deletedAt = new Date().toISOString();
-      w.save();
-      return w;
+      const name = [...instances.entries()].find(([, x]) => x === w)?.[0];
+      if (w === defaultWeave || name === defaultName) throw new WeaveError('The default workspace cannot be deleted', 'invalid');
+      if (name === 'weave') throw new WeaveError('The weave docs workspace cannot be deleted', 'invalid');
+      if (!hard) {
+        if (w.state.meta.deletedAt) return w;
+        w.state.meta.deletedAt = new Date().toISOString();
+        w.save();
+        return w;
+      }
+      const path = w.store.path;
+      w.store.close?.();
+      instances.delete(name);
+      if (path) {
+        adoptedPaths.delete(path);
+        const trashDir = join(dirname(path), 'trash');
+        mkdirSync(trashDir, { recursive: true });
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        for (const suffix of ['', '-wal', '-shm']) {
+          if (existsSync(path + suffix)) renameSync(path + suffix, join(trashDir, `${name}-${stamp}.db${suffix}`));
+        }
+      }
+      return { name, trashed: !!path };
     },
     restore(ref) {
       const w = this.get(ref);
@@ -144,6 +164,10 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
       const w = new Weave({ path: join(dataDir, `${name}.db`) });
       w.state.meta.name = name;
+      // A fresh workspace opens on its own page: say what the reader is
+      // looking at and what to do first, instead of bare registry scaffolding
+      // (Issue #123). The description is theirs to rewrite or clear.
+      w.state.meta.description = 'A fresh workspace. Create a **space** from the sidebar, add a **table** to it, and rows take it from there.\n\nThe *Workspace* space below is the workspace describing itself — every space, table and field you create appears there as a row, and editing those rows edits the schema.';
       w.save();
       instances.set(name, w);
       adoptedPaths.add(w.store.path);

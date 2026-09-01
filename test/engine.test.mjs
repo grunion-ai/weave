@@ -813,11 +813,11 @@ test('decimals default: currency 2, every other number 0 (Kyle, 2026-08-23)', ()
   w.addField(tasks, { name: 'Pct', type: 'number', config: { format: 'percent' } });
   w.addField(tasks, { name: 'Cash', type: 'number', config: { format: 'currency', currency: 'CAD' } });
   w.addField(tasks, { name: 'Fine', type: 'number', config: { decimals: 2 } });
-  const e = w.createEntity(tasks, { name: 'A', values: { Plain: 2.6, Days: 2.6, Pct: 32.49, Cash: 2.6, Fine: 2.6 } });
+  const e = w.createEntity(tasks, { name: 'A', values: { Plain: 2.6, Days: 2.6, Pct: 0.3249, Cash: 2.6, Fine: 2.6 } });
   const r = w.readEntity(e.id).fields;
   assert.equal(r.Plain, 2.6, 'no costume: the raw number, for formulas and the API');
   assert.equal(r.Days, '3 days');
-  assert.equal(r.Pct, '32%');
+  assert.equal(r.Pct, '32%'); // stored fraction ×100 since Issue #127
   assert.equal(r.Cash, 'CA$2.60');
   assert.equal(r.Fine, '2.60');
 });

@@ -163,7 +163,7 @@ if (!chromium) {
       const page = await grid(density);
       try {
         const h = await page.$$eval('.wv-grid tbody tr', (rows) => rows
-          .filter((r) => r.querySelector('td.docs-cell'))
+          .filter((r) => r.querySelector('td .doc-chip'))
           .map((r) => Math.round(r.getBoundingClientRect().height)));
         assert.ok(h.length >= 2, 'two rows to compare');
         assert.equal(new Set(h).size, 1, `every row is the same height (${h.join(', ')})`);

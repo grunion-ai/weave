@@ -195,6 +195,21 @@ async function main() {
         console.log(`Created docs workspace at ${weavePath}`);
       }
     }
+    /* Every build carries its issue list (2026-08-31): apply the shipped
+       Development manifest to the docs workspace, so an updated install
+       shows the current known / resolved issues and the roadmap. Fail-open —
+       a missing or unreadable manifest never blocks serving. */
+    try {
+      const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'development.json'), 'utf8'));
+      const docsPath = w.state.meta.name === 'weave' ? dataPath : join(dirname(dataPath), 'weave.db');
+      if (existsSync(docsPath)) {
+        const { syncDevelopment } = await import('../src/weaver-seed.js');
+        const docsW = w.state.meta.name === 'weave' ? w : new Weave({ path: docsPath, actor: CLI_ACTOR });
+        const r = syncDevelopment(docsW, manifest);
+        if (docsW !== w) docsW.store.close?.();
+        if (r.applied) console.log(`Development sync v${manifest.version}: ${r.created} created, ${r.updated} updated`);
+      }
+    } catch { /* no manifest in this build */ }
     const port = Number(flags.port ?? process.env.PORT ?? 4400);
     // Loopback unless asked otherwise. --host 0.0.0.0 puts every workspace on
     // the local network with no authentication in front of /api/*; it exists

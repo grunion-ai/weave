@@ -317,9 +317,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { name: w.state.meta.name, deletedAt: null });
         }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
+          if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
+          const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
+          if (hard) return out(200, hub.remove(m[1], { hard: true }));
           const w = hub.remove(m[1]);
           return out(200, { name: w.state.meta.name, deletedAt: w.state.meta.deletedAt });
         }
+
 
         if (route === 'GET /api/workspace') {
           const ws = weave.getWorkspace();

@@ -403,7 +403,7 @@ weave field update Task Description --name Notes   # still the description
 
 The description takes a column of its own and previews what it says: the first line, formatted — a heading as its words, bold as bold, never a hash or a pair of asterisks — and the first few lines when you hover it. A document that is not prose is named instead of flattened: \`HTML app\`, \`JSON model\`, \`graph diagram\`.
 
-Every OTHER document folds into the shared \`Docs (n)\` control in the grid, one chip each. All of them open in full on the entity page and in the side peek.
+Every OTHER document is a column of its own in the grid: a named chip wearing the kind it holds — the declared kind when the field declares one, the sniffed kind otherwise. It hides behind the eye, resizes and reorders like any field. All documents open in full on the entity page and in the side peek.
 
 \`\`\`bash
 weave doc set Task#5 --field Spec --content '# Spec'
@@ -634,7 +634,7 @@ Any document opens full screen from its frame, and markdown editing works there 
 
 ## Kinds
 
-A document field carries a \`kind\`: \`markdown\` (the default), \`html\`, or \`code\`. A \`code\` document is what the \`Workflows\` registry's \`Script\` column uses — a document that is a program rather than prose.
+A document field carries a \`kind\`: \`markdown\` (the default), \`html\`, or \`code\`. The declared kind rules how the entity page renders the document — an \`html\` field runs in its frame with the \`</>\` source toggle, a \`code\` field edits directly in the monospace code box — and a field that declares nothing falls back to sniffing its content. A \`code\` document is what the \`Workflows\` registry's \`Script\` column uses — a document that is a program rather than prose.
 
 ## Getting it back out
 

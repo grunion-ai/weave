@@ -16,7 +16,7 @@
     { id: 'date', label: 'date', icon: '▤' },
     { id: 'daterange', label: 'range', icon: '⇤⇥' },
     { id: 'checkbox', label: 'checkbox', icon: '☑' },
-    { id: 'url', label: 'url', icon: '🔗' },
+    { id: 'url', label: 'url', icon: '⛓' },
     { id: 'email', label: 'email', icon: '@' },
     { id: 'select', label: 'select', icon: '▾' },
     { id: 'multiselect', label: 'multi', icon: '☰' },
@@ -24,7 +24,7 @@
     { id: 'document', label: 'document', icon: '¶' },
     { id: 'field', label: 'field', icon: '⧉' },
     { id: 'key', label: 'key', icon: '✱' },
-    { id: 'attachments', label: 'files', icon: '🗂' },
+    { id: 'attachments', label: 'files', icon: 'iconly:folder' },
     { id: 'relation', label: 'relation', icon: '⇄', relation: true },
     { id: 'lookup', label: 'lookup', icon: '↗', computed: true },
     { id: 'rollup', label: 'rollup', icon: 'Σ', computed: true },
@@ -425,8 +425,23 @@
     return { ok: true, def: { type: def.type, config: c } };
   }
 
+  /* The exact token the formula language accepts for a field name (Issue
+     #128). A bare identifier only parses when it looks like one AND cannot
+     be read as something else — a keyword, or a function name the parser
+     would treat as a call. Everything else rides in [brackets], which the
+     tokenizer takes verbatim to the first ']'. A name containing ']' cannot
+     be bracketed and has no formula spelling at all — the chip still inserts
+     the bracketed form, and the expression preview shows the parse error. */
+  const FORMULA_KEYWORDS = ['or', 'and', 'true', 'false', 'null'];
+  function formulaFieldToken(name) {
+    const bareSafe = /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+      && !FORMULA_KEYWORDS.includes(name.toLowerCase())
+      && !FORMULA_FUNCTIONS.some((fn) => fn.name === name);
+    return bareSafe ? name : `[${name}]`;
+  }
+
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices,
+    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES,

@@ -35,8 +35,10 @@ test('unit, decimals and separator compose', () => {
 test('currency puts the unit in front; percent needs no unit at all', () => {
   const w = fresh({ format: 'currency', unit: '$', decimals: 2, separator: true });
   assert.equal(shown(w, 1200), '$1,200.00');
+  // Percent is the spreadsheet convention since Issue #127: the stored value
+  // is the fraction, the display is ×100.
   const w2 = fresh({ format: 'percent', decimals: 1 });
-  assert.equal(shown(w2, 12.345), '12.3%');
+  assert.equal(shown(w2, 0.12345), '12.3%');
 });
 
 test('the stored value is untouched by its costume', () => {
@@ -123,4 +125,42 @@ test('updateField edits the date costume too', () => {
   assert.equal(f.config.time, true);
   w.updateField('Task', 'Due', { config: { width: 140 } });
   assert.equal(f.config.format, 'long', 'width edits never clobber the costume');
+});
+
+/* Issue #127 — percent scales: stored fraction, displayed ×100, and values
+   written under the pre-fractional rule divide once at migration. */
+test('percent multiplies the stored fraction by 100 for display', () => {
+  const w = fresh({ format: 'percent', decimals: 1 });
+  assert.equal(shown(w, 0.325), '32.5%');
+  const whole = fresh({ format: 'percent' });
+  assert.equal(shown(whole, 0.5), '50%');
+});
+
+test('percent display carries no float noise', () => {
+  const w = fresh({ format: 'percent' });
+  assert.equal(shown(w, 0.1), '10%'); // 0.1 × 100 = 10.000000000000002 raw
+});
+
+test('pre-fractional percent values divide by 100 exactly once at load', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'weave-pct-'));
+  try {
+    const path = join(dir, 'pct.db');
+    const w = new Weave({ path });
+    w.createSpace({ name: 'Dev' });
+    w.createTable({ space: 'Dev', name: 'Deal' });
+    w.addField('Deal', { name: 'Share', type: 'number', config: { format: 'percent', decimals: 1 } });
+    const e = w.createEntity('Deal', { name: 'X', values: { Share: 0.325 } });
+    // Forge the legacy state: value stored as the displayed number, flag off.
+    w.updateEntity(e.id, { Share: 32.5 });
+    delete w.state.meta.percentFractional;
+    w.save();
+    const reopened = new Weave({ path });
+    const migrated = reopened.readEntity(e.id);
+    assert.equal(migrated.fields.Share, '32.5%', 'the reader sees exactly what they saw before');
+    const again = new Weave({ path });
+    assert.equal(again.readEntity(e.id).fields.Share, '32.5%', 'the pass is one-time, not per-load');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

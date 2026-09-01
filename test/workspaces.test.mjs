@@ -124,3 +124,52 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
     server.close();
   }
 });
+
+/* Issue #122 — a workspace can be removed: the hub moves its .db to trash/
+   (recoverable, invisible to scan), and the default + weave docs workspaces
+   refuse. Issue #123 rides along: a hub-created workspace opens with a
+   description that says what to do first. */
+test('workspace delete: trash move, guards, and the fresh-workspace description', async () => {
+  const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { Weave } = await import('../src/engine.js');
+  const { startServer } = await import('../src/server.js');
+  const dir = mkdtempSync(join(tmpdir(), 'weave-wsdel-'));
+  try {
+    const main = new Weave({ path: join(dir, 'main.db') });
+    main.state.meta.name = 'main';
+    main.save();
+    const { server } = await startServer(main, {});
+    const base = `http://127.0.0.1:${server.address().port}`;
+    try {
+      const made = await (await fetch(`${base}/api/workspaces`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'scratch' }),
+      })).json();
+      assert.equal(made.name, 'scratch');
+      const list = await (await fetch(`${base}/api/workspaces`)).json();
+      const scratch = list.find((w) => w.name === 'scratch');
+      assert.ok(scratch, 'created and listed');
+      // Issue #123: the newcomer is told what they are looking at.
+      const meta = await (await fetch(`${base}/w/${scratch.id}/api/workspace`)).json();
+      assert.match(meta.description ?? '', /space/i, 'a fresh workspace explains itself');
+
+      // Soft by default (lifecycle gate): a tombstone, the file stays put.
+      const gone = await fetch(`${base}/api/workspaces/${scratch.id}`, { method: 'DELETE' });
+      assert.equal(gone.status, 200);
+      const after = await (await fetch(`${base}/api/workspaces`)).json();
+      assert.ok(!after.some((w) => w.name === 'scratch'), 'delisted');
+      assert.ok(readdirSync(dir).includes('scratch.db'), 'soft delete leaves the file in place');
+      // ?hard=1 is the Issue #122 move: the .db leaves the data dir for trash/.
+      const purged = await fetch(`${base}/api/workspaces/${scratch.id}?hard=1`, { method: 'DELETE' });
+      assert.equal(purged.status, 200);
+      assert.ok(!readdirSync(dir).includes('scratch.db'), 'file left the data dir');
+      assert.ok(readdirSync(join(dir, 'trash')).some((f) => f.startsWith('scratch-')), 'and landed in trash/');
+
+      const noDefault = await fetch(`${base}/api/workspaces/main`, { method: 'DELETE' });
+      assert.equal(noDefault.status, 400, 'the default workspace stays');
+    } finally {
+      server.close();
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

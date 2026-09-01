@@ -2,6 +2,17 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.4 — 2026-08-31
+
+- **Development sync** (#152): every build ships `docs/development.json` — the canonical Issue + Feature lists exported at release by `scripts/export-development.mjs` — and `weave serve` applies it to the local docs workspace on boot. Updating weave now updates the known/resolved issue list and the roadmap; locally filed rows are never touched (match is by name). `test/development-sync.test.mjs` pins the manifest to the package version.
+- **Workspace delete** (Issue #122): `DELETE /api/workspaces/:ref` + a hold-to-confirm action on the workspace page. The `.db` (with WAL/SHM) moves to `<dataDir>/trash/` — recoverable, invisible to the hub's scan. The default and weave docs workspaces refuse.
+- **A fresh workspace explains itself** (Issue #123): hub-created workspaces open with a description naming the first steps and what the Workspace registry space is.
+- **The registry registers itself** (Issue #126): the system Workspace space and its four tables are rows in Spaces/Tables like everything else — the registry now means its own description. Deleting or repurposing those rows is refused; columns cannot be added to system tables through the Fields registry.
+- **Percent means percent** (Issue #127): number fields with the percent costume follow the spreadsheet convention — stored fraction, displayed ×100 (0.325 → "32.5%"), input ÷100. Existing percent values migrate ÷100 once on first open, so every cell reads exactly as it did.
+- **Formula chips insert parseable tokens** (Issue #128): a field chip inserts `[Due Date]` when the name needs bracketing (spaces, punctuation, keywords, function-name collisions) and the bare name only when it is a safe identifier.
+- **Shift+Enter is save-and-create-another from inside a row** (Issue #125): the cell commits, the new row's Name cell takes focus.
+- **Empty-schema banner gone** (Issue #124): "This table has no fields beyond its name." read as breakage, not help.
+
 ## v0.4.3 — 2026-08-28
 
 - **Target-set (polymorphic) relations** (#150): one relation field may target SEVERAL tables — `targetDbs` — including the registry's `Workspace/Spaces` and `Workspace/Tables`, so a row can point at a space or a table as easily as at another row (a bug scoped to a whole space, a dependency on an entire workstream, an agenda mixing rows with structure). One-way by design (no inverse spray); lookups/rollups keep the single-target contract; filters traverse per-row; chips carry their home table; the picker searches every member; the relation map draws one edge per member. Rollback-safe: singleton relations are bit-for-bit unchanged, and removing multi-target fields restores the pre-feature shape exactly.

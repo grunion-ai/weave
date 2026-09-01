@@ -133,8 +133,10 @@ test('related rows still route a click before opening the entity', () => {
   assert.equal(routed.length, 1, 'embedded related rows route clicks; the grid edits in place');
   assert.equal((APP.match(/openEntity\(item\.id\)/g) ?? []).length, routed.length,
     'no row surface may open the entity without routing first');
-  assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, 2,
-    'two surfaces open the side peek: the grid on ⌘-click, and a doc chip (Issue #74)');
+  assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, 1,
+    'the grid opens the side peek on ⌘-click');
+  assert.match(APP, /docChipCell\(f, item, \(\) => peekEntity\(id\)\)/,
+    'and a doc chip peeks its entity from the cell (Issue #74)');
   assert.match(APP, /function rowClickTarget/);
   assert.match(APP, /function openCellPicker/);
   const fn = APP.slice(APP.indexOf('function openCellPicker'));
@@ -214,10 +216,11 @@ test('the field "+" opens the add tray directly — relation is a grid tile, Man
 test('full-width grid rows derive their span from one column count', () => {
   // The header gained a column; a restated `cols.length + N` would silently
   // under-span the new-entity row. It gained another with row selection
-  // (Feature #132): checkbox + # + one per field + docs + the "+" control.
-  // What the span must actually EQUAL is proved against a live header in
-  // test/row-selection-browser.test.mjs — this only pins the single source.
-  assert.match(APP, /const colCount = cols\.length \+ 4;/, 'the table view derives it once');
+  // (Feature #132), and LOST the shared Docs cell when every document became
+  // a column of its own (2026-08-31): checkbox + # + one per field + the "+"
+  // control. What the span must actually EQUAL is proved against a live
+  // header in test/row-selection-browser.test.mjs — this only pins the source.
+  assert.match(APP, /const colCount = cols\.length \+ 3;/, 'the table view derives it once');
   assert.match(APP, /const colCount = cols\.length \+ 2;/, 'so does the embedded related grid, from its own columns');
   assert.doesNotMatch(APP, /colspan: String\(cols\.length/, 'never restated at a use site');
   assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 2,
@@ -1536,12 +1539,12 @@ test('a document that is an HTML app is embedded, not edited as markdown', () =>
   // The entity page mounts a frame for an HTML document (so its script runs
   // as written, in Safari too); the source editor is a toggle away and is
   // mounted on first use — an editor mounted into a hidden box stays blank.
-  assert.ok(app.includes('function isHtmlDocument('), 'the client can tell an HTML document apart');
+  assert.ok(app.includes('docViewMode(f.kind'), 'the declared kind rules the viewer; docKind sniffs only the undeclared');
   const i = app.indexOf("class: 'doc-app'");
   assert.ok(i > 0, 'the embedded frame exists');
   assert.ok(app.slice(i, i + 160).includes('allowfullscreen'), 'the embedded frame permits fullscreen (Safari)');
   assert.ok(app.includes("title: 'Edit source'"), 'the source editor is one toggle away');
-  assert.ok(app.includes('if (!isApp) mountEditor();'), 'the rendering editor is for markdown only');
+  assert.ok(app.includes("if (mode === 'markdown') mountEditor();"), 'the rendering editor is for markdown only');
   assert.ok(app.includes("class: 'doc-source'") && app.includes('mountSourceEditor'), 'HTML source edits in a code box, mounted on first toggle');
   assert.match(rulesFor('.doc-source')['font-family'] ?? '', /monospace/, 'the source box is monospace');
   const css = rulesFor('.doc-app');
@@ -1674,18 +1677,20 @@ test('system columns are toggled only from the eye — not from the table ⋮ me
    earlier rulings survive that: the row says what its description says, and
    no document stands in for the others, because the others still have their
    chips. */
-test('the table grid names every document in the Docs cell', () => {
+/* And 2026-08-31, the fourth: the Docs cell itself retired. Every document
+   field is a column of its own — the chip moved into that column, still named,
+   still kind-badged (test/doc-columns.test.mjs owns the column era). */
+test('every document is a column; its cell is the named chip', () => {
   const grid = fnBody('renderTable');
-  assert.match(grid, /class: 'docs-cell'/, 'the cell is addressable');
-  assert.match(grid, /docChips\(item, db,/, 'the cell is chips, one per document field but the description');
+  assert.ok(!grid.includes("class: 'docs-cell'"), 'the shared Docs cell is gone');
+  assert.ok(!APP.includes('docChips(item, db,'), 'and the multi-chip builder with it');
   assert.ok(!grid.includes("class: 'doc-snip'"), 'the one-document snip is gone');
   assert.ok(rulesFor('.doc-chip')['max-width'], 'a chip is width-capped');
 });
 
 test('the description is a column of its own, previewed and formatted (Kyle, 2026-08-27)', () => {
   const cols = fnBody('visibleCols');
-  assert.match(cols, /descriptionFieldOf\(/, 'exactly one document is admitted to the columns');
-  assert.match(cols, /f\.type !== 'document' \|\| f\.id === described\?\.id/, 'and it is the one holding the role');
+  assert.ok(!/type !== 'document'/.test(cols), 'no document is filtered from the columns any more');
 
   const cell = fnBody('docPreviewCell');
   assert.match(cell, /WeaveEditorLib\.docPreview\(/, 'the block pass is the shared one');

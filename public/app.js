@@ -615,14 +615,6 @@ function descriptionFieldOf(db) {
   return db?.fields?.find((f) => f.type === 'document' && f.role === 'description') ?? null;
 }
 
-/* The documents that stay chips. Kyle's 2026-08-24 ruling — one chip per
-   document, named, with its kind — still governs Spec, Model and test; the
-   description left the cell for a column of its own, where it can say what it
-   actually says. */
-function chipDocumentFields(db) {
-  const described = descriptionFieldOf(db);
-  return documentFields(db).filter((f) => f.id !== described?.id);
-}
 
 /* What this table is to the slide composer (Feature #118): a table with a
    many-relation named Slides is a deck, a table with a Model document is a
@@ -643,11 +635,6 @@ function deckRoleOf(db) {
 // Lazy mermaid: load the vendored lib only when a preview contains a diagram.
 let mermaidLoading = null;
 
-/* A document can be an app: a complete HTML file (doctype or <html> first)
-   is embedded and run, not edited as markdown. Mirrors src/markdown.js. */
-function isHtmlDocument(text) {
-  return typeof text === 'string' && /^\s*(?:<!doctype\s+html|<html[\s>])/i.test(text);
-}
 
 /* ---------- expand a document (Feature #47) ----------
    Expanding is not fullscreen: the document takes the entity body — fields,
@@ -1647,8 +1634,10 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     return box;
   }
   if (f.type === 'document') {
-    // Only the description reaches a cell, and it reaches it as prose.
-    return docPreviewCell(item.docs?.[f.name], f.name, () => peekEntity(id));
+    // The description reaches its cell as prose; every other document as the
+    // named chip wearing its kind (Kyle, 2026-08-31 — one field, one column).
+    if (f.role === 'description') return docPreviewCell(item.docs?.[f.name], f.name, () => peekEntity(id));
+    return docChipCell(f, item, () => peekEntity(id));
   }
   if (f.type === 'field') {
     // A field definition. In compact surfaces (grid, board, list) the value
@@ -1774,13 +1763,21 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
       dateControl({ ...opts, value: range.end, placeholder: 'end', onChange: (iso) => { range.end = iso ?? ''; commit(); } }));
   }
   const rawVal = item.raw?.[f.name] ?? val;
+  /* A percent field stores the fraction and talks to people in percent
+     (Issue #127): the box shows 32.5 for a stored 0.325 and typing 50
+     stores 0.5 — the number in the box is the number in the "32.5%" the
+     cell shows at rest. Rounding strips float noise both ways. */
+  const isPercent = f.type === 'number' && f.format === 'percent';
+  const boxVal = isPercent && typeof rawVal === 'number' ? Math.round(rawVal * 100 * 1e8) / 1e8 : rawVal;
   const input = el('input', {
     class: 'form-control form-control-sm inline-edit',
     type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text',
-    value: rawVal ?? '',
+    value: boxVal ?? '',
     onclick: (e) => e.stopPropagation(),
   });
-  input.addEventListener('change', () => patch(input.value === '' ? null : f.type === 'number' ? Number(input.value) : input.value));
+  input.addEventListener('change', () => patch(input.value === '' ? null
+    : f.type === 'number' ? (isPercent ? Math.round(Number(input.value) * 1e8) / 1e10 : Number(input.value))
+    : input.value));
   // Space and table descriptions are markdown living in a text field. A grid
   // that paints them raw reads `**Official docs** — the pages`, so the cell
   // wears the marks and hands over the source on click (the #97 pattern).
@@ -1839,26 +1836,20 @@ function docPreviewCell(md, name, onOpen) {
   return box;
 }
 
-/* ---------- a row's documents, as chips (Kyle, 2026-08-24) ----------
-   A row can carry several documents; a 90-character slice of the first one
-   said nothing about the rest. One chip per document field instead: its
-   name, and the kind of thing it holds — md, an html app, a json model, a
-   mermaid diagram — with the empty ones dimmed and labelled as empty.
-
-   Narrowed 2026-08-27: the description is not among them any more. It has a
-   column, and in it the first few lines of what it says. */
-function docChips(item, db, onOpen) {
-  const box = el('span', { class: 'doc-chips' });
-  for (const f of chipDocumentFields(db)) {
-    const kind = globalThis.WeaveEditorLib.docKind(item.docs?.[f.name]);
-    box.append(el('button', {
-      class: 'k k-doc doc-chip' + (kind ? '' : ' is-empty'),
-      type: 'button',
-      title: kind ? `Open ${f.name} (${kind})` : `${f.name} is empty — click to write it`,
-      onclick: (e) => { e.stopPropagation(); onOpen(f.name); },
-    }, f.name, el('span', { class: 'doc-kind' }, kind ?? 'empty')));
-  }
-  return box;
+/* ---------- a document cell, as a chip (Kyle, 2026-08-24 → 2026-08-31) ----
+   One chip per document field: its name, and the kind of thing it holds —
+   the kind the field DECLARES when it declares one, the sniffed kind
+   otherwise — with an empty one labelled as empty rather than lying. The
+   chips used to crowd a shared Docs cell; each now sits in its own field's
+   column, so it hides, resizes and reorders like any value. */
+function docChipCell(f, item, onOpen) {
+  const kind = globalThis.WeaveEditorLib.docChipKind(f.kind, item.docs?.[f.name]);
+  return el('button', {
+    class: 'k k-doc doc-chip' + (kind ? '' : ' is-empty'),
+    type: 'button',
+    title: kind ? `Open ${f.name} (${kind})` : `${f.name} is empty — click to write it`,
+    onclick: (e) => { e.stopPropagation(); onOpen(); },
+  }, f.name, el('span', { class: 'doc-kind' }, kind ?? 'empty'));
 }
 
 
@@ -2157,7 +2148,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
   }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
   const rows = [
     el('div', { class: 'eye-head' }, 'Fields'),
-    ...db.fields.filter((f) => f.type !== 'document').map((f) => row(!hidden.has(f.name), f.name, () => {
+    ...db.fields.map((f) => row(!hidden.has(f.name), f.name, () => {
       const next = new Set(hidden);
       if (next.has(f.name)) next.delete(f.name); else next.add(f.name);
       save({ hiddenFields: [...next] });
@@ -2180,28 +2171,25 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
   showPopover(anchor, rows);
 }
 
-/* The columns a table shows: every non-document field, plus the ONE document
-   that carries the description role, minus the table's hidden set (the
+/* The columns a table shows: every field, minus the table's hidden set (the
    eyeball, Feature #114). reorderField mirrors this.
 
-   The description is a column because Kyle asked for its first few lines to be
-   readable in the grid (2026-08-27), and a column is where a value that says
-   something belongs — it resizes, hides and reorders like every other. Every
-   other document stays in the shared Docs cell as a chip. */
+   Documents are columns like everything else (Kyle, 2026-08-31): the
+   description previews its first lines (2026-08-27), every other document is
+   its named chip with a kind badge — and each resizes, hides and reorders
+   like every other field. The shared Docs cell they used to fold into is
+   gone. */
 function visibleCols(db) {
   const hidden = new Set(db.hiddenFields ?? []);
-  const described = descriptionFieldOf(db);
-  return db.fields
-    .filter((f) => (f.type !== 'document' || f.id === described?.id) && !hidden.has(f.name))
-    .map((f) => f.name);
+  return db.fields.filter((f) => !hidden.has(f.name)).map((f) => f.name);
 }
 
 function renderTable(main, db, items, onSaved) {
   const cols = visibleCols(db);
-  // Header bar = checkbox + id + one per field + docs + the "+" field control.
+  // Header bar = checkbox + id + one per field + the "+" field control.
   // Full-width rows span it, so it is derived once rather than restated per
   // call site.
-  const colCount = cols.length + 4;
+  const colCount = cols.length + 3;
   // Sort is table truth (2026-08-28): read from the schema, written back on
   // change, mirrored to the Tables registry row's Sort field. The grid still
   // sorts locally for the instant redraw; the PATCH makes it survive.
@@ -2408,11 +2396,7 @@ function renderTable(main, db, items, onSaved) {
             style: f.width ? columnWidthStyle(f.width) : null,
           }, editorFor(f, item, db, onSaved, { compact: true }));
         }),
-        ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')),
-        // A document opens in the side peek — the full entity view with its
-        // ✕ in the upper right — never in a row expansion that stretches the
-        // grid (Kyle, 2026-08-25, Issue #74).
-        el('td', { class: 'docs-cell' }, docChips(item, db, () => peekEntity(item.id))));
+        ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')));
       tbody.append(row);
     }
     // Creating an entity is the last row of the grid, not a detached bar:
@@ -2478,8 +2462,6 @@ function renderTable(main, db, items, onSaved) {
           columnResizeGrip(db, colField(db, c)))),
         ...(db.systemFields ?? []).map((n) => el('th', { class: 'sys-head', title: `${n} — system field, read-only` },
           el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·')))),
-        el('th', { title: chipDocumentFields(db).map((f) => f.name).join(', ') },
-          `Docs (${chipDocumentFields(db).length})`),
         // Adding a field lives where the fields are: the end of the header bar.
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db)))),
       tbody);
@@ -3099,7 +3081,7 @@ function formulaBuilder(db, state, onChange) {
   };
   const fieldChips = db.fields
     .filter((x) => !['document', 'attachments'].includes(x.type))
-    .map((x) => el('button', { type: 'button', class: 'fx-chip', title: x.type, onclick: () => insert(x.name) }, x.name));
+    .map((x) => el('button', { type: 'button', class: 'fx-chip', title: x.type, onclick: () => insert(fieldDialogCore.formulaFieldToken(x.name)) }, x.name));
   const fnChips = fieldDialogCore.FORMULA_FUNCTIONS
     .map((fn) => el('button', { type: 'button', class: 'fx-chip fn', title: fn.sig, onclick: () => insert(`${fn.name}(`) }, `${fn.name}()`));
   return el('div', {},
@@ -3194,7 +3176,10 @@ function fieldDialog(db, existing, after) {
       disabled: isEdit && choices.length <= 1 ? '' : undefined,
       title: isEdit && t.id !== existing.type ? `Convert to ${t.id} — values are migrated in place` : (t.computed ? `${t.id} (computed)` : t.id),
       onclick: () => pickType(t.id),
-    }, el('span', { class: 'type-ic' }, t.icon), t.label));
+      // The tile draws whatever the catalogue can draw and types the rest:
+      // Aa, #, @ and the sum sign are letters doing a letter's job, while url
+      // and files were colour emoji sitting among monochrome marks (#138).
+    }, el('span', { class: 'type-ic' }, iconEl(t.icon) ?? t.icon), t.label));
     // Formula is a checkbox (Kyle, 2026-08-23): ticking it opens the script
     // dialog; the tray then shows the expression with an edit link.
     const fx = el('label', { class: 'fx-toggle' + (state.computed ? ' on' : '') },
@@ -4772,10 +4757,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       { title: `${f.name} downloads`, extraClass: 'doc-dl' });
 
     const body = el('div', { class: 'doc-section-body' }, host);
-    // An HTML document runs in its own frame here; the markdown editor for
-    // its source is one </> toggle away — mounted on first use, because an
-    // editor mounted into a hidden box measures nothing and stays blank.
-    const isApp = isHtmlDocument(entity.docs?.[f.name] ?? '');
+    /* The field's DECLARED kind picks the surface (Kyle, 2026-08-31): an
+       html field runs in its frame, a code field edits in the code box, and
+       only an undeclared field falls back to sniffing its content. An HTML
+       document runs in its own frame here; the source editor is one </>
+       toggle away — mounted on first use, because an editor mounted into a
+       hidden box measures nothing and stays blank. */
+    const mode = globalThis.WeaveEditorLib.docViewMode(f.kind, entity.docs?.[f.name] ?? '');
+    const isApp = mode === 'app';
     const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, allowfullscreen: '', allow: 'fullscreen', title: f.name }) : null;
     let showingSource = false;
     let mounted = false;
@@ -4835,14 +4824,17 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       editors?.push(ed);
     };
     // The source of an HTML document is code, so its editor is a code box —
-    // the rendering editor would run the HTML instead of showing it.
+    // the rendering editor would run the HTML instead of showing it. A field
+    // whose declared kind IS code mounts this box directly: its document is a
+    // program, and there is no frame to toggle away from.
     const mountSourceEditor = () => {
-      const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: 'HTML source' });
+      const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
       ta.value = entity.docs?.[f.name] ?? '';
       ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, status));
       host.append(ta);
     };
-    if (!isApp) mountEditor();
+    if (mode === 'code') mountSourceEditor();
+    if (mode === 'markdown') mountEditor();
     return section;
   };
 
@@ -5008,10 +5000,9 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       anchor('the fields'), el('span', { class: 'block-name' }, 'Fields'));
     fields.append(valuesHead, values);
     wireBlock(VALUES_BLOCK, fields, [valuesHead.querySelector('.opt-grip'), valuesHead]);
-  } else {
-    fields.append(el('span', { class: 'wv-empty' }, 'This table has no fields beyond its name.'));
-    left.append(fields);
   }
+  // A table with no fields beyond its name shows nothing here — the banner
+  // that used to fill the space read as breakage, not help (Issue #124).
 
   /* Collections of related records are blocks in the body rather than the
      side panel: they are work to do, not attributes to read. Each is fetched
@@ -5459,6 +5450,12 @@ async function showHome() {
   const dbs = allTables();
   let ws = { name: $('#ws-name').textContent || 'workspace', description: '' };
   try { ws = await api('GET', '/workspace'); } catch { /* older server */ }
+  // Deleting a workspace lives on the workspace's own page (Issue #122) —
+  // the same place a space and a table keep their destructive act. The
+  // default and the weave docs workspaces cannot go; theirs shows no menu.
+  let wsRow = null;
+  try { wsRow = (await api('GET', '/workspaces')).find((w) => w.name === ws.name); } catch { /* single-workspace hub */ }
+  const deletable = wsRow && !wsRow.default && ws.name !== 'weave';
   main.replaceChildren(
     viewHeader({
       crumbs: [],
@@ -5471,6 +5468,17 @@ async function showHome() {
       },
       description: ws.description,
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
+      ...(deletable ? {
+        actions: [dotsMenu([{
+          hold: 'Delete workspace', holdingLabel: 'Hold to delete workspace…',
+          run: async () => {
+            try {
+              await api('DELETE', `/workspaces/${wsRow.id}`);
+              location.href = '/';
+            } catch (err) { toast(err.message, true); }
+          },
+        }], { title: 'Workspace actions', align: 'right' })],
+      } : {}),
     }),
     ...(dbs.length
       ? []
@@ -5791,15 +5799,21 @@ window.addEventListener('hashchange', route);
    unreachable and styled differently, so the same action had two competing
    designs — weave Issue #16. */
 
-/* Shift+Enter anywhere on a table view = quick-create in the current table. */
+/* Shift+Enter anywhere on a table view = quick-create in the current table.
+   From inside a grid cell editor it is save-and-create-another (Issue #125):
+   the blur commits the cell (change fires before keydown resolves), and the
+   focus lands in the new row's Name cell instead of being dropped. Editors
+   outside the grid — filters, dialogs, pickers — keep their keys. */
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' || !e.shiftKey) return;
   if (state.route?.page !== 'db') return;
-  if (e.target.closest?.('input,select,textarea,[contenteditable]')) return;
+  const editing = e.target.closest?.('input,select,textarea,[contenteditable]');
+  if (editing && !editing.closest('tr[data-eid]')) return;
   if ($('#modal-back') || $('#cmdk-back')) return;
   const db = allTables().find((d) => d.id === state.route.dbId);
   if (!db) return;
   e.preventDefault();
+  if (editing) editing.blur();
   if (state.inlineAdd) state.inlineAdd();
   else quickCreate(db);
 });

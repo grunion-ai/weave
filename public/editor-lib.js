@@ -64,6 +64,29 @@ globalThis.WeaveEditorLib = {
     return 'md';
   },
 
+  /* ---------- what a document field's kind means for its surfaces ----------
+     A field DECLARES a kind (config.kind: html, code — markdown is the
+     unmarked default the engine never stores), and the declaration rules;
+     the sniff above decides only for fields that declare nothing, which is
+     every field made before kinds mattered. Declared kind never rejects
+     content: an html field with markdown in it still runs as a frame, a code
+     field holding an HTML file still edits as source — the reader said what
+     the field IS, and weave believes them (Kyle, 2026-08-31). */
+  docViewMode(declared, text) {
+    if (declared === 'html') return 'app';
+    if (declared === 'code') return 'code';
+    return this.docKind(text) === 'html' ? 'app' : 'markdown';
+  },
+
+  /* The badge a grid chip wears: the declared kind when there is one, the
+     sniffed kind otherwise — and null for an empty document either way, so
+     the chip can say "empty" instead of lying about what is not there. */
+  docChipKind(declared, text) {
+    if (!String(text ?? '').trim()) return null;
+    if (declared === 'html' || declared === 'code') return declared;
+    return this.docKind(text);
+  },
+
   /* ---------- the first few lines of a description, as prose ----------
      Kyle, 2026-08-27: a description "should always show a preview of the
      properly formatted first few lines, not an md document chip". A chip said
