@@ -172,7 +172,10 @@ Notes that save round trips:
   *second* workspace is a second file — `node bin/weave.js --data ./other.db
   space create …` creates it on first write, and a running hub takes
   `POST /api/workspaces {"name":"other"}`. Point another MCP server at the new
-  file to work in it.
+  file to work in it. `DELETE /api/workspaces/<name>` moves a workspace to the
+  trash (its .db stays; `?deleted=1` lists the trash) and
+  `POST /api/workspaces/<name>/restore` brings it back — removing the file
+  itself stays a human act.
 
 ## Self-documenting workspace
 

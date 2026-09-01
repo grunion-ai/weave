@@ -302,10 +302,23 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // color, an icon name or a format (src/vocabulary.js).
         if (route === 'GET /api/vocabulary') return out(200, VOCABULARY);
 
-        if (route === 'GET /api/workspaces') return out(200, hub.list());
+        if (route === 'GET /api/workspaces') {
+          const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
+          return out(200, hub.list({ includeDeleted }));
+        }
         if (route === 'POST /api/workspaces') {
           const w = hub.create(body.name);
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/` });
+        }
+        // Workspace trash: soft only — a .db file is removed by a human, not
+        // an API call. Restore is the inverse.
+        if ((m = path.match(/^\/api\/workspaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
+          const w = hub.restore(m[1]);
+          return out(200, { name: w.state.meta.name, deletedAt: null });
+        }
+        if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
+          const w = hub.remove(m[1]);
+          return out(200, { name: w.state.meta.name, deletedAt: w.state.meta.deletedAt });
         }
 
         if (route === 'GET /api/workspace') {

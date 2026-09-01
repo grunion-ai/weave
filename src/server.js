@@ -97,23 +97,50 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       for (const w of instances.values()) if (w.state.meta.id === name) return w;
       return instances.get(name) ?? null;
     },
-    list() {
+    list({ includeDeleted = false } = {}) {
       scan();
       for (const w of instances.values()) w.maybeRefresh();
-      return [...instances.entries()].map(([name, w]) => ({
-        name,
-        id: w.state.meta.id,
-        url: `/w/${w.state.meta.id}/`,
-        default: name === defaultName,
-        spaces: w.listSpaces().length,
-        tables: w.listTables().length,
-        entities: Object.keys(w.state.entities).length,
-        logo: !!w.state.meta.logo,
-      }));
+      return [...instances.entries()]
+        .filter(([, w]) => includeDeleted || !w.state.meta.deletedAt)
+        .map(([name, w]) => ({
+          name,
+          id: w.state.meta.id,
+          url: `/w/${w.state.meta.id}/`,
+          default: name === defaultName,
+          spaces: w.listSpaces().length,
+          tables: w.listTables().length,
+          entities: Object.keys(w.state.entities).length,
+          logo: !!w.state.meta.logo,
+          deletedAt: w.state.meta.deletedAt ?? null,
+        }));
+    },
+    /* Workspace trash (lifecycle gate, Phase 0b): the tombstone lives in the
+       workspace's own meta, so it survives restarts and rescans. The .db file
+       is never touched — removing it is a human filesystem act, so there is
+       no hard delete at this level. The URL keeps answering, the same
+       readable-by-id rule trashed entities and tables follow. */
+    remove(ref) {
+      const w = this.get(ref);
+      if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
+      if (w === defaultWeave) throw new WeaveError('The default workspace cannot be deleted', 'invalid');
+      if (w.state.meta.deletedAt) return w;
+      w.state.meta.deletedAt = new Date().toISOString();
+      w.save();
+      return w;
+    },
+    restore(ref) {
+      const w = this.get(ref);
+      if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
+      if (!w.state.meta.deletedAt) return w;
+      w.state.meta.deletedAt = null;
+      w.save();
+      return w;
     },
     create(name) {
       if (!/^[a-z0-9][a-z0-9-_]*$/i.test(name)) throw new WeaveError('Workspace name must be alphanumeric', 'invalid');
-      if (this.get(name)) throw new WeaveError(`Workspace '${name}' already exists`, 'conflict');
+      const held = this.get(name);
+      if (held?.state.meta.deletedAt) throw new WeaveError(`Workspace '${name}' is in the trash — restore it instead`, 'conflict');
+      if (held) throw new WeaveError(`Workspace '${name}' already exists`, 'conflict');
       if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
       const w = new Weave({ path: join(dataDir, `${name}.db`) });
       w.state.meta.name = name;
