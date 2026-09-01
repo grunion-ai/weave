@@ -1016,6 +1016,22 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    that ask for it (the quote glyph, the bullet dots), not the frame. */
 /* Hover labels (Vditor's aria-label tooltips) must clear the bubble border. */
 .doc-editor .vditor-toolbar .vditor-tooltipped::after { z-index: 8; }
+
+/* ---------- file viewers (Kyle, 2026-08-31) ----------
+   Uploaded files render centered at a medium width with the native resize
+   grip; the hover toolbar (attachFileTools) floats above the viewer. */
+.doc-editor .vditor-ir .vditor-reset img,
+.doc-editor iframe.wv-file {
+  display: block; margin: 8px auto; max-width: 60%;
+  resize: both; overflow: hidden;
+}
+.doc-editor iframe.wv-file { width: 60%; aspect-ratio: 4 / 3; border: 1px solid var(--tblr-border-color);
+  border-radius: 6px; background: var(--tblr-bg-surface); }
+.wv-file-tools { position: absolute; z-index: 8; transform: translateX(-50%); }
+.wv-file-tools button { border: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface);
+  color: var(--tblr-body-color); border-radius: 6px; font-size: 12px; padding: 3px 10px;
+  cursor: pointer; box-shadow: var(--tblr-box-shadow); }
+.wv-file-tools button:hover { color: var(--tblr-primary); border-color: var(--tblr-primary); }
 /* Vditor's content themes paint their own surface — and do it from
    `.vditor-ir pre.vditor-reset`, so the element selector has to be matched or
    the document keeps sitting on a slab lighter than the page in dark mode. */

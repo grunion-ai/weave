@@ -360,7 +360,9 @@ table { border-collapse: collapse; width: 100%; margin: 1em 0; }
 th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
 th { background: var(--soft); }
 hr { border: none; border-top: 1px solid var(--line); margin: 2em 0; }
-img { max-width: 100%; }
+img { display: block; margin: 8px auto; max-width: 60%; }
+iframe.wv-file { display: block; margin: 8px auto; width: 60%; max-width: 60%; aspect-ratio: 4 / 3;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
 pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align: center; }
 @media print { .pagebreak { page-break-after: always; break-after: page; } .code-copy { display: none; } }
 </style>

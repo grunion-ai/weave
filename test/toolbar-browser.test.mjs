@@ -339,11 +339,12 @@ if (!chromium) {
       await page.setInputFiles('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', [png, pdf, txt]);
       await page.waitForFunction(() => {
         const v = window.__weaveEditors.values().next().value.getValue();
-        return v.includes('![dot.png](') && v.includes('[note.pdf](') && v.includes('[read.txt](');
+        return v.includes('![dot.png](') && v.includes('title="note.pdf"') && v.includes('[read.txt](');
       }, null, { timeout: 20000 });
       const v = await value(page);
-      const urls = [...v.matchAll(/\]\((\/[^)]+)\)/g)].map((m) => m[1]).filter((u) => u.includes('/api/files/'));
-      assert.equal(urls.length, 3, 'three attached files, three links');
+      assert.match(v, /<iframe class="wv-file"[^>]*title="note.pdf">/, 'the pdf embeds a viewer, not a bare link');
+      const urls = [...new Set(v.match(/\/api\/files\/[a-f0-9-]+/g) ?? [])];
+      assert.equal(urls.length, 3, 'three attached files, three references');
       // The links resolve: every uploaded byte stream comes back with its mime.
       for (const [u, mime] of [[urls[0], 'image/png'], [urls[1], 'application/pdf'], [urls[2], 'text/plain']]) {
         const rsp = await fetch(base + u);
@@ -354,5 +355,110 @@ if (!chromium) {
       const entity = weave.readEntity(id);
       assert.equal(entity.files.length, 3, 'all three files attached to the entity');
     } finally { await page.close(); }
+  });
+
+  /* ---------- file viewers in the document (Kyle, 2026-08-31) ----------
+     Uploaded images, PDFs and HTML files render as inline viewers in the
+     editor — centered, medium-sized by default, with the native resize
+     grip — and a hover toolbar can demote any viewer to a plain link.
+     The three exports must survive them: .md verbatim, .html rendering
+     the viewers, .pdf still building. */
+
+  const FILE_DOC = 'intro paragraph line\n' +
+    '\n![pic](/api/files/00000000000000000000000000000001)\n' +
+    '\n<iframe class="wv-file" src="/api/files/00000000000000000000000000000002" title="doc.pdf"></iframe>\n';
+
+  test('file viewers default to centered, medium and resizable', async () => {
+    const id = entityWithDoc('Viewers', FILE_DOC);
+    const page = await openEntity(id);
+    try {
+      await page.waitForSelector('.vditor-ir .vditor-reset img', { timeout: 20000 });
+      await page.waitForSelector('.doc-editor iframe.wv-file', { timeout: 20000 });
+      const r = await page.evaluate(() => {
+        const probe = (el) => {
+          const cs = getComputedStyle(el);
+          const box = el.getBoundingClientRect();
+          const host = el.closest('.vditor-reset') ?? el.closest('.doc-editor');
+          const hostBox = host.getBoundingClientRect();
+          return {
+            display: cs.display, resize: cs.resize,
+            centered: Math.abs((box.left - hostBox.left) - (hostBox.right - box.right)) < 2,
+            medium: box.width <= hostBox.width * 0.62 + 2,
+          };
+        };
+        return {
+          img: probe(document.querySelector('.vditor-ir .vditor-reset img')),
+          pdf: probe(document.querySelector('.doc-editor iframe.wv-file')),
+        };
+      });
+      for (const [kind, p] of Object.entries(r)) {
+        assert.equal(p.display, 'block', `${kind}: block, not inline in the text run`);
+        assert.equal(p.resize, 'both', `${kind}: the native resize grip is on`);
+        assert.ok(p.centered, `${kind}: centered in the document column`);
+        assert.ok(p.medium, `${kind}: defaults to the medium width, not full bleed`);
+      }
+    } finally { await page.close(); }
+  });
+
+  test('uploaded pdf and html files embed live viewers in the editor', async () => {
+    const id = entityWithDoc('ViewerUp', 'viewer paragraph target\n');
+    const page = await openEntity(id);
+    const dir = mkdtempSync(join(tmpdir(), 'weave-view-'));
+    const pdf = join(dir, 'view.pdf');
+    writeFileSync(pdf, '%PDF-1.4\n%%EOF\n');
+    const html = join(dir, 'page.html');
+    writeFileSync(html, '<h1>embedded page</h1>\n');
+    try {
+      await selectStart(page, 6);
+      await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', { timeout: 20000 });
+      await page.setInputFiles('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', [pdf, html]);
+      await page.waitForFunction(() => {
+        const v = window.__weaveEditors.values().next().value.getValue();
+        return v.includes('title="view.pdf"') && v.includes('title="page.html"');
+      }, null, { timeout: 20000 });
+      // The IR editor shows both as rendered html-block previews with the
+      // iframe alive inside — the viewer, not the markup.
+      await page.waitForFunction(() =>
+        document.querySelectorAll('.doc-editor .vditor-ir__preview iframe.wv-file').length >= 2,
+      null, { timeout: 20000 });
+    } finally { await page.close(); }
+  });
+
+  test('hovering a viewer raises a toolbar that demotes it to a plain link', async () => {
+    const id = entityWithDoc('FileTools', FILE_DOC);
+    const page = await openEntity(id);
+    try {
+      await page.waitForSelector('.vditor-ir .vditor-reset img', { timeout: 20000 });
+      await page.hover('.vditor-ir .vditor-reset img');
+      await page.waitForSelector('.wv-file-tools', { state: 'visible', timeout: 20000 });
+      await page.click('.wv-file-tools button');
+      await page.waitForFunction(() => {
+        const v = window.__weaveEditors.values().next().value.getValue();
+        return v.includes('[pic](/api/files/') && !v.includes('![pic](');
+      }, null, { timeout: 20000 });
+      // Same demotion for the pdf viewer.
+      await page.hover('.doc-editor iframe.wv-file');
+      await page.waitForSelector('.wv-file-tools', { state: 'visible', timeout: 20000 });
+      await page.click('.wv-file-tools button');
+      await page.waitForFunction(() => {
+        const v = window.__weaveEditors.values().next().value.getValue();
+        return v.includes('[doc.pdf](/api/files/') && !v.includes('<iframe');
+      }, null, { timeout: 20000 });
+    } finally { await page.close(); }
+  });
+
+  test('md, html and pdf exports all survive embedded files', async () => {
+    const id = entityWithDoc('Exports', FILE_DOC);
+    const md = await fetch(`${base}/e/${id}/doc/Description.md`).then((r) => r.text());
+    assert.ok(md.includes('![pic](/api/files/'), 'the .md export keeps the image markdown verbatim');
+    assert.match(md, /<iframe class="wv-file"[^>]*title="doc.pdf">/, 'and the viewer block verbatim');
+    const html = await fetch(`${base}/e/${id}/doc/Description.html`).then((r) => r.text());
+    assert.match(html, /<img [^>]*src="\/api\/files\//, 'the .html export renders the image');
+    assert.match(html, /<iframe class="wv-file"/, 'and the viewer iframe');
+    assert.match(html, /\.wv-file\s*\{/, 'with the centered-medium styling on the page');
+    const pdf = await fetch(`${base}/e/${id}/doc/Description.pdf`);
+    assert.equal(pdf.status, 200, 'the .pdf export still builds');
+    const head = Buffer.from(await pdf.arrayBuffer()).slice(0, 5).toString();
+    assert.equal(head, '%PDF-', 'and is a real PDF');
   });
 }

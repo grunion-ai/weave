@@ -4143,6 +4143,7 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
           host.querySelector('.vditor-hint--current')?.scrollIntoView({ block: 'nearest' }));
       });
       attachToolbarBubble(host);
+      attachFileTools(host, editor, onInput);
       if (autoFocus) editor.focus();
     },
     ...(onBlur ? { blur: () => onBlur() } : {}),
@@ -4237,11 +4238,64 @@ async function uploadDocFiles(files, entityId, getEditor, onInput) {
       });
     } catch (e) { return `Upload failed: ${e.message}`; }
     const url = `${WS_PREFIX}/api/files/${meta.id}`;
-    const md = (f.type || '').startsWith('image/') ? `![${f.name}](${url})` : `[${f.name}](${url})`;
+    const mime = f.type || '';
+    // Images and viewable documents embed as inline viewers (the raw-HTML
+    // block passes through the renderer and every export); anything else
+    // links. The hover toolbar can demote any viewer to a link later.
+    const md = mime.startsWith('image/') ? `![${f.name}](${url})`
+      : (mime === 'application/pdf' || mime === 'text/html')
+        ? `\n<iframe class="wv-file" src="${url}" title="${f.name}"></iframe>\n`
+        : `[${f.name}](${url})`;
     editor.insertValue(md + '\n');
   }
   onInput?.(editor.getValue());
   return null;
+}
+
+/* ---------- hover toolbar on file viewers (Kyle, 2026-08-31) ----------
+   Every file viewer (an uploaded image, a pdf/html iframe) grows a small
+   toolbar on hover with one action: show the file as a plain link. The
+   rewrite happens in the markdown, so it survives save and export.
+   ponytail: the reverse (link back to viewer) and persisting a resized
+   width into the markdown are deliberate omissions until asked for. */
+
+function attachFileTools(host, editor, onInput) {
+  const escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let target = null;
+  const tools = el('div', { class: 'wv-file-tools' },
+    el('button', { type: 'button', title: 'Replace the viewer with a plain link' }, 'Show as link'));
+  tools.addEventListener('mousedown', (e) => e.preventDefault());
+  tools.querySelector('button').addEventListener('click', () => {
+    if (!target) return;
+    const src = target.getAttribute('src');
+    const name = (target.tagName === 'IMG' ? target.getAttribute('alt') : target.getAttribute('title')) || 'file';
+    const v = editor.getValue();
+    const next = target.tagName === 'IMG'
+      ? v.replace(new RegExp(`!\\[[^\\]]*\\]\\(${escRe(src)}\\)`), `[${name}](${src})`)
+      : v.replace(new RegExp(`<iframe[^>]*src="${escRe(src)}"[^>]*></iframe>`), `[${name}](${src})`);
+    tools.remove(); target = null;
+    if (next === v) return;
+    editor.setValue(next);
+    onInput(next);
+    scheduleDecorFor(host);
+  });
+  host.addEventListener('mouseover', (e) => {
+    const t = e.target.closest?.('.vditor-ir img, iframe.wv-file');
+    if (!t || !host.contains(t)) return;
+    target = t;
+    const r = t.getBoundingClientRect();
+    const base = host.getBoundingClientRect();
+    tools.style.left = `${r.left - base.left + r.width / 2}px`;
+    tools.style.top = `${Math.max(0, r.top - base.top - 30)}px`;
+    host.append(tools);
+  });
+  host.addEventListener('mouseout', (e) => {
+    if (!target) return;
+    const to = e.relatedTarget;
+    if (to && (to === target || tools.contains(to) || target.contains?.(to))) return;
+    if (to && to.closest?.('.wv-file-tools')) return;
+    tools.remove(); target = null;
+  });
 }
 
 
