@@ -112,7 +112,7 @@ globalThis.WeaveEditorLib = {
     if (!kind) return { kind: null, lines: [], label: '' };
     if (kind === 'html') {
       const title = src.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim();
-      return { kind, lines: [], label: title || 'HTML app' };
+      return { kind, lines: [], label: title || 'HTML page' };
     }
     if (kind === 'json') {
       let shape = '';

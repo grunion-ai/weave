@@ -47,12 +47,12 @@ test('a fenced code block does not leak its fence', () => {
   assert.deepEqual(LIB.docPreview('```js\nconst x = 1;\n```\nafter').lines, ['after']);
 });
 
-test('an HTML app is named, not flattened', () => {
+test('an HTML page is named, not flattened', () => {
   const p = LIB.docPreview('<!doctype html>\n<html><head><title>Pricing</title></head><body>hi</body></html>');
   assert.equal(p.kind, 'html');
   assert.deepEqual(p.lines, [], 'a doctype never becomes the row’s summary');
   assert.equal(p.label, 'Pricing');
-  assert.equal(LIB.docPreview('<html><body>hi</body></html>').label, 'HTML app');
+  assert.equal(LIB.docPreview('<html><body>hi</body></html>').label, 'HTML page');
 });
 
 test('a JSON model is named, not flattened', () => {
