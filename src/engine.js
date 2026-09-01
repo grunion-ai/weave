@@ -974,11 +974,16 @@ export class Weave {
     for (const e of this.listEntities(db.id, { includeDeleted: true })) {
       this.deleteEntity(e.id, { hard: true });
     }
-    // Remove paired relation fields living in other tables.
+    // Remove paired relation fields living in other tables — registry row
+    // included, or the Fields registry keeps an orphan for a column that no
+    // longer exists (found by the promote rehearsal, 2026-09-01).
     for (const field of Object.values(db.fields)) {
       if (field.type === 'relation') {
         const other = this.state.tables[field.config.targetDb];
-        if (other && other.id !== db.id) this.#removeFieldRaw(other, field.config.inverseFieldId);
+        if (other && other.id !== db.id) {
+          this.#removeFieldRaw(other, field.config.inverseFieldId);
+          this.#dropFieldRow(field.config.inverseFieldId);
+        }
       }
     }
     // Prune this table from every target set pointing here; a set emptied by

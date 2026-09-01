@@ -97,6 +97,17 @@ test('deleting a Fields row deletes the real column — hard only', () => {
   assert.equal(Object.values(w.getTable('Task').fields).find((f) => f.name === 'Estimate'), undefined);
 });
 
+test('a hard-deleted table takes the paired inverse field row with it too', () => {
+  // Found by the promote rehearsal: the inverse relation field was removed
+  // from the other table, but its registry row lived on as an orphan.
+  const w = fresh();
+  w.createTable({ space: 'Dev', name: 'Sprint' });
+  w.addRelation('Task', { name: 'Sprint', targetDb: 'Sprint', cardinality: 'many-to-one', inverseName: 'Tasks' });
+  w.deleteTable('Dev/Task', { hard: true });
+  assert.ok(!rowsOf(w).some((r) => w.entityName(r) === 'Tasks'),
+    'the inverse field row must not outlive its field');
+});
+
 test('a deleted table takes its field rows with it', () => {
   const w = fresh();
   w.addField('Task', { name: 'Estimate', type: 'number' });
