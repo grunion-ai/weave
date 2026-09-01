@@ -105,7 +105,7 @@ Or add it to Claude Code in one line:
 claude mcp add weave -- node /path/to/weave/bin/weave.js mcp --data /path/to/my-workspace.db
 ```
 
-Forty-seven tools, the same undo the UI has, and `weave_vocabulary` so an agent
+Fifty tools, the same undo the UI has, and `weave_vocabulary` so an agent
 reads the allowed values instead of guessing. Full map:
 [Agents: MCP, REST, and CLI](#agents-mcp-rest-and-cli).
 
@@ -185,7 +185,7 @@ servers, so one config block works in each of them:
 }
 ```
 
-It exposes the whole platform as forty-seven tools — `weave_schema`,
+It exposes the whole platform as fifty tools — `weave_schema`,
 `weave_query`, `weave_create_entity`, `weave_set_doc`, `weave_link`,
 `weave_set_state`, `weave_create_table`, `weave_update_table`,
 `weave_update_field`, `weave_apply_schema`, `weave_views`, `weave_automations`,

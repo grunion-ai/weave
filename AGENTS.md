@@ -24,7 +24,7 @@ to [Using weave as an agent](#using-weave-as-an-agent).
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
 | `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP stdio server — 23 tools over the engine |
+| `src/mcp.js` | MCP stdio server — 50 tools over the engine |
 | `src/formula.js` | Formula parser/evaluator |
 | `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
 | `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
@@ -66,7 +66,7 @@ Point an MCP client at the stdio server:
 }
 ```
 
-Forty-five tools, grouped. Every one of them reaches something the web UI can
+Fifty tools, grouped. Every one of them reaches something the web UI can
 do — there is no configuration that needs a browser, and none that needs a
 human.
 
@@ -75,6 +75,7 @@ human.
 | Read the shape | `weave_schema`, `weave_vocabulary`, `weave_relation_map`, `weave_registry` |
 | Spaces & tables | `weave_create_space`, `weave_update_space`, `weave_delete_space`, `weave_restore_space`, `weave_create_table`, `weave_update_table`, `weave_move_table`, `weave_duplicate_table`, `weave_delete_table`, `weave_restore_table` |
 | Fields | `weave_add_field`, `weave_update_field`, `weave_delete_field`, `weave_add_relation` |
+| Formulas | `weave_check_formula` — validate + preview an expression before saving it |
 | Whole schema | `weave_apply_schema` |
 | Entities | `weave_query`, `weave_get_entity`, `weave_create_entity`, `weave_update_entity`, `weave_delete_entity`, `weave_restore_entity`, `weave_trash`, `weave_undo` |
 | Relations & state | `weave_link`, `weave_unlink`, `weave_set_state` |
@@ -135,7 +136,7 @@ workspace. Every MCP tool has a command:
 | `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
 | `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` |
 | `weave map` | `weave field add` / `weave field update` / `weave field delete` | `weave link` / `weave unlink` / `weave state` |
-| `weave registry` | `weave relation add` | `weave doc` / `weave comment` / `weave comment delete` |
+| `weave registry` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
 | `weave audit` | `weave view` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
 | `weave workspace` | `weave workspace logo` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
@@ -149,6 +150,14 @@ Notes that save round trips:
   currently takes a UUID, a bare `#12`, or an exact name, but **not** the
   qualified `Table#12` form. Passing `Suite#18` there returns "not found" even
   though `#18` resolves.
+- **Formulas have a check step.** The loop is: `weave_check_formula` (or
+  `POST /api/tables/:id/formula-check`, or `weave formula check`) until it
+  returns `ok: true` — it also previews the value on a real row — then save
+  the expression with `weave_add_field` / `weave_update_field`, then read one
+  entity back to verify the cell. Saving an invalid expression is rejected
+  with the same error the check returns, so checking first costs nothing.
+  Field references: bare name (`Amount`) or bracketed (`[Close Date]` — any
+  name that is not a plain identifier). A formula may not reference itself.
 - **Read the schema first.** `weave_schema` returns spaces, tables, fields, and
   types, including each table's own description — the workspace documents itself.
 - **Documents are addressable.** Over HTTP, `/e/Task#12/doc.md`, `.html`, and

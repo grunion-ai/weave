@@ -402,20 +402,26 @@ An expression over this row's own fields, recomputed on read.
 
 ## Usage
 
-Field names go in bare; quote them only when they contain spaces.
+Field names go in bare when they are plain identifiers; anything else — a space, a keyword, a name that reads as a function — rides in \`[brackets]\`.
 
 \`\`\`
 Price * Count
 concat(upper(Category), " · ", Priority)
-if(empty(Due), "", days(today(), Due))
+if(empty(Due), "", days(today(), [Due Date]))
 if(empty(Estimate), "unsized", if(Estimate > 5, "large", "small"))
 \`\`\`
 
 Renders on a tinted background marked \`ƒ\`. In the field dialog, formula is a checkbox on any type — ticking it opens the script editor.
 
+## Check before you save
+
+The script editor validates as you type: a parse error, an unknown function or an unknown field shows under the box in red, and a valid expression shows its computed value on a real row. The same check stands alone as \`weave formula check <table> '<expression>'\`, \`POST /api/tables/:id/formula-check\` and the \`weave_check_formula\` MCP tool — validate until \`ok: true\`, save, then read a cell back. Saving an invalid expression is refused with the same error the check gives.
+
 ## Gotchas
 
 A formula reads **raw** values. A number's currency and unit are display costumes and never reach the expression, which is what keeps \`Price * Count\` from breaking when someone turns on thousands separators.
+
+A formula cannot reference its own field — it never converges, and the save refuses it as an unknown field.
 
 A formula cannot cross a relation. That is what \`lookup\` and \`rollup\` are for.` },
 
