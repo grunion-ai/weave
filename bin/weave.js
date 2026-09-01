@@ -476,10 +476,13 @@ async function main() {
         if (flags.order != null) patch.fieldOrder = splitList(flags.order);
         return out(w.updateTable(space, patch));
       }
+      // `table move Ops/Invoice Archive` — the second arg is the destination.
+      if (sub === 'move') return out(w.moveTable(space, name));
+      if (sub === 'duplicate') return out(w.duplicateTable(space));
       if (sub === 'delete') { w.deleteTable(space, { hard: Boolean(flags.hard) }); return out({ table: space, deleted: true }); }
       if (sub === 'restore') return out(w.restoreTable(space));
       if (sub === 'list' || !sub) return out(w.listTables().map((d) => w.qualifiedName(d)));
-      throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, delete, restore`);
+      throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, move, duplicate, delete, restore`);
     }
     case 'field': {
       const [sub, db, name, type] = args;

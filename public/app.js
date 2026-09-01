@@ -392,6 +392,79 @@ function inlineNameInput(placeholder, onCommit) {
   return input;
 }
 
+/* The nav row's ⋮ (Kyle, 2026-08-31): the table verbs, right on the row.
+   Reuses the house dotsMenu — including its hold-to-delete — and sits inside
+   an <a>, so the wrap swallows clicks before the link can navigate. */
+function navTableMenu(db, space, row) {
+  const wrap = dotsMenu([
+    {
+      label: 'Rename table…',
+      run: () => {
+        const input = inlineNameInput('Table name…', async (name) => {
+          await api('PATCH', `/tables/${db.id}`, { name });
+          await loadSchema();
+        });
+        input.value = db.name;
+        // The shared input only cancels an EMPTY blur; a rename starts full,
+        // so clicking away must put the row back too.
+        input.addEventListener('blur', () => { if (!input.disabled && input.isConnected) { input.remove(); renderNav(); } });
+        row.style.display = 'none';
+        row.after(input);
+      },
+    },
+    {
+      label: 'Change icon…',
+      run: () => searchPicker({
+        anchor: wrap, title: 'Icon', placeholder: 'Search by name or category…',
+        options: iconCatalogue(), grid: true, currentId: db.icon ?? '',
+        onPick: async (o) => {
+          await api('PATCH', `/tables/${db.id}`, { icon: o.id || '' });
+          await loadSchema();
+        },
+      }),
+    },
+    'divider',
+    {
+      label: 'Move to space…',
+      run: () => searchPicker({
+        anchor: wrap, title: `Move ${db.name} to…`, placeholder: 'Space…',
+        options: state.schema.filter((s) => s.space !== space.space && !s.system)
+          .map((s) => ({ id: s.space, label: s.space })),
+        onPick: async (o) => {
+          await api('POST', `/tables/${db.id}/move`, { space: o.id });
+          await loadSchema();
+          toast(`Moved ${db.name} to ${o.id}`);
+        },
+      }),
+    },
+    {
+      label: 'Duplicate table',
+      run: async () => {
+        const copy = await api('POST', `/tables/${db.id}/duplicate`);
+        await loadSchema();
+        location.hash = `#/table/${copy.id}`;
+        toast(`Duplicated ${db.name} as ${copy.name}`);
+      },
+    },
+    'divider',
+    {
+      hold: 'Delete table', holdingLabel: 'Hold to delete table…',
+      run: async () => {
+        await api('DELETE', `/tables/${db.id}`);
+        await loadSchema();
+        if (state.route?.dbId === db.id) location.hash = `#/space/${space.spaceId}`;
+        toast(`Deleted ${db.name}`);
+      },
+    },
+  ], { title: `${db.name} actions`, align: 'right', extraClass: 'nav-db-menu' });
+  // Inside the row's <a>: without this, opening the menu also follows the
+  // link. Capture phase, because the dots button stops propagation before a
+  // bubble listener here would ever run — and preventDefault only cancels the
+  // anchor's navigation, never the button handlers themselves.
+  wrap.addEventListener('click', (e) => e.preventDefault(), true);
+  return wrap;
+}
+
 /* Shared view header: breadcrumb with a copyable permalink, an editable
    title, and a markdown description editable in place. Every page uses it
    (entity pages carry the same crumb pattern natively). */
@@ -642,10 +715,15 @@ function renderNav() {
     nav.append(spaceRow);
     if (isFolded) continue;
     for (const db of space.tables) {
-      nav.append(el('a', {
+      // The row's right edge is the kebab, not a count (Kyle, 2026-08-31):
+      // hover or the active row shows ⋮, and the menu carries the table verbs.
+      const row = el('a', {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
         href: `#/table/${db.id}`,
-      }, iconEl(db.icon, 'wv-icon nav-icon'), db.name, el('span', { class: 'count' }, String(db.entityCount))));
+      }, iconEl(db.icon, 'wv-icon nav-icon'), db.name);
+      // The registry tables take none of these verbs, so they get no kebab.
+      if (!db.system) row.append(navTableMenu(db, space, row));
+      nav.append(row);
     }
   }
   const foot = el('div', { class: 'nav-foot' },

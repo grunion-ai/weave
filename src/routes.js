@@ -153,6 +153,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         || path === '/api/mcp'
         || /^\/api\/tables$/.test(path)
         || (/^\/api\/tables\/[^/]+$/.test(path) && (m2 === 'PATCH' || m2 === 'DELETE'))
+        // Re-homing or cloning a table is structure too (nav kebab, 2026-08-31).
+        || /^\/api\/tables\/[^/]+\/(move|duplicate)$/.test(path)
         || /^\/api\/tables\/[^/]+\/fields/.test(path)
         || (/^\/api\/schema$/.test(path))
         || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH'));
@@ -559,6 +561,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             weave.deleteTable(m[1], { hard });
             return out(200, { ok: true });
           }
+        }
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/move$/)) && rx.method === 'POST') {
+          if (typeof body.space !== 'string' || !body.space.trim()) throw new WeaveError('space is required: the destination space', 'invalid');
+          return out(200, weave.moveTable(m[1], body.space));
+        }
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/duplicate$/)) && rx.method === 'POST') {
+          return out(201, weave.duplicateTable(m[1]));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/restore$/)) && rx.method === 'POST') {
           return out(200, weave.restoreTable(m[1]));

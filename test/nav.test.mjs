@@ -35,6 +35,100 @@ test('the wordmark reads as the wordmark until you point at it', () => {
   assert.match(hover, /:focus-visible/, 'the keyboard gets the same affordance');
 });
 
+/* ---------- the nav kebab (Kyle, 2026-08-31) ----------
+   The table row's right edge is a ⋮ menu carrying the table verbs, not the
+   entity count. Source and CSS contracts, since Playwright is optional. */
+
+const fnBodyOf = (name) => {
+  const at = APP.indexOf(`function ${name}(`);
+  assert.ok(at > -1, `app.js has no ${name}()`);
+  const next = APP.indexOf('\nfunction ', at + 1);
+  return APP.slice(at, next === -1 ? APP.length : next);
+};
+const CSS_BARE = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+const rulesFor = (selector) => {
+  const out = {};
+  for (const [, sels, body] of CSS_BARE.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!sels.split(',').map((x) => x.trim()).includes(selector)) continue;
+    for (const decl of body.split(';')) {
+      const i = decl.indexOf(':');
+      if (i > 0) out[decl.slice(0, i).trim()] = decl.slice(i + 1).trim();
+    }
+  }
+  return out;
+};
+
+test('a table row carries the kebab instead of a count, and registry tables carry neither', () => {
+  const nav = fnBodyOf('renderNav');
+  const row = nav.slice(nav.indexOf("class: 'nav-db'"), nav.indexOf('nav.append(row)'));
+  assert.ok(!/class: 'count'/.test(row), 'the entity count is gone from the row');
+  assert.ok(!/entityCount/.test(row), 'and nothing else on the row reads it');
+  assert.match(row, /if \(!db\.system\) row\.append\(navTableMenu\(db, space, row\)\)/,
+    'the kebab hangs on user tables only — Workspace/Tables and friends take none of its verbs');
+});
+
+test('the kebab menu wires every verb to its route', () => {
+  const menu = fnBodyOf('navTableMenu');
+  const verbs = [
+    ['Rename table…', /api\('PATCH', `\/tables\/\$\{db\.id\}`, \{ name \}\)/],
+    ['Change icon…', /api\('PATCH', `\/tables\/\$\{db\.id\}`, \{ icon: o\.id \|\| '' \}\)/],
+    ['Move to space…', /api\('POST', `\/tables\/\$\{db\.id\}\/move`, \{ space: o\.id \}\)/],
+    ['Duplicate table', /api\('POST', `\/tables\/\$\{db\.id\}\/duplicate`\)/],
+  ];
+  for (const [label, call] of verbs) {
+    assert.ok(menu.includes(`label: '${label}'`), `menu lists ${label}`);
+    assert.match(menu, call, `${label} reaches its route`);
+  }
+  assert.match(menu, /hold: 'Delete table'/, 'delete is the house hold-to-confirm, not a plain button');
+  assert.match(menu, /api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
+  assert.match(menu, /await loadSchema\(\)/, 'every verb re-reads the schema so the nav redraws');
+  assert.match(menu, /location\.hash = `#\/table\/\$\{copy\.id\}`/, 'duplicate opens the copy');
+  assert.match(menu, /if \(state\.route\?\.dbId === db\.id\) location\.hash = `#\/space\/\$\{space\.spaceId\}`/,
+    'deleting the open table lands on its space, not a dead route');
+});
+
+test('the move picker offers other user spaces only', () => {
+  const menu = fnBodyOf('navTableMenu');
+  assert.match(menu, /state\.schema\.filter\(\(s\) => s\.space !== space\.space && !s\.system\)/);
+});
+
+test('the kebab sits inside the row link without following it', () => {
+  const menu = fnBodyOf('navTableMenu');
+  assert.match(menu, /align: 'right', extraClass: 'nav-db-menu'/, 'right-aligned so the panel stays inside the sidebar');
+  assert.match(menu, /wrap\.addEventListener\('click', \(e\) => e\.preventDefault\(\), true\)/,
+    'capture-phase preventDefault: the dots button stops propagation, so bubble would never see the click');
+});
+
+test('an abandoned rename puts the row back', () => {
+  const menu = fnBodyOf('navTableMenu');
+  const rename = menu.slice(menu.indexOf("label: 'Rename table…'"), menu.indexOf("label: 'Change icon…'"));
+  assert.match(rename, /row\.style\.display = 'none'/, 'the row hides behind the input');
+  assert.match(rename, /input\.addEventListener\('blur', \(\) => \{ if \(!input\.disabled && input\.isConnected\) \{ input\.remove\(\); renderNav\(\); \} \}\)/,
+    'a blur that is not a commit removes the input and redraws the nav (the shared input only cancels when EMPTY, and a rename starts full)');
+});
+
+test('the kebab is hidden until hover, the active row, keyboard focus, or an open menu', () => {
+  const base = rulesFor('.nav-db .nav-db-menu');
+  assert.equal(base.opacity, '0');
+  assert.equal(base['margin-left'], 'auto', 'it takes the right edge the count used to hold');
+  for (const sel of ['.nav-db:hover .nav-db-menu', '.nav-db.active .nav-db-menu', '.nav-db .nav-db-menu:focus-within', '.nav-db .nav-db-menu:has(.dl-menu:not(.hidden))']) {
+    assert.equal(rulesFor(sel).opacity, '1', `${sel} reveals it`);
+  }
+  assert.deepEqual(rulesFor('.nav-db .count'), {}, 'the count rule is gone with the count');
+});
+
+test('the kebab paints in both themes by inheriting the house menu tokens', () => {
+  // The nav rules only place and reveal; every colour comes from .dots-btn /
+  // .dl-menu, which read Tabler tokens that flip with data-bs-theme.
+  for (const sel of ['.nav-db .nav-db-menu', '.nav-db-menu .dots-btn']) {
+    const r = rulesFor(sel);
+    for (const k of Object.keys(r)) assert.ok(!/color|background/.test(k), `${sel} must not hard-code ${k}`);
+  }
+  assert.match(rulesFor('.dl-menu').background ?? '', /var\(--tblr-bg-surface\)/);
+  assert.match(rulesFor('.dl-menu .dropdown-item').color ?? '', /var\(--tblr-body-color\)/);
+  assert.match(rulesFor('.dl-menu').border ?? '', /var\(--tblr-border-color\)/);
+});
+
 const chromium = await import('playwright')
   .then((pw) => pw.chromium)
   .catch(() => null);

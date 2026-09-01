@@ -73,7 +73,7 @@ human.
 | Group | Tools |
 | --- | --- |
 | Read the shape | `weave_schema`, `weave_vocabulary`, `weave_relation_map`, `weave_registry` |
-| Spaces & tables | `weave_create_space`, `weave_update_space`, `weave_delete_space`, `weave_restore_space`, `weave_create_table`, `weave_update_table`, `weave_delete_table`, `weave_restore_table` |
+| Spaces & tables | `weave_create_space`, `weave_update_space`, `weave_delete_space`, `weave_restore_space`, `weave_create_table`, `weave_update_table`, `weave_move_table`, `weave_duplicate_table`, `weave_delete_table`, `weave_restore_table` |
 | Fields | `weave_add_field`, `weave_update_field`, `weave_delete_field`, `weave_add_relation` |
 | Whole schema | `weave_apply_schema` |
 | Entities | `weave_query`, `weave_get_entity`, `weave_create_entity`, `weave_update_entity`, `weave_delete_entity`, `weave_restore_entity`, `weave_trash`, `weave_undo` |
@@ -133,7 +133,7 @@ workspace. Every MCP tool has a command:
 | Read | Schema | Data |
 | --- | --- | --- |
 | `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
-| `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` |
+| `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` |
 | `weave map` | `weave field add` / `weave field update` / `weave field delete` | `weave link` / `weave unlink` / `weave state` |
 | `weave registry` | `weave relation add` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |

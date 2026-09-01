@@ -35,6 +35,8 @@ const SURFACE = [
   ['table.create', ['createTable'], 'weave_create_table', 'table create'],
   ['table.list', ['listTables'], 'weave_schema', 'table'],
   ['table.update', ['updateTable'], 'weave_update_table', 'table update'],
+  ['table.move', ['moveTable'], 'weave_move_table', 'table move'],
+  ['table.duplicate', ['duplicateTable'], 'weave_duplicate_table', 'table duplicate'],
   ['table.delete', ['deleteTable'], 'weave_delete_table', 'table delete'],
   ['table.restore', ['restoreTable'], 'weave_restore_table', 'table restore'],
   ['field.add', ['addField', 'materializeField'], 'weave_add_field', 'field add'],

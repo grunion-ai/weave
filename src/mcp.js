@@ -246,6 +246,16 @@ export const TOOLS = [
     },
   },
   {
+    name: 'weave_move_table',
+    description: 'Move a table into another space. Only its home changes — every row, field and relation stays exactly as it was. Refuses when the destination already holds (or holds in its trash) a table of the same name.',
+    inputSchema: { type: 'object', properties: { db: { type: 'string' }, space: { type: 'string' } }, required: ['db', 'space'] },
+  },
+  {
+    name: 'weave_duplicate_table',
+    description: 'Duplicate a table\'s schema into a sibling named "<name> Copy" ("Copy 2", … until free) in the same space: every field with its full config, relations rebuilt as real paired fields (an external target grows a fresh inverse; a self-relation retargets into the copy), lookups and rollups re-pointed at the copy\'s own relation fields. Rows are not copied — the copy starts empty.',
+    inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
+  },
+  {
     name: 'weave_delete_table',
     description: 'Move a table to the trash (recoverable — its rows go dark with it). Pass hard: true to purge table and rows for good.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' }, hard: { type: 'boolean' } }, required: ['db'] },
@@ -464,6 +474,10 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.restoreSpace(args.space);
     case 'weave_update_table':
       return weave.updateTable(args.db, pick(args, ['name', 'description', 'icon', 'noun', 'hiddenFields', 'systemFields', 'fieldOrder']));
+    case 'weave_move_table':
+      return weave.moveTable(args.db, args.space);
+    case 'weave_duplicate_table':
+      return weave.duplicateTable(args.db);
     case 'weave_delete_table':
       weave.deleteTable(args.db, { hard: Boolean(args.hard) });
       return { table: args.db, deleted: true, hard: Boolean(args.hard) };

@@ -217,7 +217,7 @@ export const ONTOLOGY = {
       key: 'table', name: 'Table', isEntity: true, registry: 'Workspace/Tables', storedIn: 'state.tables',
       contains: 'rows', identity: 'uuid; qualified name Space/Table',
       definition: 'An entity that is also an entity TYPE: the ordered set of fields every row inside it follows.',
-      api: ['createTable', 'listTables', 'updateTable', 'deleteTable', 'qualifiedName'],
+      api: ['createTable', 'listTables', 'updateTable', 'moveTable', 'duplicateTable', 'deleteTable', 'qualifiedName'],
     },
     {
       key: 'field', name: 'Field', isEntity: true, registry: 'Workspace/Fields', storedIn: 'table.fields',
@@ -1025,6 +1025,110 @@ export class Weave {
     }
     this.#syncTableRow(db);
     this.save();
+    return db;
+  }
+
+  /* Re-home a table: only spaceId changes, so every row, field and relation
+     stays put. The destination gets the same name defence createTable runs —
+     a live clash refuses outright, a trashed one names the trash. */
+  moveTable(ref, spaceRef) {
+    const db = this.getTable(ref);
+    if (db.system) throw new WeaveError(`Table '${db.name}' is part of the system registry`, 'invalid');
+    // An id finds a table (or a space) in the trash; neither is a home to
+    // move from or into — restore first, then move.
+    if (db.deletedAt) throw new WeaveError(`Table '${db.name}' is in the trash — restore it first`, 'conflict');
+    const sp = this.getSpace(spaceRef);
+    if (sp.system) throw new WeaveError(`Space '${sp.name}' is part of the system registry`, 'invalid');
+    if (sp.deletedAt) throw new WeaveError(`Space '${sp.name}' is in the trash — restore it first`, 'conflict');
+    if (sp.id === db.spaceId) return db;
+    const clash = Object.values(this.state.tables).find((d) => d.id !== db.id
+      && d.spaceId === sp.id && d.name.toLowerCase() === db.name.toLowerCase());
+    if (clash?.deletedAt) throw new WeaveError(`Table '${sp.name}/${db.name}' is in the trash — restore or purge it first`, 'conflict');
+    if (clash) throw new WeaveError(`Table '${sp.name}/${db.name}' already exists`, 'conflict');
+    const from = this.state.spaces[db.spaceId]?.name;
+    db.spaceId = sp.id;
+    this.save();
+    this.#syncTableRow(db);
+    this.#audit('table-moved', { name: db.name, from, to: sp.name });
+    return db;
+  }
+
+  /* Duplicate a table's SCHEMA into a sibling: every field cloned deep with a
+     fresh id (an id map keeps lookups/rollups and the name/description roles
+     pointing inside the copy), paired relations rebuilt for real — an
+     external target grows a fresh auto-renamed inverse, a self-relation
+     retargets into the copy — and the name takes " Copy" (" Copy 2", …)
+     until it clears both the live tables and the trash. Rows are not copied:
+     the copy starts empty. */
+  duplicateTable(ref) {
+    const src = this.getTable(ref);
+    if (src.system) throw new WeaveError(`Table '${src.name}' is part of the system registry`, 'invalid');
+    if (src.deletedAt) throw new WeaveError(`Table '${src.name}' is in the trash — restore it first`, 'conflict');
+    const sp = this.state.spaces[src.spaceId];
+    const taken = (n) => Object.values(this.state.tables)
+      .some((d) => d.spaceId === src.spaceId && d.name.toLowerCase() === n.toLowerCase());
+    let name = `${src.name} Copy`;
+    for (let i = 2; taken(name); i++) name = `${src.name} Copy ${i}`;
+    const newId = uuid();
+    const idMap = new Map(Object.keys(src.fields).map((fid) => [fid, uuid()]));
+    const mapId = (fid) => idMap.get(fid) ?? fid;
+    const fields = {};
+    const touchedTargets = []; // far tables that grew an inverse
+    for (const f of Object.values(src.fields)) {
+      const nf = structuredClone(f);
+      nf.id = mapId(f.id);
+      if (f.type === 'relation' && !f.config.targetDbs) {
+        if (f.config.targetDb === src.id) {
+          // Self-relation: both ends live in this table, so the whole pair
+          // clones through the id map and closes over the copy.
+          nf.config.targetDb = newId;
+          nf.config.inverseFieldId = mapId(f.config.inverseFieldId);
+        } else {
+          const target = this.state.tables[f.config.targetDb];
+          const srcInv = target?.fields[f.config.inverseFieldId];
+          if (target && srcInv) {
+            let invName = `${srcInv.name} Copy`;
+            for (let i = 2; this.findField(target, invName); i++) invName = `${srcInv.name} Copy ${i}`;
+            const inv = { id: uuid(), name: invName, type: 'relation',
+              config: { ...structuredClone(srcInv.config), targetDb: newId, inverseFieldId: nf.id } };
+            nf.config.inverseFieldId = inv.id;
+            target.fields[inv.id] = inv;
+            target.fieldOrder.push(inv.id);
+            touchedTargets.push([target, inv]);
+          } else {
+            // The far end is gone; keep the field but make it honestly one-way.
+            delete nf.config.inverseFieldId;
+          }
+        }
+      }
+      if (f.type === 'lookup' || f.type === 'rollup') {
+        nf.config.relationField = mapId(f.config.relationField);
+        if (nf.config.targetField != null) nf.config.targetField = mapId(nf.config.targetField);
+      }
+      fields[nf.id] = nf;
+    }
+    const db = {
+      ...structuredClone({ description: src.description, icon: src.icon, noun: src.noun,
+        systemFields: src.systemFields, hiddenFields: src.hiddenFields,
+        filters: src.filters, sort: src.sort }),
+      id: newId,
+      spaceId: src.spaceId,
+      name,
+      publicIdCounter: 0,
+      nameFieldId: mapId(src.nameFieldId),
+      descriptionFieldId: src.descriptionFieldId == null ? src.descriptionFieldId : mapId(src.descriptionFieldId),
+      fields,
+      fieldOrder: src.fieldOrder.map(mapId),
+      createdAt: nowISO(),
+    };
+    if (src.bodyOrder) db.bodyOrder = src.bodyOrder.map((k) => (k === VALUES_BLOCK ? k : mapId(k)));
+    for (const k of Object.keys(db)) if (db[k] === undefined) delete db[k];
+    this.state.tables[db.id] = db;
+    this.save();
+    this.#syncTableRow(db);
+    for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
+    for (const [target, inv] of touchedTargets) { this.#syncFieldRow(target, inv); this.#syncTableRow(target); }
+    this.#audit('table-duplicated', { space: sp?.name, source: src.name, name: db.name });
     return db;
   }
 
