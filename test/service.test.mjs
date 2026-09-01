@@ -173,3 +173,24 @@ test('CLI: unknown service subcommand errors without touching launchd', () => {
     /Unknown service subcommand/,
   );
 });
+
+/* ---------------- promote (lifecycle gate, Phase 3) ---------------- */
+
+test('parseTap reads failures out of node --test output by name', async () => {
+  const { parseTap } = await import('../src/service.js');
+  const red = parseTap('ok 1 - lifecycle: entity create\nnot ok 2 - lifecycle: table restore brings rows and relations back\n# pass 1\n# fail 1');
+  assert.equal(red.pass, false);
+  assert.deepEqual(red.failed, ['lifecycle: table restore brings rows and relations back']);
+  const green = parseTap('ok 1 - a\nok 2 - b\n# pass 2\n# fail 0');
+  assert.deepEqual(green, { pass: true, failed: [] });
+  assert.equal(parseTap('').pass, false, 'no TAP plan is not a pass');
+});
+
+test('promoteVerdict demands a reachable server running the promoted version', async () => {
+  const { promoteVerdict } = await import('../src/service.js');
+  assert.equal(promoteVerdict({ health: { reachable: false }, expectedVersion: '1.0.0' }).healthy, false);
+  const stale = promoteVerdict({ health: { reachable: true, ok: true, version: '0.9.0' }, expectedVersion: '1.0.0' });
+  assert.equal(stale.healthy, false);
+  assert.match(stale.reason, /not serving the promote checkout/);
+  assert.equal(promoteVerdict({ health: { reachable: true, ok: true, version: '1.0.0' }, expectedVersion: '1.0.0' }).healthy, true);
+});

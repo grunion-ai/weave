@@ -119,3 +119,25 @@ export function buildStatus({ label, port, plistPath, plistInstalled, launchctl,
     },
   };
 }
+
+/* ---------------- promotion (lifecycle gate, Phase 3) ---------------- */
+
+// node --test speaks TAP: failures are `not ok N - <name>` lines. The names
+// are the breadcrumb — they name exactly which lifecycle ops failed.
+export function parseTap(text) {
+  const failed = [];
+  for (const m of String(text ?? '').matchAll(/^not ok \d+ - (.+)$/gm)) failed.push(m[1]);
+  const sawPlan = /^# pass \d+/m.test(String(text ?? ''));
+  return { pass: sawPlan && failed.length === 0, failed };
+}
+
+// The two facts a restart must prove before a promote counts: the server
+// answers, and it answers WITH the promoted build (version match beats
+// "the process is up" — a stale process is up too).
+export function promoteVerdict({ health, expectedVersion }) {
+  if (!health?.reachable || health.ok === false) return { healthy: false, reason: 'server not answering /api/health' };
+  if (expectedVersion != null && health.version !== expectedVersion) {
+    return { healthy: false, reason: `server answers with v${health.version}, promoted build is v${expectedVersion} — the service is not serving the promote checkout` };
+  }
+  return { healthy: true, reason: 'healthy' };
+}
