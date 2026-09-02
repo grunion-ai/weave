@@ -287,6 +287,41 @@ if (!chromium) {
     await page.close();
   });
 
+  test('an icon rests lighter than its label and darkens when the row is current', async () => {
+    // Kyle, 2026-09-02: the greyed icons read better than full-weight ones.
+    // The token is the page's own ink at a fraction, so the grey keeps the
+    // kit's blue bias in both themes rather than going flat neutral.
+    const page = await entityPage();
+    const seen = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      const nav = document.querySelector('.nav-db .nav-icon') || document.querySelector('.nav-icon');
+      const label = document.querySelector('.nav-db') || document.body;
+      // The resting colour carries an alpha, so what a reader sees is the ink
+      // composited over the page. Comparing the raw channels would compare the
+      // ink to itself.
+      const ground = getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g).map(Number);
+      const lum = (c) => {
+        const p = c.match(/[\d.]+/g).map(Number);
+        const a = p.length > 3 ? p[3] : 1;
+        const [r, g, b] = [0, 1, 2].map((i) => a * p[i] + (1 - a) * ground[i]);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      return {
+        token: root.getPropertyValue('--wv-icon-rest').trim(),
+        icon: nav ? getComputedStyle(nav).color : null,
+        text: getComputedStyle(label).color,
+        iconLum: nav ? lum(getComputedStyle(nav).color) : null,
+        textLum: lum(getComputedStyle(label).color),
+      };
+    });
+    assert.ok(seen.token, '--wv-icon-rest must be declared');
+    assert.ok(seen.icon, 'the nav must draw an icon to measure');
+    // Lighter means closer to the page, so a higher luminance on a light ground.
+    assert.ok(seen.iconLum > seen.textLum,
+      `the icon (${seen.icon}) should rest lighter than its label (${seen.text})`);
+    await page.close();
+  });
+
   test('every icon on the page is drawn to the one size scale', async () => {
     const page = await entityPage();
     const sizes = await page.evaluate(() => {
