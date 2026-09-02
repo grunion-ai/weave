@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { VOCABULARY } from '../src/vocabulary.js';
 import {
-  FIELD_DOCS, FIELD_KINDS, GUIDES, FORMATTING_SAMPLES,
+  FIELD_DOCS, FIELD_KINDS, GUIDES, FORMATTING_SAMPLES, applyIconShowcase, iconLibraryPage, ICON_LIBRARY_PAGE,
   applyHandbook, applyFormattingShowcase,
 } from '../src/handbook.js';
 
@@ -171,6 +171,7 @@ test('an apply onto an existing page keeps its id and refreshes its document', (
 test('the seeded weave workspace ships the pages, the guides and the samples', async () => {
   const { seedWeaver } = await import('../src/weaver-seed.js');
   const w = seedWeaver(new Weave());
+  assert.equal(w.query('Showcase/Icons', { limit: 10 }).total, 1, 'a seeded workspace carries the icon library page');
 
   assert.equal(w.query('Handbook/Fields', { limit: 200 }).total, FIELD_DOCS.length);
   assert.equal(w.query('Showcase/Formatting', { limit: 200 }).total, 1);
@@ -189,6 +190,32 @@ test('the seeded weave workspace ships the pages, the guides and the samples', a
    Twelve rows meant opening twelve records to see a renderer that one scroll
    proves — and row twelve, 'One page using all of it', already carried the
    whole demonstration on its own. */
+
+/* Kyle, 2026-09-02: the icon library is documented in the Showcase, as one
+   entity with pictures. The page is generated from the registry, so the test
+   holds it to the set rather than to a number. */
+test('the icon library is one Showcase page, true to the registry, with its pictures on disk', async () => {
+  await import('../public/icon-registry.js');
+  const reg = globalThis.weaveIconRegistry;
+  const w = new Weave();
+  applyIconShowcase(w);
+  applyIconShowcase(w);
+  const t = w.getTable('Showcase/Icons');
+  assert.equal(w.query('Showcase/Icons', { limit: 10 }).total, 1, 'one page, applied twice');
+  const row = w.findEntity(t, ICON_LIBRARY_PAGE);
+  const doc = w.getDoc(row.id);
+  assert.equal(doc, iconLibraryPage(), 'the row carries the generated page');
+  assert.match(doc, new RegExp(`\\b${reg.NAMES.length} names\\b`), 'names the size of the set');
+  for (const m of doc.matchAll(/lucide:([a-z0-9-]+)/g)) assert.ok(reg.NAMES.includes(m[1]), `lucide:${m[1]} is not in the set`);
+  for (const [ch, n] of Object.entries(reg.MARK_TWINS)) assert.ok(doc.includes(`| \`${ch}\` | \`lucide:${n}\` |`), `${ch} → ${n} is in the twins table`);
+  for (const rule of ['once per hover', 'Nothing loops', 'prefers-reduced-motion', 'iconly:<name>', 'build-lucide-moving.mjs']) assert.ok(doc.includes(rule), `the page states: ${rule}`);
+  const { existsSync } = await import('node:fs');
+  for (const m of doc.matchAll(/!\[[^\]]*\]\(\/showcase\/icons\/([^)]+)\)/g)) {
+    assert.ok(existsSync(new URL(`../public/showcase/icons/${m[1]}`, import.meta.url)), `picture ${m[1]} is served from public/`);
+  }
+  assert.ok([...doc.matchAll(/!\[/g)].length >= 3, 'the page carries pictures');
+  assert.equal(t.icon, 'lucide:sparkles');
+});
 
 test('the showcase is one page carrying every construct', async () => {
   const { Weave: W } = await import('../src/engine.js');

@@ -1173,6 +1173,88 @@ function formattingPage() {
   ].join('\n');
 }
 
+/* ---------- the icon library, documented where it lives ----------
+   Kyle, 2026-09-02: "store this as canonical in the showcase — an icon entity
+   with a nicely formatted description, with pictures." One row in
+   Showcase/Icons. The numbers come from the registry at apply time, so the
+   page cannot drift from the set; the pictures are static files the server
+   already serves, so a re-apply refreshes the text without losing them. */
+await import('../public/icon-registry.js');
+const ICON_REGISTRY = globalThis.weaveIconRegistry;
+export const ICON_LIBRARY_PAGE = 'Icon library';
+export function iconLibraryPage() {
+  const R = ICON_REGISTRY;
+  const moving = R.NAMES.filter((n) => R.MOTION[n] > 0);
+  const runs = moving.map((n) => R.MOTION[n]);
+  const byCat = new Map();
+  for (const n of R.NAMES) byCat.set(R.CATEGORY[n], (byCat.get(R.CATEGORY[n]) ?? 0) + 1);
+  const cats = [...byCat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const twins = Object.entries(R.MARK_TWINS).map(([ch, n]) => `| \`${ch}\` | \`lucide:${n}\` | ${R.MOTION[n] ? `${R.MOTION[n]} ms` : 'still'} |`);
+  const sample = ['activity', 'bell', 'bookmark', 'bug', 'calendar', 'chart-bar', 'compass', 'file-text', 'folder', 'funnel', 'heart', 'house', 'layout-grid', 'lock', 'mail', 'map-pin', 'pencil', 'search', 'settings', 'shield-check', 'star', 'trash-2', 'users', 'wallet'];
+  return [
+    '# Icon library',
+    '',
+    `The set is **Lucide** — ${R.NAMES.length} names drawn on one 24-grid at stroke 2 — carrying the motion **movingicons.dev** (github.com/jis3r/icons, MIT) draws for ${moving.length} of them. Weave switched from Iconly flat on 2026-09-02; nothing stored had to move.`,
+    '',
+    '## Writing a value',
+    '',
+    `- \`lucide:<name>\` on a space, a table, a select option or a workflow state — \`${sample.join(' ')}\` among the names; \`weave vocabulary icons\` lists them all.`,
+    '- Any other string paints itself, so an emoji is a legal icon.',
+    `- A value stored before 2026-09-02 as \`iconly:<name>\` keeps drawing: ${Object.keys(R.ALIASES).length} legacy names resolve to a Lucide twin (\`iconly:notification\` → \`lucide:bell\`, \`iconly:bug\` → \`lucide:bug\`) and the picker rings the twin. A reference that resolves to nothing draws a ghost ring with the name in its tooltip — the prefix never reaches the screen.`,
+    '',
+    '## Motion',
+    '',
+    `An icon plays **once** when the page loads (a beat apart, inside the first 2.5 s), once when the picker scrolls it into view, and once per hover. Nothing loops: a run lasts ${Math.min(...runs)}–${Math.max(...runs)} ms, \`infinite\` is rewritten to a single run when the set is built, and \`prefers-reduced-motion\` stills every icon. ${R.NAMES.length - moving.length} names draw still: the ones movingicons.dev animates by script rather than CSS, and the Lucide shapes the legacy aliases needed.`,
+    '',
+    '## Marks',
+    '',
+    'A workflow state or select option keeps its **character** (`✓`, `◔`) as its value. Fourteen of them draw as Lucide twins:',
+    '',
+    '| Mark | Draws as | Run |',
+    '| --- | --- | --- |',
+    ...twins,
+    '',
+    'The six progress rings `○ ◔ ◐ ◑ ◕ ●` have no Lucide shape and stay hand-drawn in `public/mark-icons.js`, re-inked from a 2.5 ring to 2.0 so they sit level with the strokes beside them.',
+    '',
+    '## The picker',
+    '',
+    'Eleven curated groups lead — status, people, documents, data, money, time, messages, media, access, arrows, other — holding the vocabulary weave already had plus the review\'s recommendations (key, terminal, layers, kanban, list-checks, timer, sparkles, lightbulb, rocket, paperclip, archive, copy, clipboard, refresh-cw, undo, redo, history, chart-column, blocks, bell-ring, message-square, user-cog, route, battery, wifi, radio, cloud-upload, cloud-download, cpu, gauge, award). Lucide\'s own categories file the rest:',
+    '',
+    '| Lucide category | Names |',
+    '| --- | --- |',
+    ...cats.map(([c, n]) => `| ${c} | ${n} |`),
+    '',
+    'Search matches a name or a category, so typing `money` keeps the whole group. A name is never printed beside its icon in the grid; it is the tooltip.',
+    '',
+    '## Pictures',
+    '',
+    '![The picker after the switch: the Issue table, the status group leading, the current icon ringed](/showcase/icons/picker-after.png)',
+    '',
+    '![The picker before: Iconly flat, filled glyphs at uneven optical sizes](/showcase/icons/picker-before.png)',
+    '',
+    '![Fourteen icons at 24px inside their grid — Iconly (top) fills the box unevenly and needed a hand scale table; Lucide (bottom) sits on one grid at one stroke](/showcase/icons/optical-box.png)',
+    '',
+    '## Rebuilding the set',
+    '',
+    '```bash',
+    'node scripts/build-lucide-moving.mjs --moving <jis3r/icons checkout> --lucide <lucide-icons/lucide checkout>',
+    '```',
+    '',
+    'writes `public/vendor/lucide-moving.js` (one inline svg per name), `public/vendor/lucide-moving.css` (the keyframes, scoped per icon under `.mi-<name>`) and `public/icon-registry.js` (names, categories, motion lengths, legacy aliases, mark twins). `test/icon-registry.test.mjs` gates the three: every name draws, every legacy name resolves, every twin exists, nothing loops.',
+  ].join('\n');
+}
+export function applyIconShowcase(w) {
+  ensureSpace(w, 'Showcase', 'Every field type, in several configurations — the range of what a field can be, visible in one grid');
+  const t = ensureTable(w, 'Showcase', 'Icons', {
+    description: 'The icon vocabulary: where the shapes come from, how a value is written, what moves and what stays still.',
+    icon: 'lucide:sparkles',
+    noun: 'page',
+  });
+  upsertRow(w, t, { name: ICON_LIBRARY_PAGE, doc: iconLibraryPage() });
+  w.save();
+  return t;
+}
+
 export function applyFormattingShowcase(w) {
   ensureSpace(w, 'Showcase', 'Every field type, in several configurations — the range of what a field can be, visible in one grid');
 
