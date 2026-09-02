@@ -732,9 +732,9 @@ The **noun** is what one row is called — the table's *row term*. It lives on t
 
 ## The grid reads as a record
 
-The table view is a ledger, not a form. The \`#id\` link navigates; **every other cell edits in place**, raising that field type's own editor with the cursor already in it. Chips keep their tint and lose their box. Computed cells keep their glyph and drop their ground. No cell draws a border on hover — the row's tint is the feedback.
+The table view is a ledger, not a form. The \`#id\` link opens the row in the **dock** beside the table; **every other cell edits in place**, raising that field type's own editor with the cursor already in it. Chips keep their tint and lose their box. Computed cells keep their glyph and drop their ground. No cell draws a border on hover — the row's tint is the feedback.
 
-⌘-click opens a row in the **side peek**, so the table keeps its place while you read one record.
+The dock is the entity itself, not a preview: edit there and the table keeps its place, the docked row stays lit, Esc closes it. ⌘-click a row (or its \`#id\` link) to give the record its own browser tab. A document chip in a cell still opens its entity in the **side peek**.
 
 ## Working on many rows at once
 

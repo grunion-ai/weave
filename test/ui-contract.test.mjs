@@ -133,8 +133,8 @@ test('related rows still route a click before opening the entity', () => {
   assert.equal(routed.length, 1, 'embedded related rows route clicks; the grid edits in place');
   assert.equal((APP.match(/openEntity\(item\.id\)/g) ?? []).length, routed.length,
     'no row surface may open the entity without routing first');
-  assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, 1,
-    'the grid opens the side peek on ⌘-click');
+  assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, 0,
+    'the grid no longer peeks — the #id link docks and ⌘-click opens a tab (one entity surface)');
   assert.match(APP, /docChipCell\(f, item, \(\) => peekEntity\(id\)\)/,
     'and a doc chip peeks its entity from the cell (Issue #74)');
   assert.match(APP, /function rowClickTarget/);
@@ -1931,4 +1931,90 @@ test('workspace links and rename use the workspace id permalink', () => {
   const rail = fnBody('buildWsRail');
   assert.match(rail, /w\.url|\/w\/\$\{w\.id\}\//, 'the rail links workspaces by id');
   assert.match(rail, /w\.id === seg|seg === w\.id|\.id === seg/, 'the current workspace matches by id or name segment');
+});
+
+/* ---------- the entity dock (one entity surface, change 2) ----------
+   The #id link docks the entity BESIDE the table; the rules live in
+   public/entity-surface-core.js (its own suite) and app.js paints them.
+   These gates pin the wiring a browser is not needed for. */
+
+test('dock: the surface core loads before app.js and #dock is a sibling of #main', () => {
+  const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+  const core = html.indexOf('entity-surface-core.js');
+  assert.ok(core > -1 && core < html.indexOf('"/app.js"'), 'entity-surface-core.js must load before app.js');
+  const main = html.indexOf('<main id="main">');
+  const mainEnd = html.indexOf('</main>', main);
+  const dock = html.indexOf('<aside id="dock" hidden>');
+  assert.ok(main > -1 && dock > mainEnd, '#dock sits after </main>, never inside it — a page render must not wipe a docked entity');
+  assert.ok(dock < html.indexOf('<script'), 'the panel is page shell, declared before the scripts');
+  assert.match(html, /<aside id="dock" hidden>/, 'the dock starts hidden');
+});
+
+test('dock: a route change tears the dock down with the doc editors, before the new page paints', () => {
+  const route = fnBody('renderRoute');
+  assert.match(route, /teardownDocEditors\(\);[\s\S]{0,120}dockClose\(\);/, 'renderRoute closes the dock right after the editor teardown');
+  assert.ok(route.indexOf('dockClose()') < route.indexOf('location.hash'), 'and before it reads the destination');
+});
+
+test('dock: Escape defers to every overlay app.js can raise', () => {
+  const m = APP.match(/const DOCK_ESC_OWNERS = '([^']+)'/);
+  assert.ok(m, 'the dock names its Escape owners in one selector');
+  const owners = m[1].split(',').map((s) => s.trim());
+  // Every backdrop (id: 'x-back') and every popover (class: 'x-pop') in the
+  // source owns Escape while it is up; a new one has to join the list.
+  const backs = [...new Set([...APP.matchAll(/id: '([a-z]+-back)'/g)].map((x) => `#${x[1]}`))];
+  const pops = [...new Set([...APP.matchAll(/class: '([a-z]+-pop)'/g)].map((x) => `.${x[1]}`))];
+  assert.ok(backs.length >= 5 && pops.length >= 3, `the derivation found ${backs.length} backdrops and ${pops.length} popovers`);
+  for (const sel of [...backs, ...pops]) assert.ok(owners.includes(sel), `${sel} owns Escape but the dock does not defer to it`);
+  assert.ok(owners.includes('.doc-rail.open'), 'an open document outline owns Escape too');
+  const esc = APP.match(/if \(e\.key !== 'Escape' \|\| !dock\) return;[\s\S]{0,400}?\}\);/)[0];
+  assert.match(esc, /closest\?\.\('input, textarea, select, \[contenteditable\]'\)/, 'a focused editor keeps its Escape');
+  assert.match(esc, /weaveEntitySurface\.escape\(dock\.state\)/, 'the pop itself is the core rule, not a hand-rolled one');
+});
+
+test('dock: a repaint releases what the last pass mounted, and the docked row takes its light back', () => {
+  const draw = fnBody('drawDock');
+  assert.ok(draw.indexOf('releaseDockPanel()') < draw.indexOf('panel.replaceChildren('), 'release before replaceChildren, same discipline as the peek');
+  assert.match(draw, /editors: dock\.editors/, 'the dock owns its editors so the scoped teardown can find them');
+  assert.match(draw, /inPeek: true/, 'the dock renders the entity in its narrow pose');
+  assert.match(draw, /markDockedRow\(\);\s*\}\s*$/, 'the light is re-marked after every paint');
+  const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
+  assert.match(grid, /requestAnimationFrame\(\(\) => markClippedCells\(table\)\);[\s\S]{0,200}markDockedRow\(\);/, 'a grid redraw re-marks the docked row');
+  const mark = fnBody('markDockedRow');
+  assert.match(mark, /weaveEntitySurface\.selectionId\(dock\.state\)/, 'which row is lit is the core\'s selection rule');
+  const close = fnBody('dockClose');
+  assert.match(close, /releaseDockPanel\(\);[\s\S]*panel\.hidden = true;[\s\S]*dock = null;[\s\S]*markDockedRow\(\);/, 'close releases, hides, forgets, and puts the light out');
+});
+
+test('dock: the #id link docks plain rows only; registry rows and modified clicks keep the href', () => {
+  const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
+  const link = grid.match(/class: 'open-link',[\s\S]*?`#\$\{item\.publicId\} ↗`/)[0];
+  assert.match(link, /if \(e\.metaKey \|\| e\.ctrlKey \|\| e\.shiftKey \|\| registryHref\(db, item\)\) return;/, 'a modifier or a registry row falls through to the real href');
+  assert.match(link, /e\.preventDefault\(\);\s*dockEntity\(db, item\.id\);/, 'a plain click docks');
+  assert.match(link, /`Open \$\{db\.term\.singular\} beside the table — ⌘-click for a new tab`/, 'the title speaks the row term (row-term work) and names both gestures');
+  assert.match(grid, /if \(!openRegistryRow\(db, item\)\) window\.open\(`\$\{location\.pathname\}#\/entity\/\$\{item\.id\}`, '_blank'\);/, '⌘-click on the row opens a tab, registry rows aside');
+  const dockFn = fnBody('dockEntity');
+  assert.match(dockFn, /dock && dock\.db\.id === db\.id\s*\?\s*S\.open\(dock\.state, frame\)/, 'a second open in the same table keeps the pane state');
+  assert.match(dockFn, /S\.init\(\{ tableId: db\.id, tableName: db\.name \}\)/, 'a different table re-anchors');
+});
+
+test('dock: the panel is styled as the table\'s twin, sticky, and lights its row in both themes', () => {
+  const rule = CSS.match(/^#dock \{[^}]+\}/m)?.[0];
+  assert.ok(rule, '#dock has a rule');
+  for (const decl of ['background: var(--tblr-bg-surface)', 'box-shadow: var(--wv-panel-shadow)', 'border-radius: 16px', 'position: sticky', 'top: 8px', 'align-self: flex-start', 'overflow-y: auto'])
+    assert.ok(rule.includes(decl), `#dock lacks ${decl}`);
+  assert.doesNotMatch(rule, /display:/, 'no display of its own, so the hidden attribute keeps working');
+  const light = CSS.match(/tr\.entity-row\.row-docked td \{[^}]+\}/)?.[0];
+  assert.ok(light, 'the docked row has a light');
+  assert.match(light, /var\(--tblr-active-bg/, 'the light is a theme token, so dark mode gets its own tint');
+  assert.match(CSS, /#dock \.dock-entity \.entity-grid \{ grid-template-columns: 1fr; \}/, 'the field grid single-columns in the narrow pane');
+});
+
+test('dock: the Handbook ledger page teaches the new contract', () => {
+  const hb = readFileSync(join(ROOT, 'src/handbook.js'), 'utf8');
+  const section = hb.slice(hb.indexOf('## The grid reads as a record'), hb.indexOf('## Working on many rows at once'));
+  assert.match(section, /link opens the row in the \*\*dock\*\* beside the table/);
+  assert.match(section, /⌘-click a row .* own browser tab/);
+  assert.match(section, /side peek/, 'the peek still exists for doc chips and says so');
+  assert.doesNotMatch(section, /⌘-click opens a row in the \*\*side peek\*\*/, 'the retired ⌘-click-peeks contract is gone from the page');
 });

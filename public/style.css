@@ -1227,6 +1227,21 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .date-cell .date-pick { width: 22px; height: 24px; padding: 0; border: 0; background: none; color: var(--tblr-secondary); cursor: pointer; }
 .date-cell .date-pick::-webkit-calendar-picker-indicator { cursor: pointer; }
 /* ---------- side peek (Features #39, #48) ---------- */
+/* ---------- entity dock (one entity surface) ----------
+   The split pane the table view opens an entity into: a real layout column
+   beside #main, styled as its twin panel — not an overlay. The rules live
+   in public/entity-surface-core.js; app.js paints them here. */
+/* Sticky, so a long table scrolling beside it never carries the dock off
+   the screen: the pane is its own scroll box, pinned to the viewport. */
+#dock { flex: none; width: min(46%, 760px); margin: 8px 8px 8px 0; padding: 14px 22px 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: calc(100vh - 16px); max-height: calc(100vh - 16px); overflow-y: auto; position: sticky; top: 8px; align-self: flex-start; }
+#dock .dock-head { display: flex; align-items: center; min-height: 26px; margin-bottom: 2px; }
+/* The pane is narrower than a page: the field grid single-columns and the
+   sticky header sits still, same as the peek before it. */
+#dock .dock-entity .entity-grid { grid-template-columns: 1fr; }
+#dock .dock-entity .view-header { position: static; }
+/* The docked row stays lit in the table — selection follows the pane. */
+.wv-grid tbody tr.entity-row.row-docked td { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
+
 #peek-back { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 80; }
 #peek { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 92vw); background: var(--tblr-bg-surface); border-left: 1px solid var(--tblr-border-color); box-shadow: -8px 0 24px rgba(0,0,0,.12); overflow-y: auto; animation: peek-in .16s ease; }
 @keyframes peek-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }

@@ -265,6 +265,101 @@ function peekEntity(id) {
 
 
 
+/* ---------- entity dock (one entity surface) ----------
+   The split dock: an entity opens as a second panel BESIDE the table, not
+   an overlay over it. public/entity-surface-core.js holds the rules (poses,
+   the drill chain, selection-follow); this paints them. The side peek stays
+   for callers outside the table view until the dock absorbs them. */
+let dock = null; // { db, state, editors }
+
+function markDockedRow() {
+  const id = dock ? weaveEntitySurface.selectionId(dock.state) : null;
+  for (const tr of document.querySelectorAll('tr.entity-row.row-docked')) tr.classList.remove('row-docked');
+  if (id) $(`tr[data-eid="${id}"]`)?.classList.add('row-docked');
+}
+
+// Scoped teardown, same discipline as the peek: only what THIS panel
+// mounted — the table beside it may hold live editors of its own.
+function releaseDockPanel() {
+  const panel = $('#dock');
+  if (!panel) return;
+  flushDocSaves();
+  if (dock) {
+    for (const ed of dock.editors.splice(0)) {
+      try { ed.destroy(); } catch { /* already gone with the DOM */ }
+      liveEditors.delete(ed);
+    }
+  }
+  for (const set of [refChipLayers, docRails, docFolds, docCodeAuto]) {
+    for (const st of [...set]) {
+      if (panel.contains(st.host)) {
+        clearTimeout(st.timer);
+        (st.layer ?? st.rail)?.remove();
+        set.delete(st);
+      }
+    }
+  }
+}
+
+function dockClose() {
+  if (!dock) return;
+  releaseDockPanel();
+  const panel = $('#dock');
+  panel.hidden = true;
+  panel.replaceChildren();
+  dock = null;
+  markDockedRow();
+}
+
+async function dockEntity(db, id) {
+  const S = weaveEntitySurface;
+  const frame = { kind: 'entity', id, tableId: db.id, tableName: db.name };
+  const state = dock && dock.db.id === db.id
+    ? S.open(dock.state, frame)
+    : S.open(S.init({ tableId: db.id, tableName: db.name }), frame);
+  dock = { db, state, editors: dock?.editors ?? [] };
+  await drawDock();
+}
+
+async function drawDock() {
+  if (!dock) return;
+  const top = dock.state.chain[dock.state.chain.length - 1];
+  let entity;
+  try { entity = await api('GET', `/entities/${top.id}`); } catch (err) { dockClose(); return toast(err.message, true); }
+  releaseDockPanel();
+  const panel = $('#dock');
+  panel.hidden = false;
+  const host = el('div', { class: 'dock-entity' });
+  panel.replaceChildren(
+    el('div', { class: 'dock-head' },
+      el('span', { style: 'flex:1' }),
+      el('button', {
+        class: 'btn btn-sm btn-ghost-secondary', type: 'button',
+        title: 'Close (Esc)', 'aria-label': 'Close',
+        onclick: () => dockClose(),
+      }, iconEl('✕'))),
+    host);
+  // The full entity view — the dock is the entity, not a preview of it.
+  await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockClose, editors: dock.editors });
+  markDockedRow();
+}
+
+// Esc pops the dock one level (core.escape). Cell editors, overlays and
+// pickers keep their own Escape; the dock only hears it bare. Every
+// overlay app.js raises (a *-back backdrop, a *-pop popover, an open doc
+// rail) owns the key while it is up — test/ui-contract.test.mjs derives
+// that list from the source and checks this selector covers it.
+const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #peek-back, #cmdk-back, #fsv-back';
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !dock) return;
+  if (document.querySelector(DOCK_ESC_OWNERS)) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+  const next = weaveEntitySurface.escape(dock.state);
+  if (next.pose === 'closed') return dockClose();
+  dock.state = next;
+  drawDock();
+});
+
 function allTables() {
   return state.schema.flatMap((s) => s.tables.map((d) => ({ ...d, space: s.space, spaceId: s.spaceId })));
 }
@@ -2398,14 +2493,15 @@ function renderTable(main, db, items, onSaved) {
       const row = el('tr', {
         class: 'entity-row' + (item.deleted ? ' row-deleted' : ''),
         dataset: { eid: item.id },
-        /* Ledger's one rule: the #id link navigates, every cell edits. A bare
-           row click used to open the entity, which fought the cell it landed
-           on; now it raises that field's own editor. ⌘-click still opens the
-           row — in the side peek, so the table keeps its place. */
+        /* Ledger's one rule: the #id link opens, every cell edits. A bare
+           row click raises the cell's own editor; the #id link docks the
+           entity beside the table. ⌘-click anywhere on the row gives the
+           entity its own browser tab — the modifier means "own window",
+           same as every link. */
         onclick: (e) => {
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
-            if (!openRegistryRow(db, item)) peekEntity(item.id);
+            if (!openRegistryRow(db, item)) window.open(`${location.pathname}#/entity/${item.id}`, '_blank');
             return;
           }
           if (e.target.closest('a, button, input, select, textarea, label')) return;
@@ -2426,7 +2522,14 @@ function renderTable(main, db, items, onSaved) {
           el('a', {
             class: 'open-link',
             href: registryHref(db, item) ?? `#/entity/${item.id}`,
-            title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular}`,
+            title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular} beside the table — ⌘-click for a new tab`,
+            // Plain click docks the entity beside the table; a modifier
+            // falls through to the real href, so ⌘-click opens a tab.
+            onclick: (e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || registryHref(db, item)) return;
+              e.preventDefault();
+              dockEntity(db, item.id);
+            },
           }, `#${item.publicId} ↗`)),
         ...cols.map((c) => {
           const f = db.fields.find((x) => x.name === c);
@@ -2532,6 +2635,8 @@ function renderTable(main, db, items, onSaved) {
     // Measured after the browser has laid the columns out, so "clipped"
     // means clipped and the marker never claims there is more to read.
     requestAnimationFrame(() => markClippedCells(table));
+    // A redraw rebuilds every row; the docked one takes its light back.
+    markDockedRow();
   };
   draw();
   // A clipped cell opens over the grid on hover, in a layer of its own —
@@ -6249,6 +6354,8 @@ function renderRoute() {
   // Every render replaces #main, which would strand live document editors and
   // whatever they have not written yet. Flush and destroy before the DOM goes.
   teardownDocEditors();
+  // A route change leaves the view the dock belonged to.
+  dockClose();
   const hash = location.hash || '#/';
   // The skeleton of where we're going, painted before we go (Feature #49).
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);

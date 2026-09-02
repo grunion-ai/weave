@@ -107,12 +107,14 @@ test('the active cell is the only thing wearing a border', () => {
     'no cell-type gets its own outline — the row is the unit of feedback');
 });
 
-/* ── 4 · ⌘-click opens the real peek panel ─────────────────────────────── */
+/* ── 4 · the id link docks, ⌘-click opens a tab (one entity surface) ───── */
 
-test('the id link navigates, ⌘-click peeks, and the row itself does neither', () => {
+test('the id link docks the entity, ⌘-click opens a tab, and the row itself does neither', () => {
   const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
-  assert.match(grid, /metaKey\s*\|\|\s*e\.ctrlKey[^]{0,120}peekEntity/,
-    '⌘-click opens the side peek — the same panel #/entity opens into');
+  assert.match(grid, /metaKey\s*\|\|\s*e\.ctrlKey[^]{0,200}window\.open/,
+    '⌘-click gives the entity its own browser tab (Kyle, 2026-09-01)');
+  assert.match(grid, /dockEntity\(db, item\.id\)/,
+    'the #id link docks the entity beside the table');
   assert.ok(!/if \(openRegistryRow\(db, item\)\) return;\s*\n\s*openEntity\(item\.id\);/.test(grid),
     'a bare row click no longer navigates — it edits the cell it landed on');
   assert.match(grid, /class: 'open-link'/, 'the #id link is still the way in');
