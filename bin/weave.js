@@ -91,6 +91,8 @@ Service (macOS launchd — auto-start on login, restart on crash)
                                       a fresh one; restart, probe, roll back on red
   rehearse --data path                Run the promote rehearsal battery against a COPY
                                       (mutates its target — never the live file)
+  quality sync --data weave.db        Reconcile Quality/Suite + Case rows to the test
+                                      files (generated mirror; check = report drift)
 
 Schema
   schema                              Describe spaces, tables, fields
@@ -246,6 +248,32 @@ async function main() {
     const result = rehearse(String(flags.data));
     out(result);
     process.exit(result.ok ? 0 : 1);
+  }
+
+  if (command === 'quality') {
+    // The Quality mirror, reconciled from the test files. `sync` writes;
+    // `check` only reports drift (exit 1 when any). The main watcher runs
+    // sync against the live docs workspace after every landing.
+    const [sub] = args;
+    if (!flags.data || flags.data === true) {
+      console.error('quality needs an explicit --data (the weave docs workspace .db)');
+      process.exit(1);
+    }
+    const { scanSuites, syncQualityMirror } = await import('../src/quality-mirror.js');
+    const scanned = scanSuites(join(dirname(fileURLToPath(import.meta.url)), '..'));
+    const qw = new Weave({ path: String(flags.data), actor: CLI_ACTOR });
+    if (sub === 'check') {
+      const probe = syncQualityMirror(qw, scanned, { dryRun: true });
+      out(probe);
+      const drift = probe.createdSuites + probe.createdCases + probe.removedSuites + probe.removedCases + probe.renamedSuites;
+      process.exit(drift ? 1 : 0);
+    }
+    if (sub === 'sync' || !sub) {
+      const summary = syncQualityMirror(qw, scanned);
+      out(summary);
+      return;
+    }
+    throw new WeaveError(`Unknown quality subcommand '${sub}'. Try: sync, check`);
   }
 
   if (command === 'service') {
