@@ -36,6 +36,8 @@ const STARTED_AT = new Date().toISOString();
 export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, serveStatic = null } = {}) {
   return async function handle(rx) {
     let path = rx.path;
+    // Where the reader is: an instant renders in this zone (public/date-grain.js).
+    const viewerZone = rx.header('x-weave-zone') || null;
     const out = (status, data, headers = {}) => {
       const isBin = data instanceof Uint8Array;
       const isStr = typeof data === 'string';
@@ -576,16 +578,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
           if (rx.method === 'POST') {
             const e = weave.createEntity(m[1], body);
-            return out(201, weave.readEntity(e.id));
+            return out(201, weave.readEntity(e.id, { viewerZone }));
           }
           if (rx.method === 'GET') {
             const limit = rx.searchParams.has('limit') ? Number(rx.searchParams.get('limit')) : null;
             const offset = Number(rx.searchParams.get('offset') ?? 0);
-            return out(200, weave.query(m[1], { limit, offset }));
+            return out(200, weave.query(m[1], { limit, offset, viewerZone }));
           }
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/query$/)) && rx.method === 'POST') {
-          return out(200, weave.query(m[1], body));
+          return out(200, weave.query(m[1], { ...body, viewerZone }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/trash$/)) && rx.method === 'GET') {
           const items = weave.listTrash(m[1]);
@@ -599,10 +601,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)$/))) {
-          if (rx.method === 'GET') return out(200, weave.readEntity(m[1]));
+          if (rx.method === 'GET') return out(200, weave.readEntity(m[1], { viewerZone }));
           if (rx.method === 'PATCH') {
             weave.updateEntity(m[1], body.values ?? body);
-            return out(200, weave.readEntity(m[1]));
+            return out(200, weave.readEntity(m[1], { viewerZone }));
           }
           // Soft by default; ?hard=1 is the irreversible purge.
           if (rx.method === 'DELETE') {
@@ -629,15 +631,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/link$/)) && rx.method === 'POST') {
           weave.link(m[1], body.field, body.targets ?? body.items);
-          return out(200, weave.readEntity(m[1]));
+          return out(200, weave.readEntity(m[1], { viewerZone }));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/unlink$/)) && rx.method === 'POST') {
           weave.unlink(m[1], body.field, body.targets ?? body.items);
-          return out(200, weave.readEntity(m[1]));
+          return out(200, weave.readEntity(m[1], { viewerZone }));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/state$/)) && rx.method === 'POST') {
           weave.setState(m[1], body.field, body.state);
-          return out(200, weave.readEntity(m[1]));
+          return out(200, weave.readEntity(m[1], { viewerZone }));
         }
 
         // Document field selected by ?field= (GET) or body.field (PUT/POST);

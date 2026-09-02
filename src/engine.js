@@ -3329,10 +3329,10 @@ export class Weave {
         const c = field.config;
         // A partial grain dresses even in iso: the parts print, never the dashes.
         if (!c.format && !c.time && c.grain == null) return resolved;
-        return dressDate({ ...c, now: this.now() }, resolved);
+        return dressDate({ ...c, now: this.now(), viewerZone: this.viewerZone ?? 'UTC' }, resolved);
       }
       case 'daterange':
-        return dressDateRange({ ...field.config, now: this.now() }, resolved);
+        return dressDateRange({ ...field.config, now: this.now(), viewerZone: this.viewerZone ?? 'UTC' }, resolved);
       case 'number':
         return dressNumber(field.config, resolved);
       case 'formula':
@@ -3352,7 +3352,16 @@ export class Weave {
   }
 
   // Full materialized read: everything by field name, display values + raw.
-  readEntity(id) {
+  /* A read may say where it is being read from: an instant renders in that
+     zone. The engine has no reader of its own, so UTC is the default — the
+     browser sends its zone on every request (routes.js, X-Weave-Zone). */
+  readEntity(id, { viewerZone = null } = {}) {
+    if (viewerZone == null) return this.#readEntityIn(id);
+    const prev = this.viewerZone;
+    this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
+    try { return this.#readEntityIn(id); } finally { this.viewerZone = prev; }
+  }
+  #readEntityIn(id) {
     const e = this.getEntity(id);
     const db = this.state.tables[e.dbId];
     const fields = {};
@@ -3410,7 +3419,13 @@ export class Weave {
   // ---------------- query ----------------
 
   // where: [ [path, op, value], ... ] AND-combined, or { or:[...] } / { and:[...] } nodes.
-  query(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, includeDeleted = false } = {}) {
+  query(dbRef, { viewerZone = null, ...opts } = {}) {
+    if (viewerZone == null) return this.#queryIn(dbRef, opts);
+    const prev = this.viewerZone;
+    this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
+    try { return this.#queryIn(dbRef, opts); } finally { this.viewerZone = prev; }
+  }
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, includeDeleted = false } = {}) {
     const db = this.getTable(dbRef);
     let rows = this.listEntities(db.id, { includeDeleted });
     if (where && (Array.isArray(where) ? where.length : true)) {

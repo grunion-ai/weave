@@ -22,6 +22,8 @@
   const partsOf = (value) => DG().partsOf(value);
   const storeOf = (grain, parts, time) => DG().storeOf(grain, parts, time);
   const coerce = (config, raw) => DG().coerce(config, raw);
+  const grainOf = (config) => DG().grainOf(config);
+  const parseClock = (text) => DG().parseClock(text);
   const DATE_FORMATS = ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative'];
   const CLOCKS = ['24h', '12h'];
   const ZONES = ['floating', 'fixed', 'instant'];
@@ -74,6 +76,6 @@
   root.weaveDateCore = {
     MONTHS, MONTHS_LONG, WEEKDAYS, DYNAMIC_DATE_DEFAULTS,
     formatDate, formatDateRange, calendarMonth, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
-    legalFormats, toInstant, fromInstant, partsOf, storeOf, coerce, DATE_FORMATS, CLOCKS, ZONES,
+    legalFormats, toInstant, fromInstant, partsOf, storeOf, coerce, grainOf, parseClock, DATE_FORMATS, CLOCKS, ZONES,
   };
 })(globalThis);

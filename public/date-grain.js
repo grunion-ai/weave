@@ -222,6 +222,20 @@
     }
     return rtf.format(parts.y - now.getFullYear(), 'year');
   }
+  /* A clock typed by a person → 'HH:MM', or null. Needs a colon or an
+     am/pm so '9/15/26' never reads as nine o'clock. */
+  function parseClock(text) {
+    const s = String(text ?? '').toLowerCase();
+    let m = s.match(/(?:^|[^\d:])(\d{1,2}):(\d{2})\s*(am|pm|a\.m\.|p\.m\.)?(?![\d:])/) || s.match(/(?:^|[^\d:])(\d{1,2})()\s*(am|pm|a\.m\.|p\.m\.)(?![\d:])/);
+    if (!m) return null;
+    let h = Number(m[1]);
+    const mi = Number(m[2] || 0);
+    const ap = (m[3] || '').replace(/\./g, '');
+    if (ap === 'pm' && h < 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+    if (h > 23 || mi > 59) return null;
+    return `${pad2(h)}:${pad2(mi)}`;
+  }
   function clockText(hhmm, clock) {
     const [h, mi] = hhmm.split(':').map(Number);
     if (clock !== '12h') return `${pad2(h)}:${pad2(mi)}`;
@@ -295,6 +309,6 @@
     PARTS, DATE_FORMATS, CLOCKS, ZONES, NEEDS, MON, MON_LONG,
     normalizeGrain, grainOf, legalFormats, formatProblem,
     partsOf, storeOf, coerce, coerceInstant, isZone, toInstant, fromInstant, wallIn, zoneAbbr,
-    formatDate, formatDateRange, clockText, elapsedText, ordinal,
+    formatDate, formatDateRange, clockText, parseClock, elapsedText, ordinal,
   };
 })(globalThis);

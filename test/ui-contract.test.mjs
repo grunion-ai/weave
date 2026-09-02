@@ -1292,7 +1292,8 @@ test('a date cell is type-or-pick: parsed text beside a calendar (Feature #44, p
   assert.ok(app.includes('parseNaturalDate('), 'typed phrases go through the parser');
   const ctl = fnBody('dateControl');
   assert.ok(ctl.includes('datePopover({'), 'the calendar button opens the popover');
-  assert.ok(ctl.includes('dc.splitIso(current).time'), 'a typed day keeps the existing time of day');
+  assert.ok(ctl.includes('readTypedDate(typed, c, local())'), 'typed text is read against the field\'s grain');
+  assert.ok(fnBody('readTypedDate').includes('dc.partsOf(current)?.t'), 'a typed day keeps the existing time of day');
 });
 
 test('navigation paints a skeleton of the destination first (Feature #49)', () => {
@@ -1485,13 +1486,16 @@ test('dates: one smart control everywhere, a calendar popover with month/year gr
   assert.match(cell, /dateControl\(\{/, 'the cell is the shared date control');
   assert.doesNotMatch(cell, /type: f\.time \? 'datetime-local' : 'date'/, 'the native picker is gone');
   const ctl = fnBody('dateControl');
-  assert.match(ctl, /parseNaturalDate\(typed, new Date\(\), \{ dayFirst: format === 'eu' \}\)/, 'typed text is autodetected, day-first for eu fields');
+  assert.match(fnBody('readTypedDate'), /parseNaturalDate\(bare, new Date\(\), \{ dayFirst: format === 'eu' \}\)/, 'typed text is autodetected, day-first for eu fields');
   const pop = fnBody('datePopover');
   for (const need of ["view = 'months'", "view = 'years'", 'dc.calendarMonth(y, m)', "'Clear'", "'Today'", "type: 'time'"]) {
     assert.ok(pop.includes(need), `popover has ${need}`);
   }
   const dlg = fnBody('fieldDialog');
-  assert.match(dlg, /dc\.formatDate\(today, \{ format: fmt \}\)/, 'each format is shown as an example');
+  assert.match(dlg, /dateCostumeControls\(state, drawCfg, changed/, 'the grain and costume tray is one shared block for date and daterange');
+  const costume = fnBody('dateCostumeControls');
+  assert.match(costume, /dc\.formatDate\(todayIso, \{ \.\.\.costume, format: fmt, time: false \}\)/, 'each format is shown as an example, in the grain the field stores');
+  assert.match(costume, /fdc\.legalFormats\(g\)/, 'only the styles the grain can wear are offered');
   assert.match(dlg, /dc\.defaultKind\(state\.default\)/, 'the default chooser: none / today() / specific');
   const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.ok(HTML.indexOf('date-core.js') < HTML.indexOf('"/app.js"'));
@@ -1577,12 +1581,12 @@ test('number costume controls: unit for plain numbers, an ISO-code picker for cu
   assert.match(ctl, /fdc\.CURRENCIES/, 'codes come from the tested core list');
   const dlg = fnBody('fieldDialog');
   assert.match(dlg, /numberCostumeControls\(state, drawCfg, changed, \{ label: 'Result format' \}\)/, 'a formula result wears the same costume');
-  assert.match(fnBody('editPatchConfig'), /patch\.currency = c\.currency \?\? null/, 'currency clears like the other costume keys');
+  assert.match(fnBody('editPatchConfig'), /\['format', 'unit', 'currency', 'decimals', 'separator', 'accounting'\]\) patch\[k\] = c\[k\] \?\? null/, 'currency clears like the other costume keys');
 });
 
 test('Enter in the date popover commits and closes, time kept', () => {
   const pop = fnBody('datePopover');
-  assert.match(pop, /commit\(dc\.joinIso\(day, time \? clock : ''\), true\)/);
+  assert.match(pop, /const local = readSmart\(\);[\s\S]{0,200}commit\(local, true\)/, 'Enter commits the typed stamp and closes; readTypedDate carried the time of day');
 });
 
 /* Kyle, 2026-08-23: the eyeball replaces Manage fields; the header + opens

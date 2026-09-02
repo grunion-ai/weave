@@ -42,10 +42,14 @@ const chevron = () => svgEl('svg', {
 // /w/<name>/ for sibling workspaces — one SPA, path-scoped API + permalinks.
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
 
+/* Where this browser is. An instant (a date field with zone: instant) is
+   stored as UTC and rendered in the reader's zone — the server learns the
+   zone from this header and the cell uses it directly. */
+const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
 async function api(method, path, body) {
   const res = await fetch(WS_PREFIX + '/api' + path, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
@@ -1735,7 +1739,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   // ('next friday', 'jun 21' — parsed by nl-date.js) and a native calendar.
   if (f.type === 'date') {
     return dateControl({
-      value: item.raw?.[f.name] ?? '', time: !!f.time, format: f.format ?? 'iso',
+      value: item.raw?.[f.name] ?? '', costume: f,
       placeholder: 'today, 15 sep, 9/15/26…', onChange: (iso) => patch(iso),
     });
   }
@@ -1746,10 +1750,12 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   if (f.type === 'daterange') {
     const cur = item.raw?.[f.name] ?? null;
     const range = { start: cur?.start ?? '', end: cur?.end ?? '' };
-    const opts = { time: !!f.time, format: f.format ?? 'iso' };
+    const opts = { costume: f };
     if (compact) {
+      // Rendered here, not from the server's string: an instant reads in
+      // this browser's zone, and the costume is the field's own.
       return el('span', { class: 'k k-range' + (cur ? '' : ' is-empty'), title: 'date range — edit on the entity page' },
-        cur ? String(val ?? weaveDateCore.formatDateRange(range, opts)) : '—');
+        cur ? weaveDateCore.formatDateRange(range, { ...f, viewerZone: LOCAL_ZONE }) : '—');
     }
     const commit = () => {
       // Half a range is not a range: the server refuses one end, so an
@@ -2769,32 +2775,97 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
    opens a small popover laid out like the native picker Kyle liked:
    month ▾ / year ▾ (each a grid), ↑ ↓ months, Sunday-first days, a time row
    when the field carries time, Clear / Today. */
-function dateControl({ value = '', time = false, format = 'iso', placeholder = 'type a date…', onChange, compact = true }) {
+function dateControl({ value = '', time = false, format = 'iso', costume = null, placeholder = 'type a date…', onChange, compact = true }) {
   const dc = weaveDateCore;
+  /* The field's costume (grain · format · time · clock · zone · pad, 2026-09-02)
+     decides what the box parses, what the popover offers and what is stored.
+     Callers that predate it pass { time, format } and get the full grain. */
+  const c = costume ? { ...costume } : { time, format };
+  format = c.format ?? 'iso';
+  time = !!c.time;
+  const view = { ...c, viewerZone: LOCAL_ZONE };
+  const grain = dc.grainOf(c);
+  const timeOnly = grain.length === 0;
   let current = value ?? '';
+  const show = (v) => dc.formatDate(v, view);
   const text = el('input', {
     class: 'form-control form-control-sm inline-edit date-text' + (compact ? '' : ' date-text-wide'),
-    value: dc.formatDate(current, { format, time }), placeholder,
+    value: show(current), placeholder: timeOnly ? '9:15, 5:40 pm…' : placeholder,
     onclick: (e) => e.stopPropagation(),
   });
-  const set = (iso) => { current = iso ?? ''; text.value = dc.formatDate(current, { format, time }); onChange(current || null); };
+  const set = (iso) => { current = iso ?? ''; text.value = show(current); onChange(current || null); };
+  /* A local wall clock → the stored form: an instant folds to UTC, a
+     partial grain is cut to its parts, the full grain stores as typed. */
+  const store = (localIso) => {
+    if (!localIso) return null;
+    if (c.zone === 'instant') return dc.toInstant(localIso.includes('T') ? localIso : localIso + 'T00:00', LOCAL_ZONE);
+    if (c.grain == null) return localIso;
+    return dc.coerce(c, localIso);
+  };
+  // What the popover and the typed-time fallback see: the local wall clock.
+  const local = () => (c.zone === 'instant' && current ? dc.fromInstant(current, LOCAL_ZONE) : current);
   text.addEventListener('change', () => {
     const typed = text.value.trim();
     if (!typed) return set('');
-    const day = parseNaturalDate(typed, new Date(), { dayFirst: format === 'eu' });
-    if (!day) { toast(`Could not read '${typed}' as a date`, true); text.value = dc.formatDate(current, { format, time }); return; }
-    // A typed day keeps the existing time of day; a typed datetime brings its own.
-    const typedTime = (typed.match(/[t ](\d{1,2}:\d{2})/i) || [])[1];
-    set(dc.joinIso(day, time ? (typedTime ?? dc.splitIso(current).time) : ''));
+    try {
+      set(store(readTypedDate(typed, c, local())));
+    } catch {
+      toast(`Could not read '${typed}' as a ${timeOnly ? 'time' : 'date'}`, true);
+      text.value = show(current);
+    }
   });
   text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } });
   const btn = el('button', {
-    type: 'button', class: 'date-pick-btn', title: 'Pick from the calendar', 'aria-label': 'Open calendar',
-    onclick: (e) => { e.stopPropagation(); datePopover({ anchor: btn, value: current, time, format, onPick: set }); },
+    type: 'button', class: 'date-pick-btn', title: timeOnly ? 'Pick a time' : 'Pick from the calendar', 'aria-label': timeOnly ? 'Pick a time' : 'Open calendar',
+    onclick: (e) => {
+      e.stopPropagation();
+      datePopover({ anchor: btn, value: local(), costume: c, onPick: (localIso) => {
+        try { set(localIso == null ? null : store(localIso)); } catch (err) { toast(err.message, true); }
+      } });
+    },
   }, calendarGlyph());
   const wrap = el('span', { class: 'date-cell' }, text, btn);
-  wrap.setValue = (iso) => { current = iso ?? ''; text.value = dc.formatDate(current, { format, time }); };
+  wrap.setValue = (iso) => { current = iso ?? ''; text.value = show(current); };
   return wrap;
+}
+
+/* Typed text → a local ISO stamp the store() step cuts to the grain. Throws
+   when nothing readable is there. The full-date phrases ('next friday',
+   '15 sep') go through nl-date.js; the shapes a partial grain invites —
+   '08/2026', '2026', 'the 15th', 'august' — are read here first. */
+function readTypedDate(typed, c, current) {
+  const dc = weaveDateCore;
+  const grain = dc.grainOf(c);
+  const format = c.format ?? 'iso';
+  const pad = (n) => String(n).padStart(2, '0');
+  const clock = c.time ? dc.parseClock(typed) : null;
+  if (!grain.length) {
+    if (!clock) throw new Error('no time of day');
+    return clock;
+  }
+  const today = dc.todayIso();
+  const [ty, tm] = today.split('-').map(Number);
+  const hasD = grain.includes('day'), hasM = grain.includes('month'), hasY = grain.includes('year');
+  const bare = typed.replace(/\b(\d{1,2}:\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm))\b/i, '').trim();
+  let day = null;
+  let m;
+  if (!hasM && hasD && (m = bare.match(/^(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?$/i))) day = `${ty}-${pad(tm)}-${pad(m[1])}`;
+  else if (!hasD && hasM && (m = bare.match(/^(\d{1,2})[/.\-](\d{4})$/))) day = `${m[2]}-${pad(m[1])}-01`;
+  else if (!hasD && hasM && (m = bare.match(/^(\d{4})[/.\-](\d{1,2})$/))) day = `${m[1]}-${pad(m[2])}-01`;
+  else if (!hasD && !hasM && hasY && (m = bare.match(/^(\d{4})$/))) day = `${m[1]}-01-01`;
+  else if (!hasD && hasM && !hasY && (m = bare.match(/^(\d{1,2})$/))) day = `${ty}-${pad(m[1])}-01`;
+  else if (bare) {
+    day = parseNaturalDate(bare, new Date(), { dayFirst: format === 'eu' })
+      ?? (!hasD ? parseNaturalDate('1 ' + bare, new Date(), { dayFirst: format === 'eu' }) : null);
+  } else if (clock && current) {
+    day = String(current).split('T')[0];
+  }
+  if (!day) throw new Error('unreadable');
+  if (!c.time) return day;
+  // A typed day keeps the existing time of day; a typed datetime brings its own.
+  const keep = dc.partsOf(current)?.t;
+  const t = clock ?? keep;
+  return t ? `${day}T${t}` : day;
 }
 
 function calendarGlyph() {
@@ -2804,13 +2875,26 @@ function calendarGlyph() {
   return svg;
 }
 
-function datePopover({ anchor, value, time, format, onPick }) {
+/* The picker opens on the view the grain asks for: a calendar for a full
+   date, the month grid for year·month, the year grid for a year, a 1–31
+   grid for a day of the month, a clock alone for a time of day. Every pick
+   hands back a LOCAL wall-clock stamp; the control cuts it to the grain. */
+function datePopover({ anchor, value, time, format, costume = null, onPick }) {
   const dc = weaveDateCore;
+  const c = costume ?? { time, format };
+  time = !!c.time;
+  format = c.format ?? 'iso';
+  const grain = dc.grainOf(c);
+  const hasY = grain.includes('year'), hasM = grain.includes('month'), hasD = grain.includes('day');
+  const pad = (n) => String(n).padStart(2, '0');
   document.querySelector('.date-pop')?.remove();
   const todayIso = dc.todayIso();
-  let { date: selected, time: clock } = dc.splitIso(value || '');
-  let [y, m] = (selected || todayIso).split('-').map(Number);
-  let view = 'days';                     // days | months | years
+  const [ty, tm, td] = todayIso.split('-').map(Number);
+  const p = dc.partsOf(value || '') ?? {};
+  let y = p.y ?? ty, m = p.m ?? tm;
+  let selected = p.d != null ? `${y}-${pad(m)}-${pad(p.d)}` : '';
+  let clock = p.t ?? '';
+  let view = !hasY && !hasM && !hasD ? 'clock' : hasD && !hasM ? 'daylist' : hasM && !hasD ? 'months' : hasY && !hasM ? 'years' : 'days';
   let decadeBase = y;
   const pop = el('div', { class: 'date-pop', role: 'dialog', onclick: (e) => e.stopPropagation() });
   const commit = (iso, close) => {
@@ -2818,74 +2902,116 @@ function datePopover({ anchor, value, time, format, onPick }) {
     if (close) pop.remove();
     else draw();
   };
+  const withClock = (day) => (time ? `${day}T${clock || '00:00'}` : day);
   const smart = el('input', {
-    class: 'form-control form-control-sm date-smart', placeholder: 'today, 15 sep, 9/15/26…',
-    value: dc.formatDate(selected, { format }),
+    class: 'form-control form-control-sm date-smart',
+    placeholder: view === 'clock' ? '9:15, 5:40 pm…' : hasD ? 'today, 15 sep, 9/15/26…' : hasM ? 'aug 2026, 08/2026…' : '2026…',
+    value: dc.formatDate(value || '', { ...c, viewerZone: LOCAL_ZONE }),
   });
   const preview = el('div', { class: 'date-smart-preview' });
+  const readSmart = () => {
+    try { return readTypedDate(smart.value, c, value || ''); } catch { return null; }
+  };
   smart.addEventListener('input', () => {
-    const day = parseNaturalDate(smart.value, new Date(), { dayFirst: format === 'eu' });
-    preview.textContent = smart.value.trim() ? (day ? `→ ${dc.formatDate(day, { format: 'long' })}` : '…') : '';
+    const local = readSmart();
+    let shown = '…';
+    if (local) { try { shown = `→ ${dc.formatDate(c.grain == null ? local : dc.coerce(c, local), { ...c, format: c.grain == null ? 'long' : format })}`; } catch { shown = '…'; } }
+    preview.textContent = smart.value.trim() ? shown : '';
   });
   smart.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    const day = parseNaturalDate(smart.value, new Date(), { dayFirst: format === 'eu' });
-    if (!day) return toast(`Could not read '${smart.value}' as a date`, true);
-    selected = day; [y, m] = day.split('-').map(Number);
+    const local = readSmart();
+    if (!local) return toast(`Could not read '${smart.value}' as a ${view === 'clock' ? 'time' : 'date'}`, true);
     // Enter is "done": commit and close, time of day kept (Kyle, 2026-08-23).
-    commit(dc.joinIso(day, time ? clock : ''), true);
+    commit(local, true);
   });
   const body = el('div', { class: 'date-pop-body' });
+  const timeRow = () => {
+    const t = el('input', { type: 'time', class: 'form-control form-control-sm date-time', value: clock });
+    t.addEventListener('change', () => {
+      clock = t.value;
+      if (view === 'clock') { if (clock) commit(clock, false); return; }
+      if (selected) commit(withClock(selected), false);
+    });
+    return el('div', { class: 'date-pop-time' }, el('span', {}, 'Time'), t);
+  };
+  const foot = (todayPick) => el('div', { class: 'date-pop-foot' },
+    el('button', { type: 'button', class: 'date-pop-link', onclick: () => { selected = ''; clock = ''; commit(null, true); } }, 'Clear'),
+    el('button', { type: 'button', class: 'date-pop-link', onclick: todayPick }, 'Today'));
   function draw() {
     body.replaceChildren();
     if (view === 'days') {
       body.append(el('div', { class: 'date-pop-head' },
         el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'months'; draw(); } }, `${dc.MONTHS_LONG[m - 1]} ▾`),
-        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, `${y} ▾`),
+        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'years'; decadeBase = y; draw(); } }, `${y} ▾`) : el('span'),
         el('span', { class: 'date-pop-spacer' }),
         el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '↑'),
         el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '↓')));
       const grid = el('div', { class: 'date-grid' }, ...dc.WEEKDAYS.map((d) => el('span', { class: 'date-wd' }, d)));
       for (const week of dc.calendarMonth(y, m)) {
-        for (const c of week) {
+        for (const cell of week) {
           grid.append(el('button', {
             type: 'button',
-            class: 'date-day' + (c.inMonth ? '' : ' out') + (c.iso === todayIso ? ' today' : '') + (c.iso === selected ? ' sel' : ''),
-            onclick: () => { selected = c.iso; [y, m] = c.iso.split('-').map(Number); commit(dc.joinIso(c.iso, time ? clock : ''), !time); },
-          }, String(c.day)));
+            class: 'date-day' + (cell.inMonth ? '' : ' out') + (cell.iso === todayIso ? ' today' : '') + (cell.iso === selected ? ' sel' : ''),
+            onclick: () => { selected = cell.iso; [y, m] = cell.iso.split('-').map(Number); commit(withClock(cell.iso), !time); },
+          }, String(cell.day)));
         }
       }
       body.append(grid);
-      if (time) {
-        const t = el('input', { type: 'time', class: 'form-control form-control-sm date-time', value: clock });
-        t.addEventListener('change', () => { clock = t.value; if (selected) commit(dc.joinIso(selected, clock), false); });
-        body.append(el('div', { class: 'date-pop-time' }, el('span', {}, 'Time'), t));
+      if (time) body.append(timeRow());
+      body.append(foot(() => { selected = todayIso; [y, m] = [ty, tm]; commit(withClock(todayIso), !time); }));
+    } else if (view === 'daylist') {
+      // A day of the month, of no particular month: 1 to 31.
+      const grid = el('div', { class: 'date-grid' });
+      for (let d = 1; d <= 31; d++) {
+        grid.append(el('button', {
+          type: 'button', class: 'date-day' + (d === td ? ' today' : '') + (d === p.d ? ' sel' : ''),
+          onclick: () => { selected = `${ty}-${pad(tm)}-${pad(d)}`; commit(withClock(selected), !time); },
+        }, String(d)));
       }
-      body.append(el('div', { class: 'date-pop-foot' },
-        el('button', { type: 'button', class: 'date-pop-link', onclick: () => { selected = ''; commit(null, true); } }, 'Clear'),
-        el('button', { type: 'button', class: 'date-pop-link', onclick: () => { selected = todayIso; [y, m] = todayIso.split('-').map(Number); commit(dc.joinIso(todayIso, time ? clock : ''), !time); } }, 'Today')));
+      body.append(grid);
+      if (time) body.append(timeRow());
+      body.append(foot(() => { selected = todayIso; commit(withClock(todayIso), !time); }));
+    } else if (view === 'clock') {
+      body.append(timeRow(), el('div', { class: 'date-pop-foot' },
+        el('button', { type: 'button', class: 'date-pop-link', onclick: () => { clock = ''; commit(null, true); } }, 'Clear'),
+        el('button', { type: 'button', class: 'date-pop-link', onclick: () => { const d = new Date(); clock = `${pad(d.getHours())}:${pad(d.getMinutes())}`; commit(clock, true); } }, 'Now')));
     } else if (view === 'months') {
       body.append(el('div', { class: 'date-pop-head' },
-        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'days'; draw(); } }, `${y}`),
+        hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, `${y}${hasD ? '' : ' ▾'}`) : el('span', { class: 'date-pop-title' }, 'Month'),
         el('span', { class: 'date-pop-spacer' }),
-        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, iconEl('↑')),
-        el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y++; draw(); } }, iconEl('↓'))));
+        ...(hasY ? [
+          el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, iconEl('↑')),
+          el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y++; draw(); } }, iconEl('↓'))] : [])));
       body.append(el('div', { class: 'date-pick-grid' }, ...dc.MONTHS.map((name, i) => el('button', {
         type: 'button', class: 'date-pick-cell' + (i + 1 === m ? ' sel' : ''),
-        onclick: () => { m = i + 1; view = 'days'; draw(); },
+        onclick: () => {
+          m = i + 1;
+          if (hasD) { view = 'days'; draw(); return; }
+          selected = `${y}-${pad(m)}-01`;
+          commit(withClock(selected), !time);
+        },
       }, name))));
+      if (!hasD && time) body.append(timeRow());
+      if (!hasD) body.append(foot(() => { y = ty; m = tm; selected = `${ty}-${pad(tm)}-01`; commit(withClock(selected), !time); }));
     } else {
       const years = dc.decade(decadeBase);
       body.append(el('div', { class: 'date-pop-head' },
-        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { view = 'days'; draw(); } }, `${years[0]}–${years[years.length - 1]}`),
+        el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasM) { view = hasD ? 'days' : 'months'; draw(); } } }, `${years[0]}–${years[years.length - 1]}`),
         el('span', { class: 'date-pop-spacer' }),
         el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase -= 10; draw(); } }, iconEl('↑')),
         el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase += 10; draw(); } }, iconEl('↓'))));
       body.append(el('div', { class: 'date-pick-grid' }, ...years.map((yr) => el('button', {
         type: 'button', class: 'date-pick-cell' + (yr === y ? ' sel' : ''),
-        onclick: () => { y = yr; view = 'months'; draw(); },
+        onclick: () => {
+          y = yr;
+          if (hasM) { view = 'months'; draw(); return; }
+          selected = `${y}-01-01`;
+          commit(withClock(selected), !time);
+        },
       }, String(yr)))));
+      if (!hasM) body.append(foot(() => { y = ty; selected = `${ty}-01-01`; commit(withClock(selected), !time); }));
     }
   }
   draw();
@@ -3102,6 +3228,78 @@ function formulaBuilder(db, state, onChange) {
    free-text Unit (days, feet); currency shows an ISO-code picker — the two
    never mix; percent shows neither. Decimals and the separator apply to
    all. Used by number fields and by a formula's numeric result. */
+/* The date tray (2026-09-02): what the field STORES — which of year · month
+   · day, and a time of day — then how it PRINTS. Only the styles the grain
+   can wear are offered, each shown as today's date would render in it, in
+   the grain the field stores: the example IS the label. */
+function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
+  const fdc = fieldDialogCore;
+  const dc = weaveDateCore;
+  const d = state.date;
+  const g = d.grain;
+  const kids = [];
+  const todayIso = dc.todayIso();
+  const costume = fdc.dateCostume(d, type);
+  const parts = ['year', 'month', 'day'].filter((p) => g[p]);
+  const tick = (key, label, on, flip) => el('label', { class: 'form-check' },
+    el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: (e) => { flip(e.target.checked); redraw(); changed(); } }),
+    el('span', { class: 'form-check-label' }, label));
+  const setPart = (key) => (on) => {
+    g[key] = on;
+    // A year with a day needs the month between them; no parts at all is a time of day.
+    if (g.year && g.day && !g.month) g.month = true;
+    if (!g.year && !g.month && !g.day) d.time = true;
+    if (!fdc.legalFormats(g).includes(d.format)) d.format = 'iso';
+  };
+  let stored = '';
+  try { stored = parts.length ? dc.coerce({ ...costume, time: false }, todayIso) : ''; } catch { stored = ''; }
+  const storesHint = parts.length
+    ? `Stores ${parts.join(' · ')}${d.time ? ' + a time of day' : ''} — today would be ${stored}${d.time ? 'T14:30' : ''}`
+    : 'No date parts: a time of day, stored and compared as a clock reading.';
+  kids.push(dsection('Stores',
+    el('div', { class: 'date-grain' }, tick('year', 'Year', g.year, setPart('year')), tick('month', 'Month', g.month, setPart('month')), tick('day', 'Day', g.day, setPart('day')),
+      tick('time', 'Time of day', d.time, (on) => { d.time = on; if (!on && !parts.length) g.year = g.month = g.day = true; if (!on) { d.clock = '24h'; d.zone = 'floating'; d.elapsed = false; } })),
+    el('div', { class: 'hintnote' }, storesHint)));
+  const legal = fdc.legalFormats(g);
+  if (legal.length) {
+    kids.push(dsection('Format', el('div', { class: 'date-format-list' }, ...legal.map((fmt) => el('button', {
+      type: 'button', class: 'date-format-opt' + ((d.format ?? 'iso') === fmt ? ' on' : ''),
+      onclick: () => { d.format = fmt; redraw(); changed(); },
+    }, el('span', { class: 'date-format-id' }, fmt), el('span', { class: 'date-format-eg' }, dc.formatDate(todayIso, { ...costume, format: fmt, time: false })))))));
+    if (['us', 'eu'].includes(d.format)) {
+      kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
+        el('input', { type: 'checkbox', class: 'form-check-input', checked: d.pad ? '' : undefined, onchange: (e) => { d.pad = e.target.checked; redraw(); changed(); } }),
+        el('span', { class: 'form-check-label' }, 'Zero-pad numerals ', el('span', { class: 'date-format-eg' }, dc.formatDate(todayIso, { ...costume, format: d.format, pad: true, time: false })))));
+    }
+  }
+  if (d.time) {
+    kids.push(dsection('Clock', segCtl(fdc.CLOCKS.map((id) => ({ id, label: dc.formatDate(todayIso + 'T14:30', { ...costume, clock: id, time: true }).split(' ').slice(parts.length ? 1 : 0).join(' ') })), d.clock ?? '24h', (v) => { d.clock = v; redraw(); changed(); })));
+    const zoneHint = {
+      floating: 'The wall clock as typed, no zone stored — 09:15 is 09:15 everywhere. What every field did before.',
+      fixed: 'The zone travels with the field: a store opening at 09:15 PT opens at 09:15 PT for a reader in Berlin.',
+      instant: 'Stored as a UTC instant and shown in each reader\'s own zone — a meeting, an audit stamp.',
+    };
+    const zoneSec = dsection('Zone', segCtl(fdc.ZONES, d.zone ?? 'floating', (v) => { d.zone = v; if (v === 'fixed' && !d.zoneName) d.zoneName = LOCAL_ZONE; redraw(); changed(); }),
+      el('div', { class: 'hintnote' }, zoneHint[d.zone ?? 'floating']));
+    if (d.zone === 'fixed') {
+      let zones = [];
+      try { zones = Intl.supportedValuesOf('timeZone'); } catch { zones = [LOCAL_ZONE]; }
+      const list = el('datalist', { id: 'wv-zones' }, ...zones.map((z) => el('option', { value: z })));
+      zoneSec.append(el('input', {
+        class: 'form-control date-zone-name', list: 'wv-zones', value: d.zoneName ?? '', placeholder: LOCAL_ZONE,
+        onchange: (e) => { d.zoneName = e.target.value.trim(); changed(); },
+      }), list);
+    }
+    kids.push(zoneSec);
+    if (type === 'daterange') {
+      kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
+        el('input', { type: 'checkbox', class: 'form-check-input', checked: d.elapsed ? '' : undefined, onchange: (e) => { d.elapsed = e.target.checked; changed(); } }),
+        el('span', { class: 'form-check-label' }, 'Show elapsed time ', el('span', { class: 'date-format-eg' }, '09:15 – 17:40 · 8h 25m'))));
+    }
+  }
+  return kids;
+}
+
 function numberCostumeControls(state, redraw, changed, { label = 'Format' } = {}) {
   const fdc = fieldDialogCore;
   const n = state.number;
@@ -3109,21 +3307,29 @@ function numberCostumeControls(state, redraw, changed, { label = 'Format' } = {}
   kids.push(dsection(label, segCtl(fdc.NUMBER_FORMATS, n.format ?? 'number', (v) => { n.format = v; redraw(); changed(); })));
   if ((n.format ?? 'number') === 'number') {
     kids.push(dsection('Unit', el('input', { class: 'form-control', value: n.unit ?? '', placeholder: 'days, feet, kg …', oninput: (e) => { n.unit = e.target.value; changed(); } })));
-  } else if (n.format === 'currency') {
+  } else if (n.format === 'currency' || n.format === 'compact') {
     const known = fdc.CURRENCIES.some((c) => c.id === n.currency);
     const options = known ? fdc.CURRENCIES : [{ id: n.currency, label: n.currency }, ...fdc.CURRENCIES];
     const pick = pickerSelect({ name: 'currency', options, value: n.currency ?? 'USD' });
     pick.input.addEventListener('change', () => { n.currency = pick.input.value; changed(); });
-    kids.push(dsection('Currency', pick, el('div', { class: 'hintnote' }, 'Formatted by code — $149.50, €1,200 — separate from units')));
+    kids.push(dsection('Currency', pick, el('div', { class: 'hintnote' }, n.format === 'compact'
+      ? 'Abbreviated by code — $1.2M, €4.8K — or leave the currency off for a plain 1.2M'
+      : 'Formatted by code — $149.50, €1,200 — separate from units')));
   }
   kids.push(dsection('Decimals', el('input', {
-    type: 'number', min: 0, max: 6, class: 'form-control dlg-narrow', value: n.decimals ?? '', placeholder: n.format === 'currency' ? '2' : '0',
+    type: 'number', min: 0, max: 6, class: 'form-control dlg-narrow', value: n.decimals ?? '', placeholder: n.format === 'currency' ? '2' : n.format === 'compact' ? '1' : '0',
     oninput: (e) => { n.decimals = e.target.value === '' ? null : Number(e.target.value); changed(); },
   })));
-  if (n.format !== 'currency') {
+  // Currency and compact group on their own; the separator is for the rest.
+  if (n.format !== 'currency' && n.format !== 'compact') {
     kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
       el('input', { type: 'checkbox', class: 'form-check-input', checked: n.separator ? '' : undefined, onchange: (e) => { n.separator = e.target.checked; changed(); } }),
       el('span', { class: 'form-check-label' }, 'Add 1,000 separator')));
+  }
+  if (n.format === 'currency') {
+    kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
+      el('input', { type: 'checkbox', class: 'form-check-input', checked: n.accounting ? '' : undefined, onchange: (e) => { n.accounting = e.target.checked; changed(); } }),
+      el('span', { class: 'form-check-label' }, 'Accounting negatives ', el('span', { class: 'date-format-eg' }, '($1,234.57)'))));
   }
   return kids;
 }
@@ -3136,8 +3342,8 @@ function fieldDialog(db, existing, after) {
     const c = {};
     if (f.type === 'select' || f.type === 'multiselect') c.options = f.optionsFull ?? (f.options ?? []).map((n) => ({ name: n, color: '' }));
     if (f.type === 'workflow') c.states = f.states ?? [];
-    if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator']) { if (f[k] != null) c[k] = f[k]; }
-    if (f.type === 'date' || f.type === 'daterange') { if (f.format) c.format = f.format; if (f.time) c.time = true; }
+    if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting']) { if (f[k] != null) c[k] = f[k]; }
+    if (f.type === 'date' || f.type === 'daterange') for (const k of ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) { if (f[k] != null) c[k] = f[k]; }
     if (f.type === 'formula') c.expression = f.expression ?? '';
     if (f.type === 'field') c.depth = f.depth ?? 1;
     if (f.type === 'attachments') c.multiple = f.multiple !== false;
@@ -3229,18 +3435,8 @@ function fieldDialog(db, existing, after) {
         kids.push(dsection('States', stateListEditor(state, changed)));
       } else if (t === 'number') {
         kids.push(...numberCostumeControls(state, drawCfg, changed));
-      } else if (t === 'date') {
-        // Each format shown as today's date would render in it — the
-        // example IS the label. The time toggle shows its own example.
-        const dc = weaveDateCore;
-        const today = dc.todayIso();
-        kids.push(dsection('Format', el('div', { class: 'date-format-list' }, ...fdc.DATE_FORMATS.map((fmt) => el('button', {
-          type: 'button', class: 'date-format-opt' + ((state.date.format ?? 'iso') === fmt ? ' on' : ''),
-          onclick: () => { state.date.format = fmt; drawCfg(); changed(); },
-        }, el('span', { class: 'date-format-id' }, fmt), el('span', { class: 'date-format-eg' }, dc.formatDate(today, { format: fmt })))))));
-        kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
-          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.date.time ? '' : undefined, onchange: (e) => { state.date.time = e.target.checked; drawCfg(); changed(); } }),
-          el('span', { class: 'form-check-label' }, 'Include time of day ', el('span', { class: 'date-format-eg' }, dc.formatDate(today + 'T14:30', { format: state.date.format ?? 'iso', time: true })))));
+      } else if (t === 'date' || t === 'daterange') {
+        kids.push(...dateCostumeControls(state, drawCfg, changed, { type: t }));
       } else if (t === 'relation') {
         if (isEdit) {
           kids.push(el('div', { class: 'modal-note full' }, `→ ${existing.targetDb}${existing.many ? ' (many)' : ''} — repoint by deleting and recreating`));
@@ -3357,7 +3553,7 @@ function fieldDialog(db, existing, after) {
         body.append(seg);
         if (kind === 'specific') {
           body.append(dateControl({
-            value: state.default, time: state.date.time, format: state.date.format ?? 'iso', compact: false,
+            value: state.default, costume: fdc.dateCostume(state.date, t), compact: false,
             onChange: (iso) => { state.default = iso ?? ''; changed(); },
           }));
         }
@@ -3416,15 +3612,11 @@ function editPatchConfig(existing, def, state) {
   const c = def.config;
   const patch = {};
   if (existing.type === 'number' || existing.type === 'formula') {
-    patch.format = c.format ?? null;
-    patch.unit = c.unit ?? null;
-    patch.currency = c.currency ?? null;
-    patch.decimals = c.decimals ?? null;
-    patch.separator = c.separator ?? null;
+    for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting']) patch[k] = c[k] ?? null;
   }
-  if (existing.type === 'date') {
-    patch.format = c.format ?? null;
-    patch.time = c.time ?? null;
+  if (existing.type === 'date' || existing.type === 'daterange') {
+    // Every lane, every time: a null clears (a grain back to full drops the key).
+    for (const k of ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) patch[k] = c[k] ?? null;
   } else if (existing.type === 'select' || existing.type === 'multiselect') {
     patch.options = (c.options ?? []).filter((o) => o.name && o.name.trim());
   } else if (existing.type === 'workflow') {
