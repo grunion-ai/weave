@@ -100,6 +100,7 @@ const INTERNAL = {
   relationTargetDbIds: 'read helper — the tables a relation may point at; describeSchema already ships them',
   previewFields: 'read helper — the chip preview; /api/markdown ships it inside resolved mentions',
   referencesTo: 'read helper — GET /api/entities/:ref/references already serves the backlinks',
+  referencesFrom: 'read helper — GET /api/entities/:ref/references-from serves the outbound mirror',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));

@@ -120,3 +120,78 @@ test('mention chip without fields renders exactly as before', () => {
   assert.equal(html.includes('mention-caret'), false);
   assert.match(html, /<a class="mention mention-entity" href="\/e\/abc\/doc.html">Plain<\/a>/);
 });
+
+/* ---------- the outbound mirror: what this document mentions ----------
+   Same ruling, other direction (Kyle, 2026-09-02): the chips a document
+   carries ARE its outbound references — computed from the text, deduped,
+   1:1 with what the text says right now. Never stored, never linkable,
+   never unlinkable. Spellings match referencesTo exactly, which now also
+   reads an HTML chip's href and a mermaid click target: they all reduce
+   to /e/<uuid>. */
+
+test('referencesFrom finds every accepted spelling and dedupes to one entry', () => {
+  const { w, target } = seed();
+  const issue = w.createEntity('Issue', {
+    name: 'omnibus',
+    doc: `see [[Task#1]] then [[ Dev/Task#1 | the ship ]] then [[${target.id}]] ` +
+      `and [Ship](https://weave.local:4400/w/weave/e/${target.id}) once more`,
+  });
+  const refs = w.referencesFrom(issue.id);
+  assert.equal(refs.length, 1, 'four spellings of one target are one reference');
+  assert.deepEqual(refs[0], { id: target.id, publicId: 1, name: 'Ship the editor', db: 'Dev/Task' });
+});
+
+test('referencesFrom reads HTML chips and mermaid click targets', () => {
+  const { w, target } = seed();
+  const htmlDoc = w.createEntity('Issue', {
+    name: 'html chip',
+    doc: `<!doctype html>\n<html><body><a href="/e/${target.id}">Ship</a></body></html>`,
+  });
+  const mmdDoc = w.createEntity('Issue', {
+    name: 'diagram',
+    doc: `graph LR\n  A --> B\n  click A "/e/${target.id}"`,
+  });
+  assert.equal(w.referencesFrom(htmlDoc.id).length, 1);
+  assert.equal(w.referencesFrom(mmdDoc.id).length, 1);
+  // And the inbound scan agrees — both directions share the spellings.
+  const inbound = w.referencesTo(target.id).map((r) => r.name).sort();
+  assert.deepEqual(inbound, ['diagram', 'html chip']);
+});
+
+test('referencesFrom is 1:1 with the text: edits, dead refs, self and deleted targets', () => {
+  const { w, target } = seed();
+  const issue = w.createEntity('Issue', { name: 'edited', doc: 'see [[Task#1]] and dead [[Task#99]]' });
+  assert.equal(w.referencesFrom(issue.id).length, 1, 'a dead pid stays text, never a reference');
+  w.setDoc(issue.id, 'the mention is gone now');
+  assert.equal(w.referencesFrom(issue.id).length, 0, 'the reference lives exactly as long as the text');
+  w.setDoc(target.id, 'I am [[Task#1]] myself');
+  assert.equal(w.referencesFrom(target.id).length, 0, 'an entity never references itself');
+  w.setDoc(issue.id, 'back to [[Task#1]]');
+  w.deleteEntity(target.id);
+  assert.equal(w.referencesFrom(issue.id).length, 0, 'a deleted target drops out');
+});
+
+test('referencesFrom sorts by db then publicId, across tables', () => {
+  const { w, target } = seed();
+  const other = w.createEntity('Issue', { name: 'sibling' });
+  const note = w.createEntity('Issue', { name: 'note', doc: `[[Issue#${other.publicId}]] and [[Task#1]]` });
+  const refs = w.referencesFrom(note.id);
+  assert.deepEqual(refs.map((r) => r.db), ['Dev/Issue', 'Dev/Task']);
+  assert.equal(refs[1].id, target.id);
+});
+
+test('GET /api/entities/:ref/references-from serves the outbound refs', async () => {
+  const { w, target } = seed();
+  const issue = w.createEntity('Issue', { name: 'caller', doc: 'blocked by [[Task#1]]' });
+  const { server } = await startServer(w, { port: 0 });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const res = await fetch(`${base}/api/entities/${issue.id}/references-from`);
+    assert.equal(res.status, 200);
+    const refs = await res.json();
+    assert.equal(refs.length, 1);
+    assert.equal(refs[0].id, target.id);
+  } finally {
+    server.close();
+  }
+});
