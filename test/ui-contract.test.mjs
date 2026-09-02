@@ -1519,10 +1519,12 @@ test('type grid and code pane have both-theme styling via tabler tokens', () => 
   assert.ok(code['font-family']?.includes('--tblr-font-monospace'), 'code pane is monospace');
 });
 
-test('spaces and tables wear Iconly flat icons, picked beside their name (Feature #101)', async () => {
+test('spaces and tables wear Lucide icons that move, picked beside their name (Feature #101)', async () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
-  assert.ok(html.includes('vendor/iconly-flat.js'), 'the flat set is vendored and loaded');
+  assert.ok(html.includes('vendor/lucide-moving.js') && html.includes('vendor/lucide-moving.css'), 'the set and its motion are vendored and loaded');
+  assert.ok(html.indexOf('icon-registry.js') < html.indexOf('field-dialog-core.js'), 'the registry loads before the dialog core that groups on it');
+  assert.ok(!html.includes('iconly-flat'), 'the Iconly file is gone');
   assert.ok(app.includes('function iconEl(') && app.includes('function iconButton('));
   // Since 2026-08-29 the one dialect is a GRID: no name beside each icon, no
   // numbered quick-select, and the search takes a category as readily as a
@@ -1533,8 +1535,8 @@ test('spaces and tables wear Iconly flat icons, picked beside their name (Featur
   assert.match(fnBody('iconButton'), /grid: true/, 'the table gate opens the grid');
   assert.match(fnBody('glyphPopover'), /grid: true/, 'the option and state gate opens the same grid');
   assert.ok(app.includes("iconEl(space.icon") && app.includes("iconEl(db.icon"), 'nav renders both');
-  const icons = (await import('../public/vendor/iconly-flat.js'), globalThis.ICONLY_FLAT);
-  assert.ok(Object.keys(icons).length >= 90, 'the whole free set rides along');
+  const icons = (await import('../public/vendor/lucide-moving.js'), globalThis.LUCIDE_MOVING);
+  assert.ok(Object.keys(icons).length >= 555, 'the whole moving set rides along');
   assert.ok(Object.values(icons).every((v) => !/#[0-9A-Fa-f]{6}/.test(v)), 'no hardcoded fills — icons inherit currentColor');
 });
 

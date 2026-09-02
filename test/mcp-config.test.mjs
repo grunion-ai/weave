@@ -130,8 +130,9 @@ test('the workspace record, accounts and keys are agent business', () => {
 test('the vocabulary is a tool, so the agent never guesses a color or an icon', () => {
   const v = call(workspace(), 'weave_vocabulary');
   assert.ok(v.fieldTypes.length >= 18);
-  assert.ok(v.icons.names.includes('discovery'));
-  assert.equal(v.icons.form, 'iconly:<name>', 'the value form, not just the name');
+  assert.ok(v.icons.names.includes('compass'));
+  assert.equal(v.icons.aliases.discovery, 'compass', 'the old name still points somewhere');
+  assert.equal(v.icons.form, 'lucide:<name>', 'the value form, not just the name');
   assert.ok(v.optionColors.some((c) => c.name === 'green'));
   assert.equal(v.columnWidth.min, 60);
 });

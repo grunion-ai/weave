@@ -295,8 +295,55 @@ function inlineNameInput(placeholder, onCommit) {
    title, and a markdown description editable in place. Every page uses it
    (entity pages carry the same crumb pattern natively). */
 
-/* An icon value on a space or table: 'iconly:<name>' renders the vendored
-   flat set inline (currentColor — it inherits text color); anything else is
+/* One Lucide icon wearing its motion (moving icons, 2026-09-02). The svg's
+   parts carry the classes their keyframes need as data-mi; adding them plays
+   the icon once, removing them after its run puts it back. Three triggers,
+   each a single run, none looping (Kyle: "fire on load but not loop"): mount
+   inside the load window, scrolling into a picker grid, and hover. */
+const ICON_LOAD_WINDOW_MS = 2500;
+const iconRuns = new WeakMap();
+function playIcon(host) {
+  const ms = Number(host.dataset.ms) || 0;
+  if (!ms || iconRuns.has(host) || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const parts = [...host.querySelectorAll('[data-mi]')];
+  for (const p of parts) p.classList.add(...p.dataset.mi.split(' '));
+  iconRuns.set(host, setTimeout(() => {
+    for (const p of parts) p.classList.remove(...p.dataset.mi.split(' '));
+    iconRuns.delete(host);
+  }, ms));
+}
+let iconMountQueue = [];
+function lucideEl(name, cls = 'wv-icon') {
+  const reg = window.weaveIconRegistry;
+  const span = el('span', { class: `${cls} mi mi-${name}`, 'data-ms': String(reg.MOTION[name] || 0) });
+  span.innerHTML = window.LUCIDE_MOVING[name];
+  // The load wave: icons born while the page is still arriving play once, a
+  // beat apart, then rest. A re-render minutes later draws them still.
+  if (reg.MOTION[name] && performance.now() < ICON_LOAD_WINDOW_MS) {
+    iconMountQueue.push(span);
+    if (iconMountQueue.length === 1) {
+      requestAnimationFrame(() => {
+        const q = iconMountQueue; iconMountQueue = [];
+        q.forEach((s, i) => setTimeout(() => { if (s.isConnected) playIcon(s); }, 120 + i * 24));
+      });
+    }
+  }
+  return span;
+}
+document.addEventListener('mouseover', (e) => {
+  const host = e.target.closest?.('.mi');
+  if (host && !(e.relatedTarget && host.contains(e.relatedTarget))) playIcon(host);
+});
+/* Grid icons play once as they scroll into view, then rest. */
+function playIconsInView(container) {
+  const io = new IntersectionObserver((entries) => {
+    entries.filter((en) => en.isIntersecting).forEach((en, i) => { io.unobserve(en.target); setTimeout(() => playIcon(en.target), i * 18); });
+  });
+  container.querySelectorAll('.mi').forEach((m) => io.observe(m));
+}
+
+/* An icon value on a space or table: 'lucide:<name>' renders the vendored
+   set inline (currentColor — it inherits text color); anything else is
    text, which keeps old emoji icons working (Feature #101). */
 function iconEl(icon, cls = 'wv-icon') {
   if (!icon) return null;
@@ -304,31 +351,26 @@ function iconEl(icon, cls = 'wv-icon') {
   // the same canvas as the flat set (Issue #87). Rendered as type it took the
   // font's optical size, so a quarter-filled circle came out visibly smaller
   // than the tick beside it. The KEY IS THE CHARACTER: nothing migrates.
+  const twin = window.weaveMarkIcons?.twin(icon);
+  if (twin) return lucideEl(twin, cls);
   const mark = window.weaveMarkIcons?.markSvg(icon);
   if (mark) {
     const span = el('span', { class: cls });
     span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${mark}</svg>`;
     return span;
   }
-  // `iconly:<name>` resolves against the vendored set FIRST, then the six we
-  // drew ourselves (Issue #87) — so if Iconly ever ships a real `card`, it
-  // wins and nothing stored has to move.
-  const m = String(icon).match(/^iconly:(.+)$/);
-  const flat = m && (window.ICONLY_FLAT?.[m[1]] ?? window.WEAVE_ICONS?.[m[1]]);
-  if (flat) {
-    const span = el('span', { class: cls });
-    span.innerHTML = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${window.weaveMarkIcons.scaled(m[1], flat)}</svg>`
-    return span;
-  }
-  // A bare string paints itself, which is what keeps an emoji working. A
-  // string carrying the `iconly:` prefix is a different thing: a REFERENCE
-  // that did not resolve — a name that was removed, renamed, or never
-  // existed. Painting it printed the literal "iconly:slides" into the icon
-  // slot (Kyle, 2026-08-29). A ghost ring says "something was set and it is
-  // not here", and the tooltip names it so the value is still recoverable.
-  if (m) {
+  // `lucide:<name>` draws the vendored set; `iconly:<name>` — every value
+  // stored before 2026-09-02 — resolves through the registry's aliases to its
+  // Lucide twin, so nothing stored migrates. A reference that resolves to
+  // nothing (a name removed, renamed, or never there) draws a ghost ring with
+  // the name in the tooltip: the prefix never reaches the screen. Painting it
+  // once printed the literal "iconly:slides" into the icon slot (Kyle,
+  // 2026-08-29). A bare string paints itself, which keeps an emoji working.
+  const name = window.weaveIconRegistry?.resolve(icon);
+  if (name) return lucideEl(name, cls);
+  if (name === '') {
     return el('span', {
-      class: `${cls} icon-ghost`, title: `${m[1]} — this icon is no longer in the set`,
+      class: `${cls} icon-ghost`, title: `${String(icon).replace(/^\w+:/, '')} — this icon is no longer in the set`,
     }, '◌');
   }
   return el('span', { class: cls }, String(icon));
@@ -341,10 +383,8 @@ function iconEl(icon, cls = 'wv-icon') {
 function iconCatalogue() {
   // Hidden names are dropped from the OFFER, never from the data — a row that
   // stored `arrow-upsquare` still draws it.
-  const mi = window.weaveMarkIcons;
-  const flat = mi.offered(Object.keys(window.ICONLY_FLAT ?? {}))
-    .concat(Object.keys(mi.WEAVE_ICONS));
-  return fieldDialogCore.iconChoices(flat);
+  const reg = window.weaveIconRegistry;
+  return fieldDialogCore.iconChoices(reg.NAMES, (n) => reg.CATEGORY[n]);
 }
 
 /* The icon half of a naming edit: the current icon (or a ghost ring) beside
@@ -457,7 +497,7 @@ function renderNav() {
   nav.append(el('a', {
     class: 'nav-db nav-map' + (state.route?.page === 'map' ? ' active' : ''),
     href: '#/map',
-  }, iconEl('iconly:discovery', 'wv-icon nav-icon'), ' Relation map'));
+  }, iconEl('lucide:compass', 'wv-icon nav-icon'), ' Relation map'));
   const folded = new Set(JSON.parse(localStorage.getItem('weave-folded-spaces') ?? '[]'));
   const toggleFold = (spaceId) => {
     if (folded.has(spaceId)) folded.delete(spaceId);
@@ -561,10 +601,11 @@ function fieldValueCell(value) {
 /* A state's chip text: its icon, when it has one, then the name. A flat icon
    has no text form, so in a text-only context the name stands alone rather
    than dragging 'iconly:activity' along with it (Issue #87). */
+const isIconRef = (v) => /^(lucide|iconly):/.test(String(v ?? ''));
 function stateLabel(fieldSchema, stateName) {
   if (stateName == null) return '—';
   const icon = fieldSchema.states?.find((s) => s.name === stateName)?.icon;
-  return icon && !String(icon).startsWith('iconly:') ? `${icon} ${stateName}` : stateName;
+  return icon && !isIconRef(icon) ? `${icon} ${stateName}` : stateName;
 }
 /* The same label as nodes, for the chip itself: a flat icon has to be drawn,
    not spelled (Issue #87). The picker's list keeps the string above, because
@@ -573,7 +614,7 @@ function stateNodes(fieldSchema, stateName) {
   if (stateName == null) return ['—'];
   const icon = fieldSchema.states?.find((s) => s.name === stateName)?.icon;
   if (!icon) return [stateName];
-  return String(icon).startsWith('iconly:')
+  return isIconRef(icon)
     ? [iconEl(icon, 'ico wv-icon'), stateName]
     : [`${icon} ${stateName}`];
 }
@@ -913,6 +954,9 @@ function restoreGridFocus() {
 function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null, clearId = null, grid = false }) {
   document.querySelector('.chip-pop')?.remove();
   const core = globalThis.pickerCore;
+  // A grid is the icon picker: a value stored as iconly:<name> rings the cell
+  // its Lucide twin sits in, since that is the icon it draws.
+  if (grid) currentId = window.weaveIconRegistry?.canonical(currentId) ?? currentId;
   let st = core.blank({
     mode: multi ? 'multi' : 'single',
     options,
@@ -976,7 +1020,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
       class: `picker-cell${extra}` + (o.id === currentId ? ' on' : ''), type: 'button',
       title: o.label, 'aria-label': o.label,
       onclick: async () => { await pick(o); },
-    }, o.iconly ? iconEl(`iconly:${o.iconly}`) : iconEl(o.mark) ?? el('span', { class: 'wv-icon icon-ghost' }, '◌'));
+    }, o.lucide ? iconEl(`lucide:${o.lucide}`) : iconEl(o.mark) ?? el('span', { class: 'wv-icon icon-ghost' }, '◌'));
     // Clearing is the FIRST cell, not a footer (Kyle, 2026-08-29): setting an
     // icon back to none is the same gesture as setting it to anything else,
     // and it is the one people reach for after a mistake.
@@ -987,6 +1031,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
         el('div', { class: 'picker-cells' }, ...g.items.map((o) => cell(o))),
       ]));
     if (!groups.length && !clear) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
+    playIconsInView(list);
   };
   const draw = () => {
     if (grid) return drawGrid();
@@ -1001,7 +1046,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     },
       el('span', { class: 'picker-num' }, i < 9 ? String(i + 1) : ''),
       o.chip ? el('span', { class: o.cls ?? 'k k-multi hue-slate' }, o.label)
-        : o.iconly ? el('span', { class: 'picker-label picker-iconly' }, iconEl(`iconly:${o.iconly}`), o.label)
+        : o.lucide ? el('span', { class: 'picker-label picker-iconly' }, iconEl(`lucide:${o.lucide}`), o.label)
         : o.mark ? el('span', { class: 'picker-label picker-iconly' }, iconEl(o.mark), o.label)
         : el('span', { class: 'picker-label' }, o.label),
       o.hint ? el('span', { class: 'picker-hint' }, o.hint) : null,
@@ -1700,7 +1745,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   if (f.type === 'attachments') {
     const ids = item.raw?.[f.name] ?? [];
     const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: 'attachments' },
-      el('span', { class: 'ico' }, iconEl('iconly:paper', 'wv-icon')),
+      el('span', { class: 'ico' }, iconEl('lucide:file', 'wv-icon')),
       ids.length ? String(val ?? `${ids.length}`) : '—');
     if (compact) return chip;
     const box = el('span', { class: 'attach-box' });
@@ -2272,7 +2317,7 @@ function renderTable(main, db, items, onSaved) {
      unbuilt button reads as broken rather than forthcoming, so `BUILT` is the
      gate and it grows as slice 3 lands. */
   const BUILT = ['dup', 'trash'];
-  const CMD_ICON = { fields: 'iconly:edit', link: 'iconly:swap', dup: '⧉', more: 'iconly:moresquare', trash: 'iconly:delete' };
+  const CMD_ICON = { fields: 'lucide:pencil', link: 'lucide:arrow-left-right', dup: '⧉', more: 'lucide:ellipsis', trash: 'lucide:trash-2' };
   const puck = el('div', { class: 'sel-puck-wrap' });
 
   const runOnSelection = async (verb, each) => {
@@ -2699,9 +2744,9 @@ async function setColumnWidth(db, f, width, th = null) {
    already draws for the same two verbs (CMD_ICON), and a menu that renames a
    field must not label it differently from the bar that deletes it. */
 const FIELD_MENU_ICONS = {
-  edit: 'iconly:edit', insert: '+',
+  edit: 'lucide:pencil', insert: '+',
   asc: '↑', desc: '↓', clear: '✕',
-  delete: 'iconly:delete',
+  delete: 'lucide:trash-2',
 };
 
 /* One row shape for the whole menu: icon box, label, and the check slot the
@@ -6405,7 +6450,7 @@ window.addEventListener('focus', async () => {
    (2026-08-25) and vendored into the flat set as `bug` — "this is also
    good for the icon library" — so spaces, tables and states can wear it
    too. The FAB draws it through iconEl like every other mark. */
-const bugGlyph = () => iconEl('iconly:bug', 'bug-fab-icon');
+const bugGlyph = () => iconEl('lucide:bug', 'bug-fab-icon');
 
 /* One recorder for the session, started at boot. It holds the last minute of
    what happened — routes, clicks, API calls with their status and duration,

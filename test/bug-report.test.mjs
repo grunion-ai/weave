@@ -112,7 +112,7 @@ test('the browser and the server agree on the four categories', () => {
     BUG_CATEGORIES.map((c) => ({ id: c.id, label: c.label, severity: c.severity })),
   );
   for (const c of bug.CATEGORIES) {
-    assert.match(c.icon, /^iconly:/, `${c.id} draws from the vendored flat set, not an emoji`);
+    assert.match(c.icon, /^lucide:/, `${c.id} draws from the vendored set, not an emoji`);
     assert.ok(c.hint, `${c.id} says which bug belongs to it on the button itself`);
   }
 });
@@ -513,13 +513,13 @@ test('the button becomes the receipt', () => {
   assert.match(CSS, /\.bug-send\.sent/, 'and it is styled as a confirmation, not a dead control');
 });
 
-test('the report button wears the bug Kyle drew, vendored into the flat set', () => {
-  // Kyle, 2026-08-25: "this is also good for the icon library" — the traced
-  // ant lives in ICONLY_FLAT as `bug`, so the FAB and any space, table or
-  // state draw the same glyph, themed through currentColor like the rest.
-  const vendor = src('public/vendor/iconly-flat.js');
-  assert.match(vendor, /"bug": "<g transform=/, "Kyle's ant is the flat set's bug");
-  assert.match(APP, /const bugGlyph = \(\) => iconEl\('iconly:bug', 'bug-fab-icon'\)/,
+test('the report button wears the vendored bug, drawn through iconEl like every mark', async () => {
+  // Kyle, 2026-08-25: "this is also good for the icon library" — the FAB, a
+  // space, a table or a state all draw the one `bug` the set carries, themed
+  // through currentColor like the rest. Since 2026-09-02 that set is Lucide's.
+  await import('../public/vendor/lucide-moving.js');
+  assert.match(globalThis.LUCIDE_MOVING.bug, /^<svg /, 'the set carries a bug');
+  assert.match(APP, /const bugGlyph = \(\) => iconEl\('lucide:bug', 'bug-fab-icon'\)/,
     'the FAB draws it through iconEl like every other mark');
   assert.ok(!/iconly:danger/.test(APP), 'the placeholder triangle is gone');
 });

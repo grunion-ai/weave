@@ -99,14 +99,14 @@ test('the customization guide covers what a reader can change', () => {
   const guide = GUIDES.find((g) => g.name === 'Making a workspace your own');
   assert.ok(guide, 'there is no customization guide');
   for (const topic of [
-    'iconly:', 'noun', 'side peek', 'board', 'saved view', 'audit',
+    'lucide:', 'noun', 'side peek', 'board', 'saved view', 'audit',
     '260px', 'Created At', 'costume', 'relation map', 'automation',
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the customization guide never mentions ${topic}`);
   }
   // The icon vocabulary is closed; the guide's examples have to come from it.
-  for (const m of guide.doc.matchAll(/iconly:([a-z0-9-]+)/g)) {
-    assert.ok(VOCAB.icons.names.includes(m[1]), `iconly:${m[1]} is not an icon the engine knows`);
+  for (const m of guide.doc.matchAll(/lucide:([a-z0-9-]+)/g)) {
+    assert.ok(VOCAB.icons.names.includes(m[1]), `lucide:${m[1]} is not an icon the engine knows`);
   }
 });
 

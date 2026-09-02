@@ -45,26 +45,18 @@ export const OPTION_COLORS = [
   { value: '#d6409f', name: 'magenta' },
 ];
 
-/* Iconly flat, vendored at public/vendor/iconly-flat.js. The VALUE stored on a
-   space, a table or a workflow state is `iconly:<name>` — a bare name renders
-   as the literal text "ticksquare", which is what the fallback is for: any
-   other string paints as itself, so an emoji is a legal icon too. */
-export const ICON_FORM = 'iconly:<name>';
-export const ICONS = [
-  '2user', '3user', 'activity', 'adduser', 'arrow-down', 'arrow-down2', 'arrow-down3', 'arrow-downcircle',
-  'arrow-downsquare', 'arrow-left', 'arrow-left2', 'arrow-left3', 'arrow-leftcircle', 'arrow-leftsquare', 'arrow-right', 'arrow-right2',
-  'arrow-right3', 'arrow-rightcircle', 'arrow-rightsquare', 'arrow-up', 'arrow-up2', 'arrow-up3', 'arrow-upcircle', 'arrow-upsquare',
-  'bag', 'bag2', 'bookmark', 'bug', 'buy', 'calendar', 'call', 'calling', 'callmissed',
-  'callsilent', 'camera', 'category', 'chart', 'chat', 'closesquare', 'danger', 'delete',
-  'discount', 'discovery', 'document', 'download', 'edit', 'editsquare', 'filter', 'filter2',
-  'folder', 'game', 'graph', 'heart', 'hide', 'home', 'image', 'image2',
-  'infocircle', 'infosquare', 'location', 'lock', 'login', 'logout', 'message', 'morecircle',
-  'moresquare', 'notification', 'paper', 'paperdownload', 'paperfail', 'papernegative', 'paperplus', 'paperupload',
-  'password', 'play', 'plus', 'profile', 'scan', 'search', 'send', 'setting',
-  'shielddone', 'shieldfail', 'show', 'star', 'swap', 'ticket', 'ticketstar', 'ticksquare',
-  'timecircle', 'timesquare', 'unlock', 'upload', 'video', 'voice', 'voice2', 'volumedown',
-  'volumeoff', 'volumeup', 'wallet', 'work',
-];
+/* Lucide shapes carrying movingicons.dev motion, vendored at
+   public/vendor/lucide-moving.{js,css}; public/icon-registry.js is the list,
+   generated with them by scripts/build-lucide-moving.mjs. The VALUE stored on
+   a space, a table or a workflow state is `lucide:<name>` — a bare name
+   renders as the literal text "bell", which is what the fallback is for: any
+   other string paints as itself, so an emoji is a legal icon too. The names
+   weave stored before 2026-09-02 (`iconly:<name>`, Iconly free plus the eight
+   money icons it drew) keep resolving through the registry's aliases. */
+await import('../public/icon-registry.js');
+const REGISTRY = globalThis.weaveIconRegistry;
+export const ICON_FORM = 'lucide:<name>';
+export const ICONS = REGISTRY.NAMES;
 
 /* The marks an author may pick, read from the drawn set so this list and the
    shapes cannot drift apart. */
@@ -76,6 +68,8 @@ export const VOCABULARY = {
   optionColors: OPTION_COLORS,
   icons: {
     form: ICON_FORM,
+    legacy: 'iconly:<name> — the set stored before 2026-09-02; every name still resolves to its Lucide twin (see aliases)',
+    aliases: REGISTRY.ALIASES,
     // A mark is stored as its own character and drawn as a vector from the
     // same canvas as the flat set (Issue #87), so the two forms are one
     // vocabulary rather than two.

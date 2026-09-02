@@ -1,104 +1,63 @@
-/* The marks, drawn (Issue #87).
-
+/* The marks, drawn (Issue #87) — and since 2026-09-02, drawn at the weight of
+   the Lucide set beside them.
    A mark was the Unicode character rendered at the font size, so every one of
    them came out a different optical size — Kyle: "bug quater done and 3/4 done
    are too small… reflresh is also too small". A size scale cannot fix that;
    the box was already right and the ink inside it was not. These are the same
-   marks as flat vectors on the Iconly canvas.
-
+   marks as flat vectors on the 24 canvas.
    The contract that matters most is the key: a row that stored '✓' months ago
-   must keep working and simply start drawing. */
-
+   must keep working and simply start drawing. Where Lucide draws the same
+   mark (a tick, a flag, a target) the character now draws the Lucide shape,
+   with its motion; the six progress rings have no twin and stay drawn here. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-
 await import('../public/field-dialog-core.js');
+await import('../public/icon-registry.js');
 await import('../public/mark-icons.js');
 const core = globalThis.fieldDialogCore;
 const marks = globalThis.weaveMarkIcons;
+const reg = globalThis.weaveIconRegistry;
 
-test('every mark an author can pick has a shape', () => {
+test('every state mark a picker offers is drawn — the key is the character', () => {
   for (const g of core.STATE_ICONS.filter(Boolean)) {
-    assert.ok(marks.has(g), `no shape for ${g}`);
-    assert.ok(marks.markSvg(g).length > 20, `${g} has an empty shape`);
+    assert.ok(marks.has(g), `${g} is offered but not drawn`);
+    assert.match(marks.markSvg(g), /<(path|rect|circle)/, `${g} draws nothing`);
+  }
+  assert.equal(marks.has('B'), false, 'a letter stays a letter');
+  assert.equal(marks.markSvg('B'), null);
+});
+
+test('the chrome marks draw too, at the same weight', () => {
+  for (const ch of ['⟳', '⛶', '⧉', '‹', '↑', '↓', '+']) assert.ok(marks.has(ch), `${ch} is chrome and must draw`);
+});
+
+test('a mark with a Lucide twin names it; the rings stay drawn', () => {
+  for (const ring of ['○', '◔', '◐', '◑', '◕', '●']) {
+    assert.equal(marks.twin(ring), null, `${ring} has no Lucide shape`);
+    assert.match(marks.markSvg(ring), /a9\.4 9\.4/, `${ring} is drawn on the 9.4 ring`);
+  }
+  assert.equal(marks.twin('✓'), 'check');
+  assert.equal(marks.twin('⚑'), 'flag');
+  assert.equal(marks.twin('→'), 'arrow-right');
+  for (const [ch, twin] of Object.entries(reg.MARK_TWINS)) {
+    assert.equal(marks.twin(ch), twin);
+    assert.ok(marks.has(ch), `${ch} keeps its drawing as the fallback`);
   }
 });
 
-test('the key is the stored character, so nothing has to migrate', () => {
-  // '✓' is what a state saved in June holds. It must resolve without a lookup
-  // table, a prefix, or a rewrite of the row.
-  assert.ok(marks.has('✓'));
-  assert.equal(marks.markSvg('nope'), null);
-  assert.equal(marks.markSvg(''), null);
-});
-
-test('the chrome controls Kyle called out are drawn too', () => {
-  for (const g of ['⟳', '⛶', '⧉', '‹', '↑', '↓']) assert.ok(marks.has(g), `${g} is still a font glyph`);
-});
-
-test('every shape is one flat vector on the shared canvas', () => {
-  for (const [g, svg] of Object.entries(marks.MARKS)) {
-    assert.doesNotMatch(svg, /<svg|viewBox/, `${g} carries its own svg element`);
-    assert.doesNotMatch(svg, /fill="#|stroke="#|rgb\(/, `${g} hard-codes a colour`);
-    // No number is bigger than the canvas. Relative segments carry negative
-    // deltas, so this checks magnitude; the real overflow gate is the browser
-    // bounding-box case in test/icon-vocabulary-browser.test.mjs.
-    // `.95.95` is two numbers, not one — a naive \d+ tokeniser reads 95.95.
-    for (const n of svg.match(/-?(?:\d+\.?\d*|\.\d+)/g) ?? []) {
-      assert.ok(Math.abs(Number(n)) <= 24.5, `${g} has ${n} outside the canvas`);
-    }
+test('the drawn marks are inked at the stroke set\'s weight — 2.0, a 2.0 ring', () => {
+  for (const [ch, svg] of Object.entries(marks.MARKS)) {
+    for (const m of svg.matchAll(/stroke-width="([\d.]+)"/g)) assert.equal(m[1], '2', `${ch} is stroked at ${m[1]}`);
   }
+  // Outer r 9.4, inner r 7.4: a 2.0 ring, level with a 2.0 stroke beside it.
+  assert.match(marks.MARKS['○'], /a9\.4 9\.4[^Z]*Zm0 2a7\.4 7\.4/, 'the ring is 2.0 thick');
+  assert.doesNotMatch(marks.MARKS['○'], /6\.9 6\.9/, 'the 2.5 ring is gone');
 });
 
-test('a stroked mark carries the weight of a filled one', () => {
-  const widths = new Set();
-  for (const svg of Object.values(marks.MARKS)) {
-    for (const m of svg.matchAll(/stroke-width="([\d.]+)"/g)) widths.add(m[1]);
-  }
-  assert.deepEqual([...widths], ['2.6'], 'one stroke weight across the whole set');
-});
-
-test('letters stay letters — a pictograph would lose what the letterform says', () => {
-  for (const ch of ['ƒ', 'Σ', 'B', 'I', '¶', '#']) {
-    assert.equal(marks.has(ch), false, `${ch} should stay type`);
-  }
-});
-
-/* ---------- what the picker offers (Kyle, 2026-08-26) ----------
-   "pick the 15 most redundant covered icons and remove them", then "fewer
-   arrows", then "add more in the money section" and "what about dollar and
-   euro signs". Redundant names leave the OFFER; the vendor data stays, so a
-   row that already stored one keeps drawing it. */
-
-test('the near-duplicates are hidden from the offer, not from the data', () => {
-  const hidden = [...marks.ICON_HIDDEN];
-  assert.equal(hidden.length, 23);
-  const offered = marks.offered(hidden.concat(['bug', 'wallet']));
-  assert.deepEqual(offered, ['bug', 'wallet'], 'nothing hidden survives the filter');
-});
-
-test('four arrows say the four directions; sixteen more said them again', () => {
-  const arrows = [...marks.ICON_HIDDEN].filter((n) => n.startsWith('arrow-'));
-  assert.equal(arrows.length, 16);
-  for (const keep of ['arrow-up', 'arrow-down', 'arrow-left', 'arrow-right']) {
-    assert.equal(marks.ICON_HIDDEN.has(keep), false, `${keep} is the one that stays`);
-  }
-});
-
-test('money is no longer the thinnest corner of the set', () => {
-  const ours = Object.keys(marks.WEAVE_ICONS);
-  assert.deepEqual(ours, ['dollar', 'euro', 'card', 'coins', 'invoice', 'bank', 'trend', 'percent']);
-  for (const [name, svg] of Object.entries(marks.WEAVE_ICONS)) {
-    assert.doesNotMatch(svg, /<svg|viewBox/, `${name} carries its own svg element`);
-    assert.doesNotMatch(svg, /fill="#|stroke="#|rgb\(/, `${name} hard-codes a colour`);
-    assert.match(svg, /stroke-width="2\.6"/, `${name} must carry the set's weight`);
-  }
-});
-
-test('a name we drew never shadows one Iconly ships', async () => {
-  const { readFileSync } = await import('node:fs');
-  const vendor = readFileSync(new URL('../public/vendor/iconly-flat.js', import.meta.url), 'utf8');
-  for (const name of Object.keys(marks.WEAVE_ICONS)) {
-    assert.doesNotMatch(vendor, new RegExp(`"${name}"\\s*:`), `${name} collides with the vendored set`);
-  }
+test('nothing Iconly survives: no scale table, no hidden list, no drawn money', () => {
+  assert.equal(marks.ICON_SCALE, undefined);
+  assert.equal(marks.ICON_HIDDEN, undefined);
+  assert.equal(marks.WEAVE_ICONS, undefined);
+  assert.equal(globalThis.WEAVE_ICONS, undefined);
+  assert.ok(reg.ALIASES.dollar, 'the money weave drew is an alias now');
 });

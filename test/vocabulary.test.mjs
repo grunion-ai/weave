@@ -37,21 +37,24 @@ test('the option palette is the palette the field dialog paints', () => {
   for (const c of OPTION_COLORS) assert.ok(c.name, `${c.value} needs a name an agent can reason about`);
 });
 
-test('the icon names are the vendored icon set', () => {
-  const vendor = readFileSync(join(ROOT, 'public/vendor/iconly-flat.js'), 'utf8');
-  const names = [...vendor.matchAll(/['"]([a-z0-9-]+)['"]\s*:/g)].map((m) => m[1]);
-  assert.deepEqual([...ICONS].sort(), [...new Set(names)].sort());
+test('the icon names are the vendored icon set', async () => {
+  await import('../public/icon-registry.js');
+  await import('../public/vendor/lucide-moving.js');
+  assert.deepEqual([...ICONS].sort(), Object.keys(globalThis.LUCIDE_MOVING).sort());
+  assert.deepEqual(ICONS, globalThis.weaveIconRegistry.NAMES, 'the registry is the list');
 });
 
 test('the icon vocabulary gives the value form, not just the names', () => {
   // A bare 'ticksquare' is a legal string that paints the word "ticksquare" in
   // the nav — verified live, 2026-08-24. The stored value is prefixed.
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
-  const renderer = app.slice(app.indexOf('function iconEl'), app.indexOf('function iconEl') + 900);
-  assert.match(renderer, /\^iconly:/, 'the renderer takes the prefixed form');
-  assert.equal(VOCABULARY.icons.form, 'iconly:<name>');
+  const renderer = app.slice(app.indexOf('function iconEl'), app.indexOf('function iconEl') + 2000);
+  assert.match(renderer, /weaveIconRegistry/, 'the renderer resolves the prefixed form through the registry');
+  assert.equal(VOCABULARY.icons.form, 'lucide:<name>');
+  assert.match(VOCABULARY.icons.legacy, /iconly:<name>/, 'and says the old form still resolves');
+  assert.equal(VOCABULARY.icons.aliases.notification, 'bell');
   assert.match(VOCABULARY.icons.fallback, /renders as text/, 'and says what any other string does');
-  assert.ok(VOCABULARY.icons.names.includes('discovery'));
+  assert.ok(VOCABULARY.icons.names.includes('compass'));
   // Marks are the other half of the one vocabulary (Issue #87): stored as
   // the character, drawn as a vector on the same canvas as the flat set.
   assert.ok(VOCABULARY.icons.marks.includes('✓'));
@@ -61,7 +64,7 @@ test('the icon vocabulary gives the value form, not just the names', () => {
   // The catalogue moved into field-dialog-core with Issue #87 so one list
   // serves a table, a select option and a workflow state alike.
   const core = readFileSync(join(ROOT, 'public/field-dialog-core.js'), 'utf8');
-  assert.match(core, /id: `iconly:\$\{n\}`/, 'the UI picker stores the prefixed form');
+  assert.match(core, /id: `lucide:\$\{n\}`/, 'the UI picker stores the prefixed form');
   assert.match(app, /fieldDialogCore\.iconChoices/, 'and the app picks from that catalogue');
 });
 
@@ -97,7 +100,7 @@ test('the vocabulary is served, so a remote agent has it too', async () => {
   try {
     const got = await (await fetch(`http://127.0.0.1:${server.address().port}/api/vocabulary`)).json();
     assert.deepEqual(got.icons.names, ICONS);
-    assert.equal(got.icons.form, 'iconly:<name>');
+    assert.equal(got.icons.form, 'lucide:<name>');
     assert.equal(got.fieldTypes.length, FIELD_TYPES.length);
     assert.equal(got.columnWidth.min, VOCABULARY.columnWidth.min);
   } finally { server.close(); }

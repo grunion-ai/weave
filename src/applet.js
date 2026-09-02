@@ -547,7 +547,7 @@ const GATE_CSS = `
 `;
 
 /* The desktop's own glyph, transform stack and all (public/app.js →
-   mark-icons.js → vendor/iconly-flat.js). Same mark, same corner, same
+   icon-registry.js → vendor/lucide-moving.js). Same mark, same corner, same
    opacity — the applet is weave, not a lookalike. */
 const BUG_GLYPH = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">'
   + '<g transform="translate(12 12) scale(1.42) translate(-12 -12)">'

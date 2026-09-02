@@ -150,7 +150,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_create_table',
-    description: 'Create a table in a space (a Name text field and a Description document are added automatically). icon is `iconly:<name>` from weave_vocabulary.',
+    description: 'Create a table in a space (a Name text field and a Description document are added automatically). icon is `lucide:<name>` from weave_vocabulary.',
     inputSchema: {
       type: 'object',
       properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } },
@@ -213,7 +213,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_space',
-    description: 'Rename a space or change its description or icon. An icon is `iconly:<name>` from weave_vocabulary — any other string renders as text, so an emoji works too.',
+    description: 'Rename a space or change its description or icon. An icon is `lucide:<name>` from weave_vocabulary — any other string renders as text, so an emoji works too.',
     inputSchema: {
       type: 'object',
       properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } },
@@ -232,7 +232,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_table',
-    description: 'Change a table: name, description, icon (`iconly:<name>` from weave_vocabulary; any other string renders as text), noun (what one record is called — "invoice" makes the create action read "New invoice"), hiddenFields (names kept out of the grid, data untouched), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the column order — every field exactly once).',
+    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary; any other string renders as text), noun (what one record is called — "invoice" makes the create action read "New invoice"), hiddenFields (names kept out of the grid, data untouched), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the column order — every field exactly once).',
     inputSchema: {
       type: 'object',
       properties: {

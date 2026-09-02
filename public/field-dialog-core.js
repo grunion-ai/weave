@@ -152,37 +152,54 @@
      The category rides on each choice as `hint`, which pickerCore already
      ranks against — so typing 'money' finds the whole group without a second
      search path, and the grid groups on the same field. */
-  const ICON_CATEGORIES = [
+  const WEAVE_CATEGORIES = [
     { name: 'status', marks: ['○', '◔', '◐', '◑', '◕', '●', '▶', '✓', '✕', '⏸', '⊘', '⚑', '★', '!', '?', '◎'],
-      flat: ['danger', 'infocircle', 'closesquare', 'ticksquare', 'shielddone', 'shieldfail',
-             'paperfail', 'papernegative', 'bug'] },
-    { name: 'people', marks: [], flat: ['profile', '2user', '3user', 'adduser', 'work', 'heart'] },
-    { name: 'documents', marks: [], flat: ['document', 'paper', 'paperplus', 'paperupload', 'paperdownload',
-             'folder', 'bookmark', 'edit', 'editsquare', 'upload', 'download'] },
-    { name: 'data', marks: ['⛓', '⌁'], flat: ['chart', 'graph', 'activity', 'category', 'filter',
-             'search', 'scan', 'discovery', 'swap'] },
-    { name: 'money', marks: [], flat: ['dollar', 'euro', 'card', 'coins', 'invoice', 'bank', 'trend',
-             'percent', 'wallet', 'buy', 'bag', 'discount', 'ticket', 'ticketstar'] },
-    { name: 'time', marks: [], flat: ['calendar', 'timecircle'] },
-    { name: 'messages', marks: [], flat: ['message', 'chat', 'send', 'notification', 'call', 'calling',
-             'callmissed', 'callsilent'] },
-    { name: 'media', marks: [], flat: ['camera', 'image', 'play', 'video', 'voice', 'volumeup',
-             'volumedown', 'volumeoff'] },
-    { name: 'access', marks: [], flat: ['lock', 'unlock', 'password', 'login', 'logout', 'show', 'hide'] },
-    { name: 'arrows', marks: ['→'], flat: ['arrow-up', 'arrow-down', 'arrow-left', 'arrow-right'] },
-    /* The last group is also the fallback: a name nobody classified is still
-       offered here rather than dropped, because a missing icon is worse than
-       one filed loosely. */
-    { name: 'other', marks: ['+'], flat: ['home', 'location', 'star', 'game', 'setting', 'plus',
-             'delete', 'morecircle'] },
+      flat: ['triangle-alert', 'info', 'square-x', 'square-check', 'shield-check', 'shield-x', 'file-x', 'file-minus', 'bug'] },
+    { name: 'people', marks: [], flat: ['user', 'users', 'users-round', 'user-plus', 'briefcase', 'heart', 'user-cog', 'award'] },
+    { name: 'documents', marks: [], flat: ['file-text', 'file', 'file-plus', 'file-up', 'file-down', 'folder', 'bookmark',
+             'pencil', 'square-pen', 'upload', 'download', 'paperclip', 'archive', 'copy', 'clipboard', 'history'] },
+    { name: 'data', marks: ['⛓', '⌁'], flat: ['chart-bar', 'chart-pie', 'activity', 'layout-grid', 'funnel', 'search', 'scan',
+             'compass', 'arrow-left-right', 'kanban', 'list-checks', 'chart-column', 'layers', 'blocks', 'route', 'gauge', 'terminal', 'cpu'] },
+    { name: 'money', marks: [], flat: ['dollar-sign', 'euro', 'credit-card', 'coins', 'receipt', 'landmark', 'trending-up',
+             'percent', 'wallet', 'shopping-cart', 'shopping-bag', 'badge-percent', 'ticket', 'ticket-check'] },
+    { name: 'time', marks: [], flat: ['calendar', 'clock', 'timer'] },
+    { name: 'messages', marks: [], flat: ['mail', 'message-circle', 'send', 'bell', 'phone', 'phone-call', 'phone-missed', 'phone-off', 'bell-ring', 'message-square', 'radio', 'wifi'] },
+    { name: 'media', marks: [], flat: ['camera', 'image', 'play', 'video', 'mic', 'volume-2', 'volume-1', 'volume-x'] },
+    { name: 'access', marks: [], flat: ['lock', 'lock-open', 'key-round', 'log-in', 'log-out', 'eye', 'eye-off', 'key'] },
+    { name: 'arrows', marks: ['→'], flat: ['arrow-up', 'arrow-down', 'arrow-left', 'arrow-right', 'refresh-cw', 'undo', 'redo'] },
+  ];
+  /* Since 2026-09-02 the set is Lucide's (595 names, most of them moving), so
+     the eleven curated groups above hold the vocabulary weave already had and
+     Lucide's own categories file the rest — read from the registry when it is
+     loaded (the browser, the vocabulary), absent otherwise (a bare core test).
+     'other' stays last and is also the fallback: a name nobody classified is
+     still offered rather than dropped, because a missing icon is worse than
+     one filed loosely. */
+  const REGISTRY = root.weaveIconRegistry;
+  const LUCIDE_CATEGORIES = REGISTRY
+    ? [...new Set(Object.values(REGISTRY.CATEGORY))].filter((n) => n !== 'other' && !WEAVE_CATEGORIES.some((g) => g.name === n)).sort()
+        .map((name) => ({ name, marks: [], flat: [] }))
+    : [];
+  const ICON_CATEGORIES = [
+    ...WEAVE_CATEGORIES,
+    ...LUCIDE_CATEGORIES,
+    { name: 'other', marks: ['+'], flat: ['house', 'map-pin', 'star', 'gamepad-2', 'settings', 'plus', 'trash-2', 'ellipsis', 'refresh-cw', 'undo', 'redo', 'sparkles', 'lightbulb', 'rocket', 'cloud-upload', 'cloud-download', 'battery'] },
   ];
   const CATEGORY_OF = new Map();
   for (const g of ICON_CATEGORIES) {
     for (const m of g.marks) CATEGORY_OF.set(m, g.name);
-    for (const f of g.flat) CATEGORY_OF.set(`iconly:${f}`, g.name);
+    for (const f of g.flat) CATEGORY_OF.set(`lucide:${f}`, g.name);
   }
   const FALLBACK_CATEGORY = ICON_CATEGORIES[ICON_CATEGORIES.length - 1].name;
-  const categoryOf = (id) => CATEGORY_OF.get(id) ?? FALLBACK_CATEGORY;
+  /* A curated group wins; then the icon's own Lucide category, from the
+     registry or from a caller that has it; then the fallback. */
+  const categoryOf = (id, catOf = null) => {
+    const curated = CATEGORY_OF.get(id);
+    if (curated) return curated;
+    const name = /^lucide:(.+)$/.exec(String(id))?.[1];
+    const own = name && (catOf?.(name) ?? REGISTRY?.CATEGORY?.[name]);
+    return own && ICON_CATEGORIES.some((g) => g.name === own) ? own : FALLBACK_CATEGORY;
+  };
 
   /* Choices, in category order, ready to draw as a grid. The empty 'No icon'
      control is left out: it is not an icon and belongs beside the grid, not
@@ -199,9 +216,9 @@
       .filter((g) => g.items.length);
   }
 
-  function iconChoices(flat = []) {
+  function iconChoices(flat = [], catOf = null) {
     const mark = (g) => ({ id: g, label: STATE_ICON_LABELS[g] ?? g, mark: g, hint: categoryOf(g) });
-    const flatOf = (n) => ({ id: `iconly:${n}`, label: n, iconly: n, hint: categoryOf(`iconly:${n}`) });
+    const flatOf = (n) => ({ id: `lucide:${n}`, label: n, lucide: n, hint: categoryOf(`lucide:${n}`, catOf) });
     const order = (a, b) => {
       const ai = ICON_CATEGORIES.findIndex((g) => g.name === a.hint);
       const bi = ICON_CATEGORIES.findIndex((g) => g.name === b.hint);

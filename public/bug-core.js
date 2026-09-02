@@ -24,10 +24,10 @@
   /* Label and severity are the server's (src/bugreport.js); the glyph is the
      panel's, because only the panel draws buttons. */
   const CATEGORIES = [
-    { id: 'slow', label: 'Slow', severity: 'Medium', icon: 'iconly:timecircle', hint: 'Took too long, or never finished' },
-    { id: 'broken-ui', label: 'Looks broken', severity: 'Medium', icon: 'iconly:category', hint: 'Overlapping, clipped, or misdrawn' },
-    { id: 'wrong-data', label: 'Wrong data', severity: 'High', icon: 'iconly:papernegative', hint: "Didn't save, or shows the wrong value" },
-    { id: 'error', label: 'Error', severity: 'High', icon: 'iconly:closesquare', hint: 'Something threw, or the page is empty' },
+    { id: 'slow', label: 'Slow', severity: 'Medium', icon: 'lucide:clock', hint: 'Took too long, or never finished' },
+    { id: 'broken-ui', label: 'Looks broken', severity: 'Medium', icon: 'lucide:layout-grid', hint: 'Overlapping, clipped, or misdrawn' },
+    { id: 'wrong-data', label: 'Wrong data', severity: 'High', icon: 'lucide:file-minus', hint: "Didn't save, or shows the wrong value" },
+    { id: 'error', label: 'Error', severity: 'High', icon: 'lucide:square-x', hint: 'Something threw, or the page is empty' },
   ];
 
   // Long enough to hold the minute before a bug, short enough that the JSON

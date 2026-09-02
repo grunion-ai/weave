@@ -722,11 +722,11 @@ The name and logo ride the icon rail on the far left, which is how you switch be
 A space and a table are born with an icon and can be given a better one:
 
 \`\`\`bash
-weave space update Finance --icon iconly:wallet
-weave table update Invoice --icon iconly:paper --noun invoice
+weave space update Finance --icon lucide:wallet
+weave table update Invoice --icon lucide:file --noun invoice
 \`\`\`
 
-The icon value is **\`iconly:<name>\`** — one of a hundred flat names (\`activity bag bookmark bug calendar category chart chat danger delete discovery document edit filter folder graph heart home image location lock message notification paper profile search send setting shielddone star ticket timecircle wallet work\` among them). Any other string paints itself, so an emoji is a legal icon too.
+The icon value is **\`lucide:<name>\`** — one of the 595 Lucide names in the vendored set (\`activity bell bookmark bug calendar chart-bar compass file-text folder funnel heart house layout-grid lock mail map-pin pencil search settings shield-check star trash-2 users wallet\` among them; \`weave vocabulary icons\` lists them all). Most of them move — once when the page loads, once when the picker scrolls them into view, once per hover, never on a loop. A value stored before 2026-09-02 as \`iconly:<name>\` keeps drawing through a built-in alias, so nothing migrates. Any other string paints itself, so an emoji is a legal icon too.
 
 The **noun** is what one row is called. Set it and the create control says "New invoice" instead of "New Invoice" — a small thing that stops a table full of invoices reading like a table full of table names.
 
@@ -1124,7 +1124,7 @@ export function applyHandbook(w) {
 
   const guides = ensureTable(w, 'Handbook', 'Guide', {
     description: 'The prose no field page can carry — how to install it, how the model works, how a document is written, and what a workspace can be made to look like.',
-    icon: 'iconly:document',
+    icon: 'lucide:file-text',
     noun: 'guide',
   });
   ensureField(w, guides, { name: 'Audience', type: 'select', config: { options: ['Human', 'Agent', 'Both'] } });
@@ -1135,7 +1135,7 @@ export function applyHandbook(w) {
 
   const fields = ensureTable(w, 'Handbook', 'Fields', {
     description: 'One page per field type: what it stores, what it can be configured into, and what bites.',
-    icon: 'iconly:category',
+    icon: 'lucide:layout-grid',
     noun: 'field type',
   });
   ensureField(w, fields, { name: 'Kind', type: 'select', config: { options: FIELD_KINDS.map((name) => ({ name, color: '' })) } });
@@ -1178,7 +1178,7 @@ export function applyFormattingShowcase(w) {
 
   const t = ensureTable(w, 'Showcase', 'Formatting', {
     description: 'Every construct a document can hold, each row written in the construct it names.',
-    icon: 'iconly:paper',
+    icon: 'lucide:file',
     noun: 'construct',
   });
   ensureField(w, t, {

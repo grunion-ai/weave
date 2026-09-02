@@ -2,6 +2,9 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## Unreleased
+- **Icons move** : the icon set is Lucide (595 names) carrying movingicons.dev motion — an icon plays once when the page loads, once when the picker scrolls it into view, once per hover, never on a loop. The value form is `lucide:<name>`; every `iconly:<name>` stored before 2026-09-02 resolves to its Lucide twin through `public/icon-registry.js`, so nothing migrates. Fourteen state marks (✓ ✕ ★ ! ? ▶ ⏸ ⊘ ⚑ ◎ ⛓ ⌁ → +) draw as their Lucide twins; the six progress rings stay hand-drawn, re-inked to the same stroke. Rebuild the set with `scripts/build-lucide-moving.mjs`.
+
 ## v0.4.4 — 2026-08-31
 
 - **Development sync** (#152): every build ships `docs/development.json` — the canonical Issue + Feature lists exported at release by `scripts/export-development.mjs` — and `weave serve` applies it to the local docs workspace on boot. Updating weave now updates the known/resolved issue list and the roadmap; locally filed rows are never touched (match is by name). `test/development-sync.test.mjs` pins the manifest to the package version.

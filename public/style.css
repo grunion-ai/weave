@@ -1409,13 +1409,17 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .def-code { width: 100%; font-family: var(--tblr-font-monospace); font-size: 12px; line-height: 1.55; background: var(--tblr-bg-surface-secondary); border: 1px solid var(--tblr-border-color); border-radius: 6px; padding: 8px 10px; color: var(--tblr-body-color); resize: vertical; }
 .def-err { min-height: 0; font-size: 11.5px; color: var(--tblr-danger); margin-top: 3px; white-space: pre-wrap; }
 .def-err:empty { display: none; }
-/* ---------- icons (Feature #101, Iconly flat) ----------
+/* ---------- icons (Feature #101; Lucide shapes with movingicons.dev motion since 2026-09-02) ----------
    One size scale (Issue #87). Every icon box is set from it, so a mark and a
    flat SVG beside each other occupy the same square instead of each surface
    patching its own alignment. */
 :root { --wv-icon-sm: 12px; --wv-icon-md: 16px; --wv-icon-lg: 20px; }
 .wv-icon { display: inline-flex; align-items: center; justify-content: center; vertical-align: -2px; margin-right: 5px; width: var(--wv-icon-md); height: var(--wv-icon-md); }
-.wv-icon svg { display: block; width: var(--wv-icon-md); height: var(--wv-icon-md); }
+.wv-icon svg { display: block; width: var(--wv-icon-md); height: var(--wv-icon-md); overflow: visible; }
+/* Motion (moving icons, 2026-09-02): an icon plays once when the page loads,
+   once when it scrolls into a picker grid, once per hover — never on a loop.
+   The keyframes live in vendor/lucide-moving.css, scoped under .mi-<name>. */
+@media (prefers-reduced-motion: reduce) { .mi svg, .mi svg * { animation: none !important; transition: none !important; } }
 /* Resting icons are lighter than the label beside them and come up to the
    label's own grey when the row is hovered or current — the icon leads the
    eye without competing with the word (Kyle, 2026-09-02). */

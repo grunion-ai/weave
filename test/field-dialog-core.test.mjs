@@ -356,7 +356,7 @@ test('one catalogue serves a table and a select option alike', () => {
 
   assert.equal(choices[0].id, '', 'clearing the icon is the first choice');
   const ids = choices.map((c) => c.id);
-  assert.ok(ids.includes('iconly:bug'), 'the flat set is in the catalogue');
+  assert.ok(ids.includes('lucide:bug'), 'the flat set is in the catalogue');
   assert.ok(ids.includes('✓'), 'the marks are in the same catalogue');
   assert.equal(new Set(ids).size, ids.length, 'no choice appears twice');
 
@@ -369,21 +369,21 @@ test('a mark is labelled by what it means, so search finds it by word', () => {
   const choices = core.iconChoices(['bug']);
   const tick = choices.find((c) => c.id === '✓');
   assert.match(tick.label, /done|complete|tick|check/i, 'a mark needs a searchable name');
-  const bug = choices.find((c) => c.id === 'iconly:bug');
+  const bug = choices.find((c) => c.id === 'lucide:bug');
   assert.equal(bug.label, 'bug');
-  assert.equal(bug.iconly, 'bug', 'the picker draws the SVG, not the raw value');
+  assert.equal(bug.lucide, 'bug', 'the picker draws the SVG, not the raw value');
 });
 
 test('inside a category the marks come first — they say a state, the icons name a thing', () => {
   // Since 2026-08-29 marks no longer sit in one block ahead of everything;
   // they sort into their categories and lead within each.
-  const choices = core.iconChoices(['activity', 'bug', 'chart']);
+  const choices = core.iconChoices(['activity', 'bug', 'chart-bar']);
   const status = choices.filter((c) => c.hint === 'status');
-  const firstFlat = status.findIndex((c) => c.iconly);
+  const firstFlat = status.findIndex((c) => c.lucide);
   const lastMark = status.map((c) => !!c.mark).lastIndexOf(true);
   assert.ok(lastMark < firstFlat, 'marks lead their own category');
-  assert.equal(choices.find((c) => c.id === 'iconly:bug').hint, 'status');
-  assert.equal(choices.find((c) => c.id === 'iconly:chart').hint, 'data');
+  assert.equal(choices.find((c) => c.id === 'lucide:bug').hint, 'status');
+  assert.equal(choices.find((c) => c.id === 'lucide:chart-bar').hint, 'data');
 });
 
 /* ---------- categories (Kyle, 2026-08-29) ----------
@@ -394,15 +394,15 @@ test('inside a category the marks come first — they say a state, the icons nam
    a second search path. */
 
 test('every offered icon lands in exactly one category', () => {
-  const flat = ['wallet', 'dollar', 'profile', 'calendar', 'arrow-up', 'chat', 'lock', 'camera', 'home', 'paper', 'chart'];
+  const flat = ['wallet', 'dollar-sign', 'user', 'calendar', 'arrow-up', 'message-circle', 'lock', 'camera', 'house', 'file', 'chart-bar'];
   const choices = core.iconChoices(flat).filter((c) => c.id);
   for (const c of choices) {
     assert.ok(c.hint, `${c.id} has no category`);
     assert.ok(core.ICON_CATEGORIES.some((g) => g.name === c.hint), `${c.hint} is not a category`);
   }
-  assert.equal(choices.find((c) => c.id === 'iconly:dollar').hint, 'money');
-  assert.equal(choices.find((c) => c.id === 'iconly:profile').hint, 'people');
-  assert.equal(choices.find((c) => c.id === 'iconly:arrow-up').hint, 'arrows');
+  assert.equal(choices.find((c) => c.id === 'lucide:dollar-sign').hint, 'money');
+  assert.equal(choices.find((c) => c.id === 'lucide:user').hint, 'people');
+  assert.equal(choices.find((c) => c.id === 'lucide:arrow-up').hint, 'arrows');
 });
 
 test('the marks sort into the same categories — there is no "marks" group', () => {
@@ -414,7 +414,7 @@ test('the marks sort into the same categories — there is no "marks" group', ()
 });
 
 test('choices come out grouped, in category order, ready for a grid', () => {
-  const flat = ['wallet', 'profile', 'arrow-up'];
+  const flat = ['wallet', 'user', 'arrow-up'];
   const groups = core.iconGroups(core.iconChoices(flat));
   assert.deepEqual(groups.map((g) => g.name), core.ICON_CATEGORIES.map((g) => g.name).filter((n) => groups.some((g) => g.name === n)));
   for (const g of groups) assert.ok(g.items.length, `${g.name} is empty and should not be a group`);
@@ -424,7 +424,7 @@ test('choices come out grouped, in category order, ready for a grid', () => {
 
 test('a name nobody classified still gets offered rather than vanishing', () => {
   const choices = core.iconChoices(['not-a-real-icon']);
-  const odd = choices.find((c) => c.id === 'iconly:not-a-real-icon');
+  const odd = choices.find((c) => c.id === 'lucide:not-a-real-icon');
   assert.ok(odd, 'an unclassified name must still reach the picker');
   assert.ok(odd.hint, 'and must still land in some category');
 });

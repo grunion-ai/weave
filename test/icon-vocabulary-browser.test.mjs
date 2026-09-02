@@ -34,7 +34,7 @@ if (!chromium) {
       { name: 'Later', icon: '○' },
     ] } });
     weave.addField(tasks, { name: 'Stage', type: 'workflow', config: { states: [
-      { name: 'Building', icon: 'iconly:activity', category: 'in-progress', default: true },
+      { name: 'Building', icon: 'lucide:activity', category: 'in-progress', default: true },
       { name: 'Shipped', icon: '✓', category: 'done' },
     ] } });
     row = weave.createEntity(tasks, { name: 'Icon case', values: { Priority: 'Urgent' } }).id;
@@ -77,11 +77,10 @@ if (!chromium) {
       // The picker's own list is what an author reads; both dialects come
       // from one catalogue now.
       const choices = iconCatalogue();
-      return { total: choices.length, marks: choices.filter((c) => c.mark).length, flat: choices.filter((c) => c.iconly).length };
+      return { total: choices.length, marks: choices.filter((c) => c.mark).length, flat: choices.filter((c) => c.lucide).length, set: weaveIconRegistry.NAMES.length };
     });
     assert.equal(picked.marks, 18, 'thirteen originals plus the five Kyle accepted');
-    // 101 vendored, 23 near-duplicates hidden, 8 of our own added.
-    assert.equal(picked.flat, 101 - 23 + 8, `the offer is wrong, got ${picked.flat}`);
+    assert.equal(picked.flat, picked.set, `the whole registry is offered, got ${picked.flat} of ${picked.set}`);
     await page.close();
   });
 
@@ -93,7 +92,8 @@ if (!chromium) {
       var out = {};
       var svgs = [].slice.call(document.querySelectorAll('.wv-icon svg, .ico svg'));
       out.count = svgs.length;
-      out.widths = svgs.map(function (s) { return Math.round(s.getBoundingClientRect().width); });
+      // Layout width, not the painted box: an icon mid-motion is scaled, not resized.
+      out.widths = svgs.map(function (s) { return Math.round(parseFloat(getComputedStyle(s).width)); });
       return out;
     });
     assert.ok(box.count >= 2);
@@ -133,30 +133,29 @@ if (!chromium) {
     await page.close();
   });
 
-  test('no icon draws small — the vendored set included', async () => {
+  test('the vendored set sits inside its canvas at one stroke — no scale table needed', async () => {
     const page = await entityPage();
-    const small = await page.evaluate(() => {
-      // Kyle, 2026-08-26: "bug looks too small". Iconly's own icons do not all
-      // fill the canvas; measured across 101 the median long axis is 20 of 24
-      // and five sat far under it. weaveMarkIcons.scaled corrects those.
-      var out = [];
+    const bad = await page.evaluate(() => {
+      var out = [], spans = [];
       var host = document.createElement('div');
       host.style.cssText = 'position:fixed;left:0;top:0';
       document.body.appendChild(host);
-      Object.keys(window.ICONLY_FLAT).forEach(function (n) {
-        host.innerHTML = '<svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor">'
-          + window.weaveMarkIcons.scaled(n, window.ICONLY_FLAT[n]) + '</svg>';
+      Object.keys(window.LUCIDE_MOVING).forEach(function (n) {
+        host.innerHTML = window.LUCIDE_MOVING[n];
         var b = host.firstChild.getBBox();
-        var span = Math.max(b.width, b.height);
-        if (span < 17) out.push(n + ' spans ' + span.toFixed(1) + ' of 24');
-        if (b.x < -0.5 || b.y < -0.5 || b.x + b.width > 24.5 || b.y + b.height > 24.5) {
-          out.push(n + ' overflows after scaling');
-        }
+        var x0 = b.x - 1, y0 = b.y - 1, x1 = b.x + b.width + 1, y1 = b.y + b.height + 1;
+        if (x0 < -0.5 || y0 < -0.5 || x1 > 24.5 || y1 > 24.5) out.push(n + ' overflows: ' + [x0, y0, x1, y1].map(Math.round).join(','));
+        spans.push(Math.max(x1 - x0, y1 - y0));
       });
       host.remove();
-      return out;
+      spans.sort(function (a, b) { return a - b; });
+      return { out: out, median: spans[Math.floor(spans.length / 2)], small: spans.filter(function (s) { return s < 15; }).length, n: spans.length };
     });
-    assert.deepEqual(small, [], 'icons drawing small beside their neighbours');
+    assert.deepEqual(bad.out, [], 'icons overflowing the canvas');
+    assert.ok(bad.median >= 19, `the set should fill its grid; median long axis ${bad.median} of 24`);
+    // Lucide draws a few glyphs small on purpose (ellipsis, minus, equal);
+    // the point is that they are the exception, not one icon in five.
+    assert.ok(bad.small / bad.n < 0.05, `${bad.small} of ${bad.n} icons span under 15 of 24`);
     await page.close();
   });
 
@@ -176,18 +175,28 @@ if (!chromium) {
     await page.close();
   });
 
-  test('the money icons we drew resolve through the same prefix', async () => {
+  test('a legacy iconly: value draws its Lucide twin, and the picker offers the twin once', async () => {
     const page = await entityPage();
-    const drawn = await page.evaluate(() => {
-      var out = {};
-      ['dollar', 'euro', 'invoice', 'bank'].forEach(function (n) {
+    const out = await page.evaluate(() => {
+      var o = { drawn: 0, ghosts: 0 };
+      ['dollar', 'notification', 'bug', 'arrow-up2', 'ticksquare'].forEach(function (n) {
         var el = iconEl('iconly:' + n);
-        out[n] = !!(el && el.querySelector('svg'));
+        if (el.querySelector('svg')) o.drawn++;
+        if (el.classList.contains('icon-ghost')) o.ghosts++;
       });
-      out.offered = iconCatalogue().filter(function (c) { return c.id === 'iconly:dollar'; }).length;
-      return out;
+      o.text = iconEl('iconly:notification').textContent.trim();
+      o.twin = iconEl('iconly:notification').className;
+      var ids = iconCatalogue().map(function (c) { return c.id; });
+      o.offered = ids.filter(function (id) { return id === 'lucide:dollar-sign'; }).length;
+      o.legacyOffered = ids.filter(function (id) { return /^iconly:/.test(id); }).length;
+      return o;
     });
-    assert.deepEqual(drawn, { dollar: true, euro: true, invoice: true, bank: true, offered: 1 });
+    assert.equal(out.drawn, 5, 'every legacy value still draws');
+    assert.equal(out.ghosts, 0);
+    assert.equal(out.text, '', 'the prefix never reaches the screen');
+    assert.match(out.twin, /mi-bell/, 'notification draws as the bell');
+    assert.equal(out.offered, 1, 'the twin is offered once, under its own name');
+    assert.equal(out.legacyOffered, 0, 'the old names are aliases, not choices');
     await page.close();
   });
 
@@ -258,10 +267,10 @@ if (!chromium) {
     await page.waitForSelector('.picker-cells');
     await page.locator('.picker-search').fill('wallet');
     await page.waitForTimeout(150);
-    await page.locator('.picker-cell').first().click();
+    await page.locator('.picker-cell[title="wallet"]').click();
     await page.waitForTimeout(400);
     const db = weave.getTable(typeof tasks === 'string' ? tasks : tasks.id);
-    assert.equal(db.icon, 'iconly:wallet');
+    assert.equal(db.icon, 'lucide:wallet');
     await page.close();
   });
 
