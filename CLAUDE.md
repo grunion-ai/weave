@@ -18,6 +18,10 @@ curl -s -X POST http://127.0.0.1:4400/w/weave/api/tables/Issue/query   -H 'Conte
 ```
 Or `node bin/weave.js --data ./weave.db query Feature ...` — CLI and server can run concurrently since the SQLite migration (WAL + per-request refresh); legacy `weave.json` (né weaver.json) is a frozen pre-migration backup, never written again.
 
+## Demos and showcase spaces live in the MAIN instance
+
+The main instance (`:4400`, data dir `~/.weave/`) hosts every workspace — `weave`, `uno`, the rest — one `.db` per workspace, siblings at `/w/<name>/`. A demo, showcase, or example space for **shipped** behavior goes there: build it in a scratch `.db`, then drop the file into `~/.weave/` (checkpoint the WAL first) — the hub adopts it on the first `/w/<name>/` hit, no restart. Never spin a parallel `weave serve` on another port for a demo. The ONLY reason for a scratch instance on its own port is verifying **unlanded** working-tree code, which `:4400` (serving `~/.weave-serve`, landed code only) cannot show; tear it down when verification ends.
+
 ## House rules
 
 - Zero runtime dependencies; no build step. Third-party code is **vendored pinned** into `public/vendor/` (mermaid 11.17.0, @tabler/core 1.4.0, Vditor 3.x pruned, KaTeX 0.16.47 + mhchem, highlight.js) — never npm-installed. Storage is `node:sqlite` (built into Node — Node ≥ 22.16 required, 24 LTS recommended): one workspace = one `.db` file (WAL, row-level writes, FTS5 index); legacy `.json` workspaces auto-migrate to a sibling `.db` on first open and the json is left untouched as a backup. `exportJSON`/`importJSON` remain the human-readable interchange layer.
