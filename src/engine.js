@@ -3858,8 +3858,9 @@ export class Weave {
      deliberately NOT a relation: nothing is configured, nothing is unlinked —
      the reference exists exactly as long as the text does, so the list is
      computed from the text on demand. Matches every accepted spelling:
-     [[Table#pid]] (qualified or not, with |label), [[uuid]], and permalink
-     links whose href ends in /e/<uuid>.
+     [[Table#pid]] (qualified or not, with |label), [[uuid]], and URL
+     spellings — a markdown permalink, an HTML chip's href, a mermaid click
+     target — which all reduce to /e/<uuid>.
      ponytail: O(total doc bytes) per call; move to a save-time index if a
      workspace grows past ~10k entities. */
   referencesTo(entityRef) {
@@ -3869,7 +3870,7 @@ export class Weave {
     const names = [...new Set([db.name, this.qualifiedName(db)])].map(esc).join('|');
     const bracket = new RegExp(`\\[\\[\\s*(?:${names})\\s*#${target.publicId}\\s*(?:\\|[^\\]]*)?\\]\\]`, 'i');
     const uuidRef = new RegExp(`\\[\\[\\s*${esc(target.id)}\\s*(?:\\|[^\\]]*)?\\]\\]`, 'i');
-    const permalink = new RegExp(`\\]\\([^)\\s]*/e/${esc(target.id)}(?:[/#?)]|$)`, 'i');
+    const permalink = new RegExp(`/e/${esc(target.id)}(?=[/#?"')\\s]|$)`, 'i');
     const out = [];
     for (const e of Object.values(this.state.entities)) {
       if (e.deletedAt || e.id === target.id) continue;
@@ -3879,6 +3880,30 @@ export class Weave {
       }
     }
     return out.sort((a, b) => a.db.localeCompare(b.db) || a.publicId - b.publicId);
+  }
+
+  /* The outbound mirror: which entities THIS entity's documents mention.
+     Same ruling as referencesTo — a chip is a reference, never a relation:
+     the set is recomputed from the text on every read, so it is 1:1 with
+     what the documents say and can never drift or be edited directly.
+     Spellings are shared with referencesTo; dead pids and unknown uuids stay
+     text, self-mentions and deleted targets never count. */
+  referencesFrom(entityRef) {
+    const e = this.getEntity(entityRef);
+    const text = Object.values(e.docs ?? {}).filter(Boolean).join('\n');
+    const ids = new Set();
+    const add = (id) => {
+      const t = this.state.entities[id];
+      if (t && !t.deletedAt && t.id !== e.id) ids.add(t.id);
+    };
+    for (const m of text.matchAll(/\[\[\s*([^\][|#\n]+?)\s*#(\d+)\s*(?:\|[^\]]*)?\]\]/g)) {
+      try { add(this.getEntity(`${m[1].trim()}#${m[2]}`).id); } catch { /* a dead ref stays text */ }
+    }
+    const uuidPat = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+    for (const m of text.matchAll(new RegExp(`\\[\\[\\s*(${uuidPat.source})\\s*(?:\\|[^\\]]*)?\\]\\]`, 'gi'))) add(m[1].toLowerCase());
+    for (const m of text.matchAll(new RegExp(`/e/(${uuidPat.source})(?=[/#?"')\\s]|$)`, 'gi'))) add(m[1].toLowerCase());
+    return [...ids].map((id) => this.#summary(id))
+      .sort((a, b) => a.db.localeCompare(b.db) || a.publicId - b.publicId);
   }
 
   /* What this workspace weighs: live entity count plus bytes on disk — the

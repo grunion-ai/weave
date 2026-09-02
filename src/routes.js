@@ -618,6 +618,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/references$/)) && rx.method === 'GET') {
           return out(200, weave.referencesTo(m[1]));
         }
+        // The outbound mirror: entities this one's documents mention.
+        if ((m = path.match(/^\/api\/entities\/([^/]+)\/references-from$/)) && rx.method === 'GET') {
+          return out(200, weave.referencesFrom(m[1]));
+        }
         // A slide's next version: same key and content, Version + 1, pointing
         // back at what it supersedes. ?promote=1 swaps it into the decks the
         // old row sat in, keeping its place in each running order.
