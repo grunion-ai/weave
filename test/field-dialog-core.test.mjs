@@ -524,3 +524,10 @@ test('number state carries accounting and the compact format', () => {
   assert.equal(s.number.accounting, true);
   assert.deepEqual(core.definitionFromState(s).config, { format: 'currency', currency: 'USD', accounting: true });
 });
+
+test('the Name field\'s row term rides the definition both ways', () => {
+  const s = core.stateFromDefinition({ type: 'text', config: { term: { singular: 'deal', plural: 'deals' } } });
+  assert.deepEqual(s.term, { singular: 'deal', plural: 'deals' });
+  assert.deepEqual(core.definitionFromState(s).config.term, { singular: 'deal', plural: 'deals' });
+  assert.equal(core.definitionFromState(core.blankState('text')).config.term, undefined, 'unset stays absent');
+});

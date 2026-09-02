@@ -101,9 +101,12 @@ test('trash is last, and it is the only destructive command on the bar', () => {
   assert.deepEqual(cmds.filter((c) => c.danger).map((c) => c.id), ['trash']);
 });
 
-test('the count reads as rows, singular at one — the puck says what it holds', () => {
-  assert.equal(SEL.countLabel(1), '1 row');
-  assert.equal(SEL.countLabel(12), '12 rows');
+test('the count speaks the table\'s row term, singular at one — the puck says what it holds', () => {
+  assert.equal(SEL.countLabel(1), '1 record', 'no term: the default');
+  assert.equal(SEL.countLabel(12), '12 records');
+  assert.equal(SEL.countLabel(1, { singular: 'deal', plural: 'deals' }), '1 deal');
+  assert.equal(SEL.countLabel(3, { singular: 'deal', plural: 'deals' }), '3 deals');
+  assert.match(SEL.moreCommands({ term: { singular: 'deal', plural: 'deals' } }).find((c) => c.id === 'rollup').label, /new deal/);
 });
 
 /* ---------- the puck (slice 2) ----------

@@ -371,6 +371,7 @@
     }
     const dflt = typedDefault(t, state.default);
     if (dflt !== undefined) config.default = dflt;
+    if (state.term && state.term.singular) config.term = { ...state.term };
     return { type: t, config };
   }
 
@@ -379,6 +380,7 @@
   function stateFromDefinition(def) {
     const state = blankState(def.type);
     const c = def.config ?? {};
+    if (c.term && c.term.singular) state.term = { ...c.term };
     if (def.type === 'formula') {
       state.type = 'text'; // grid shows a neutral tile behind the toggle
       state.computed = 'formula';

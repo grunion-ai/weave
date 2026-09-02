@@ -65,16 +65,19 @@ globalThis.WeaveSelection = {
 
   /* The overflow, behind ⋯. Same rule: only what is built reaches it, and an
      empty overflow means the ⋯ itself does not belong on the bar. */
-  moreCommands({ built = null } = {}) {
+  moreCommands({ built = null, term = null } = {}) {
     const cmds = [
       { id: 'move', label: 'Move to table…' },
-      { id: 'rollup', label: 'Roll up into a new entity…' },
+      { id: 'rollup', label: `Roll up into a new ${(term && term.singular) || 'record'}…` },
       { id: 'copy', label: 'Copy links' },
     ];
     return built ? cmds.filter((c) => built.includes(c.id)) : cmds;
   },
 
-  countLabel(n) {
-    return `${n} row${n === 1 ? '' : 's'}`;
+  /* The puck says what it holds in the table's own term (Feature #40):
+     "3 deals", "1 record" when none is set. */
+  countLabel(n, term = null) {
+    const t = term && term.singular ? term : { singular: 'record', plural: 'records' };
+    return `${n} ${n === 1 ? t.singular : t.plural}`;
   },
 };

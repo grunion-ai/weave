@@ -378,7 +378,7 @@ test('purging keeps the hold-to-confirm and is the only hard delete in the UI', 
 test('deleted rows are reached through the eyeball; the toolbar has no trash badge (superseded 2026-08-23)', () => {
   assert.doesNotMatch(fnBody('drawDatabase'), /#\/trash\//, 'no 🗑 control on the toolbar');
   assert.match(APP, /api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/, 'the count still feeds the eyeball');
-  assert.match(fnBody('fieldVisibilityPopover'), /Deleted entities/);
+  assert.match(fnBody('fieldVisibilityPopover'), /Deleted \$\{db\.term\.plural\}/, 'the toggle speaks the table\'s row term');
 });
 
 /* ---------- defect: the description block was oversized ---------- */
@@ -423,7 +423,7 @@ test('one dotsMenu implementation serves entity, table and space', () => {
   // Every ⋮ trigger comes from the helper — no hand-rolled second menu.
   assert.equal((APP.match(/dots-btn/g) ?? []).length, 1, 'only dotsMenu may build the ⋮ button');
   assert.equal((APP.match(/class: `dl-menu hidden/g) ?? []).length, 1, 'only dotsMenu may build the panel');
-  for (const t of ["title: 'Entity actions'", "title: 'Table actions'", "title: 'Space actions'"]) {
+  for (const t of ["title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions`", "title: 'Table actions'", "title: 'Space actions'"]) {
     assert.ok(APP.includes(t), `${t} must be a dotsMenu call`);
   }
 });
@@ -942,7 +942,7 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
     'margin-left:auto is what pushes the menu to the right edge');
 
   // Right edge means the panel must hang off the right, or it runs off-screen.
-  const call = APP.match(/\{ title: 'Entity actions'[^}]*\}/);
+  const call = APP.match(/\{ title: `[^`]*\} actions`, align: 'right' \}/);
   assert.ok(call, 'the entity menu call site should be findable');
   assert.match(call[0], /align: 'right'/, 'a right-edge menu must drop its panel to the left');
 });

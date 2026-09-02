@@ -205,9 +205,9 @@ if (!chromium) {
     const page = await grid();
     try {
       await boxes(page).nth(0).check();
-      assert.equal((await page.locator('.sel-count').textContent()).trim(), '1 row');
+      assert.equal((await page.locator('.sel-count').textContent()).trim(), '1 record');
       await boxes(page).nth(2).click({ modifiers: ['Shift'] });
-      assert.equal((await page.locator('.sel-count').textContent()).trim(), '3 rows');
+      assert.equal((await page.locator('.sel-count').textContent()).trim(), '3 records');
     } finally { await page.close(); }
   });
 

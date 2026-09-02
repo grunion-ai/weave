@@ -100,6 +100,7 @@
           name: t.name,
           space: t.space,
           entityCount: t.entityCount ?? 0,
+          term: t.term,
           foreign: !!o.spaceId && t.spaceId !== o.spaceId,
           loop: loops.has(t.id),
           w: o.nodeW,

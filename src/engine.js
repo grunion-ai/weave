@@ -1,10 +1,15 @@
 import '../public/date-grain.js';
+import '../public/term-core.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
 import { Store, WeaveError } from './store.js';
 import { evaluate } from './formula.js';
+
+// What one row is called (Feature #40): the pure half, shared with the browser.
+const Term = globalThis.WeaveTerm;
+const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow' };
 
 // Minimal CSV parser handling quoted cells and embedded newlines.
 export function parseCSV(text) {
@@ -633,6 +638,7 @@ export class Weave {
       // field here would give them a second, colliding 'Description'.
       if (db.system) continue;
       if (this.#ensureDescriptionField(db)) changed = true;
+      if (this.#ensureTerm(db)) changed = true;
     }
     for (const e of Object.values(s.entities ?? {})) {
       if (e.docs) continue;
@@ -699,6 +705,44 @@ export class Weave {
     db.fieldOrder.push(docField.id);
     db.descriptionFieldId = docField.id;
     return true;
+  }
+
+  /* What one row is called (Feature #40; Name-field config since 2026-09-02).
+     Legacy workspaces carried it as `db.noun`; the first open moves it onto
+     the Name field's config and drops the table key, so there is one source. */
+  #ensureTerm(db) {
+    if (db.noun == null) return false;
+    const nameField = db.fields[db.nameFieldId];
+    if (nameField && !nameField.config.term && String(db.noun).trim()) {
+      try { nameField.config.term = Term.normalize({ singular: db.noun }); } catch { /* an unusable legacy noun is dropped */ }
+    }
+    delete db.noun;
+    return true;
+  }
+
+  /* The term every surface speaks for this table: { singular, plural, set }.
+     Absent config resolves to the default, "record". */
+  termOf(dbRef) {
+    const db = dbRef && typeof dbRef === 'object' ? dbRef : this.getTable(dbRef);
+    const term = Term.resolve(db.fields?.[db.nameFieldId]?.config);
+    // A registry table's rows ARE spaces, tables, fields, workflows: the kind
+    // is the term, unless someone set one.
+    if (!term.set && db.system && SYSTEM_TERMS[db.system]) return { ...Term.normalize({ singular: SYSTEM_TERMS[db.system] }), set: false };
+    return term;
+  }
+
+  #setTerm(db, term, { save = true } = {}) {
+    const field = db.fields[db.nameFieldId];
+    if (!field) throw new WeaveError('This table has no Name field', 'invalid');
+    if (term == null) delete field.config.term;
+    else {
+      try { field.config.term = Term.normalize(term); } catch (err) { throw new WeaveError(err.message, 'invalid'); }
+    }
+    if (save) {
+      this.#syncFieldRow(db, field);
+      this.save();
+      if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: ['term'] });
+    }
   }
 
   /* A table's description field, or null when it has been deleted. Every
@@ -897,8 +941,10 @@ export class Weave {
     if (patch.description != null) db.description = patch.description;
     if (patch.icon != null) db.icon = patch.icon;
     if (patch.noun != null) {
+      // `noun` is the pre-term spelling (Feature #40): a bare singular that
+      // lands on the Name field's term. Empty clears it.
       if (typeof patch.noun !== 'string') throw new WeaveError('A noun is a short string (e.g. "invoice")', 'invalid');
-      if (patch.noun.trim()) db.noun = patch.noun.trim(); else delete db.noun;
+      this.#setTerm(db, patch.noun.trim() ? { singular: patch.noun } : null);
     }
     if (patch.systemFields != null) {
       const known = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
@@ -1217,6 +1263,7 @@ export class Weave {
       for (const k of DATE_COSTUME_KEYS) if (k !== 'format' && f[k] != null) config[k] = f[k];
       if (f.kind != null) config.kind = f.kind;
       if (f.multiple != null) config.multiple = f.multiple;
+      if (f.term != null) config.term = f.term;
       return config;
     };
     /* The apply is a no-op exactly when the document already describes the
@@ -1225,7 +1272,7 @@ export class Weave {
        name on the other. */
     const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'targetField', 'aggregate',
       'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'time', 'kind', 'multiple', 'types', 'depth',
-      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed'];
+      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term'];
     const colorsOf = (full) => JSON.stringify((full ?? []).map((o) => ({ name: o.name, color: o.color ?? '' })));
     const fieldChanged = (fDoc, have) => {
       if (!have) return true;
@@ -1287,7 +1334,7 @@ export class Weave {
         const tPatch = {};
         if (tDoc.description != null && tDoc.description !== (db.description ?? '')) tPatch.description = tDoc.description;
         if (tDoc.icon != null && tDoc.icon !== (db.icon ?? '')) tPatch.icon = tDoc.icon;
-        if (tDoc.noun != null && tDoc.noun !== (db.noun ?? '')) tPatch.noun = tDoc.noun;
+        if (tDoc.noun != null && tDoc.noun !== (this.termOf(db).set ? this.termOf(db).singular : '')) tPatch.noun = tDoc.noun;
         if ('hiddenFields' in tDoc && JSON.stringify(tDoc.hiddenFields ?? []) !== JSON.stringify(db.hiddenFields ?? [])) {
           tPatch.hiddenFields = tDoc.hiddenFields ?? [];
         }
@@ -1379,7 +1426,11 @@ export class Weave {
      builds the table someone described, not a stripped copy of it. */
   #applyTableCostume(db, tDoc) {
     const patch = {};
-    if (tDoc.noun) patch.noun = tDoc.noun;
+    // The Name field's own `term` (plural included) outranks the table-level
+    // `noun`, which is that term's singular under its older name.
+    const nameDoc = (tDoc.fields ?? []).find((f) => f.name === 'Name');
+    if (nameDoc?.term) this.#setTerm(db, nameDoc.term);
+    else if (tDoc.noun) patch.noun = tDoc.noun;
     if (tDoc.hiddenFields?.length) patch.hiddenFields = [...tDoc.hiddenFields];
     if (tDoc.systemFields?.length) patch.systemFields = [...tDoc.systemFields];
     if (tDoc.filters && Object.keys(tDoc.filters).length) patch.filters = tDoc.filters;
@@ -2488,6 +2539,12 @@ export class Weave {
       // type switch — and independently of it, so a resize cannot clobber a
       // select's options and an options edit cannot reset the width. null is
       // the auto-fit reset: back to letting the column size itself.
+      // The row term rides the Name field's config (Feature #40). null clears
+      // it back to "record"; any other field refuses it.
+      if ('term' in patch.config) {
+        if (field.id !== db.nameFieldId) throw new WeaveError('The row term lives on the Name field', 'invalid');
+        this.#setTerm(db, patch.config.term, { save: false });
+      }
       if ('width' in patch.config) {
         const width = patch.config.width;
         if (width === null) delete field.config.width;
@@ -4152,13 +4209,17 @@ export class Weave {
         ...(db.filters ? { filters: Object.fromEntries(Object.entries(db.filters).map(([k, v]) => [k, [...v]])) } : {}),
         ...(db.sort?.length ? { sort: db.sort.map((s) => ({ ...s })) } : {}),
         bodyBlocks: this.bodyBlocks(db),
-        ...(db.noun ? { noun: db.noun } : {}),
+        term: this.termOf(db),
+        // `noun` is the term's singular under its pre-2026-09 name, emitted
+        // only when set so existing readers and round-trip documents hold.
+        ...(this.termOf(db).set ? { noun: this.termOf(db).singular } : {}),
         qualified: this.qualifiedName(db),
         entityCount: this.listEntities(db.id).length,
         fields: db.fieldOrder.map((fid) => {
           const f = db.fields[fid];
           const out = { id: f.id, name: f.name, type: f.type };
           if (f.config.width) out.width = f.config.width;
+          if (f.id === db.nameFieldId && f.config.term) out.term = { ...f.config.term };
           if (f.type === 'select' || f.type === 'multiselect') {
             out.options = f.config.options.map((o) => o.name);
             // The field dialog edits colors and must round-trip ids so a

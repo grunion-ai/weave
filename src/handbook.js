@@ -728,7 +728,7 @@ weave table update Invoice --icon lucide:file --noun invoice
 
 The icon value is **\`lucide:<name>\`** — one of the 595 Lucide names in the vendored set (\`activity bell bookmark bug calendar chart-bar compass file-text folder funnel heart house layout-grid lock mail map-pin pencil search settings shield-check star trash-2 users wallet\` among them; \`weave vocabulary icons\` lists them all). Most of them move — once when the page loads, once when the picker scrolls them into view, once per hover, never on a loop. A value stored before 2026-09-02 as \`iconly:<name>\` keeps drawing through a built-in alias, so nothing migrates. Any other string paints itself, so an emoji is a legal icon too.
 
-The **noun** is what one row is called. Set it and the create control says "New invoice" instead of "New Invoice" — a small thing that stops a table full of invoices reading like a table full of table names.
+The **noun** is what one row is called — the table's *row term*. It lives on the Name field (open the Name column's menu → Edit field → "Rows in this table are…"), with a curated list to pick from and a plural you can correct. Every surface speaks it: the create control says "New invoice" instead of "New Invoice", the selection puck counts "3 invoices", the trash toggle reads "Deleted invoices". \`--noun\` on the CLI and \`noun\` over MCP set the same term.
 
 ## The grid reads as a record
 
@@ -1081,7 +1081,7 @@ function ensureTable(w, space, name, { description = '', icon = '', noun = '' } 
     const patch = {};
     if (description && !existing.description) patch.description = description;
     if (icon && !existing.icon) patch.icon = icon;
-    if (noun && !existing.noun) patch.noun = noun;
+    if (noun && !w.termOf(existing).set) patch.noun = noun;
     if (Object.keys(patch).length) w.updateTable(existing.id, patch);
     return existing;
   }

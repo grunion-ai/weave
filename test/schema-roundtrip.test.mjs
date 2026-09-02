@@ -177,3 +177,28 @@ test('a schema written before roles is still understood', () => {
   assert.deepEqual(names(fresh, 'Product/Task'), ['Name', 'Description', 'Estimate'], 'adopted, not duplicated');
   assert.equal(fresh.descriptionField(fresh.getTable('Product/Task')).name, 'Description');
 });
+
+/* Feature #40 (re-homed 2026-09-02): the row term is Name-field config. The
+   table-level `noun` keeps every existing consumer working; the plural rides
+   the Name field's own descriptor so a corrected irregular is not lost. */
+test('the row term round-trips, plural included', () => {
+  const { w, t } = fixture();
+  const nameField = Object.values(w.getTable(t.id).fields).find((f) => f.name === 'Name');
+  w.updateField(t.id, nameField.id, { config: { term: { singular: 'invoice', plural: 'invoicing' } } });
+  const doc = w.describeSchema().filter((s) => !s.system);
+  const table = doc.find((s) => s.space === 'Ops').tables[0];
+  assert.equal(table.noun, 'invoice');
+  assert.deepEqual(table.fields.find((f) => f.name === 'Name').term, { singular: 'invoice', plural: 'invoicing' });
+
+  assert.deepEqual(w.applySchema(doc, { dryRun: true }), [], 'an untouched document is a no-op');
+
+  const fresh = new Weave();
+  fresh.applySchema(doc);
+  assert.deepEqual(fresh.termOf('Ops/Invoice'), { singular: 'invoice', plural: 'invoicing', set: true });
+
+  table.fields.find((f) => f.name === 'Name').term = { singular: 'bill', plural: 'bills' };
+  table.noun = 'bill';
+  const plan = w.applySchema(doc);
+  assert.ok(plan.some((p) => p.action === 'update-field' && p.target === 'Ops/Invoice.Name') || plan.some((p) => p.action === 'update-table'), JSON.stringify(plan));
+  assert.deepEqual(w.termOf(t.id), { singular: 'bill', plural: 'bills', set: true });
+});

@@ -1376,6 +1376,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .fx-toggle.on { border-style: solid; border-color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .08); }
 .fx-toggle.on .fx-mark { color: var(--tblr-primary); }
 
+.term-row { display: flex; align-items: center; gap: 6px; }
+.term-row .form-control { flex: 1; min-width: 0; }
+.term-sep { color: var(--tblr-secondary); font-size: 13px; }
+.term-preview { font-family: var(--tblr-font-monospace); font-size: 10.5px; }
 .opt-list { display: flex; flex-direction: column; gap: 4px; }
 .opt-row { display: flex; align-items: center; gap: 6px; }
 .opt-row .opt-name { flex: 1; min-width: 0; background: var(--tblr-bg-forms, var(--tblr-bg-surface)); border: 1px solid var(--tblr-border-color); border-radius: 6px; padding: 4px 8px; font-size: 13px; color: var(--tblr-body-color); }

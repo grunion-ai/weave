@@ -101,6 +101,7 @@ const INTERNAL = {
   previewFields: 'read helper — the chip preview; /api/markdown ships it inside resolved mentions',
   referencesTo: 'read helper — GET /api/entities/:ref/references already serves the backlinks',
   referencesFrom: 'read helper — GET /api/entities/:ref/references-from serves the outbound mirror',
+  termOf: 'read helper — what one row is called; describeSchema ships it as term on every table, and updateTable {noun} / the Name field\'s config.term set it',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));

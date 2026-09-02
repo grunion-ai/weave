@@ -172,6 +172,12 @@ const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: 
 // (Feature #117): a row click lands here; the side peek below is kept for
 // callers that want a slide-over on top of a page, not as a row target.
 function openEntity(id) { location.hash = `#/entity/${id}`; }
+/* The row term of a table by id (Feature #40) — for surfaces that hold a
+   target id rather than the table. Unknown ids speak the default, "record". */
+function termOfTable(id) {
+  for (const s of state.schema ?? []) for (const t of s.tables) if (t.id === id) return t.term ?? WeaveTerm.DEFAULT;
+  return WeaveTerm.DEFAULT;
+}
 
 /* ---------- side peek (Features #39, #48) ----------
    A row opens here first: the entity's fields, editable, in a slide-over —
@@ -559,8 +565,8 @@ function renderNav() {
   // the same per-table figure the rows above show, summed; size arrives with
   // /api/health (one shared fetch — the instance chip drinks from it too).
   const entityTotal = state.schema.reduce((n, s) => n + s.tables.reduce((m, d) => m + (d.entityCount ?? 0), 0), 0);
-  const stats = el('div', { class: 'nav-stats', title: 'Entities in this workspace · storage on disk' },
-    `${entityTotal.toLocaleString()} ${entityTotal === 1 ? 'entity' : 'entities'}`);
+  const stats = el('div', { class: 'nav-stats', title: 'Records in this workspace · storage on disk' },
+    `${entityTotal.toLocaleString()} ${entityTotal === 1 ? 'record' : 'records'}`);
   // Pinned to the sidebar's bottom edge — a sibling AFTER #nav (which carries
   // flex:1), sticky so a long nav scrolls under it rather than pushing it away.
   document.querySelector('#sidebar .nav-stats')?.remove();
@@ -1664,7 +1670,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
         })));
         const before = current.map((sm) => sm.id);
         searchPicker({
-          anchor: btn, title: `${f.name}`, placeholder: 'Search records…',
+          anchor: btn, title: `${f.name}`, placeholder: `Search ${termOfTable(f.targetDbId).plural}…`,
           options,
           multi: {
             selected: current.map((sm) => ({ id: sm.id, label: sm.name || '(unnamed)' })),
@@ -1698,7 +1704,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     // `val` (item.fields) is the engine's display sentence — 'select · 3
     // options'; the definition itself rides in item.raw.
     const def = item.raw?.[f.name] ?? null;
-    const chip = el('span', { class: 'computed k k-computed', title: compact ? 'field definition — edit on the entity page' : 'field definition — click to edit' },
+    const chip = el('span', { class: 'computed k k-computed', title: compact ? `field definition — edit on the ${db?.term?.singular ?? 'record'} page` : 'field definition — click to edit' },
       el('span', { class: 'computed-mark' }, computedMark('field')),
       def == null ? '—' : String(val));
     if (compact) return chip;
@@ -1799,7 +1805,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     if (compact) {
       // Rendered here, not from the server's string: an instant reads in
       // this browser's zone, and the costume is the field's own.
-      return el('span', { class: 'k k-range' + (cur ? '' : ' is-empty'), title: 'date range — edit on the entity page' },
+      return el('span', { class: 'k k-range' + (cur ? '' : ' is-empty'), title: `date range — edit on the ${db?.term?.singular ?? 'record'} page` },
         cur ? weaveDateCore.formatDateRange(range, { ...f, viewerZone: LOCAL_ZONE }) : '—');
     }
     const commit = () => {
@@ -2113,16 +2119,11 @@ function drawDatabase(db, items, trashCount = 0) {
           }, 'Save'),
         },
         'divider',
-        // What a row is called (Feature #40): "+ New invoice", not "entity".
+        // What a row is called (Feature #40) is Name-field config — the same
+        // dialog every other field opens, reached from here as a shortcut.
         {
-          label: `Record noun${db.noun ? ` (${db.noun})` : ''}…`,
-          run: () => modal(`What is one ${db.name} row?`, [
-            el('input', { name: 'noun', placeholder: 'e.g. invoice — empty clears', class: 'form-control full', value: db.noun ?? '' }),
-          ], async (fd) => {
-            await api('PATCH', `/tables/${db.id}`, { noun: String(fd.get('noun') ?? '') });
-            await loadSchema();
-            showDatabase(db.id, state.route.view);
-          }, 'Save'),
+          label: `Row term (${db.term.singular})…`,
+          run: () => editFieldDialog(db, db.fields.find((f) => f.name === 'Name')),
         },
         // System columns live behind the eye (Feature #114), not here.
         'divider',
@@ -2212,7 +2213,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
     })),
     ...(rowsSection ? [
       el('div', { class: 'eye-head' }, 'Rows'),
-      row(state.showDeleted.has(db.id), `Deleted entities${trashCount ? ` (${trashCount})` : ''}`, () => {
+      row(state.showDeleted.has(db.id), `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => {
         if (state.showDeleted.has(db.id)) state.showDeleted.delete(db.id); else state.showDeleted.add(db.id);
         document.querySelector('.chip-pop')?.remove();
         keepScroll(() => showDatabase(db.id, state.route.view));
@@ -2329,7 +2330,7 @@ function renderTable(main, db, items, onSaved) {
     // What did NOT land is the part worth saying. A bulk command that half
     // works and reports success is how a row goes missing quietly.
     if (failed.length) toast(`${verb}: ${failed.length} of ${ids.length} failed`, true);
-    else toast(`${verb} ${SEL().countLabel(ids.length)}`);
+    else toast(`${verb} ${SEL().countLabel(ids.length, db.term)}`);
     clearChosen();
     await onSaved?.();
   };
@@ -2358,7 +2359,7 @@ function renderTable(main, db, items, onSaved) {
       built: BUILT,
     });
     puck.replaceChildren(el('div', { class: 'sel-puck glass' },
-      el('span', { class: 'sel-count' }, L.countLabel(sel.size)),
+      el('span', { class: 'sel-count' }, L.countLabel(sel.size, db.term)),
       ...cmds.map((c) => [
         // Trash is past a hairline: it is the one command on the bar that
         // takes rows away, and it should not sit flush against Duplicate.
@@ -2425,7 +2426,7 @@ function renderTable(main, db, items, onSaved) {
           el('a', {
             class: 'open-link',
             href: registryHref(db, item) ?? `#/entity/${item.id}`,
-            title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : 'Open entity page',
+            title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular}`,
           }, `#${item.publicId} ↗`)),
         ...cols.map((c) => {
           const f = db.fields.find((x) => x.name === c);
@@ -2455,9 +2456,9 @@ function renderTable(main, db, items, onSaved) {
     tbody.append(el('tr', { class: 'add-entity-row' },
       el('td', { colspan: String(colCount) },
         el('button', {
-          class: 'add-entity-btn', type: 'button', title: 'Add an entity',
+          class: 'add-entity-btn', type: 'button', title: `New ${db.term.singular}`,
           onclick: () => state.inlineAdd?.(),
-        }, '+ New'))));
+        }, `+ New ${db.term.singular}`))));
 
     const table = el('table', {
       class: 'table table-sm table-vcenter card-table table-hover wv-grid',
@@ -3136,6 +3137,44 @@ function statePreview(st) {
       st.name || 'State'));
 }
 
+/* What one row is called (Feature #40) — Name-field config. The singular is
+   a datalist over the curated terms, so a click picks one and typing makes a
+   custom one; the plural derives until someone corrects it. Below, the three
+   surfaces that speak it, live.
+   ponytail: a grouped searchPicker (the icon picker's dialect) is the upgrade
+   if the flat datalist proves too long to scan. */
+function termSection(state, onChange) {
+  const T = WeaveTerm;
+  const list = el('datalist', { id: 'term-options' }, ...T.options().map((o) => el('option', { value: o.id }, o.group)));
+  const sing = el('input', { class: 'form-control term-singular', list: 'term-options', placeholder: T.DEFAULT.singular, autocomplete: 'off', spellcheck: 'false', value: state.term?.singular ?? '' });
+  const plur = el('input', { class: 'form-control term-plural', placeholder: T.DEFAULT.plural, spellcheck: 'false', value: state.term?.plural ?? '' });
+  let pluralTouched = !!(state.term?.plural && state.term.plural !== T.pluralize(state.term.singular));
+  const preview = el('div', { class: 'modal-note term-preview' });
+  const draw = () => {
+    const t = T.resolve({ term: state.term });
+    plur.placeholder = T.pluralize(sing.value.trim() || T.DEFAULT.singular);
+    preview.textContent = `“+ New ${t.singular}” · “${T.count(3, t)} selected” · “Deleted ${t.plural}”${t.set ? '' : ' — the default'}`;
+  };
+  sing.oninput = () => {
+    const s = sing.value.trim().toLowerCase();
+    if (!s) { state.term = null; if (!pluralTouched) plur.value = ''; }
+    else {
+      const plural = pluralTouched && plur.value.trim() ? plur.value.trim().toLowerCase() : T.pluralize(s);
+      state.term = { singular: s, plural };
+      if (!pluralTouched) plur.value = plural;
+    }
+    draw(); onChange();
+  };
+  plur.oninput = () => {
+    pluralTouched = !!plur.value.trim();
+    if (state.term) state.term.plural = plur.value.trim().toLowerCase() || T.pluralize(state.term.singular);
+    draw(); onChange();
+  };
+  draw();
+  return dsection('Rows in this table are…',
+    el('div', { class: 'term-row' }, sing, el('span', { class: 'term-sep' }, '/'), plur, list), preview);
+}
+
 /* Rows of {name, color} with a cycling color swatch — replaces the
    comma-separated string that couldn't hold a color and choked on commas. */
 function optionListEditor(state, onChange) {
@@ -3399,6 +3438,7 @@ function fieldDialog(db, existing, after) {
     if (f.type === 'key') { c.kind = f.kind ?? 'apikey'; c.keystore = f.keystore ?? 'local'; }
     if (f.type === 'lookup' || f.type === 'rollup') { c.relationField = f.via ?? ''; c.targetField = f.targetField ?? ''; c.aggregate = f.aggregate; }
     if (f.default !== undefined) c.default = f.default;
+    if (f.term) c.term = { ...f.term };
     return { type: f.type, config: c };
   };
   const state = isEdit ? fdc.stateFromDefinition(defFromFieldView(existing)) : fdc.blankState('text');
@@ -3474,6 +3514,8 @@ function fieldDialog(db, existing, after) {
       kids.push(...numberCostumeControls(state, drawCfg, changed, { label: 'Result format' }));
     } else {
       const t = state.type;
+      // The Name field carries the table's row term (Feature #40).
+      if (isEdit && existing.name === 'Name') kids.push(termSection(state, changed));
       if (t === 'select' || t === 'multiselect') {
         kids.push(dsection('Options', optionListEditor(state, changed)));
       } else if (t === 'workflow') {
@@ -3656,6 +3698,8 @@ function fieldDialog(db, existing, after) {
 function editPatchConfig(existing, def, state) {
   const c = def.config;
   const patch = {};
+  // The row term is a lane of its own on the Name field: null clears it.
+  if (existing.name === 'Name') patch.term = c.term ?? null;
   if (existing.type === 'number' || existing.type === 'formula') {
     for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting']) patch[k] = c[k] ?? null;
   }
@@ -3905,7 +3949,7 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
     g.append(svgEl('text', { x: n.x, y: y + 24, 'text-anchor': 'middle', class: 'node-title' }, n.name));
     // Inside its own space box the space name is redundant; a guest names it.
     g.append(svgEl('text', { x: n.x, y: y + 43, 'text-anchor': 'middle', class: 'node-sub' },
-      n.foreign ? `${n.space} • ${n.entityCount} entities` : `${n.entityCount} entities`));
+      n.foreign ? `${n.space} • ${WeaveTerm.count(n.entityCount, n.term)}` : WeaveTerm.count(n.entityCount, n.term)));
     svg.append(g);
 
     (autosByTable.get(n.id) ?? []).forEach((a, i) => {
@@ -4471,7 +4515,7 @@ document.addEventListener('selectionchange', () => {
    surface uses; the doc then links what was stored — an image embeds, any
    other type gets a plain link. Returning a string is Vditor's error tip. */
 async function uploadDocFiles(files, entityId, getEditor, onInput) {
-  if (!entityId) return 'This document has no entity to attach to';
+  if (!entityId) return 'This document has no record to attach to';
   const editor = getEditor();
   for (const f of files) {
     const contentBase64 = await new Promise((res, rej) => {
@@ -5112,7 +5156,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         } catch (err) { toast(err.message, true); }
       },
     },
-  ], { title: 'Entity actions', align: 'right' });
+  ], { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions`, align: 'right' });
 
   /* Crumb row, then a title row that ends in the ⋮ — the same two-row shape
      viewHeader() builds for tables, boards, lists and spaces, so the menu is
@@ -5524,7 +5568,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
 /* ---------- create & schema dialogs ---------- */
 
 function quickCreate(db) {
-  modal(`New ${db.noun ?? db.name}`, [
+  modal(`New ${db.term.singular}`, [
     el('input', { name: 'name', placeholder: 'Name', class: 'form-control full', style: 'width:100%' }),
   ], async (fd) => {
     const e = await api('POST', `/tables/${db.id}/entities`, { name: fd.get('name') });
@@ -5661,14 +5705,14 @@ async function relatedGrid(entity, f, onSaved) {
               await link([made.id]);
             } catch (err) { toast(err.message, true); }
           },
-        }, `+ New ${target.name}`),
+        }, `+ New ${target.term.singular}`),
         el('button', {
           class: 'add-entity-btn', type: 'button',
           onclick: async (e2) => {
             const list = await api('POST', `/tables/${target.id}/query`, { select: ['Name'] });
             const before = linked.map((sm) => sm.id);
             searchPicker({
-              anchor: e2?.currentTarget ?? null, title: `${f.name}`, placeholder: 'Search records…',
+              anchor: e2?.currentTarget ?? null, title: `${f.name}`, placeholder: `Search ${target.term.plural}…`,
               options: list.items.map((o) => ({ id: o.id, label: o.name || '(unnamed)', hint: `#${o.publicId}` })),
               multi: {
                 selected: linked.map((sm) => ({ id: sm.id, label: sm.name || '(unnamed)' })),
