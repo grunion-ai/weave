@@ -89,6 +89,26 @@ Quality space mirroring the test suite.
 If weave replaces a SaaS seat for you, star the repo. Stars are how the agent
 scouts and the directories find it.
 
+## Connect your agent
+
+One config block, any stdio MCP client (Claude Code, Claude Desktop, Codex CLI,
+Cursor, Gemini CLI, Windsurf, OpenCode):
+
+```json
+{ "mcpServers": { "weave": { "command": "node",
+  "args": ["/path/to/weave/bin/weave.js", "mcp", "--data", "/path/to/my-workspace.db"] } } }
+```
+
+Or add it to Claude Code in one line:
+
+```bash
+claude mcp add weave -- node /path/to/weave/bin/weave.js mcp --data /path/to/my-workspace.db
+```
+
+Forty-five tools, the same undo the UI has, and `weave_vocabulary` so an agent
+reads the allowed values instead of guessing. Full map:
+[Agents: MCP, REST, and CLI](#agents-mcp-rest-and-cli).
+
 ## Screenshots
 
 | Board view | Documents on every row |
