@@ -338,7 +338,7 @@ if (!chromium) {
         .map((v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim())
         .filter(Boolean);
       const drawn = [...document.querySelectorAll('.wv-icon svg, .ico svg')]
-        .map((s) => `${Math.round(s.getBoundingClientRect().width)}px`);
+        .map((s) => `${Math.round(parseFloat(getComputedStyle(s).width))}px`);
       return { scale, drawn };
     });
     assert.equal(sizes.scale.length, 3, 'the scale must be declared as custom properties');
