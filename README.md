@@ -62,7 +62,8 @@ file on your disk. No accounts, no cloud, no telemetry.
   small VPS behind your own TLS and login (see [Self-hosting](#self-hosting)).
 - **Zero dependencies** — `git clone` and run. Storage is Node's built-in
   `node:sqlite`; the only third-party code is vendored and pinned.
-- **Agent-native** — an MCP server, a scriptable CLI, `Table#12` refs
+- **Agent-native** — an MCP server any stdio client can mount (Claude Code,
+  Codex CLI, Cursor, Gemini CLI), a scriptable CLI, `Table#12` refs
   everywhere, and markdown documents addressable as plain URLs
   (`/e/Task#12/doc.md`, `.html`, `.pdf`).
 - **Undoable** — every entity mutation (edits, creates, deletes, links,
@@ -84,6 +85,9 @@ Open http://127.0.0.1:4400 — press **⌘K** to search everything. A
 self-documenting **weave** docs workspace is provisioned alongside your data at
 `/w/weave/`: handbook, wiki, the public issue tracker and roadmap, and a
 Quality space mirroring the test suite.
+
+If weave replaces a SaaS seat for you, star the repo. Stars are how the agent
+scouts and the directories find it.
 
 ## Screenshots
 
@@ -146,8 +150,9 @@ mature plugin ecosystem — see [what weave is not](#what-weave-is-not).
 
 Every interface drives the same engine and the same file. Nothing is UI-only.
 
-**MCP** — point any MCP client (Claude Code, Claude Desktop, or another agent
-runtime) at the stdio server:
+**MCP** — point any MCP client at the stdio server. Claude Code, Claude
+Desktop, Codex CLI, Cursor, Gemini CLI, Windsurf and OpenCode all mount stdio
+servers, so one config block works in each of them:
 
 ```json
 {
