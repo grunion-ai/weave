@@ -7,7 +7,7 @@ The **weave** workspace (`/w/weave/` on the running app; `weave.db` beside the d
 **No work step happens without first checking — and afterwards updating — the weave workspace's self-referencing records:**
 
 1. **Before starting** any feature, fix, or refactor: query its `Development/Issue` and `Development/Feature` tables for existing records; check relevant `Handbook/Guide` + `Wiki/Article` entries for documented behavior you might contradict.
-2. **After landing** a change: mark/create the `Feature` (with Milestone) as Shipped or the `Issue` as Fixed; update any Guide/Article whose content the change touches; when test suites change, update `Quality/Suite` + `Quality/Case` rows (suite per test file, case per test, rollup counts must match `node --test` reality).
+2. **After landing** a change: mark/create the `Feature` (with Milestone) as Shipped or the `Issue` as Fixed; update any Guide/Article whose content the change touches; the `Quality/Suite` + `Quality/Case` mirror is GENERATED from the test files (src/quality-mirror.js) — never edit it by hand; the main watcher re-syncs the live workspace after every landing, and `node bin/weave.js quality sync --data <weave.db>` does it on demand (`quality check` reports drift).
 3. Bugs found along the way get logged as `Issue` rows (Severity set) even if fixed immediately.
 4. Issue and Feature rows are **enriched by default**: every provided material (screenshots, files, snippets, logs) is embedded as a **copy** — attachments via the files API, full text inline in the Description — never a relative path or external reference. Screenshots pasted in chat get saved and attached at record-creation time.
 

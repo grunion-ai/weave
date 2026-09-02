@@ -1,3 +1,6 @@
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { scanSuites, syncQualityMirror } from './quality-mirror.js';
 import { SYMPTOM_FIELD, SYMPTOM_OPTIONS } from './bugreport.js';
 // The "weaver" workspace: Weave's canonical, self-referential documentation,
 // how-to, wiki, test-suite mirror, and public issue/roadmap tracker — stored
@@ -210,21 +213,12 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
   w.addField(suites, { name: 'Case Count', type: 'rollup', config: { relationField: 'Cases', aggregate: 'count' } });
   w.addField(suites, { name: 'File', type: 'text' });
 
-  const suiteData = [
-    ['Engine', 'test/engine.test.mjs', ['spaces and tables', 'entity CRUD + public ids', 'value validation', 'workflow transitions', 'many-to-one bidirectional', 'many-to-many', 'lookup + rollup', 'formula fields', 'query filters/sort/paths', 'documents', 'comments + activity', 'automations', 'search', 'field deletion cascades', 'CSV + schema', 'persistence', 'import/export']],
-    ['Formula', 'test/formula.test.mjs', ['precedence', 'field refs', 'concat', 'logic', 'functions', 'errors']],
-    ['Markdown', 'test/markdown.test.mjs', ['headings', 'links/images', 'code blocks', 'nested lists', 'ordered lists', 'quotes + hr', 'tables', 'mentions', 'escaping', 'blocks', 'document page']],
-    ['PDF', 'test/pdf.test.mjs', ['strip inline', 'valid structure + xref', 'pagination', 'empty doc']],
-    ['Server', 'test/server.test.mjs', ['health + schema', 'entity lifecycle', 'query', 'doc MD/HTML/PDF', 'comments/search/csv/automations', 'errors', 'export/import']],
-    ['CLI', 'test/cli.test.mjs', ['end-to-end flow']],
-    ['MCP', 'test/mcp.test.mjs', ['handshake + tools', 'full workflow', 'unknown method', 'relations + rollups']],
-    ['Docs & search', 'test/docs-and-search.test.mjs', ['default Description', 'multiple documents', 'v1 migration', 'universal permalinks', 'automation describe', 'named-field automations', 'HTTP per-field docs']],
-    ['Extras', 'test/extras.test.mjs', ['CSV parse', 'CSV import', 'CSV roundtrip', 'file attach', 'HTTP files/import', 'webhooks']],
-  ];
-  for (const [name, file, caseNames] of suiteData) {
-    w.createEntity(suites, { name, values: { File: file } });
-    for (const c of caseNames) w.createEntity(cases, { name: c, values: { Suite: name } });
-  }
+  /* The mirror is DERIVED, never hand-kept (the old static list here had 9
+     suites and invented case names). One scan + one sync, shared with the
+     main watcher that keeps the live docs workspace current. In a packaged
+     install without a test/ tree the scan is empty and Quality stays a
+     schema, which is honest. */
+  syncQualityMirror(w, scanSuites(join(dirname(fileURLToPath(import.meta.url)), '..')));
 
   // ---------- Development: public issues + roadmap ----------
   w.createSpace({ name: 'Development', description: 'Open issues and the roadmap, maintained as Weave is built' });
