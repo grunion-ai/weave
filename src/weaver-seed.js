@@ -7,7 +7,7 @@ import { SYMPTOM_FIELD, SYMPTOM_OPTIONS } from './bugreport.js';
 // in Weave itself (like the.fibery.io), not an off-the-shelf docs engine.
 
 import { DEFINABLE_TYPES } from './engine.js';
-import { applyHandbook, applyFormattingShowcase } from './handbook.js';
+import { applyHandbook, applyFormattingShowcase, applyIconShowcase } from './handbook.js';
 export { DEFINABLE_TYPES };
 
 /* ---------- Showcase ----------
@@ -295,6 +295,7 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
   // existed up to date — see src/handbook.js.
   applyHandbook(w);
   applyFormattingShowcase(w);
+  applyIconShowcase(w);
   w.save();
   return w;
 }
