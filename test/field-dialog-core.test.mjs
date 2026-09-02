@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+await import('../public/date-grain.js');
 await import('../public/field-dialog-core.js');
 const core = globalThis.fieldDialogCore;
 
@@ -442,4 +443,84 @@ test('formulaFieldToken quotes exactly what the grammar cannot take bare', () =>
   assert.equal(t('or'), '[or]', 'keywords never go bare');
   assert.equal(t('True'), '[True]');
   assert.equal(t('min'), '[min]', 'a function name would parse as a call');
+});
+
+/* ---------- grain and costume (2026-09-02) ----------
+   The tray offers the parts a date field captures (year · month · day, a
+   time), and lists only the styles the chosen grain can wear. The state is
+   the dialog's shape; the definition is the engine's minimal config. */
+test('DATE_FORMATS is the engine\'s nine styles; NUMBER_FORMATS gained compact', () => {
+  assert.deepEqual(core.DATE_FORMATS, ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative']);
+  assert.deepEqual(core.NUMBER_FORMATS, ['number', 'currency', 'percent', 'compact']);
+  assert.deepEqual(core.CLOCKS, ['24h', '12h']);
+  assert.deepEqual(core.ZONES, ['floating', 'fixed', 'instant']);
+});
+
+test('date state → config: a full grain and a 24h floating clock say nothing; everything else is named', () => {
+  const full = core.definitionFromState({ type: 'date', date: { grain: { year: true, month: true, day: true }, format: 'iso', time: false, clock: '24h', zone: 'floating', pad: false } });
+  assert.deepEqual(full.config, {});
+  const expiry = core.definitionFromState({ type: 'date', date: { grain: { year: true, month: true, day: false }, format: 'us', pad: true, time: false } });
+  assert.deepEqual(expiry.config, { grain: ['year', 'month'], format: 'us', pad: true });
+  const rent = core.definitionFromState({ type: 'date', date: { grain: { year: false, month: false, day: true }, format: 'ordinal', time: false } });
+  assert.deepEqual(rent.config, { grain: ['day'], format: 'ordinal' });
+  const opening = core.definitionFromState({ type: 'date', date: { grain: { year: false, month: false, day: false }, format: 'iso', time: true, clock: '12h', zone: 'fixed', zoneName: 'America/Los_Angeles' } });
+  assert.deepEqual(opening.config, { grain: [], time: true, clock: '12h', zone: 'fixed', zoneName: 'America/Los_Angeles' });
+  const meeting = core.definitionFromState({ type: 'date', date: { grain: { year: true, month: true, day: true }, format: 'long', time: true, clock: '12h', zone: 'instant' } });
+  assert.deepEqual(meeting.config, { format: 'long', time: true, clock: '12h', zone: 'instant' });
+  const hours = core.definitionFromState({ type: 'daterange', date: { grain: { year: false, month: false, day: false }, time: true, elapsed: true } });
+  assert.deepEqual(hours.config, { grain: [], time: true, elapsed: true });
+  const noElapsed = core.definitionFromState({ type: 'date', date: { grain: { year: true, month: true, day: true }, time: true, elapsed: true } });
+  assert.equal(noElapsed.config.elapsed, undefined, 'elapsed belongs to a range');
+});
+
+test('config → date state round-trips, and a config with no grain reads as the full grain', () => {
+  const s = core.stateFromDefinition({ type: 'date', config: { grain: ['month', 'day'], format: 'long', time: true, clock: '12h', zone: 'instant', pad: true } });
+  assert.deepEqual(s.date.grain, { year: false, month: true, day: true });
+  assert.equal(s.date.format, 'long');
+  assert.equal(s.date.time, true);
+  assert.equal(s.date.clock, '12h');
+  assert.equal(s.date.zone, 'instant');
+  assert.equal(s.date.pad, true);
+  const plain = core.stateFromDefinition({ type: 'date', config: {} });
+  assert.deepEqual(plain.date.grain, { year: true, month: true, day: true });
+  assert.equal(plain.date.clock, '24h');
+  assert.equal(plain.date.zone, 'floating');
+  const t = core.stateFromDefinition({ type: 'daterange', config: { grain: [], time: true, elapsed: true } });
+  assert.deepEqual(t.date.grain, { year: false, month: false, day: false });
+  assert.equal(t.date.elapsed, true);
+  for (const def of [
+    { type: 'date', config: { grain: ['year', 'month'], format: 'quarter' } },
+    { type: 'date', config: { grain: [], time: true, clock: '12h' } },
+    { type: 'daterange', config: { time: true, elapsed: true, zone: 'fixed', zoneName: 'Europe/Berlin' } },
+  ]) {
+    assert.deepEqual(core.definitionFromState(core.stateFromDefinition(def)), def, JSON.stringify(def));
+  }
+});
+
+test('legalFormats and parseDefinition mirror the engine: a style needing a missing part is refused with the part named', () => {
+  assert.deepEqual(core.legalFormats({ year: false, month: false, day: true }), ['iso', 'us', 'eu', 'long', 'short', 'ordinal']);
+  assert.deepEqual(core.legalFormats({ year: true, month: true, day: false }), ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'relative']);
+  assert.deepEqual(core.legalFormats({ year: false, month: false, day: false }), []);
+  assert.match(core.parseDefinition('{ "type": "date", "config": { "grain": ["day"], "format": "quarter" } }').error, /month/);
+  assert.match(core.parseDefinition('{ "type": "date", "config": { "grain": ["month", "day"], "format": "relative" } }').error, /year/);
+  assert.match(core.parseDefinition('{ "type": "date", "config": { "grain": ["year", "day"] } }').error, /grain/i);
+  assert.match(core.parseDefinition('{ "type": "date", "config": { "grain": [] } }').error, /time/i);
+  assert.match(core.parseDefinition('{ "type": "date", "config": { "time": true, "clock": "10h" } }').error, /clock/i);
+  assert.match(core.parseDefinition('{ "type": "date", "config": { "time": true, "zone": "fixed" } }').error, /zoneName/i);
+  assert.match(core.parseDefinition('{ "type": "date", "config": { "zone": "instant" } }').error, /time/i);
+  assert.match(core.parseDefinition('{ "type": "number", "config": { "accounting": true } }').error, /accounting/i);
+  assert.match(core.parseDefinition('{ "type": "number", "config": { "format": "compact", "separator": true } }').error, /separator/i);
+  assert.equal(core.parseDefinition('{ "type": "date", "config": { "grain": ["year", "month"], "format": "us", "pad": true } }').error, undefined);
+});
+
+test('number state carries accounting and the compact format', () => {
+  const acc = core.definitionFromState({ type: 'number', number: { format: 'currency', currency: 'USD', accounting: true, decimals: null, separator: false } });
+  assert.deepEqual(acc.config, { format: 'currency', currency: 'USD', accounting: true });
+  const plainAcc = core.definitionFromState({ type: 'number', number: { format: 'number', accounting: true, decimals: null, separator: false } });
+  assert.equal(plainAcc.config.accounting, undefined, 'accounting only rides a currency');
+  const compact = core.definitionFromState({ type: 'number', number: { format: 'compact', currency: 'EUR', separator: true, decimals: 0 } });
+  assert.deepEqual(compact.config, { format: 'compact', currency: 'EUR', decimals: 0 }, 'compact keeps its currency and drops the separator');
+  const s = core.stateFromDefinition({ type: 'number', config: { format: 'currency', currency: 'USD', accounting: true } });
+  assert.equal(s.number.accounting, true);
+  assert.deepEqual(core.definitionFromState(s).config, { format: 'currency', currency: 'USD', accounting: true });
 });

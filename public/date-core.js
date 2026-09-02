@@ -9,35 +9,22 @@
   const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   const pad = (n) => String(n).padStart(2, '0');
 
-  /* Same rule as the engine: format the stored wall-clock parts, never the
-     local zone's reading of them. */
-  function formatDate(iso, { format = 'iso', time = false } = {}) {
-    if (!iso) return '';
-    const [datePart, timePart] = String(iso).split('T');
-    const [y, mo, day] = datePart.split('-').map(Number);
-    if (!y || !mo || !day) return String(iso);
-    const dateText = format === 'us' ? `${mo}/${day}/${y}`
-      : format === 'eu' ? `${day}.${mo}.${y}`
-      : format === 'long' ? `${MONTHS[mo - 1]} ${day}, ${y}`
-      : datePart;
-    const timeText = time && timePart ? ' ' + timePart.slice(0, 5) : '';
-    return dateText + timeText;
-  }
-
-  /* A range wears the same costume at both ends (Issue #91). A long range
-     inside one year says the year once — 'Aug 1 \u2013 Sep 15, 2026' — which only
-     reads well without a time of day, so the collapse stops there. */
-  function formatDateRange(value, { format = 'iso', time = false } = {}) {
-    if (!value) return '';
-    const { start, end } = value;
-    if (!start && !end) return '';
-    const opts = { format, time };
-    if (format === 'long' && !time && start && end && String(start).slice(0, 4) === String(end).slice(0, 4)) {
-      return `${formatDate(start, opts).replace(`, ${String(start).slice(0, 4)}`, '')} \u2013 ${formatDate(end, opts)}`;
-    }
-    return `${start ? formatDate(start, opts) : ''} \u2013 ${end ? formatDate(end, opts) : ''}`.trim();
-  }
-
+  /* The costume moved to date-grain.js (2026-09-02) so the engine and the
+     browser read ONE rule; these two keep their names for every caller.
+     Same rule as ever: format the stored wall-clock parts, never the local
+     zone's reading of them — and now, only the parts the grain stored. */
+  const DG = () => root.weaveDateGrain;
+  const formatDate = (iso, opts = {}) => DG().formatDate(iso, opts);
+  const formatDateRange = (value, opts = {}) => DG().formatDateRange(value, opts);
+  const legalFormats = (grain) => DG().legalFormats(grain);
+  const toInstant = (localIso, zone) => DG().toInstant(localIso, zone);
+  const fromInstant = (utcIso, zone) => DG().fromInstant(utcIso, zone);
+  const partsOf = (value) => DG().partsOf(value);
+  const storeOf = (grain, parts, time) => DG().storeOf(grain, parts, time);
+  const coerce = (config, raw) => DG().coerce(config, raw);
+  const DATE_FORMATS = ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative'];
+  const CLOCKS = ['24h', '12h'];
+  const ZONES = ['floating', 'fixed', 'instant'];
   const isoOf = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
   const daysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 
@@ -87,5 +74,6 @@
   root.weaveDateCore = {
     MONTHS, MONTHS_LONG, WEEKDAYS, DYNAMIC_DATE_DEFAULTS,
     formatDate, formatDateRange, calendarMonth, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
+    legalFormats, toInstant, fromInstant, partsOf, storeOf, coerce, DATE_FORMATS, CLOCKS, ZONES,
   };
 })(globalThis);

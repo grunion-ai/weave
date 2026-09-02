@@ -13,9 +13,9 @@
    grid sees, which is the thing an agent cannot look at. */
 export const FIELD_TYPE_VOCABULARY = [
   { type: 'text', renders: 'inline text input', config: ['default'] },
-  { type: 'number', renders: 'right-aligned, tabular figures', config: ['format', 'unit', 'currency', 'decimals', 'separator', 'default'] },
-  { type: 'date', renders: 'inline date input with a picker button', config: ['format', 'time', 'default'] },
-  { type: 'daterange', renders: 'a pair of date inputs', config: ['format', 'default'] },
+  { type: 'number', renders: 'right-aligned, tabular figures', config: ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'default'] },
+  { type: 'date', renders: 'inline date input with a picker button — a calendar, or a month/year, month/day, year or day-of-month picker when the grain stores less', config: ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'default'] },
+  { type: 'daterange', renders: 'a pair of date inputs, both wearing the grain and costume; an elapsed span when asked', config: ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'default'] },
   { type: 'checkbox', renders: 'a checkbox', config: ['default'] },
   { type: 'url', renders: 'inline input, opens in a new tab', config: ['default'] },
   { type: 'email', renders: 'inline input, opens a mail client', config: ['default'] },
@@ -25,7 +25,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'relation', renders: 'chips carrying the target\'s name, each with ×, plus "+ link"', config: ['targetDb', 'targetDbs', 'cardinality', 'inverseName'], verb: 'add_relation' },
   { type: 'lookup', renders: 'read-only cell on a tinted background, marked ↗', config: ['relationField', 'targetField'] },
   { type: 'rollup', renders: 'read-only cell on a tinted background, marked Σ', config: ['relationField', 'targetField', 'aggregate'] },
-  { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator'] },
+  { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting'] },
   { type: 'document', renders: 'every document field is a column of its own: the description previews its first lines; any other renders as a named chip wearing its kind', config: ['kind'] },
   { type: 'attachments', renders: 'file chips', config: ['multiple'] },
   { type: 'field', renders: 'a field definition as a value — what the Fields registry\'s Definition is', config: ['types', 'depth'] },
@@ -83,8 +83,20 @@ export const VOCABULARY = {
     fallback: 'Any other string renders as text, so an emoji ("📦") is a legal icon too.',
     names: ICONS,
   },
-  numberFormats: ['number', 'currency', 'percent'],
-  dateFormats: ['iso', 'us', 'eu', 'long'],
+  numberFormats: ['number', 'currency', 'percent', 'compact'],
+  dateFormats: ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative'],
+  /* A date's grain is which of year · month · day it stores — any contiguous
+     run (year, year·month, month·day, month, day) or none at all with a time
+     of day. A style that needs a part the grain does not store is refused:
+     month and quarter need a month, ordinal a day, relative a year. Stored
+     forms are ISO 8601 truncations: 2026-08, 2026, --08-15, --08, ---15, 09:15. */
+  dateGrains: ['year', 'month', 'day'],
+  dateStyleNeeds: { month: ['month'], quarter: ['month'], ordinal: ['day'], relative: ['year'] },
+  clocks: ['24h', '12h'],
+  // What a clock time means: floating (the wall clock as typed, no zone —
+  // the default), fixed (zoneName travels with the field), instant (stored
+  // as UTC, read in the reader's own zone).
+  zones: ['floating', 'fixed', 'instant'],
   documentKinds: ['markdown', 'html', 'code'],
   cardinalities: ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'],
   stateCategories: ['not-started', 'in-progress', 'done', 'canceled'],

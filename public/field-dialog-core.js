@@ -214,14 +214,21 @@
   }
 
   const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
-  const NUMBER_FORMATS = ['number', 'currency', 'percent'];
+  const NUMBER_FORMATS = ['number', 'currency', 'percent', 'compact'];
   // ISO 4217 codes offered in the picker (any valid code types in too).
   const CURRENCIES = [
     ['USD', 'US dollar'], ['EUR', 'Euro'], ['MXN', 'Mexican peso'], ['CNY', 'Chinese yuan'], ['JPY', 'Japanese yen'],
     ['RUB', 'Russian ruble'], ['CAD', 'Canadian dollar'], ['GBP', 'British pound'], ['AUD', 'Australian dollar'], ['CHF', 'Swiss franc'],
     ['INR', 'Indian rupee'], ['BRL', 'Brazilian real'], ['SGD', 'Singapore dollar'], ['HKD', 'Hong Kong dollar'], ['SEK', 'Swedish krona'],
   ].map(([id, name]) => ({ id, label: `${id} — ${name}` }));
-  const DATE_FORMATS = ['iso', 'us', 'eu', 'long'];
+  // Mirrors date-grain.js (contract-tested): the styles, and the two axes a
+  // time of day adds. A style needing a part the grain does not store is not
+  // offered — legalFormats() is the list the tray draws.
+  const DATE_FORMATS = ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative'];
+  const CLOCKS = ['24h', '12h'];
+  const ZONES = ['floating', 'fixed', 'instant'];
+  const DG = () => root.weaveDateGrain;
+  const legalFormats = (grain) => DG().legalFormats(grain);
   const DOCUMENT_KINDS = ['markdown', 'html', 'code'];
   // Mirrors the engine's CREDENTIAL_KINDS / KEYSTORES (contract-tested).
   const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
@@ -238,8 +245,8 @@
     expression: '',
     options: [],              // [{name, color}]
     states: [],               // [{name, category, default}]
-    number: { format: 'number', unit: '', currency: 'USD', decimals: null, separator: false },
-    date: { format: 'iso', time: false },
+    number: { format: 'number', unit: '', currency: 'USD', decimals: null, separator: false, accounting: false },
+    date: { grain: { year: true, month: true, day: true }, format: 'iso', time: false, clock: '24h', zone: 'floating', zoneName: '', pad: false, elapsed: false },
     depth: 1,
     multiple: true,           // attachments: one file or many
     kind: 'markdown',         // document: markdown | html | code
@@ -267,14 +274,36 @@
   function numberCostume(n = {}) {
     const config = {};
     if (n.format && n.format !== 'number') config.format = n.format;
-    if (n.format === 'currency') {
+    if (n.format === 'currency' || n.format === 'compact') {
       if (n.currency && String(n.currency).trim()) config.currency = String(n.currency).trim().toUpperCase();
     } else if (n.unit && String(n.unit).trim()) config.unit = String(n.unit).trim();
     if (n.decimals != null && n.decimals !== '') config.decimals = Number(n.decimals);
-    if (n.separator) config.separator = true;
+    // Compact groups on its own; accounting is a currency convention.
+    if (n.separator && n.format !== 'compact') config.separator = true;
+    if (n.accounting && n.format === 'currency') config.accounting = true;
     return config;
   }
 
+  /* The date grain + costume, canonical-minimal like the engine stores it:
+     the full grain, a 24h floating clock and iso all say nothing. */
+  function dateCostume(d = {}, type = 'date') {
+    const config = {};
+    const g = d.grain ?? { year: true, month: true, day: true };
+    const parts = ['year', 'month', 'day'].filter((p) => g[p]);
+    if (parts.length < 3) config.grain = parts;
+    if (d.format && d.format !== 'iso') config.format = d.format;
+    if (d.pad && ['us', 'eu'].includes(d.format)) config.pad = true;
+    if (d.time) {
+      config.time = true;
+      if (d.clock && d.clock !== '24h') config.clock = d.clock;
+      if (d.zone && d.zone !== 'floating') {
+        config.zone = d.zone;
+        if (d.zone === 'fixed' && d.zoneName) config.zoneName = d.zoneName;
+      }
+      if (d.elapsed && type === 'daterange') config.elapsed = true;
+    }
+    return config;
+  }
   function definitionFromState(state) {
     if (state.computed === 'formula') {
       return { type: 'formula', config: { expression: state.expression ?? '', ...numberCostume(state.number) } };
@@ -289,10 +318,8 @@
       config.states = (state.states ?? []).map((s) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}) }));
     } else if (t === 'number') {
       Object.assign(config, numberCostume(state.number));
-    } else if (t === 'date') {
-      const d = state.date ?? {};
-      if (d.format && d.format !== 'iso') config.format = d.format;
-      if (d.time) config.time = true;
+    } else if (t === 'date' || t === 'daterange') {
+      Object.assign(config, dateCostume(state.date, t));
     } else if (t === 'field') {
       config.depth = state.depth ?? 1;
     } else if (t === 'attachments') {
@@ -349,9 +376,14 @@
         ? { name: s, category: 'in-progress', default: false }
         : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}) }));
     } else if (def.type === 'number') {
-      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator };
-    } else if (def.type === 'date') {
-      state.date = { format: c.format ?? 'iso', time: !!c.time };
+      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting };
+    } else if (def.type === 'date' || def.type === 'daterange') {
+      const parts = c.grain ?? ['year', 'month', 'day'];
+      state.date = {
+        grain: { year: parts.includes('year'), month: parts.includes('month'), day: parts.includes('day') },
+        format: c.format ?? 'iso', time: !!c.time, clock: c.clock ?? '24h', zone: c.zone ?? 'floating',
+        zoneName: c.zoneName ?? '', pad: !!c.pad, elapsed: !!c.elapsed,
+      };
     } else if (def.type === 'field') {
       state.depth = c.depth ?? 1;
     } else if (def.type === 'attachments') {
@@ -393,9 +425,23 @@
     if (def.type === 'number') {
       if (c.format != null && !NUMBER_FORMATS.includes(c.format)) return fail(`Invalid number format '${c.format}' (${NUMBER_FORMATS.join(', ')})`);
       if (c.decimals != null && (!Number.isInteger(c.decimals) || c.decimals < 0 || c.decimals > 6)) return fail(`Decimals must be 0..6, got '${c.decimals}'`);
+      if (c.format === 'compact' && c.separator) return fail('Compact groups on its own; a separator has nothing to add');
+      if (c.accounting && c.format !== 'currency') return fail('Accounting negatives need format currency');
     }
-    if (def.type === 'date' && c.format != null && !DATE_FORMATS.includes(c.format)) {
-      return fail(`Invalid date format '${c.format}' (${DATE_FORMATS.join(', ')})`);
+    if (def.type === 'date' || def.type === 'daterange') {
+      let grain;
+      try { grain = DG().normalizeGrain(c.grain); } catch (e) { return fail(e.message); }
+      const parts = grain ?? ['year', 'month', 'day'];
+      if (!parts.length && !c.time) return fail('A grain with no date parts must keep a time of day');
+      if (c.format != null) { const problem = DG().formatProblem(parts, c.format); if (problem) return fail(problem); }
+      if (c.clock != null && !CLOCKS.includes(c.clock)) return fail(`Invalid clock '${c.clock}' (${CLOCKS.join(', ')})`);
+      if (c.clock != null && !c.time) return fail('A clock needs a time of day');
+      if (c.zone != null && !ZONES.includes(c.zone)) return fail(`Invalid zone '${c.zone}' (${ZONES.join(', ')})`);
+      if (c.zone != null && !c.time) return fail('A zone needs a time of day');
+      if (c.zone === 'fixed' && !c.zoneName) return fail('A fixed zone needs a zoneName (an IANA name: America/Los_Angeles, Europe/Berlin…)');
+      if (c.zone === 'fixed' && c.zoneName && !DG().isZone(c.zoneName)) return fail(`'${c.zoneName}' is not a time zone`);
+      if (c.elapsed && def.type !== 'daterange') return fail('elapsed belongs to a range');
+      if (c.elapsed && !c.time) return fail('elapsed needs a time of day at both ends');
     }
     if (def.type === 'field') {
       const depth = c.depth ?? 1;
@@ -443,7 +489,7 @@
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
-    NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
+    NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES,
     blankState, definitionFromState, stateFromDefinition,
     serializeDefinition, parseDefinition,

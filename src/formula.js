@@ -59,9 +59,11 @@ const FUNCS = {
     if (!per) throw new Error(`Unknown date unit '${unit}'`);
     return Math.round(ms / per);
   },
-  year: (d) => (d ? new Date(d).getUTCFullYear() : null),
-  month: (d) => (d ? new Date(d).getUTCMonth() + 1 : null),
-  day: (d) => (d ? new Date(d).getUTCDate() : null),
+  // A partial date (2026-08, --08-15, ---15) holds only some parts; read
+  // those, and fall back to Date for anything else Date.parse understands.
+  year: (d) => { const p = d && globalThis.weaveDateGrain?.partsOf(d); return p ? p.y : d ? new Date(d).getUTCFullYear() : null; },
+  month: (d) => { const p = d && globalThis.weaveDateGrain?.partsOf(d); return p ? p.m : d ? new Date(d).getUTCMonth() + 1 : null; },
+  day: (d) => { const p = d && globalThis.weaveDateGrain?.partsOf(d); return p ? p.d : d ? new Date(d).getUTCDate() : null; },
   number: (x) => Number(x),
   text: (x) => (x == null ? '' : String(x)),
 };

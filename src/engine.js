@@ -1,3 +1,4 @@
+import '../public/date-grain.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
@@ -65,7 +66,10 @@ export const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
    rules, which is the whole reason weave never has to become one. */
 export const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
 const DEFAULT_PAIR_PARTS = [{ name: 'id', secret: false }, { name: 'secret', secret: true }];
-const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator'];
+const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting'];
+/* Grain and costume keys of a date (Feature #164) — the rules live in public/date-grain.js. */
+const DATE_COSTUME_KEYS = ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed'];
+const DG = globalThis.weaveDateGrain;
 const DEFAULTABLE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 /* What a document edit actually did, in the terms a reader of the feed needs:
@@ -328,11 +332,17 @@ function dressNumber(c, value) {
   if (c.format == null && c.unit == null && c.currency == null && c.decimals == null && !c.separator) return value;
   const n = Number(value);
   if (!Number.isFinite(n)) return value;
+  if (c.format === 'compact') {
+    // 1.2M / 4.8K — a figure that would outgrow its column; composes with a currency.
+    const o = { notation: 'compact', maximumFractionDigits: c.decimals ?? 1 };
+    if (c.currency) { o.style = 'currency'; o.currency = c.currency; }
+    try { return new Intl.NumberFormat('en-US', o).format(n); } catch { /* fall through to the plain figure */ }
+  }
   if (c.format === 'currency') {
     const currency = c.currency ?? 'USD';
     const digits = c.decimals ?? 2;
     try {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits, ...(c.accounting ? { currencySign: 'accounting' } : {}) }).format(n);
     } catch { return `${currency} ${n.toFixed(digits)}`; }
   }
   // Percent follows the spreadsheet convention (Issue #127): the stored
@@ -354,32 +364,14 @@ function dressNumber(c, value) {
    against it. Format the stored wall-clock parts, never the local zone's
    reading of them — '2026-08-21' must never render as Aug 20. */
 const COSTUME_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function dressDate(c, iso) {
-  const [datePart, timePart] = String(iso).split('T');
-  const [y, mo, day] = datePart.split('-').map(Number);
-  if (!y || !mo || !day) return String(iso);
-  const dateText = c.format === 'us' ? `${mo}/${day}/${y}`
-    : c.format === 'eu' ? `${day}.${mo}.${y}`
-    : c.format === 'long' ? `${COSTUME_MONTHS[mo - 1]} ${day}, ${y}`
-    : datePart;
-  const timeText = c.time && timePart ? ' ' + timePart.slice(0, 5) : '';
-  return dateText + timeText;
-}
+function dressDate(c, iso) { return DG.formatDate(iso, c); }
 
 /* A range wears the same costume at both ends (Issue #91). The read side
    had no case for daterange at all, so `{ start, end }` walked to the
    browser and painted itself as '[object Object]'. A long range inside one
    year says the year once — 'Aug 1 – Sep 15, 2026' — which only reads well
    without a time of day, so the collapse stops there. */
-function dressDateRange(c, value) {
-  if (!value) return '';
-  const { start, end } = value;
-  if (!start && !end) return '';
-  if (c.format === 'long' && !c.time && start && end && String(start).slice(0, 4) === String(end).slice(0, 4)) {
-    return `${dressDate(c, start).replace(`, ${String(start).slice(0, 4)}`, '')} \u2013 ${dressDate(c, end)}`;
-  }
-  return `${start ? dressDate(c, start) : ''} \u2013 ${end ? dressDate(c, end) : ''}`.trim();
-}
+function dressDateRange(c, value) { return DG.formatDateRange(value, c); }
 
 /* The single normaliser for every type whose config is self-contained. Used
    by addField AND by `field` value validation, so a definition can never
@@ -410,8 +402,8 @@ function normalizeSelfContainedConfig(type, config = {}) {
   if (type === 'number') {
     const out = {};
     if (config.format != null) {
-      if (!['number', 'currency', 'percent'].includes(config.format)) {
-        throw new WeaveError(`Invalid number format '${config.format}' (number, currency, percent)`, 'invalid');
+      if (!['number', 'currency', 'percent', 'compact'].includes(config.format)) {
+        throw new WeaveError(`Invalid number format '${config.format}' (number, currency, percent, compact)`, 'invalid');
       }
       if (config.format !== 'number') out.format = config.format;
     }
@@ -432,17 +424,53 @@ function normalizeSelfContainedConfig(type, config = {}) {
       out.decimals = config.decimals;
     }
     if (config.separator != null) out.separator = !!config.separator;
+    if (out.format === 'compact' && out.separator) throw new WeaveError('Compact groups on its own; a separator has nothing to add', 'invalid');
+    // Parenthesised negatives are a currency convention and need one.
+    if (config.accounting) {
+      if (out.format !== 'currency') throw new WeaveError('Accounting negatives need format currency', 'invalid');
+      out.accounting = true;
+    }
     return out;
   }
   if (type === 'date' || type === 'daterange') {
+    /* Grain (what the field stores) and costume (how it prints) — the rules
+       live in public/date-grain.js so the browser applies the same ones. A
+       style that needs a part the grain never stores is refused here, at
+       definition time, never rendered as a guess. */
     const out = {};
+    let grain;
+    try { grain = DG.normalizeGrain(config.grain); } catch (e) { throw new WeaveError(e.message, 'invalid'); }
+    if (grain) out.grain = grain;
+    const time = !!config.time;
+    if (time) out.time = true;
+    const parts = grain ?? DG.PARTS;
+    if (!parts.length && !time) throw new WeaveError('A grain with no date parts must keep a time of day', 'invalid');
     if (config.format != null) {
-      if (!['iso', 'us', 'eu', 'long'].includes(config.format)) {
-        throw new WeaveError(`Invalid date format '${config.format}' (iso, us, eu, long)`, 'invalid');
-      }
+      const problem = DG.formatProblem(parts, config.format);
+      if (problem) throw new WeaveError(problem, 'invalid');
       if (config.format !== 'iso') out.format = config.format;
     }
-    if (config.time != null) out.time = !!config.time;
+    if (config.clock != null) {
+      if (!DG.CLOCKS.includes(config.clock)) throw new WeaveError(`Invalid clock '${config.clock}' (${DG.CLOCKS.join(', ')})`, 'invalid');
+      if (!time) throw new WeaveError('A clock needs a time of day', 'invalid');
+      if (config.clock !== '24h') out.clock = config.clock;
+    }
+    if (config.zone != null) {
+      if (!DG.ZONES.includes(config.zone)) throw new WeaveError(`Invalid zone '${config.zone}' (${DG.ZONES.join(', ')})`, 'invalid');
+      if (!time) throw new WeaveError('A zone needs a time of day', 'invalid');
+      if (config.zone === 'fixed') {
+        if (!config.zoneName) throw new WeaveError('A fixed zone needs a zoneName (an IANA name: America/Los_Angeles, Europe/Berlin…)', 'invalid');
+        if (!DG.isZone(config.zoneName)) throw new WeaveError(`'${config.zoneName}' is not a time zone`, 'invalid');
+        out.zoneName = String(config.zoneName);
+      }
+      if (config.zone !== 'floating') out.zone = config.zone;
+    }
+    if (config.pad) out.pad = true;
+    if (config.elapsed) {
+      if (type !== 'daterange') throw new WeaveError('elapsed belongs to a range', 'invalid');
+      if (!time) throw new WeaveError('elapsed needs a time of day at both ends', 'invalid');
+      out.elapsed = true;
+    }
     return out;
   }
   if (type === 'field') {
@@ -1186,7 +1214,7 @@ export class Weave {
       if (f.depth != null) config.depth = f.depth;
       if (f.width != null) config.width = f.width;
       for (const k of NUMBER_COSTUME_KEYS) if (f[k] != null) config[k] = f[k];
-      if (f.time != null) config.time = f.time;
+      for (const k of DATE_COSTUME_KEYS) if (k !== 'format' && f[k] != null) config[k] = f[k];
       if (f.kind != null) config.kind = f.kind;
       if (f.multiple != null) config.multiple = f.multiple;
       return config;
@@ -1196,7 +1224,8 @@ export class Weave {
        config against config, where a relation field is an id on one side and a
        name on the other. */
     const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'targetField', 'aggregate',
-      'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'time', 'kind', 'multiple', 'types', 'depth'];
+      'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'time', 'kind', 'multiple', 'types', 'depth',
+      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed'];
     const colorsOf = (full) => JSON.stringify((full ?? []).map((o) => ({ name: o.name, color: o.color ?? '' })));
     const fieldChanged = (fDoc, have) => {
       if (!have) return true;
@@ -2492,7 +2521,7 @@ export class Weave {
       }
       if (field.type === 'date' || field.type === 'daterange') {
         const costume = normalizeSelfContainedConfig(field.type, { ...field.config, ...patch.config });
-        for (const k of ['format', 'time']) {
+        for (const k of DATE_COSTUME_KEYS) {
           if (k in patch.config || k in costume) {
             if (costume[k] == null) delete field.config[k];
             else field.config[k] = costume[k];
@@ -2570,7 +2599,7 @@ export class Weave {
           return String(raw);
         }
         case 'number': { const n = Number(raw); return Number.isFinite(n) ? n : null; }
-        case 'date': return Number.isNaN(Date.parse(raw)) ? null : String(raw);
+        case 'date': { try { return this.#coerceDate(nextConfig ?? {}, raw); } catch { return null; } }
         case 'email': return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(raw)) ? String(raw) : null;
         case 'key':
         case 'url': return String(raw);
@@ -2884,15 +2913,36 @@ export class Weave {
     return this.#validateValue(field, raw);
   }
 
+  /* The engine's clock. `short` drops a current-year year, `relative` counts
+     from today, and today()/now() defaults read it — a test pins it. */
+  now() { return new Date(); }
   #resolveDefault(field) {
     const d = field.config.default;
     if (field.type === 'date' && DYNAMIC_DATE_DEFAULTS.includes(d)) {
-      const iso = new Date().toISOString();
-      return d === 'now()' && field.config.time ? iso.slice(0, 16) : iso.slice(0, 10);
+      const iso = this.now().toISOString();
+      if (field.config.grain != null) return DG.coerce(field.config, iso.slice(0, 16));
+      const stamp = d === 'now()' && field.config.time ? iso.slice(0, 16) : iso.slice(0, 10);
+      return field.config.zone === 'instant' && field.config.time ? stamp + 'Z' : stamp;
     }
     return d;
   }
 
+  /* One date value → its stored form under the field's grain. The full
+     grain keeps its old lenient rule (anything Date.parse reads, stored as
+     given); an instant folds to UTC; a partial grain takes the ISO 8601
+     truncated form, cutting a fuller value and refusing a thinner one. */
+  #coerceDate(config, raw) {
+    if (config.zone === 'instant') {
+      const v = DG.coerceInstant(raw);
+      if (!v) throw new WeaveError(`'${raw}' is not a valid date and time`, 'invalid');
+      return v;
+    }
+    if (config.grain == null) {
+      if (Number.isNaN(Date.parse(raw))) throw new WeaveError(`'${raw}' is not a valid date`, 'invalid');
+      return String(raw);
+    }
+    try { return DG.coerce(config, raw); } catch (e) { throw new WeaveError(e.message, 'invalid'); }
+  }
   #validateValue(field, raw) {
     if (raw == null || raw === '') return field.type === 'checkbox' ? false : null;
     switch (field.type) {
@@ -2911,16 +2961,12 @@ export class Weave {
         if (!Number.isFinite(n)) throw new WeaveError(`'${raw}' is not a number`, 'invalid');
         return n;
       }
-      case 'date': {
-        if (Number.isNaN(Date.parse(raw))) throw new WeaveError(`'${raw}' is not a valid date`, 'invalid');
-        return String(raw);
-      }
+      case 'date':
+        return this.#coerceDate(field.config, raw);
       case 'daterange': {
-        const { start, end } = raw;
-        if (Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end))) {
-          throw new WeaveError('Date range needs valid start and end', 'invalid');
-        }
-        return { start, end };
+        const { start, end } = raw ?? {};
+        if (start == null || end == null || start === '' || end === '') throw new WeaveError('Date range needs valid start and end', 'invalid');
+        return { start: this.#coerceDate(field.config, start), end: this.#coerceDate(field.config, end) };
       }
       case 'checkbox':
         return Boolean(raw);
@@ -3220,9 +3266,11 @@ export class Weave {
             }
             const v = this.#resolve(e, db, f, depth + 1);
             // Numbers stay numbers in formulas — the display costume (#97)
-            // would turn '$1,200.50' * 2 into NaN. Everything else keeps its
-            // display form (state and option names, joined relations).
-            return typeof v === 'number' ? v : this.#displayValue(db, f, v, e);
+            // would turn '$1,200.50' * 2 into NaN — and a date stays its
+            // stored ISO form: a day-only field displays '15', which no date
+            // function could read back. Everything else keeps its display
+            // form (state and option names, joined relations).
+            return typeof v === 'number' || f.type === 'date' ? v : this.#displayValue(db, f, v, e);
           });
         } catch (err) {
           return `#ERR: ${err.message}`;
@@ -3256,7 +3304,7 @@ export class Weave {
         const costume = resolved.type === 'number' || resolved.type === 'formula'
           ? (c.format === 'currency' ? `currency ${c.currency ?? 'USD'}` : c.format === 'percent' ? 'percent' : c.unit ?? null)
           : resolved.type === 'date' || resolved.type === 'daterange'
-            ? (c.format ?? (c.time ? 'with time' : null))
+            ? ([c.grain ? (c.grain.length ? c.grain.join('·') : 'time') : null, c.format ?? (c.time ? 'with time' : null)].filter(Boolean).join(' · ') || null)
             : resolved.type === 'document' ? c.kind ?? null
               : resolved.type === 'field' ? `depth ${c.depth ?? 1}` : null;
         return costume ? `${resolved.type} · ${costume}` : resolved.type;
@@ -3279,12 +3327,12 @@ export class Weave {
       }
       case 'date': {
         const c = field.config;
-        if (!c.format && !c.time) return resolved;
-        if (Number.isNaN(new Date(resolved).getTime())) return resolved;
-        return dressDate(c, resolved);
+        // A partial grain dresses even in iso: the parts print, never the dashes.
+        if (!c.format && !c.time && c.grain == null) return resolved;
+        return dressDate({ ...c, now: this.now() }, resolved);
       }
       case 'daterange':
-        return dressDateRange(field.config, resolved);
+        return dressDateRange({ ...field.config, now: this.now() }, resolved);
       case 'number':
         return dressNumber(field.config, resolved);
       case 'formula':
@@ -4121,8 +4169,7 @@ export class Weave {
              is not in the schema any more than it is in a cell. */
           if (f.type === 'key') Object.assign(out, this.credentialConfig(f));
           if (f.type === 'date' || f.type === 'daterange') {
-            if (f.config.format) out.format = f.config.format;
-            if (f.config.time) out.time = true;
+            for (const k of DATE_COSTUME_KEYS) if (f.config[k] != null) out[k] = f.config[k];
           }
           if (f.type === 'formula') out.expression = f.config.expression;
           if (f.type === 'field') { out.types = [...f.config.types]; out.depth = f.config.depth; }

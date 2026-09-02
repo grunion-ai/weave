@@ -86,6 +86,7 @@ const SURFACE = [
    persistence, and the two that must never leave the process. */
 const INTERNAL = {
   save: 'persistence', maybeRefresh: 'cross-process refresh',
+  now: 'the engine clock — the short and relative date costumes and today()/now() defaults read it; a test pins it',
   findSpace: 'ref resolver', getSpace: 'ref resolver', findTable: 'ref resolver', getTable: 'ref resolver',
   findField: 'ref resolver', getField: 'ref resolver', findEntity: 'ref resolver', qualifiedName: 'ref formatter',
   entityName: 'ref formatter', documentFields: 'ref helper', resolveField: 'read helper',

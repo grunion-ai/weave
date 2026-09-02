@@ -164,3 +164,37 @@ test('pre-fractional percent values divide by 100 exactly once at load', async (
     assert.equal(again.readEntity(e.id).fields.Share, '32.5%', 'the pass is one-time, not per-load');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+/* Compact and accounting (2026-09-02, from the field-costumes pass). Both
+   are display only, like every other costume: the stored number is
+   untouched, formulas and sorting never see the string. */
+test('compact abbreviates a figure that would outgrow its column; the value underneath is untouched', () => {
+  const w = fresh({ format: 'compact' });
+  assert.equal(shown(w, 1234567.891), '1.2M');
+  assert.equal(shown(w, 4820), '4.8K');
+  assert.equal(shown(w, 950), '950');
+  assert.equal(shown(w, -1234567), '-1.2M');
+  assert.equal(shown(fresh({ format: 'compact', decimals: 0 }), 1234567.891), '1M', 'decimals bound the fraction');
+  assert.equal(shown(fresh({ format: 'compact', currency: 'USD' }), 1234567.891), '$1.2M', 'compact composes with a currency');
+  assert.equal(shown(fresh({ format: 'compact', currency: 'EUR' }), 2500), '€2.5K');
+  const e = w.createEntity('Deal', { name: 'X', values: { Amount: 1234567.891 } });
+  const f = Object.values(w.getTable('Deal').fields).find((x) => x.name === 'Amount');
+  assert.equal(w.getEntity(e.id).values[f.id], 1234567.891, 'raw number in storage');
+  assert.throws(() => fresh({ format: 'compact', separator: true }), /separator/i, 'compact groups on its own; a separator has nothing to add');
+});
+
+test('accounting parenthesises a negative currency amount', () => {
+  const w = fresh({ format: 'currency', currency: 'USD', accounting: true });
+  assert.equal(shown(w, -1234.5678), '($1,234.57)');
+  assert.equal(shown(w, 149.5), '$149.50');
+  assert.equal(shown(w, 0), '$0.00');
+  assert.equal(shown(fresh({ format: 'currency', currency: 'EUR', accounting: true, decimals: 0 }), -2500), '(€2,500)');
+  assert.throws(() => fresh({ accounting: true }), /accounting/i, 'accounting is a currency convention and needs one');
+  assert.throws(() => fresh({ format: 'percent', accounting: true }), /accounting/i);
+  const f = w.describeSchema().find((sp) => sp.space === 'Dev').tables[0].fields.find((x) => x.name === 'Amount');
+  assert.equal(f.accounting, true, 'travels through describeSchema');
+  w.updateField('Deal', 'Amount', { config: { accounting: null } });
+  const field = Object.values(w.getTable('Deal').fields).find((x) => x.name === 'Amount');
+  assert.equal(field.config.accounting, undefined, 'null clears the lane');
+  assert.equal(field.config.currency, 'USD', 'without touching the rest of the costume');
+});
