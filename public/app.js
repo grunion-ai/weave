@@ -4672,6 +4672,9 @@ async function resolveRefs(refs) {
       const ent = href.match(/\/e\/([^/]+)\/doc\.html$/);
       if (ent) href = `#/entity/${ent[1]}`;
       const kind = [...a.classList].find((c) => c.startsWith('mention-'))?.slice('mention-'.length) ?? 'entity';
+      // The anchor may carry collapsed preview segments (.mention-fields);
+      // the overlay chip's label is the name alone, never the hidden fields.
+      a.querySelector('.mention-fields')?.remove();
       refResolveCache.set(ref, { href, label: a.textContent, kind });
     });
   } catch { /* resolution is decoration; a failed fetch leaves literals */ }
@@ -5986,6 +5989,18 @@ function route() {
 }
 
 window.addEventListener('hashchange', route);
+
+/* Collapsible chip previews arrive wherever /api/markdown HTML lands (doc
+   previews, handbook, applets). One delegated listener toggles every caret;
+   the chip itself stays a plain link. */
+document.addEventListener('click', (ev) => {
+  const caret = ev.target.closest('.mention-caret');
+  if (!caret) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const open = caret.closest('.mention-wrap')?.classList.toggle('open');
+  caret.setAttribute('aria-expanded', String(!!open));
+});
 
 /* Spaces and tables are created by the single-instance inline input in the
    sidebar (inlineNameInput). The modal variants that used to live here were

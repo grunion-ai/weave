@@ -806,6 +806,15 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* Backlink chips on the entity page (References section): same chip costume,
    laid out as a wrapping row. wv- prefix on the container, chip classes reuse
    the mention costume above. */
+/* Collapsible chip previews (src/markdown.js emits them): collapsed to the
+   name by default, the caret opens the field segments. Global on purpose —
+   /api/markdown HTML lands in doc previews, applets, and the handbook alike. */
+.mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
+.mention-fields { display: none; }
+.mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: .85em; }
+.mention-f-label { opacity: .65; margin-right: 3px; }
+.mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: 4px; color: var(--tblr-secondary); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
+.mention-wrap.open .mention-caret { transform: rotate(90deg); }
 .ref-backlinks { display: flex; flex-wrap: wrap; gap: 6px; }
 .ref-backlinks a.mention { background: rgba(var(--tblr-primary-rgb), .08); border-radius: 4px; padding: 0 6px; text-decoration: none; color: var(--tblr-primary); }
 .ref-backlinks a.mention::before { content: "#"; color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
