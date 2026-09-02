@@ -816,8 +816,14 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: 4px; color: var(--tblr-secondary); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
 .mention-wrap.open .mention-caret { transform: rotate(90deg); }
 .ref-backlinks { display: flex; flex-wrap: wrap; gap: 6px; }
-.ref-backlinks a.mention { background: rgba(var(--tblr-primary-rgb), .08); border-radius: 4px; padding: 0 6px; text-decoration: none; color: var(--tblr-primary); }
-.ref-backlinks a.mention::before { content: "#"; color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
+/* The card is a native <details>, closed by default; the summary is the whole
+   resting card. The chips inside are the shared k k-rel language — no local
+   chip styling here, on purpose. */
+.ref-backlinks-card > .ref-summary { cursor: pointer; padding: 10px 16px; font-weight: 600; font-size: .875rem; color: var(--tblr-secondary); list-style: none; }
+.ref-backlinks-card > .ref-summary::-webkit-details-marker { display: none; }
+.ref-backlinks-card > .ref-summary::before { content: "›"; display: inline-block; margin-right: 6px; color: var(--tblr-secondary); transition: transform .1s; }
+.ref-backlinks-card[open] > .ref-summary::before { transform: rotate(90deg); }
+.ref-backlinks-card > .card-body { padding-top: 0; }
 
 /* ---------- live [[…]] chips over the IR editor (Issue #86) ----------
    The layer never eats a click meant for the text — only the chips are

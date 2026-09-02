@@ -5495,14 +5495,20 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
      entity's documents mention (md chips, HTML hrefs, mermaid clicks alike);
      "Referenced by" is who mentions it. Fetched on their own so the scan
      never holds up the page; a direction with nothing to say is absent. */
+  /* Closed by default (Kyle, 2026-09-02): a page with many mentions stays
+     quiet until the reader asks. The chips are the SAME k k-rel chips a
+     relation field wears — one chip language for "this points at an entity" —
+     each with its k-home table badge, since references cross tables freely.
+     No ×: a reference is text, so there is nothing to unlink. */
   const refCard = (title, extraClass) => (refs) => {
     if (!refs?.length || !mount.isConnected) return;
-    left.append(el('div', { class: `card ref-backlinks-card ${extraClass}` },
-      el('div', { class: 'card-body' },
-        el('h3', { class: 'card-title' }, `${title} · ${refs.length}`),
-        el('div', { class: 'ref-backlinks' },
-          ...refs.map((r) => el('a', { class: 'mention mention-entity ref-backlink', href: `#/entity/${r.id}` },
-            `${r.db}#${r.publicId} — ${r.name}`))))));
+    left.append(el('details', { class: `card ref-backlinks-card ${extraClass}` },
+      el('summary', { class: 'ref-summary' }, `${title} · ${refs.length}`),
+      el('div', { class: 'card-body ref-backlinks' },
+        ...refs.map((r) => el('span', { class: 'k k-rel' },
+          el('a', { href: `#/entity/${r.id}` },
+            r.name || `#${r.publicId}`,
+            el('span', { class: 'k-home' }, r.db.split('/').pop())))))));
   };
   api('GET', `/entities/${id}/references-from`)
     .then(refCard('References', 'ref-outbound-card'))
