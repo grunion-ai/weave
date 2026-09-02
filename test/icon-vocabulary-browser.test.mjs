@@ -50,6 +50,8 @@ if (!chromium) {
 
   const entityPage = async () => {
     const page = await browser.newPage();
+    // Size gates measure resting boxes; the motion has its own test below.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`${base}/#/entity/${row}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.entity-fields .fieldrow');
     return page;
@@ -328,6 +330,27 @@ if (!chromium) {
     // Lighter means closer to the page, so a higher luminance on a light ground.
     assert.ok(seen.iconLum > seen.textLum,
       `the icon (${seen.icon}) should rest lighter than its label (${seen.text})`);
+    await page.close();
+  });
+
+  test('an icon plays once on load and once per hover, and rests — nothing loops (Kyle, 2026-09-02)', async () => {
+    const page = await browser.newPage();
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto(`${base}/#/entity/${row}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#nav .wv-icon.mi');
+    // The load wave: inside the load window some icon wears its motion parts.
+    await page.waitForFunction(() => [...document.querySelectorAll('#nav .mi [data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), null, { timeout: 4000 });
+    // …and every one of them rests again: nothing loops.
+    await page.waitForFunction(() => ![...document.querySelectorAll('#nav .mi [data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), null, { timeout: 8000 });
+    const host = page.locator('#nav .wv-icon.mi').first();
+    const ms = Number(await host.getAttribute('data-ms'));
+    await host.hover();
+    await page.waitForTimeout(80);
+    const armed = await host.evaluate((el) => [...el.querySelectorAll('[data-mi]')].every((p) => p.classList.contains(p.dataset.mi.split(' ')[0])));
+    assert.ok(armed, 'a hover plays the icon');
+    await page.waitForTimeout(ms + 300);
+    const rested = await host.evaluate((el) => [...el.querySelectorAll('[data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])));
+    assert.equal(rested, false, `after its ${ms} ms run the icon rests — it does not loop`);
     await page.close();
   });
 
