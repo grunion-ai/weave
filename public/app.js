@@ -1078,9 +1078,15 @@ function holdToConfirm(label, onConfirm, {
     fill, icon ? iconEl(icon, 'wv-icon wv-menu-icon hold-icon') : null, text,
     hint ? el('span', { class: 'hold-hint' }, hint) : null);
   let armed = false;
-  const start = () => {
+  let press = 0; // which press a queued confirm belongs to — a re-press must not inherit it
+  const start = (e) => {
     if (armed) return;
     armed = true;
+    press++;
+    // Capture the pointer (Kyle, 2026-09-02): a release must cancel no matter
+    // where the cursor drifted to — without capture, pointerup lands on
+    // whatever is under the cursor and the hold runs on to completion.
+    if (e?.pointerId != null) { try { btn.setPointerCapture(e.pointerId); } catch { /* gone mid-press */ } }
     btn.classList.add('holding');
     text.textContent = holdingLabel;
   };
@@ -1090,16 +1096,29 @@ function holdToConfirm(label, onConfirm, {
     text.textContent = label;
   };
   btn.addEventListener('pointerdown', start);
-  for (const ev of ['pointerup', 'pointerleave', 'blur']) btn.addEventListener(ev, stop);
+  // pointercancel and lostpointercapture are the releases the finger never
+  // gets to send — a touch turning into a scroll, a native drag starting.
+  // Missing them left the hold armed with no release event ever coming.
+  for (const ev of ['pointerup', 'pointerleave', 'blur', 'pointercancel', 'lostpointercapture']) btn.addEventListener(ev, stop);
   btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); } });
   btn.addEventListener('keyup', stop);
   // Fires once the fill finishes sweeping across. Collapsing is untransitioned,
   // so releasing early cannot trigger it. The sweep is a scaleX transform, not
   // an animated width — width/height animations thrash layout on every frame.
-  fill.addEventListener('transitionend', async (e) => {
+  fill.addEventListener('transitionend', (e) => {
     if (!armed || e.propertyName !== 'transform') return;
-    stop();
-    await onConfirm();
+    // The sweep runs on the compositor, so it completes on schedule even when
+    // the main thread is behind on delivering the pointerup — and this
+    // handler would then fire a hold the user had already released. A short
+    // grace lets any queued release land first; re-check that THIS press is
+    // still armed (a release-and-re-press inside the grace is a new press,
+    // not a finished one), then commit.
+    const thisPress = press;
+    setTimeout(async () => {
+      if (!armed || press !== thisPress) return;
+      stop();
+      await onConfirm();
+    }, 80);
   });
   return btn;
 }
