@@ -59,6 +59,9 @@ if (!chromium) {
 
   async function grid() {
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    // A geometry gate measures boxes, not motion: since 2026-09-02 an icon plays
+    // once on load, and a scaled frame is not the size it rests at.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     return page;
