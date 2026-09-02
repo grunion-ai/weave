@@ -3827,6 +3827,60 @@ export class Weave {
     return results.sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
+  /* The headline fields a reference chip previews. Zero configuration by
+     design (Kyle, 2026-09-01): workflow state first, then non-empty simple
+     values in schema order — arranging the table's field order IS the
+     curation, so no per-table or per-user setting exists. */
+  previewFields(entityRef, limit = 3) {
+    const e = this.getEntity(entityRef);
+    const db = this.state.tables[e.dbId];
+    const out = [];
+    const take = (f) => {
+      const resolved = this.#resolve(e, db, f, 0);
+      if (resolved == null || resolved === '' || (Array.isArray(resolved) && !resolved.length)) return;
+      const v = this.#displayValue(db, f, resolved, e);
+      if (v == null || v === '') return;
+      out.push({ label: f.name, value: Array.isArray(v) ? v.map((x) => x?.name ?? x).join(', ') : String(v?.name ?? v) });
+    };
+    const fields = db.fieldOrder.map((id) => db.fields[id]).filter(Boolean);
+    const wf = fields.find((f) => f.type === 'workflow');
+    if (wf) take(wf);
+    for (const f of fields) {
+      if (out.length >= limit) break;
+      if (f === wf || f.id === db.nameFieldId) continue;
+      if (['document', 'attachments', 'key', 'field'].includes(f.type)) continue;
+      take(f);
+    }
+    return out.slice(0, limit);
+  }
+
+  /* Which entities' documents mention this one. A chip in a document is
+     deliberately NOT a relation: nothing is configured, nothing is unlinked —
+     the reference exists exactly as long as the text does, so the list is
+     computed from the text on demand. Matches every accepted spelling:
+     [[Table#pid]] (qualified or not, with |label), [[uuid]], and permalink
+     links whose href ends in /e/<uuid>.
+     ponytail: O(total doc bytes) per call; move to a save-time index if a
+     workspace grows past ~10k entities. */
+  referencesTo(entityRef) {
+    const target = this.getEntity(entityRef);
+    const db = this.state.tables[target.dbId];
+    const esc = (x) => String(x).replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+    const names = [...new Set([db.name, this.qualifiedName(db)])].map(esc).join('|');
+    const bracket = new RegExp(`\\[\\[\\s*(?:${names})\\s*#${target.publicId}\\s*(?:\\|[^\\]]*)?\\]\\]`, 'i');
+    const uuidRef = new RegExp(`\\[\\[\\s*${esc(target.id)}\\s*(?:\\|[^\\]]*)?\\]\\]`, 'i');
+    const permalink = new RegExp(`\\]\\([^)\\s]*/e/${esc(target.id)}(?:[/#?)]|$)`, 'i');
+    const out = [];
+    for (const e of Object.values(this.state.entities)) {
+      if (e.deletedAt || e.id === target.id) continue;
+      const docs = Object.values(e.docs ?? {}).filter(Boolean);
+      if (docs.some((t) => bracket.test(t) || uuidRef.test(t) || permalink.test(t))) {
+        out.push(this.#summary(e.id));
+      }
+    }
+    return out.sort((a, b) => a.db.localeCompare(b.db) || a.publicId - b.publicId);
+  }
+
   /* What this workspace weighs: live entity count plus bytes on disk — the
      .db (with sidecars) from the store, attachment blobs from each entity's
      own file ledger (files/ is shared between workspaces, so the directory

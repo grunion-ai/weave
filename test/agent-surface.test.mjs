@@ -97,6 +97,8 @@ const INTERNAL = {
   hasKey: 'keystore predicate', resolveKey: 'returns a secret — never leaves the process',
   storageStats: 'read helper — /api/health already ships it for the nav stats strip',
   relationTargetDbIds: 'read helper — the tables a relation may point at; describeSchema already ships them',
+  previewFields: 'read helper — the chip preview; /api/markdown ships it inside resolved mentions',
+  referencesTo: 'read helper — GET /api/entities/:ref/references already serves the backlinks',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));

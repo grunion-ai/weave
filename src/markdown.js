@@ -45,8 +45,20 @@ function renderInline(text, resolveMention) {
             resolved = resolveMention(kind, target);
           } catch { /* falls through to the broken chip below */ }
           if (resolved) {
-            out += `<a class="mention mention-${kind}" href="${escapeHtml(resolved.href)}">`
-              + `${escapeHtml(label ?? resolved.label)}</a>`;
+            /* A chip with preview fields collapses to its name behind a caret
+               (Kyle, 2026-09-01): the whole chip stays a link to the entity;
+               only the caret toggles the field segments open. */
+            const fields = (resolved.fields ?? []).filter((f) => f && f.value != null && f.value !== '').slice(0, 3);
+            const a = `<a class="mention mention-${kind}" href="${escapeHtml(resolved.href)}">`
+              + `${escapeHtml(label ?? resolved.label)}`
+              + (fields.length
+                ? `<span class="mention-fields">${fields.map((f) =>
+                  `<span class="mention-f"><span class="mention-f-label">${escapeHtml(f.label)}</span>${escapeHtml(String(f.value))}</span>`).join('')}</span>`
+                : '')
+              + '</a>';
+            out += fields.length
+              ? `<span class="mention-wrap">${a}<button type="button" class="mention-caret" aria-expanded="false" aria-label="Show fields">▸</button></span>`
+              : a;
             i = end + 2;
             continue;
           }
@@ -338,6 +350,14 @@ a.mention { background: var(--soft); border: 1px solid var(--line); border-radiu
 .mention-table::before { content: "▦"; }
 .mention-space::before { content: "◇"; }
 .mention-workspace::before { content: "⬡"; }
+/* Collapsed chip shows the name; the caret opens the preview segments. The
+   whole chip is the link — the caret is the only non-navigating pixel. */
+.mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
+.mention-fields { display: none; }
+.mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--line); color: var(--muted); font-size: .85em; }
+.mention-f-label { opacity: .65; margin-right: 3px; }
+.mention-caret { border: 1px solid var(--line); background: none; border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
+.mention-wrap.open .mention-caret { transform: rotate(90deg); }
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 /* A code block sits on the ground its palette was drawn for — white for
    github, #0d1117 for github-dark — because a token colour answers to the
@@ -384,6 +404,12 @@ for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
   };
   pre.append(btn);
 }
+document.addEventListener('click', (ev) => {
+  const caret = ev.target.closest('.mention-caret');
+  if (!caret) return;
+  const open = caret.closest('.mention-wrap').classList.toggle('open');
+  caret.setAttribute('aria-expanded', String(open));
+});
 </script>
 ${body.includes('class="mermaid"') ? `<script src="/vendor/mermaid.min.js" onerror="document.querySelectorAll('pre.mermaid').forEach(p=>p.style.textAlign='left')"></script>
 <script>if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });</script>` : ''}

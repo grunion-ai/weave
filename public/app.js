@@ -5204,6 +5204,23 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const node = blocks.get(key);
     if (node && !node.isConnected) left.append(node);
   }
+
+  /* References: entities whose documents mention this one. A chip in a
+     document is deliberately not a relation — nothing was configured, so
+     there is nothing to unlink; the list exists exactly as long as the text
+     does. Fetched on its own so the scan never holds up the page; the whole
+     section is absent when nothing points here. */
+  api('GET', `/entities/${id}/references`)
+    .then((refs) => {
+      if (!refs?.length || !mount.isConnected) return;
+      left.append(el('div', { class: 'card ref-backlinks-card' },
+        el('div', { class: 'card-body' },
+          el('h3', { class: 'card-title' }, `References · ${refs.length}`),
+          el('div', { class: 'ref-backlinks' },
+            ...refs.map((r) => el('a', { class: 'mention mention-entity ref-backlink', href: `#/entity/${r.id}` },
+              `${r.db}#${r.publicId} — ${r.name}`))))));
+    })
+    .catch(() => { /* backlinks are a bonus, never an error on the page */ });
   /* A deck is composed on read, so the frame IS the deck: the same editable
      file /e/:id/deck.html serves, live over whatever the slides say right now.
      A deck entity shows its whole composition; a slide shows itself, wearing

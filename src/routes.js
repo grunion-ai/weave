@@ -189,7 +189,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) {
           const e = weave.state.entities[ref];
           if (!e || e.deletedAt) return null;
-          return { href: `${wsPrefix}/e/${e.id}/doc.html`, label: weave.entityName(e) };
+          return { href: `${wsPrefix}/e/${e.id}/doc.html`, label: weave.entityName(e), fields: weave.previewFields(e.id) };
         }
         const m = /^(.+)#(\d+)$/.exec(ref);
         if (!m) return null;
@@ -200,6 +200,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return {
           href: `${wsPrefix}/e/${entity.id}/doc.html`,
           label: `${db.name}#${m[2]} — ${weave.entityName(entity)}`,
+          fields: weave.previewFields(entity.id),
         };
       } catch {
         return null; // an ambiguous or malformed ref is a miss, not a 500
@@ -611,6 +612,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/restore$/)) && rx.method === 'POST') {
           return out(200, weave.restoreEntity(m[1]));
+        }
+        // Backlinks: entities whose documents mention this one. A reference,
+        // never a relation — computed from the text, not stored.
+        if ((m = path.match(/^\/api\/entities\/([^/]+)\/references$/)) && rx.method === 'GET') {
+          return out(200, weave.referencesTo(m[1]));
         }
         // A slide's next version: same key and content, Version + 1, pointing
         // back at what it supersedes. ?promote=1 swaps it into the decks the

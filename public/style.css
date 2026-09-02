@@ -24,7 +24,11 @@
   --tblr-bg-surface-secondary: #f3f1ec;
   --tblr-border-color: #e6e3dc;
   --tblr-body-bg: var(--wv-canvas);
-  --wv-code-bg: #ffffff;                     /* github's own ground */
+  --wv-code-bg: #ffffff;
+  /* An icon accompanying a label rests lighter than the label (Kyle,
+     2026-09-02). Same ink as the text at a fraction of it, so the grey carries
+     the kit's blue bias instead of reading as a flat neutral. */
+  --wv-icon-rest: rgba(12, 27, 51, .34);
 }
 [data-bs-theme="dark"] {
   --wv-canvas: #0c1b33;                      /* Kami Deep Navy Canvas */
@@ -39,6 +43,7 @@
   --tblr-border-color: #24375e;
   --tblr-body-color: #e0dcd4;                /* Kami Cream Primary */
   --wv-code-bg: #0d1117;                     /* github-dark's own ground */
+  --wv-icon-rest: rgba(224, 220, 212, .38);
   --tblr-secondary: #b4b8c4;                 /* Kami Silver Secondary */
   --tblr-body-bg: var(--wv-canvas);
 }
@@ -798,6 +803,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-preview .mention-table::before, .doc-ref-layer .mention-table::before { content: "▦"; }
 .doc-preview .mention-space::before, .doc-ref-layer .mention-space::before { content: "◇"; }
 .doc-preview .mention-workspace::before, .doc-ref-layer .mention-workspace::before { content: "⬡"; }
+/* Backlink chips on the entity page (References section): same chip costume,
+   laid out as a wrapping row. wv- prefix on the container, chip classes reuse
+   the mention costume above. */
+.ref-backlinks { display: flex; flex-wrap: wrap; gap: 6px; }
+.ref-backlinks a.mention { background: rgba(var(--tblr-primary-rgb), .08); border-radius: 4px; padding: 0 6px; text-decoration: none; color: var(--tblr-primary); }
+.ref-backlinks a.mention::before { content: "#"; color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
 
 /* ---------- live [[…]] chips over the IR editor (Issue #86) ----------
    The layer never eats a click meant for the text — only the chips are
@@ -1300,7 +1311,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .picker-cell {
   display: flex; align-items: center; justify-content: center;
   width: 100%; aspect-ratio: 1; padding: 0; border: 0; border-radius: 5px;
-  background: none; color: var(--tblr-secondary); cursor: pointer;
+  background: none; color: var(--wv-icon-rest); cursor: pointer;
 }
 .picker-cell:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); color: var(--tblr-body-color); }
 .picker-cell.on {
@@ -1396,7 +1407,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 :root { --wv-icon-sm: 12px; --wv-icon-md: 16px; --wv-icon-lg: 20px; }
 .wv-icon { display: inline-flex; align-items: center; justify-content: center; vertical-align: -2px; margin-right: 5px; width: var(--wv-icon-md); height: var(--wv-icon-md); }
 .wv-icon svg { display: block; width: var(--wv-icon-md); height: var(--wv-icon-md); }
-.nav-icon { font-size: 14px; color: var(--tblr-secondary); }
+/* Resting icons are lighter than the label beside them and come up to the
+   label's own grey when the row is hovered or current — the icon leads the
+   eye without competing with the word (Kyle, 2026-09-02). */
+.nav-icon { font-size: 14px; color: var(--wv-icon-rest); }
+.nav-db:hover .nav-icon, .nav-space:hover .nav-icon,
+.nav-db.active .nav-icon, .nav-space.active .nav-icon { color: var(--tblr-secondary); }
 .icon-btn { border: none; background: none; cursor: pointer; padding: 2px 4px; border-radius: 5px; font-size: 18px; color: var(--tblr-body-color); }
 .icon-btn:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
 .icon-ghost { color: var(--tblr-secondary); opacity: .6; }
