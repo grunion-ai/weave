@@ -68,6 +68,6 @@ test('the formatting showcase and the icon library use the form themselves', () 
   assert.match(sample.doc, /\| :bug: \|/, 'the sample puts an icon in a table');
   const page = iconLibraryPage();
   assert.match(page, /\| `✓` \| `lucide:check` \| :✓: \|/, 'the marks table draws each mark');
-  assert.ok((page.match(/^\| :[a-z0-9-]+: \| `[a-z0-9-]+` \|/gm) || []).length >= 555, 'the gallery draws every icon beside its name');
+  assert.ok((page.match(/^\| :[a-z0-9-]+: \| `lucide:[a-z0-9-]+` \|/gm) || []).length >= 120, 'the gallery draws every icon in the inventory beside its value');
   for (const g of ['load-wave.gif', 'hover.gif', 'picker-scroll.gif']) assert.ok(page.includes(`/showcase/icons/${g}`), `${g} shows the motion a still cannot`);
 });

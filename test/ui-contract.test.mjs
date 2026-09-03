@@ -1569,7 +1569,9 @@ test('spaces and tables wear Lucide icons that move, picked beside their name (F
   assert.match(fnBody('glyphPopover'), /grid: true/, 'the option and state gate opens the same grid');
   assert.ok(app.includes("iconEl(space.icon") && app.includes("iconEl(db.icon"), 'nav renders both');
   const icons = (await import('../public/vendor/lucide-moving.js'), globalThis.LUCIDE_MOVING);
-  assert.ok(Object.keys(icons).length >= 555, 'the whole moving set rides along');
+  assert.ok(Object.keys(icons).length >= 120, 'the inventory rides along');
+  await import('../public/field-dialog-core.js');
+  for (const n of globalThis.fieldDialogCore.ICON_INVENTORY) assert.ok(icons[n], `${n} is offered but not vendored`);
   assert.ok(Object.values(icons).every((v) => !/#[0-9A-Fa-f]{6}/.test(v)), 'no hardcoded fills — icons inherit currentColor');
 });
 

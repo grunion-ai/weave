@@ -732,7 +732,7 @@ weave space update Finance --icon lucide:wallet
 weave table update Invoice --icon lucide:file --noun invoice
 \`\`\`
 
-The icon value is **\`lucide:<name>\`** — one of the 595 Lucide names in the vendored set (\`activity bell bookmark bug calendar chart-bar compass file-text folder funnel heart house layout-grid lock mail map-pin pencil search settings shield-check star trash-2 users wallet\` among them; \`weave vocabulary icons\` lists them all). Most of them move — once when the page loads, once when the picker scrolls them into view, once per hover, never on a loop. A value stored before 2026-09-02 as \`iconly:<name>\` keeps drawing through a built-in alias, so nothing migrates. Any other string paints itself, so an emoji is a legal icon too.
+The icon value is **\`lucide:<name>\`** — one of the names in weave's inventory, Lucide shapes curated for what a space, a table, an option or a state tends to be called (\`activity bell bookmark bug calendar chart-bar compass file-text folder funnel heart house layout-grid lock mail map-pin pencil search settings shield-check star trash-2 users wallet\` among them; \`weave vocabulary icons\` lists them all). Most of them move — once when the page loads, once when the picker scrolls them into view, once per hover, never on a loop. A value stored before 2026-09-02 as \`iconly:<name>\` keeps drawing through a built-in alias, so nothing migrates. Any other string paints itself, so an emoji is a legal icon too.
 
 The **noun** is what one row is called — the table's *row term*. It lives on the Name field (open the Name column's menu → Edit field → "Rows in this table are…"), with a curated list to pick from and a plural you can correct. Every surface speaks it: the create control says "New invoice" instead of "New Invoice", the selection puck counts "3 invoices", the trash toggle reads "Deleted invoices". \`--noun\` on the CLI and \`noun\` over MCP set the same term.
 
@@ -1199,26 +1199,28 @@ function formattingPage() {
    page cannot drift from the set; the pictures are static files the server
    already serves, so a re-apply refreshes the text without losing them. */
 await import('../public/icon-registry.js');
+await import('../public/field-dialog-core.js');
 const ICON_REGISTRY = globalThis.weaveIconRegistry;
 export const ICON_LIBRARY_PAGE = 'Icon library';
 export function iconLibraryPage() {
   const R = ICON_REGISTRY;
   const moving = R.NAMES.filter((n) => R.MOTION[n] > 0);
   const runs = moving.map((n) => R.MOTION[n]);
-  const byCat = new Map();
-  for (const n of R.NAMES) byCat.set(R.CATEGORY[n], (byCat.get(R.CATEGORY[n]) ?? 0) + 1);
-  const cats = [...byCat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const core = globalThis.fieldDialogCore;
+  const groups = core.ICON_CATEGORIES.filter((g) => g.flat.length || g.marks.length);
   const twins = Object.entries(R.MARK_TWINS).map(([ch, n]) => `| \`${ch}\` | \`lucide:${n}\` | :${ch}: | ${R.MOTION[n] ? `${R.MOTION[n]} ms` : 'still'} |`);
   // Every icon, drawn beside its name, grouped by Lucide's own categories.
-  const gallery = [...byCat.keys()].sort((a, b) => byCat.get(b) - byCat.get(a)).flatMap((c) => [
-    '', `### ${c} · ${byCat.get(c)}`, '', '| Icon | Name | Run |', '| --- | --- | --- |',
-    ...R.NAMES.filter((n) => R.CATEGORY[n] === c).map((n) => `| :${n}: | \`${n}\` | ${R.MOTION[n] ? `${R.MOTION[n]} ms` : 'still'} |`),
+  const gallery = groups.flatMap((g) => [
+    '', `### ${g.name} · ${g.marks.length + g.flat.length}`, '', '| Icon | Value | Run |', '| --- | --- | --- |',
+    ...g.marks.map((m) => `| :${m}: | \`${m}\` | ${R.MARK_TWINS[m] && R.MOTION[R.MARK_TWINS[m]] ? `${R.MOTION[R.MARK_TWINS[m]]} ms` : 'still'} |`),
+    ...g.flat.map((n) => `| :${n}: | \`lucide:${n}\` | ${R.MOTION[n] ? `${R.MOTION[n]} ms` : 'still'} |`),
   ]);
   const sample = ['activity', 'bell', 'bookmark', 'bug', 'calendar', 'chart-bar', 'compass', 'file-text', 'folder', 'funnel', 'heart', 'house', 'layout-grid', 'lock', 'mail', 'map-pin', 'pencil', 'search', 'settings', 'shield-check', 'star', 'trash-2', 'users', 'wallet'];
+  const INV = core.ICON_INVENTORY.length;
   return [
     '# Icon library',
     '',
-    `The set is **Lucide** — ${R.NAMES.length} names drawn on one 24-grid at stroke 2 — carrying the motion **movingicons.dev** (github.com/jis3r/icons, MIT) draws for ${moving.length} of them. Weave switched from Iconly flat on 2026-09-02; nothing stored had to move.`,
+    `Weave's inventory is ${INV} names: **Lucide** shapes on one 24-grid at stroke 2, chosen for what a space, a table, an option or a state tends to be called, carrying the motion **movingicons.dev** (github.com/jis3r/icons, MIT) draws for ${moving.length} of them. The libraries are larger (Lucide draws 1,800 shapes, movingicons.dev moves 555); the inventory is what the picker offers, and this page shows all of it. Weave switched from Iconly flat on 2026-09-02; nothing stored had to move.`,
     '',
     '## Writing a value',
     '',
@@ -1249,11 +1251,7 @@ export function iconLibraryPage() {
     '',
     '## The picker',
     '',
-    'Eleven curated groups lead — status, people, documents, data, money, time, messages, media, access, arrows, other — holding the vocabulary weave already had plus the review\'s recommendations (key, terminal, layers, kanban, list-checks, timer, sparkles, lightbulb, rocket, paperclip, archive, copy, clipboard, refresh-cw, undo, redo, history, chart-column, blocks, bell-ring, message-square, user-cog, route, battery, wifi, radio, cloud-upload, cloud-download, cpu, gauge, award). Lucide\'s own categories file the rest:',
-    '',
-    '| Lucide category | Names |',
-    '| --- | --- |',
-    ...cats.map(([c, n]) => `| ${c} | ${n} |`),
+    `Eleven groups — ${groups.map((g) => g.name).join(', ')} — hold the whole inventory: the vocabulary weave already had, the review's recommendations (key, terminal, layers, kanban, list-checks, timer, sparkles, lightbulb, rocket, paperclip, archive, copy, clipboard, refresh-cw, undo, redo, history, chart-column, blocks, bell-ring, message-square, user-cog, route, battery, wifi, radio, cloud-upload, cloud-download, cpu, gauge, award), and the twins a legacy value resolves to. Marks lead their group; a name typed by hand that no group claims files under other.`,
     '',
     'Search matches a name or a category, so typing `money` keeps the whole group. A name is never printed beside its icon in the grid; it is the tooltip.',
     '',
@@ -1265,9 +1263,9 @@ export function iconLibraryPage() {
     '',
     '![Fourteen icons at 24px inside their grid — Iconly (top) fills the box unevenly and needed a hand scale table; Lucide (bottom) sits on one grid at one stroke](/showcase/icons/optical-box.png)',
     '',
-    '## Every icon',
+    '## The inventory',
     '',
-    `All ${R.NAMES.length}, drawn beside their names with the \`:name:\` form, in Lucide's categories:`,
+    `All ${INV}, drawn beside their values with the \`:name:\` form, in the picker's own groups:`,
     ...gallery,
     '',
     '## Rebuilding the set',

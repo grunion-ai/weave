@@ -82,10 +82,10 @@ if (!chromium) {
       // The picker's own list is what an author reads; both dialects come
       // from one catalogue now.
       const choices = iconCatalogue();
-      return { total: choices.length, marks: choices.filter((c) => c.mark).length, flat: choices.filter((c) => c.lucide).length, set: weaveIconRegistry.NAMES.length };
+      return { total: choices.length, marks: choices.filter((c) => c.mark).length, flat: choices.filter((c) => c.lucide).length, set: fieldDialogCore.ICON_INVENTORY.length };
     });
     assert.equal(picked.marks, 18, 'thirteen originals plus the five Kyle accepted');
-    assert.equal(picked.flat, picked.set, `the whole registry is offered, got ${picked.flat} of ${picked.set}`);
+    assert.equal(picked.flat, picked.set, `the whole inventory is offered, got ${picked.flat} of ${picked.set}`);
     await page.close();
   });
 

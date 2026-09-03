@@ -37,11 +37,13 @@ test('the option palette is the palette the field dialog paints', () => {
   for (const c of OPTION_COLORS) assert.ok(c.name, `${c.value} needs a name an agent can reason about`);
 });
 
-test('the icon names are the vendored icon set', async () => {
+test('the icon names are the curated inventory, every one of them vendored', async () => {
   await import('../public/icon-registry.js');
   await import('../public/vendor/lucide-moving.js');
-  assert.deepEqual([...ICONS].sort(), Object.keys(globalThis.LUCIDE_MOVING).sort());
-  assert.deepEqual(ICONS, globalThis.weaveIconRegistry.NAMES, 'the registry is the list');
+  await import('../public/field-dialog-core.js');
+  assert.deepEqual(ICONS, globalThis.fieldDialogCore.ICON_INVENTORY, 'the picker groups are the list');
+  for (const n of ICONS) assert.ok(globalThis.LUCIDE_MOVING[n], `${n} is offered but not vendored`);
+  assert.ok(ICONS.length >= 120 && ICONS.length < globalThis.weaveIconRegistry.NAMES.length + 1, 'curated, not the library');
 });
 
 test('the icon vocabulary gives the value form, not just the names', () => {

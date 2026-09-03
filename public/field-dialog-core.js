@@ -161,32 +161,33 @@
     { name: 'documents', marks: [], flat: ['file-text', 'file', 'file-plus', 'file-up', 'file-down', 'folder', 'bookmark',
              'pencil', 'square-pen', 'upload', 'download', 'paperclip', 'archive', 'copy', 'clipboard', 'history'] },
     { name: 'data', marks: ['⛓', '⌁'], flat: ['chart-bar', 'chart-pie', 'activity', 'layout-grid', 'funnel', 'search', 'scan',
-             'compass', 'arrow-left-right', 'kanban', 'list-checks', 'chart-column', 'layers', 'blocks', 'route', 'gauge', 'terminal', 'cpu'] },
+             'compass', 'arrow-left-right', 'list-filter', 'kanban', 'list-checks', 'chart-column', 'layers', 'blocks', 'route', 'gauge', 'terminal', 'cpu'] },
     { name: 'money', marks: [], flat: ['dollar-sign', 'euro', 'credit-card', 'coins', 'receipt', 'landmark', 'trending-up',
              'percent', 'wallet', 'shopping-cart', 'shopping-bag', 'badge-percent', 'ticket', 'ticket-check'] },
     { name: 'time', marks: [], flat: ['calendar', 'clock', 'timer'] },
     { name: 'messages', marks: [], flat: ['mail', 'message-circle', 'send', 'bell', 'phone', 'phone-call', 'phone-missed', 'phone-off', 'bell-ring', 'message-square', 'radio', 'wifi'] },
     { name: 'media', marks: [], flat: ['camera', 'image', 'play', 'video', 'mic', 'volume-2', 'volume-1', 'volume-x'] },
     { name: 'access', marks: [], flat: ['lock', 'lock-open', 'key-round', 'log-in', 'log-out', 'eye', 'eye-off', 'key'] },
-    { name: 'arrows', marks: ['→'], flat: ['arrow-up', 'arrow-down', 'arrow-left', 'arrow-right', 'refresh-cw', 'undo', 'redo'] },
+    { name: 'arrows', marks: ['→'], flat: ['arrow-up', 'arrow-down', 'arrow-left', 'arrow-right', 'chevron-up', 'chevron-down', 'chevron-left', 'chevron-right',
+             'circle-arrow-up', 'circle-arrow-down', 'circle-arrow-left', 'circle-arrow-right', 'square-arrow-up', 'square-arrow-down', 'square-arrow-left', 'square-arrow-right'] },
   ];
-  /* Since 2026-09-02 the set is Lucide's (595 names, most of them moving), so
-     the eleven curated groups above hold the vocabulary weave already had and
-     Lucide's own categories file the rest — read from the registry when it is
-     loaded (the browser, the vocabulary), absent otherwise (a bare core test).
-     'other' stays last and is also the fallback: a name nobody classified is
-     still offered rather than dropped, because a missing icon is worse than
-     one filed loosely. */
-  const REGISTRY = root.weaveIconRegistry;
-  const LUCIDE_CATEGORIES = REGISTRY
-    ? [...new Set(Object.values(REGISTRY.CATEGORY))].filter((n) => n !== 'other' && !WEAVE_CATEGORIES.some((g) => g.name === n)).sort()
-        .map((name) => ({ name, marks: [], flat: [] }))
-    : [];
+  /* The inventory (Kyle, 2026-09-02): every icon weave offers, across the
+     tool, is one of these groups — Lucide shapes chosen for what a space, a
+     table, an option or a state is likely to be called, not the whole of an
+     open-source library. The vendored set is built FROM these lists (plus the
+     twins a legacy value resolves to), so the picker, the vocabulary and the
+     files cannot drift apart. 'other' stays last and is also the fallback: a
+     name typed by hand that no group claims is still drawn and still offered
+     rather than dropped, because a missing icon is worse than one filed
+     loosely. */
   const ICON_CATEGORIES = [
     ...WEAVE_CATEGORIES,
-    ...LUCIDE_CATEGORIES,
     { name: 'other', marks: ['+'], flat: ['house', 'map-pin', 'star', 'gamepad-2', 'settings', 'plus', 'trash-2', 'ellipsis', 'refresh-cw', 'undo', 'redo', 'sparkles', 'lightbulb', 'rocket', 'cloud-upload', 'cloud-download', 'battery'] },
   ];
+  /* Every name the curated groups offer, in group order — what the generator
+     vendors and what `weave vocabulary icons` lists. */
+  const ICON_INVENTORY = ICON_CATEGORIES.flatMap((g) => g.flat);
+
   const CATEGORY_OF = new Map();
   for (const g of ICON_CATEGORIES) {
     for (const m of g.marks) CATEGORY_OF.set(m, g.name);
@@ -199,7 +200,7 @@
     const curated = CATEGORY_OF.get(id);
     if (curated) return curated;
     const name = /^lucide:(.+)$/.exec(String(id))?.[1];
-    const own = name && (catOf?.(name) ?? REGISTRY?.CATEGORY?.[name]);
+    const own = name && catOf?.(name);
     return own && ICON_CATEGORIES.some((g) => g.name === own) ? own : FALLBACK_CATEGORY;
   };
 
@@ -509,7 +510,7 @@
 
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
-    ICON_CATEGORIES, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
+    ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES,
     blankState, definitionFromState, stateFromDefinition,

@@ -666,7 +666,9 @@ function iconCatalogue() {
   // Hidden names are dropped from the OFFER, never from the data — a row that
   // stored `arrow-upsquare` still draws it.
   const reg = window.weaveIconRegistry;
-  return fieldDialogCore.iconChoices(reg.NAMES, (n) => reg.CATEGORY[n]);
+  // The inventory is what a person picks from; a mark's Lucide twin is
+  // reached through the mark, so the twins vendored for it are not offered twice.
+  return fieldDialogCore.iconChoices(fieldDialogCore.ICON_INVENTORY, (n) => reg.CATEGORY[n]);
 }
 
 /* The icon half of a naming edit: the current icon (or a ghost ring) beside

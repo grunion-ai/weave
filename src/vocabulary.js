@@ -45,7 +45,8 @@ export const OPTION_COLORS = [
   { value: '#d6409f', name: 'magenta' },
 ];
 
-/* Lucide shapes carrying movingicons.dev motion, vendored at
+/* Weave's icon inventory — Lucide shapes carrying movingicons.dev motion,
+   curated in public/field-dialog-core.js (ICON_CATEGORIES) — vendored at
    public/vendor/lucide-moving.{js,css}; public/icon-registry.js is the list,
    generated with them by scripts/build-lucide-moving.mjs. The VALUE stored on
    a space, a table or a workflow state is `lucide:<name>` — a bare name
@@ -54,9 +55,13 @@ export const OPTION_COLORS = [
    weave stored before 2026-09-02 (`iconly:<name>`, Iconly free plus the eight
    money icons it drew) keep resolving through the registry's aliases. */
 await import('../public/icon-registry.js');
+await import('../public/field-dialog-core.js');
 const REGISTRY = globalThis.weaveIconRegistry;
 export const ICON_FORM = 'lucide:<name>';
-export const ICONS = REGISTRY.NAMES;
+/* The inventory — every name the picker offers. The vendored set also holds
+   the twins a legacy value or a mark resolves to; those draw but are reached
+   through the mark, not offered twice. */
+export const ICONS = globalThis.fieldDialogCore.ICON_INVENTORY;
 
 /* The marks an author may pick, read from the drawn set so this list and the
    shapes cannot drift apart. */

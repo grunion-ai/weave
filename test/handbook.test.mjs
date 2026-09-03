@@ -205,7 +205,8 @@ test('the icon library is one Showcase page, true to the registry, with its pict
   const row = w.findEntity(t, ICON_LIBRARY_PAGE);
   const doc = w.getDoc(row.id);
   assert.equal(doc, iconLibraryPage(), 'the row carries the generated page');
-  assert.match(doc, new RegExp(`\\b${reg.NAMES.length} names\\b`), 'names the size of the set');
+  await import('../public/field-dialog-core.js');
+  assert.match(doc, new RegExp(`\\b${globalThis.fieldDialogCore.ICON_INVENTORY.length} names\\b`), 'names the size of the inventory');
   for (const m of doc.matchAll(/lucide:([a-z0-9-]+)/g)) assert.ok(reg.NAMES.includes(m[1]), `lucide:${m[1]} is not in the set`);
   for (const [ch, n] of Object.entries(reg.MARK_TWINS)) assert.ok(doc.includes(`| \`${ch}\` | \`lucide:${n}\` |`), `${ch} → ${n} is in the twins table`);
   for (const rule of ['once per hover', 'Nothing loops', 'prefers-reduced-motion', 'iconly:<name>', 'build-lucide-moving.mjs']) assert.ok(doc.includes(rule), `the page states: ${rule}`);
