@@ -2542,8 +2542,11 @@ function eyeGlyph() {
 }
 
 function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
-  const hidden = new Set(db.hiddenFields ?? []);
-  const sysOn = new Set(db.systemFields ?? []);
+  // Each row is a toggle switch: the whole row flips it.
+  const row = (on, label, run) => el('button', {
+    class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
+    onclick: (e) => { e.stopPropagation(); run(); },
+  }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
   const save = async (patch) => {
     try {
       await api('PATCH', `/tables/${db.id}`, patch);
@@ -2555,7 +2558,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
          table AND an entity of the same table, so a flip on either eye must
          reach both (Kyle, 2026-09-02: visibility in the pane diverged from
          the grid). The primary redraw above covered the eye's own surface;
-         these cover its sibling. */
+         this covers its sibling. */
       if (dock && dock.db.id === db.id) {
         dock.db = fresh;
         if (redraw !== drawDock) await drawDock();
@@ -2563,40 +2566,45 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
           await keepScroll(() => showDatabase(db.id, state.route.view));
         }
       }
-      // Re-anchor on the eye that was clicked: in the split there are two.
-      const again = (redraw === drawDock ? document.querySelector('#dock .eye-btn') : null)
-        ?? document.querySelector('#main .eye-btn') ?? document.querySelector('.eye-btn');
-      if (again) fieldVisibilityPopover(again, fresh, trashCount, { redraw, rowsSection });
+      /* The popover stays put: same node, same position, same scroll — only
+         its rows learn the new truth. The old close-and-reopen re-measured
+         against an anchor mid-relayout, so every flip made the dialog jump
+         (Kyle, 2026-09-02). */
+      const pop = document.querySelector('.chip-pop');
+      if (pop) {
+        const scroll = pop.scrollTop;
+        pop.replaceChildren(...buildRows(fresh));
+        pop.scrollTop = scroll;
+      }
     } catch (err) { toast(err.message, true); }
   };
-  // Each row is a toggle switch: the whole row flips it.
-  const row = (on, label, run) => el('button', {
-    class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
-    onclick: (e) => { e.stopPropagation(); run(); },
-  }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
-  const rows = [
-    el('div', { class: 'eye-head' }, 'Fields'),
-    ...db.fields.map((f) => row(!hidden.has(f.name), f.name, () => {
-      const next = new Set(hidden);
-      if (next.has(f.name)) next.delete(f.name); else next.add(f.name);
-      save({ hiddenFields: [...next] });
-    })),
-    el('div', { class: 'eye-head' }, 'System'),
-    ...Object.keys(SYSTEM_COLS).map((n) => row(sysOn.has(n), n, () => {
-      const next = new Set(sysOn);
-      if (next.has(n)) next.delete(n); else next.add(n);
-      save({ systemFields: [...next] });
-    })),
-    ...(rowsSection ? [
-      el('div', { class: 'eye-head' }, 'Rows'),
-      row(state.showDeleted.has(db.id), `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => {
-        if (state.showDeleted.has(db.id)) state.showDeleted.delete(db.id); else state.showDeleted.add(db.id);
-        document.querySelector('.chip-pop')?.remove();
-        keepScroll(() => showDatabase(db.id, state.route.view));
-      }),
-    ] : []),
-  ];
-  showPopover(anchor, rows);
+  const buildRows = (cur) => {
+    const hidden = new Set(cur.hiddenFields ?? []);
+    const sysOn = new Set(cur.systemFields ?? []);
+    return [
+      el('div', { class: 'eye-head' }, 'Fields'),
+      ...cur.fields.map((f) => row(!hidden.has(f.name), f.name, () => {
+        const next = new Set(hidden);
+        if (next.has(f.name)) next.delete(f.name); else next.add(f.name);
+        save({ hiddenFields: [...next] });
+      })),
+      el('div', { class: 'eye-head' }, 'System'),
+      ...Object.keys(SYSTEM_COLS).map((n) => row(sysOn.has(n), n, () => {
+        const next = new Set(sysOn);
+        if (next.has(n)) next.delete(n); else next.add(n);
+        save({ systemFields: [...next] });
+      })),
+      ...(rowsSection ? [
+        el('div', { class: 'eye-head' }, 'Rows'),
+        row(state.showDeleted.has(cur.id), `Deleted ${cur.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => {
+          if (state.showDeleted.has(cur.id)) state.showDeleted.delete(cur.id); else state.showDeleted.add(cur.id);
+          document.querySelector('.chip-pop')?.remove();
+          keepScroll(() => showDatabase(cur.id, state.route.view));
+        }),
+      ] : []),
+    ];
+  };
+  showPopover(anchor, buildRows(db));
 }
 
 /* The columns a table shows: every field, minus the table's hidden set (the

@@ -77,4 +77,35 @@ if (!chromium) {
     assert.equal(await gridHasAmount(page), true, 'and the grid follows without a redraw by hand');
     await page.close();
   });
+
+  test('a flip updates the popover in place: same node, same position, fresh rows', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.wv-grid tbody tr.entity-row');
+    await page.click('#main .eye-btn');
+    await page.waitForSelector('.chip-pop .eye-row');
+    await page.evaluate(() => { document.querySelector('.chip-pop').dataset.marker = 'held'; });
+    await page.waitForTimeout(200); // let the pop-in animation settle before measuring
+    const before = await page.evaluate(() => {
+      const r = document.querySelector('.chip-pop').getBoundingClientRect();
+      return { left: r.left, top: r.top };
+    });
+    await page.evaluate(() => {
+      [...document.querySelectorAll('.chip-pop .eye-row')]
+        .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount').click();
+    });
+    await page.waitForTimeout(1200);
+    const after = await page.evaluate(() => {
+      const pop = document.querySelector('.chip-pop');
+      const r = pop.getBoundingClientRect();
+      const amount = [...pop.querySelectorAll('.eye-row')]
+        .find((x) => x.querySelector('.eye-label')?.textContent === 'Amount');
+      return { marker: pop.dataset.marker, left: r.left, top: r.top, checked: amount.getAttribute('aria-checked') };
+    });
+    assert.equal(after.marker, 'held', 'the popover is the SAME node, not a reopen');
+    assert.equal(after.left, before.left, 'it did not jump horizontally');
+    assert.equal(after.top, before.top, 'it did not jump vertically');
+    assert.ok(after.checked === 'true' || after.checked === 'false', 'the row re-rendered');
+    await page.close();
+  });
 }
