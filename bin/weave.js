@@ -222,7 +222,9 @@ async function main() {
     // so a phone on the same wifi can reach the task applet, and it should be
     // turned off again when it is not needed.
     const host = String(flags.host ?? process.env.WEAVE_HOST ?? '127.0.0.1');
-    const { port: actual } = await startServer(w, { port, host });
+    const { buildInfo } = await import('../src/server.js');
+    // The served instance reports its build so a stale one can toast.
+    const { port: actual } = await startServer(w, { port, host, build: buildInfo });
     const wide = host === '0.0.0.0' || host === '::';
     const shown = wide ? hostname() : host;
     console.log(`Weave running at http://${shown}:${actual}  (workspace: ${w.state.meta.name}, data: ${dataPath})`);

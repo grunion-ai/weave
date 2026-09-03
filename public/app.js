@@ -881,6 +881,14 @@ function renderNav() {
       const up = h.uptime == null ? '' : ` · up ${h.uptime < 3600 ? Math.round(h.uptime / 60) + 'm' : Math.round(h.uptime / 3600) + 'h'}`;
       status.textContent = `v${h.version}${up}`;
       if (h.startedAt) status.title = `This weave instance — started ${h.startedAt}`;
+      /* The instance must run the latest main; when it does not, say so out
+         loud, once per load (Kyle, 2026-09-02). */
+      if (h.behind) {
+        status.classList.add('is-behind');
+        status.textContent += ` · ${h.sha} ≠ ${h.latestSha}`;
+        status.title = `This instance runs ${h.sha}; main is at ${h.latestSha} — weave service promote`;
+        toast(`This instance is behind main (${h.sha} → ${h.latestSha}) — run weave service promote`, true);
+      }
     }).catch(() => { status.textContent = 'offline'; });
     document.body.append(status);
   }

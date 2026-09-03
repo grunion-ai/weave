@@ -1226,6 +1226,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 @media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }
 .fielddef-edit { display: inline-flex; align-items: center; gap: 4px; }
 .nav-health { position: fixed; right: 12px; bottom: 10px; z-index: 55; font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 5px; padding: 2px 8px; opacity: .85; }
+/* A stale instance wears the warning: the chip is how you notice without
+   the toast (Kyle, 2026-09-02). */
+.nav-health.is-behind { color: var(--tblr-warning); border-color: var(--tblr-warning); }
 .wv-grid td.sys-cell { color: var(--tblr-secondary); font-size: 12.5px; white-space: nowrap; }
 /* ---------- filter strip (Feature #38) ---------- */
 .filter-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
