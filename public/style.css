@@ -1399,6 +1399,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .fx-toggle.on { border-style: solid; border-color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .08); }
 .fx-toggle.on .fx-mark { color: var(--tblr-primary); }
 
+.name-edit[readonly] { cursor: default; }
+.name-edit.computed { font-style: italic; }
 .term-row { display: flex; align-items: center; gap: 6px; }
 .term-row .form-control { flex: 1; min-width: 0; }
 .term-sep { color: var(--tblr-secondary); font-size: 13px; }

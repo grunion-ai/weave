@@ -61,7 +61,8 @@
   // existing field may become. The tray shows the field's own type plus
   // these — never a move the engine would refuse.
   const TYPE_MIGRATIONS = {
-    text: ['number', 'key', 'url', 'email', 'select', 'multiselect', 'date'],
+    text: ['number', 'key', 'url', 'email', 'select', 'multiselect', 'date', 'formula'],
+    formula: ['text'],
     number: ['text'],
     url: ['text'],
     email: ['text'],
@@ -92,7 +93,8 @@
     const self = byId[existingType];
     if (!self || self.computed) return [];
     if (self.relation) return [self];
-    return [self, ...(TYPE_MIGRATIONS[existingType] ?? []).map((id) => byId[id]).filter(Boolean)];
+    // formula is the ƒ toggle, never a grid tile — a computed target never draws here.
+    return ([self, ...(TYPE_MIGRATIONS[existingType] ?? []).map((id) => byId[id]).filter(Boolean)]).filter((t) => t && !t.computed);
   }
 
   /* The form's state after picking a migration target: whatever config can

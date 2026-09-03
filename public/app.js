@@ -174,6 +174,12 @@ const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: 
 function openEntity(id) { location.hash = `#/entity/${id}`; }
 /* The row term of a table by id (Feature #40) — for surfaces that hold a
    target id rather than the table. Unknown ids speak the default, "record". */
+/* The field that carries a table's row identity — by ROLE (Feature #168: the
+   Name field can be renamed), with the literal as the pre-role fallback. */
+function nameFieldOf(db) {
+  return db?.fields?.find((f) => f.role === 'name') ?? db?.fields?.find((f) => f.name === 'Name');
+}
+function computedName(db) { return nameFieldOf(db)?.type === 'formula'; }
 function termOfTable(id) {
   for (const s of state.schema ?? []) for (const t of s.tables) if (t.id === id) return t.term ?? WeaveTerm.DEFAULT;
   return WeaveTerm.DEFAULT;
@@ -2315,7 +2321,7 @@ function drawDatabase(db, items, trashCount = 0) {
         // dialog every other field opens, reached from here as a shortcut.
         {
           label: `Row term (${db.term.singular})…`,
-          run: () => editFieldDialog(db, db.fields.find((f) => f.name === 'Name')),
+          run: () => editFieldDialog(db, nameFieldOf(db)),
         },
         // System columns live behind the eye (Feature #114), not here.
         'divider',
@@ -2988,7 +2994,7 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
         row(FIELD_MENU_ICONS.desc, 'Sort descending', () => onSort(-1), { current: sorted < 0 }));
       if (sorted) rows.push(row(FIELD_MENU_ICONS.clear, 'Clear sort', () => onSort(0)));
     }
-    if (f.name !== 'Name') {
+    if (f.role !== 'name') {
       rows.push(el('div', { class: 'wv-menu-sep' }));
       rows.push(holdToConfirm('Delete field', async () => {
         document.querySelector('.chip-pop')?.remove();
@@ -3649,7 +3655,6 @@ function fieldDialog(db, existing, after) {
   const nameInput = el('input', {
     name: 'name', placeholder: 'Field name', class: 'form-control',
     value: existing?.name ?? '',
-    disabled: isEdit && existing.name === 'Name' ? '' : undefined,
   });
 
   const gridWrap = el('div', { class: 'full' });
@@ -3660,7 +3665,9 @@ function fieldDialog(db, existing, after) {
   // nothing the engine would refuse. Picking one carries the config across
   // (options <-> states) so it can be adjusted before the save migrates the
   // column's values in place.
-  const choices = fdc.typeChoices(isEdit ? existing.type : null);
+  let choices = fdc.typeChoices(isEdit ? existing.type : null);
+  // A name is a label: text, or a formula through the ƒ toggle (Feature #168).
+  if (isEdit && existing.role === 'name') choices = choices.filter((t) => t.id === 'text' || t.id === existing.type);
   const migratable = isEdit && choices.length > 1;
   function pickType(id) {
     state.computed = false;
@@ -3684,7 +3691,7 @@ function fieldDialog(db, existing, after) {
     // dialog; the tray then shows the expression with an edit link.
     const fx = el('label', { class: 'fx-toggle' + (state.computed ? ' on' : '') },
       el('input', {
-        type: 'checkbox', class: 'form-check-input', checked: state.computed ? '' : undefined, disabled: isEdit ? '' : undefined,
+        type: 'checkbox', class: 'form-check-input', checked: state.computed ? '' : undefined, disabled: isEdit && !['text', 'formula'].includes(existing.type) ? '' : undefined,
         onchange: (e) => {
           state.computed = e.target.checked ? 'formula' : false;
           drawGrid(); drawCfg(); changed();
@@ -3697,13 +3704,13 @@ function fieldDialog(db, existing, after) {
     if (isEdit && state.type !== existing.type && !state.computed) {
       note = el('div', { class: 'modal-note migrate-note' }, `Saving converts this ${existing.type} field to ${state.type}; every row's value is migrated in place.`);
     } else if (isEdit && !migratable) {
-      note = el('div', { class: 'modal-note' }, `${existing.type} field — the type is fixed`);
+      note = el('div', { class: 'modal-note' }, existing.role === 'name' ? 'a name is text, or a formula (ƒ below)' : `${existing.type} field — the type is fixed`);
     } else if (isEdit) {
       note = el('div', { class: 'modal-note' }, `${existing.type} field — it can also become ${choices.slice(1).map((t) => t.id).join(', ')}`);
     }
     gridWrap.replaceChildren(
       tiles.length ? dsection(isEdit ? 'Type' : 'Type', el('div', { class: 'type-grid' + (isEdit ? ' editing' : '') }, ...tiles)) : '',
-      (!isEdit || existing.type === 'formula') ? fx : '',
+      (!isEdit || ['text', 'formula'].includes(existing.type)) ? fx : '',
       note);
   }
 
@@ -3717,7 +3724,7 @@ function fieldDialog(db, existing, after) {
     } else {
       const t = state.type;
       // The Name field carries the table's row term (Feature #40).
-      if (isEdit && existing.name === 'Name') kids.push(termSection(state, changed));
+      if (isEdit && existing.role === 'name') kids.push(termSection(state, changed));
       if (t === 'select' || t === 'multiselect') {
         kids.push(dsection('Options', optionListEditor(state, changed)));
       } else if (t === 'workflow') {
@@ -3901,7 +3908,7 @@ function editPatchConfig(existing, def, state) {
   const c = def.config;
   const patch = {};
   // The row term is a lane of its own on the Name field: null clears it.
-  if (existing.name === 'Name') patch.term = c.term ?? null;
+  if (existing.role === 'name') patch.term = c.term ?? null;
   if (existing.type === 'number' || existing.type === 'formula') {
     for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting']) patch[k] = c[k] ?? null;
   }
@@ -5304,9 +5311,15 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const id = entity.id;
   const db = allTables().find((d) => d.id === entity.dbId);
 
-  const nameInput = el('input', { class: 'name-edit', value: entity.name });
-  nameInput.addEventListener('change', async () => {
-    try { await api('PATCH', `/entities/${id}`, { values: { Name: nameInput.value } }); toast('Renamed'); }
+  const nameF = nameFieldOf(db);
+  const computed = nameF?.type === 'formula';
+  const nameInput = el('input', {
+    class: 'name-edit' + (computed ? ' computed' : ''), value: entity.name,
+    readonly: computed ? '' : undefined,
+    title: computed ? `computed name — ƒ ${nameF.expression ?? ''}` : null,
+  });
+  if (!computed) nameInput.addEventListener('change', async () => {
+    try { await api('PATCH', `/entities/${id}`, { values: { [nameF?.name ?? 'Name']: nameInput.value } }); toast('Renamed'); }
     catch (err) { toast(err.message, true); }
   });
 
@@ -5538,7 +5551,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   let dragFrom = null;   // a value field, moving inside the field block
   let blockFrom = null;  // a whole block, moving among the blocks
   const hidden = new Set(db.hiddenFields ?? []);
-  const shown = db.fields.filter((f) => f.name !== 'Name' && !hidden.has(f.name));
+  const shown = db.fields.filter((f) => f.role !== 'name' && !hidden.has(f.name));
   const blocks = new Map();
 
   /* Every block wears the same anchor — a ⠿ that is itself draggable, so the
@@ -5780,6 +5793,12 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
 /* ---------- create & schema dialogs ---------- */
 
 function quickCreate(db) {
+  if (computedName(db)) {
+    api('POST', `/tables/${db.id}/entities`, {})
+      .then(async (e) => { await loadSchema(); openEntity(e.id); })
+      .catch((err) => toast(err.message, true));
+    return;
+  }
   modal(`New ${db.term.singular}`, [
     el('input', { name: 'name', placeholder: 'Name', class: 'form-control full', style: 'width:100%' }),
   ], async (fd) => {
@@ -5810,7 +5829,7 @@ function openSchemaEditor(db) {
           : f.targetDb ? `→ ${f.targetDb}${f.many ? ' (many)' : ''}`
           : f.via ? `via ${f.via}${f.targetField ? ` . ${f.targetField}` : ''}${f.aggregate ? ` (${f.aggregate})` : ''}`
           : f.expression ?? ''),
-      el('td', {}, f.name === 'Name' ? '' : holdToConfirm('Delete', async () => {
+      el('td', {}, f.role === 'name' ? '' : holdToConfirm('Delete', async () => {
         try {
           await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
           await loadSchema();
