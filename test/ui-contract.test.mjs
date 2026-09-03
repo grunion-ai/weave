@@ -609,7 +609,7 @@ test('the field menu edits a field rather than dropping and rebuilding it', () =
 test('deleting a field from the header is guarded and never offered for Name', () => {
   const menu = fnBody('fieldMenuButton');
   assert.match(menu, /holdToConfirm\(/, 'destructive rows are hold-to-confirm, like the schema page');
-  assert.match(menu, /'Name'/, 'the Name field must not offer a delete row');
+  assert.match(menu, /f\.role !== 'name'/, 'the name-role field must not offer a delete row (by role — it can be renamed, Feature #168)');
 });
 
 /* ---------- the field menu redesign (Kyle, 2026-08-27) ----------
@@ -2050,4 +2050,19 @@ test('dock: the Handbook ledger page teaches the new contract', () => {
   assert.match(section, /⌘-click a row .* own browser tab/);
   assert.match(section, /side peek/, 'the peek still exists for doc chips and says so');
   assert.doesNotMatch(section, /⌘-click opens a row in the \*\*side peek\*\*/, 'the retired ⌘-click-peeks contract is gone from the page');
+});
+
+/* ---------- Feature #168: the Name field is configurable ----------
+   Rename it, make it a formula, never delete it. The UI reads the role the
+   schema marks (`role: 'name'`), never the label. */
+test('the Name field is role-keyed in the UI and opens to rename and ƒ', () => {
+  assert.equal((APP.match(/\.name (===|!==) 'Name'/g) ?? []).length, 1, 'the only literal read is the pre-role fallback inside nameFieldOf');
+  assert.match(APP, /function nameFieldOf\(/);
+  assert.doesNotMatch(APP, /disabled: isEdit && existing\.name === 'Name'/, 'the Name field renames like any other');
+  assert.match(APP, /disabled: isEdit && !\['text', 'formula'\]\.includes\(existing\.type\) \? '' : undefined/, 'the ƒ toggle opens for text and formula fields on edit');
+  assert.match(APP, /existing\.role === 'name'\) choices = choices\.filter/, 'a name\'s type grid offers text only; ƒ is the other shape');
+  assert.match(fnBody('renderEntityView'), /readonly: computed \? '' : undefined/, 'a computed name is read-only on the entity page');
+  assert.match(fnBody('renderEntityView'), /\[nameF\?\.name \?\? 'Name'\]: nameInput\.value/, 'a renamed name patches by its label');
+  assert.match(fnBody('quickCreate'), /if \(computedName\(db\)\)/, 'quick-create skips the name prompt for a computed name');
+  assert.match(APP, /\(!isEdit \|\| \['text', 'formula'\]\.includes\(existing\.type\)\) \? fx : ''/, 'the ƒ toggle is drawn on edit for text and formula fields, not only for formulas');
 });

@@ -156,7 +156,8 @@ const MAX_DEFINITION_DEPTH = 4;
    Exported so the field tray offers exactly these and nothing the engine
    would then refuse. */
 export const TYPE_MIGRATIONS = {
-  text: ['number', 'key', 'url', 'email', 'select', 'multiselect', 'date'],
+  text: ['number', 'key', 'url', 'email', 'select', 'multiselect', 'date', 'formula'],
+  formula: ['text'],
   number: ['text'],
   url: ['text'],
   email: ['text'],
@@ -767,6 +768,16 @@ export class Weave {
   }
 
   #mark(entityOrId) {
+    const e = typeof entityOrId === 'string' ? this.state.entities[entityOrId] : entityOrId;
+    // A formula Name is materialised into values[nameFieldId] on the row's own
+    // writes (Feature #168) so FTS search and the store index a string.
+    // Cross-row inputs refresh on this row's next write — search may lag,
+    // the displayed name never does (entityName computes live).
+    const db = e?.dbId ? this.state.tables[e.dbId] : null;
+    const nf = db?.fields?.[db.nameFieldId];
+    if (nf?.type === 'formula' && e.values) {
+      try { const v = this.#resolve(e, db, nf, 0); e.values[nf.id] = v == null ? '' : String(v); } catch { /* an erroring formula leaves the last value */ }
+    }
     this.#dirty.add(typeof entityOrId === 'string' ? entityOrId : entityOrId.id);
   }
 
@@ -1427,8 +1438,13 @@ export class Weave {
             } else {
               this.deleteField(db.id, db.descriptionFieldId);
             }
+            const named = (tDoc.fields ?? []).find((f) => f.role === 'name') ?? (tDoc.fields ?? []).find((f) => f.name === 'Name');
+            if (named) {
+              if (named.name !== 'Name') this.updateField(db.id, db.nameFieldId, { name: named.name });
+              if (named.type === 'formula') this.updateField(db.id, db.nameFieldId, { type: 'formula', config: configFromDescriptor(named) });
+            }
             for (const f of tDoc.fields ?? []) {
-              if (f.name === 'Name' || f === described) continue;
+              if (f === named || f === described) continue;
               this.addField(db.id, { name: f.name, type: f.type, config: configFromDescriptor(f) });
             }
             this.#applyTableCostume(db, tDoc);
@@ -1453,7 +1469,17 @@ export class Weave {
         }
         if (Object.keys(tPatch).length) act('update-table', qualified, () => this.updateTable(db.id, tPatch));
         for (const fDoc of tDoc.fields ?? []) {
-          const existing = Object.values(db.fields).find((x) => x.name === fDoc.name);
+          let existing = Object.values(db.fields).find((x) => x.name === fDoc.name);
+          // The name role matches by role, so a renamed Name is a rename here
+          // rather than a second column (Feature #168).
+          if (!existing && fDoc.role === 'name') {
+            existing = db.fields[db.nameFieldId];
+            act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, db.nameFieldId, { name: fDoc.name }));
+          }
+          if (existing && existing.id === db.nameFieldId && fDoc.type && fDoc.type !== existing.type && ['text', 'formula'].includes(fDoc.type)) {
+            act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, db.nameFieldId, { type: fDoc.type, config: configFromDescriptor(fDoc, existing) }));
+            continue;
+          }
           if (!existing) {
             if (fDoc.type === 'relation') {
               act('create-relation', `${qualified}.${fDoc.name}`, () => this.addRelation(db.id, {
@@ -1532,7 +1558,7 @@ export class Weave {
     const patch = {};
     // The Name field's own `term` (plural included) outranks the table-level
     // `noun`, which is that term's singular under its older name.
-    const nameDoc = (tDoc.fields ?? []).find((f) => f.name === 'Name');
+    const nameDoc = (tDoc.fields ?? []).find((f) => f.role === 'name') ?? (tDoc.fields ?? []).find((f) => f.name === 'Name');
     if (nameDoc?.term) this.#setTerm(db, nameDoc.term);
     else if (tDoc.noun) patch.noun = tDoc.noun;
     if (tDoc.hiddenFields?.length) patch.hiddenFields = [...tDoc.hiddenFields];
@@ -1889,7 +1915,7 @@ export class Weave {
       entityId: e.id,
       table: this.qualifiedName(db),
       publicId: e.publicId,
-      name: String(e.values[db.nameFieldId] ?? ''),
+      name: this.entityName(e),
       data,
     });
   }
@@ -2457,7 +2483,10 @@ export class Weave {
     if (db.fields[ref]) return db.fields[ref];
     const fields = Object.values(db.fields);
     return fields.find((f) => f.name === ref)
-      ?? fields.find((f) => f.name.toLowerCase() === String(ref).toLowerCase());
+      ?? fields.find((f) => f.name.toLowerCase() === String(ref).toLowerCase())
+      // The literal 'Name' keeps resolving after a rename (Feature #168): it
+      // is what every existing caller — MCP, CSV, `values: { Name }` — says.
+      ?? (String(ref) === 'Name' ? db.fields[db.nameFieldId] : undefined);
   }
 
   getField(dbRef, ref) {
@@ -2628,7 +2657,6 @@ export class Weave {
     const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
     if (patch.name != null) {
-      if (field.id === db.nameFieldId) throw new WeaveError('Cannot rename the Name field', 'invalid');
       field.name = patch.name;
     }
     if (patch.type != null && patch.type !== field.type) {
@@ -2720,7 +2748,9 @@ export class Weave {
     if (!allowed.includes(toType)) {
       throw new WeaveError(`A ${field.type} field can become ${allowed.length ? allowed.join(', ') : 'nothing else'} — not ${toType}`, 'invalid');
     }
-    if (field.id === db.nameFieldId) throw new WeaveError('Cannot change the type of the Name field', 'invalid');
+    if (field.id === db.nameFieldId && !(['text', 'formula'].includes(toType) && ['text', 'formula'].includes(field.type))) {
+      throw new WeaveError('The Name field can be text or a formula — a name is a label, not a number or a date', 'invalid');
+    }
     const from = field.type;
     const rows = this.listEntities(db.id, { includeDeleted: true });
     const optName = (opts, id) => opts.find((o) => o.id === id)?.name ?? null;
@@ -2747,10 +2777,18 @@ export class Weave {
     } else if (toType === 'workflow') {
       const states = (from === 'select' ? field.config.options : []).map((o, i) => ({ id: o.id, name: o.name, category: 'in-progress', default: i === 0 }));
       nextConfig = normalizeSelfContainedConfig('workflow', { states: config.states?.length ? config.states : states });
+    } else if (toType === 'formula') {
+      if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
+      nextConfig = { expression: config.expression, ...normalizeSelfContainedConfig('number', config) };
     } else {
       nextConfig = normalizeSelfContainedConfig(toType, config);
     }
-    const coerce = (raw) => {
+    // formula -> text freezes what each row showed, so nothing a reader saw
+    // disappears when the computation stops. Computed BEFORE the type flips.
+    const frozen = from === 'formula' ? new Map(rows.map((e) => { const v = this.#resolve(e, db, field, 0); return [e.id, v == null ? null : String(v)]; })) : null;
+    const coerce = (raw, e) => {
+      if (frozen) return toType === 'text' ? frozen.get(e.id) : null;
+      if (toType === 'formula') return null;
       if (raw == null || raw === '') return toType === 'workflow' ? nextConfig.states.find((s) => s.default).id : null;
       switch (toType) {
         case 'text': {
@@ -2777,11 +2815,16 @@ export class Weave {
         default: return null;
       }
     };
-    for (const e of rows) e.values[field.id] = coerce(e.values[field.id]);
+    for (const e of rows) e.values[field.id] = coerce(e.values[field.id], e);
     field.type = toType;
     const width = field.config.width;
+    const term = field.id === db.nameFieldId ? field.config.term : undefined;
     field.config = nextConfig;
     if (width) field.config.width = width;
+    if (term) field.config.term = term; // the row term rides the Name field through every shape
+    // A computed name is materialised per row (see #mark) so search and sort
+    // have a string; migrating to a formula fills the cache for every row.
+    if (toType === 'formula' && field.id === db.nameFieldId) for (const e of rows) this.#mark(e);
     if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from, to: toType, rows: rows.length });
   }
 
@@ -2921,6 +2964,14 @@ export class Weave {
 
   entityName(e) {
     const db = this.state.tables[e.dbId];
+    const f = db?.fields?.[db.nameFieldId];
+    if (f?.type === 'formula') {
+      // Live, not the cache: the cache is for the store (search, sort) and
+      // refreshes on the row's own writes; the name a reader sees follows
+      // its inputs immediately.
+      const v = this.#resolve(e, db, f, 0);
+      return v == null ? '' : String(v);
+    }
     return String(e.values[db.nameFieldId] ?? '');
   }
 
@@ -2938,7 +2989,15 @@ export class Weave {
     const flat = Object.fromEntries(
       Object.entries(input).filter(([k]) => !CREATE_INPUT_KEYS.has(k)));
     const values = { ...flat, ...(input.values ?? {}) };
-    if (input.name != null && values.Name == null) values.Name = input.name;
+    const nameField = db.fields[db.nameFieldId];
+    if (nameField?.type === 'formula') {
+      // A computed name cannot be written; the shape every caller reaches
+      // for (`{ name }`, the grid's `{ name: '' }`) is tolerated, not refused.
+      delete values.Name;
+      delete values[nameField.name];
+    } else if (input.name != null && values.Name == null && values[nameField?.name] == null) {
+      values[nameField?.name ?? 'Name'] = input.name;
+    }
     const e = {
       id: uuid(),
       dbId: db.id,
@@ -4368,6 +4427,7 @@ export class Weave {
           // schema onto a fresh workspace reproduces the role rather than
           // guessing it from the name (Kyle, 2026-08-27).
           if (f.id === db.descriptionFieldId) out.role = 'description';
+          if (f.id === db.nameFieldId) out.role = 'name';
           /* A credential column tells the browser which sort it holds and
              whose store holds it, so the chip can wear the right glyph and
              offer the right door (Feature #143). Never a value — the secret

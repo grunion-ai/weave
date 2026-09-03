@@ -19,7 +19,7 @@ export const FIELD_KINDS = ['Value', 'Choice', 'Relation', 'Computed', 'Document
 export const FIELD_DOCS = [
   { name: 'text', kind: 'Value', doc: `# text
 
-Free-form single-line string. Every table is born with one: \`Name\`, the entity's identity and its link text everywhere.
+Free-form single-line string. Every table is born with one: \`Name\`, the entity's identity and its link text everywhere. It can be renamed (Title, Subject, Invoice #) and it can become a **formula** — a computed name that follows its inputs; it cannot be deleted, because a row needs an identity. The row term (what one row is called) lives on it too.
 
 ## Config
 
