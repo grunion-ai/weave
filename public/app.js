@@ -364,8 +364,10 @@ async function drawDock() {
   releaseDockPanel();
   const panel = $('#dock');
   panel.hidden = false;
+  applyDockWidth(panel);
   const host = el('div', { class: 'dock-entity' });
   panel.replaceChildren(
+    dockResizeHandle(panel),
     el('div', { class: 'dock-head' },
       el('span', { style: 'flex:1' }),
       el('button', {
@@ -382,6 +384,53 @@ async function drawDock() {
   // The full entity view — the dock is the entity, not a preview of it.
   await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockClose, editors: dock.editors });
   markDockedRow();
+}
+
+/* The divider. Default is the equal flex split; a drag pins the dock to a
+   px width remembered per browser (like grid density and the activity
+   side), clamped so neither panel collapses. Double-click clears the pin
+   and the halves are equal again. */
+const DOCK_MIN = 360;
+function applyDockWidth(panel) {
+  const px = Number(localStorage.getItem('wv-dock-width'));
+  if (px >= DOCK_MIN) { panel.style.width = `${px}px`; panel.style.flex = 'none'; }
+  else { panel.style.width = ''; panel.style.flex = ''; }
+}
+function dockResizeHandle(panel) {
+  const grip = el('div', {
+    class: 'dock-resize', title: 'Drag to resize — double-click for the even split',
+    role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize the entity pane',
+  });
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    document.body.classList.add('dock-resizing');
+    const right = panel.getBoundingClientRect().right;
+    const roomFor = (want) => {
+      // The table keeps at least its own minimum beside the pin.
+      const mainLeft = $('#main').getBoundingClientRect().left;
+      return Math.min(want, right - mainLeft - 320);
+    };
+    const move = (ev) => {
+      const want = Math.max(DOCK_MIN, roomFor(Math.round(right - ev.clientX)));
+      panel.style.width = `${want}px`;
+      panel.style.flex = 'none';
+    };
+    const up = () => {
+      document.body.classList.remove('dock-resizing');
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      const px = Math.round(panel.getBoundingClientRect().width);
+      localStorage.setItem('wv-dock-width', String(px));
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+  });
+  grip.addEventListener('dblclick', () => {
+    localStorage.removeItem('wv-dock-width');
+    applyDockWidth(panel);
+  });
+  return grip;
 }
 
 // ⌘⇧E flips the pose: expands a split dock, re-docks an expanded page.

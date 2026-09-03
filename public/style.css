@@ -1252,9 +1252,20 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    beside #main, styled as its twin panel — not an overlay. The rules live
    in public/entity-surface-core.js; app.js paints them here. */
 /* Sticky, so a long table scrolling beside it never carries the dock off
-   the screen: the pane is its own scroll box, pinned to the viewport. */
-#dock { flex: none; width: min(46%, 760px); margin: 8px 8px 8px 0; padding: 14px 22px 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: calc(100vh - 16px); max-height: calc(100vh - 16px); overflow-y: auto; position: sticky; top: 8px; align-self: flex-start; }
+   the screen: the pane is its own scroll box, pinned to the viewport.
+   Default is an equal split — #main and #dock each flex to half the room
+   left of the nav (Kyle, 2026-09-02). A dragged divider pins the dock to a
+   px width (inline flex: none); double-click hands it back to the flex.
+   Side padding matches #main's 28px, so the entity reads on the page's
+   grid (Kyle, 2026-09-02: padding on either edge of the split dock). */
+#dock { flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: 14px 28px 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 360px; min-height: calc(100vh - 16px); max-height: calc(100vh - 16px); overflow-y: auto; position: sticky; top: 8px; align-self: flex-start; }
 #dock .dock-head { display: flex; align-items: center; min-height: 26px; margin-bottom: 2px; }
+/* The divider: a 10px grab strip riding the dock's left edge. Its hairline
+   waits for the pointer (or a drag), like row chrome everywhere else. */
+#dock .dock-resize { position: absolute; left: 0; top: 0; bottom: 0; width: 10px; cursor: col-resize; z-index: 5; }
+#dock .dock-resize::after { content: ""; position: absolute; left: 4px; top: 50%; height: 44px; width: 3px; transform: translateY(-50%); border-radius: 2px; background: var(--tblr-border-color); opacity: 0; transition: opacity .12s ease; }
+#dock .dock-resize:hover::after, body.dock-resizing #dock .dock-resize::after { opacity: 1; }
+body.dock-resizing { user-select: none; cursor: col-resize; }
 /* The pane is narrower than a page: the field grid single-columns and the
    sticky header sits still, same as the peek before it. */
 #dock .dock-entity .entity-grid { grid-template-columns: 1fr; }
