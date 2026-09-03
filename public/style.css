@@ -759,8 +759,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    block is hovered, and the ⠿ is the thing you grab (Issue #89). */
 .entity-body > [data-block] { border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
 .entity-body > [data-block].dragging { opacity: .4; }
-.entity-body > [data-block].drop-target { box-shadow: inset 0 2px 0 var(--tblr-primary); }
-.entity-body > [data-block].dragging ~ [data-block].drop-target { box-shadow: inset 0 -2px 0 var(--tblr-primary); }
 .block-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; cursor: grab; }
 .block-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
 .block-head .opt-grip, .related-head .opt-grip, .attach-block .opt-grip { opacity: 0; cursor: grab; transition: opacity .12s; }
@@ -772,13 +770,15 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-body > .attach-block label { color: var(--tblr-secondary); font-size: 13px; }
 @media (max-width: 600px) { .entity-body > .attach-block { grid-template-columns: 16px 110px minmax(0, 1fr); } }
 
-/* The insertion cue is ONE horizontal line in the gap the field will land
-   in — above or below the row under the pointer, picked by the pointer's
-   height against the row's midpoint (Kyle, 2026-08-28: a highlighted row
-   read as a swap). The fields flow down their columns, so the gap is always
-   horizontal; the rows already wear 2px transparent borders to light up. */
-.entity-fields .fieldrow.drop-before { border-top-color: var(--tblr-primary); }
-.entity-fields .fieldrow.drop-after { border-bottom-color: var(--tblr-primary); }
+/* The cue is a slot, not a line (review, 2026-09-03): one dashed row-shaped
+   hole, named for what will land in it, opened where the pointer says and
+   pushing everything after it down. Rows and blocks share it — the block
+   version is only taller, because a block is. */
+.drop-slot { box-sizing: border-box; min-height: 32px; margin: 0 0 2px -6px; padding: 0 0 0 26px;
+  border: 2px dashed var(--tblr-primary); border-radius: var(--tblr-border-radius);
+  background: rgba(6, 111, 209, .06); color: var(--tblr-primary); font-size: 12.5px;
+  display: flex; align-items: center; break-inside: avoid; }
+.entity-body > .drop-slot { margin: 6px 0 12px; min-height: 40px; padding-left: 12px; }
 @media (max-width: 600px) { .entity-fields .fieldrow { grid-template-columns: 16px 110px minmax(0, 1fr); } }
 .doc-toolbar { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
 .comment { border-top: 1px solid var(--tblr-border-color); padding: 8px 0; }

@@ -1198,19 +1198,19 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
      could not show (Issue #89, Kyle 2026-08-26). */
   assert.match(body, /let dragFrom = null;/, 'a field drag');
   assert.match(body, /let blockFrom = null;/, 'and a block drag, tracked apart');
-  assert.match(body, /if \(!dragFrom \|\| dragFrom === f\.name\) return;/, 'a field drop ignores a block drag');
-  assert.match(body, /if \(!blockFrom \|\| blockFrom === key\) return;/, 'and a block drop ignores a field drag');
-  assert.match(body, /reorderField\(db, from, f\.name, \{ after, onFail: refresh \}\)/,
-    'a field drop is a fieldOrder write through the one reorder function');
+  /* One slot for both (review, 2026-09-03): each list asks held() for the
+     node being dragged and lets the event through when it is not theirs, so
+     a row can never land among the blocks or a block among the rows. */
+  assert.match(body, /held: \(\) => dragFrom \? values\.querySelector/, 'the rows\' list holds a row');
+  assert.match(body, /held: \(\) => blockFrom \? blocks\.get\(blockFrom\) : null/, 'the body holds a block');
+  assert.match(body, /reorderField\(db, from, next\.dataset\.field, \{ after: false, onFail: refresh \}\)/,
+    'a field drop is a fieldOrder write through the one reorder function, against the slot\'s neighbour');
   assert.match(body, /reorderBlocks\(db, left, refresh\)/, 'a block drop is a bodyOrder write');
-
-  /* Direction: a field drop reads the pointer's height against the row's
-     midpoint — the cue line and the landing side are the same fact (Kyle,
-     2026-08-28). A block drop still reads the live DOM order. */
-  assert.match(body, /e\.clientY > r\.top \+ r\.height \/ 2/, 'a field drop lands on the side the pointer picked');
-  const live = /compareDocumentPosition\(node\) & Node\.DOCUMENT_POSITION_FOLLOWING/g;
-  assert.equal((body.match(live) ?? []).length, 1, 'a block drag reads its direction from where blocks sit now');
-
+  const slot = fnBody('slotDrag');
+  assert.match(slot, /e\.clientY < r\.top \+ r\.height \/ 2/, 'the pointer\'s height against an item\'s midpoint places the slot');
+  assert.match(slot, /Math\.abs\(left\(n\) - left\(nearest\)\) < 40/, 'only the pointer\'s column is a candidate — the multicol grid is a list');
+  assert.match(slot, /at\.replaceWith\(me\)/, 'the drop swaps the held node into the slot; the DOM is the order');
+  assert.doesNotMatch(body, /compareDocumentPosition\(node\)/, 'no direction arithmetic is left on the page');
   assert.match(body, /const anchor = \(what\) => el\('span', \{ class: 'opt-grip', draggable: 'true'/,
     'the anchor is a ⠿ that is itself draggable — the thing you grab is the thing that moves');
   assert.match(body, /wireBlock\(VALUES_BLOCK, fields,/, 'the field block is anchored');
@@ -1234,9 +1234,11 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
   assert.match(body, /class: 'doc-section-head', draggable: 'true'/, 'and is dragged by its head');
   assert.match(body, /const dragRow = \(node, handle, f\)/, 'one drag wiring serves the value rows');
   assert.match(CSS, /\.entity-fields \.fieldrow\.dragging/, 'a dragged row is ghosted');
-  assert.match(CSS, /\.entity-fields \.fieldrow\.drop-before/, 'the insertion line above is marked');
-  assert.match(CSS, /\.entity-fields \.fieldrow\.drop-after/, 'and below');
-  assert.match(CSS, /\.entity-body > \[data-block\]\.drop-target/, 'a block too');
+  assert.match(CSS, /\.drop-slot \{[^}]*border: 2px dashed var\(--tblr-primary\)/, 'the cue is a dashed slot');
+  assert.match(CSS, /\.drop-slot \{[^}]*break-inside: avoid/, 'that never splits across a column break');
+  assert.match(CSS, /\.entity-body > \.drop-slot/, 'and blocks wear the same one, taller');
+  assert.doesNotMatch(CSS, /\.fieldrow\.drop-(before|after)/, 'no line on a neighbour\'s edge remains');
+  assert.doesNotMatch(CSS, /\[data-block\]\.drop-target/, 'for rows or for blocks');
 
   // The label is the field: clicking it opens the same tray the table's
   // header click opens (Feature #109), so a field is editable from the one
