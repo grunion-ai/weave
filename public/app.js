@@ -1257,7 +1257,7 @@ function restoreGridFocus() {
    the spot — and `clearId` is the empty value Backspace picks for a field
    that has one (a select does; a workflow state does not).
    The keyboard grammar itself is pure and lives in public/picker-core.js. */
-function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null, clearId = null, grid = false }) {
+function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null, clearId = null, grid = false, groups = false, custom = null }) {
   document.querySelector('.chip-pop')?.remove();
   const core = globalThis.pickerCore;
   // A grid is the icon picker: a value stored as iconly:<name> rings the cell
@@ -1288,7 +1288,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     // A grid shows the current icon as a ring on its own cell, so staging it
     // as a chip says the same thing twice and takes the search box with it —
     // an unset icon put a "No icon" chip in the field (Kyle, 2026-08-29).
-    if (grid) {
+    if (grid || groups) {
       chips.replaceChildren();
       input.placeholder = placeholder;
       return;
@@ -1339,8 +1339,34 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     if (!groups.length && !clear) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
     playIconsInView(list);
   };
+  /* Grouped text cells (the row-term picker, Feature #40): the icon grid's
+     dialect with words instead of glyphs — categories are the only labels, a
+     heading leaves with its cells — plus one row that turns the typed query
+     into a custom value when nothing listed matches it exactly. */
+  const drawGroups = () => {
+    const vis = core.visible(st);
+    const byGroup = new Map();
+    for (const o of vis) { if (!byGroup.has(o.group)) byGroup.set(o.group, []); byGroup.get(o.group).push(o); }
+    list.replaceChildren(...[...byGroup].flatMap(([name, items]) => [
+      el('div', { class: 'picker-cat' }, name),
+      el('div', { class: 'picker-cells picker-terms' }, ...items.map((o) => el('button', {
+        class: 'picker-cell picker-term' + (o.id === currentId ? ' on' : ''), type: 'button', title: o.label,
+        onclick: async () => { await pick(o); },
+      }, o.label))),
+    ]));
+    const q = st.query.trim();
+    const exact = q && options.some((o) => o.label.toLowerCase() === q.toLowerCase() || o.id === q.toLowerCase());
+    if (!vis.length && !(custom && q)) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
+    if (custom && q && !exact) {
+      list.append(el('button', {
+        class: 'picker-custom', type: 'button',
+        onclick: async () => { pop.remove(); await custom(q); },
+      }, `Use “${q.charAt(0).toUpperCase() + q.slice(1)}” as a custom term`));
+    }
+  };
   const draw = () => {
     if (grid) return drawGrid();
+    if (groups) return drawGroups();
     const vis = core.visible(st);
     list.replaceChildren(...vis.map((o, i) => el('button', {
       class: 'chip-pop-row picker-row' + (i === st.active ? ' active' : ''), type: 'button',
@@ -1378,6 +1404,12 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     // Option down, ev.key is the character the chord types (⌥1 is `¡`), and a
     // bare digit has to stay a digit — the box is a search field.
     const quick = ev.altKey && /^Digit[1-9]$/.test(ev.code) ? Number(ev.code.slice(5)) : null;
+    // Enter on an unlisted query takes the custom row, not the first cell.
+    if (groups && custom && ev.key === 'Enter' && st.query.trim()) {
+      const q = st.query.trim();
+      const exact = options.find((o) => o.label.toLowerCase() === q.toLowerCase() || o.id === q.toLowerCase());
+      if (!exact) { ev.preventDefault(); pop.remove(); await custom(q); return; }
+    }
     const r = core.keyDown(st, { key: ev.key, atStart, quick });
     if (!r.handled) return;
     ev.preventDefault();
@@ -3455,27 +3487,32 @@ function statePreview(st) {
       st.name || 'State'));
 }
 
-/* What one row is called (Feature #40) — Name-field config. The singular is
-   a datalist over the curated terms, so a click picks one and typing makes a
-   custom one; the plural derives until someone corrects it. Below, the three
-   surfaces that speak it, live.
-   ponytail: a grouped searchPicker (the icon picker's dialect) is the upgrade
-   if the flat datalist proves too long to scan. */
+/* What one row is called (Feature #40) — Name-field config. The face shows
+   the current term as the chip it will become, and opens the grouped picker
+   (the icon picker's dialect, in words): click a term, or type one nobody
+   listed and take it as a custom term. Picking Record is picking the default.
+   The plural derives until someone corrects it; the preview shows the three
+   surfaces that speak it. */
 function termSection(state, onChange) {
   const T = WeaveTerm;
-  const list = el('datalist', { id: 'term-options' }, ...T.options().map((o) => el('option', { value: o.id }, o.group)));
-  const sing = el('input', { class: 'form-control term-singular', list: 'term-options', placeholder: T.DEFAULT.singular, autocomplete: 'off', spellcheck: 'false', value: state.term?.singular ?? '' });
+  const face = el('button', { type: 'button', class: 'picker-face term-face', 'aria-haspopup': 'listbox' });
+  const reset = el('button', { type: 'button', class: 'term-reset', title: 'Back to Record' }, 'reset');
   const plur = el('input', { class: 'form-control term-plural', placeholder: T.DEFAULT.plural, spellcheck: 'false', value: state.term?.plural ?? '' });
   let pluralTouched = !!(state.term?.plural && state.term.plural !== T.pluralize(state.term.singular));
   const preview = el('div', { class: 'modal-note term-preview' });
   const draw = () => {
     const t = T.resolve({ term: state.term });
-    plur.placeholder = T.pluralize(sing.value.trim() || T.DEFAULT.singular);
-    preview.textContent = `“+ New ${t.singular}” · “${T.count(3, t)} selected” · “Deleted ${t.plural}”${t.set ? '' : ' — the default'}`;
+    face.replaceChildren(
+      el('span', { class: 'k k-select hue-blue' }, T.cap(t.singular)),
+      t.set ? '' : el('span', { class: 'term-default' }, 'the default'),
+      el('span', { class: 'term-caret' }, '▾'));
+    reset.hidden = !t.set;
+    plur.placeholder = T.pluralize(t.singular);
+    preview.textContent = `“+ New ${t.singular}” · “${T.count(3, t)} selected” · “Deleted ${t.plural}”`;
   };
-  sing.oninput = () => {
-    const s = sing.value.trim().toLowerCase();
-    if (!s) { state.term = null; if (!pluralTouched) plur.value = ''; }
+  const set = (singular) => {
+    const s = String(singular ?? '').trim().toLowerCase();
+    if (!s || s === T.DEFAULT.singular) { state.term = null; if (!pluralTouched) plur.value = ''; }
     else {
       const plural = pluralTouched && plur.value.trim() ? plur.value.trim().toLowerCase() : T.pluralize(s);
       state.term = { singular: s, plural };
@@ -3483,6 +3520,15 @@ function termSection(state, onChange) {
     }
     draw(); onChange();
   };
+  face.onclick = () => searchPicker({
+    anchor: face, title: 'Rows in this table are…', placeholder: 'Search terms, or type your own…',
+    options: T.options().map((o) => ({ id: o.id, label: o.label, group: o.group })),
+    currentId: state.term?.singular ?? T.DEFAULT.singular,
+    groups: true,
+    custom: (q) => set(q),
+    onPick: (o) => set(o.id),
+  });
+  reset.onclick = () => set(null);
   plur.oninput = () => {
     pluralTouched = !!plur.value.trim();
     if (state.term) state.term.plural = plur.value.trim().toLowerCase() || T.pluralize(state.term.singular);
@@ -3490,7 +3536,9 @@ function termSection(state, onChange) {
   };
   draw();
   return dsection('Rows in this table are…',
-    el('div', { class: 'term-row' }, sing, el('span', { class: 'term-sep' }, '/'), plur, list), preview);
+    el('div', { class: 'term-row' }, face, reset),
+    el('div', { class: 'term-row term-plural-row' }, el('span', { class: 'term-tag' }, 'plural'), plur),
+    preview);
 }
 
 /* Rows of {name, color} with a cycling color swatch — replaces the
@@ -6112,7 +6160,7 @@ async function relatedGrid(entity, f, onSaved) {
       },
     },
       el('td', { class: 'pid-cell' },
-        el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: 'Open entity page' }, `#${item.publicId} ↗`)),
+        el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: `Open ${target.term.singular}` }, `#${item.publicId} ↗`)),
       ...cols.map((c) => el('td', {
         class: (c.type === 'number' ? 'num' : '')
           + (PICKER_FIELD_TYPES.includes(c.type) ? ' cell-pick' : READONLY_FIELD_TYPES.includes(c.type) ? ' cell-computed' : ''),

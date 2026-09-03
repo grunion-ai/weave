@@ -2068,3 +2068,41 @@ test('the Name field is role-keyed in the UI and opens to rename and ƒ', () => 
   assert.match(fnBody('quickCreate'), /if \(computedName\(db\)\)/, 'quick-create skips the name prompt for a computed name');
   assert.match(APP, /\(!isEdit \|\| \['text', 'formula'\]\.includes\(existing\.type\)\) \? fx : ''/, 'the ƒ toggle is drawn on edit for text and formula fields, not only for formulas');
 });
+
+/* ---------- Feature #40: every surface speaks the table's row term ----------
+   Kyle, 2026-09-02: "make sure every surface is universal — everywhere we say
+   entity or have a similar mention, make the change". The literals below are
+   the ones the audit replaced; their return is the regression. Re-added
+   2026-09-03: the gate was lost in a concurrent merge, and one literal had
+   already crept back (the entity dock's #id link). */
+test('no surface says "entity" to a reader where a table has a row term', () => {
+  for (const literal of [
+    "title: 'Add an entity'", "'Open entity page'", "Record noun", "Deleted entities",
+    "'Search records…'", "title: 'Entity actions'", "'Roll up into a new entity…'",
+    "? 'entity' : 'entities'", "${n.entityCount} entities", "New ${db.noun ?? db.name}",
+    "no entity to attach to",
+  ]) {
+    assert.ok(!APP.includes(literal), `app.js still says ${literal}`);
+  }
+  assert.match(APP, /\+ New \$\{db\.term\.singular\}/, 'the grid\'s add row');
+  assert.match(APP, /countLabel\(sel\.size, db\.term\)/, 'the puck count');
+  assert.match(APP, /termOfTable\(f\.targetDbId\)\.plural/, 'relation pickers speak the target\'s plural');
+  assert.match(APP, /WeaveTerm\.count\(n\.entityCount, n\.term\)/, 'relation-map nodes');
+  assert.match(APP, /'record' : 'records'/, 'the workspace total speaks the default term');
+});
+
+test('the Name field\'s dialog carries the grouped term picker', () => {
+  assert.match(APP, /if \(isEdit && existing\.role === 'name'\) kids\.push\(termSection\(state, changed\)\)/);
+  const sec = fnBody('termSection');
+  assert.doesNotMatch(sec, /datalist|term-options/, 'the flat datalist is gone (Kyle, 2026-09-02: the grouped selector from the mockup)');
+  assert.match(sec, /searchPicker\(\{[\s\S]*groups: true/, 'the house picker draws the curated terms in groups');
+  assert.match(sec, /custom: \(q\) => set\(q\)/, 'typing an unlisted word takes it as a custom term');
+  assert.match(sec, /T\.options\(\)/, 'from term-core, not a second list');
+  assert.match(sec, /T\.pluralize\(/, 'the plural derives');
+  assert.match(APP, /groups = false, custom = null \}\) \{/, 'searchPicker grew the two options');
+  assert.match(fnBody('searchPicker'), /const drawGroups = /, 'grouped text cells are the picker\'s third dialect');
+  assert.match(fnBody('searchPicker'), /as a custom term/, 'the custom row names what it does');
+  assert.match(fnBody('editPatchConfig'), /if \(existing\.role === 'name'\) patch\.term = c\.term \?\? null/, 'null clears the term');
+  const css = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
+  assert.match(css, /\.picker-cell\.picker-term\.on/, 'the chosen term is marked');
+});
