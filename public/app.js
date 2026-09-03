@@ -5088,7 +5088,15 @@ async function refreshRefChips(st) {
   // name is the tooltip — six characters of `:bell:` cannot also hold a word
   // beside a glyph), and the literal comes back the moment the caret enters
   // it — same rule as a reference, so typing `:bel` never fights a half-drawn
-  // bell.
+  // bell. The chip wears the ground it sits on — a striped table row, the
+  // page — so it hides the colons without reading as a pill.
+  const groundOf = (node) => {
+    for (let n = node.parentElement; n && n !== document.body; n = n.parentElement) {
+      const bg = getComputedStyle(n).backgroundColor;
+      if (bg && bg !== 'transparent' && !/^rgba\(\d+, \d+, \d+, 0\)$/.test(bg)) return bg;
+    }
+    return getComputedStyle(document.body).backgroundColor;
+  };
   for (const s of icons) {
     if (caret?.startContainer === s.node && caret.startOffset >= s.start && caret.startOffset <= s.end) continue;
     const range = document.createRange();
@@ -5099,7 +5107,7 @@ async function refreshRefChips(st) {
     const r = rects[0];
     st.layer.append(el('span', {
       class: 'doc-icon-chip', title: s.token,
-      style: `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px; height:${r.height}px;`,
+      style: `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px; height:${r.height}px; background:${groundOf(s.node)};`,
     }, iconEl(s.icon, 'wv-icon md-icon')));
   }
 }
