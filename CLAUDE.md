@@ -28,4 +28,4 @@ The main instance (`:4400`, data dir `~/.weave/`) hosts every workspace — `wea
 - TDD: `node --test 'test/**/*.test.mjs'` (run from this directory) must be green before any commit; new engine/server behavior lands with tests.
 - UI is vanilla JS (`public/app.js`), styled on Tabler tokens (`--tblr-*`) with Radix-style soft squared chips; both themes (`data-bs-theme`) must be checked for UI changes.
 - Data files (`*.db` + WAL/SHM sidecars, legacy `uno.json`/`weave.json`, `files/`) are gitignored workspace state — never commit them; the engine refuses non-workspace JSON and foreign SQLite files (keep it that way).
-- Commits end with the Claude co-author line; push to `origin main` (github.com/grunion-ai/weave).
+- Commits end with the Claude co-author line. Main lands through Gerrit only: `git push gerrit HEAD:refs/for/main`, never `origin main` (a pre-push hook refuses it; the main watcher mirrors gerrit/main to GitHub and deploys :4400 after the pack is green). The agent that ships a change reviews it, extends the tests, +2s and submits it — see DEVELOPMENT.md.

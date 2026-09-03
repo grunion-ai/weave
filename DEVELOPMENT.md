@@ -23,10 +23,11 @@ git push gerrit HEAD:refs/for/main
 ~/Documents/harness.nosync/scripts/weave-review.sh <change-number>          # tests -> Verified ±1
 ~/Documents/harness.nosync/scripts/weave-review.sh <change-number> --submit # also submit on green
 
-# approve + land (human judgment stays on Code-Review)
-# UI: http://localhost:8282  — or REST:
-#   POST /a/changes/<n>/revisions/current/review {"labels":{"Code-Review":2}}
-#   POST /a/changes/<n>/submit
+# approve + land — the shipping agent does this itself (Kyle, 2026-09-02)
+# after its own review pass; the +2 message names what was reviewed and
+# which tests were added. UI: http://localhost:8282  — or REST:
+#   POST /a/changes/<n>/revisions/current/review {"labels":{"Code-Review":2},"message":"..."}
+#   POST /a/changes/<n>/submit        # 409 = main moved: rebase, re-push, re-gate
 
 # sync landed work back
 git fetch gerrit && jj rebase -d main@gerrit   # or: git pull gerrit main
@@ -42,6 +43,16 @@ git fetch gerrit && jj rebase -d main@gerrit   # or: git pull gerrit main
 4. Working in parallel with other agents? You don't need to coordinate — Gerrit
    serializes at submit; rebase conflicts surface as a new patchset, not a broken tree.
 5. jj is the local safety net: after any suspected clobber, `jj op log` + `jj undo`.
+6. **The shipping agent lands its own change.** Before +2: read the whole diff again,
+   check tombstone/undo/lifecycle paths, CLI + route + MCP parity for any new engine
+   verb, both themes for UI, the Handbook when chrome or a field type is new; add the
+   tests that assert each of those (a regression gets its failing test first). Then
+   +2 with a message naming what was tightened and which tests were added, submit,
+   and confirm MERGED. Never leave a green change parked for someone else's +2.
+7. **Never push `origin main`.** The repo's pre-push hook refuses it. The main watcher
+   (`harness/scripts/weave-review-poll.mjs`) mirrors a green gerrit/main to GitHub
+   fast-forward only, ff-pulls `~/.weave-serve`, restarts launchd `ai.grunion.weave`,
+   and files a weave Issue if :4400 is not launchd's pid started after the landing.
 
 ## Service operations
 
@@ -60,9 +71,10 @@ binds 127.0.0.1. Do not expose these ports; re-auth properly before any remote h
 
 ## GitHub mirror
 
-Gerrit is the source of truth for review; GitHub stays the public mirror. Until the
-grunion-ai push credential lands, mirroring is manual: `git push origin main` after
-changes submit. Once the credential exists, wire Gerrit's replication plugin instead.
+Gerrit is the source of truth; GitHub is the public mirror and nothing else. The main
+watcher pushes every green gerrit/main tip to GitHub fast-forward only (rule 7). If
+that push is ever refused, someone pushed GitHub directly: reconcile by merging
+GitHub main into gerrit/main in a temp worktree and pushing both, never force.
 
 ## Rollback
 
