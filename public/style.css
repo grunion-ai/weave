@@ -1261,6 +1261,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 #dock .dock-entity .view-header { position: static; }
 /* The docked row stays lit in the table — selection follows the pane. */
 .wv-grid tbody tr.entity-row.row-docked td { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
+.pose-glyph { display: inline-flex; line-height: 0; }
+.pose-glyph svg { display: block; }
 
 #peek-back { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 80; }
 #peek { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 92vw); background: var(--tblr-bg-surface); border-left: 1px solid var(--tblr-border-color); box-shadow: -8px 0 24px rgba(0,0,0,.12); overflow-y: auto; animation: peek-in .16s ease; }
