@@ -404,7 +404,8 @@ function applyDockWidth(panel) {
 }
 function dockResizeHandle(panel) {
   const grip = el('div', {
-    class: 'dock-resize', title: 'Drag to resize — double-click for the even split',
+    // No tooltip: the hairline on hover says everything (Kyle, 2026-09-02).
+    class: 'dock-resize',
     role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize the entity pane',
   });
   grip.addEventListener('pointerdown', (e) => {
