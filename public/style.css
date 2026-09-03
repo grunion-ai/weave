@@ -84,7 +84,6 @@ a.nav-space:hover { color: var(--tblr-primary); }
    sidebar's bottom edge — quiet metadata, same register as the version chip.
    Sticky with the canvas behind it, so a long nav scrolls under the strip. */
 .nav-stats { position: sticky; bottom: 0; margin-top: auto; padding: 6px 10px 2px; font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--wv-canvas); }
-.nav-map { margin-bottom: 4px; }
 /* Nav rows are soft ink-tint pills on the canvas — the active row darkens
    the cream rather than turning brand-blue (Buzz idiom; blue stays for
    accents inside the content panel). */
