@@ -2509,7 +2509,21 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       const fresh = allTables().find((d) => d.id === db.id);
       // The entity page opens this too (Feature #117): it redraws itself.
       redraw ? await redraw() : await keepScroll(() => showDatabase(db.id, state.route.view));
-      const again = document.querySelector('.eye-btn');
+      /* One hidden set, possibly two visible surfaces: the split shows the
+         table AND an entity of the same table, so a flip on either eye must
+         reach both (Kyle, 2026-09-02: visibility in the pane diverged from
+         the grid). The primary redraw above covered the eye's own surface;
+         these cover its sibling. */
+      if (dock && dock.db.id === db.id) {
+        dock.db = fresh;
+        if (redraw !== drawDock) await drawDock();
+        else if (state.route?.page === 'db' && state.route.dbId === db.id) {
+          await keepScroll(() => showDatabase(db.id, state.route.view));
+        }
+      }
+      // Re-anchor on the eye that was clicked: in the split there are two.
+      const again = (redraw === drawDock ? document.querySelector('#dock .eye-btn') : null)
+        ?? document.querySelector('#main .eye-btn') ?? document.querySelector('.eye-btn');
       if (again) fieldVisibilityPopover(again, fresh, trashCount, { redraw, rowsSection });
     } catch (err) { toast(err.message, true); }
   };
