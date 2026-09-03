@@ -58,6 +58,14 @@ const rulesFor = (selector) => {
   return out;
 };
 
+test('the sidebar has no relation-map row; the map lives on the workspace and space pages', () => {
+  const nav = APP.slice(APP.indexOf('function renderNav()'), APP.indexOf('function renderNav()') + 2400);
+  assert.doesNotMatch(nav, /nav-map|#\/map|Relation map/, 'no map link in the nav');
+  assert.doesNotMatch(CSS, /\.nav-map\b/, 'and no orphan rule for it');
+  assert.match(APP, /hash\.startsWith\('#\/map'\)/, 'the #/map route still resolves for deep links');
+  assert.equal((APP.match(/relationMapCard\('Relation map'/g) ?? []).length, 2, 'workspace page and space page each draw the map');
+});
+
 test('a table row carries the kebab instead of a count, and registry tables carry neither', () => {
   const nav = fnBodyOf('renderNav');
   const row = nav.slice(nav.indexOf("class: 'nav-db'"), nav.indexOf('nav.append(row)'));

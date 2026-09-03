@@ -29,6 +29,9 @@ if (!chromium) {
     weave = new Weave();
     weave.createSpace({ name: 'Product' });
     tasks = weave.createTable({ space: 'Product', name: 'Task' });
+    // A nav row with a moving icon of its own: the load-wave test below used
+    // to lean on the Relation map row's compass, which left the nav 2026-09-02.
+    weave.createTable({ space: 'Product', name: 'Pulse', icon: 'lucide:activity' });
     weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: [
       { name: 'Urgent', icon: 'iconly:danger' },
       { name: 'Later', icon: '○' },
@@ -337,12 +340,12 @@ if (!chromium) {
     const page = await browser.newPage();
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.goto(`${base}/#/entity/${row}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#nav .wv-icon.mi');
+    await page.waitForSelector('#nav .wv-icon.mi:not([data-ms="0"])');
     // The load wave: inside the load window some icon wears its motion parts.
     await page.waitForFunction(() => [...document.querySelectorAll('#nav .mi [data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), null, { timeout: 4000 });
     // …and every one of them rests again: nothing loops.
     await page.waitForFunction(() => ![...document.querySelectorAll('#nav .mi [data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), null, { timeout: 8000 });
-    const host = page.locator('#nav .wv-icon.mi').first();
+    const host = page.locator('#nav .wv-icon.mi:not([data-ms="0"])').first();
     const ms = Number(await host.getAttribute('data-ms'));
     await host.hover();
     await page.waitForTimeout(80);

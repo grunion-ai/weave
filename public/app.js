@@ -668,10 +668,8 @@ function fmtSize(bytes) {
 function renderNav() {
   const nav = $('#nav');
   nav.replaceChildren();
-  nav.append(el('a', {
-    class: 'nav-db nav-map' + (state.route?.page === 'map' ? ' active' : ''),
-    href: '#/map',
-  }, iconEl('lucide:compass', 'wv-icon nav-icon'), ' Relation map'));
+  // The relation map is not a nav row (Kyle, 2026-09-02): the workspace page
+  // and every space page draw it in place; the map route still answers deep links.
   const folded = new Set(JSON.parse(localStorage.getItem('weave-folded-spaces') ?? '[]'));
   const toggleFold = (spaceId) => {
     if (folded.has(spaceId)) folded.delete(spaceId);
