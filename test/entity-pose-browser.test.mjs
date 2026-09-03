@@ -90,4 +90,25 @@ if (!chromium) {
     assert.equal(await page.evaluate(() => location.hash), `#/entity/${a.id}`);
     await page.close();
   });
+
+  test('pose flips are presentation: the history stack never grows', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.wv-grid tbody tr.entity-row');
+    const before = await page.evaluate(() => history.length);
+    await page.click(`tr[data-eid="${a.id}"] .open-link`);       // dock
+    await page.waitForSelector('#dock:not([hidden]) .pose-btn');
+    await page.click('#dock .pose-btn');                          // expand
+    await page.waitForSelector('#main .pose-btn');
+    await page.click('#main .pose-btn');                          // collapse
+    await page.waitForSelector('#dock:not([hidden]) .pose-btn');
+    await page.click('#dock .pose-btn');                          // expand again
+    await page.waitForSelector('#main button[title="Close"]');
+    await page.click('#main button[title="Close"]');              // ✕ to table
+    await page.waitForSelector('#main .wv-grid');
+    const after = await page.evaluate(() => history.length);
+    assert.equal(after, before,
+      `four pose moves added ${after - before} history entries — Back would walk look-alike twins`);
+    await page.close();
+  });
 }
