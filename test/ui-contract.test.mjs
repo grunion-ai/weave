@@ -348,7 +348,7 @@ test('destructive actions use it', () => {
    row" at the foot of this file — the corner geometry this test used to pin
    was the defect. What survives is the glyph contract. */
 test('the overflow menu is a vertical ellipsis', () => {
-  assert.match(APP, /dots-btn.*'⋮'/s, 'the glyph must be the vertical ellipsis');
+  assert.match(APP, /dots-btn.*lucide:ellipsis-vertical/s, 'the glyph is the inventory\'s vertical ellipsis');
   assert.doesNotMatch(APP, /'⋯'/, 'no horizontal ellipsis left behind');
   assert.ok(rulesFor('.dots-btn').padding, 'the vertical glyph needs its own button metrics');
 });
@@ -499,16 +499,12 @@ test('the space caret is a drawn chevron, not a text glyph', () => {
   const at = APP.indexOf('chevron = (');
   assert.ok(at > 0, 'chevron() must be defined in app.js');
   const decl = APP.slice(at, at + 400);
-  assert.match(decl, /'stroke-linecap': 'round'/,
-    'stroked chevron, round caps — Tabler house style');
+  assert.match(decl, /lucide:chevron-right/, 'the chevron is the inventory\'s, so it matches the set and moves');
   const icon = rulesFor('.nav-caret svg');
   assert.ok(px(icon.width) >= 14, `chevron glyph must be >= 14px, got ${icon.width}`);
 
-  // The reference chevron is a hairline, not the 2px chrome stroke.
-  const weight = Number(decl.match(/'stroke-width': '([\d.]+)'/)?.[1]);
-  assert.ok(weight > 0 && weight <= 1.5, `chevron stroke must be <= 1.5, got ${weight}`);
+  // The chevron is the inventory's chevron-right at the set's stroke (2), rotated open by CSS.
   // It points right at rest; rotation — not a second path — supplies "open".
-  assert.match(decl, /d: 'M9 6l6 6l-6 6'/, 'the resting chevron points right');
 });
 
 test('the caret trails the space label and rotates to open', () => {
@@ -1046,7 +1042,7 @@ test('every code block carries a copy button in its upper right', () => {
 
 test('a computed field carries its glyph next to the name, not only in cells', () => {
   const label = fnBody('fieldNameLabel');
-  assert.match(label, /computedMark\(/, 'one glyph vocabulary for names and values');
+  assert.match(label, /computedMark(?:Node)?\(/, 'one glyph vocabulary for names and values');
   assert.match(label, /'sup'/, 'the mark is a superscript on the name');
   assert.match(APP, /COMPUTED_NAME_MARKS = \{[^}]*formula/,
     'formula fields are the case this exists for');
@@ -1832,9 +1828,10 @@ test('the chrome carries flat icons rather than emoji', () => {
     .map((line, i) => [i + 1, line])
     .filter(([, line]) => emoji.test(line));
   assert.deepEqual(offenders, [], `emoji left in the UI: ${offenders.map(([n]) => n).join(', ')}`);
-  assert.match(fnBody('slashGlyph'), /ICONLY_FLAT/, 'the slash menu draws the vendored flat set');
-  assert.match(APP, /SLASH_LINK_GLYPH/, 'and hand-draws the one glyph the set is missing');
-  assert.ok(rulesFor('.slash-icon svg').fill, 'a flat icon inherits the row colour');
+  assert.match(fnBody('slashGlyph'), /weaveIconRegistry.*LUCIDE_MOVING/s, 'the slash menu draws the inventory through the registry');
+  assert.doesNotMatch(APP, /SLASH_LINK_GLYPH|ICONLY_FLAT/, 'no hand-drawn link and no Iconly left in the chrome');
+  assert.ok(!rulesFor('.slash-icon svg').fill, 'no CSS fill on the svg — a stroke icon would turn into a blob; the shape carries its own fill and stroke');
+  for (const s of ['.bug-cat-icon svg', '.bug-fab-icon svg']) assert.ok(!rulesFor(s).fill, `${s}: same rule`);
 });
 
 /* ---------- a reference chip has to cover the reference ----------
@@ -1921,9 +1918,15 @@ test('the slash menu clamps into the viewport instead of hiding its promoted row
   assert.match(fn, /top < 8/, 'a menu that overflows the top is pushed back down');
 });
 
-test('the slash link glyph is the interlocked chain, not the hand-drawn arcs', () => {
-  assert.match(APP, /M10 13a5 5 0 0 0 7\.54\.54/, "Feather's link path");
-  assert.doesNotMatch(APP, /M10 13\.5a4 4 0 0 0 5\.7\.4/, 'the old approximation is gone');
+test('the slash link glyph is the interlocked chain, drawn from the inventory', async () => {
+  // It was Feather's path hand-pasted into app.js; the set now carries Lucide's
+  // `link` (the same interlocked chain), so the slash menu draws it like every
+  // other row — through the registry, motion included.
+  assert.match(APP, /label: 'Link', icon: '⛓', flat: 'link'/, 'the Link row names the inventory icon');
+  await import('../public/icon-registry.js');
+  await import('../public/vendor/lucide-moving.js');
+  assert.equal(globalThis.weaveIconRegistry.resolve('lucide:link'), 'link', 'link is in the set');
+  assert.match(globalThis.LUCIDE_MOVING.link, /<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/, 'and it is the chain');
 });
 
 /* Kyle, 2026-08-24: the view of tables within a space and the view of spaces

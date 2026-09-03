@@ -166,7 +166,7 @@ test('a field cell is not rendered as an editable text box', async () => {
   assert.match(body, /class: 'computed k k-computed'/,
     'a structured value must not look editable in a cell — same treatment as document');
   assert.doesNotMatch(body, /addEventListener\('change'/, 'no free-text patching of a definition');
-  assert.match(APP, /field: '⌗'/, 'the type needs its own computed mark');
+  assert.match(APP, /field: 'lucide:sliders-horizontal'/, 'the type needs its own computed mark, drawn from the inventory');
 });
 
 test('describeSchema exposes the definable types on a field field', () => {

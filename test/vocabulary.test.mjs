@@ -55,7 +55,7 @@ test('the icon vocabulary gives the value form, not just the names', () => {
   assert.equal(VOCABULARY.icons.form, 'lucide:<name>');
   assert.match(VOCABULARY.icons.legacy, /iconly:<name>/, 'and says the old form still resolves');
   assert.equal(VOCABULARY.icons.aliases.notification, 'bell');
-  assert.match(VOCABULARY.icons.fallback, /renders as text/, 'and says what any other string does');
+  assert.match(VOCABULARY.icons.fallback, /refused/, 'and says that anything else is refused');
   assert.ok(VOCABULARY.icons.names.includes('compass'));
   // Marks are the other half of the one vocabulary (Issue #87): stored as
   // the character, drawn as a vector on the same canvas as the flat set.
