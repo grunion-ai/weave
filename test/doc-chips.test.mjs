@@ -82,12 +82,13 @@ test('the description keeps its first-lines preview; only it previews (Kyle, 202
     'the preview cell is the description role’s alone; every other document is a chip');
 });
 
-test('clicking a chip opens the entity peek, never a row expansion (Issue #74)', () => {
+test('clicking a chip docks the entity, never a row expansion (Issue #74)', () => {
   // Documents used to expand an editor UNDER the grid row, stretching the
-  // table. Kyle (2026-08-25): they open in the side peek — the full entity
-  // view with its ✕ in the upper right — and the row expansion is gone.
-  assert.match(APP, /docChipCell\(f, item, \(\) => peekEntity\(id\)\)/,
-    'a doc chip opens the side peek on its entity');
+  // table. Kyle (2026-08-25): they opened the side peek; since 2026-09-02
+  // the peek is gone and the ONE panel is the entity dock beside the table.
+  assert.match(APP, /docChipCell\(f, item, \(\) => dockEntity\(db, id\)\)/,
+    'a doc chip docks its entity beside the table');
+  assert.ok(!APP.includes('peekEntity'), 'the side peek is fully excised');
   assert.ok(!APP.includes('docsEditor('), 'the inline under-row editor is gone');
   assert.ok(!APP.includes("class: 'doc-row'"), 'no expansion row under the grid');
 });

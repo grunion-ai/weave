@@ -135,8 +135,8 @@ test('related rows still route a click before opening the entity', () => {
     'no row surface may open the entity without routing first');
   assert.equal((APP.match(/peekEntity\(item\.id\)/g) ?? []).length, 0,
     'the grid no longer peeks — the #id link docks and ⌘-click opens a tab (one entity surface)');
-  assert.match(APP, /docChipCell\(f, item, \(\) => peekEntity\(id\)\)/,
-    'and a doc chip peeks its entity from the cell (Issue #74)');
+  assert.match(APP, /docChipCell\(f, item, \(\) => dockEntity\(db, id\)\)/,
+    'and a doc chip docks its entity from the cell (Issue #74; peek excised 2026-09-02)');
   assert.match(APP, /function rowClickTarget/);
   assert.match(APP, /function openCellPicker/);
   const fn = APP.slice(APP.indexOf('function openCellPicker'));
@@ -2004,7 +2004,8 @@ test('dock: Escape defers to every overlay app.js can raise', () => {
   // source owns Escape while it is up; a new one has to join the list.
   const backs = [...new Set([...APP.matchAll(/id: '([a-z]+-back)'/g)].map((x) => `#${x[1]}`))];
   const pops = [...new Set([...APP.matchAll(/class: '([a-z]+-pop)'/g)].map((x) => `.${x[1]}`))];
-  assert.ok(backs.length >= 5 && pops.length >= 3, `the derivation found ${backs.length} backdrops and ${pops.length} popovers`);
+  // 5 → 4 on 2026-09-02: #peek-back went with the side peek's excision.
+  assert.ok(backs.length >= 4 && pops.length >= 3, `the derivation found ${backs.length} backdrops and ${pops.length} popovers`);
   for (const sel of [...backs, ...pops]) assert.ok(owners.includes(sel), `${sel} owns Escape but the dock does not defer to it`);
   assert.ok(owners.includes('.doc-rail.open'), 'an open document outline owns Escape too');
   const esc = APP.match(/if \(e\.key !== 'Escape' \|\| !dock\) return;[\s\S]{0,400}?\}\);/)[0];

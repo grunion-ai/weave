@@ -185,11 +185,6 @@ function termOfTable(id) {
   return WeaveTerm.DEFAULT;
 }
 
-/* ---------- side peek (Features #39, #48) ----------
-   A row opens here first: the entity's fields, editable, in a slide-over —
-   the page stays where it is. The breadcrumb # and 'Open' go to the full
-   page. One panel at a time; Esc or the backdrop closes it. */
-
 /* ---------- share QR (Feature #50, ha.mr-inspired) ----------
    A share link's natural destination is a phone. lean-qr (the generator
    ha.mr credits) is vendored as an ES module; drawing on a canvas keeps the
@@ -215,59 +210,8 @@ function qrCanvas(text, scale = 5) {
   return canvas;
 }
 
-function peekEntity(id) {
-  document.querySelector('#peek-back')?.remove();
-  const editors = [];
-  // Scoped teardown: only what THIS panel mounted. The page underneath may
-  // hold its own live editors and decoration layers — a global teardown here
-  // would destroy them mid-edit.
-  const releasePanel = () => {
-    flushDocSaves();
-    for (const ed of editors.splice(0)) {
-      try { ed.destroy(); } catch { /* already gone with the DOM */ }
-      liveEditors.delete(ed);
-    }
-    for (const set of [refChipLayers, docRails, docFolds, docCodeAuto]) {
-      for (const st of [...set]) {
-        if (panel.contains(st.host)) {
-          clearTimeout(st.timer);
-          (st.layer ?? st.rail)?.remove();
-          set.delete(st);
-        }
-      }
-    }
-  };
-  const close = () => { releasePanel(); back.remove(); };
-  const back = el('div', { id: 'peek-back', onclick: (e) => { if (e.target === back) close(); } });
-  const panel = el('aside', { id: 'peek' }, el('div', { class: 'peek-body' }, '…'));
-  back.append(panel);
-  document.body.append(back);
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape') { close(); removeEventListener('keydown', esc); }
-  });
-  const draw = async () => {
-    let entity;
-    try { entity = await api('GET', `/entities/${id}`); } catch (err) { close(); return toast(err.message, true); }
-    releasePanel(); // a redraw replaces everything the last pass mounted
-    const body = el('div', { class: 'peek-body' });
-    body.append(el('div', { class: 'peek-head' },
-      el('span', { style: 'flex:1' }),
-      el('button', { class: 'btn btn-sm btn-ghost-secondary', onclick: () => { close(); openEntity(id); } }, 'Open'),
-      el('button', { class: 'btn btn-sm btn-ghost-secondary', title: 'Close', onclick: () => close() }, iconEl('✕'))));
-    const host = el('div', { class: 'peek-entity' });
-    // Any in-panel navigation (crumb, related rows, activity links) moves the
-    // page underneath — the panel must not linger over it.
-    host.addEventListener('click', (e) => {
-      if (e.target.closest('a[href^="#/"], a[href^="#"]:not([href="#"])')) close();
-    });
-    body.append(host);
-    panel.replaceChildren(body); // in the DOM before editors mount
-    // The full entity view — the peek is the entity, not a preview of it.
-    await renderEntityView(entity, { mount: host, refresh: draw, inPeek: true, onClose: close, editors });
-  };
-  draw();
-}
+/* The side peek is gone (2026-09-02): the entity dock is the ONE panel;
+   every opener routes through dockEntity. */
 
 
 
@@ -469,7 +413,7 @@ document.addEventListener('keydown', (e) => {
 // overlay app.js raises (a *-back backdrop, a *-pop popover, an open doc
 // rail) owns the key while it is up — test/ui-contract.test.mjs derives
 // that list from the source and checks this selector covers it.
-const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #peek-back, #cmdk-back, #fsv-back';
+const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back';
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !dock) return;
   if (document.querySelector(DOCK_ESC_OWNERS)) return;
@@ -2059,8 +2003,8 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   if (f.type === 'document') {
     // The description reaches its cell as prose; every other document as the
     // named chip wearing its kind (Kyle, 2026-08-31 — one field, one column).
-    if (f.role === 'description') return docPreviewCell(item.docs?.[f.name], f.name, () => peekEntity(id));
-    return docChipCell(f, item, () => peekEntity(id));
+    if (f.role === 'description') return docPreviewCell(item.docs?.[f.name], f.name, () => dockEntity(db, id));
+    return docChipCell(f, item, () => dockEntity(db, id));
   }
   if (f.type === 'field') {
     // A field definition. In compact surfaces (grid, board, list) the value
