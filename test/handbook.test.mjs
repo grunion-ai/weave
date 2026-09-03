@@ -95,6 +95,22 @@ test('the document-formatting guide covers the surface the editor offers', () =>
   }
 });
 
+test('the polymorphic-relations guide covers the target set and the ruling behind it', () => {
+  const guide = GUIDES.find((g) => g.name === 'Polymorphic relations');
+  assert.ok(guide, 'there is no polymorphic-relations guide');
+  for (const topic of [
+    'targetDbs', '--target-dbs', 'Workspace/Spaces', 'Workspace/Tables', 'one core kind',
+    'one-way', 'inverse', 'lookup', 'rollup', 'picker', 'relation map', 'home table',
+    'Scope.Name', 'prune', 'Airtable', 'Fibery', 'bit-for-bit', 'weave_add_relation',
+  ]) {
+    assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the polymorphic guide never mentions ${topic}`);
+  }
+  // Every cardinality the guide quotes is one the engine accepts.
+  for (const m of guide.doc.matchAll(/\`(many-to-one|one-to-many|many-to-many|one-to-one)\`/g)) {
+    assert.ok(VOCAB.cardinalities.includes(m[1]), `${m[1]} is not a cardinality the engine knows`);
+  }
+});
+
 test('the customization guide covers what a reader can change', () => {
   const guide = GUIDES.find((g) => g.name === 'Making a workspace your own');
   assert.ok(guide, 'there is no customization guide');
