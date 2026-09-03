@@ -296,7 +296,7 @@ test('serve: the host is a choice, and loopback is the default', async () => {
   const bin = readFileSync(new URL('../bin/weave.js', import.meta.url), 'utf8');
   assert.match(bin, /flags\.host \?\? process\.env\.WEAVE_HOST \?\? '127\.0\.0\.1'/,
     'the phone needs --host to reach the applet, and nothing else may widen the bind');
-  assert.match(bin, /startServer\(w, \{ port, host \}\)/);
+  assert.match(bin, /startServer\(w, \{ port, host, build: buildInfo \}\)/);
 
   const dir = mkdtempSync(join(tmpdir(), 'weave-host-'));
   const w = new Weave({ path: join(dir, 'uno.json') });

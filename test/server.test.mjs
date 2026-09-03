@@ -227,3 +227,21 @@ test('vendored ES modules are served with a script MIME type', async () => {
     server.close();
   }
 });
+
+test('health reports the running commit and whether main has moved on', async () => {
+  // Kyle, 2026-09-02: "my local should always be on the latest and should
+  // show a toast when it is not." Build info is OPT-IN — the shared test
+  // server must stay silent (a behind checkout would toast into every
+  // browser test) — so this spins its own server the way bin/weave.js does.
+  const { buildInfo } = await import('../src/server.js');
+  const { server: bServer, port: bPort } = await startServer(new Weave(), { port: 0, build: buildInfo });
+  const res = await fetch(`http://127.0.0.1:${bPort}/api/health`);
+  const h = await res.json();
+  bServer.close();
+  // The dev tree is a git checkout, so the sha is always here in CI/local.
+  assert.match(h.sha ?? '', /^[0-9a-f]{7}$/, 'the running commit rides the payload');
+  if ('behind' in h) {
+    assert.equal(typeof h.behind, 'boolean', 'behind is a verdict, not a maybe');
+    assert.match(h.latestSha ?? '', /^[0-9a-f]{7}$/, 'and names what main is at');
+  }
+});

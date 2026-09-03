@@ -1,4 +1,5 @@
 import { createServer as createHttpServer } from 'node:http';
+import { spawnSync, execFile } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,33 @@ import { createRequestHandler } from './routes.js';
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 // The version weave actually is — read at load, never hardcoded (Issue #19).
 const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
+
+/* ---------- build staleness (Kyle, 2026-09-02) ----------
+   "my local should always be on the latest and should show a toast when it
+   is not." The node adapter reads its own checkout: HEAD at boot, the first
+   remote's main lazily (never blocking a request, at most every 5 minutes,
+   4s timeout so an offline instance stays silent). /api/health carries
+   {sha, latestSha, behind} and the UI raises the toast. */
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const gitOut = (...a) => {
+  const r = spawnSync('git', ['-C', ROOT, ...a], { encoding: 'utf8', timeout: 4000 });
+  return r.status === 0 ? r.stdout.trim() : null;
+};
+const BUILD = { head: gitOut('rev-parse', 'HEAD'), remote: gitOut('remote')?.split('\n')[0] || null, latest: null, checkedAt: 0 };
+function refreshLatest() {
+  BUILD.checkedAt = Date.now();
+  if (!BUILD.remote) return;
+  execFile('git', ['-C', ROOT, 'ls-remote', BUILD.remote, 'main'], { encoding: 'utf8', timeout: 4000 },
+    (err, out) => { if (!err) BUILD.latest = (out ?? '').split(/\s/)[0] || null; });
+}
+export function buildInfo() {
+  if (!BUILD.head) return null;
+  if (Date.now() - BUILD.checkedAt > 5 * 60 * 1000) refreshLatest();
+  return {
+    sha: BUILD.head.slice(0, 7),
+    ...(BUILD.latest ? { latestSha: BUILD.latest.slice(0, 7), behind: BUILD.latest !== BUILD.head } : {}),
+  };
+}
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -181,7 +209,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
   };
 }
 
-export function createServer(defaultWeave, { workspaces = {} } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
 
   // Node adapter around the runtime-agnostic dispatcher (src/routes.js): this
@@ -219,6 +247,9 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
   const handle = createRequestHandler(hub, {
     version: VERSION,
     uptime: () => process.uptime(),
+    // Opt-in (the CLI serve path passes buildInfo): an embedded/test server
+    // must not read git or toast about a checkout it does not represent.
+    build,
     serveStatic,
   });
 
@@ -238,8 +269,8 @@ export function createServer(defaultWeave, { workspaces = {} } = {}) {
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {} } = {}) {
-  const server = createServer(weave, { workspaces });
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null } = {}) {
+  const server = createServer(weave, { workspaces, build });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });
