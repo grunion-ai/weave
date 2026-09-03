@@ -19,7 +19,7 @@ const build = () => {
   const w = new Weave();
   w.createSpace({ name: 'Product' });
   w.createSpace({ name: 'Archive' });
-  const tasks = w.createTable({ space: 'Product', name: 'Task', icon: 'check', description: 'Work items' });
+  const tasks = w.createTable({ space: 'Product', name: 'Task', icon: 'lucide:square-check', description: 'Work items' });
   const projects = w.createTable({ space: 'Product', name: 'Project' });
   return { w, tasks, projects };
 };
@@ -107,7 +107,7 @@ test('duplicate carries description and icon, resets ids and counters', () => {
   const { w, tasks } = build();
   const copy = w.duplicateTable(tasks.id);
   assert.equal(copy.description, 'Work items');
-  assert.equal(copy.icon, 'check');
+  assert.equal(copy.icon, 'lucide:square-check');
   assert.notEqual(copy.id, tasks.id);
   assert.equal(copy.publicIdCounter, 0);
 });

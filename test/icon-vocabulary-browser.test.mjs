@@ -291,13 +291,14 @@ if (!chromium) {
         deadText: dead.textContent,
         deadTitle: dead.getAttribute('title'),
         deadGhost: dead.classList.contains('icon-ghost'),
-        emojiText: emoji.textContent,
+        emojiText: emoji ? emoji.textContent : null,
+        emojiDrawn: !!emoji,
       };
     });
     assert.doesNotMatch(drawn.deadText, /iconly:/, 'the prefix must never reach the screen');
     assert.equal(drawn.deadGhost, true);
     assert.match(drawn.deadTitle, /slides/, 'the tooltip still names what was set');
-    assert.equal(drawn.emojiText, '🎉', 'a bare string still paints itself');
+    assert.equal(drawn.emojiDrawn, false, 'a bare string is not an icon and draws nothing (Kyle, 2026-09-02)');
     await page.close();
   });
 

@@ -651,7 +651,7 @@ test('applet: the bug reporter is the desktop one, parts and all', async () => {
   assert.ok(fab.includes('right: 12px'), 'the desktop sits 12px in');
   assert.match(flat, /\.wv-bug\{[^}]*right:3px[^}]*width:44px/,
     'the applet sits 3px in with a 44pt box — the same face, back on the same margin');
-  assert.match(src, /translate\(12 12\) scale\(1\.42\)/, 'same glyph, same correction scale');
+  assert.match(src, /LUCIDE_MOVING\?\.bug/, 'the same vendored bug the desktop draws — the traced ant retired with the Iconly set');
 });
 
 test('applet: the keyboard is armed on touchend, which iOS always fires', async () => {

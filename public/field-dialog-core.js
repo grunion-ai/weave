@@ -13,20 +13,20 @@
   const FIELD_TYPES = [
     { id: 'text', label: 'text', icon: 'Aa' },
     { id: 'number', label: 'number', icon: '#' },
-    { id: 'date', label: 'date', icon: '▤' },
-    { id: 'daterange', label: 'range', icon: '⇤⇥' },
-    { id: 'checkbox', label: 'checkbox', icon: '☑' },
-    { id: 'url', label: 'url', icon: '⛓' },
+    { id: 'date', label: 'date', icon: 'lucide:calendar' },
+    { id: 'daterange', label: 'range', icon: 'lucide:calendar-range' },
+    { id: 'checkbox', label: 'checkbox', icon: 'lucide:square-check' },
+    { id: 'url', label: 'url', icon: 'lucide:link' },
     { id: 'email', label: 'email', icon: '@' },
-    { id: 'select', label: 'select', icon: '▾' },
-    { id: 'multiselect', label: 'multi', icon: '☰' },
-    { id: 'workflow', label: 'workflow', icon: '⟳' },
-    { id: 'document', label: 'document', icon: '¶' },
-    { id: 'field', label: 'field', icon: '⧉' },
+    { id: 'select', label: 'select', icon: 'lucide:chevron-down' },
+    { id: 'multiselect', label: 'multi', icon: 'lucide:list' },
+    { id: 'workflow', label: 'workflow', icon: 'lucide:refresh-cw' },
+    { id: 'document', label: 'document', icon: 'lucide:file-text' },
+    { id: 'field', label: 'field', icon: 'lucide:sliders-horizontal' },
     { id: 'key', label: 'key', icon: '✱' },
-    { id: 'attachments', label: 'files', icon: 'iconly:folder' },
-    { id: 'relation', label: 'relation', icon: '⇄', relation: true },
-    { id: 'lookup', label: 'lookup', icon: '↗', computed: true },
+    { id: 'attachments', label: 'files', icon: 'lucide:folder' },
+    { id: 'relation', label: 'relation', icon: 'lucide:arrow-left-right', relation: true },
+    { id: 'lookup', label: 'lookup', icon: 'lucide:arrow-up-right', computed: true },
     { id: 'rollup', label: 'rollup', icon: 'Σ', computed: true },
   ];
 
@@ -160,16 +160,18 @@
     { name: 'people', marks: [], flat: ['user', 'users', 'users-round', 'user-plus', 'briefcase', 'heart', 'user-cog', 'award'] },
     { name: 'documents', marks: [], flat: ['file-text', 'file', 'file-plus', 'file-up', 'file-down', 'folder', 'bookmark',
              'pencil', 'square-pen', 'upload', 'download', 'paperclip', 'archive', 'copy', 'clipboard', 'history'] },
-    { name: 'data', marks: ['⛓', '⌁'], flat: ['chart-bar', 'chart-pie', 'activity', 'layout-grid', 'funnel', 'search', 'scan',
+    { name: 'writing', marks: [], flat: ['pilcrow', 'heading', 'bold', 'italic', 'strikethrough', 'list', 'list-ordered', 'list-indent-decrease', 'list-indent-increase',
+             'quote', 'code', 'code-xml', 'braces', 'table', 'minus', 'corner-down-left', 'hash', 'link', 'workflow'] },
+  { name: 'data', marks: ['⛓', '⌁'], flat: ['chart-bar', 'chart-pie', 'activity', 'layout-grid', 'funnel', 'search', 'scan', 'sliders-horizontal',
              'compass', 'arrow-left-right', 'list-filter', 'kanban', 'list-checks', 'chart-column', 'layers', 'blocks', 'route', 'gauge', 'terminal', 'cpu'] },
     { name: 'money', marks: [], flat: ['dollar-sign', 'euro', 'credit-card', 'coins', 'receipt', 'landmark', 'trending-up',
              'percent', 'wallet', 'shopping-cart', 'shopping-bag', 'badge-percent', 'ticket', 'ticket-check'] },
-    { name: 'time', marks: [], flat: ['calendar', 'clock', 'timer'] },
+    { name: 'time', marks: [], flat: ['calendar', 'calendar-range', 'clock', 'timer'] },
     { name: 'messages', marks: [], flat: ['mail', 'message-circle', 'send', 'bell', 'phone', 'phone-call', 'phone-missed', 'phone-off', 'bell-ring', 'message-square', 'radio', 'wifi'] },
     { name: 'media', marks: [], flat: ['camera', 'image', 'play', 'video', 'mic', 'volume-2', 'volume-1', 'volume-x'] },
-    { name: 'access', marks: [], flat: ['lock', 'lock-open', 'key-round', 'log-in', 'log-out', 'eye', 'eye-off', 'key'] },
+    { name: 'access', marks: [], flat: ['lock', 'lock-open', 'key-round', 'log-in', 'log-out', 'eye', 'eye-off', 'key', 'key-square', 'id-card'] },
     { name: 'arrows', marks: ['→'], flat: ['arrow-up', 'arrow-down', 'arrow-left', 'arrow-right', 'chevron-up', 'chevron-down', 'chevron-left', 'chevron-right',
-             'circle-arrow-up', 'circle-arrow-down', 'circle-arrow-left', 'circle-arrow-right', 'square-arrow-up', 'square-arrow-down', 'square-arrow-left', 'square-arrow-right'] },
+             'circle-arrow-up', 'circle-arrow-down', 'circle-arrow-left', 'circle-arrow-right', 'square-arrow-up', 'square-arrow-down', 'square-arrow-left', 'square-arrow-right', 'arrow-up-right'] },
   ];
   /* The inventory (Kyle, 2026-09-02): every icon weave offers, across the
      tool, is one of these groups — Lucide shapes chosen for what a space, a
@@ -182,7 +184,8 @@
      loosely. */
   const ICON_CATEGORIES = [
     ...WEAVE_CATEGORIES,
-    { name: 'other', marks: ['+'], flat: ['house', 'map-pin', 'star', 'gamepad-2', 'settings', 'plus', 'trash-2', 'ellipsis', 'refresh-cw', 'undo', 'redo', 'sparkles', 'lightbulb', 'rocket', 'cloud-upload', 'cloud-download', 'battery'] },
+    { name: 'other', marks: ['+'], flat: ['house', 'map-pin', 'star', 'gamepad-2', 'settings', 'plus', 'trash-2', 'ellipsis', 'refresh-cw', 'undo', 'redo', 'sparkles', 'lightbulb', 'rocket', 'cloud-upload', 'cloud-download', 'battery', 'maximize-2',
+             'ellipsis-vertical', 'grip-vertical', 'sun', 'moon', 'sun-moon'] },
   ];
   /* Every name the curated groups offer, in group order — what the generator
      vendors and what `weave vocabulary icons` lists. */

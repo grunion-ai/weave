@@ -6,25 +6,14 @@
 
 globalThis.WeaveEditorLib = {
   /* ---------- inline icons (Kyle, 2026-09-02) ----------
-     `:bell:` draws the bell where an emoji shortcode would go — in a sentence,
-     a list, a table cell. The grammar is the token; the CALLER says which
-     tokens are icons (`accept(token)` returns the icon value — `lucide:bell`
-     for a name, `✓` for a drawn mark — or null), so `12:30:45` and `:smile:`
-     stay literal and this file never has to know the set. Same grammar as
-     renderInline() in src/markdown.js. */
-  ICON_TOKEN: /:([a-z0-9][a-z0-9-]*|[^\s:\w`]):/g,
-  findIconSpans(text, accept) {
-    const out = [];
-    const src = String(text ?? '');
-    const re = new RegExp(this.ICON_TOKEN.source, 'g');
-    let m;
-    while ((m = re.exec(src))) {
-      const icon = accept?.(m[1]) ?? null;
-      if (!icon) { re.lastIndex = m.index + 1; continue; }
-      out.push({ start: m.index, end: m.index + m[0].length, token: m[1], icon });
-    }
-    return out;
-  },
+     `:bell:` is the bell where an emoji shortcode would go — in a sentence, a
+     list, a table cell. The grammar is the token (letters, digits, dashes);
+     the CALLER says which tokens are icons (`accept(token)` returns the icon
+     value — `lucide:bell` for a name, `◔` for a ring alias — or null), so
+     `12:30:45` and `:smile:` stay literal and this file never knows the set.
+     Same grammar as renderInline() in src/markdown.js and as the shortcode
+     table the document editor renders from. */
+  ICON_TOKEN: /:([a-z0-9][a-z0-9-]*):/g,
 
   /* [[ref]] / [[ref|label]] spans in one text-node's worth of plain text.
      Same grammar renderInline() parses server-side (src/markdown.js): no

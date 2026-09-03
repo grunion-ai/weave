@@ -5,11 +5,13 @@
 // of the form [[Table#123]] or [[Table#123|label]], and inline icons.
 
 /* Inline icons (Kyle, 2026-09-02): `:bell:` draws the bell where an emoji
-   shortcode would go, `:✓:` draws the mark. The set, its motion and the
+   shortcode would go, `:check:` the tick, `:ring-half:` a ring. The set, its motion and the
    drawn marks come from the same three browser files (classic scripts node
    can import for their globals), so a document exports with the same icons
    the editor shows. Anything not in the set stays literal — `12:30:45`,
-   `:smile:` — and the same grammar lives in WeaveEditorLib.ICON_TOKEN. */
+   `:smile:` — and the same grammar lives in WeaveEditorLib.ICON_TOKEN and in
+   the shortcode table the document editor renders from. A progress ring goes
+   by its ascii alias (`:ring-quarter:`). */
 /* Fail open: the Worker bundle has no import.meta.url and no public/ beside
    it, and a PDF rendered there keeps every token literal rather than
    throwing (the same rule the font fallback follows in src/pdf.js). */
@@ -21,16 +23,15 @@ try {
   ICON_SVG = globalThis.LUCIDE_MOVING ?? null;
   MARKS = globalThis.weaveMarkIcons ?? null;
 } catch { /* no icon set here: tokens stay literal */ }
-const ICON_TOKEN = /^:([a-z0-9][a-z0-9-]*|[^\s:\w`]):/;
+const ICON_TOKEN = /^:([a-z0-9][a-z0-9-]*):/;
 export function inlineIconHtml(token) {
   if (!ICONS || !ICON_SVG || !MARKS) return null;
-  const name = ICONS.resolve(`lucide:${token}`) || MARKS.twin(token);
-  if (name) {
-    return `<span class="wv-icon md-icon mi mi-${name}" data-ms="${ICONS.MOTION[name] || 0}" title="${escapeHtml(token)}">${ICON_SVG[name]}</span>`;
+  const hit = ICONS.inline(token);
+  if (!hit) return null;
+  if (hit.name) {
+    return `<span class="wv-icon md-icon mi mi-${hit.name}" data-ms="${ICONS.MOTION[hit.name] || 0}" title="${escapeHtml(token)}">${ICON_SVG[hit.name]}</span>`;
   }
-  const mark = MARKS.markSvg(token);
-  if (!mark) return null;
-  return `<span class="wv-icon md-icon" title="${escapeHtml(token)}"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${mark}</svg></span>`;
+  return `<span class="wv-icon md-icon" title="${escapeHtml(token)}"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${MARKS.markSvg(hit.mark)}</svg></span>`;
 }
 function escapeHtml(s) {
   return String(s)
@@ -85,7 +86,7 @@ function renderInline(text, resolveMention) {
                 : '')
               + '</a>';
             out += fields.length
-              ? `<span class="mention-wrap">${a}<button type="button" class="mention-caret" aria-expanded="false" aria-label="Show fields">▸</button></span>`
+              ? `<span class="mention-wrap">${a}<button type="button" class="mention-caret" aria-expanded="false" aria-label="Show fields">${ICON_SVG?.['chevron-right'] ?? '▸'}</button></span>`
               : a;
             i = end + 2;
             continue;

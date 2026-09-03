@@ -314,13 +314,13 @@ test('select and files wear distinct icons from multiselect and document', () =>
   const icon = (id) => core.FIELD_TYPES.find((t) => t.id === id).icon;
   assert.notEqual(icon('select'), icon('multiselect'));
   assert.notEqual(icon('attachments'), icon('document'));
-  assert.equal(icon('select'), '▾');
+  assert.equal(icon('select'), 'lucide:chevron-down', 'a select wears the chevron the control itself opens with');
 });
 
 test('url wears a link icon, not the command glyph (Kyle, 2026-08-23)', () => {
   // Still a link, no longer an emoji: the mark set draws it, so the tile is
   // monochrome and the same size as the marks beside it (#138).
-  assert.equal(core.FIELD_TYPES.find((t) => t.id === 'url').icon, '⛓');
+  assert.equal(core.FIELD_TYPES.find((t) => t.id === 'url').icon, 'lucide:link');
   assert.equal(core.FIELD_TYPES.find((t) => t.id === 'key').icon, '✱', 'a key reads as redacted text');
 });
 

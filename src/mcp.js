@@ -222,7 +222,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_space',
-    description: 'Rename a space or change its description or icon. An icon is `lucide:<name>` from weave_vocabulary — any other string renders as text, so an emoji works too.',
+    description: 'Rename a space or change its description or icon. An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused.',
     inputSchema: {
       type: 'object',
       properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } },
@@ -241,7 +241,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_table',
-    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary; any other string renders as text), noun (what one row is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), hiddenFields (names kept out of the grid, data untouched), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the column order — every field exactly once).',
+    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one row is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), hiddenFields (names kept out of the grid, data untouched), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the column order — every field exactly once).',
     inputSchema: {
       type: 'object',
       properties: {

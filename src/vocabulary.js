@@ -79,7 +79,7 @@ export const VOCABULARY = {
     // same canvas as the flat set (Issue #87), so the two forms are one
     // vocabulary rather than two.
     marks: MARK_CHARS,
-    fallback: 'Any other string renders as text, so an emoji ("📦") is a legal icon too.',
+    fallback: 'Anything else is refused — an emoji is not an icon. A legacy iconly:<name> resolves through aliases; a mark character (✓, ◔) is its own value.',
     names: ICONS,
   },
   numberFormats: ['number', 'currency', 'percent', 'compact'],

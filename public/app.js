@@ -33,10 +33,10 @@ const svgEl = (tag, attrs = {}, ...children) => {
    Points RIGHT at rest and is turned down by CSS rotation, never by swapping
    the path: one glyph means the open and closed states cannot drift apart,
    and the turn is animatable. Hairline stroke per Kyle's "Routines ›". */
-const chevron = () => svgEl('svg', {
-  viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5',
-  'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true',
-}, svgEl('path', { d: 'M9 6l6 6l-6 6' }));
+// The one chevron the chrome folds with — the inventory's, so it moves like
+// every other icon and matches the set's stroke (Kyle, 2026-09-02: "the new
+// inventory is used and enforced across weave, including chevrons").
+const chevron = () => iconEl('lucide:chevron-right', 'wv-icon');
 
 // Workspace scoping: the app is served at / (default workspace) and at
 // /w/<name>/ for sibling workspaces — one SPA, path-scoped API + permalinks.
@@ -615,7 +615,11 @@ function iconEl(icon, cls = 'wv-icon') {
       class: `${cls} icon-ghost`, title: `${String(icon).replace(/^\w+:/, '')} — this icon is no longer in the set`,
     }, '◌');
   }
-  return el('span', { class: cls }, String(icon));
+  // A bare string is not an icon (Kyle, 2026-09-02: an emoji must not be
+  // possible). The engine refuses one on write; a value that predates that
+  // rule draws nothing rather than itself, and the callers that pass a
+  // typographic letter (Aa, ƒ, Σ) fall back to the letter themselves.
+  return null;
 }
 
 /* The one catalogue every icon is picked from — a space, a table, a select
@@ -779,7 +783,7 @@ function renderNav() {
           await api('POST', '/tables', { space: space.space, name });
           await loadSchema();
         })),
-      }, '+'));
+      }, iconEl('+', 'wv-icon')));
     nav.append(spaceRow);
     if (isFolded) continue;
     for (const db of space.tables) {
@@ -957,7 +961,7 @@ function expandDocument(grid, url, title, { node = null } = {}) {
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),
       node ? null : el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')),
-      node ? null : el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, '↗')),
+      node ? null : el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon'))),
     node ?? frame);
   grid.classList.add('hidden');
   grid.after(wrap);
@@ -995,7 +999,7 @@ function fullscreenViewer(title, { url = null, mount = null } = {}) {
       url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')) : null,
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),
-      url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, '↗') : null,
+      url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')) : null,
       el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, iconEl('✕'))),
     frame ?? el('div', { class: 'fsv-body' }));
   document.body.append(back);
@@ -1271,7 +1275,7 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
           ev.stopPropagation();
           if (multi) apply(core.removeId(st, x.id)); else pick({ id: clearId, label: clearId });
         },
-      }, '×') : null)));
+      }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null)));
     // The placeholder is the empty box's label; chips take its place.
     input.placeholder = st.staged.length ? '' : placeholder;
   };
@@ -1526,7 +1530,8 @@ const READONLY_FIELD_TYPES = ['lookup', 'rollup', 'formula', 'document'];
 /* Credentials (Feature #143). The glyph says what SORT of secret the chip
    stands for; the badge says whose store holds it. Both are read off the
    field's config — the cell itself holds only a name, here as everywhere. */
-const CREDENTIAL_GLYPHS = { apikey: '✱', token: '⌘', password: '•••', id: '⛉', pair: '⚯' };
+// One icon per credential kind, from the set (2026-09-02: no typed glyphs in the chrome).
+const CREDENTIAL_GLYPHS = { apikey: 'lucide:key-round', token: 'lucide:key', password: 'lucide:lock', id: 'lucide:id-card', pair: 'lucide:key-square' };
 const CREDENTIAL_KIND_LABELS = {
   apikey: 'API key', token: 'token', password: 'password', id: 'protected id', pair: 'id + secret pair',
 };
@@ -1537,8 +1542,10 @@ const KEYSTORE_LABELS = {
 
 // Inline glyph marking how a read-only value is produced.
 function computedMark(type) {
-  return { formula: 'ƒ', rollup: 'Σ', lookup: '↗', document: '¶', field: '⌗' }[type] ?? '·';
+  return { formula: 'ƒ', rollup: 'Σ', lookup: 'lucide:arrow-up-right', document: 'lucide:file-text', field: 'lucide:sliders-horizontal' }[type] ?? '·';
 }
+// The mark as a node: ƒ and Σ stay letters, the rest draw from the set.
+const computedMarkNode = (type) => { const m = computedMark(type); return iconEl(m, 'ico wv-icon') ?? m; };
 
 /* The same glyph, riding the field NAME. A formula column is not typeable, and
    that fact belongs on its heading rather than being discovered by clicking a
@@ -1550,7 +1557,7 @@ function fieldNameLabel(f, text = f?.name) {
   return [text, el('sup', {
     class: 'field-mark',
     title: `${kind} — computed from other values, not editable`,
-  }, computedMark(f.type))];
+  }, computedMarkNode(f.type))];
 }
 
 /* A click landed on a picker cell's padding rather than its control: forward
@@ -1766,7 +1773,7 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
           removeEventListener('click', away);
         });
       },
-    }, '⋮'),
+    }, iconEl('lucide:ellipsis-vertical', 'wv-icon')),
     menu);
   return wrap;
 }
@@ -1782,8 +1789,8 @@ const INLINE_TAG = { strong: 'strong', em: 'em', code: 'code', strike: 's', link
    `lucide:<name>`, a drawn mark draws as itself; anything else stays literal.
    The tokenizer and the chip layer both ask this, so there is one answer. */
 function inlineIconAccept(token) {
-  if (window.weaveIconRegistry?.resolve(`lucide:${token}`)) return `lucide:${token}`;
-  return window.weaveMarkIcons?.has(token) ? token : null;
+  const hit = window.weaveIconRegistry?.inline(token);
+  return hit ? (hit.name ? `lucide:${hit.name}` : hit.mark) : null;
 }
 
 /* One line of markdown painted into one node: the marks as marks, the syntax
@@ -1847,7 +1854,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     // Read-only: the glyph says "computed, not editable" at a glance so these
     // are not mistaken for the chips and inputs beside them.
     const box = el('span', { class: 'computed k k-computed', title: `${f.type} — read-only` },
-      el('span', { class: 'computed-mark' }, computedMark(f.type)), fieldValueCell(val) || '—');
+      el('span', { class: 'computed-mark' }, computedMarkNode(f.type)), fieldValueCell(val) || '—');
     if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
     return box;
   }
@@ -1878,7 +1885,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     const current = Array.isArray(val) ? val : [];
     const box = el('span', { class: 'ms-box', title: 'Edit selections' });
     for (const v of current) box.append(el('span', { class: `k k-multi ${optionHue(f, v)}` }, optionIcon(f, v), v), ' ');
-    if (!current.length) box.append(el('span', { class: 'k k-add' }, '+'));
+    if (!current.length) box.append(el('span', { class: 'k k-add' }, iconEl('+', 'wv-icon wv-icon-xs')));
     chipPickerMulti({
       trigger: box,
       options: f.options.map((o) => ({ id: o, label: o, chip: true })),
@@ -1905,7 +1912,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     const chip = el('span', {
       class: 'k k-key hue-slate',
       title: `${f.name} — ${CREDENTIAL_KIND_LABELS[kind] ?? kind} in ${KEYSTORE_LABELS[store] ?? store}`,
-    }, el('span', { class: 'ico' }, CREDENTIAL_GLYPHS[kind] ?? '✱'), shown || '—');
+    }, iconEl(CREDENTIAL_GLYPHS[kind] ?? CREDENTIAL_GLYPHS.apikey, 'ico wv-icon'), shown || '—');
     if (store !== 'local' && val) chip.append(el('span', { class: 'store' }, KEYSTORE_LABELS[store]));
     /* The NAME, not the dressed cell. `val` arrives masked and may carry
        ' (unset)', and posting that to /reveal asked the keystore for a
@@ -1958,7 +1965,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
               await saved();
             } catch (err) { toast(err.message, true); }
           },
-        }, '×'));
+        }, iconEl('lucide:x', 'wv-icon wv-icon-xs')));
       }
       box.append(chip, ' ');
     }
@@ -2019,7 +2026,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     // options'; the definition itself rides in item.raw.
     const def = item.raw?.[f.name] ?? null;
     const chip = el('span', { class: 'computed k k-computed', title: compact ? `field definition — edit on the ${db?.term?.singular ?? 'record'} page` : 'field definition — click to edit' },
-      el('span', { class: 'computed-mark' }, computedMark('field')),
+      el('span', { class: 'computed-mark' }, computedMarkNode('field')),
       def == null ? '—' : String(val));
     if (compact) return chip;
     chip.style.cursor = 'pointer';
@@ -2076,7 +2083,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
         el('button', {
           class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
           onclick: () => patch(ids.filter((x) => x !== file.id)),
-        }, '×')));
+        }, iconEl('lucide:x', 'wv-icon wv-icon-xs'))));
     }
     const input = el('input', { type: 'file', style: 'display:none' });
     input.addEventListener('change', () => {
@@ -2854,7 +2861,7 @@ function renderTable(main, db, items, onSaved) {
         },
           el('span', { class: 'col-label' },
             fieldNameLabel(colField(db, c), c),
-            sortKey === c ? (sortDir > 0 ? ' ↑' : ' ↓') : ''),
+            sortKey === c ? iconEl(sortDir > 0 ? '↑' : '↓', 'wv-icon wv-icon-xs') : null),
           fieldMenuButton(db, colField(db, c), {
             sorted: sortKey === c ? sortDir : 0,
             onSort: (dir) => {
@@ -3112,7 +3119,7 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
   const btn = el('button', {
     class: 'field-menu', type: 'button',
     title: `Configure ${f.name}`, 'aria-label': `Configure field ${f.name}`,
-  }, '⋮');
+  }, iconEl('lucide:ellipsis-vertical', 'wv-icon'));
   btn.addEventListener('click', (e) => {
     e.stopPropagation();   // configuring a column must not also sort it
     const row = fieldMenuRow;
@@ -3503,7 +3510,7 @@ function termSection(state, onChange) {
     face.replaceChildren(
       el('span', { class: 'k k-select hue-blue' }, T.cap(t.singular)),
       t.set ? '' : el('span', { class: 'term-default' }, 'the default'),
-      el('span', { class: 'term-caret' }, '▾'));
+      el('span', { class: 'term-caret' }, iconEl('lucide:chevron-down', 'wv-icon wv-icon-xs')));
     reset.hidden = !t.set;
     plur.value = t.plural;
     preview.textContent = `“+ New ${t.singular}” · “${T.count(3, t)} selected” · “Deleted ${t.plural}”`;
@@ -3594,7 +3601,7 @@ function stateListEditor(state, onChange) {
             dragFrom = null; draw(); onChange();
           },
         },
-        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
+        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         (() => {
           const b = el('button', {
             type: 'button', class: 'opt-icon' + (s.icon ? '' : ' none'), title: 'Choose a glyph',
@@ -3933,7 +3940,7 @@ function fieldDialog(db, existing, after) {
                 row.append(el('button', {
                   type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove this target',
                   onclick: () => { r.targets.splice(i, 1); syncTargets(); drawTargets(); drawCfg(); },
-                }, '×'));
+                }, iconEl('lucide:x', 'wv-icon wv-icon-xs')));
               }
               targetsBox.append(row);
             });
@@ -4232,7 +4239,7 @@ async function reorderField(db, fromName, toName, { after = false, onFail = () =
    relation is a type in the grid and Manage fields is gone, so there is
    nothing left for a menu to offer. */
 function addFieldMenuButton(db) {
-  const btn = el('button', { class: 'add-field-btn', type: 'button', title: 'Add a field' }, '+');
+  const btn = el('button', { class: 'add-field-btn', type: 'button', title: 'Add a field' }, iconEl('+', 'wv-icon'));
   btn.addEventListener('click', (e) => { e.stopPropagation(); addFieldDialog(db); });
   return btn;
 }
@@ -4515,36 +4522,36 @@ function slashItems() {
     insert: `${'#'.repeat(n)} Heading`,
   }));
   return [
-    { label: 'Text', icon: '¶', flat: 'document', group: 'all', hint: '—', aliases: ['paragraph', 'plain'], insert: 'Text' },
+    { label: 'Text', icon: '¶', flat: 'pilcrow', group: 'all', hint: '—', aliases: ['paragraph', 'plain'], insert: 'Text' },
     { label: 'Heading 1–6', icon: 'H', group: 'all', hint: '#…######', aliases: ['title'], insert: '# Heading' },
     ...headings,
-    { label: 'Bulleted list', icon: '•', group: 'all', hint: '-', aliases: ['ul', 'unordered'], insert: '- List item' },
-    { label: 'Numbered list', icon: '1.', group: 'all', hint: '1.', aliases: ['ol', 'ordered'], insert: '1. List item' },
-    { label: 'Task list', icon: '☑', flat: 'ticksquare', group: 'all', hint: '- [ ]', aliases: ['todo', 'checkbox'], insert: '- [ ] To do' },
-    { label: 'Quote', icon: '❝', group: 'all', hint: '>', aliases: ['blockquote'], insert: '> Quote' },
+    { label: 'Bulleted list', icon: '•', flat: 'list', group: 'all', hint: '-', aliases: ['ul', 'unordered'], insert: '- List item' },
+    { label: 'Numbered list', icon: '1.', flat: 'list-ordered', group: 'all', hint: '1.', aliases: ['ol', 'ordered'], insert: '1. List item' },
+    { label: 'Task list', icon: '☑', flat: 'square-check', group: 'all', hint: '- [ ]', aliases: ['todo', 'checkbox'], insert: '- [ ] To do' },
+    { label: 'Quote', icon: '❝', flat: 'quote', group: 'all', hint: '>', aliases: ['blockquote'], insert: '> Quote' },
     /* No language on the fence: the content decides. An unlabelled block is
        auto-detected and highlighted as what it actually is — json, html, a
        mermaid source, a shell session — and anything unrecognised stays plain
        text. Naming a language on the fence still wins (Issue #35). */
-    { label: 'Code block', icon: '#', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '```\ncode\n```' },
-    { label: 'Mermaid diagram', icon: '◈', flat: 'graph', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
-    { label: 'Table', icon: '▦', flat: 'category', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
+    { label: 'Code block', icon: '#', flat: 'code', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '```\ncode\n```' },
+    { label: 'Mermaid diagram', icon: '◈', flat: 'workflow', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
+    { label: 'Table', icon: '▦', flat: 'table', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '| Column | Column |\n| --- | --- |\n| Cell | Cell |' },
     /* The divider inserts ***, not --- : Lute reads an inserted --- pair as
        YAML front matter and renders a yaml code block (Kyle, 2026-08-23:
        "divider still makes a code block"). Same rule, unambiguous spelling. */
-    { label: 'Divider', icon: '—', group: 'all', hint: '***', aliases: ['hr', 'rule', 'separator'], insert: '\n***\n' },
+    { label: 'Divider', icon: '—', flat: 'minus', group: 'all', hint: '***', aliases: ['hr', 'rule', 'separator'], insert: '\n***\n' },
     /* A hard break, the markdown way (backslash-newline). Before this item,
        "/line break" matched nothing and Enter took whatever row was first —
        usually a code block (Kyle, 2026-08-23). */
-    { label: 'Line break', icon: '↵', group: 'all', hint: '\\ + ⏎', aliases: ['br', 'newline', 'return'], insert: '\\\n' },
+    { label: 'Line break', icon: '↵', flat: 'corner-down-left', group: 'all', hint: '\\ + ⏎', aliases: ['br', 'newline', 'return'], insert: '\\\n' },
     { label: 'Image', icon: '▤', flat: 'image', group: 'all', hint: '![](…)', aliases: ['picture', 'photo'], insert: '![alt](url)' },
     // Raw HTML is a block Lute passes through untouched: the escape hatch for
     // anything markdown has no syntax for.
-    { label: 'Raw HTML', icon: '</>', group: 'all', hint: '<div>', aliases: ['embed', 'html'], insert: '⁣raw-html⁣' },
+    { label: 'Raw HTML', icon: '</>', flat: 'braces', group: 'all', hint: '<div>', aliases: ['embed', 'html'], insert: '⁣raw-html⁣' },
 
-    { label: 'Entity', icon: '#', group: 'reference', hint: '[[Task#12]]', aliases: ['record', 'row', 'link entity', 'mention'], insert: refMarker('entity') },
-    { label: 'Table', icon: '▦', flat: 'category', group: 'reference', hint: '[[table:…]]', aliases: ['database', 'link table'], insert: refMarker('table') },
-    { label: 'Space / workspace', icon: '◇', group: 'reference', hint: '[[space:…]]', aliases: ['link space'], insert: refMarker('space') },
+    { label: 'Entity', icon: '#', flat: 'hash', group: 'reference', hint: '[[Task#12]]', aliases: ['record', 'row', 'link entity', 'mention'], insert: refMarker('entity') },
+    { label: 'Table', icon: '▦', flat: 'table', group: 'reference', hint: '[[table:…]]', aliases: ['database', 'link table'], insert: refMarker('table') },
+    { label: 'Space / workspace', icon: '◇', flat: 'folder', group: 'reference', hint: '[[space:…]]', aliases: ['link space'], insert: refMarker('space') },
 
     { label: 'Bold', icon: 'B', group: 'format', hint: '**…**', aliases: ['strong'], insert: wrap('**') },
     { label: 'Italic', icon: 'I', group: 'format', hint: '*…*', aliases: ['emphasis', 'em'], insert: wrap('*') },
@@ -4655,17 +4662,11 @@ function slashHint(query) {
    typographic mark, which for B / I / S / ` / H IS the icon. Never an emoji —
    a colour picture in a monochrome menu ignores the text colour and the
    theme. `link` is drawn here because the Iconly free set has no chain. */
-// Feather's `link` (MIT) — the interlocked-chain everyone recognises; the
-// hand-drawn approximation it replaces read as two broken arcs.
-const SLASH_LINK_GLYPH = '<svg viewBox="-2 -2 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-  + '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>'
-  + '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
 function slashGlyph(item) {
-  if (item.flat === 'link') return SLASH_LINK_GLYPH;
-  const flat = item.flat && window.ICONLY_FLAT?.[item.flat];
-  return flat
-    ? `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${flat}</svg>`
-    : escapeHtmlText(item.icon);
+  // `flat` names a Lucide icon in the inventory; the typographic mark is the
+  // fallback and, for B / I / S / ` / H, the icon itself (Feature #120).
+  const name = item.flat && window.weaveIconRegistry?.resolve(`lucide:${item.flat}`);
+  return name ? window.LUCIDE_MOVING[name] : escapeHtmlText(item.icon);
 }
 
 // The catalogue is weave's own text, but it reaches the menu as innerHTML and
@@ -4764,33 +4765,17 @@ function attachTableKeys(host) {
   }, { capture: true });
 }
 
-/* The icon set Kyle approved in the Toolbar Lab artifact (2026-08-30) —
-   the mockup's stroke-drawn glyphs, not Vditor's sprite icons. Each entry
-   overrides the built-in item's icon via mergeToolbar's Object.assign;
-   hotkeys, tips and behavior stay Vditor's. */
-// Stroke width rides inline so it beats Vditor's stroke-width:0 reset AND
-// can thin per glyph — the dense ones (numbered list, checklist) read as
-// clots at 2px in a 16px box (Kyle, 2026-08-31).
-const WV_TB_SVG = (d, w = 2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" style="stroke-width:${w}px">${d}</svg>`;
+/* Vditor's toolbar buttons draw the inventory's icons — the same shapes the
+   slash menu and the rest of the chrome use — so Vditor's own set never
+   paints beside ours (Kyle, 2026-09-02). A separator stays a separator. */
+const tbIcon = (name) => (window.LUCIDE_MOVING?.[name] ?? '').replace(/ data-mi="[^"]*"/g, '');
 const WV_TB_ICONS = {
-  headings: WV_TB_SVG('<path d="M6 4v16M18 4v16M6 12h12"/>'),
-  bold: WV_TB_SVG('<path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z"/>'),
-  italic: WV_TB_SVG('<path d="M11 5h6M7 19h6M14 5l-4 14"/>'),
-  strike: WV_TB_SVG('<path d="M5 12h14M16 6.5C15.3 5.6 13.8 5 12 5c-2.5 0-4 1.2-4 2.8 0 .8.3 1.4.9 1.9M8 17.5c.7.9 2.2 1.5 4 1.5 2.5 0 4-1.2 4-2.8 0-.8-.3-1.4-.9-1.9"/>'),
-  'inline-code': WV_TB_SVG('<path d="M9 8l-4 4 4 4M15 8l4 4-4 4"/>'),
-  link: WV_TB_SVG('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 1 0-5.7-5.6l-1.2 1.2M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 1 0 5.7 5.6l1.2-1.2"/>'),
-  list: WV_TB_SVG('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="18" r="1" fill="currentColor"/>'),
-  'ordered-list': WV_TB_SVG('<path d="M10 6h10M10 12h10M10 18h10M4 5l1.5-1v5M3.8 11.5a1.5 1.5 0 0 1 2.7 1c0 1-2.7 1.6-2.7 3h3"/>', 1.4),
-  check: WV_TB_SVG('<rect x="3" y="4" width="7" height="7" rx="1.5"/><path d="M5 7.5l1.5 1.5 2.5-3M14 7.5h7M14 16.5h7M3.5 16.5l2 2 3.5-4"/>', 1.4),
-  outdent: WV_TB_SVG('<path d="M13 6h8M13 12h8M13 18h8M8 9l-4 3 4 3"/>'),
-  indent: WV_TB_SVG('<path d="M13 6h8M13 12h8M13 18h8M4 9l4 3-4 3"/>'),
-  quote: WV_TB_SVG('<path d="M9 7c-2.5.7-4 2.6-4 5.5V17h5v-5H7c0-2 .8-3.2 2-3.8zM19 7c-2.5.7-4 2.6-4 5.5V17h5v-5h-3c0-2 .8-3.2 2-3.8z" fill="currentColor" stroke="none"/>'),
-  code: WV_TB_SVG('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 10l-2 2 2 2M15 10l2 2-2 2"/>'),
-  table: WV_TB_SVG('<rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 10h18M9 5v14M15 5v14"/>'),
-  line: WV_TB_SVG('<path d="M4 12h16"/>'),
-  undo: WV_TB_SVG('<path d="M8 7L4 11l4 4M4 11h10a5 5 0 0 1 0 10h-3"/>'),
-  redo: WV_TB_SVG('<path d="M16 7l4 4-4 4M20 11H10a5 5 0 0 0 0 10h3"/>'),
-  upload: WV_TB_SVG('<path d="M12 16V5M8 9l4-4 4 4M4 19h16"/>'),
+  headings: tbIcon('heading'), bold: tbIcon('bold'), italic: tbIcon('italic'), strike: tbIcon('strikethrough'),
+  'inline-code': tbIcon('code'), link: tbIcon('link'),
+  list: tbIcon('list'), 'ordered-list': tbIcon('list-ordered'), check: tbIcon('list-checks'),
+  outdent: tbIcon('list-indent-decrease'), indent: tbIcon('list-indent-increase'),
+  quote: tbIcon('quote'), code: tbIcon('braces'), table: tbIcon('table'), line: tbIcon('minus'),
+  undo: tbIcon('undo'), redo: tbIcon('redo'), upload: tbIcon('upload'),
 };
 
 function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, entityId }) {
@@ -4820,6 +4805,8 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
     // edge. The slash menu stays the full catalogue (references, mermaid,
     // raw HTML, math) the toolbar never holds. hide stays false: Vditor
     // must never fight the bubble layer for visibility.
+    // Vditor's own toolbar icons give way to the inventory's, so the bubble
+    // matches the chrome (Kyle, 2026-09-02).
     toolbar: [
       'headings', 'bold', 'italic', 'strike', 'inline-code', 'link', '|',
       'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
@@ -4846,18 +4833,21 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
       // are NOT vendored and those fences degrade to plain code blocks.
       math: { engine: 'KaTeX' },
     },
-    hint: { emoji: {}, extend: [{ key: '/', hint: slashHint }, { key: '#', hint: entityHint }] },
+    // `:` completes from the inventory — every name draws its icon in the popup.
+    hint: { emoji: window.weaveIconRegistry?.emojiTable() ?? {}, emojiPath: '/vendor/icons', extend: [{ key: '/', hint: slashHint }, { key: '#', hint: entityHint }] },
     // Every decoration pass on this host starts once the editor is actually
     // built — an attach-time schedule can fire before Vditor has a surface.
     after: () => {
       dedupeVditorSprites();
-      /* `:bell:` is an icon here, never an emoji (Kyle, 2026-09-02): Lute
-         ships GitHub's shortcode table and would paint the bell emoji for
-         the same text the icon set draws. Parsing is switched off on this editor's Lute,
-         and a document that already carries a token is rendered again so
-         the first paint agrees with every later one. setValue does not
-         fire input, so nothing is saved by the re-render. */
-      editor.vditor?.lute?.SetEmoji?.(false);
+      /* `:bell:` is an icon here, never an emoji (Kyle, 2026-09-02). Lute
+         renders `:name:` from a shortcode table; Vditor only MERGES the hint
+         map into Lute's GitHub emoji table, so the table is replaced here
+         with the inventory alone — each name an <img> under /vendor/icons —
+         and a token draws the icon inline as Lute's own node, serialises
+         back to `:name:`, and `:smile:` stays text. A document that already
+         carries a token is rendered again once so the first paint agrees
+         with every later one; setValue fires no input, so nothing is saved. */
+      editor.vditor?.lute?.SetEmojis?.(window.weaveIconRegistry?.emojiTable() ?? {});
       const md = editor.getValue();
       if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
       scheduleDecorFor(host);
@@ -5163,7 +5153,7 @@ async function refreshRefChips(st) {
 
   // Gather spans first: only visible paragraphs pay for geometry, and code
   // contexts never decorate (code is literal text by definition).
-  const spans = [], icons = [];
+  const spans = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     // The IR surface is itself a <pre contenteditable>, so the root never
@@ -5171,13 +5161,10 @@ async function refreshRefChips(st) {
     const codeCtx = n.parentElement?.closest(lib.REF_SKIP_SELECTOR);
     if (codeCtx && codeCtx !== root) continue;
     const found = lib.findRefSpans(n.nodeValue);
-    // `:bell:` paints the bell over its literal the same way (Kyle, 2026-09-02).
-    const iconsFound = lib.findIconSpans(n.nodeValue, inlineIconAccept);
-    if (!found.length && !iconsFound.length) continue;
+    if (!found.length) continue;
     const box = n.parentElement.getBoundingClientRect();
     if (box.bottom < 0 || box.top > innerHeight) continue;
     for (const s of found) spans.push({ node: n, ...s });
-    for (const s of iconsFound) icons.push({ node: n, ...s });
   }
 
   await resolveRefs(spans.map((s) => s.ref));
@@ -5203,32 +5190,6 @@ async function refreshRefChips(st) {
       href: hit.href,
       style: `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px; height:${r.height}px;`,
     }, s.label ?? hit.label));
-  }
-  // An icon chip: the icon alone, centred over the literal it covers (the
-  // name is the tooltip — six characters of `:bell:` cannot also hold a word
-  // beside a glyph), and the literal comes back the moment the caret enters
-  // it — same rule as a reference, so typing `:bel` never fights a half-drawn
-  // bell. The chip wears the ground it sits on — a striped table row, the
-  // page — so it hides the colons without reading as a pill.
-  const groundOf = (node) => {
-    for (let n = node.parentElement; n && n !== document.body; n = n.parentElement) {
-      const bg = getComputedStyle(n).backgroundColor;
-      if (bg && bg !== 'transparent' && !/^rgba\(\d+, \d+, \d+, 0\)$/.test(bg)) return bg;
-    }
-    return getComputedStyle(document.body).backgroundColor;
-  };
-  for (const s of icons) {
-    if (caret?.startContainer === s.node && caret.startOffset >= s.start && caret.startOffset <= s.end) continue;
-    const range = document.createRange();
-    range.setStart(s.node, s.start);
-    range.setEnd(s.node, s.end);
-    const rects = range.getClientRects();
-    if (rects.length !== 1) continue;
-    const r = rects[0];
-    st.layer.append(el('span', {
-      class: 'doc-icon-chip', title: s.token,
-      style: `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px; height:${r.height}px; background:${groundOf(s.node)};`,
-    }, iconEl(s.icon, 'wv-icon md-icon')));
   }
 }
 
@@ -5735,7 +5696,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         if (showingSource && !mounted) { mounted = true; mountSourceEditor(); }
         if (!showingSource) appFrame.src = appFrame.src; // pick up what was typed
       },
-    }, '</>') : null;
+    }, iconEl('lucide:code-xml', 'wv-icon')) : null;
     if (isApp) { host.classList.add('hidden'); body.prepend(appFrame); }
     const caret = el('button', {
       class: 'doc-caret', type: 'button', title: 'Collapse section',
@@ -5747,7 +5708,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     });
     const section = el('section', { class: 'doc-section' },
       el('div', { class: 'doc-section-head', draggable: 'true' },
-        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
+        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         caret,
         el('span', { class: 'doc-section-name' }, f.name),
         sourceToggle,
@@ -5897,7 +5858,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       continue;
     }
     const node = el('div', { class: 'fieldrow' },
-      f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, '⠿'),
+      f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
       el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) }, fieldNameLabel(f)),
       editorFor(f, entity, db, () => refresh()));
     if (f.type === 'attachments') {
@@ -6176,7 +6137,7 @@ async function relatedGrid(entity, f, onSaved) {
             await onSaved();
           } catch (err) { toast(err.message, true); }
         },
-      }, '×')))),
+      }, iconEl('lucide:x', 'wv-icon wv-icon-xs'))))),
     /* Adding grows the table from the bottom, as it does in the table view —
        and a row added HERE is created and linked in one step, because the
        reason to add it is that it belongs to this record. */
@@ -6876,6 +6837,7 @@ function uploadWorkspaceLogo() {
 function wireWsNew() {
   const btn = $('#ws-new');
   if (!btn) return;
+  btn.replaceChildren(iconEl('+', 'wv-icon'));
   btn.addEventListener('click', () => {
     modal('New workspace', [el('input', { name: 'name', class: 'form-control', placeholder: 'Workspace name (e.g. dos)', style: 'width:100%' })],
       async (fd) => {
@@ -6939,7 +6901,7 @@ function wireNavCollapse() {
 function wireThemeToggle() {
   const btn = $('#theme-toggle');
   if (!btn) return;
-  const icons = { auto: '◐', dark: '●', light: '○' };
+  const icons = { auto: 'lucide:sun-moon', dark: 'lucide:moon', light: 'lucide:sun' };
   const media = matchMedia('(prefers-color-scheme: dark)');
   let pref = localStorage.getItem('weave-theme') ?? 'auto';
   if (!icons[pref]) pref = 'auto';

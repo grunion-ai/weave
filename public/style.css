@@ -847,17 +847,30 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-ref-layer .doc-ref-chip { position: absolute; pointer-events: auto; box-sizing: border-box;
   display: inline-flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: var(--tblr-bg-surface); box-shadow: inset 0 0 0 100vmax rgba(var(--tblr-primary-rgb), .08); }
-/* `:bell:` in a document (Kyle, 2026-09-02): the icon and its name painted over
-   the literal, on the surface's own ground so the colons never show through.
-   Inert to the pointer — there is nothing to open, and the caret underneath
-   must stay reachable. */
-.doc-ref-layer .doc-icon-chip { position: absolute; pointer-events: none; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
-  white-space: nowrap; overflow: hidden; color: var(--tblr-body-color); background: var(--tblr-bg-surface); }
-.doc-ref-layer .doc-icon-chip .md-icon { margin: 0; width: 1.1em; height: 1.1em; }
+/* `:bell:` in a document is Lute's own shortcode node — an <img> of the icon
+   under /vendor/icons, serialised back as the token. Sized to the line; the
+   ink is recoloured for the dark theme since an <img> cannot inherit
+   currentColor (Kyle, 2026-09-02). */
+.vditor-reset img.emoji { width: 1.05em; height: 1.05em; max-width: none; vertical-align: -.15em; margin: 0 .08em; }
+[data-bs-theme="dark"] .vditor-reset img.emoji { filter: invert(.86) hue-rotate(180deg); }
+.vditor-hint img { width: 1em; height: 1em; vertical-align: -.15em; margin-right: 6px; }
+[data-bs-theme="dark"] .vditor-hint img { filter: invert(.86) hue-rotate(180deg); }
+
 /* An icon inline in text — a dressed cell, a preview line, an export — sits on
    the line at the text's own size, not on the 16px chrome scale. */
 .wv-icon.md-icon { width: 1em; height: 1em; margin-right: .15em; vertical-align: -.15em; flex: none; }
 .wv-icon.md-icon svg { width: 1em; height: 1em; }
+/* The small scale for controls that sit inside text: chip removes, sort marks, carets. */
+.wv-icon.wv-icon-xs { width: var(--wv-icon-sm); height: var(--wv-icon-sm); margin-right: 0; }
+.wv-icon.wv-icon-xs svg { width: var(--wv-icon-sm); height: var(--wv-icon-sm); }
+/* Vditor paints toolbar svgs with fill: currentColor and stroke-width 0
+   (.vditor-toolbar__item svg); ours are strokes at the set's 2. */
+.vditor-toolbar svg { fill: none; stroke: currentColor; stroke-width: 2; width: 16px; height: 16px; }
+/* The dense toolbar glyphs draw finer than the rest — a 2px stroke reads as
+   a clot in a 16px box (Kyle, 2026-08-31: "still too thick"). */
+.vditor-toolbar [data-type="ordered-list"] svg *, .vditor-toolbar [data-type="list"] svg *, .vditor-toolbar [data-type="check"] svg *,
+.vditor-toolbar [data-type="table"] svg *, .vditor-toolbar [data-type="outdent"] svg *, .vditor-toolbar [data-type="indent"] svg * { stroke-width: 1.4; }
+.mention-caret svg { width: 12px; height: 12px; display: block; }
 
 /* ---------- schema editor ---------- */
 .schema-table .type { color: var(--tblr-secondary); font-size: 12px; }
@@ -1149,7 +1162,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .slash-icon { flex: 0 0 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--tblr-secondary); }
 /* Flat icons, not emoji: one monochrome vocabulary that inherits text colour
    instead of a colour picture that ignores it. */
-.slash-icon svg { width: var(--wv-icon-md); height: var(--wv-icon-md); fill: currentColor; }
+/* No CSS fill on an icon svg (2026-09-02): a Lucide shape sets fill="none" and
+   strokes in currentColor; a drawn mark sets fill="currentColor" itself. The
+   Iconly-era `fill: currentColor` here turned every stroke icon into a blob. */
+.slash-icon svg { width: var(--wv-icon-md); height: var(--wv-icon-md); }
 .vditor-hint .slash-item b { font-weight: 500; font-size: 13px; }
 /* The syntax column is the teaching half of the menu: monospace, quiet, and
    never wrapped — it is the shape of the markdown, not prose. */
@@ -1639,7 +1655,7 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .bug-fab:hover, .bug-fab[aria-expanded="true"] { opacity: 1; border-color: var(--tblr-secondary); }
 .bug-fab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
 .bug-fab-icon { display: flex; width: var(--wv-icon-md); height: var(--wv-icon-md); color: var(--tblr-body-color); }
-.bug-fab-icon svg { width: 100%; height: 100%; fill: currentColor; }
+.bug-fab-icon svg { width: 100%; height: 100%; }
 
 #bug-panel { position: fixed; z-index: 1160; width: 252px; max-width: calc(100vw - 24px); padding: 8px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 9px; box-shadow: 0 8px 26px rgba(0,0,0,.20); color: var(--tblr-body-color); }
 .bug-note { display: block; width: 100%; font-size: 12px; line-height: 1.35; padding: 5px 7px; resize: none; }
@@ -1655,7 +1671,7 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .bug-cat.picked { background: var(--tblr-primary-lt, rgba(71,105,235,.12)); color: var(--tblr-primary); font-weight: 600; }
 .bug-cat:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
 .bug-cat-icon { display: flex; flex: 0 0 auto; width: var(--wv-icon-sm); height: var(--wv-icon-sm); }
-.bug-cat-icon svg { width: 100%; height: 100%; fill: currentColor; }
+.bug-cat-icon svg { width: 100%; height: 100%; }
 
 .bug-foot { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
 .bug-captured { flex: 1; min-width: 0; font-size: 10px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

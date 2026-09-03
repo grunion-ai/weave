@@ -1,11 +1,25 @@
 import '../public/date-grain.js';
 import '../public/term-core.js';
+import '../public/icon-registry.js';
+import '../public/mark-icons.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
 import { Store, WeaveError } from './store.js';
 import { evaluate, check as checkExpression } from './formula.js';
+
+/* An icon value is one of the inventory (`lucide:<name>`), a legacy alias that
+   still resolves (`iconly:<name>`), or a drawn mark — anything else is refused
+   (Kyle, 2026-09-02: "still finding emojis; this should not be possible").
+   Empty clears. */
+function iconValue(v) {
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  const reg = globalThis.weaveIconRegistry, marks = globalThis.weaveMarkIcons;
+  if (reg?.resolve(s) || marks?.has(s)) return s;
+  throw new WeaveError(`Icon '${s}' is not in the inventory — use lucide:<name> from the vocabulary, or a mark character`);
+}
 
 // What one row is called (Feature #40): the pure half, shared with the browser.
 const Term = globalThis.WeaveTerm;
@@ -127,7 +141,7 @@ function normaliseOption(o) {
   const hue = hueOf(o);
   return {
     id: o.id ?? slug(o.name), name: o.name, hue,
-    icon: o.icon ? String(o.icon) : '',
+    icon: iconValue(o.icon),
     color: HUE_HEX[hue],
   };
 }
@@ -393,7 +407,7 @@ function normalizeSelfContainedConfig(type, config = {}) {
   if (type === 'workflow') {
     const states = (config.states ?? []).map((s) => (typeof s === 'string'
       ? { id: slug(s), name: s, category: 'in-progress', default: false }
-      : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(s.icon ? { icon: String(s.icon) } : {}) }));
+      : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(iconValue(s.icon) ? { icon: iconValue(s.icon) } : {}) }));
     if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
     // The list's order is the order everywhere; the first state is the
     // default unless one is marked (the tray marks none — Kyle, 2026-08-23).
@@ -799,7 +813,7 @@ export class Weave {
     // be created and then updated, which is a second call for one field.
     const held = Object.values(this.state.spaces).find((s) => s.deletedAt && s.name.toLowerCase() === name.toLowerCase());
     if (held) throw new WeaveError(`Space '${name}' is in the trash — restore or purge it first`, 'conflict');
-    const space = { id: uuid(), name, description, ...(icon ? { icon } : {}), createdAt: nowISO() };
+    const space = { id: uuid(), name, description, ...(iconValue(icon) ? { icon: iconValue(icon) } : {}), createdAt: nowISO() };
     this.state.spaces[space.id] = space;
     this.save();
     this.#syncSpaceRow(space);
@@ -833,7 +847,7 @@ export class Weave {
     this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) });
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
-    if (patch.icon != null) { if (String(patch.icon).trim()) s.icon = String(patch.icon).trim(); else delete s.icon; }
+    if (patch.icon != null) { const v = iconValue(patch.icon); if (v) s.icon = v; else delete s.icon; }
     this.#syncSpaceRow(s);
     this.save();
     return s;
@@ -892,7 +906,7 @@ export class Weave {
       spaceId: sp.id,
       name,
       description,
-      icon,
+      icon: iconValue(icon),
       publicIdCounter: 0,
       nameFieldId: nameField.id,
       /* The description is a ROLE, held by id (Kyle, 2026-08-27: "description
@@ -950,7 +964,7 @@ export class Weave {
     const db = this.getTable(ref);
     if (patch.name != null) db.name = patch.name;
     if (patch.description != null) db.description = patch.description;
-    if (patch.icon != null) db.icon = patch.icon;
+    if (patch.icon != null) db.icon = iconValue(patch.icon);
     if (patch.noun != null) {
       // `noun` is the pre-term spelling (Feature #40): a bare singular that
       // lands on the Name field's term. Empty clears it.

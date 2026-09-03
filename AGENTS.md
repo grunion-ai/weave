@@ -96,7 +96,7 @@ standing one up is one call rather than a create followed by an update.
 **Read `weave_vocabulary` before configuring anything.** It returns every
 closed set a config value can come from *and what the choice looks like on
 screen*: the eighteen field types with how each renders in the grid and which
-config keys it takes, the eight option colors, the icon names (stored as `lucide:<name>`; a value stored as `iconly:<name>` before 2026-09-02 still resolves; a bare name paints the word itself, which is also how an emoji icon works), number
+config keys it takes, the eight option colors, the icon names (stored as `lucide:<name>`; a value stored as `iconly:<name>` before 2026-09-02 still resolves; anything else is refused — an emoji is not an icon), number
 and date formats, document kinds, relation cardinalities, workflow state
 categories, rollup aggregates, the system columns, the two view kinds, and the
 column-width rules (60px floor, 260px cap when unset, a set width is a floor as
