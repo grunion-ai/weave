@@ -1693,6 +1693,12 @@ function showCellPop(td, wrap) {
     style: `left:${left}px; top:${top}px; min-width:${r.width}px;`,
   });
   // A copy, so the live cell keeps its controls and its place in the row.
+  // The pop shows MORE of the value, never a restyled version of it: the
+  // cell's own typography rides along (Kyle, Issue #93 — "same font").
+  const cs = getComputedStyle(td);
+  for (const prop of ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'color', 'textAlign']) {
+    pop.style[prop] = cs[prop];
+  }
   for (const node of td.childNodes) pop.append(node.cloneNode(true));
   copyCellType(td, pop);
   const src = td.querySelectorAll('*');
@@ -6765,6 +6771,11 @@ function paintSkeleton(kind, db) {
 }
 
 function renderRoute() {
+  /* Navigating away abandons any floating chrome: a picker left open would
+     otherwise survive the route change and haunt the next page (Issue #93's
+     replay — the grid it anchored to is gone, so there is nothing to commit
+     to either). */
+  for (const pop of document.querySelectorAll('.chip-pop, .picker-pop')) pop.remove();
   // Every render replaces #main, which would strand live document editors and
   // whatever they have not written yet. Flush and destroy before the DOM goes.
   teardownDocEditors();

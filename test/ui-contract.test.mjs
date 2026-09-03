@@ -2106,3 +2106,43 @@ test('the Name field\'s dialog carries the grouped term picker', () => {
   const css = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
   assert.match(css, /\.picker-cell\.picker-term\.on/, 'the chosen term is marked');
 });
+
+/* ---------- Issue #93: the clipped-cell pop, the empty doc chip, the
+   relation chip's × — and the picker that outlived its page ---------- */
+
+test('the cell pop wears the cell’s own typography, not a restyle', () => {
+  const body = fnBody('showCellPop');
+  for (const prop of ['fontFamily', 'fontSize', 'fontWeight', 'color']) {
+    assert.match(body, new RegExp(prop), `the pop copies the cell's ${prop}`);
+  }
+});
+
+test('an empty chip invites writing, never promises navigation', () => {
+  const arrow = rulesFor('.k-doc.is-empty::after');
+  assert.equal(arrow.content, '"+"', 'the empty chip trades the ↗ for a +');
+});
+
+test('the relation chip’s × is spaced as the trailing piece it is', () => {
+  const x = rulesFor('.k-rel > .x');
+  assert.ok(x.margin?.startsWith('0 6px 0'), `the × follows the link — got margin ${x.margin}`);
+});
+
+test('navigating away dismisses any floating picker', () => {
+  const body = fnBody('renderRoute');
+  assert.match(body, /chip-pop.*picker-pop|picker-pop.*chip-pop/, 'route() sweeps both popover kinds');
+  assert.match(body, /\.remove\(\)/, 'and removes them');
+});
+
+/* ---------- staleness toast (Kyle, 2026-09-02) ----------
+   "my local should always be on the latest and should show a toast when it
+   is not." The health chip carries the verdict; the toast says it out loud. */
+
+test('a behind instance raises the toast and tints its chip', () => {
+  const nav = fnBody('renderNav');
+  assert.match(nav, /h\.behind/, 'the chip reads the health verdict');
+  assert.match(nav, /is-behind/, 'and wears it');
+  assert.match(nav, /toast\([^)]*behind main/, 'the toast names the condition');
+  assert.match(nav, /promote/, 'and the way out');
+  const chip = rulesFor('.nav-health.is-behind');
+  assert.ok(chip.color, 'the stale chip changes color');
+});

@@ -26,3 +26,4 @@ wrangler.jsonc
 *.orig
 .*-probe.mjs
 .*-shot.mjs
+.wt-slot/
