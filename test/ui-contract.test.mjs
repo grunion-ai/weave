@@ -2101,6 +2101,9 @@ test('the Name field\'s dialog carries the grouped term picker', () => {
   assert.match(sec, /custom: \(q\) => set\(q\)/, 'typing an unlisted word takes it as a custom term');
   assert.match(sec, /T\.options\(\)/, 'from term-core, not a second list');
   assert.match(sec, /T\.pluralize\(/, 'the plural derives');
+  assert.match(sec, /class: 'form-control term-plural', readonly: ''/, 'the plural is read-only (Kyle, 2026-09-03: greyed, not editable)');
+  assert.doesNotMatch(sec, /plur\.oninput|pluralTouched/, 'nothing edits the plural');
+  assert.match(readFileSync(join(ROOT, 'public/style.css'), 'utf8'), /\.term-plural\[readonly\]/, 'and it is greyed');
   assert.match(APP, /groups = false, custom = null \}\) \{/, 'searchPicker grew the two options');
   assert.match(fnBody('searchPicker'), /const drawGroups = /, 'grouped text cells are the picker\'s third dialect');
   assert.match(fnBody('searchPicker'), /as a custom term/, 'the custom row names what it does');

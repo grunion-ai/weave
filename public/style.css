@@ -1443,6 +1443,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .term-reset:hover { color: var(--tblr-primary); }
 .term-reset[hidden] { display: none !important; }
 .term-plural-row { margin-top: 6px; }
+.term-plural[readonly] { color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); cursor: default; }
 .term-tag { font-family: var(--tblr-font-monospace); font-size: 10.5px; color: var(--tblr-secondary); flex: 0 0 44px; text-align: right; }
 .picker-cells.picker-terms { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); }
 .picker-cell.picker-term { display: block; aspect-ratio: auto; width: auto; height: auto; text-align: left; padding: 4px 8px; font-size: 12.5px; line-height: 1.4; color: var(--tblr-body-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

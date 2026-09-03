@@ -3533,14 +3533,16 @@ function statePreview(st) {
    the current term as the chip it will become, and opens the grouped picker
    (the icon picker's dialect, in words): click a term, or type one nobody
    listed and take it as a custom term. Picking Record is picking the default.
-   The plural derives until someone corrects it; the preview shows the three
+   The plural derives from the singular, greyed and read-only; the preview shows the three
    surfaces that speak it. */
 function termSection(state, onChange) {
   const T = WeaveTerm;
   const face = el('button', { type: 'button', class: 'picker-face term-face', 'aria-haspopup': 'listbox' });
   const reset = el('button', { type: 'button', class: 'term-reset', title: 'Back to Record' }, 'reset');
-  const plur = el('input', { class: 'form-control term-plural', placeholder: T.DEFAULT.plural, spellcheck: 'false', value: state.term?.plural ?? '' });
-  let pluralTouched = !!(state.term?.plural && state.term.plural !== T.pluralize(state.term.singular));
+  // The plural is derived, shown greyed and read-only (Kyle, 2026-09-03):
+  // one word to choose, not two to keep in step. The engine still accepts
+  // an explicit plural over the API for the rare irregular.
+  const plur = el('input', { class: 'form-control term-plural', readonly: '', tabindex: '-1', title: 'derived from the singular', value: T.resolve({ term: state.term }).plural });
   const preview = el('div', { class: 'modal-note term-preview' });
   const draw = () => {
     const t = T.resolve({ term: state.term });
@@ -3549,17 +3551,12 @@ function termSection(state, onChange) {
       t.set ? '' : el('span', { class: 'term-default' }, 'the default'),
       el('span', { class: 'term-caret' }, '▾'));
     reset.hidden = !t.set;
-    plur.placeholder = T.pluralize(t.singular);
+    plur.value = t.plural;
     preview.textContent = `“+ New ${t.singular}” · “${T.count(3, t)} selected” · “Deleted ${t.plural}”`;
   };
   const set = (singular) => {
     const s = String(singular ?? '').trim().toLowerCase();
-    if (!s || s === T.DEFAULT.singular) { state.term = null; if (!pluralTouched) plur.value = ''; }
-    else {
-      const plural = pluralTouched && plur.value.trim() ? plur.value.trim().toLowerCase() : T.pluralize(s);
-      state.term = { singular: s, plural };
-      if (!pluralTouched) plur.value = plural;
-    }
+    state.term = (!s || s === T.DEFAULT.singular) ? null : { singular: s, plural: T.pluralize(s) };
     draw(); onChange();
   };
   face.onclick = () => searchPicker({
@@ -3571,11 +3568,6 @@ function termSection(state, onChange) {
     onPick: (o) => set(o.id),
   });
   reset.onclick = () => set(null);
-  plur.oninput = () => {
-    pluralTouched = !!plur.value.trim();
-    if (state.term) state.term.plural = plur.value.trim().toLowerCase() || T.pluralize(state.term.singular);
-    draw(); onChange();
-  };
   draw();
   return dsection('Rows in this table are…',
     el('div', { class: 'term-row' }, face, reset),
