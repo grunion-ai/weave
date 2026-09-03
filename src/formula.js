@@ -240,3 +240,21 @@ export function evaluate(expression, getField) {
   if (pos !== tokens.length) throw new Error('Trailing tokens in formula');
   return result;
 }
+
+// Static validation for authoring surfaces (dialog, REST, MCP): parse and
+// resolve names without a real row. Field references are checked against
+// `fieldNames`; values are stubbed, so this catches syntax errors, unknown
+// functions and unknown fields — not data-dependent runtime results.
+export function check(expression, fieldNames = []) {
+  if (!String(expression ?? '').trim()) return { ok: false, error: 'Formula is empty' };
+  const known = new Set([...fieldNames, 'PublicId']);
+  try {
+    evaluate(expression, (name) => {
+      if (!known.has(name)) throw new Error(`Unknown field '${name}'`);
+      return 0;
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}

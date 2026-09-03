@@ -43,6 +43,7 @@ const SURFACE = [
   ['field.update', ['updateField'], 'weave_update_field', 'field update'],
   ['field.delete', ['deleteField'], 'weave_delete_field', 'field delete'],
   ['relation.add', ['addRelation'], 'weave_add_relation', 'relation add'],
+  ['formula.check', ['checkFormula'], 'weave_check_formula', 'formula check'],
   ['entity.create', ['createEntity'], 'weave_create_entity', 'create'],
   ['entity.read', ['readEntity', 'getEntity', 'query', 'listEntities'], 'weave_get_entity', 'get'],
   ['entity.query', ['query'], 'weave_query', 'query'],

@@ -3,6 +3,7 @@
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
 ## Unreleased
+- **Formula authoring gets a check step**: `check()` validates an expression statically — syntax, function names, field references — and the engine refuses to save one that fails, including a formula that references its own field. `weave formula check`, `POST /api/tables/:id/formula-check` and the `weave_check_formula` MCP tool run the same check and preview the computed value on a real row, so the loop for a human and an agent is identical: check until `ok: true`, save, read a cell back. The script editor shows the verdict live while typing (red parse error, or `= value` from row 1), function chips land the caret inside the parens, and the field being edited no longer offers itself as a chip.
 - **Icons move** : the icon set is Lucide (595 names) carrying movingicons.dev motion — an icon plays once when the page loads, once when the picker scrolls it into view, once per hover, never on a loop. The value form is `lucide:<name>`; every `iconly:<name>` stored before 2026-09-02 resolves to its Lucide twin through `public/icon-registry.js`, so nothing migrates. Fourteen state marks (✓ ✕ ★ ! ? ▶ ⏸ ⊘ ⚑ ◎ ⛓ ⌁ → +) draw as their Lucide twins; the six progress rings stay hand-drawn, re-inked to the same stroke. Rebuild the set with `scripts/build-lucide-moving.mjs`.
 
 ## v0.4.4 — 2026-08-31
