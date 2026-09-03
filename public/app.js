@@ -2128,22 +2128,22 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     const cur = item.raw?.[f.name] ?? null;
     const range = { start: cur?.start ?? '', end: cur?.end ?? '' };
     const opts = { costume: f };
-    if (compact) {
-      // Rendered here, not from the server's string: an instant reads in
-      // this browser's zone, and the costume is the field's own.
-      return el('span', { class: 'k k-range' + (cur ? '' : ' is-empty'), title: `date range — edit on the ${db?.term?.singular ?? 'record'} page` },
-        cur ? weaveDateCore.formatDateRange(range, { ...f, viewerZone: LOCAL_ZONE }) : '—');
-    }
+    /* The grid cell is the same two controls, not a read-only chip that sent
+       you to the record page: a range is edited where a date is (Issue #156).
+       Each end is the date control the single-date cell already uses, so a
+       typed 'next friday' and the calendar both work at either end. */
     const commit = () => {
       // Half a range is not a range: the server refuses one end, so an
       // unfinished edit stays in the box until the other end lands.
       if (range.start && range.end) patch({ ...range });
       else if (!range.start && !range.end) patch(null);
     };
-    return el('span', { class: 'range-box' },
-      dateControl({ ...opts, value: range.start, placeholder: 'start', onChange: (iso) => { range.start = iso ?? ''; commit(); } }),
-      el('span', { class: 'range-sep' }, '–'),
-      dateControl({ ...opts, value: range.end, placeholder: 'end', onChange: (iso) => { range.end = iso ?? ''; commit(); } }));
+    return el('span', { class: 'range-box' + (compact ? ' range-compact' : ''), onclick: (e) => e.stopPropagation() },
+      dateControl({ ...opts, compact, value: range.start, placeholder: 'start', onChange: (iso) => { range.start = iso ?? ''; commit(); } }),
+      // The dash travels with the end, so a wrapped range reads "start / – end".
+      el('span', { class: 'range-end' },
+        el('span', { class: 'range-sep' }, '–'),
+        dateControl({ ...opts, compact, value: range.end, placeholder: 'end', onChange: (iso) => { range.end = iso ?? ''; commit(); } })));
   }
   const rawVal = item.raw?.[f.name] ?? val;
   /* A percent field stores the fraction and talks to people in percent

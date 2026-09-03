@@ -86,6 +86,28 @@ if (!chromium) {
     await page.close();
   });
 
+  /* Issue #156. The grid cell was a read-only chip whose tooltip sent you to
+     the record page; Kyle clicked it eleven times. A range is edited where a
+     date is: the cell holds the same two controls the record page does. */
+  test('the grid cell edits a range with the same two date controls', async () => {
+    const id = freshSprint({ Window: { start: '2026-08-01', end: '2026-09-15' } });
+    const page = await browser.newPage();
+    try {
+      await page.goto(`${base}/#/table/${sprints.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr');
+      const row = page.locator('.wv-grid tbody tr', { has: page.locator(`[data-eid="${id}"], [href*="${id}"]`) }).first();
+      // The fixture has two range fields; the first range cell is Window's.
+      const ends = row.locator('td').filter({ has: page.locator('.range-box') }).first().locator('.date-text');
+      assert.equal(await ends.count(), 2, 'both ends are date controls, in the cell');
+      assert.deepEqual(await ends.evaluateAll((ns) => ns.map((n) => n.value)), ['2026-08-01', '2026-09-15']);
+      assert.equal(await row.locator('.k-range').count(), 0, 'the read-only chip is gone');
+      await ends.nth(1).fill('2026-09-30');
+      await ends.nth(1).press('Enter');
+      await page.waitForTimeout(300);
+      assert.deepEqual(weave.readEntity(id).raw.Window, { start: '2026-08-01', end: '2026-09-30' }, 'an edited end commits the range from the grid');
+    } finally { await page.close(); }
+  });
+
   test('typing both ends commits one range; a half-written range commits nothing', async () => {
     const id = freshSprint({});
     const page = await browser.newPage();

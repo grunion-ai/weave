@@ -1546,6 +1546,15 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 /* A range is two date controls sharing one dash (Issue #91). */
 .range-box { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: 100%; }
 .range-sep { color: var(--tblr-secondary); }
+/* On the record page the range lays out as it always has (the entity grid
+   gives it two tracks and lets the end wrap alone at one column); only the
+   grid cell groups the dash with the end. */
+.range-end { display: contents; }
+.range-compact .range-end { display: inline-flex; align-items: center; gap: 6px; }
+/* In a grid cell the two ends share the column: narrower boxes, same control,
+   and a column too narrow for both wraps the end under the start rather than
+   clipping it (Issue #156). */
+.range-compact .date-text { width: 96px; }
 .k-range.is-empty { color: var(--tblr-secondary); }
 .date-pick-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--tblr-secondary); cursor: pointer; }
 .date-pick-btn:hover { color: var(--tblr-body-color); background: var(--tblr-bg-surface-secondary); border-color: var(--tblr-border-color); }
