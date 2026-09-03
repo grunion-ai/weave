@@ -36,7 +36,7 @@ if (!chromium) {
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
-    await page.waitForSelector('#dock:not([hidden]) .dock-resize');
+    await page.waitForSelector('#dock-gutter:not([hidden])');
     return page;
   }
 
@@ -65,7 +65,7 @@ if (!chromium) {
 
   test('dragging the divider pins a width and it survives a reopen', async () => {
     const page = await openDocked();
-    const grip = page.locator('#dock .dock-resize');
+    const grip = page.locator('#dock-gutter');
     const box = await grip.boundingBox();
     const y = box.y + 200;
     await page.mouse.move(box.x + 4, y);
@@ -90,8 +90,8 @@ if (!chromium) {
     await page.evaluate(() => localStorage.setItem('wv-dock-width', '900'));
     await page.click('#dock .dock-head button[title^="Close"]');
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
-    await page.waitForSelector('#dock:not([hidden]) .dock-resize');
-    await page.dblclick('#dock .dock-resize');
+    await page.waitForSelector('#dock-gutter:not([hidden])');
+    await page.dblclick('#dock-gutter');
     const { main, dockW, stored } = await page.evaluate(() => ({
       main: document.querySelector('#main').getBoundingClientRect().width,
       dockW: document.querySelector('#dock').getBoundingClientRect().width,
@@ -104,7 +104,7 @@ if (!chromium) {
 
   test('the drag clamps: the table keeps its minimum room', async () => {
     const page = await openDocked();
-    const grip = page.locator('#dock .dock-resize');
+    const grip = page.locator('#dock-gutter');
     const box = await grip.boundingBox();
     const y = box.y + 200;
     await page.mouse.move(box.x + 4, y);
@@ -113,6 +113,19 @@ if (!chromium) {
     await page.mouse.up();
     const mainW = await page.evaluate(() => document.querySelector('#main').getBoundingClientRect().width);
     assert.ok(mainW >= 300, `the table survives an over-drag: ${mainW}px`);
+    await page.close();
+  });
+
+  test('the divider lives in the canvas gap, not inside either panel', async () => {
+    const page = await openDocked();
+    const { gap, gutter } = await page.evaluate(() => {
+      const main = document.querySelector('#main').getBoundingClientRect();
+      const dockR = document.querySelector('#dock').getBoundingClientRect();
+      const g = document.querySelector('#dock-gutter').getBoundingClientRect();
+      return { gap: { from: main.right, to: dockR.left }, gutter: { left: g.left, right: g.right } };
+    });
+    assert.ok(gutter.left >= gap.from - 1 && gutter.right <= gap.to + 1,
+      `the gutter (${gutter.left}–${gutter.right}) must sit between the panels (${gap.from}–${gap.to})`);
     await page.close();
   });
 }

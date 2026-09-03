@@ -306,6 +306,7 @@ function dockClose() {
   const panel = $('#dock');
   panel.hidden = true;
   panel.replaceChildren();
+  $('#dock-gutter').hidden = true;
   dock = null;
   markDockedRow();
 }
@@ -328,10 +329,10 @@ async function drawDock() {
   releaseDockPanel();
   const panel = $('#dock');
   panel.hidden = false;
+  wireDockGutter(panel);
   applyDockWidth(panel);
   const host = el('div', { class: 'dock-entity' });
   panel.replaceChildren(
-    dockResizeHandle(panel),
     el('div', { class: 'dock-head' },
       el('span', { style: 'flex:1' }),
       el('button', {
@@ -360,12 +361,14 @@ function applyDockWidth(panel) {
   if (px >= DOCK_MIN) { panel.style.width = `${px}px`; panel.style.flex = 'none'; }
   else { panel.style.width = ''; panel.style.flex = ''; }
 }
-function dockResizeHandle(panel) {
-  const grip = el('div', {
-    // No tooltip: the hairline on hover says everything (Kyle, 2026-09-02).
-    class: 'dock-resize',
-    role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize the entity pane',
-  });
+/* The gutter IS the divider (Kyle, 2026-09-02): the 16px canvas gap
+   between the panels, a static sibling in index.html — never a strip
+   painted inside either panel. Wired once; hidden/shown with the dock. */
+function wireDockGutter(panel) {
+  const grip = $('#dock-gutter');
+  grip.hidden = false;
+  if (grip.dataset.wired) return;
+  grip.dataset.wired = '1';
   grip.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     grip.setPointerCapture(e.pointerId);
@@ -395,7 +398,6 @@ function dockResizeHandle(panel) {
     localStorage.removeItem('wv-dock-width');
     applyDockWidth(panel);
   });
-  return grip;
 }
 
 // ⌘⇧E flips the pose: expands a split dock, re-docks an expanded page.

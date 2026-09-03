@@ -1266,11 +1266,16 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    grid (Kyle, 2026-09-02: padding on either edge of the split dock). */
 #dock { flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: 14px 28px 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 360px; min-height: calc(100vh - 16px); max-height: calc(100vh - 16px); overflow-y: auto; position: sticky; top: 8px; align-self: flex-start; }
 #dock .dock-head { display: flex; align-items: center; min-height: 26px; margin-bottom: 2px; }
-/* The divider: a 10px grab strip riding the dock's left edge. Its hairline
-   waits for the pointer (or a drag), like row chrome everywhere else. */
-#dock .dock-resize { position: absolute; left: 0; top: 0; bottom: 0; width: 10px; cursor: col-resize; z-index: 5; }
-#dock .dock-resize::after { content: ""; position: absolute; left: 4px; top: 50%; height: 44px; width: 3px; transform: translateY(-50%); border-radius: 2px; background: var(--tblr-border-color); opacity: 0; transition: opacity .12s ease; }
-#dock .dock-resize:hover::after, body.dock-resizing #dock .dock-resize::after { opacity: 1; }
+/* The divider is the canvas gap itself: a 16px flex column between the two
+   panels (Kyle, 2026-09-02 — never a strip inside either panel). Its
+   hairline waits for the pointer or a drag, centered mid-gap. */
+#dock-gutter { flex: none; width: 16px; margin: 8px 0; cursor: col-resize; position: relative; touch-action: none; }
+#dock-gutter[hidden] { display: none; }
+/* The gutter supplies the whole gap while it is up; #main's own right
+   margin would double it. */
+#main:has(+ #dock-gutter:not([hidden])) { margin-right: 0; }
+#dock-gutter::after { content: ""; position: absolute; left: 50%; top: 50%; height: 44px; width: 3px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--tblr-border-color); opacity: 0; transition: opacity .12s ease; }
+#dock-gutter:hover::after, body.dock-resizing #dock-gutter::after { opacity: 1; }
 body.dock-resizing { user-select: none; cursor: col-resize; }
 /* The pane is narrower than a page: the field grid single-columns and the
    sticky header sits still, same as the peek before it. */

@@ -37,7 +37,10 @@
   <main id="main"></main>
   <!-- The entity dock: the split pane the table view opens an entity into.
        A sibling panel of <main>, so page renders that replace #main never
-       wipe a docked entity mid-edit. -->
+       wipe a docked entity mid-edit. The gutter between them is the resize
+       handle — a real flex column in the canvas gap, not a strip inside
+       either panel. -->
+  <div id="dock-gutter" hidden role="separator" aria-orientation="vertical" aria-label="Resize the entity pane"></div>
   <aside id="dock" hidden></aside>
   <!-- Page loader. A sibling of <main>, not a child, so a page render's
        replaceChildren() cannot wipe it mid-wait. Filled by initPageLoader()
