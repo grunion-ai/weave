@@ -328,7 +328,21 @@ function dockExpand() {
   const top = dock.state.chain[dock.state.chain.length - 1];
   if (!top) return;
   dockClose();
-  location.hash = `#/entity/${top.id}`;
+  /* A pose flip is presentation, not a new place: rewrite this history
+     entry instead of growing the stack. Pushing here left Back walking a
+     trail of look-alike #/table and #/entity twins — pressing it seemed
+     to do nothing and navigation felt broken (Kyle, 2026-09-02). */
+  teardownDocEditors();
+  history.replaceState(null, '', `#/entity/${top.id}`);
+  withPageLoader(() => showEntity(top.id));
+}
+
+/* ✕ on the entity page: same rule as the pose flip — the table is this
+   place at a smaller pose, not a new destination. */
+async function closeToTable(entity) {
+  teardownDocEditors();
+  history.replaceState(null, '', `#/table/${entity.dbId}`);
+  await showDatabase(entity.dbId);
 }
 
 /* Collapse: the entity page re-docks beside its table. A direct render plus
@@ -5579,7 +5593,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     el('button', {
       class: 'btn btn-sm', type: 'button',
       title: 'Close', 'aria-label': 'Close — back to the table',
-      onclick: () => { location.hash = `#/table/${entity.dbId}`; },
+      onclick: () => closeToTable(entity),
     }, iconEl('✕')),
   ] : [];
   mount.append(
