@@ -90,8 +90,9 @@ if (!chromium) {
     const r = b.getBoundingClientRect();
     const clientY = s === 'below' ? r.bottom - 2 : r.top + 2;
     a.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-    b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientY }));
-    b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientY }));
+    const clientX = r.left + 30;
+    b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX, clientY }));
+    b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX, clientY }));
     a.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
   }, [from, onto, side]);
 
@@ -233,39 +234,75 @@ if (!chromium) {
     await page.close();
   });
 
-  test('the drop cue is a horizontal line on the side the field will land', async () => {
-    /* A tinted cell said "this row"; a swap highlight said "we trade". The
-       reader needs "this gap": one line above or below the row under the
-       pointer, picked by where the pointer sits against the row's midpoint. */
+  test('holding a row opens a slot where it will land, and the rows make room', async () => {
+    /* A line on a neighbour's edge told the reader where; it did not show
+       them what. Now the list makes room: one dashed slot, carrying the
+       field's name, opens at the destination while you hold, the rows below
+       it shift down, and the drop puts the field where the slot was. There
+       is no before/after rule to learn — the field goes where the hole is. */
     const page = await openEntity(ownTable().id, 1800);
     const cue = await page.evaluate(() => {
       const dt = new DataTransfer();
       const from = document.querySelector('[data-field="Vendor"]');
       const onto = document.querySelector('[data-field="Stage"]');
+      const list = document.querySelector('.entity-values');
       const fill = getComputedStyle(onto).backgroundColor;
+      from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
       const r = onto.getBoundingClientRect();
       const at = (clientY) => {
-        onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientY }));
-        const cs = getComputedStyle(onto);
+        onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 30, clientY }));
+        const slot = list.querySelector('.drop-slot');
         return {
-          before: onto.classList.contains('drop-before'), after: onto.classList.contains('drop-after'),
-          top: cs.borderTopColor, bottom: cs.borderBottomColor, fill: cs.backgroundColor,
+          slots: list.querySelectorAll('.drop-slot').length,
+          label: slot?.textContent.trim() ?? null,
+          height: slot ? Math.round(slot.getBoundingClientRect().height) : 0,
+          slotBeforeStage: !!slot && !!(slot.compareDocumentPosition(onto) & Node.DOCUMENT_POSITION_FOLLOWING),
+          // Reading order on a multicol grid: above it in the same column, or at
+          // the foot of the column before it when the balance puts them apart.
+          slotReadsBeforeStage: !!slot && (slot.getBoundingClientRect().bottom <= onto.getBoundingClientRect().top + 1
+            || slot.getBoundingClientRect().right <= onto.getBoundingClientRect().left + 1),
+          fill: getComputedStyle(onto).backgroundColor,
+          lines: [getComputedStyle(onto).borderTopColor, getComputedStyle(onto).borderBottomColor],
         };
       };
-      from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
       const idle = getComputedStyle(onto).borderTopColor;
       const above = at(r.top + 2);
       const below = at(r.bottom - 2);
       from.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
-      const swept = onto.classList.contains('drop-before') || onto.classList.contains('drop-after');
-      return { idle, fill, above, below, swept };
+      return { idle, fill, above, below, left: list.querySelectorAll('.drop-slot').length, rowTop: Math.round(r.top) };
     });
-    assert.ok(cue.above.before && !cue.above.after, 'above the midpoint the cue sits on top');
-    assert.ok(cue.below.after && !cue.below.before, 'below the midpoint it moves to the bottom');
-    assert.notEqual(cue.above.top, cue.idle, 'the top line is drawn');
-    assert.notEqual(cue.below.bottom, cue.idle, 'the bottom line is drawn');
-    assert.equal(cue.above.fill, cue.fill, 'the cue does not fill the cell');
-    assert.ok(!cue.swept, 'dragend clears every cue');
+    assert.equal(cue.above.slots, 1, 'one slot, never two');
+    assert.equal(cue.above.label, 'Vendor', 'the slot says which field will land in it');
+    assert.ok(cue.above.height >= 24, 'the slot is a row-sized hole, not a line');
+    assert.ok(cue.above.slotBeforeStage, 'above the midpoint the slot opens above the row');
+    assert.ok(cue.above.slotReadsBeforeStage, 'and comes before it on the page — the rows made room');
+    assert.ok(!cue.below.slotBeforeStage, 'below the midpoint it opens beneath');
+    assert.equal(cue.below.slots, 1, 'moving the pointer moves the slot, it does not add one');
+    assert.equal(cue.above.fill, cue.fill, 'the row under the pointer is not tinted');
+    assert.deepEqual(cue.above.lines, [cue.idle, cue.idle], 'and wears no line — the slot is the whole cue');
+    assert.equal(cue.left, 0, 'dragend takes the slot away');
+    await page.close();
+  });
+
+  test('a drop lands the field where the slot was', async () => {
+    const { db, id } = ownTable();
+    const page = await openEntity(id, 1800);
+    await page.evaluate(() => {
+      const dt = new DataTransfer();
+      const from = document.querySelector('[data-field="Notes"]');
+      const onto = document.querySelector('[data-field="Batch"]');
+      const r = onto.getBoundingClientRect();
+      from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
+      onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 30, clientY: r.top + 2 }));
+      const slot = document.querySelector('.entity-values .drop-slot');
+      slot.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 30, clientY: r.top + 2 }));
+      from.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
+    });
+    await page.waitForFunction(() => document.querySelector('.entity-values [data-field]').dataset.field === 'Vendor'
+      && !document.querySelector('.entity-values .drop-slot'), null, { timeout: 4000 });
+    assert.deepEqual(await order(page), ['Vendor', 'Notes', 'Batch', 'Price', 'Weight', 'Stage'],
+      'Notes went into the slot above Batch');
+    assert.deepEqual(orderOf(db), ['Vendor', 'Notes', 'Batch', 'Price', 'Weight', 'Stage'], 'and the schema followed');
     await page.close();
   });
 

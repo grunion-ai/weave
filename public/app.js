@@ -4187,6 +4187,49 @@ function editFieldDialog(db, f) {
 /* Blocks are reordered by reading the body back after the move: the nodes
    have already been put where the reader dropped them, so the DOM is the new
    order and no index arithmetic can disagree with it (Issue #89). */
+/* One placeholder for a held row or block: it opens where the pointer says
+   and everything after it makes room, so the reader sees the outcome before
+   letting go. The pointer's height against an item's midpoint places the
+   slot above or beneath that item; only items in the pointer's column are
+   candidates, which is what makes the multicol field grid behave like the
+   list it is. The drop swaps the held node into the slot — nothing is left
+   to compute, the DOM is the new order. A list whose held() is null lets the
+   event through, so a row can never land among the blocks or a block among
+   the rows. */
+function slotDrag(list, { itemSel, held, label, onDrop }) {
+  let slot = null;
+  const clear = () => { slot?.remove(); slot = null; };
+  list.addEventListener('dragover', (e) => {
+    const me = held();
+    if (!me) return;
+    e.preventDefault(); e.stopPropagation();
+    if (!slot) slot = el('div', { class: 'drop-slot' }, label(me));
+    const items = [...list.children].filter((n) => n !== me && n !== slot && n.matches(itemSel));
+    const left = (n) => n.getBoundingClientRect().left;
+    let nearest = null, best = Infinity;
+    for (const n of items) { const d = Math.abs(left(n) + 20 - e.clientX); if (d < best) { best = d; nearest = n; } }
+    const inCol = nearest ? items.filter((n) => Math.abs(left(n) - left(nearest)) < 40) : [];
+    let anchor = null;
+    for (const n of inCol) {
+      const r = n.getBoundingClientRect();
+      if (e.clientY < r.top + r.height / 2) { anchor = n; break; }
+    }
+    if (!anchor && inCol.length) anchor = inCol[inCol.length - 1].nextElementSibling;
+    if (anchor === me) anchor = me.nextElementSibling;
+    if (anchor === slot || (anchor === null && list.lastElementChild === slot)) return;
+    if (anchor) list.insertBefore(slot, anchor); else list.append(slot);
+  });
+  list.addEventListener('drop', (e) => {
+    const me = held();
+    if (!me || !slot) return;
+    e.preventDefault(); e.stopPropagation();
+    const at = slot; slot = null;
+    at.replaceWith(me);
+    onDrop(me);
+  });
+  return { clear };
+}
+
 async function reorderBlocks(db, body, onFail) {
   const bodyOrder = [...body.children].map((n) => n.dataset.block).filter(Boolean);
   try {
@@ -5859,87 +5902,45 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         blockFrom = key; e.dataTransfer.effectAllowed = 'move'; e.stopPropagation();
         node.classList.add('dragging');
       });
-      h.addEventListener('dragend', () => { blockFrom = null; node.classList.remove('dragging'); });
+      h.addEventListener('dragend', () => { blockFrom = null; node.classList.remove('dragging'); blockSlot.clear(); });
     }
-    node.addEventListener('dragover', (e) => {
-      if (!blockFrom || blockFrom === key) return;
-      e.preventDefault(); e.stopPropagation(); node.classList.add('drop-target');
-    });
-    node.addEventListener('dragleave', () => node.classList.remove('drop-target'));
-    node.addEventListener('drop', (e) => {
-      node.classList.remove('drop-target');
-      const from = blockFrom; blockFrom = null;
-      if (!from || from === key) return;
-      e.preventDefault(); e.stopPropagation();
-      const fromNode = blocks.get(from);
-      const after = !!(fromNode && (fromNode.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING));
-      if (fromNode) node.insertAdjacentElement(after ? 'afterend' : 'beforebegin', fromNode);
-      reorderBlocks(db, left, refresh);
-    });
     blocks.set(key, node);
     return node;
   };
+  /* Blocks share the rows' slot (review, 2026-09-03): a held block opens one
+     hole among the blocks, and the drop puts it there. The body is the list. */
+  const blockSlot = slotDrag(left, {
+    itemSel: '[data-block]',
+    held: () => blockFrom ? blocks.get(blockFrom) : null,
+    label: (n) => n.dataset.block === VALUES_BLOCK ? 'Fields' : n.dataset.block,
+    onDrop: () => reorderBlocks(db, left, refresh),
+  });
 
-  /* One line, not a tinted row: the cue is the gap the field will land in,
-     and the pointer's height against the row's midpoint picks the side —
-     top half inserts before, bottom half after (Kyle, 2026-08-28: the
-     highlighted row read as a swap, and the DOM-order direction left gaps
-     the pointer could not reach). */
-  const sweepCues = () => {
-    for (const n of values.querySelectorAll('.drop-before, .drop-after')) n.classList.remove('drop-before', 'drop-after');
-  };
+  /* A slot, not a line (review, 2026-09-03): while a row is held, one dashed
+     hole named for it opens where it will land and the rows after it make
+     room. No side to learn — the field goes where the hole is — and the same
+     slot serves the blocks below, so the page has one drag grammar. */
+  const rowSlot = slotDrag(values, {
+    itemSel: '.fieldrow',
+    held: () => dragFrom ? values.querySelector(`[data-field="${CSS.escape(dragFrom)}"]`) : null,
+    label: (n) => n.dataset.field,
+    onDrop: (me) => {
+      const from = me.dataset.field;
+      const next = me.nextElementSibling, prev = me.previousElementSibling;
+      if (next?.dataset.field) reorderField(db, from, next.dataset.field, { after: false, onFail: refresh });
+      else if (prev?.dataset.field) reorderField(db, from, prev.dataset.field, { after: true, onFail: refresh });
+    },
+  });
   const dragRow = (node, handle, f) => {
     node.dataset.field = f.name;
     handle.addEventListener('dragstart', (e) => { dragFrom = f.name; e.dataTransfer.effectAllowed = 'move'; node.classList.add('dragging'); });
-    handle.addEventListener('dragend', () => { dragFrom = null; node.classList.remove('dragging'); sweepCues(); });
-    node.addEventListener('dragover', (e) => {
-      if (!dragFrom || dragFrom === f.name) return;
-      e.preventDefault(); e.stopPropagation();
-      const r = node.getBoundingClientRect();
-      const after = e.clientY > r.top + r.height / 2;
-      node.classList.toggle('drop-after', after);
-      node.classList.toggle('drop-before', !after);
-    });
-    node.addEventListener('dragleave', () => node.classList.remove('drop-before', 'drop-after'));
-    node.addEventListener('drop', (e) => {
-      const after = node.classList.contains('drop-after');
-      sweepCues();
-      const from = dragFrom; dragFrom = null;
-      if (!from || from === f.name) return;
-      e.preventDefault(); e.stopPropagation();
-      const fromNode = values.querySelector(`[data-field="${CSS.escape(from)}"]`);
-      if (fromNode) node.insertAdjacentElement(after ? 'afterend' : 'beforebegin', fromNode);
-      reorderField(db, from, f.name, { after, onFail: refresh });
-    });
+    handle.addEventListener('dragend', () => { dragFrom = null; node.classList.remove('dragging'); rowSlot.clear(); });
     // Editors inside a draggable node must keep their own mouse events.
     for (const stop of node.querySelectorAll('input, select, textarea, .picker-wrap')) {
       stop.addEventListener('mousedown', (ev) => ev.stopPropagation());
     }
     return node;
   };
-
-  /* The space under a column's last row belongs to the container, not to any
-     row — without its own target, the bottom of the list is a gap the drag
-     cannot reach. Dropping there lands the field after the last row. */
-  values.addEventListener('dragover', (e) => {
-    if (!dragFrom || e.target !== values) return;
-    e.preventDefault();
-    sweepCues();
-    const last = values.lastElementChild;
-    if (last && last.dataset.field !== dragFrom) last.classList.add('drop-after');
-  });
-  values.addEventListener('drop', (e) => {
-    if (!dragFrom || e.target !== values) return;
-    e.preventDefault();
-    sweepCues();
-    const from = dragFrom; dragFrom = null;
-    const last = values.lastElementChild;
-    if (!last || last.dataset.field === from) return;
-    const fromNode = values.querySelector(`[data-field="${CSS.escape(from)}"]`);
-    if (fromNode) last.insertAdjacentElement('afterend', fromNode);
-    reorderField(db, from, last.dataset.field, { after: true, onFail: refresh });
-  });
-
   for (const f of shown) {
     // A related table is its own block, below — but a target-set relation has
     // no one table to render as a grid, so its chips stay here in the panel.

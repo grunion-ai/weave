@@ -65,9 +65,14 @@ if (!chromium) {
     const a = document.querySelector(`[data-block="${f}"]`);
     const b = document.querySelector(`[data-block="${t}"]`);
     const handle = a.querySelector('[draggable="true"]') ?? a;
+    /* Stands in for a hand: dragging forward ends in the target's bottom
+       half, dragging back in its top half. The slot opens there. */
+    const forward = !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const r = b.getBoundingClientRect();
+    const at = { clientX: r.left + 30, clientY: forward ? r.bottom - 2 : r.top + 2 };
     handle.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-    b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
-    b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, ...at }));
+    b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, ...at }));
     handle.dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
   }, [from, onto]);
 
@@ -110,25 +115,37 @@ if (!chromium) {
     await page.close();
   });
 
-  test('the block drop cue is one line, on the edge the block will land against', async () => {
-    /* The same cue the field rows use, turned the way blocks stack: they sit
-       one under another, so the gap is horizontal. */
+  test('holding a block opens the same slot the rows use, between the blocks', async () => {
+    /* One cue for the whole page: a block being moved opens a slot among the
+       blocks, the way a row opens one among the rows, so the two drags stop
+       having two grammars (review, 2026-09-03). */
     const page = await open(build().id);
     const cue = await page.evaluate(() => {
       const dt = new DataTransfer();
       const from = document.querySelector('[data-block="@values"]');
       const onto = document.querySelector('[data-block="Brief"]');
-      const before = getComputedStyle(onto).backgroundColor;
+      const body = document.querySelector('.entity-body');
+      const fill = getComputedStyle(onto).backgroundColor;
+      const r = onto.getBoundingClientRect();
       from.querySelector('.opt-grip').dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
-      onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
-      const cs = getComputedStyle(onto);
-      return { shadow: cs.boxShadow, fill: cs.backgroundColor, before, marked: onto.classList.contains('drop-target') };
+      onto.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 30, clientY: r.bottom - 2 }));
+      const slot = body.querySelector(':scope > .drop-slot');
+      const out = {
+        slots: body.querySelectorAll(':scope > .drop-slot').length,
+        label: slot?.textContent.trim() ?? null,
+        afterBrief: !!slot && !!(onto.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING),
+        fill: getComputedStyle(onto).backgroundColor, shadow: getComputedStyle(onto).boxShadow,
+      };
+      from.querySelector('.opt-grip').dispatchEvent(new DragEvent('dragend', { dataTransfer: dt, bubbles: true }));
+      out.left = body.querySelectorAll(':scope > .drop-slot').length;
+      return { ...out, before: fill };
     });
-    assert.ok(cue.marked, 'the block under the pointer is the drop target');
-    assert.equal(cue.fill, cue.before, 'the cue does not fill the block');
-    const [, , x, y] = cue.shadow.match(/(rgba?\([^)]+\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px/) ?? [];
-    assert.equal(Number(x), 0, `blocks stack, so the gap is horizontal, got "${cue.shadow}"`);
-    assert.ok(Math.abs(Number(y)) >= 2, `and the line is drawn, got "${cue.shadow}"`);
+    assert.equal(cue.slots, 1, 'one slot among the blocks');
+    assert.equal(cue.label, 'Fields', 'named for the block that will land in it');
+    assert.ok(cue.afterBrief, 'below the midpoint the slot opens beneath the block');
+    assert.equal(cue.fill, cue.before, 'the block under the pointer is not tinted');
+    assert.equal(cue.shadow, 'none', 'and wears no line — the slot is the whole cue');
+    assert.equal(cue.left, 0, 'dragend takes it away');
     await page.close();
   });
 
