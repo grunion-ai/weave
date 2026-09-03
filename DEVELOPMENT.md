@@ -40,6 +40,10 @@ git fetch gerrit && jj rebase -d main@gerrit   # or: git pull gerrit main
    (the Change-Id keeps them together) instead of opening new ones.
 3. **Verified is earned, not asserted**: run `weave-review.sh` (it runs `npm test` on the
    exact patchset in an isolated worktree). A red suite votes −1 and blocks submit.
+   The `*-browser.test.mjs` suites `import('playwright')` and skip on a bare checkout;
+   the gate links its shared install (`~/.gerrit/weave/pw/node_modules`) into the
+   worktree and votes −1 if they skipped anyway. Run them locally the same way:
+   `ln -s ~/.gerrit/weave/pw/node_modules node_modules` (gitignored) before `npm test`.
 4. Working in parallel with other agents? You don't need to coordinate — Gerrit
    serializes at submit; rebase conflicts surface as a new patchset, not a broken tree.
 5. jj is the local safety net: after any suspected clobber, `jj op log` + `jj undo`.
