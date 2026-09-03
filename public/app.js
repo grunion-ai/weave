@@ -1879,7 +1879,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
       trigger: el('button', { class: `k k-select ${optionHue(f, val)}`, type: 'button', title: f.name },
         optionIcon(f, val), val ?? '—'),
       // Each option is its own chip in the list, in the hue it wears in the
-      // cell; the clear row stays a plain label, since '—' is not a value.
+      // cell; the clear row is the same — chip the empty cell shows.
       options: [{ name: '—' }, ...f.options.map((o) => ({ name: o, cls: `k k-select ${optionHue(f, o)}` }))],
       current: val ?? null,
       clearId: '—',
