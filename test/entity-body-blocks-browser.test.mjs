@@ -149,6 +149,33 @@ if (!chromium) {
     await page.close();
   });
 
+  test('the field block folds on a caret, like a document, and stays folded', async () => {
+    /* Description wears a caret; the field block wore only a name (Kyle,
+       2026-09-03). Same caret, same memory: the fold is remembered per entity
+       in the browser, the way a document section's is, so the page opens the
+       way it was left. The caret is a button in a draggable head — clicking
+       it folds, it does not move the block. */
+    const { id } = build();
+    const page = await open(id);
+    const head = '[data-block="@values"] .block-head';
+    assert.ok(await page.$(`${head} .doc-caret`), 'the field block head carries the document caret');
+    const order = await page.$$eval(`${head} > *`, (ns) => ns.map((n) => n.className.split(' ')[0]));
+    assert.deepEqual(order.slice(0, 3), ['opt-grip', 'doc-caret', 'block-name'], 'grip, caret, name — the order a document head uses');
+    assert.equal(await page.$eval(`${head} .opt-grip`, (n) => n.textContent), '⠿', 'and the grip draws its glyph — an empty span is not a handle');
+    await page.click(`${head} .doc-caret`);
+    await page.waitForFunction(() => document.querySelector('.entity-values').classList.contains('hidden'), null, { timeout: 4000 });
+    assert.ok(await page.$eval(`${head} .doc-caret`, (n) => n.classList.contains('closed')), 'the caret turns to say it is closed');
+    assert.equal(await page.$$eval('[data-block]', (ns) => ns.map((n) => n.dataset.block)).then((b) => b[0]), '@values',
+      'folding did not move the block');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForSelector('.entity-values', { state: 'attached' });
+    assert.ok(await page.$eval('.entity-values', (n) => n.classList.contains('hidden')), 'a reload opens the page folded, as it was left');
+    await page.click(`${head} .doc-caret`);
+    await page.waitForFunction(() => !document.querySelector('.entity-values').classList.contains('hidden'), null, { timeout: 4000 });
+    assert.ok(await page.$eval(`${head} .doc-caret`, (n) => !n.classList.contains('closed')), 'and a second click opens it again');
+    await page.close();
+  });
+
   test('a field drag and a block drag do not reach into each other', async () => {
     const { db, id } = build();
     const page = await open(id);

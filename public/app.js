@@ -5837,7 +5837,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
 
   /* Every block wears the same anchor — a ⠿ that is itself draggable, so the
      thing you grab is the thing that moves. */
-  const anchor = (what) => el('span', { class: 'opt-grip', draggable: 'true', title: `Drag to move ${what}` });
+  const anchor = (what) => el('span', { class: 'opt-grip', draggable: 'true', title: `Drag to move ${what}` }, '⠿');
   const wireBlock = (key, node, handles) => {
     node.dataset.block = key;
     for (const h of handles.filter(Boolean)) {
@@ -5910,8 +5910,21 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   }
 
   if (values.childElementCount) {
+    /* The field block folds like a document section (Kyle, 2026-09-03): the
+       same caret, in the same place in the head, remembered per entity the
+       same way — so a page opens the way it was left. */
+    const fieldsCaret = el('button', {
+      class: 'doc-caret', type: 'button', title: 'Collapse fields',
+      onclick: (e) => {
+        e.stopPropagation();
+        const closed = values.classList.toggle('hidden');
+        fieldsCaret.classList.toggle('closed', closed);
+        docSectionCollapse(id, VALUES_BLOCK, closed);
+      },
+    });
     const valuesHead = el('div', { class: 'block-head' },
-      anchor('the fields'), el('span', { class: 'block-name' }, 'Fields'));
+      anchor('the fields'), fieldsCaret, el('span', { class: 'block-name' }, 'Fields'));
+    if (docSectionCollapse(id, VALUES_BLOCK)) { values.classList.add('hidden'); fieldsCaret.classList.add('closed'); }
     fields.append(valuesHead, values);
     wireBlock(VALUES_BLOCK, fields, [valuesHead.querySelector('.opt-grip'), valuesHead]);
   }
