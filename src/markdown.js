@@ -1,9 +1,37 @@
 // Zero-dependency markdown renderer for entity documents.
 // Supports: headings, paragraphs, bold, italic, strikethrough, inline code,
 // links, images, fenced code blocks, blockquotes, hr, ordered/unordered lists
-// (with nesting by 2-space indent), tables, task lists, and entity mentions
-// of the form [[Table#123]] or [[Table#123|label]].
+// (with nesting by 2-space indent), tables, task lists, entity mentions
+// of the form [[Table#123]] or [[Table#123|label]], and inline icons.
 
+/* Inline icons (Kyle, 2026-09-02): `:bell:` draws the bell where an emoji
+   shortcode would go, `:✓:` draws the mark. The set, its motion and the
+   drawn marks come from the same three browser files (classic scripts node
+   can import for their globals), so a document exports with the same icons
+   the editor shows. Anything not in the set stays literal — `12:30:45`,
+   `:smile:` — and the same grammar lives in WeaveEditorLib.ICON_TOKEN. */
+/* Fail open: the Worker bundle has no import.meta.url and no public/ beside
+   it, and a PDF rendered there keeps every token literal rather than
+   throwing (the same rule the font fallback follows in src/pdf.js). */
+let ICONS = null, ICON_SVG = null, MARKS = null;
+try {
+  const here = new URL('.', import.meta.url);
+  for (const f of ['icon-registry.js', 'vendor/lucide-moving.js', 'mark-icons.js']) await import(new URL(`../public/${f}`, here).href);
+  ICONS = globalThis.weaveIconRegistry ?? null;
+  ICON_SVG = globalThis.LUCIDE_MOVING ?? null;
+  MARKS = globalThis.weaveMarkIcons ?? null;
+} catch { /* no icon set here: tokens stay literal */ }
+const ICON_TOKEN = /^:([a-z0-9][a-z0-9-]*|[^\s:\w`]):/;
+export function inlineIconHtml(token) {
+  if (!ICONS || !ICON_SVG || !MARKS) return null;
+  const name = ICONS.resolve(`lucide:${token}`) || MARKS.twin(token);
+  if (name) {
+    return `<span class="wv-icon md-icon mi mi-${name}" data-ms="${ICONS.MOTION[name] || 0}" title="${escapeHtml(token)}">${ICON_SVG[name]}</span>`;
+  }
+  const mark = MARKS.markSvg(token);
+  if (!mark) return null;
+  return `<span class="wv-icon md-icon" title="${escapeHtml(token)}"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${mark}</svg></span>`;
+}
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -67,6 +95,12 @@ function renderInline(text, resolveMention) {
         i = end + 2;
         continue;
       }
+    }
+    // Inline icon: :name: or :mark:, only when the set knows it
+    if (src[i] === ':') {
+      const m = src.slice(i).match(ICON_TOKEN);
+      const html = m && inlineIconHtml(m[1]);
+      if (html) { out += html; i += m[0].length; continue; }
     }
     // Inline code
     if (src[i] === '`') {
@@ -341,6 +375,8 @@ h1:first-child { margin-top: 0; }
 .doc-meta { color: var(--muted); font-size: 13px; margin-bottom: 2em; border-bottom: 1px solid var(--line); padding-bottom: 1em; }
 a { color: var(--accent); }
 a.mention { background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; text-decoration: none; }
+.md-icon { display: inline-flex; width: 1em; height: 1em; vertical-align: -.15em; margin-right: .15em; }
+.md-icon svg { width: 1em; height: 1em; }
 .mention.broken { color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 0 4px; }
 /* A leading glyph says what kind of thing a reference points at, so a chip is
    readable without following it. Generated content, so it never lands in a

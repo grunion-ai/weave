@@ -842,6 +842,18 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-ref-layer .doc-ref-chip { position: absolute; pointer-events: auto; box-sizing: border-box;
   display: inline-flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: var(--tblr-bg-surface); box-shadow: inset 0 0 0 100vmax rgba(var(--tblr-primary-rgb), .08); }
+/* `:bell:` in a document (Kyle, 2026-09-02): the icon and its name painted over
+   the literal, on the surface's own ground so the colons never show through.
+   Inert to the pointer — there is nothing to open, and the caret underneath
+   must stay reachable. */
+.doc-ref-layer .doc-icon-chip { position: absolute; pointer-events: none; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; white-space: nowrap; overflow: hidden; color: var(--tblr-body-color);
+  background: var(--tblr-bg-surface); box-shadow: inset 0 0 0 100vmax rgba(12, 27, 51, .04); }
+.doc-ref-layer .doc-icon-chip .md-icon { margin: 0; width: 1.1em; height: 1.1em; }
+/* An icon inline in text — a dressed cell, a preview line, an export — sits on
+   the line at the text's own size, not on the 16px chrome scale. */
+.wv-icon.md-icon { width: 1em; height: 1em; margin-right: .15em; vertical-align: -.15em; flex: none; }
+.wv-icon.md-icon svg { width: 1em; height: 1em; }
 
 /* ---------- schema editor ---------- */
 .schema-table .type { color: var(--tblr-secondary); font-size: 12px; }

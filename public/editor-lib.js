@@ -5,6 +5,27 @@
    may touch `document`: DOM work belongs to app.js. */
 
 globalThis.WeaveEditorLib = {
+  /* ---------- inline icons (Kyle, 2026-09-02) ----------
+     `:bell:` draws the bell where an emoji shortcode would go — in a sentence,
+     a list, a table cell. The grammar is the token; the CALLER says which
+     tokens are icons (`accept(token)` returns the icon value — `lucide:bell`
+     for a name, `✓` for a drawn mark — or null), so `12:30:45` and `:smile:`
+     stay literal and this file never has to know the set. Same grammar as
+     renderInline() in src/markdown.js. */
+  ICON_TOKEN: /:([a-z0-9][a-z0-9-]*|[^\s:\w`]):/g,
+  findIconSpans(text, accept) {
+    const out = [];
+    const src = String(text ?? '');
+    const re = new RegExp(this.ICON_TOKEN.source, 'g');
+    let m;
+    while ((m = re.exec(src))) {
+      const icon = accept?.(m[1]) ?? null;
+      if (!icon) { re.lastIndex = m.index + 1; continue; }
+      out.push({ start: m.index, end: m.index + m[0].length, token: m[1], icon });
+    }
+    return out;
+  },
+
   /* [[ref]] / [[ref|label]] spans in one text-node's worth of plain text.
      Same grammar renderInline() parses server-side (src/markdown.js): no
      newlines or brackets inside a reference, label after the first pipe. */
@@ -154,11 +175,13 @@ globalThis.WeaveEditorLib = {
      closes wins, nothing nests, and an unclosed marker is just text (so
      `2 * 3` and `snake_case` survive). Same grammar as renderInline() in
      src/markdown.js, minus the block level, which a cell has no room for. */
-  inlineTokens(md) {
+  inlineTokens(md, accept = null) {
     const src = String(md ?? '');
     if (!src) return [];
     const RULES = [
       [/^\[\[([^[\]\n|]+)(?:\|([^[\]\n]+))?\]\]/, (m) => ({ text: (m[2] ?? m[1]).trim(), mark: 'ref' })],
+      // An icon token only counts when the caller vouches for the name.
+      [new RegExp('^' + this.ICON_TOKEN.source), (m) => { const icon = accept?.(m[1]) ?? null; return icon ? { text: m[1], mark: 'icon', icon } : null; }],
       [/^\[([^\]\n]+)\]\([^)\s]*\)/, (m) => ({ text: m[1], mark: 'link' })],
       // Every emphasis mark is flanked: it may not open or close on a space,
       // so `2 * 3 * 4` stays arithmetic.
@@ -177,9 +200,10 @@ globalThis.WeaveEditorLib = {
       const rest = src.slice(i);
       const hit = RULES.map(([re, make]) => [re.exec(rest), make]).find(([m]) => m);
       // An underscore mark may only open where a word does not already run.
-      if (hit && !(hit[0][0][0] === '_' && /\w$/.test(plain))) {
+      const tok = hit && !(hit[0][0][0] === '_' && /\w$/.test(plain)) ? hit[1](hit[0]) : null;
+      if (tok) {
         flush();
-        out.push(hit[1](hit[0]));
+        out.push(tok);
         i += hit[0][0].length;
       } else {
         plain += src[i];

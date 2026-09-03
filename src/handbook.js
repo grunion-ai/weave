@@ -451,7 +451,7 @@ Every document is addressable as MD, HTML, MMD and PDF at \`/e/<id>/doc/<Field>.
 
 ## What a document can hold
 
-Headings that fold, tables, task lists, code blocks that detect their own language, mermaid diagrams, KaTeX math including chemistry, raw HTML, and \`[[…]]\` chips that link to any entity, table or space. See the **Document formatting** guide for the whole surface.
+Headings that fold, tables, task lists, code blocks that detect their own language, mermaid diagrams, KaTeX math including chemistry, raw HTML, \`[[…]]\` chips that link to any entity, table or space, and \`:name:\` icons drawn from the set. See the **Document formatting** guide for the whole surface.
 
 ## Gotchas
 
@@ -577,7 +577,7 @@ export const GUIDES = [
     order: 8,
     doc: `# Document formatting
 
-Every entity carries at least one document, and a table can give it more. This page is what a document can hold.
+Every entity carries at least one document, and a table can give it more. This page is what a document can hold. Inline, \`:name:\` draws any icon from the set (\`:bell:\` is the bell) where an emoji shortcode would go; see the Formatting showcase.
 
 ## The editor is the renderer
 
@@ -1014,6 +1014,19 @@ That is not a bonus. The math render callback lives inside mhchem's load — rem
 
 KaTeX is the only optional renderer vendored into the tree.` },
 
+  { name: 'Inline icons', construct: 'Format', syntax: '`:name:`', doc: `# Inline icons
+
+Any icon in the set draws inline where its name sits between colons — :bell: \`:bell:\`, :shield-check: \`:shield-check:\`, :rocket: \`:rocket:\` — in a sentence, a list or a table cell, where an emoji shortcode would go. A state mark works the same way: :✓: \`:✓:\`, :◔: \`:◔:\`.
+
+| Icon | Name | Where it fits |
+| --- | --- | --- |
+| :bug: | \`bug\` | an issue |
+| :star: | \`star\` | a feature |
+| :calendar: | \`calendar\` | a date |
+| :lock: | \`lock\` | a credential |
+| :✓: | \`✓\` | a state that is done |
+
+A token the set does not know stays literal, so \`12:30:45\` and \`:smile:\` are untouched. \`weave vocabulary icons\` lists every name.` },
   { name: 'Links to entities, tables and spaces', construct: 'Reference', syntax: '`[[…]]`', doc: `# References
 
 Type \`#\` anywhere in a line and the entity search opens inline, arrow-navigable, one step.
@@ -1189,7 +1202,12 @@ export function iconLibraryPage() {
   const byCat = new Map();
   for (const n of R.NAMES) byCat.set(R.CATEGORY[n], (byCat.get(R.CATEGORY[n]) ?? 0) + 1);
   const cats = [...byCat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
-  const twins = Object.entries(R.MARK_TWINS).map(([ch, n]) => `| \`${ch}\` | \`lucide:${n}\` | ${R.MOTION[n] ? `${R.MOTION[n]} ms` : 'still'} |`);
+  const twins = Object.entries(R.MARK_TWINS).map(([ch, n]) => `| \`${ch}\` | \`lucide:${n}\` | :${ch}: | ${R.MOTION[n] ? `${R.MOTION[n]} ms` : 'still'} |`);
+  // Every icon, drawn beside its name, grouped by Lucide's own categories.
+  const gallery = [...byCat.keys()].sort((a, b) => byCat.get(b) - byCat.get(a)).flatMap((c) => [
+    '', `### ${c} · ${byCat.get(c)}`, '', '| Icon | Name | Run |', '| --- | --- | --- |',
+    ...R.NAMES.filter((n) => R.CATEGORY[n] === c).map((n) => `| :${n}: | \`${n}\` | ${R.MOTION[n] ? `${R.MOTION[n]} ms` : 'still'} |`),
+  ]);
   const sample = ['activity', 'bell', 'bookmark', 'bug', 'calendar', 'chart-bar', 'compass', 'file-text', 'folder', 'funnel', 'heart', 'house', 'layout-grid', 'lock', 'mail', 'map-pin', 'pencil', 'search', 'settings', 'shield-check', 'star', 'trash-2', 'users', 'wallet'];
   return [
     '# Icon library',
@@ -1200,21 +1218,28 @@ export function iconLibraryPage() {
     '',
     `- \`lucide:<name>\` on a space, a table, a select option or a workflow state — \`${sample.join(' ')}\` among the names; \`weave vocabulary icons\` lists them all.`,
     '- Any other string paints itself, so an emoji is a legal icon.',
+    '- In a document, `:name:` draws the icon inline — :bell: `:bell:`, :bug: `:bug:`, :shield-check: `:shield-check:` — in a sentence or a table cell, where an emoji shortcode would go. A mark works the same way: :✓: `:✓:`, :◔: `:◔:`.',
     `- A value stored before 2026-09-02 as \`iconly:<name>\` keeps drawing: ${Object.keys(R.ALIASES).length} legacy names resolve to a Lucide twin (\`iconly:notification\` → \`lucide:bell\`, \`iconly:bug\` → \`lucide:bug\`) and the picker rings the twin. A reference that resolves to nothing draws a ghost ring with the name in its tooltip — the prefix never reaches the screen.`,
     '',
     '## Motion',
     '',
     `An icon plays **once** when the page loads (a beat apart, inside the first 2.5 s), once when the picker scrolls it into view, and once per hover. Nothing loops: a run lasts ${Math.min(...runs)}–${Math.max(...runs)} ms, \`infinite\` is rewritten to a single run when the set is built, and \`prefers-reduced-motion\` stills every icon. ${R.NAMES.length - moving.length} names draw still: the ones movingicons.dev animates by script rather than CSS, and the Lucide shapes the legacy aliases needed.`,
     '',
+    '![The load wave: the sidebar arrives and each icon draws itself in, a beat apart](/showcase/icons/load-wave.gif)',
+    '',
+    '![Hover: one run per icon, then rest](/showcase/icons/hover.gif)',
+    '',
+    '![The picker grid: an icon plays once as it scrolls into view](/showcase/icons/picker-scroll.gif)',
+    '',
     '## Marks',
     '',
     'A workflow state or select option keeps its **character** (`✓`, `◔`) as its value. Fourteen of them draw as Lucide twins:',
     '',
-    '| Mark | Draws as | Run |',
-    '| --- | --- | --- |',
+    '| Mark | Draws as | Drawn | Run |',
+    '| --- | --- | --- | --- |',
     ...twins,
     '',
-    'The six progress rings `○ ◔ ◐ ◑ ◕ ●` have no Lucide shape and stay hand-drawn in `public/mark-icons.js`, re-inked from a 2.5 ring to 2.0 so they sit level with the strokes beside them.',
+    'The six progress rings `○ ◔ ◐ ◑ ◕ ●` — :○: :◔: :◐: :◑: :◕: :●: — have no Lucide shape and stay hand-drawn in `public/mark-icons.js`, re-inked from a 2.5 ring to 2.0 so they sit level with the strokes beside them.',
     '',
     '## The picker',
     '',
@@ -1230,9 +1255,14 @@ export function iconLibraryPage() {
     '',
     '![The picker after the switch: the Issue table, the status group leading, the current icon ringed](/showcase/icons/picker-after.png)',
     '',
-    '![The picker before: Iconly flat, filled glyphs at uneven optical sizes](/showcase/icons/picker-before.png)',
+    '![The picker before the switch, same table: Iconly flat, filled glyphs at uneven optical sizes](/showcase/icons/picker-before.png)',
     '',
     '![Fourteen icons at 24px inside their grid — Iconly (top) fills the box unevenly and needed a hand scale table; Lucide (bottom) sits on one grid at one stroke](/showcase/icons/optical-box.png)',
+    '',
+    '## Every icon',
+    '',
+    `All ${R.NAMES.length}, drawn beside their names with the \`:name:\` form, in Lucide's categories:`,
+    ...gallery,
     '',
     '## Rebuilding the set',
     '',

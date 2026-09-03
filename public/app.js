@@ -1660,16 +1660,24 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
 /* A text value is markdown when tokenizing it finds a mark — cheaper to ask
    the tokenizer than to keep a second grammar in sync with it. */
 function hasInlineMarkup(text) {
-  return globalThis.WeaveEditorLib.inlineTokens(text).some((t) => t.mark);
+  return globalThis.WeaveEditorLib.inlineTokens(text, inlineIconAccept).some((t) => t.mark);
 }
 
 const INLINE_TAG = { strong: 'strong', em: 'em', code: 'code', strike: 's', link: 'span', ref: 'span' };
+/* Which `:token:` is an icon (Kyle, 2026-09-02): a name in the set draws as
+   `lucide:<name>`, a drawn mark draws as itself; anything else stays literal.
+   The tokenizer and the chip layer both ask this, so there is one answer. */
+function inlineIconAccept(token) {
+  if (window.weaveIconRegistry?.resolve(`lucide:${token}`)) return `lucide:${token}`;
+  return window.weaveMarkIcons?.has(token) ? token : null;
+}
 
 /* One line of markdown painted into one node: the marks as marks, the syntax
    gone. Shared by the text costume and the description preview so there is a
    single place the browser turns tokens into elements. */
 function dressTokens(into, tokens) {
   for (const t of tokens) {
+    if (t.mark === 'icon') { into.append(iconEl(t.icon, 'wv-icon md-icon')); continue; }
     const cls = t.mark === 'link' ? 'md-link' : t.mark === 'ref' ? 'md-ref' : null;
     into.append(t.mark ? el(INLINE_TAG[t.mark], cls ? { class: cls } : {}, t.text) : t.text);
   }
@@ -1679,7 +1687,7 @@ function dressTokens(into, tokens) {
 /* The costume: marks painted, syntax gone, and one click back to the source.
    Focus follows the click so typing continues where it was aimed. */
 function dressedText(md, input) {
-  const tokens = globalThis.WeaveEditorLib.inlineTokens(md);
+  const tokens = globalThis.WeaveEditorLib.inlineTokens(md, inlineIconAccept);
   // The tooltip is the whole value the cell had to ellipsise — as prose, for
   // the same reason the cell is: nobody wants to read markers in a tooltip.
   const dressed = el('span', { class: 'text-dressed', tabindex: 0, title: tokens.map((t) => t.text).join('') });
@@ -2080,7 +2088,7 @@ function docPreviewCell(md, name, onOpen) {
     return box;
   }
   for (const line of lines) {
-    box.append(dressTokens(el('span', { class: 'doc-preview-line' }), globalThis.WeaveEditorLib.inlineTokens(line)));
+    box.append(dressTokens(el('span', { class: 'doc-preview-line' }), globalThis.WeaveEditorLib.inlineTokens(line, inlineIconAccept)));
   }
   return box;
 }
@@ -4622,6 +4630,15 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
     // built — an attach-time schedule can fire before Vditor has a surface.
     after: () => {
       dedupeVditorSprites();
+      /* `:bell:` is an icon here, never an emoji (Kyle, 2026-09-02): Lute
+         ships GitHub's shortcode table and would paint the bell emoji for
+         the same text the icon set draws. Parsing is switched off on this editor's Lute,
+         and a document that already carries a token is rendered again so
+         the first paint agrees with every later one. setValue does not
+         fire input, so nothing is saved by the re-render. */
+      editor.vditor?.lute?.SetEmoji?.(false);
+      const md = editor.getValue();
+      if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
       scheduleDecorFor(host);
       /* Typing "/" replaces whatever was selected, so the selection has to be
          remembered before the menu can ask for it. Both events fire after the
@@ -4925,7 +4942,7 @@ async function refreshRefChips(st) {
 
   // Gather spans first: only visible paragraphs pay for geometry, and code
   // contexts never decorate (code is literal text by definition).
-  const spans = [];
+  const spans = [], icons = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     // The IR surface is itself a <pre contenteditable>, so the root never
@@ -4933,10 +4950,13 @@ async function refreshRefChips(st) {
     const codeCtx = n.parentElement?.closest(lib.REF_SKIP_SELECTOR);
     if (codeCtx && codeCtx !== root) continue;
     const found = lib.findRefSpans(n.nodeValue);
-    if (!found.length) continue;
+    // `:bell:` paints the bell over its literal the same way (Kyle, 2026-09-02).
+    const iconsFound = lib.findIconSpans(n.nodeValue, inlineIconAccept);
+    if (!found.length && !iconsFound.length) continue;
     const box = n.parentElement.getBoundingClientRect();
     if (box.bottom < 0 || box.top > innerHeight) continue;
     for (const s of found) spans.push({ node: n, ...s });
+    for (const s of iconsFound) icons.push({ node: n, ...s });
   }
 
   await resolveRefs(spans.map((s) => s.ref));
@@ -4962,6 +4982,24 @@ async function refreshRefChips(st) {
       href: hit.href,
       style: `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px; height:${r.height}px;`,
     }, s.label ?? hit.label));
+  }
+  // An icon chip: the icon alone, centred over the literal it covers (the
+  // name is the tooltip — six characters of `:bell:` cannot also hold a word
+  // beside a glyph), and the literal comes back the moment the caret enters
+  // it — same rule as a reference, so typing `:bel` never fights a half-drawn
+  // bell.
+  for (const s of icons) {
+    if (caret?.startContainer === s.node && caret.startOffset >= s.start && caret.startOffset <= s.end) continue;
+    const range = document.createRange();
+    range.setStart(s.node, s.start);
+    range.setEnd(s.node, s.end);
+    const rects = range.getClientRects();
+    if (rects.length !== 1) continue;
+    const r = rects[0];
+    st.layer.append(el('span', {
+      class: 'doc-icon-chip', title: s.token,
+      style: `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px; height:${r.height}px;`,
+    }, iconEl(s.icon, 'wv-icon md-icon')));
   }
 }
 
