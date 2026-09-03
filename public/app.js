@@ -5695,29 +5695,33 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
      relation — nothing was configured, so there is nothing to unlink; each
      list exists exactly as long as the text does. "References" is what this
      entity's documents mention (md chips, HTML hrefs, mermaid clicks alike);
-     "Referenced by" is who mentions it. Fetched on their own so the scan
-     never holds up the page; a direction with nothing to say is absent. */
-  /* Closed by default (Kyle, 2026-09-02): a page with many mentions stays
-     quiet until the reader asks. The chips are the SAME k k-rel chips a
-     relation field wears — one chip language for "this points at an entity" —
-     each with its k-home table badge, since references cross tables freely.
-     No ×: a reference is text, so there is nothing to unlink. */
+     "Referenced by" is who mentions it.
+     Hidden by default (Kyle, 2026-09-02), exactly like comments and
+     activity: the panels live in the entity-side column the Activity button
+     opens, so the resting page never mentions them — and nothing is even
+     fetched until the reader asks. The chips are the SAME k k-rel chips a
+     relation field wears, each with its k-home table badge, since
+     references cross tables freely. No ×: a reference is text, so there is
+     nothing to unlink. */
   const refCard = (title, extraClass) => (refs) => {
     if (!refs?.length || !mount.isConnected) return;
-    left.append(el('details', { class: `card ref-backlinks-card ${extraClass}` },
-      el('summary', { class: 'ref-summary' }, `${title} · ${refs.length}`),
+    right.append(el('div', { class: `card panel ref-backlinks-card ${extraClass}` },
+      el('div', { class: 'card-header' },
+        el('h3', { class: 'card-title' }, `${title} · ${refs.length}`)),
       el('div', { class: 'card-body ref-backlinks' },
         ...refs.map((r) => el('span', { class: 'k k-rel' },
           el('a', { href: `#/entity/${r.id}` },
             r.name || `#${r.publicId}`,
             el('span', { class: 'k-home' }, r.db.split('/').pop())))))));
   };
-  api('GET', `/entities/${id}/references-from`)
-    .then(refCard('References', 'ref-outbound-card'))
-    .catch(() => { /* references are a bonus, never an error on the page */ });
-  api('GET', `/entities/${id}/references`)
-    .then(refCard('Referenced by', 'ref-inbound-card'))
-    .catch(() => { /* backlinks are a bonus, never an error on the page */ });
+  if (sideOpen) {
+    api('GET', `/entities/${id}/references-from`)
+      .then(refCard('References', 'ref-outbound-card'))
+      .catch(() => { /* references are a bonus, never an error on the page */ });
+    api('GET', `/entities/${id}/references`)
+      .then(refCard('Referenced by', 'ref-inbound-card'))
+      .catch(() => { /* backlinks are a bonus, never an error on the page */ });
+  }
   /* A deck is composed on read, so the frame IS the deck: the same editable
      file /e/:id/deck.html serves, live over whatever the slides say right now.
      A deck entity shows its whole composition; a slide shows itself, wearing

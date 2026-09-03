@@ -947,28 +947,34 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(call[0], /align: 'right'/, 'a right-edge menu must drop its panel to the left');
 });
 
-/* Reference cards (Kyle, 2026-09-02): native <details>, closed by default,
-   wearing the house chip. The DOM proof — closed on load, opens on a click,
-   closed again on the next load, pointer-tier paint in both themes — is
+/* Reference panels (Kyle, 2026-09-02): hidden with comments and activity —
+   they live in the entity-side column the Activity button opens, dressed
+   like Activity, and nothing is fetched until the column is open. The chips
+   are the pointer-tier relation chip. The DOM proof — not fetched at rest,
+   appears below Activity on the click, hides with the column, remembered per
+   browser, pointer-tier paint in both themes — is
    test/references-browser.test.mjs; this is the contract the gate reads
    without a browser. */
-test('reference cards are closed <details> wearing the pointer-tier relation chip', () => {
+test('reference panels join the opt-in side column, dressed like Activity, wearing the pointer-tier relation chip', () => {
   const body = fnBody('renderEntityView');
   const block = body.slice(body.indexOf('const refCard'), body.indexOf('deck is composed on read'));
-  assert.ok(block.length > 0, 'the reference card builder lives in the entity view');
-  assert.match(block, /el\('details', \{ class: `card ref-backlinks-card \$\{extraClass\}` \}/, 'a native disclosure, no script state');
-  assert.doesNotMatch(block, /\bopen\s*:/, 'no open attribute: closed until asked, on every load');
-  assert.match(block, /el\('summary', \{ class: 'ref-summary' \}, `\$\{title\} · \$\{refs\.length\}`\)/, 'the summary is title + count — the whole resting card');
+  assert.ok(block.length > 0, 'the reference panel builder lives in the entity view');
+  assert.match(block, /right\.append\(el\('div', \{ class: `card panel ref-backlinks-card \$\{extraClass\}` \}/,
+    'a side-column panel, the same dress as Comments and Activity');
+  assert.doesNotMatch(block, /left\.append/, 'the entity body stays quiet');
+  assert.doesNotMatch(block, /el\('details'|el\('summary'/, 'no disclosure of its own: the side column is the disclosure');
+  assert.match(block, /el\('div', \{ class: 'card-header' \},\s*el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
+    'the header is title + count, as Activity wears it');
+  assert.match(block, /if \(sideOpen\) \{\s*api\('GET', `\/entities\/\$\{id\}\/references-from`\)/,
+    'nothing is fetched until the side column is open');
+  assert.match(block, /\.then\(refCard\('References', 'ref-outbound-card'\)\)/, 'what this entity mentions');
+  assert.match(block, /\.then\(refCard\('Referenced by', 'ref-inbound-card'\)\)/, 'who mentions it');
   assert.match(block, /el\('span', \{ class: 'k k-rel' \},\s*el\('a', \{ href: `#\/entity\/\$\{r\.id\}` \}/, 'the chip is the relation chip, and the chip is the link');
   assert.match(block, /el\('span', \{ class: 'k-home' \}, r\.db\.split\('\/'\)\.pop\(\)\)/, 'the badge is the short home-table name');
   assert.doesNotMatch(block, /class: 'x'|×/, 'no unlink control: a reference is text');
-  // The summary replaces the native marker with the house caret, and turns it when open.
-  const summary = rulesFor('.ref-backlinks-card > .ref-summary');
-  assert.equal(summary.cursor, 'pointer');
-  assert.equal(summary['list-style'], 'none', 'the native marker is gone (Firefox)');
-  assert.equal(rulesFor('.ref-backlinks-card > .ref-summary::-webkit-details-marker').display, 'none', 'and gone in WebKit');
-  assert.match(rulesFor('.ref-backlinks-card > .ref-summary::before').content ?? '', /›/, 'the house caret');
-  assert.match(rulesFor('.ref-backlinks-card[open] > .ref-summary::before').transform ?? '', /rotate\(90deg\)/, 'which turns when open');
+  // The whole column hides together, and the <details> dress left with the body placement.
+  assert.equal(rulesFor('.entity-grid:not(.side-open) > .entity-side').display, 'none', 'the panels hide with comments and activity');
+  assert.doesNotMatch(CSS, /\.ref-summary|\.ref-backlinks-card\[open\]/, 'the <details> dress is gone');
   // No local chip dress: the k k-rel rules (chip-system.test.mjs, pointer tier) are the whole styling.
   assert.doesNotMatch(CSS, /\.ref-backlinks a\.mention|\.ref-backlink\b/, 'the bespoke mention styling is gone');
   assert.doesNotMatch(CSS, /\.ref-backlinks(-card)?\s+\.k\b/, 'no reference-local chip rules');
