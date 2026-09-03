@@ -887,9 +887,9 @@ function stateCategory(fieldSchema, stateName) {
 /* A state chip: its tier, its category, and the hue that category owns.
    Category keeps the colour because status has to mean the same thing in
    every table — it is the one part of the ramp an author cannot repaint. */
-function stateChipClass(fieldSchema, stateName, bare = false) {
+function stateChipClass(fieldSchema, stateName) {
   const cat = stateCategory(fieldSchema, stateName);
-  return `${bare ? '' : 'k '}k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`.trim();
+  return `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`;
 }
 
 /* weave has no person type yet — a colleague is a relation to whatever table
@@ -1861,7 +1861,10 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   if (f.type === 'workflow') {
     return chipPicker({
       trigger: el('button', { class: stateChipClass(f, val), type: 'button', title: f.name }, ...stateNodes(f, val)),
-      options: f.states.map((s) => ({ name: s.name, cls: stateChipClass(f, s.name, true), label: stateLabel(f, s.name) })),
+      /* The picker paints a row or a staged chip with the class it is handed,
+         whole: a `bare` class without the `k` base drew tinted text with no
+         padding and no corners in the box and in every row (Kyle, 2026-09-02). */
+      options: f.states.map((s) => ({ name: s.name, cls: stateChipClass(f, s.name), label: stateLabel(f, s.name) })),
       current: val,
       onPick: async (name) => {
         try {
@@ -1875,7 +1878,9 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     return chipPicker({
       trigger: el('button', { class: `k k-select ${optionHue(f, val)}`, type: 'button', title: f.name },
         optionIcon(f, val), val ?? '—'),
-      options: [{ name: '—' }, ...f.options.map((o) => ({ name: o }))],
+      // Each option is its own chip in the list, in the hue it wears in the
+      // cell; the clear row stays a plain label, since '—' is not a value.
+      options: [{ name: '—' }, ...f.options.map((o) => ({ name: o, cls: `k k-select ${optionHue(f, o)}` }))],
       current: val ?? null,
       clearId: '—',
       onPick: (name) => patch(name === '—' ? null : name),
@@ -1888,8 +1893,8 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     if (!current.length) box.append(el('span', { class: 'k k-add' }, iconEl('+', 'wv-icon wv-icon-xs')));
     chipPickerMulti({
       trigger: box,
-      options: f.options.map((o) => ({ id: o, label: o, chip: true })),
-      selected: current.map((v) => ({ id: v, label: v })),
+      options: f.options.map((o) => ({ id: o, label: o, chip: true, cls: `k k-multi ${optionHue(f, o)}` })),
+      selected: current.map((v) => ({ id: v, label: v, cls: `k k-multi ${optionHue(f, v)}` })),
       onCommit: (ids) => patch(ids),
     });
     return box;

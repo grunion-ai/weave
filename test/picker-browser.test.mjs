@@ -31,6 +31,15 @@ if (!chromium) {
     tasks = weave.createTable({ space: 'Product', name: 'Task' });
     weave.addField(tasks, { name: 'Tags', type: 'multiselect', config: { options: ['bug', 'feature', 'chore', 'design'] } });
     weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: ['P0', 'P1', 'P2'] } });
+    weave.addField(tasks, {
+      name: 'State', type: 'workflow', config: {
+        states: [
+          { name: 'Open', category: 'not-started', default: true },
+          { name: 'In Progress', category: 'in-progress' },
+          { name: 'Done', category: 'done' },
+        ],
+      },
+    });
     ({ server } = await startServer(weave, { port: 0 }));
     base = `http://127.0.0.1:${server.address().port}`;
     browser = await chromium.launch();
@@ -69,6 +78,43 @@ if (!chromium) {
   // Entity values are keyed by field id; the picker's job is done when the
   // record carries them, so read the record the way the engine stores it.
   const valueOf = (id, field) => weave.resolveField(weave.getEntity(id), field);
+
+  /* A chip is a chip wherever it is drawn. The workflow picker handed its
+     rows and its staged chip a class without the `k` base, so every state
+     drew as tinted text with no padding and no corners — the cell beside it
+     had both (Kyle, 2026-09-02). The classes are read, not the pixels: the
+     `.k` rule is what carries the padding and the radius, so its presence is
+     the claim. */
+  test('every chip in a picker wears the k base class, in the box and in the rows', async () => {
+    const dressed = (page) => page.$$eval('.picker-pop :is(.k-state, .k-select, .k-multi)', (ns) => ns.map((n) => ({
+      text: n.textContent.replace('×', '').trim(),
+      k: n.classList.contains('k'),
+      hue: [...n.classList].find((c) => c.startsWith('hue-')) ?? null,
+      pad: getComputedStyle(n).paddingLeft,
+      radius: getComputedStyle(n).borderRadius,
+    })));
+    let page = await openPicker(freshTask({ State: 'Done' }), 'State');
+    try {
+      const chips = await dressed(page);
+      assert.deepEqual(chips.map((c) => c.text), ['Done', 'Open', 'In Progress', 'Done'], 'the staged chip, then every state as a row');
+      assert.ok(chips.every((c) => c.k), 'each one carries the k base');
+      assert.ok(chips.every((c) => c.pad === '8px' && c.radius === '4px'), 'so each one has a chip’s padding and corners');
+      assert.deepEqual(chips.map((c) => c.hue), ['hue-green', 'hue-slate', 'hue-blue', 'hue-green'], 'and the hue its category wears in the cell');
+    } finally { await page.close(); }
+    page = await openPicker(freshTask({ Priority: 'P1' }), 'Priority');
+    try {
+      const chips = await dressed(page);
+      assert.deepEqual(chips.map((c) => c.text), ['P1', '—', 'P0', 'P1', 'P2'],
+        'a select stages its value and lists every option as a chip — the clear row too, since the empty cell is a — chip');
+      assert.ok(chips.every((c) => c.k && c.pad === '8px'), 'dressed the same way');
+    } finally { await page.close(); }
+    page = await openPicker(freshTask({ Tags: ['bug'] }), 'Tags');
+    try {
+      const chips = await dressed(page);
+      assert.deepEqual(chips.map((c) => c.text), ['bug', 'feature', 'chore', 'design']);
+      assert.ok(chips.every((c) => c.k && c.hue), 'multiselect chips are dressed and hued too');
+    } finally { await page.close(); }
+  });
 
   /* Issue #64. The chip in the box already says it; the row would say it
      twice, and every row it pushes down is one you could still pick. */
