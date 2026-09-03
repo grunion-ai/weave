@@ -524,6 +524,18 @@ test('the report button wears the vendored bug, drawn through iconEl like every 
   assert.ok(!/iconly:danger/.test(APP), 'the placeholder triangle is gone');
 });
 
+/* Issue #119: the "Issue #N" receipt toast landed on the report button, so a
+   second report meant waiting the toast out. The toast layer now stacks to the
+   left of the button: its right inset clears the button's right inset plus
+   its width. */
+test('a toast never covers the report button', () => {
+  const fab = CSS.match(/\.bug-fab\s*{([^}]*)}/)[1];
+  const toasts = CSS.match(/#wv-toasts\s*{([^}]*)}/)[1];
+  const px = (block, prop) => Number(block.match(new RegExp(`(?:^|;)\\s*${prop}:\\s*(\\d+)px`))[1]);
+  assert.ok(px(toasts, 'right') >= px(fab, 'right') + px(fab, 'width'),
+    'the toast stack starts left of the button’s left edge');
+});
+
 test('the panel does not sit on top of the instance chip it shares a corner with', () => {
   const fab = CSS.match(/\.bug-fab\s*{([^}]*)}/)[1];
   const health = CSS.match(/\.nav-health\s*{([^}]*)}/)[1];
