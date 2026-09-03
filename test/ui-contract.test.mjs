@@ -947,6 +947,33 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(call[0], /align: 'right'/, 'a right-edge menu must drop its panel to the left');
 });
 
+/* Reference cards (Kyle, 2026-09-02): native <details>, closed by default,
+   wearing the house chip. The DOM proof — closed on load, opens on a click,
+   closed again on the next load, pointer-tier paint in both themes — is
+   test/references-browser.test.mjs; this is the contract the gate reads
+   without a browser. */
+test('reference cards are closed <details> wearing the pointer-tier relation chip', () => {
+  const body = fnBody('renderEntityView');
+  const block = body.slice(body.indexOf('const refCard'), body.indexOf('deck is composed on read'));
+  assert.ok(block.length > 0, 'the reference card builder lives in the entity view');
+  assert.match(block, /el\('details', \{ class: `card ref-backlinks-card \$\{extraClass\}` \}/, 'a native disclosure, no script state');
+  assert.doesNotMatch(block, /\bopen\s*:/, 'no open attribute: closed until asked, on every load');
+  assert.match(block, /el\('summary', \{ class: 'ref-summary' \}, `\$\{title\} · \$\{refs\.length\}`\)/, 'the summary is title + count — the whole resting card');
+  assert.match(block, /el\('span', \{ class: 'k k-rel' \},\s*el\('a', \{ href: `#\/entity\/\$\{r\.id\}` \}/, 'the chip is the relation chip, and the chip is the link');
+  assert.match(block, /el\('span', \{ class: 'k-home' \}, r\.db\.split\('\/'\)\.pop\(\)\)/, 'the badge is the short home-table name');
+  assert.doesNotMatch(block, /class: 'x'|×/, 'no unlink control: a reference is text');
+  // The summary replaces the native marker with the house caret, and turns it when open.
+  const summary = rulesFor('.ref-backlinks-card > .ref-summary');
+  assert.equal(summary.cursor, 'pointer');
+  assert.equal(summary['list-style'], 'none', 'the native marker is gone (Firefox)');
+  assert.equal(rulesFor('.ref-backlinks-card > .ref-summary::-webkit-details-marker').display, 'none', 'and gone in WebKit');
+  assert.match(rulesFor('.ref-backlinks-card > .ref-summary::before').content ?? '', /›/, 'the house caret');
+  assert.match(rulesFor('.ref-backlinks-card[open] > .ref-summary::before').transform ?? '', /rotate\(90deg\)/, 'which turns when open');
+  // No local chip dress: the k k-rel rules (chip-system.test.mjs, pointer tier) are the whole styling.
+  assert.doesNotMatch(CSS, /\.ref-backlinks a\.mention|\.ref-backlink\b/, 'the bespoke mention styling is gone');
+  assert.doesNotMatch(CSS, /\.ref-backlinks(-card)?\s+\.k\b/, 'no reference-local chip rules');
+});
+
 /* ---------- defect: the document editor showed its own scaffolding ----------
    Vditor's IR mode labels every heading with its level in the left gutter
    (`.vditor-ir .vditor-reset > h2:before { content: 'H2' }`, floated into a

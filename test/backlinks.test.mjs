@@ -195,3 +195,20 @@ test('GET /api/entities/:ref/references-from serves the outbound refs', async ()
     server.close();
   }
 });
+
+/* ---------- the cards wear the house chip, closed by default ----------
+   (Kyle, 2026-09-02): a reference chip is formatted exactly like a linked
+   relation chip — the k k-rel span with its k-home table badge — and both
+   reference cards are collapsed until asked, so a page with many mentions
+   stays quiet. Source-level gate; the DOM behavior is native <details>. */
+
+test('reference cards render k k-rel chips inside a closed details element', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf('const refCard'), src.indexOf('deck is composed on read'));
+  assert.ok(block.includes("el('details'"), 'the card is a <details>, closed by default');
+  assert.ok(!block.includes("open:"), 'no open attribute — hidden until the reader asks');
+  assert.ok(block.includes("'k k-rel'"), 'chips share the relation-chip class');
+  assert.ok(block.includes('k-home'), 'every chip wears its home table badge');
+  assert.ok(!block.includes('ref-backlink '), 'the bespoke mention styling is gone');
+});
