@@ -301,6 +301,41 @@ function releaseDockPanel() {
   }
 }
 
+/* Tabler's diagonal-arrow pair (MIT, the icon family of the Tabler CSS we
+   already vendor): arrows-diagonal points outward = expand, and
+   arrows-diagonal-minimize-2 points inward = collapse. Drawn inline like
+   eyeGlyph() — 16px stroke-2 reads at crumb-row scale. */
+function poseGlyph(expanded) {
+  const span = el('span', { class: 'pose-glyph' });
+  span.innerHTML = expanded
+    ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 10h-4v-4"/><path d="M20 4l-6 6"/><path d="M6 14h4v4"/><path d="M4 20l6 -6"/></svg>'
+    : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h4v4"/><path d="M14 10l6 -6"/><path d="M8 20h-4v-4"/><path d="M10 14l-6 6"/></svg>';
+  return span;
+}
+
+/* The two poses live in two mounts of the ONE renderer: split is the dock
+   panel, expanded is the classic entity page in #main — same URL, same
+   geometry (doc rails, drag reorder, icon scale) as it always had. The
+   pose buttons and the crumb bridge them. */
+function dockExpand() {
+  if (!dock) return;
+  const top = dock.state.chain[dock.state.chain.length - 1];
+  if (!top) return;
+  dockClose();
+  location.hash = `#/entity/${top.id}`;
+}
+
+/* Collapse: the entity page re-docks beside its table. A direct render plus
+   replaceState — a hashchange here would only rebuild the same table. */
+async function collapseToSplit(entity) {
+  const db = allTables().find((d) => d.id === entity.dbId);
+  if (!db) return;
+  teardownDocEditors();
+  history.replaceState(null, '', `#/table/${db.id}`);
+  await showDatabase(db.id);
+  await dockEntity(db, entity.id);
+}
+
 function dockClose() {
   if (!dock) return;
   releaseDockPanel();
@@ -334,6 +369,11 @@ async function drawDock() {
     el('div', { class: 'dock-head' },
       el('span', { style: 'flex:1' }),
       el('button', {
+        class: 'btn btn-sm btn-ghost-secondary pose-btn', type: 'button',
+        title: 'Expand (⌘⇧E)', 'aria-label': 'Expand to the full page',
+        onclick: () => dockExpand(),
+      }, poseGlyph(false)),
+      el('button', {
         class: 'btn btn-sm btn-ghost-secondary', type: 'button',
         title: 'Close (Esc)', 'aria-label': 'Close',
         onclick: () => dockClose(),
@@ -343,6 +383,16 @@ async function drawDock() {
   await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockClose, editors: dock.editors });
   markDockedRow();
 }
+
+// ⌘⇧E flips the pose: expands a split dock, re-docks an expanded page.
+document.addEventListener('keydown', (e) => {
+  if (!((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'e' || e.key === 'E'))) return;
+  if (dock) { e.preventDefault(); return dockExpand(); }
+  if (state.route?.page === 'entity') {
+    e.preventDefault();
+    api('GET', `/entities/${state.route.id}`).then(collapseToSplit).catch(() => {});
+  }
+});
 
 // Esc pops the dock one level (core.escape). Cell editors, overlays and
 // pickers keep their own Escape; the dock only hears it bare. Every
@@ -357,6 +407,8 @@ document.addEventListener('keydown', (e) => {
   const next = weaveEntitySurface.escape(dock.state);
   if (next.pose === 'closed') return dockClose();
   dock.state = next;
+  dockApplyPose();
+  dockSyncUrl();
   drawDock();
 });
 
@@ -5375,6 +5427,21 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   }, `Activity${entity.comments.length ? ` · ${entity.comments.length}` : ''}`);
   const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields', 'aria-label': 'Show or hide fields' }, eyeGlyph());
   eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false }); });
+  /* One entity surface: the full page IS the dock's expanded pose, so its
+     crumb row wears the same pose controls the split dock wears — the
+     inward arrows re-dock beside the table, ✕ closes to the table. */
+  const poseControls = (!inPeek && db) ? [
+    el('button', {
+      class: 'btn btn-sm pose-btn', type: 'button',
+      title: 'Collapse (⌘⇧E)', 'aria-label': 'Collapse — dock beside the table',
+      onclick: () => collapseToSplit(entity),
+    }, poseGlyph(true)),
+    el('button', {
+      class: 'btn btn-sm', type: 'button',
+      title: 'Close', 'aria-label': 'Close — back to the table',
+      onclick: () => { location.hash = `#/table/${entity.dbId}`; },
+    }, iconEl('✕')),
+  ] : [];
   mount.append(
     el('div', { class: 'view-header' },
       el('div', { class: 'crumb crumb-row' },
@@ -5387,9 +5454,17 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
           class: 'permalink-copy', title: 'Copy permalink',
           onclick: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied'),
         }, `#${entity.publicId} ⧉`)),
-        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn)),
+        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, nameInput)),
   );
+  /* The crumb's table link on the full page means "re-dock", not "leave":
+     the split shows the same table the link names, entity still in hand. */
+  if (!inPeek && db) {
+    mount.querySelector(`.crumb-path a[href="#/table/${entity.dbId}"]`)?.addEventListener('click', (e) => {
+      e.preventDefault();
+      collapseToSplit(entity);
+    });
+  }
 
   const grid = el('div', { class: 'entity-grid' });
   grid.classList.toggle('side-open', sideOpen);

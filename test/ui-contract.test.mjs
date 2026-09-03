@@ -909,8 +909,8 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   // the table's do (Kyle, 2026-08-23: "move the entity 3 dots menu to be in
   // line with the breadcrumbs and include the show/hide eye just like on the
   // table view"). The title row is the title.
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*el\('span', \{ class: 'crumb-path' \},[\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, dlBtn\)/,
-    'the entity activity toggle, eye and ⋮ trail the crumb line');
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*el\('span', \{ class: 'crumb-path' \},[\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, dlBtn, \.\.\.poseControls\)/,
+    'the entity activity toggle, eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
   // Kyle, 2026-08-23: "create an activity button as well — when clicked it
   // shows comments and activity in the right panel; by default it is hidden."
   // The side column is a toggle, remembered per browser, off until asked for.
