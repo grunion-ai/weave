@@ -16,35 +16,19 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let specs;
 
-if (!chromium) {
-  test('field definition (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, specs;
+const MONEY = { type: 'number', config: { format: 'currency', currency: 'EUR', decimals: 2 } };
 
-  const MONEY = { type: 'number', config: { format: 'currency', currency: 'EUR', decimals: 2 } };
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Showcase' });
-    specs = weave.createTable({ space: 'Showcase', name: 'Spec' });
-    weave.addField(specs, { name: 'Definition', type: 'field' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('field definition', (weave) => {
+  weave.createSpace({ name: 'Showcase' });
+  specs = weave.createTable({ space: 'Showcase', name: 'Spec' });
+  weave.addField(specs, { name: 'Definition', type: 'field' });
+});
+if (s) {
+  const { base, browser, weave } = s;
   const freshSpec = () => weave.createEntity(specs, { name: 'Sensor board', values: { Definition: MONEY } }).id;
 
   const openEntity = async (id) => {

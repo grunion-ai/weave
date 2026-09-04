@@ -17,38 +17,23 @@
    It is imported dynamically and the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
-
-if (!chromium) {
-  test('row selection (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, tasks, people, ids = [];
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Product' });
-    people = weave.createTable({ space: 'Product', name: 'Person' });
-    tasks = weave.createTable({ space: 'Product', name: 'Task' });
-    weave.addField(tasks, { name: 'Estimate', type: 'number' });
-    weave.addRelation(tasks, { name: 'Owner', targetDb: people, cardinality: 'many-to-one', inverseName: 'Tasks' });
-    // Five rows, named so a sort re-orders them against insertion order —
-    // that is what proves the selection is keyed on id and not on position.
-    for (const [name, est] of [['Echo', 5], ['Delta', 4], ['Charlie', 3], ['Bravo', 2], ['Alpha', 1]]) {
-      ids.push(weave.createEntity(tasks, { name, values: { Estimate: est } }).id);
-    }
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
+let tasks, people, ids = [];
+const s = await launch('row selection', (weave) => {
+  weave.createSpace({ name: 'Product' });
+  people = weave.createTable({ space: 'Product', name: 'Person' });
+  tasks = weave.createTable({ space: 'Product', name: 'Task' });
+  weave.addField(tasks, { name: 'Estimate', type: 'number' });
+  weave.addRelation(tasks, { name: 'Owner', targetDb: people, cardinality: 'many-to-one', inverseName: 'Tasks' });
+  // Five rows, named so a sort re-orders them against insertion order —
+  // that is what proves the selection is keyed on id and not on position.
+  for (const [name, est] of [['Echo', 5], ['Delta', 4], ['Charlie', 3], ['Bravo', 2], ['Alpha', 1]]) {
+    ids.push(weave.createEntity(tasks, { name, values: { Estimate: est } }).id);
+  }
+});
+if (s) {
+  const { base, browser } = s;
 
   async function grid() {
     const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });

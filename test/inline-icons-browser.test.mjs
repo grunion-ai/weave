@@ -7,28 +7,18 @@
    Playwright is not a dependency; the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright').then((pw) => pw.chromium).catch(() => null);
-
-if (!chromium) {
-  test('inline icons (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, row;
-  const DOC = 'A :bell: rings and :check: is done, :ring-quarter: along, :smile: stays, :rocket: ours, at 12:30:45.\n\n| Icon | Name |\n| --- | --- |\n| :bug: | bug |\n| :star: | star |\n';
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Product' });
-    const notes = weave.createTable({ space: 'Product', name: 'Note' });
-    row = weave.createEntity(notes, { name: 'Icons inline' }).id;
-    weave.setDoc(row, DOC);
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-  test.after(async () => { await browser?.close(); server?.close(); });
+let row;
+const DOC = 'A :bell: rings and :check: is done, :ring-quarter: along, :smile: stays, :rocket: ours, at 12:30:45.\n\n| Icon | Name |\n| --- | --- |\n| :bug: | bug |\n| :star: | star |\n';
+const s = await launch('inline icons', (weave) => {
+  weave.createSpace({ name: 'Product' });
+  const notes = weave.createTable({ space: 'Product', name: 'Note' });
+  row = weave.createEntity(notes, { name: 'Icons inline' }).id;
+  weave.setDoc(row, DOC);
+});
+if (s) {
+  const { base, browser, weave } = s;
 
   const open = async () => {
     const page = await browser.newPage();

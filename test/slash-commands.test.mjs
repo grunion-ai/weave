@@ -16,38 +16,22 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
-
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+import { launch } from './lib/browser.mjs';
 
 const slash = test.suite ?? test;
 
-if (!chromium) {
-  test('slash commands (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, dir, weave, tableRef;
-
-  test.before(async () => {
-    dir = mkdtempSync(join(tmpdir(), 'weave-slash-'));
-    weave = new Weave();
-    weave.createSpace({ name: 'Scratch' });
-    // A new table already carries a Description document field.
-    tableRef = weave.createTable({ space: 'Scratch', name: 'Note' });
-    // A stable, distinctly named entity for the link picker to find.
-    weave.createEntity(tableRef, { name: 'Zebrafish target' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-    if (dir) rmSync(dir, { recursive: true, force: true });
-  });
+let dir, tableRef;
+const s = await launch('slash commands', (weave) => {
+  dir = mkdtempSync(join(tmpdir(), 'weave-slash-'));
+  weave.createSpace({ name: 'Scratch' });
+  // A new table already carries a Description document field.
+  tableRef = weave.createTable({ space: 'Scratch', name: 'Note' });
+  // A stable, distinctly named entity for the link picker to find.
+  weave.createEntity(tableRef, { name: 'Zebrafish target' });
+});
+if (s) {
+  const { base, browser, weave } = s;
+  test.after(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
 
   /* Each case gets its own entity. Saves are debounced, so a document shared
      across cases receives a previous case's write after the next one has

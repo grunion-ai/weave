@@ -27,35 +27,20 @@
    dynamically and the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
-
-if (!chromium) {
-  test('field menu (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, tasks;
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Product' });
-    tasks = weave.createTable({ space: 'Product', name: 'Task' });
-    weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: ['P0', 'P1', 'P2'] } });
-    weave.addField(tasks, { name: 'Estimate', type: 'number' });
-    for (const [name, p] of [['Echo', 'P2'], ['Delta', 'P0'], ['Charlie', 'P1']]) {
-      weave.createEntity(tasks, { name, values: { Priority: p } });
-    }
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
+let tasks;
+const s = await launch('field menu', (weave) => {
+  weave.createSpace({ name: 'Product' });
+  tasks = weave.createTable({ space: 'Product', name: 'Task' });
+  weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: ['P0', 'P1', 'P2'] } });
+  weave.addField(tasks, { name: 'Estimate', type: 'number' });
+  for (const [name, p] of [['Echo', 'P2'], ['Delta', 'P0'], ['Charlie', 'P1']]) {
+    weave.createEntity(tasks, { name, values: { Priority: p } });
+  }
+});
+if (s) {
+  const { base, browser, weave } = s;
 
   async function grid() {
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });

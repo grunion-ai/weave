@@ -7,8 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
 const APP = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
 
@@ -22,29 +21,15 @@ test('the dock panel and its core ship in the page shell', () => {
   assert.ok(html.includes('entity-surface-core.js'), 'index.html loads the surface core');
 });
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
-
-if (!chromium) {
-  test('entity dock (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, deals, a, b;
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Sales' });
-    deals = weave.createTable({ space: 'Sales', name: 'Deals' });
-    a = weave.createEntity(deals, { name: 'Acme Working Capital' });
-    b = weave.createEntity(deals, { name: 'Bluefin Renewal' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+let deals, a, b;
+const s = await launch('entity dock', (weave) => {
+  weave.createSpace({ name: 'Sales' });
+  deals = weave.createTable({ space: 'Sales', name: 'Deals' });
+  a = weave.createEntity(deals, { name: 'Acme Working Capital' });
+  b = weave.createEntity(deals, { name: 'Bluefin Renewal' });
+});
+if (s) {
+  const { base, browser } = s;
   async function freshTablePage() {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });

@@ -13,43 +13,27 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let tasks;
 
-if (!chromium) {
-  test('picker (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, tasks;
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Product' });
-    tasks = weave.createTable({ space: 'Product', name: 'Task' });
-    weave.addField(tasks, { name: 'Tags', type: 'multiselect', config: { options: ['bug', 'feature', 'chore', 'design'] } });
-    weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: ['P0', 'P1', 'P2'] } });
-    weave.addField(tasks, {
-      name: 'State', type: 'workflow', config: {
-        states: [
-          { name: 'Open', category: 'not-started', default: true },
-          { name: 'In Progress', category: 'in-progress' },
-          { name: 'Done', category: 'done' },
-        ],
-      },
-    });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
+const s = await launch('picker', (weave) => {
+  weave.createSpace({ name: 'Product' });
+  tasks = weave.createTable({ space: 'Product', name: 'Task' });
+  weave.addField(tasks, { name: 'Tags', type: 'multiselect', config: { options: ['bug', 'feature', 'chore', 'design'] } });
+  weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: ['P0', 'P1', 'P2'] } });
+  weave.addField(tasks, {
+    name: 'State', type: 'workflow', config: {
+      states: [
+        { name: 'Open', category: 'not-started', default: true },
+        { name: 'In Progress', category: 'in-progress' },
+        { name: 'Done', category: 'done' },
+      ],
+    },
   });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+});
+if (s) {
+  const { base, browser, weave } = s;
   /* One entity per case: a picker commits to the record, so cases that share
      an entity would read each other's writes. */
   const freshTask = (values) => weave.createEntity(tasks, { name: 'Picker case', values }).id;

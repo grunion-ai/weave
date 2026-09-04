@@ -13,44 +13,28 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let tasks, row;
 
-if (!chromium) {
-  test('icon vocabulary (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, tasks, row;
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Product' });
-    tasks = weave.createTable({ space: 'Product', name: 'Task' });
-    // A nav row with a moving icon of its own: the load-wave test below used
-    // to lean on the Relation map row's compass, which left the nav 2026-09-02.
-    weave.createTable({ space: 'Product', name: 'Pulse', icon: 'lucide:activity' });
-    weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: [
-      { name: 'Urgent', icon: 'iconly:danger' },
-      { name: 'Later', icon: '○' },
-    ] } });
-    weave.addField(tasks, { name: 'Stage', type: 'workflow', config: { states: [
-      { name: 'Building', icon: 'lucide:activity', category: 'in-progress', default: true },
-      { name: 'Shipped', icon: '✓', category: 'done' },
-    ] } });
-    row = weave.createEntity(tasks, { name: 'Icon case', values: { Priority: 'Urgent' } }).id;
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('icon vocabulary', (weave) => {
+  weave.createSpace({ name: 'Product' });
+  tasks = weave.createTable({ space: 'Product', name: 'Task' });
+  // A nav row with a moving icon of its own: the load-wave test below used
+  // to lean on the Relation map row's compass, which left the nav 2026-09-02.
+  weave.createTable({ space: 'Product', name: 'Pulse', icon: 'lucide:activity' });
+  weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: [
+    { name: 'Urgent', icon: 'iconly:danger' },
+    { name: 'Later', icon: '○' },
+  ] } });
+  weave.addField(tasks, { name: 'Stage', type: 'workflow', config: { states: [
+    { name: 'Building', icon: 'lucide:activity', category: 'in-progress', default: true },
+    { name: 'Shipped', icon: '✓', category: 'done' },
+  ] } });
+  row = weave.createEntity(tasks, { name: 'Icon case', values: { Priority: 'Urgent' } }).id;
+});
+if (s) {
+  const { base, browser, weave } = s;
   const entityPage = async () => {
     const page = await browser.newPage();
     // Size gates measure resting boxes; the motion has its own test below.

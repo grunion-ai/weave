@@ -17,34 +17,17 @@
    It is imported dynamically and the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+const FIELDS = ['Vendor', 'Batch', 'Price', 'Stage'];
+// A new table arrives with Name and Description; the grid shows them too.
+const BASE = ['Name', 'Description', ...FIELDS];
 
-if (!chromium) {
-  test('table column reorder (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave;
-  const FIELDS = ['Vendor', 'Batch', 'Price', 'Stage'];
-  // A new table arrives with Name and Description; the grid shows them too.
-  const BASE = ['Name', 'Description', ...FIELDS];
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Showcase' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('table column reorder', (weave) => {
+  weave.createSpace({ name: 'Showcase' });
+});
+if (s) {
+  const { base, browser, weave } = s;
   /* fieldOrder holds field ids; read it back as names for the assertions. */
   const orderOf = (db) => {
     const t = weave.getTable(db);

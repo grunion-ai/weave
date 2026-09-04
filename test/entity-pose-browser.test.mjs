@@ -6,31 +6,16 @@
    "leave". Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
-
-if (!chromium) {
-  test('entity pose (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, deals, a;
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Sales' });
-    deals = weave.createTable({ space: 'Sales', name: 'Deals' });
-    a = weave.createEntity(deals, { name: 'Acme Working Capital' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+let deals, a;
+const s = await launch('entity pose', (weave) => {
+  weave.createSpace({ name: 'Sales' });
+  deals = weave.createTable({ space: 'Sales', name: 'Deals' });
+  a = weave.createEntity(deals, { name: 'Acme Working Capital' });
+});
+if (s) {
+  const { base, browser } = s;
   test('the dock expands to the entity page: outward arrows, then the old URL', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });

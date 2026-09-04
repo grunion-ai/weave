@@ -16,33 +16,15 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 import { seedWeaver } from '../src/weaver-seed.js';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
-
-if (!chromium) {
-  test('bug panel (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave;
-
-  /* The panel files into Development/Issue, so the instance under test is the
-     seeded docs workspace — a report that cannot be sent cannot prove that
-     sending clears the draft. */
-  test.before(async () => {
-    weave = seedWeaver(new Weave());
-    ({ server } = await startServer(weave, { port: 0, workspaces: { weave } }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
+/* The panel files into Development/Issue, so the instance under test is the
+   seeded docs workspace — a report that cannot be sent cannot prove that
+   sending clears the draft. */
+const s = await launch('bug panel', (weave) => { seedWeaver(weave); }, { server: (weave) => ({ workspaces: { weave } }) });
+if (s) {
+  const { base, browser, weave } = s;
 
   /* Every case starts on a table, because that is where a report gets written:
      looking at the thing that went wrong. */

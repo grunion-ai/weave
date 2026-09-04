@@ -13,31 +13,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
 
-if (!chromium) {
-  test('toast (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser;
-
-  test.before(async () => {
-    const weave = new Weave();
-    weave.createSpace({ name: 'S' });
-    weave.createTable({ space: 'S', name: 'T' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('toast', (weave) => {
+  weave.createSpace({ name: 'S' });
+  weave.createTable({ space: 'S', name: 'T' });
+});
+if (s) {
+  const { base, browser } = s;
   test('a toast is on screen, not switched off by a framework class', async () => {
     const page = await browser.newPage();
     await page.goto(base, { waitUntil: 'networkidle' });

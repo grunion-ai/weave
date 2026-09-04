@@ -12,31 +12,14 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
 
-if (!chromium) {
-  test('hold-to-confirm release (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave;
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Product' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('hold-to-confirm release', (weave) => {
+  weave.createSpace({ name: 'Product' });
+});
+if (s) {
+  const { base, browser, weave } = s;
   const tableNames = () => weave.listTables().filter((d) => !d.system).map((d) => d.name);
 
   /* Fresh page, fresh table, hold the nav kebab's Delete for `ms`, release,

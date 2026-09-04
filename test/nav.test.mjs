@@ -6,8 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
@@ -137,30 +136,15 @@ test('the kebab paints in both themes by inheriting the house menu tokens', () =
   assert.match(rulesFor('.dl-menu').border ?? '', /var\(--tblr-border-color\)/);
 });
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let db, entity;
 
-if (!chromium) {
-  test('sidebar navigation (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, db, entity;
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Scratch' });
-    db = weave.createTable({ space: 'Scratch', name: 'Task' });
-    entity = weave.createEntity(db.id, { name: 'Deep in the workspace' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('sidebar navigation', (weave) => {
+  weave.createSpace({ name: 'Scratch' });
+  db = weave.createTable({ space: 'Scratch', name: 'Task' });
+  entity = weave.createEntity(db.id, { name: 'Deep in the workspace' });
+});
+if (s) {
+  const { base, browser, weave } = s;
   /* Kyle, 2026-08-24: "allow clicking the workspace name to take you to the
      workspace entity page in addition to the workspace selector chip." The
      wordmark sat above every page as dead text; the only way home was the

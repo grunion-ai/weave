@@ -14,32 +14,16 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let people;
 
-if (!chromium) {
-  test('entity body blocks (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, people;
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Showcase' });
-    people = weave.createTable({ space: 'Showcase', name: 'Person' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('entity body blocks', (weave) => {
+  weave.createSpace({ name: 'Showcase' });
+  people = weave.createTable({ space: 'Showcase', name: 'Person' });
+});
+if (s) {
+  const { base, browser, weave } = s;
   let n = 0;
   const build = () => {
     const db = weave.createTable({ space: 'Showcase', name: `Part ${++n}` });

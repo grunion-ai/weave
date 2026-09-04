@@ -9,32 +9,16 @@ import assert from 'node:assert/strict';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let tableRef;
 
-if (!chromium) {
-  test('toolbar (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, tableRef;
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Scratch' });
-    tableRef = weave.createTable({ space: 'Scratch', name: 'Note' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('toolbar', (weave) => {
+  weave.createSpace({ name: 'Scratch' });
+  tableRef = weave.createTable({ space: 'Scratch', name: 'Note' });
+});
+if (s) {
+  const { base, browser, weave } = s;
   function entityWithDoc(name, md) {
     const e = weave.createEntity(tableRef, { name });
     weave.setDoc(e.id, md, 'Description');

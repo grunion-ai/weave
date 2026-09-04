@@ -13,34 +13,18 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let sprints;
 
-if (!chromium) {
-  test('daterange (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, sprints;
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Product' });
-    sprints = weave.createTable({ space: 'Product', name: 'Sprint' });
-    weave.addField(sprints, { name: 'Window', type: 'daterange' });
-    weave.addField(sprints, { name: 'Readable', type: 'daterange', config: { format: 'long' } });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('daterange', (weave) => {
+  weave.createSpace({ name: 'Product' });
+  sprints = weave.createTable({ space: 'Product', name: 'Sprint' });
+  weave.addField(sprints, { name: 'Window', type: 'daterange' });
+  weave.addField(sprints, { name: 'Readable', type: 'daterange', config: { format: 'long' } });
+});
+if (s) {
+  const { base, browser, weave } = s;
   const freshSprint = (values) => weave.createEntity(sprints, { name: 'Range case', values }).id;
 
   /* The row's rendered text, exactly as a reader sees it. */

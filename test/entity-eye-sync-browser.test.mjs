@@ -5,32 +5,17 @@
    Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
-
-if (!chromium) {
-  test('entity eye sync (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, deals, a;
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Sales' });
-    deals = weave.createTable({ space: 'Sales', name: 'Deals' });
-    weave.addField(deals, { name: 'Amount', type: 'number' });
-    a = weave.createEntity(deals, { name: 'Acme', values: { Amount: 12 } });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+let deals, a;
+const s = await launch('entity eye sync', (weave) => {
+  weave.createSpace({ name: 'Sales' });
+  deals = weave.createTable({ space: 'Sales', name: 'Deals' });
+  weave.addField(deals, { name: 'Amount', type: 'number' });
+  a = weave.createEntity(deals, { name: 'Acme', values: { Amount: 12 } });
+});
+if (s) {
+  const { base, browser } = s;
   const gridHasAmount = (page) => page.evaluate(() =>
     [...document.querySelectorAll('#main .wv-grid thead th')].some((th) => th.textContent.includes('Amount')));
   const paneHasAmount = (page) => page.evaluate(() =>

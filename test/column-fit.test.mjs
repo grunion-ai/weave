@@ -8,43 +8,27 @@
    (house rule: zero runtime deps). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let db, wide;
+const LONG = 'Design the onboarding wizard end to end';
 
-if (!chromium) {
-  test('column fit (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, db, wide;
-  const LONG = 'Design the onboarding wizard end to end';
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Scratch' });
-    db = weave.createTable({ space: 'Scratch', name: 'Task' });
-    weave.addField(db.id, { name: 'Owner', type: 'text' });
-    weave.createEntity(db.id, { name: LONG, values: { Owner: 'Kyle' } });
-    weave.createEntity(db.id, { name: 'Short', values: { Owner: 'Sam' } });
-    // A grid wider than its card: auto table layout squeezes a bare `width`
-    // away, which is where a resize or a fit visibly did nothing.
-    wide = weave.createTable({ space: 'Scratch', name: 'Wide' });
-    for (const n of ['B', 'C', 'D', 'E', 'F', 'G', 'H']) weave.addField(wide.id, { name: n, type: 'text' });
-    const values = Object.fromEntries(['B', 'C', 'D', 'E', 'F', 'G', 'H']
-      .map((n) => [n, `${n} — a value long enough to want its own column width`]));
-    weave.createEntity(wide.id, { name: LONG, values });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('column fit', (weave) => {
+  weave.createSpace({ name: 'Scratch' });
+  db = weave.createTable({ space: 'Scratch', name: 'Task' });
+  weave.addField(db.id, { name: 'Owner', type: 'text' });
+  weave.createEntity(db.id, { name: LONG, values: { Owner: 'Kyle' } });
+  weave.createEntity(db.id, { name: 'Short', values: { Owner: 'Sam' } });
+  // A grid wider than its card: auto table layout squeezes a bare `width`
+  // away, which is where a resize or a fit visibly did nothing.
+  wide = weave.createTable({ space: 'Scratch', name: 'Wide' });
+  for (const n of ['B', 'C', 'D', 'E', 'F', 'G', 'H']) weave.addField(wide.id, { name: n, type: 'text' });
+  const values = Object.fromEntries(['B', 'C', 'D', 'E', 'F', 'G', 'H']
+    .map((n) => [n, `${n} — a value long enough to want its own column width`]));
+  weave.createEntity(wide.id, { name: LONG, values });
+});
+if (s) {
+  const { base, browser, weave } = s;
   // Widths are per-field schema, so one test's fit is the next test's start
   // width. Every test opens on an unsized grid.
   function resetWidths() {

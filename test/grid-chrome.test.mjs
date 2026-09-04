@@ -20,68 +20,52 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let tasks, people, task;
 
-if (!chromium) {
-  test('grid chrome (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, tasks, people, task;
+const s = await launch('grid chrome', (weave) => {
+  weave.createSpace({ name: 'Product' });
+  people = weave.createTable({ space: 'Product', name: 'Person' });
+  tasks = weave.createTable({ space: 'Product', name: 'Task' });
+  weave.addField(tasks, { name: 'Notes', type: 'text' });
+  // Enough columns that the grid runs out of room and starts clipping —
+  // the expansion only exists for a cell that does not fit.
+  const FILLERS = Array.from({ length: 18 }, (_, i) => `Col ${i + 1}`);
+  for (const n of FILLERS) weave.addField(tasks, { name: n, type: 'text' });
+  weave.addField(tasks, { name: 'Brief', type: 'document' });
+  weave.addRelation(tasks, { name: 'Owners', targetDb: people, cardinality: 'many-to-many', inverseName: 'Tasks' });
+  // A to-one relation as well: on the entity page a collection becomes its
+  // own grid, so the chip that keeps its × is the single link.
+  weave.addRelation(tasks, { name: 'Lead', targetDb: people, cardinality: 'many-to-one', inverseName: 'Leads' });
 
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Product' });
-    people = weave.createTable({ space: 'Product', name: 'Person' });
-    tasks = weave.createTable({ space: 'Product', name: 'Task' });
-    weave.addField(tasks, { name: 'Notes', type: 'text' });
-    // Enough columns that the grid runs out of room and starts clipping —
-    // the expansion only exists for a cell that does not fit.
-    const FILLERS = Array.from({ length: 18 }, (_, i) => `Col ${i + 1}`);
-    for (const n of FILLERS) weave.addField(tasks, { name: n, type: 'text' });
-    weave.addField(tasks, { name: 'Brief', type: 'document' });
-    weave.addRelation(tasks, { name: 'Owners', targetDb: people, cardinality: 'many-to-many', inverseName: 'Tasks' });
-    // A to-one relation as well: on the entity page a collection becomes its
-    // own grid, so the chip that keeps its × is the single link.
-    weave.addRelation(tasks, { name: 'Lead', targetDb: people, cardinality: 'many-to-one', inverseName: 'Leads' });
-
-    const mia = weave.createEntity(people, { name: 'Mia Okafor' });
-    // A name and a note both long enough that the column clips them: the
-    // expansion only exists for cells that do not fit.
-    task = weave.createEntity(tasks, {
-      name: 'A task whose name is far too long to sit inside one grid column',
-      values: {
-        Notes: 'A note that also runs past the end of its column and has to be clipped',
-        ...Object.fromEntries(FILLERS.map((n) => [n, `${n} carries a value long enough to clip`])),
-      },
-    });
-    weave.link(task.id, 'Owners', [mia.id]);
-    // A column narrower than the control inside it is what makes a text cell
-    // clip at all — the same 60px Kyle had dragged the Site column to.
-    weave.updateField(tasks, 'Name', { config: { width: 60 } });
-    weave.link(task.id, 'Lead', [mia.id]);
-    // A description with marks and more lines than a row can hold, so the
-    // preview has something to format and the hover has something to reveal
-    // (Kyle, 2026-08-27). The second row leaves its description empty, which
-    // is what the equal-height assertion below is really measuring.
-    weave.setDoc(task.id, '# Title\n\n**bold** body\n\n- third line');
-    // A second row, with its Brief written, to compare row heights against.
-    const full = weave.createEntity(tasks, { name: 'Short' });
-    weave.setDoc(full.id, '# Written\n\nthis one is not empty', 'Brief');
-
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
+  const mia = weave.createEntity(people, { name: 'Mia Okafor' });
+  // A name and a note both long enough that the column clips them: the
+  // expansion only exists for cells that do not fit.
+  task = weave.createEntity(tasks, {
+    name: 'A task whose name is far too long to sit inside one grid column',
+    values: {
+      Notes: 'A note that also runs past the end of its column and has to be clipped',
+      ...Object.fromEntries(FILLERS.map((n) => [n, `${n} carries a value long enough to clip`])),
+    },
   });
+  weave.link(task.id, 'Owners', [mia.id]);
+  // A column narrower than the control inside it is what makes a text cell
+  // clip at all — the same 60px Kyle had dragged the Site column to.
+  weave.updateField(tasks, 'Name', { config: { width: 60 } });
+  weave.link(task.id, 'Lead', [mia.id]);
+  // A description with marks and more lines than a row can hold, so the
+  // preview has something to format and the hover has something to reveal
+  // (Kyle, 2026-08-27). The second row leaves its description empty, which
+  // is what the equal-height assertion below is really measuring.
+  weave.setDoc(task.id, '# Title\n\n**bold** body\n\n- third line');
+  // A second row, with its Brief written, to compare row heights against.
+  const full = weave.createEntity(tasks, { name: 'Short' });
+  weave.setDoc(full.id, '# Written\n\nthis one is not empty', 'Brief');
 
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+});
+if (s) {
+  const { base, browser, weave } = s;
   async function grid(density) {
     const page = await browser.newPage({ viewport: { width: 820, height: 900 } });
     if (density) {

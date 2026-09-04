@@ -15,46 +15,30 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let parts;
 
-if (!chromium) {
-  test('entity value grid (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, parts;
+const VALUES = ['Vendor', 'Batch', 'Price', 'Weight', 'Stage', 'Notes'];
+const trackCount = (page) => page.$eval('.entity-values',
+  (n) => Number(getComputedStyle(n).columnCount) || 1);
+/* Which column each field sits in, read off the page: rows sharing a left
+   edge share a column. */
+const columnsOf = (page) => page.$$eval('.entity-values [data-field]', (ns) => {
+  const lefts = [...new Set(ns.map((n) => Math.round(n.getBoundingClientRect().left)))].sort((a, b) => a - b);
+  const cols = lefts.map(() => []);
+  for (const n of ns) cols[lefts.indexOf(Math.round(n.getBoundingClientRect().left))].push(n.dataset.field);
+  return cols;
+});
 
-  const VALUES = ['Vendor', 'Batch', 'Price', 'Weight', 'Stage', 'Notes'];
-  const trackCount = (page) => page.$eval('.entity-values',
-    (n) => Number(getComputedStyle(n).columnCount) || 1);
-  /* Which column each field sits in, read off the page: rows sharing a left
-     edge share a column. */
-  const columnsOf = (page) => page.$$eval('.entity-values [data-field]', (ns) => {
-    const lefts = [...new Set(ns.map((n) => Math.round(n.getBoundingClientRect().left)))].sort((a, b) => a - b);
-    const cols = lefts.map(() => []);
-    for (const n of ns) cols[lefts.indexOf(Math.round(n.getBoundingClientRect().left))].push(n.dataset.field);
-    return cols;
-  });
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Showcase' });
-    parts = weave.createTable({ space: 'Showcase', name: 'Part' });
-    for (const name of VALUES) weave.addField(parts, { name, type: 'text' });
-    weave.addField(parts, { name: 'Brief', type: 'document' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('entity value grid', (weave) => {
+  weave.createSpace({ name: 'Showcase' });
+  parts = weave.createTable({ space: 'Showcase', name: 'Part' });
+  for (const name of VALUES) weave.addField(parts, { name, type: 'text' });
+  weave.addField(parts, { name: 'Brief', type: 'document' });
+});
+if (s) {
+  const { base, browser, weave } = s;
   const fresh = () => {
     const values = Object.fromEntries(VALUES.map((n, i) => [n, `v${i}`]));
     return weave.createEntity(parts, { name: 'Sensor board', values }).id;

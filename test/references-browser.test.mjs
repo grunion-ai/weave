@@ -21,36 +21,20 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { launch } from './lib/browser.mjs';
 
-const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
-  .catch(() => null);
+let target, issue, loner;
 
-if (!chromium) {
-  test('reference panels (browser)', { skip: 'playwright not installed' }, () => {});
-} else {
-  let server, base, browser, weave, target, issue, loner;
-
-  test.before(async () => {
-    weave = new Weave();
-    weave.createSpace({ name: 'Dev' });
-    weave.createTable({ space: 'Dev', name: 'Task' });
-    weave.createTable({ space: 'Dev', name: 'Issue' });
-    target = weave.createEntity('Task', { name: 'Ship the editor' });
-    issue = weave.createEntity('Issue', { name: 'Editor loses focus', doc: 'blocks [[Task#1]] until fixed' });
-    loner = weave.createEntity('Issue', { name: 'Nobody mentions me' });
-    ({ server } = await startServer(weave, { port: 0 }));
-    base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
-  });
-
-  test.after(async () => {
-    await browser?.close();
-    server?.close();
-  });
-
+const s = await launch('reference panels', (weave) => {
+  weave.createSpace({ name: 'Dev' });
+  weave.createTable({ space: 'Dev', name: 'Task' });
+  weave.createTable({ space: 'Dev', name: 'Issue' });
+  target = weave.createEntity('Task', { name: 'Ship the editor' });
+  issue = weave.createEntity('Issue', { name: 'Editor loses focus', doc: 'blocks [[Task#1]] until fixed' });
+  loner = weave.createEntity('Issue', { name: 'Nobody mentions me' });
+});
+if (s) {
+  const { base, browser, weave } = s;
   /* `side: true` opens the column the only way it opens: the table's
      Activity system toggle. Off is what a fresh table sees. */
   const open = async (id, { colorScheme = 'light', side = false } = {}) => {
