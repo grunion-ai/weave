@@ -5491,11 +5491,25 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
 
   const nameF = nameFieldOf(db);
   const computed = nameF?.type === 'formula';
-  const nameInput = el('input', {
-    class: 'name-edit' + (computed ? ' computed' : ''), value: entity.name,
+  /* A textarea, not an input: an input is one line by construction and cut
+     "…CSV import/export; file attac" at its edge (Kyle, 2026-09-04, Issue
+     #175: the full name always shows, wrapping and pushing the body down).
+     It sizes to its content and Enter commits — a name has no second line
+     of its own. */
+  const nameInput = el('textarea', {
+    class: 'name-edit' + (computed ? ' computed' : ''), rows: '1',
     readonly: computed ? '' : undefined,
     title: computed ? `computed name — ƒ ${nameF.expression ?? ''}` : null,
+    onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } },
   });
+  nameInput.value = entity.name;
+  // ponytail: `field-sizing: content` does the growing; this is the same
+  // rule by hand for an engine that lacks it, and goes when they all have it.
+  if (!CSS.supports('field-sizing', 'content')) {
+    const fit = () => { nameInput.style.height = 'auto'; nameInput.style.height = `${nameInput.scrollHeight}px`; };
+    nameInput.addEventListener('input', fit);
+    requestAnimationFrame(fit);
+  }
   if (!computed) nameInput.addEventListener('change', async () => {
     try { await api('PATCH', `/entities/${id}`, { values: { [nameF?.name ?? 'Name']: nameInput.value } }); toast('Renamed'); }
     catch (err) { toast(err.message, true); }

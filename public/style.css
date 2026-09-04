@@ -699,9 +699,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-head .pid { color: var(--tblr-secondary); }
 /* The name grows to fill the row (capped) and the ⋮ is pushed to the right
    edge, matching where viewHeader() leaves it on every other view. */
-.entity-head input.name-edit { font-size: 20px; font-weight: 700; border: none; background: none; color: inherit; padding: 2px 4px; flex: 1; min-width: 0; max-width: 640px; }
+.entity-head textarea.name-edit { font-size: 20px; font-weight: 700; border: none; background: none; color: inherit; padding: 2px 4px; flex: 1; min-width: 0; width: 100%; resize: none; overflow: hidden; field-sizing: content; line-height: 1.25; font-family: inherit; }
 .entity-head .dl-wrap { margin-left: auto; }
-.entity-head input.name-edit:hover, .entity-head input.name-edit:focus { background: var(--tblr-bg-surface-secondary); border-radius: var(--tblr-border-radius); outline: none; }
+.entity-head textarea.name-edit:hover, .entity-head textarea.name-edit:focus { background: var(--tblr-bg-surface-secondary); border-radius: var(--tblr-border-radius); outline: none; }
 .crumb { color: var(--tblr-secondary); font-size: 12.5px; margin-bottom: 14px; }
 .crumb a { color: var(--tblr-primary); text-decoration: none; }
 .entity-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }

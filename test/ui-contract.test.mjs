@@ -2159,3 +2159,17 @@ test('a behind instance raises the toast and tints its chip', () => {
   const chip = rulesFor('.nav-health.is-behind');
   assert.ok(chip.color, 'the stale chip changes color');
 });
+
+test('the entity name wraps instead of clipping: a content-sized textarea, Enter commits (Issue #175)', () => {
+  const body = fnBody('renderEntityView');
+  assert.match(body, /const nameInput = el\('textarea', \{\s*\n\s*class: 'name-edit'/, 'a textarea, not an input — an input is one line by construction');
+  assert.match(body, /rows: '1'/, 'one row at rest');
+  assert.match(body, /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); nameInput\.blur\(\); \}/, 'Enter commits; a name has no second line of its own');
+  assert.match(body, /nameInput\.value = entity\.name/, 'the value is set, never a child text node');
+  const css = rulesFor('.entity-head textarea.name-edit');
+  assert.equal(css['field-sizing'], 'content', 'the box is as tall as the name');
+  assert.equal(css.resize, 'none');
+  assert.equal(css.width, '100%');
+  assert.equal(css['max-width'], undefined, 'no 640px cap — the full name always shows');
+  assert.ok(!CSS.includes('input.name-edit'), 'no stale input rule');
+});
