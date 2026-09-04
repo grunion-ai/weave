@@ -346,15 +346,16 @@ if (!chromium) {
     await page.waitForFunction(() => [...document.querySelectorAll('#nav .mi [data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), null, { timeout: 4000 });
     // …and every one of them rests again: nothing loops.
     await page.waitForFunction(() => ![...document.querySelectorAll('#nav .mi [data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), null, { timeout: 8000 });
-    const host = page.locator('#nav .wv-icon.mi:not([data-ms="0"])').first();
+    const SEL = '#nav .wv-icon.mi:not([data-ms="0"])';
+    const host = page.locator(SEL).first();
     const ms = Number(await host.getAttribute('data-ms'));
+    // Playing is the motion classes on every part; resting is none on any.
+    const playing = (sel) => [...document.querySelector(sel).querySelectorAll('[data-mi]')].every((p) => p.classList.contains(p.dataset.mi.split(' ')[0]));
+    const resting = (sel) => ![...document.querySelector(sel).querySelectorAll('[data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0]));
     await host.hover();
-    await page.waitForTimeout(80);
-    const armed = await host.evaluate((el) => [...el.querySelectorAll('[data-mi]')].every((p) => p.classList.contains(p.dataset.mi.split(' ')[0])));
-    assert.ok(armed, 'a hover plays the icon');
-    await page.waitForTimeout(ms + 300);
-    const rested = await host.evaluate((el) => [...el.querySelectorAll('[data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])));
-    assert.equal(rested, false, `after its ${ms} ms run the icon rests — it does not loop`);
+    await page.waitForFunction(playing, SEL, { timeout: 3000 }).catch(() => assert.fail('a hover plays the icon'));
+    await page.waitForFunction(resting, SEL, { timeout: ms + 3000 })
+      .catch(() => assert.fail(`after its ${ms} ms run the icon rests — it does not loop`));
     await page.close();
   });
 

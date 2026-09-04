@@ -69,10 +69,19 @@ if (!chromium) {
     const page = await open();
     // Type at the end of the document so Lute serialises the whole surface,
     // nodes included, back through the save path.
-    await page.locator('.vditor-ir .vditor-reset').first().click();
-    await page.keyboard.press('End'); await page.keyboard.type(' more');
-    await page.waitForTimeout(1500);
+    const typed = async () => {
+      await page.locator('.vditor-ir .vditor-reset').first().click();
+      await page.keyboard.press('End'); await page.keyboard.type(' more');
+      return page.waitForFunction(() => document.querySelector('.vditor-ir .vditor-reset').textContent.includes(' more'), null, { timeout: 2000 })
+        .then(() => true, () => false);
+    };
+    // A busy box can drop the first click before the editor takes focus.
+    if (!(await typed())) assert.ok(await typed(), 'the keystrokes reach the editor');
+    // The autosave lands when the engine holds the typed text; poll that.
+    const until = Date.now() + 5000;
+    while (!weave.getDoc(row).includes(' more') && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
     const stored = weave.getDoc(row);
+    assert.ok(stored.includes(' more'), 'the autosave wrote the typed text');
     assert.ok(stored.includes(':bell:') && stored.includes(':check:') && stored.includes(':ring-quarter:'), `tokens survive a round trip: ${stored.slice(0, 80)}`);
     assert.doesNotMatch(stored, /<img|🔔/, 'no image tag and no emoji character was written into the document');
     await page.close();

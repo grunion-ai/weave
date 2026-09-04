@@ -35,19 +35,31 @@ if (!chromium) {
     [...document.querySelectorAll('#main .wv-grid thead th')].some((th) => th.textContent.includes('Amount')));
   const paneHasAmount = (page) => page.evaluate(() =>
     [...document.querySelectorAll('#dock .entity-fields .fieldrow label')].some((l) => l.textContent.trim() === 'Amount'));
+  // The Amount row's switch state, read off the live popover.
+  const amountChecked = () => [...document.querySelectorAll('.chip-pop .eye-row')]
+    .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount')?.getAttribute('aria-checked');
+  const flipAmount = async (page) => {
+    const before = await page.evaluate(amountChecked);
+    await page.evaluate(() => {
+      [...document.querySelectorAll('.chip-pop .eye-row')]
+        .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount').click();
+    });
+    // Both surfaces redraw asynchronously (PATCH, schema reload, two
+    // renders); the popover's fresh rows carry the flipped switch, which is
+    // the signal that the round trip has landed.
+    await page.waitForFunction((was) => {
+      const row = [...document.querySelectorAll('.chip-pop .eye-row')]
+        .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount');
+      return row && row.getAttribute('aria-checked') !== was;
+    }, before, { timeout: 5000 });
+  };
   const toggleAmount = async (page, scope) => {
     await page.click(`${scope} .eye-btn`);
     await page.waitForSelector('.chip-pop .eye-row');
-    await page.evaluate(() => {
-      const row = [...document.querySelectorAll('.chip-pop .eye-row')]
-        .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount');
-      row.click();
-    });
-    // Both surfaces redraw asynchronously (PATCH, schema reload, two
-    // renders). Dismiss the reopened popover with a click on neutral
-    // chrome, never Escape — with no popover left, Esc would rightly pop
-    // the dock itself and the assertions would read an empty pane.
-    await page.waitForTimeout(1200);
+    await flipAmount(page);
+    // Dismiss the reopened popover with a click on neutral chrome, never
+    // Escape — with no popover left, Esc would rightly pop the dock itself
+    // and the assertions would read an empty pane.
     await page.mouse.click(4, 4);
   };
 
@@ -90,11 +102,7 @@ if (!chromium) {
       const r = document.querySelector('.chip-pop').getBoundingClientRect();
       return { left: r.left, top: r.top };
     });
-    await page.evaluate(() => {
-      [...document.querySelectorAll('.chip-pop .eye-row')]
-        .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount').click();
-    });
-    await page.waitForTimeout(1200);
+    await flipAmount(page);
     const after = await page.evaluate(() => {
       const pop = document.querySelector('.chip-pop');
       const r = pop.getBoundingClientRect();

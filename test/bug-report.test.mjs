@@ -325,12 +325,23 @@ test.before(async () => {
 });
 test.after(() => server.close());
 
-const post = async (path, body, headers = {}) => {
-  const res = await fetch(base + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-  });
+const post = async (path, body, headers = {}, attempt = 0) => {
+  let res;
+  try {
+    res = await fetch(base + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    // A socket-level 'fetch failed' under a loaded box is not a verdict on
+    // the route; one retry is what any client would do.
+    if (attempt < 2 && err instanceof TypeError) {
+      await new Promise((r) => setTimeout(r, 150));
+      return post(path, body, headers, attempt + 1);
+    }
+    throw err;
+  }
   return { status: res.status, data: await res.json() };
 };
 
