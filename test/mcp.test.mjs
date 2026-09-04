@@ -88,6 +88,9 @@ test('MCP tool calls drive a full workflow', async () => {
 
   await toolCall('weave_set_doc', { entity: 'Ticket#1', markdown: 'Resolved by patch.', mode: 'append' });
   const doc2 = await toolCall('weave_get_doc', { entity: 'Ticket#1' });
+  const feed = await toolCall('weave_activity', { entity: 'Ticket#1' });
+  assert.ok(feed.data.items.length >= 1, 'the feed filters by a Table#N ref like every other tool');
+  assert.ok(feed.data.items.every((a) => a.entityId === created.data.id), 'and only that entity');
   assert.match(doc2.data, /Resolved by patch/);
 
   const found = await toolCall('weave_search', { query: 'login' });

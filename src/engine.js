@@ -4095,6 +4095,8 @@ export class Weave {
   activityFeed({ entityId = null, tableRef = null, kinds = null, since = null, limit = null, offset = 0 } = {}) {
     const wanted = kinds?.length ? new Set(kinds) : null;
     const dbId = tableRef ? this.getTable(tableRef).id : null;
+    // 'Table#12' works here the way it works everywhere an id does.
+    if (entityId) entityId = this.getEntity(entityId).id;
     const rows = [];
     for (const e of Object.values(this.state.entities)) {
       if (entityId && e.id !== entityId) continue;

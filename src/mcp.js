@@ -25,16 +25,6 @@ function pick(args, keys) {
   return out;
 }
 
-// Entity refs accepted everywhere: raw entity id, or "Table#publicId".
-function resolveEntity(weave, ref) {
-  const m = String(ref).match(/^(.+)#(\d+)$/);
-  if (m) {
-    const found = weave.findEntity(m[1], '#' + m[2]);
-    if (found) return found.id;
-  }
-  return weave.getEntity(ref).id;
-}
-
 export const TOOLS = [
   {
     name: 'weave_schema',
@@ -408,52 +398,42 @@ export function dispatchTool(weave, name, args = {}) {
         offset: args.offset ?? 0, select: args.select ?? null, includeDeleted: Boolean(args.includeDeleted),
       });
     case 'weave_get_entity':
-      return weave.readEntity(resolveEntity(weave, args.entity));
+      return weave.readEntity(args.entity);
     case 'weave_create_entity': {
       const e = weave.createEntity(args.db, { name: args.name, values: args.values, doc: args.doc, docs: args.docs });
       return weave.readEntity(e.id);
     }
-    case 'weave_update_entity': {
-      const id = resolveEntity(weave, args.entity);
-      weave.updateEntity(id, args.values);
-      return weave.readEntity(id);
-    }
+    case 'weave_update_entity':
+      weave.updateEntity(args.entity, args.values);
+      return weave.readEntity(args.entity);
     case 'weave_delete_entity':
-      return weave.deleteEntity(resolveEntity(weave, args.entity), { hard: Boolean(args.hard) });
+      return weave.deleteEntity(args.entity, { hard: Boolean(args.hard) });
     case 'weave_restore_entity':
-      return weave.restoreEntity(resolveEntity(weave, args.entity));
+      return weave.restoreEntity(args.entity);
     case 'weave_trash':
       return { items: weave.listTrash(args.table ?? null) };
     case 'weave_undo':
       if (args.list) return { history: weave.listUndo({ limit: Number(args.limit ?? 20) }) };
       return weave.undo({ steps: Math.max(1, Number(args.steps ?? 1)) });
-    case 'weave_set_state': {
-      const id = resolveEntity(weave, args.entity);
-      weave.setState(id, args.field, args.state);
-      return weave.readEntity(id);
-    }
-    case 'weave_link': {
-      const id = resolveEntity(weave, args.entity);
-      weave.link(id, args.field, args.targets);
-      return weave.readEntity(id);
-    }
-    case 'weave_unlink': {
-      const id = resolveEntity(weave, args.entity);
-      weave.unlink(id, args.field, args.targets);
-      return weave.readEntity(id);
-    }
+    case 'weave_set_state':
+      weave.setState(args.entity, args.field, args.state);
+      return weave.readEntity(args.entity);
+    case 'weave_link':
+      weave.link(args.entity, args.field, args.targets);
+      return weave.readEntity(args.entity);
+    case 'weave_unlink':
+      weave.unlink(args.entity, args.field, args.targets);
+      return weave.readEntity(args.entity);
     case 'weave_get_doc':
-      return weave.getDoc(resolveEntity(weave, args.entity), args.field ?? null);
-    case 'weave_set_doc': {
-      const id = resolveEntity(weave, args.entity);
-      if (args.mode === 'append') weave.appendDoc(id, args.markdown, args.field ?? null);
-      else weave.setDoc(id, args.markdown, args.field ?? null);
-      return { ok: true, length: weave.getDoc(id, args.field ?? null).length };
-    }
+      return weave.getDoc(args.entity, args.field ?? null);
+    case 'weave_set_doc':
+      if (args.mode === 'append') weave.appendDoc(args.entity, args.markdown, args.field ?? null);
+      else weave.setDoc(args.entity, args.markdown, args.field ?? null);
+      return { ok: true, length: weave.getDoc(args.entity, args.field ?? null).length };
     case 'weave_add_comment':
-      return weave.addComment(resolveEntity(weave, args.entity), { author: args.author ?? 'agent', text: args.text });
+      return weave.addComment(args.entity, { author: args.author ?? 'agent', text: args.text });
     case 'weave_delete_comment':
-      return weave.deleteComment(resolveEntity(weave, args.entity), args.comment);
+      return weave.deleteComment(args.entity, args.comment);
     case 'weave_search':
       return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
     case 'weave_create_space':
@@ -473,7 +453,7 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_import_csv':
       return weave.importCSV(args.db, args.csv);
     case 'weave_attach_file':
-      return weave.attachFile(resolveEntity(weave, args.entity), { name: args.name, mime: args.mime, bytes: args.contentBase64 });
+      return weave.attachFile(args.entity, { name: args.name, mime: args.mime, bytes: args.contentBase64 });
     case 'weave_vocabulary':
       return VOCABULARY;
     case 'weave_update_space':
@@ -521,7 +501,7 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_activity':
       if (args.id) return weave.getActivity(args.id);
       return weave.activityFeed({
-        entityId: args.entity ? resolveEntity(weave, args.entity) : null,
+        entityId: args.entity ?? null,
         tableRef: args.table ?? null, kinds: args.kinds ?? null, since: args.since ?? null,
         limit: args.limit ?? null, offset: args.offset ?? 0,
       });
@@ -561,7 +541,7 @@ export function dispatchTool(weave, name, args = {}) {
           const { meta, bytes } = weave.readFile(args.file);
           return { ...meta, contentBase64: Buffer.from(bytes).toString('base64') };
         }
-        case 'delete': return weave.deleteFile(resolveEntity(weave, args.entity), args.file);
+        case 'delete': return weave.deleteFile(args.entity, args.file);
         default: throw new Error(`Unknown files action '${args.action}' (read, delete)`);
       }
     case 'weave_registry':
