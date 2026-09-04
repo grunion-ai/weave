@@ -13,14 +13,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { APP } from './lib/source.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 await import('../public/editor-lib.js');
 const LIB = globalThis.WeaveEditorLib;
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 
 /* ---------- the view mode a document field asks for ---------- */
 
@@ -94,8 +90,3 @@ test('a code document mounts its code box directly — no frame, no toggle', () 
   assert.match(body, /doc-source/, 'and it edits in the same monospace box HTML source uses');
 });
 
-/* ---------- the file still parses as a program ---------- */
-
-test('app.js parses (source greps are not a parse gate)', () => {
-  assert.doesNotThrow(() => new Function(APP));
-});

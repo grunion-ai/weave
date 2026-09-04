@@ -13,48 +13,19 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { read, APP, HTML, CSS, rulesFor, fnBodyOf } from './lib/source.mjs';
 
 await import('../public/chip-core.js');
 const chips = globalThis.chipCore;
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const raw = (f) => readFileSync(join(ROOT, f), 'utf8');
-const CSS = raw('public/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
-const APP = raw('public/app.js');
-const ENGINE = raw('src/engine.js');
-const FDC = raw('public/field-dialog-core.js');
-const INDEX = raw('public/index.html');
-
-/* Same minimal reader ui-contract.test.mjs uses: every declaration block whose
-   selector list names `selector` as a whole comma-separated part, merged in
-   source order. */
-function rulesFor(selector, css = CSS) {
-  const out = {};
-  for (const [, sels, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    if (!sels.split(',').map((s) => s.trim()).includes(selector)) continue;
-    for (const decl of body.split(';')) {
-      const i = decl.indexOf(':');
-      if (i < 0) continue;
-      out[decl.slice(0, i).trim()] = decl.slice(i + 1).trim();
-    }
-  }
-  return out;
-}
+const ENGINE = read('src/engine.js');
+const FDC = read('public/field-dialog-core.js');
+const INDEX = HTML;
 /* Declarations under a dark-theme ancestor, which is where the ramp's second
    half lives. */
 const DARK = CSS.split('[data-bs-theme="dark"]').slice(1).join('\n');
 
-/* The body of a top-level function in app.js, for asserting what it renders.
-   Same trick ui-contract.test.mjs uses. */
-function fnBodyOf(name) {
-  const at = APP.indexOf(`function ${name}(`);
-  assert.ok(at > -1, `app.js has no ${name}()`);
-  const next = APP.indexOf('\nfunction ', at + 1);
-  return APP.slice(at, next === -1 ? APP.length : next);
-}
 
 const VALUE = ['.k-state', '.k-select', '.k-multi', '.k-key'];
 const POINTER = ['.k-rel', '.k-doc', '.k-attach', '.k-more'];

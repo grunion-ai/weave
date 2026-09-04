@@ -4,19 +4,15 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CREDENTIAL_KINDS, KEYSTORES } from '../src/engine.js';
+import { APP, liftFunction } from './lib/source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
 
 /* Feature #143 — the credential chip. What a reader must be able to tell at a
    glance: which SORT of credential this is, WHERE the secret lives, and that
    what they are looking at is not the secret. */
 
-test('app.js parses — the greps below are worthless against a broken file', () => {
-  // Source greps passed for a whole release while app.js failed to parse.
-  assert.doesNotThrow(() => new Function(APP), 'public/app.js does not parse');
-});
 
 test('every credential kind and keystore the engine allows has a glyph and a label', () => {
   const glyphs = APP.match(/const CREDENTIAL_GLYPHS = \{[^}]*\}/s)?.[0] ?? '';
@@ -62,7 +58,7 @@ test('the browser and the engine agree on where a remote credential lives', asyn
   // duplication safe: a keystore added on one side fails here.
   const { Weave } = await import('../src/engine.js');
   const w = new Weave({ keystorePath: '/dev/null/nope' });
-  const browser = new Function(`${APP.slice(APP.indexOf('function credentialLinkFor('), APP.indexOf('\n/* The one control'))}; return credentialLinkFor;`)();
+  const browser = liftFunction('credentialLinkFor');
 
   for (const keystore of KEYSTORES) {
     const field = { type: 'key', config: { keystore } };

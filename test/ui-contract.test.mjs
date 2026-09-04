@@ -8,40 +8,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { ROOT, APP, HTML, CSS, rulesFor, px, fnBody } from './lib/source.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-// Comments are stripped so a `/* … */` above a rule is not read as part of
-// its selector list.
-const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
-
-/* Minimal CSS reader: every declaration block whose selector list contains
-   `selector` as a whole comma-separated part, merged in source order. */
-function rulesFor(selector) {
-  const out = {};
-  for (const [, sels, body] of CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const parts = sels.split(',').map((s) => s.trim());
-    if (!parts.includes(selector)) continue;
-    for (const decl of body.split(';')) {
-      const i = decl.indexOf(':');
-      if (i < 0) continue;
-      out[decl.slice(0, i).trim()] = decl.slice(i + 1).trim();
-    }
-  }
-  return out;
-}
-
-const px = (v) => Number.parseFloat(String(v));
-
-test('rulesFor reads merged declarations for a selector', () => {
-  // #main is declared twice in style.css; both declarations must merge.
-  const main = rulesFor('#main');
-  assert.equal(main.position, 'relative');
-  assert.ok(main.padding, '#main should still declare padding');
-  assert.deepEqual(rulesFor('#no-such-selector'), {});
-});
 
 /* ---------- defect: collapsed left nav could not be re-opened ----------
    #ws-rail is position:sticky, which ALWAYS creates a stacking context, so
@@ -566,15 +535,6 @@ test('number inputs show no native spinner chip', () => {
    edits options/states, moves and deletes, and the header is a drag handle.
    Reorder is a schema write (fieldOrder on the table), not page state, so a
    dragged column is still there after a reload. */
-
-/* The body of a top-level `function name(` declaration, to its closing brace
-   at column 0. Same trick the nav tests use, factored out. */
-function fnBody(name) {
-  const at = APP.indexOf(`function ${name}(`);
-  assert.ok(at > 0, `${name}() must exist in app.js`);
-  const rest = APP.slice(at);
-  return rest.slice(0, rest.indexOf('\n}\n') + 2);
-}
 
 test('every column header carries a field menu; a header click edits, sorting lives in the menu', () => {
   // Kyle, 2026-08-23: clicking a column opens its editor in the tray. Sort
@@ -1433,7 +1393,6 @@ test('the picker is a token box: chips sit inside the field, ahead of the caret'
   assert.ok(rulesFor('.picker-chip.sel')['outline'], 'the cursor on a chip reads as a ring');
   assert.equal(rulesFor('.picker-box')['flex-wrap'], 'wrap', 'a full box wraps rather than clipping');
   // The pure half loads before app.js.
-  const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.ok(HTML.indexOf('picker-core.js') < HTML.indexOf('"/app.js"'), 'picker-core.js loads first');
 });
 

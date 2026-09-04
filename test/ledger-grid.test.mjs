@@ -12,27 +12,10 @@
      4. ⌘-click opens the side peek — a real panel, not a mockup log line. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { APP, rulesFor } from './lib/source.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 await import('../public/editor-lib.js');
 const LIB = globalThis.WeaveEditorLib;
-const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
-
-function rulesFor(selector) {
-  const out = {};
-  for (const [, sels, body] of CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    if (!sels.split(',').map((s) => s.trim()).includes(selector)) continue;
-    for (const decl of body.split(';')) {
-      const i = decl.indexOf(':');
-      if (i > 0) out[decl.slice(0, i).trim()] = decl.slice(i + 1).trim();
-    }
-  }
-  return out;
-}
 
 /* ── 1 · clicking a cell raises that field type's editor ───────────────── */
 

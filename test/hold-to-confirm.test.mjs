@@ -13,9 +13,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fnBody, liftFunction } from './lib/source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
 
 const GRACE = 80;
@@ -42,8 +42,8 @@ class FakeEl {
 const el = (tag, attrs = {}, ...kids) => { const n = new FakeEl(tag, attrs); n.append(...kids); return n; };
 const iconEl = (name, cls) => el('i', { class: cls, 'data-icon': name });
 
-const src = APP.slice(APP.indexOf('function holdToConfirm('), APP.indexOf('\n}\n', APP.indexOf('function holdToConfirm(')) + 3);
-const holdToConfirm = new Function('el', 'iconEl', `${src}; return holdToConfirm;`)(el, iconEl);
+const src = fnBody('holdToConfirm');
+const holdToConfirm = liftFunction('holdToConfirm', { el, iconEl });
 
 /* A button wired to count confirms, plus the fill to fire transitionend on. */
 const make = () => {

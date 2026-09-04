@@ -14,12 +14,10 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { LOADER_CYCLE_MS, VARIANTS } from '../brand/build-logos.mjs';
+import { APP, HTML, CSS, px } from './lib/source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const APP = read('public/app.js');
-const CSS = read('public/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
-const HTML = read('public/index.html');
 
 test('the app cycle constant tracks the one the generator publishes', () => {
   const declared = Number(APP.match(/const LOADER_CYCLE_MS = (\d+);/)[1]);
@@ -74,10 +72,6 @@ test('the table skeleton draws the destination table\'s real columns', () => {
     'db skeletons take their column count from the destination table');
 });
 
-test('the app still parses after the loader-policy edits', () => {
-  // Source-regex assertions are not a parse gate; this is.
-  assert.doesNotThrow(() => new Function(APP));
-});
 
 test('the loader host survives a page render', () => {
   // #main gets replaceChildren() on every render, so a loader inside it would

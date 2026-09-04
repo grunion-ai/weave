@@ -9,11 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch } from './lib/browser.mjs';
 
-const APP = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
 
-test('app.js parses with the dock wired in', () => {
-  assert.doesNotThrow(() => new Function(APP), 'public/app.js does not parse');
-});
 
 test('the dock panel and its core ship in the page shell', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');

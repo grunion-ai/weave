@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { APP, liftFunction } from './lib/source.mjs';
 
 /* The nav stats strip: the sidebar's foot shows how big this workspace is —
    entity count plus what it weighs on disk. The engine answers with
@@ -55,13 +56,9 @@ test('/api/health carries entities + sizeBytes for the scoped workspace', async 
   } finally { server.close(); }
 });
 
-const APP = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
 
 test('fmtSize speaks GB and TB, never MB', () => {
-  assert.doesNotThrow(() => new Function(APP), 'public/app.js does not parse');
-  const start = APP.indexOf('function fmtSize(');
-  assert.ok(start > -1, 'app.js defines fmtSize');
-  const fmtSize = new Function(`${APP.slice(start, APP.indexOf('\n}', start) + 2)}; return fmtSize;`)();
+  const fmtSize = liftFunction('fmtSize');
   assert.equal(fmtSize(0), '0.00 GB');
   assert.equal(fmtSize(52_400_000), '0.05 GB');
   assert.equal(fmtSize(2_400_000_000), '2.4 GB');

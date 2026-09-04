@@ -3,15 +3,10 @@
    imported dynamically and the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { launch } from './lib/browser.mjs';
+import { read, APP, HTML, rulesFor, fnBodyOf } from './lib/source.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
-const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
+const CSS = read('public/style.css');
 
 /* Source-level contracts, so the browser suite below is not the only thing
    holding the wordmark together on a bare checkout. */
@@ -38,24 +33,6 @@ test('the wordmark reads as the wordmark until you point at it', () => {
    The table row's right edge is a ⋮ menu carrying the table verbs, not the
    entity count. Source and CSS contracts, since Playwright is optional. */
 
-const fnBodyOf = (name) => {
-  const at = APP.indexOf(`function ${name}(`);
-  assert.ok(at > -1, `app.js has no ${name}()`);
-  const next = APP.indexOf('\nfunction ', at + 1);
-  return APP.slice(at, next === -1 ? APP.length : next);
-};
-const CSS_BARE = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
-const rulesFor = (selector) => {
-  const out = {};
-  for (const [, sels, body] of CSS_BARE.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    if (!sels.split(',').map((x) => x.trim()).includes(selector)) continue;
-    for (const decl of body.split(';')) {
-      const i = decl.indexOf(':');
-      if (i > 0) out[decl.slice(0, i).trim()] = decl.slice(i + 1).trim();
-    }
-  }
-  return out;
-};
 
 test('the sidebar has no relation-map row; the map lives on the workspace and space pages', () => {
   const nav = APP.slice(APP.indexOf('function renderNav()'), APP.indexOf('function renderNav()') + 2400);
