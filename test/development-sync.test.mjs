@@ -80,3 +80,63 @@ test('the shipped manifest is present, well-formed, and matches the package vers
     assert.ok(row.status, `'${row.name}' carries its status`);
   }
 });
+
+/* Release notes (2026-09-04, Kyle): every release is a Development/Release
+   row whose Description holds the notes, and a build whose package version
+   has no such row with notes does not pass the suite. */
+const findRelease = (w, name) => {
+  const db = w.listTables().find((t) => t.name === 'Release');
+  return db && w.listEntities(db.id).map((e) => w.readEntity(e.id)).find((e) => e.name === name);
+};
+
+test('a fresh workspace has Development/Release with Date, Commit and both relations', () => {
+  const w = seedWeaver(new Weave());
+  const db = w.listTables().find((t) => t.name === 'Release');
+  assert.ok(db, 'Development/Release exists');
+  assert.equal(w.getSpace(db.spaceId).name, 'Development');
+  const names = Object.values(w.getTable(db.id).fields).map((f) => f.name);
+  for (const n of ['Date', 'Commit', 'Fixes', 'Ships', 'Description']) assert.ok(names.includes(n), `${n} field`);
+  const issueFields = Object.values(w.getTable('Development/Issue').fields).map((f) => f.name);
+  assert.ok(issueFields.includes('Fixed in'), 'Issue carries the inverse');
+});
+
+test('sync creates the Release table on a workspace seeded before it existed, then the rows', () => {
+  const w = seedWeaver(new Weave());
+  const rel = w.listTables().find((t) => t.name === 'Release');
+  w.deleteTable(rel.id, { hard: true });
+  assert.equal(w.listTables().find((t) => t.name === 'Release'), undefined);
+  const target = 'No filter-builder UI (filters are API/CLI/MCP only)';
+  const r = syncDevelopment(w, manifest({
+    issues: [{ name: target, status: 'Fixed', severity: 'Medium' }],
+    releases: [{ name: 'v9.9.9', date: '2026-09-05', commit: 'abc1234', description: '## v9.9.9\n\n- fixed the filter builder', fixes: [target] }],
+  }));
+  assert.equal(r.applied, true);
+  const rel2 = findRelease(w, 'v9.9.9');
+  assert.ok(rel2, 'release row created');
+  assert.equal(rel2.fields.Date, '2026-09-05');
+  assert.equal(rel2.fields.Commit, 'abc1234');
+  assert.match(rel2.docs.Description, /filter builder/);
+  assert.deepEqual(rel2.fields.Fixes.map((x) => x.name ?? x), [target]);
+  assert.deepEqual(findIssue(w, target).fields['Fixed in'].map((x) => x.name ?? x), ['v9.9.9']);
+});
+
+test('sync refuses a release row without notes', () => {
+  const w = seedWeaver(new Weave());
+  assert.throws(
+    () => syncDevelopment(w, manifest({ releases: [{ name: 'v9.9.9', date: '2026-09-05', commit: 'abc1234' }] })),
+    /release v9\.9\.9 has no notes/,
+  );
+});
+
+test('the shipped manifest carries release notes for the package version', () => {
+  const m = JSON.parse(readFileSync(join(ROOT, 'docs', 'development.json'), 'utf8'));
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+  assert.ok(Array.isArray(m.releases) && m.releases.length >= 1, 'releases exported');
+  const current = m.releases.find((r) => r.name === `v${pkg.version}`);
+  assert.ok(current, `a Development/Release row named v${pkg.version} — write the notes, then re-run export-development.mjs`);
+  assert.ok((current.description ?? '').trim().length >= 40, `v${pkg.version} release notes are written`);
+  for (const r of m.releases) {
+    assert.ok(r.date, `${r.name} is dated`);
+    assert.ok((r.description ?? '').trim(), `${r.name} has notes`);
+  }
+});

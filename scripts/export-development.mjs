@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Export the canonical Development space (Issues + Features) to
+/* Export the canonical Development space (Issues + Features + Releases) to
    docs/development.json — the manifest a build ships so every instance's
    issue list updates on update (Feature: development sync, 2026-08-31).
 
@@ -29,7 +29,7 @@ if (w.state.meta.name !== 'weave') {
   process.exit(1);
 }
 
-const rows = (qualified, fields) => {
+const rows = (qualified, fields, relations = []) => {
   const db = w.listTables().find((t) => `${w.getSpace(t.spaceId)?.name}/${t.name}` === qualified);
   if (!db) throw new Error(`No ${qualified} table in ${source}`);
   return w.listEntities(db.id)
@@ -38,6 +38,10 @@ const rows = (qualified, fields) => {
     .map((e) => {
       const row = { name: e.name };
       for (const f of fields) if (e.fields[f] != null && e.fields[f] !== '') row[f.toLowerCase()] = e.fields[f];
+      for (const r of relations) {
+        const linked = (e.fields[r] ?? []).map((x) => x.name ?? x).filter(Boolean);
+        if (linked.length) row[r.toLowerCase()] = linked;
+      }
       const doc = e.docs?.Description ?? '';
       if (doc) row.description = doc;
       return row;
@@ -49,8 +53,18 @@ const manifest = {
   generatedAt: new Date().toISOString(),
   issues: rows('Development/Issue', ['Status', 'Severity', 'Symptom']),
   features: rows('Development/Feature', ['Status', 'Milestone']),
+  // Release notes are mandatory: a row without a Description fails the export
+  // here and the suite downstream (test/development-sync.test.mjs).
+  releases: rows('Development/Release', ['Date', 'Commit'], ['Fixes', 'Ships']),
 };
 
+for (const r of manifest.releases) {
+  if (!(r.description ?? '').trim()) { console.error(`Release ${r.name} has no notes — write them in the weave workspace first`); process.exit(1); }
+}
+if (!manifest.releases.some((r) => r.name === `v${pkg.version}`)) {
+  console.error(`No Development/Release row named v${pkg.version} — create it with notes before exporting`);
+  process.exit(1);
+}
 const out = join(root, 'docs', 'development.json');
 writeFileSync(out, JSON.stringify(manifest, null, 1) + '\n');
-console.log(`${out}: ${manifest.issues.length} issues, ${manifest.features.length} features (v${manifest.version})`);
+console.log(`${out}: ${manifest.issues.length} issues, ${manifest.features.length} features, ${manifest.releases.length} releases (v${manifest.version})`);

@@ -58,6 +58,23 @@ git fetch gerrit && jj rebase -d main@gerrit   # or: git pull gerrit main
    fast-forward only, ff-pulls `~/.weave-serve`, restarts launchd `ai.grunion.weave`,
    and files a weave Issue if :4400 is not launchd's pid started after the landing.
 
+## Releasing
+
+A release is a `Development/Release` row in the weave docs workspace first and a version
+bump second. The row carries the version as its name, Date, Commit, `Fixes` (Issues) and
+`Ships` (Features) relations, and the release notes as its Description — the notes are
+mandatory. `scripts/export-development.mjs` refuses to run without a notes-bearing row
+named `v<package.json version>`, `syncDevelopment` refuses a manifest release without
+notes, and `test/development-sync.test.mjs` fails the build, so an unwritten release
+cannot pass the gate.
+
+```bash
+# 1. write the Release row (notes in Description) on the canonical workspace, :4400
+# 2. bump package.json
+node scripts/export-development.mjs        # 3. docs/development.json gains the release
+# 4. paste the notes as the CHANGELOG.md digest; land through Gerrit as one change
+```
+
 ## Service operations
 
 | What | How |
