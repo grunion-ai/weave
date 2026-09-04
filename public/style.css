@@ -1698,3 +1698,44 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .target-set { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .target-set-row { display: flex; align-items: center; gap: 6px; width: 100%; }
 .target-set-row .picker-wrap { flex: 1; }
+
+/* ---------- the chip and the card (Kyle, 2026-09-04) ----------
+   One row as it appears elsewhere. The chip is the shared k k-rel pointer
+   with the doc-mention caret and segments inside it; the card is a tile.
+   Tabler tokens only, so both themes come for free. */
+.k-rel > a > .mention-caret { margin-left: 2px; }
+.k-rel > a > .mention-fields { align-items: center; }
+.k-rel .mention-fields .k-state, .wv-seg-state { font-size: .82em; padding: 0 6px; line-height: 1.5; }
+.wv-card {
+  display: flex; flex-direction: column; gap: 6px;
+  min-width: 180px; max-width: 360px; padding: 8px 10px;
+  border: 1px solid var(--tblr-border-color); border-radius: 6px;
+  background: var(--tblr-bg-surface); color: var(--tblr-body-color);
+  font-size: 13px; line-height: 1.35; white-space: normal;
+}
+.wv-card.compact { gap: 3px; padding: 5px 8px; font-size: 12px; max-width: 280px; }
+.wv-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wv-card-title { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; color: inherit; text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.wv-card-title:hover { color: var(--tblr-primary); }
+.wv-card-id { font-family: var(--tblr-font-monospace); font-size: .82em; font-weight: 500; opacity: .55; }
+.wv-card-desc { color: var(--tblr-secondary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.wv-card.compact .wv-card-desc { -webkit-line-clamp: 1; }
+.wv-card-fields { display: grid; grid-template-columns: max-content 1fr; column-gap: 10px; row-gap: 2px; margin: 0; }
+.wv-card-fields dt { color: var(--tblr-secondary); font-weight: 400; opacity: .8; }
+.wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A card in a grid cell is a tile among rows: it keeps the row's height honest. */
+.wv-grid td .wv-card { margin: 2px 0; }
+/* The entity page's "Appears as" strip: the two previews side by side, each
+   under its field name and a gear that opens the table's config. */
+.wv-appears { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 22px; margin: 2px 0 14px; padding: 8px 12px; border: 1px dashed var(--tblr-border-color); border-radius: 6px; }
+.wv-appears-title { flex-basis: 100%; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
+.wv-appears-slot { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.wv-appears-lbl { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--tblr-secondary); }
+.wv-appears-cfg { padding: 0 3px; line-height: 1; }
+/* The dialog's field list for a view: two columns of checkboxes, dimmed
+   while "the first few" is on. */
+.wv-view-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+.wv-view-fields.auto { opacity: .45; }
+.wv-view-fields .form-check-label .wv-tag { margin-left: 6px; }
+.wv-view-preview { padding: 8px 10px; border: 1px dashed var(--tblr-border-color); border-radius: 6px; min-height: 34px; display: flex; align-items: center; }
+.wv-muted { color: var(--tblr-secondary); font-size: 12px; }

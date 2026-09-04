@@ -2,6 +2,7 @@ import '../public/date-grain.js';
 import '../public/term-core.js';
 import '../public/icon-registry.js';
 import '../public/mark-icons.js';
+import '../public/editor-lib.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
@@ -68,7 +69,52 @@ const isBodyBlock = (f) => f.type === 'document' || f.type === 'attachments'
   || (f.type === 'relation' && !!(f.many ?? f.config?.many));
 
 const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments'];
-const COMPUTED_TYPES = ['lookup', 'rollup', 'formula'];
+const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
+/* Chip and Card (Kyle, 2026-09-04): every table carries two `view` fields
+   that say how one of its rows appears elsewhere — the chip inline (a
+   relation cell, a doc mention, a reference card) and the card as a tile (a
+   board column, a gallery, a peek). The config is the table's, the same for
+   every row: the public-id link, the state, a description preview at one of
+   three sizes, and which other fields ride along. Minted per table like the
+   description role, held by id, hidden from the grid until unhidden. */
+export const VIEW_SHAPES = ['chip', 'card'];
+export const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
+const DESCRIPTION_CHARS = { small: 0, medium: 120, large: 320 };
+/* How many segments a view takes when nobody chose (`fields: null`): the
+   state counts as one, so a chip stays three wide and a card four. */
+const VIEW_AUTO_SEGMENTS = { chip: 3, card: 4 };
+const VIEW_DEFAULTS = {
+  chip: { shape: 'chip', link: false, state: true, description: 'none', fields: null },
+  card: { shape: 'card', link: true, state: true, description: 'small', fields: null },
+};
+const VIEW_NAMES = { chip: 'Chip', card: 'Card' };
+/* What a view segment may show: a value a reader can take in at a glance.
+   Long-form bodies, files, definitions and the views themselves are out. */
+const VIEW_EXCLUDED_TYPES = ['document', 'attachments', 'key', 'field', 'view'];
+/* The description as prose lines: the block pass editor-lib already runs for
+   the grid preview (one classifier, so a card and a cell never disagree
+   about what a document is), then the inline marks dropped — a card has no
+   room for bold. A page, a model or a diagram is named, not flattened. */
+function plainLines(md, budget = 12) {
+  const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md, { lines: budget });
+  if (!kind) return [];
+  if (!lines.length) return label ? [label] : [];
+  return lines.map((l) => l
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(\*|_)(.+?)\1/g, '$2')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
+    .trim()).filter(Boolean);
+}
+/* A new column goes before the trailing chip and card: the views are
+   presentation over the data columns, so they close the order. */
+function placeField(db, id) {
+  let at = db.fieldOrder.length;
+  while (at > 0 && db.fields[db.fieldOrder[at - 1]]?.type === 'view') at--;
+  db.fieldOrder.splice(at, 0, id);
+}
+const clip = (text, max) => (text.length <= max ? text : text.slice(0, max - 1).replace(/\s+\S*$/, '') + '…');
 /* Types whose definition can name the value a new row starts with. Workflow is
    absent on purpose: its default is one of its states, which is where it has
    always lived. */
@@ -654,6 +700,7 @@ export class Weave {
       if (db.system) continue;
       if (this.#ensureDescriptionField(db)) changed = true;
       if (this.#ensureTerm(db)) changed = true;
+      if (this.#ensureViewFields(db)) changed = true;
     }
     for (const e of Object.values(s.entities ?? {})) {
       if (e.docs) continue;
@@ -717,7 +764,7 @@ export class Weave {
     }
     const docField = { id: uuid(), name: 'Description', type: 'document', config: {} };
     db.fields[docField.id] = docField;
-    db.fieldOrder.push(docField.id);
+    placeField(db, docField.id);
     db.descriptionFieldId = docField.id;
     return true;
   }
@@ -733,6 +780,135 @@ export class Weave {
     }
     delete db.noun;
     return true;
+  }
+
+  /* Chip and Card, settled in one place (Kyle, 2026-09-04). A table that
+     predates the roles — or lost a pointer somehow — gets a fresh view field
+     minted and hidden; a live pointer is left alone. Returns whether the
+     table changed. Registry tables are structure, not rows: no views. */
+  #ensureViewFields(db) {
+    if (db.system) return false;
+    let changed = false;
+    for (const shape of VIEW_SHAPES) {
+      const key = `${shape}FieldId`;
+      if (db[key] && db.fields[db[key]]?.type === 'view') continue;
+      let name = VIEW_NAMES[shape];
+      for (let n = 2; Object.values(db.fields).some((f) => f.name.toLowerCase() === name.toLowerCase()); n++) name = `${VIEW_NAMES[shape]} ${n}`;
+      const field = { id: uuid(), name, type: 'view', config: { ...VIEW_DEFAULTS[shape] }, system: true };
+      db.fields[field.id] = field;
+      db.fieldOrder.push(field.id);
+      db[key] = field.id;
+      // Hidden by default: the grid is for data, and a view is presentation.
+      if (!(db.hiddenFields ?? []).includes(name)) db.hiddenFields = [...(db.hiddenFields ?? []), name];
+      changed = true;
+    }
+    return changed;
+  }
+
+  /* The table's chip or card field, or null on a registry table. */
+  viewField(dbRef, shape) {
+    const db = dbRef && typeof dbRef === 'object' ? dbRef : this.getTable(dbRef);
+    if (!VIEW_SHAPES.includes(shape)) throw new WeaveError(`A view is a chip or a card, not '${shape}'`, 'invalid');
+    if (db.system) return null;
+    const f = db.fields?.[db[`${shape}FieldId`]];
+    return f?.type === 'view' ? f : null;
+  }
+
+  /* A view's config, checked. The shape is the field's identity and never
+     changes; `fields` arrives as names and is stored as ids, so a rename
+     costs nothing and a delete drops the segment (see deleteField). */
+  #normalizeViewConfig(db, field, config) {
+    const out = { ...field.config };
+    if (config.shape != null && config.shape !== out.shape) throw new WeaveError(`The shape is fixed: this field is the ${out.shape}`, 'invalid');
+    for (const k of ['link', 'state']) {
+      if (config[k] === undefined) continue;
+      if (typeof config[k] !== 'boolean') throw new WeaveError(`${k} is true or false`, 'invalid');
+      out[k] = config[k];
+    }
+    if (config.description !== undefined) {
+      if (!DESCRIPTION_SIZES.includes(config.description)) throw new WeaveError(`description is one of ${DESCRIPTION_SIZES.join(', ')}`, 'invalid');
+      out.description = config.description;
+    }
+    if (config.fields !== undefined) {
+      if (config.fields === null) out.fields = null;
+      else {
+        if (!Array.isArray(config.fields)) throw new WeaveError('fields is a list of field names, or null for the first few', 'invalid');
+        out.fields = config.fields.map((ref) => {
+          const f = this.findField(db, ref);
+          if (!f) throw new WeaveError(`'${ref}' is not a field of ${db.name}`, 'invalid');
+          if (f.type === 'view') throw new WeaveError(`A ${out.shape} cannot show itself or the other view`, 'invalid');
+          if (f.id === db.nameFieldId) throw new WeaveError('The name is always shown', 'invalid');
+          if (VIEW_EXCLUDED_TYPES.includes(f.type)) throw new WeaveError(`A ${f.type} field cannot ride on a ${out.shape}; the description preview has its own setting`, 'invalid');
+          return f.id;
+        });
+      }
+    }
+    return out;
+  }
+
+  /* The fields a view shows, resolved: the explicit list, or when nobody
+     chose, the first glanceable non-empty values in field order — arranging
+     the columns IS the curation (Kyle, 2026-09-01). */
+  #viewSegmentFields(e, db, cfg, limit) {
+    const glanceable = (f) => f.id !== db.nameFieldId && !VIEW_EXCLUDED_TYPES.includes(f.type) && f.type !== 'workflow';
+    if (Array.isArray(cfg.fields)) return cfg.fields.map((id) => db.fields[id]).filter(Boolean);
+    const out = [];
+    for (const fid of db.fieldOrder) {
+      if (out.length >= limit) break;
+      const f = db.fields[fid];
+      if (!f || !glanceable(f)) continue;
+      const v = this.#resolve(e, db, f, 0);
+      if (v == null || v === '' || (Array.isArray(v) && !v.length)) continue;
+      out.push(f);
+    }
+    return out;
+  }
+
+  /* One row as its chip or its card: the object every surface draws from.
+     `fields` are display strings, so a relation reads as names and a number
+     wears its costume. The description is the plain first lines of the
+     description document, clipped to the size the config asks for. */
+  renderView(entityRef, shape, { limit = null, config = null } = {}) {
+    const e = this.getEntity(entityRef);
+    const db = this.state.tables[e.dbId];
+    const field = this.viewField(db, shape);
+    // A candidate config previews without being saved — the dialog's live
+    // preview — checked exactly as a save would check it.
+    const cfg = config
+      ? this.#normalizeViewConfig(db, field ?? { config: { ...VIEW_DEFAULTS[shape] } }, config)
+      : (field?.config ?? VIEW_DEFAULTS[shape]);
+    const out = { shape, id: e.id, publicId: e.publicId, url: `/e/${e.id}`, name: this.entityName(e), link: cfg.link, state: null, description: null, fields: [] };
+    const wf = Object.values(db.fields).find((f) => f.type === 'workflow');
+    if (cfg.state && wf) {
+      const st = this.#resolve(e, db, wf, 0);
+      const def = wf.config.states.find((s) => s.id === st || s.name === st);
+      if (def) out.state = { name: def.name, category: def.category };
+    }
+    if (cfg.description !== 'none') {
+      const docField = this.descriptionField(db);
+      const text = docField ? plainLines(e.docs?.[docField.id] ?? '') : '';
+      if (text) {
+        const max = DESCRIPTION_CHARS[cfg.description];
+        out.description = max ? clip(text.join(' '), max) : text[0];
+      }
+    }
+    const budget = (limit ?? VIEW_AUTO_SEGMENTS[shape]) - (out.state ? 1 : 0);
+    for (const f of this.#viewSegmentFields(e, db, cfg, Math.max(budget, 0))) {
+      const v = this.#displayValue(db, f, this.#resolve(e, db, f, 0), e);
+      out.fields.push({ label: f.name, value: v == null ? '' : Array.isArray(v) ? v.map((x) => x?.name ?? x).join(', ') : String(v?.name ?? v) });
+    }
+    return out;
+  }
+
+  /* The view as one line — what a formula, a CSV cell or a search index
+     sees. Segments are joined with a middle dot, as the chip draws them. */
+  #viewLine(v) {
+    const parts = [];
+    parts.push(v.link ? `#${v.publicId} ${v.name}` : v.name);
+    if (v.state) parts.push(v.state.name);
+    if (v.description) parts.push(v.description);
+    for (const f of v.fields) if (f.value !== '') parts.push(`${f.label} ${f.value}`);
+    return parts.join(' · ');
   }
 
   /* The term every surface speaks for this table: { singular, plural, set }.
@@ -921,6 +1097,7 @@ export class Weave {
       fieldOrder: [nameField.id, docField.id],
       createdAt: nowISO(),
     };
+    this.#ensureViewFields(db);
     this.state.tables[db.id] = db;
     this.save();
     this.#syncTableRow(db);
@@ -1042,6 +1219,9 @@ export class Weave {
     // drop columns off the grid, which reads exactly like data loss.
     if (patch.fieldOrder != null) {
       const ids = patch.fieldOrder.map((ref2) => this.getField(db.id, ref2).id);
+      // The chip and the card are hidden and minted, so a caller who never
+      // saw them may leave them out: they keep their place at the end.
+      for (const fid of db.fieldOrder) if (db.fields[fid]?.type === 'view' && !ids.includes(fid)) ids.push(fid);
       const unique = new Set(ids);
       if (unique.size !== ids.length || ids.length !== db.fieldOrder.length) {
         throw new WeaveError('fieldOrder must list every field exactly once', 'invalid');
@@ -1118,7 +1298,7 @@ export class Weave {
               config: { ...structuredClone(srcInv.config), targetDb: newId, inverseFieldId: nf.id } };
             nf.config.inverseFieldId = inv.id;
             target.fields[inv.id] = inv;
-            target.fieldOrder.push(inv.id);
+            placeField(target, inv.id);
             touchedTargets.push([target, inv]);
           } else {
             // The far end is gone; keep the field but make it honestly one-way.
@@ -1129,6 +1309,9 @@ export class Weave {
       if (f.type === 'lookup' || f.type === 'rollup') {
         nf.config.relationField = mapId(f.config.relationField);
         if (nf.config.targetField != null) nf.config.targetField = mapId(nf.config.targetField);
+      }
+      if (f.type === 'view' && Array.isArray(f.config.fields)) {
+        nf.config.fields = f.config.fields.map(mapId);
       }
       fields[nf.id] = nf;
     }
@@ -1142,6 +1325,8 @@ export class Weave {
       publicIdCounter: 0,
       nameFieldId: mapId(src.nameFieldId),
       descriptionFieldId: src.descriptionFieldId == null ? src.descriptionFieldId : mapId(src.descriptionFieldId),
+      chipFieldId: src.chipFieldId ? mapId(src.chipFieldId) : undefined,
+      cardFieldId: src.cardFieldId ? mapId(src.cardFieldId) : undefined,
       fields,
       fieldOrder: src.fieldOrder.map(mapId),
       createdAt: nowISO(),
@@ -1393,6 +1578,10 @@ export class Weave {
       if (f.kind != null) config.kind = f.kind;
       if (f.multiple != null) config.multiple = f.multiple;
       if (f.term != null) config.term = f.term;
+      if (f.type === 'view') {
+        for (const k of ['link', 'state', 'description']) if (f[k] !== undefined) config[k] = f[k];
+        if (f.fields !== undefined) config.fields = f.fields;
+      }
       return config;
     };
     /* The apply is a no-op exactly when the document already describes the
@@ -1401,7 +1590,7 @@ export class Weave {
        name on the other. */
     const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'targetField', 'aggregate',
       'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'time', 'kind', 'multiple', 'types', 'depth',
-      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term'];
+      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term', 'link', 'state', 'description', 'fields'];
     const colorsOf = (full) => JSON.stringify((full ?? []).map((o) => ({ name: o.name, color: o.color ?? '' })));
     const fieldChanged = (fDoc, have) => {
       if (!have) return true;
@@ -1459,6 +1648,15 @@ export class Weave {
             }
             for (const f of tDoc.fields ?? []) {
               if (f === named || f === described) continue;
+              if (f.type === 'view') {
+                const minted = this.viewField(db, f.role ?? f.shape);
+                if (!minted) continue;
+                if (f.name !== minted.name) this.updateField(db.id, minted.id, { name: f.name });
+                const cfg = configFromDescriptor(f);
+                delete cfg.shape;
+                if (Object.keys(cfg).length) this.updateField(db.id, minted.id, { config: cfg });
+                continue;
+              }
               this.addField(db.id, { name: f.name, type: f.type, config: configFromDescriptor(f) });
             }
             this.#applyTableCostume(db, tDoc);
@@ -1489,6 +1687,10 @@ export class Weave {
           if (!existing && fDoc.role === 'name') {
             existing = db.fields[db.nameFieldId];
             act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, db.nameFieldId, { name: fDoc.name }));
+          }
+          if (!existing && fDoc.type === 'view' && VIEW_SHAPES.includes(fDoc.role ?? fDoc.shape)) {
+            existing = this.viewField(db, fDoc.role ?? fDoc.shape);
+            if (existing) act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, existing.id, { name: fDoc.name }));
           }
           if (existing && existing.id === db.nameFieldId && fDoc.type && fDoc.type !== existing.type && ['text', 'formula'].includes(fDoc.type)) {
             act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, db.nameFieldId, { type: fDoc.type, config: configFromDescriptor(fDoc, existing) }));
@@ -1534,6 +1736,11 @@ export class Weave {
             if (f && !wanted.includes(f.id)) wanted.push(f.id);
           }
           for (const id of db.fieldOrder) if (!wanted.includes(id)) wanted.push(id);
+          // The views close the order wherever a document happened to list
+          // them, so a field appended after them is not a reorder.
+          const views = wanted.filter((id) => db.fields[id]?.type === 'view');
+          const ordered = [...wanted.filter((id) => !views.includes(id)), ...views];
+          wanted.splice(0, wanted.length, ...ordered);
           if (wanted.length === db.fieldOrder.length && JSON.stringify(wanted) !== JSON.stringify(db.fieldOrder)) {
             act('reorder-fields', qualified, () => this.updateTable(db.id, { fieldOrder: wanted }));
           }
@@ -2528,6 +2735,7 @@ export class Weave {
     if (this.findField(db, name)) throw new WeaveError(`Field '${name}' already exists`, 'conflict');
     if (!FIELD_TYPES.includes(type)) throw new WeaveError(`Unknown field type '${type}'`, 'invalid');
     if (type === 'relation') throw new WeaveError(`Use addRelation() to create relation fields`, 'invalid');
+    if (type === 'view') throw new WeaveError('The chip and the card are minted on every table; configure those instead', 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
     if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'daterange', 'attachments', 'document', 'key'].includes(type)) {
@@ -2579,7 +2787,7 @@ export class Weave {
     }
 
     db.fields[field.id] = field;
-    db.fieldOrder.push(field.id);
+    placeField(db, field.id);
     this.save();
     this.#syncFieldRow(db, field);
     this.#syncTableRow(db); // the row's Field Order names every column
@@ -2615,7 +2823,7 @@ export class Weave {
       if (members.length > 1) {
         const a = { id: uuid(), name, type: 'relation', config: { targetDbs: members.map((m) => m.id), many: card.thisMany } };
         db.fields[a.id] = a;
-        db.fieldOrder.push(a.id);
+        placeField(db, a.id);
         this.save();
         this.#syncFieldRow(db, a);
         this.#syncTableRow(db);
@@ -2634,9 +2842,9 @@ export class Weave {
     a.config.inverseFieldId = b.id;
     b.config.inverseFieldId = a.id;
     db.fields[a.id] = a;
-    db.fieldOrder.push(a.id);
+    placeField(db, a.id);
     target.fields[b.id] = b;
-    target.fieldOrder.push(b.id);
+    placeField(target, b.id);
     this.save();
     this.#syncFieldRow(db, a);
     this.#syncFieldRow(target, b);
@@ -2672,8 +2880,14 @@ export class Weave {
   updateField(dbRef, fieldRef, patch) {
     const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
-    if (patch.name != null) {
+    if (patch.name != null && patch.name !== field.name) {
+      // A hidden column stays hidden under its new name: hiddenFields is a
+      // list of names, and a rename used to un-hide by accident.
+      if (db.hiddenFields?.includes(field.name)) db.hiddenFields = db.hiddenFields.map((n) => (n === field.name ? patch.name : n));
       field.name = patch.name;
+    }
+    if (patch.type != null && patch.type !== field.type && field.type === 'view') {
+      throw new WeaveError(`The ${field.config.shape} is fixed as a view — rename or reconfigure it`, 'invalid');
     }
     if (patch.type != null && patch.type !== field.type) {
       this.#migrateFieldType(db, field, patch.type, patch.config ?? {});
@@ -2717,6 +2931,7 @@ export class Weave {
           }
         }
       }
+      if (field.type === 'view') field.config = this.#normalizeViewConfig(db, field, patch.config);
       if (field.type === 'attachments' && 'multiple' in patch.config) {
         field.config.multiple = normalizeSelfContainedConfig('attachments', patch.config).multiple;
       }
@@ -2870,7 +3085,13 @@ export class Weave {
     const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
     if (field.id === db.nameFieldId) throw new WeaveError('Cannot delete the Name field', 'invalid');
+    if (field.type === 'view') throw new WeaveError(`Cannot delete '${field.name}': every row has a ${field.config.shape} by existing — hide it instead`, 'invalid');
     if (field.system) throw new WeaveError(`Field '${field.name}' is part of the system registry`, 'invalid');
+    // A view that named this field loses the segment, not its footing.
+    for (const shape of VIEW_SHAPES) {
+      const v = this.viewField(db, shape);
+      if (Array.isArray(v?.config.fields) && v.config.fields.includes(field.id)) v.config.fields = v.config.fields.filter((id) => id !== field.id);
+    }
     // The description may go, and it must STAY gone: null is what tells the
     // next open that the owner removed it (Kyle, 2026-08-27).
     if (field.id === db.descriptionFieldId) db.descriptionFieldId = null;
@@ -3514,6 +3735,8 @@ export class Weave {
         }
         return null;
       }
+      case 'view':
+        return this.renderView(e.id, field.config.shape);
       case 'formula': {
         try {
           return evaluate(field.config.expression, (name) => {
@@ -3597,6 +3820,8 @@ export class Weave {
         // A numeric result wears the field's number costume; anything else
         // (text, dates) is already in display form.
         return typeof resolved === 'number' ? dressNumber(field.config, resolved) : resolved;
+      case 'view':
+        return resolved && typeof resolved === 'object' ? this.#viewLine(resolved) : resolved;
       case 'relation': {
         const names = resolved.map((id) => {
           const t = this.state.entities[id];
@@ -3671,7 +3896,10 @@ export class Weave {
     const e = this.state.entities[id];
     if (!e) return null;
     const db = this.state.tables[e.dbId];
-    return { id: e.id, publicId: e.publicId, name: this.entityName(e), db: this.qualifiedName(db) };
+    /* The far row's chip rides along so a relation cell draws the same chip
+       a doc mention does. ponytail: a chip resolves up to three fields per
+       related row; index it at write time if relations grow past ~1k. */
+    return { id: e.id, publicId: e.publicId, name: this.entityName(e), db: this.qualifiedName(db), ...(db.system ? {} : { chip: this.renderView(e.id, 'chip') }) };
   }
 
   // ---------------- query ----------------
@@ -4153,26 +4381,13 @@ export class Weave {
      values in schema order — arranging the table's field order IS the
      curation, so no per-table or per-user setting exists. */
   previewFields(entityRef, limit = 3) {
-    const e = this.getEntity(entityRef);
-    const db = this.state.tables[e.dbId];
-    const out = [];
-    const take = (f) => {
-      const resolved = this.#resolve(e, db, f, 0);
-      if (resolved == null || resolved === '' || (Array.isArray(resolved) && !resolved.length)) return;
-      const v = this.#displayValue(db, f, resolved, e);
-      if (v == null || v === '') return;
-      out.push({ label: f.name, value: Array.isArray(v) ? v.map((x) => x?.name ?? x).join(', ') : String(v?.name ?? v) });
-    };
-    const fields = db.fieldOrder.map((id) => db.fields[id]).filter(Boolean);
-    const wf = fields.find((f) => f.type === 'workflow');
-    if (wf) take(wf);
-    for (const f of fields) {
-      if (out.length >= limit) break;
-      if (f === wf || f.id === db.nameFieldId) continue;
-      if (['document', 'attachments', 'key', 'field'].includes(f.type)) continue;
-      take(f);
-    }
-    return out.slice(0, limit);
+    const v = this.renderView(entityRef, 'chip', { limit });
+    return [...(v.state ? [{ label: this.#stateLabel(v), value: v.state.name }] : []), ...v.fields].slice(0, limit);
+  }
+
+  #stateLabel(v) {
+    const db = this.state.tables[this.getEntity(v.id).dbId];
+    return Object.values(db.fields).find((f) => f.type === 'workflow')?.name ?? 'State';
   }
 
   /* Which entities' documents mention this one. A chip in a document is
@@ -4466,6 +4681,14 @@ export class Weave {
           // guessing it from the name (Kyle, 2026-08-27).
           if (f.id === db.descriptionFieldId) out.role = 'description';
           if (f.id === db.nameFieldId) out.role = 'name';
+          if (f.type === 'view') {
+            out.role = f.config.shape;
+            out.shape = f.config.shape;
+            out.link = f.config.link;
+            out.state = f.config.state;
+            out.description = f.config.description;
+            out.fields = f.config.fields == null ? null : f.config.fields.map((id) => db.fields[id]?.name).filter(Boolean);
+          }
           /* A credential column tells the browser which sort it holds and
              whose store holds it, so the chip can wear the right glyph and
              offer the right door (Feature #143). Never a value — the secret
@@ -4498,7 +4721,8 @@ export class Weave {
 
   exportCSV(dbRef) {
     const db = this.getTable(dbRef);
-    const fieldNames = db.fieldOrder.map((fid) => db.fields[fid].name);
+    // The chip and the card are presentation over the other columns, not data.
+    const fieldNames = db.fieldOrder.map((fid) => db.fields[fid]).filter((f) => f.type !== 'view').map((f) => f.name);
     const header = ['Public Id', ...fieldNames, 'Created At', 'Updated At'];
     const esc = (v) => {
       if (v == null) return '';

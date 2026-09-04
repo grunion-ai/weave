@@ -45,7 +45,7 @@ test('a table takes its icon, noun, hidden columns and order from the terminal',
   assert.equal(t.icon, 'iconly:wallet');
   assert.equal(t.noun, 'invoice');
   assert.deepEqual(t.hiddenFields, ['Description']);
-  assert.deepEqual(t.fields.map((f) => f.name), ['Stage', 'Name', 'Description']);
+  assert.deepEqual(t.fields.map((f) => f.name), ['Stage', 'Name', 'Description', 'Chip', 'Card'], 'the views close the order; a caller may leave them out');
 });
 
 test('a field is renamed, recolored and widened from the terminal', () => {

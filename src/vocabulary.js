@@ -30,6 +30,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'attachments', renders: 'file chips', config: ['multiple'] },
   { type: 'field', renders: 'a field definition as a value — what the Fields registry\'s Definition is', config: ['types', 'depth'] },
   { type: 'key', renders: 'a masked chip naming the credential, never the secret', config: ['kind', 'keystore', 'parts'] },
+  { type: 'view', renders: 'the row as its chip (inline: name, then the state and a few fields behind a caret) or its card (a tile: the #id link, name, state, description preview, a few fields); every table has one of each, minted and hidden', config: ['shape', 'link', 'state', 'description', 'fields'] },
 ];
 
 /* An empty string is the honest default: color earns its place by carrying

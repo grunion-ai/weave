@@ -633,6 +633,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.referencesTo(m[1]));
         }
         // The outbound mirror: entities this one's documents mention.
+        /* One row as its chip or card, optionally under a candidate config
+           (?config=<json>): the field dialog's live preview. A read: nothing
+           is saved. */
+        if ((m = path.match(/^\/api\/entities\/([^/]+)\/view$/)) && rx.method === 'GET') {
+          const shape = rx.searchParams.get('shape') ?? 'chip';
+          const rawCfg = rx.searchParams.get('config');
+          let config = null;
+          if (rawCfg) {
+            try { config = JSON.parse(rawCfg); } catch { throw new WeaveError('config is a JSON object', 'invalid'); }
+          }
+          return out(200, weave.renderView(m[1], shape, { config }));
+        }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/references-from$/)) && rx.method === 'GET') {
           return out(200, weave.referencesFrom(m[1]));
         }

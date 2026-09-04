@@ -970,8 +970,7 @@ test('reference panels join the opt-in side column, dressed like Activity, weari
     'nothing is fetched until the side column is open');
   assert.match(block, /\.then\(refCard\('References', 'ref-outbound-card'\)\)/, 'what this entity mentions');
   assert.match(block, /\.then\(refCard\('Referenced by', 'ref-inbound-card'\)\)/, 'who mentions it');
-  assert.match(block, /el\('span', \{ class: 'k k-rel' \},\s*el\('a', \{ href: `#\/entity\/\$\{r\.id\}` \}/, 'the chip is the relation chip, and the chip is the link');
-  assert.match(block, /el\('span', \{ class: 'k-home' \}, r\.db\.split\('\/'\)\.pop\(\)\)/, 'the badge is the short home-table name');
+  assert.match(block, /relationChipEl\(\{ targetDbIds: true \}, r\)/, 'the chip is the relation chip — the far row’s Chip — and the chip is the link, wearing the short home-table badge');
   assert.doesNotMatch(block, /class: 'x'|×/, 'no unlink control: a reference is text');
   // The whole column hides together, and the <details> dress left with the body placement.
   assert.equal(rulesFor('.entity-grid:not(.side-open) > .entity-side').display, 'none', 'the panels hide with comments and activity');

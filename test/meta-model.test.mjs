@@ -181,28 +181,28 @@ test('a table row carries its configuration as fields: Field Order and Hidden Fi
   w.addField('Task', { name: 'Points', type: 'number' });
   w.addField('Task', { name: 'Due', type: 'date' });
   const row = tableRowOf(w, 'Task');
-  assert.equal(tval(w, row, 'Field Order'), 'Name, Description, Points, Due',
-    'the row states the column order');
-  assert.equal(tval(w, row, 'Hidden Fields') ?? '', '', 'nothing hidden yet');
+  assert.equal(tval(w, row, 'Field Order'), 'Name, Description, Points, Due, Chip, Card',
+    'the row states the column order — the views close it');
+  assert.equal(tval(w, row, 'Hidden Fields') ?? '', 'Chip, Card', 'only the views are hidden to start');
 
   w.updateTable('Task', { hiddenFields: ['Points', 'Created At'] });
   assert.equal(tval(w, tableRowOf(w, 'Task'), 'Hidden Fields'), 'Points, Created At');
 
   w.updateTable('Task', { fieldOrder: ['Due', 'Name', 'Points', 'Description'] });
-  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Due, Name, Points, Description');
+  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Due, Name, Points, Description, Chip, Card');
 });
 
 test('schema verbs that change the columns refresh the row', () => {
   const w = fresh();
   w.createTable({ space: 'Dev', name: 'Project' });
   w.addField('Task', { name: 'Points', type: 'number' });
-  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Points');
+  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Points, Chip, Card');
   w.addRelation('Task', { name: 'Project', targetDb: 'Project', cardinality: 'many-to-one' });
-  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Points, Project');
-  assert.equal(tval(w, tableRowOf(w, 'Project'), 'Field Order'), 'Name, Description, Tasks',
+  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Points, Project, Chip, Card');
+  assert.equal(tval(w, tableRowOf(w, 'Project'), 'Field Order'), 'Name, Description, Tasks, Chip, Card',
     'the inverse end lands on the far table row too');
   w.deleteField('Task', 'Points');
-  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Project');
+  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Project, Chip, Card');
 });
 
 test('editing the row edits the table: Field Order and Hidden Fields write back', () => {
@@ -212,7 +212,7 @@ test('editing the row edits the table: Field Order and Hidden Fields write back'
 
   w.updateEntity(row.id, { 'Field Order': 'Points, Name, Description' });
   const db = w.getTable('Task');
-  assert.deepEqual(db.fieldOrder.map((id) => db.fields[id].name), ['Points', 'Name', 'Description']);
+  assert.deepEqual(db.fieldOrder.map((id) => db.fields[id].name), ['Points', 'Name', 'Description', 'Chip', 'Card'], 'the views may be left out; they close the order');
 
   w.updateEntity(row.id, { 'Hidden Fields': 'Points' });
   assert.deepEqual(w.getTable('Task').hiddenFields, ['Points']);
