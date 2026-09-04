@@ -1342,7 +1342,6 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .doc-expand-bar { display: flex; align-items: center; gap: 6px; padding: 0 0 8px; }
 .doc-expand-frame { flex: 1; border: 0; border-radius: 8px; background: #fff; }
 /* Expanded markdown: the live editor fills the overlay and scrolls itself. */
-.doc-expand-edit > .doc-editor { flex: 1; overflow-y: auto; border: 1px solid var(--tblr-border-color); border-radius: 8px; background: var(--tblr-bg-surface); }
 /* ---------- composed decks (Feature #118) ---------- */
 /* The deck paints its own ground (its style tokens, not the app's), so the
    frame stays neutral in both themes and only draws the edge around it. */

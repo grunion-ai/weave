@@ -1894,15 +1894,14 @@ test('table keys: Enter adds a row, Shift+Enter removes an empty one, Tab at the
   assert.match(fnBody('mountDocEditor'), /attachTableKeys\(host\)/, 'wired wherever a document editor mounts');
 });
 
-test('fullscreen edits: a markdown document expands as its own live editor, not a rendered frame', () => {
+test('a document section has no ⛶ — the document is the page; only a deck expands (Issue #176, #111)', () => {
   const fn = fnBody('expandDocument');
-  assert.match(fn, /\{ node = null \} = \{\}/, 'the expander accepts the live editor node');
-  assert.match(fn, /node \?\? frame/, 'the node takes the frame\'s place');
-  assert.match(fn, /origin\.append\(node\)/, 'and goes home on collapse — same editor, nothing to sync');
-  assert.match(fn, /node \? null :/, 'frame-only chrome (reload, open-in-tab) hides for a live editor');
+  assert.ok(!fn.includes('node'), 'the expander is frame-only again: no live-editor hand-over, so no null frame to throw on');
   const body = fnBody('renderEntityView');
-  assert.match(body, /expandDocument\(grid, `\$\{fmtBase\}\.html`, f\.name, isApp \? \{\} : \{ node: host \}\)/,
-    'the ⛶ hands the editor over for markdown; an HTML app keeps its frame');
+  const head = body.slice(body.indexOf("class: 'doc-section-head'"), body.indexOf("class: 'doc-anchor permalink-copy', title: 'Copy link to this document'"));
+  assert.ok(!head.includes("title: 'Expand'") && !head.includes('⛶'), 'no expand anchor in a document head');
+  assert.match(body, /class: 'doc-anchor', title: 'Expand', onclick: \(\) => expandDocument\(grid, deckUrl, label\)/, 'the deck section keeps its expand — a framed deck is a different thing');
+  assert.ok(!CSS.includes('.doc-expand-edit'), 'the edit-mode overlay styling went with it');
 });
 
 test('the divider inserts *** — an inserted --- pair is YAML front matter to Lute', () => {

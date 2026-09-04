@@ -945,24 +945,21 @@ let mermaidLoading = null;
    comments, activity step aside — while the nav and breadcrumbs stay where
    they are. Collapse (or Esc, even with the cursor in the frame) brings the
    body back. The document's own fullscreen (a deck's F) is its to ask for. */
-function expandDocument(grid, url, title, { node = null } = {}) {
+function expandDocument(grid, url, title) {
   grid.parentElement?.querySelector('.doc-expand')?.remove();
-  /* A markdown document expands as ITSELF: the live editor node moves into
-     the overlay and moves home on collapse — one editor, nothing to sync,
-     still saving as you type (Kyle, 2026-08-23: "md should be editable in
-     fullscreen mode as well"). Only an HTML app document keeps the rendered
-     frame, because the frame IS that document. */
-  const origin = node?.parentElement ?? null;
-  const frame = node ? null : el('iframe', { class: 'doc-expand-frame', src: url, allowfullscreen: '', allow: 'fullscreen', title });
-  const collapse = () => { if (node && origin) origin.append(node); wrap.remove(); grid.classList.remove('hidden'); };
-  const wrap = el('div', { class: 'doc-expand' + (node ? ' doc-expand-edit' : '') },
+  /* Only a framed document (a deck) expands. A markdown document used to
+     hand its live editor over here; Kyle, 2026-09-04 (Issue #176): the
+     document is the page already, the ⛶ on it was one mode too many. */
+  const frame = el('iframe', { class: 'doc-expand-frame', src: url, allowfullscreen: '', allow: 'fullscreen', title });
+  const collapse = () => { wrap.remove(); grid.classList.remove('hidden'); };
+  const wrap = el('div', { class: 'doc-expand' },
     el('div', { class: 'doc-expand-bar' },
       el('button', { class: 'btn btn-sm', title: 'Collapse (Esc)', onclick: collapse }, '‹ Collapse'),
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),
-      node ? null : el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')),
-      node ? null : el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon'))),
-    node ?? frame);
+      el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')),
+      el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon'))),
+    frame);
   grid.classList.add('hidden');
   grid.after(wrap);
   const onKey = (e) => { if (e.key === 'Escape') collapse(); };
@@ -5672,10 +5669,6 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         caret,
         el('span', { class: 'doc-section-name' }, f.name),
         sourceToggle,
-        el('span', {
-          class: 'doc-anchor', title: 'Expand',
-          onclick: () => expandDocument(grid, `${fmtBase}.html`, f.name, isApp ? {} : { node: host }),
-        }, iconEl('⛶')),
         el('span', {
           class: 'doc-anchor permalink-copy', title: 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
