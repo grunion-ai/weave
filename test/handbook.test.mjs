@@ -101,7 +101,7 @@ test('the polymorphic-relations guide covers the target set and the ruling behin
   for (const topic of [
     'targetDbs', '--target-dbs', 'Workspace/Spaces', 'Workspace/Tables', 'one core kind',
     'one-way', 'inverse', 'lookup', 'rollup', 'picker', 'relation map', 'home table',
-    'Scope.Name', 'prune', 'Airtable', 'Fibery', 'bit-for-bit', 'weave_add_relation',
+    'Scope.Name', 'prune', 'Airtable', 'Fibery', 'bit-for-bit', 'weave_add_relation', '```mermaid',
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the polymorphic guide never mentions ${topic}`);
   }
