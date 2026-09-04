@@ -10,6 +10,7 @@ The **weave** workspace (`/w/weave/` on the running app; `weave.db` beside the d
 2. **After landing** a change: mark/create the `Feature` (with Milestone) as Shipped or the `Issue` as Fixed; update any Guide/Article whose content the change touches; the `Quality/Suite` + `Quality/Case` mirror is GENERATED from the test files (src/quality-mirror.js) — never edit it by hand; the main watcher re-syncs the live workspace after every landing, and `node bin/weave.js quality sync --data <weave.db>` does it on demand (`quality check` reports drift).
 3. Bugs found along the way get logged as `Issue` rows (Severity set) even if fixed immediately.
 4. Issue and Feature rows are **enriched by default**: every provided material (screenshots, files, snippets, logs) is embedded as a **copy** — attachments via the files API, full text inline in the Description — never a relative path or external reference. Screenshots pasted in chat get saved and attached at record-creation time.
+5. **Every release is a `Development/Release` row with its notes written** (2026-09-04): name = `v<version>`, Date, Commit, `Fixes` → Issues, `Ships` → Features, and the release notes as its Description. A version bump does not land without one — `scripts/export-development.mjs` refuses to export without a notes-bearing row for the package version, and `test/development-sync.test.mjs` refuses the build. Order for a release: write the Release row on `:4400` → bump `package.json` → run the export → CHANGELOG digest → land through Gerrit.
 
 Quick access (server running on :4400):
 ```bash

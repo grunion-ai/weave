@@ -289,6 +289,8 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
     if (st !== 'Open') w.setState(e.id, 'Status', st);
   }
 
+  ensureReleaseTable(w);
+
   seedFieldShowcase(w);
   // The reference half of the Handbook and the document half of the Showcase.
   // Both upsert on name, so they also bring a workspace seeded before they
@@ -309,9 +311,37 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
    severity / milestone / symptom), unmatched manifest rows are created, and
    local-only rows are left exactly as they are. The manifest's hash on
    meta makes the pass one write per build, not one per boot. */
+/* ---------- releases (2026-09-04) ----------
+   Every release is a Development/Release row: the version as its name, the
+   date, the landed commit, the Issues it fixes and the Features it ships as
+   relations, and the release notes as its Description. The notes are
+   mandatory — syncDevelopment refuses a manifest release without them, and
+   test/development-sync.test.mjs refuses a build whose package version has
+   no such row — so a version bump cannot land unwritten. The table is
+   created on demand so workspaces seeded before it existed pick it up on the
+   next sync. */
+export function ensureReleaseTable(w) {
+  const table = (qualified) => w.listTables().find((t) => `${w.getSpace(t.spaceId)?.name}/${t.name}` === qualified);
+  const existing = table('Development/Release');
+  if (existing) return existing;
+  const issues = table('Development/Issue');
+  const features = table('Development/Feature');
+  if (!issues || !features) return null;
+  const rel = w.createTable({ space: 'Development', name: 'Release' });
+  w.addField(rel, { name: 'Date', type: 'date' });
+  w.addField(rel, { name: 'Commit', type: 'text' });
+  w.addRelation(rel, { name: 'Fixes', targetDb: issues.id, cardinality: 'many-to-many', inverseName: 'Fixed in' });
+  w.addRelation(rel, { name: 'Ships', targetDb: features.id, cardinality: 'many-to-many', inverseName: 'Shipped in' });
+  return w.getTable(rel.id ?? rel);
+}
+
 export function syncDevelopment(w, manifest) {
   if (!manifest || !Array.isArray(manifest.issues)) return { applied: false };
-  const stamp = `${manifest.version}:${manifest.generatedAt}:${(manifest.issues.length + (manifest.features?.length ?? 0))}`;
+  const releases = Array.isArray(manifest.releases) ? manifest.releases : [];
+  for (const r of releases) {
+    if (!(r.description ?? '').trim()) throw new Error(`release ${r.name} has no notes — every Development/Release row carries its notes`);
+  }
+  const stamp = `${manifest.version}:${manifest.generatedAt}:${(manifest.issues.length + (manifest.features?.length ?? 0) + releases.length)}`;
   if (w.state.meta.developmentSync === stamp) return { applied: false };
   const table = (qualified) => w.listTables().find((t) => `${w.getSpace(t.spaceId)?.name}/${t.name}` === qualified);
   const issuesT = table('Development/Issue');
@@ -347,6 +377,19 @@ export function syncDevelopment(w, manifest) {
   };
   apply(issuesT, manifest.issues, ['Severity', 'Symptom']);
   apply(featuresT, manifest.features, ['Milestone']);
+  if (releases.length) {
+    const relT = ensureReleaseTable(w);
+    apply(relT, releases, ['Date', 'Commit']);
+    const byName = (db) => new Map(w.listEntities(db.id).map((e) => [w.entityName(e), e.id]));
+    const issueIds = byName(issuesT), featureIds = byName(featuresT), relIds = byName(relT);
+    for (const r of releases) {
+      const id = relIds.get(r.name);
+      const fixes = (r.fixes ?? []).map((n) => issueIds.get(n)).filter(Boolean);
+      const ships = (r.ships ?? []).map((n) => featureIds.get(n)).filter(Boolean);
+      if (fixes.length) w.link(id, 'Fixes', fixes);
+      if (ships.length) w.link(id, 'Ships', ships);
+    }
+  }
   w.state.meta.developmentSync = stamp;
   w.save();
   return { applied: true, created, updated };

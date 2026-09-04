@@ -27,3 +27,6 @@ wrangler.jsonc
 .*-probe.mjs
 .*-shot.mjs
 .wt-slot/
+
+# Playwright for the browser suites is a symlink to ~/.gerrit/weave/pw/node_modules, never committed
+node_modules
