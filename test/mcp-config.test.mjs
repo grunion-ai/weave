@@ -28,7 +28,7 @@ test('a table takes its whole costume from one tool call', () => {
   assert.equal(t.noun, 'invoice');
   assert.deepEqual(t.hiddenFields, ['Description']);
   assert.deepEqual(t.systemFields, ['Created At']);
-  assert.deepEqual(t.fields.map((f) => f.name), ['Stage', 'Name', 'Description']);
+  assert.deepEqual(t.fields.map((f) => f.name), ['Stage', 'Name', 'Description', 'Chip', 'Card']);
 });
 
 test('a field is renamed, recolored, widened and dropped without a browser', () => {

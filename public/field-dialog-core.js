@@ -28,6 +28,9 @@
     { id: 'relation', label: 'relation', icon: 'lucide:arrow-left-right', relation: true },
     { id: 'lookup', label: 'lookup', icon: 'lucide:arrow-up-right', computed: true },
     { id: 'rollup', label: 'rollup', icon: 'Σ', computed: true },
+    // The chip and the card: minted on every table, never created here —
+    // the dialog only configures the pair (Kyle, 2026-09-04).
+    { id: 'view', label: 'view', icon: 'lucide:layout-grid', computed: true, minted: true },
   ];
 
   // Signatures shown as insertable chips in the formula builder. The name
@@ -88,7 +91,7 @@
      Computed types (formula/lookup/rollup/relation) have no tile set — their
      type is fixed. */
   function typeChoices(existingType) {
-    if (!existingType) return FIELD_TYPES.slice();
+    if (!existingType) return FIELD_TYPES.filter((t) => !t.minted);
     const byId = Object.fromEntries(FIELD_TYPES.map((t) => [t.id, t]));
     const self = byId[existingType];
     if (!self || self.computed) return [];
@@ -259,6 +262,12 @@
   const CARDINALITIES = ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'];
   const MAX_DEPTH = 4;
   const DEFAULTABLE = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
+  // Mirrors the engine's VIEW_SHAPES / DESCRIPTION_SIZES (source-gated).
+  const VIEW_SHAPES = ['chip', 'card'];
+  const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
+  const blankView = (shape = 'chip') => (shape === 'card'
+    ? { shape: 'card', link: true, state: true, description: 'small', fields: null }
+    : { shape: 'chip', link: false, state: true, description: 'none', fields: null });
   // Radix-soft swatches for select/multiselect options; '' = neutral chip.
   const OPTION_COLORS = ['', '#4769eb', '#2ea043', '#f59f00', '#e5484d', '#8e4ec6', '#00a2c7', '#d6409f'];
 
@@ -278,6 +287,7 @@
     targetField: '',
     aggregate: 'count',
     default: '',
+    view: blankView(),    // view: the chip/card config, whole
   });
 
   function typedDefault(type, raw) {
@@ -370,6 +380,9 @@
     } else if (t === 'lookup') {
       config.relationField = state.relationField;
       config.targetField = state.targetField;
+    } else if (t === 'view') {
+      const v = state.view ?? blankView();
+      Object.assign(config, { shape: v.shape, link: !!v.link, state: !!v.state, description: v.description ?? 'none', fields: Array.isArray(v.fields) ? v.fields.slice() : null });
     } else if (t === 'rollup') {
       config.relationField = state.relationField;
       config.aggregate = state.aggregate ?? 'count';
@@ -392,6 +405,10 @@
       state.computed = 'formula';
       state.expression = c.expression ?? '';
       state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator };
+      return state;
+    }
+    if (def.type === 'view') {
+      state.view = { ...blankView(c.shape), ...c, fields: Array.isArray(c.fields) ? c.fields.slice() : null };
       return state;
     }
     if (def.type === 'select' || def.type === 'multiselect') {
@@ -489,6 +506,12 @@
     if (def.type === 'rollup' && c.aggregate != null && !AGGREGATES.includes(c.aggregate)) {
       return fail(`Invalid aggregate '${c.aggregate}' (use ${AGGREGATES.join(', ')})`);
     }
+    if (def.type === 'view') {
+      if (!VIEW_SHAPES.includes(c.shape)) return fail(`A view is a chip or a card, not '${c.shape}'`);
+      if (c.description != null && !DESCRIPTION_SIZES.includes(c.description)) return fail(`description is one of ${DESCRIPTION_SIZES.join(', ')}`);
+      if (c.fields !== undefined && c.fields !== null && !Array.isArray(c.fields)) return fail('fields is a list of field names, or null for the first few');
+      for (const k of ['link', 'state']) if (c[k] != null && typeof c[k] !== 'boolean') return fail(`${k} is true or false`);
+    }
     if (def.type === 'key') {
       if (c.kind != null && !CREDENTIAL_KINDS.includes(c.kind)) return fail(`Invalid credential kind '${c.kind}' (${CREDENTIAL_KINDS.join(', ')})`);
       if (c.keystore != null && !KEYSTORES.includes(c.keystore)) return fail(`Invalid keystore '${c.keystore}' (${KEYSTORES.join(', ')})`);
@@ -528,6 +551,7 @@
     if (f.type === 'document' && f.kind) c.kind = f.kind;
     if (f.type === 'key') { c.kind = f.kind ?? 'apikey'; c.keystore = f.keystore ?? 'local'; }
     if (f.type === 'lookup' || f.type === 'rollup') { c.relationField = f.via ?? ''; c.targetField = f.targetField ?? ''; c.aggregate = f.aggregate; }
+    if (f.type === 'view') Object.assign(c, { shape: f.shape ?? f.role, link: !!f.link, state: !!f.state, description: f.description ?? 'none', fields: Array.isArray(f.fields) ? f.fields.slice() : null });
     if (f.default !== undefined) c.default = f.default;
     if (f.term) c.term = { ...f.term };
     return { type: f.type, config: c };
@@ -554,6 +578,8 @@
     }
     if (existing.type === 'formula' && state.expression) patch.expression = state.expression;
     if (existing.type === 'attachments') patch.multiple = state.multiple !== false;
+    // The shape is the field's identity; everything else is the patch.
+    if (existing.type === 'view') { const { shape, ...rest } = c; void shape; Object.assign(patch, rest); }
     if (existing.type === 'document') patch.kind = state.kind ?? 'markdown';
     if (DEFAULTABLE.includes(existing.type)) {
       patch.default = c.default ?? null;
@@ -565,7 +591,7 @@
     FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
-    CREDENTIAL_KINDS, KEYSTORES,
+    CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     blankState, definitionFromState, stateFromDefinition,
     definitionFromFieldView, editPatchConfig,
     serializeDefinition, parseDefinition,

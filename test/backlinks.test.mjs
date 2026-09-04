@@ -138,7 +138,9 @@ test('referencesFrom finds every accepted spelling and dedupes to one entry', ()
   });
   const refs = w.referencesFrom(issue.id);
   assert.equal(refs.length, 1, 'four spellings of one target are one reference');
-  assert.deepEqual(refs[0], { id: target.id, publicId: 1, name: 'Ship the editor', db: 'Dev/Task' });
+  const { chip, ...bare } = refs[0];
+  assert.deepEqual(bare, { id: target.id, publicId: 1, name: 'Ship the editor', db: 'Dev/Task' });
+  assert.equal(chip.shape, 'chip', 'a reference carries the far row’s chip, like a relation does');
 });
 
 test('referencesFrom reads HTML chips and mermaid click targets', () => {
@@ -211,7 +213,6 @@ test('reference panels join the opt-in side column and wear k k-rel chips', asyn
   assert.ok(block.includes('right.append'), 'panels join the entity-side column, never the body');
   assert.ok(block.includes('sideOpen'), 'nothing is fetched until the side column is open');
   assert.ok(block.includes('card panel ref-backlinks-card'), 'same panel dress as Activity and Comments');
-  assert.ok(block.includes("'k k-rel'"), 'chips share the relation-chip class');
-  assert.ok(block.includes('k-home'), 'every chip wears its home table badge');
+  assert.ok(block.includes('relationChipEl({ targetDbIds: true }, r)'), 'chips are the shared relation chip — the far row’s Chip, wearing its home table badge');
   assert.ok(!block.includes('left.append'), 'the entity body stays quiet');
 });

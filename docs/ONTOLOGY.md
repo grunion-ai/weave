@@ -149,11 +149,11 @@ are part of the engine, not user data.
 
 ## The other axis: field types
 
-Eighteen, and not one of them is a kind of entity. Fourteen store a value —
+Nineteen, and not one of them is a kind of entity. Fourteen store a value —
 `text`, `number`, `date`, `daterange`, `checkbox`, `url`, `email`, `select`,
-`multiselect`, `workflow`, `relation`, `field`, `key`, `attachments`. Three
-compute one from other fields — `lookup`, `rollup`, `formula`. One holds a
-body — `document`.
+`multiselect`, `workflow`, `relation`, `field`, `key`, `attachments`. Four
+compute one from other fields — `lookup`, `rollup`, `formula`, and `view`,
+which computes the row's own chip or card. One holds a body — `document`.
 
 The pair to keep straight is `field` and Field. A Field is the slot; the
 `field` *type* is a slot whose **value is a field definition**, which is what
@@ -176,7 +176,7 @@ task, deal, ticket, contact) are conventions, not types.
 
 ### Field type
 The datatype of one field: what values that slot accepts and how they display.
-Eighteen of them. A field type is not a kind of object — no `text` is ever
+Nineteen of them. A field type is not a kind of object — no `text` is ever
 created, deleted, or addressed.
 
 ### Entity view
@@ -351,6 +351,12 @@ An aggregate over a relation: count, sum, avg, min, max, or join.
 ### `formula`
 An expression over this entity's fields — arithmetic, logic, and 17 functions —
 evaluated by a parser that executes nothing.
+
+### `view`
+The row as it appears elsewhere: its **chip** inline, its **card** as a tile.
+Every table carries one of each, minted with it and hidden from the grid; the
+config — the #id link, the state, a description preview, a few fields — is the
+table's, the same for every row.
 
 ### `document`
 The slot a Document lives in; its kind is markdown, html, or code.

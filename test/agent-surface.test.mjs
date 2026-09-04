@@ -102,6 +102,8 @@ const INTERNAL = {
   storageStats: 'read helper — /api/health already ships it for the nav stats strip',
   relationTargetDbIds: 'read helper — the tables a relation may point at; describeSchema already ships them',
   previewFields: 'read helper — the chip preview; /api/markdown ships it inside resolved mentions',
+  viewField: 'ref helper — which field is a table\'s chip or card, by role rather than by name',
+  renderView: 'read helper — one row as its chip or card; readEntity ships both under their field names and every relation summary carries the chip',
   referencesTo: 'read helper — GET /api/entities/:ref/references already serves the backlinks',
   referencesFrom: 'read helper — GET /api/entities/:ref/references-from serves the outbound mirror',
   termOf: 'read helper — what one row is called; describeSchema ships it as term on every table, and updateTable {noun} / the Name field\'s config.term set it',

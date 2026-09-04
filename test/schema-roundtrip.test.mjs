@@ -141,7 +141,7 @@ test('a renamed description round-trips without duplicating', () => {
 
   const fresh = new Weave();
   fresh.applySchema(w.describeSchema().filter((s) => !s.system));
-  assert.deepEqual(names(fresh, 'Product/Task'), ['Name', 'Notes', 'Estimate']);
+  assert.deepEqual(names(fresh, 'Product/Task'), ['Name', 'Notes', 'Estimate', 'Chip', 'Card']);
   assert.equal(fresh.descriptionField(fresh.getTable('Product/Task')).name, 'Notes');
 });
 
@@ -162,7 +162,7 @@ test('applying a schema with no description leaves none', () => {
 
   const fresh = new Weave();
   fresh.applySchema(w.describeSchema().filter((s) => !s.system));
-  assert.deepEqual(names(fresh, 'Product/Task'), ['Name', 'Estimate']);
+  assert.deepEqual(names(fresh, 'Product/Task'), ['Name', 'Estimate', 'Chip', 'Card']);
   assert.equal(fresh.getTable('Product/Task').descriptionFieldId, null,
     'absence is expressible, not always re-minted');
 });
@@ -174,7 +174,7 @@ test('a schema written before roles is still understood', () => {
 
   const fresh = new Weave();
   fresh.applySchema(doc);
-  assert.deepEqual(names(fresh, 'Product/Task'), ['Name', 'Description', 'Estimate'], 'adopted, not duplicated');
+  assert.deepEqual(names(fresh, 'Product/Task'), ['Name', 'Description', 'Estimate', 'Chip', 'Card'], 'adopted, not duplicated');
   assert.equal(fresh.descriptionField(fresh.getTable('Product/Task')).name, 'Description');
 });
 

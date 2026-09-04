@@ -31,9 +31,9 @@ test('type catalog matches the engine DEFINABLE_TYPES exactly', () => {
   assert.ok(core.FIELD_TYPES.some((t) => t.id === 'relation'), 'relation is a type of field');
 });
 
-test('computed catalog entries are lookup and rollup (formula is the toggle)', () => {
+test('computed catalog entries are lookup, rollup and the minted view (formula is the toggle)', () => {
   const computed = core.FIELD_TYPES.filter((t) => t.computed).map((t) => t.id);
-  assert.deepEqual(computed.sort(), ['lookup', 'rollup']);
+  assert.deepEqual(computed.sort(), ['lookup', 'rollup', 'view']);
 });
 
 test('formula function list matches FUNCS keys in src/formula.js', () => {
@@ -245,7 +245,7 @@ test('the dialog refuses a kind or keystore in the same words the engine would',
 });
 
 test('typeChoices: a new field sees the whole grid; an existing one sees itself plus compatible moves', () => {
-  assert.deepEqual(core.typeChoices(null).map((t) => t.id), core.FIELD_TYPES.map((t) => t.id));
+  assert.deepEqual(core.typeChoices(null).map((t) => t.id), core.FIELD_TYPES.filter((t) => !t.minted).map((t) => t.id), 'the minted view is never a tile');
   assert.deepEqual(core.typeChoices('select').map((t) => t.id), ['select', 'multiselect', 'workflow', 'text']);
   assert.deepEqual(core.typeChoices('formula').map((t) => t.id), []);
   assert.deepEqual(core.typeChoices('document').map((t) => t.id), ['document']);

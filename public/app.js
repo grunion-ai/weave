@@ -1525,7 +1525,7 @@ function credentialReveal(name, keystore) {
    PICKER: the cell's whole area opens a chooser. READONLY: computed values
    that render as text and must not look editable. */
 const PICKER_FIELD_TYPES = ['select', 'multiselect', 'workflow'];
-const READONLY_FIELD_TYPES = ['lookup', 'rollup', 'formula', 'document'];
+const READONLY_FIELD_TYPES = ['lookup', 'rollup', 'formula', 'document', 'view'];
 
 /* Credentials (Feature #143). The glyph says what SORT of secret the chip
    stands for; the badge says whose store holds it. Both are read off the
@@ -1822,6 +1822,99 @@ function dressedText(md, input) {
   return dressed;
 }
 
+/* ---------- the chip and the card (Kyle, 2026-09-04) ----------
+   One row as it appears elsewhere, drawn from the object the engine's
+   renderView hands back (`raw[Chip]`, `raw[Card]`, and `chip` on every
+   relation summary). A relation cell, a doc mention, a reference card and
+   the entity page's own preview all come through here, so they agree. */
+const viewCore = globalThis.weaveViewCore;
+/* The table's chip or card field, by role — never by the name, which is
+   the owner's to change. */
+function viewFieldOf(db, shape) {
+  return db?.fields?.find((f) => f.type === 'view' && f.role === shape) ?? null;
+}
+/* A segment: the state as the same state chip a cell wears (category owns
+   the colour), or a label + value pair. */
+function viewSegmentEl(seg) {
+  if (seg.kind === 'state') {
+    const cat = chipCore.categoryOrDefault(seg.category);
+    return el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)} wv-seg-state` }, seg.value);
+  }
+  return el('span', { class: 'mention-f' }, el('span', { class: 'mention-f-label' }, seg.label), seg.value);
+}
+/* The chip: the whole thing is a link; the segments fold behind the same
+   caret a doc mention uses (Feature #163), so the caret is the one
+   non-navigating pixel. `lead` goes inside the link before the name (an
+   avatar), `tail` after it (a table badge); `extra` sits outside the link
+   (a ×). */
+function viewChipEl(v, { lead = null, tail = null, extra = null, href = null } = {}) {
+  const segs = viewCore.viewSegments(v);
+  /* The caret and the segments ride INSIDE the link, as src/markdown.js
+     draws a doc mention: the whole chip stays the link, the ↗ stays its
+     last pixel (grid-chrome test 3), and the caret is the one pixel that
+     does not navigate. */
+  const a = el('a', { href: href ?? `#/entity/${v.id}`, onclick: (e) => e.stopPropagation() },
+    lead, viewCore.viewTitle(v), tail,
+    ...(segs.length ? [
+      el('button', {
+        type: 'button', class: 'mention-caret', 'aria-expanded': 'false', title: 'Show fields',
+        // The chip's link swallows clicks (a cell must not open the row), so
+        // the caret toggles itself rather than relying on the delegate below.
+        onclick: (e) => { e.preventDefault(); e.stopPropagation(); toggleMentionCaret(e.currentTarget); },
+      }, '›'),
+      el('span', { class: 'mention-fields' }, ...segs.map(viewSegmentEl)),
+    ] : []));
+  const chip = el('span', { class: 'k k-rel' + (segs.length ? ' has-segs' : '') }, a);
+  if (extra) chip.append(extra);
+  return el('span', { class: 'mention-wrap' }, chip);
+}
+/* The card: a tile with the #id link and the name on one line, the state
+   beside them, the description preview, then the fields two-up. */
+function viewCardEl(v, { compact = false } = {}) {
+  const segs = viewCore.viewSegments(v);
+  const state = segs.find((x) => x.kind === 'state');
+  const head = el('div', { class: 'wv-card-head' },
+    el('a', { class: 'wv-card-title', href: `#/entity/${v.id}`, onclick: (e) => e.stopPropagation() },
+      v.link ? el('span', { class: 'wv-card-id' }, `#${v.publicId}`) : '',
+      v.name || (v.link ? '' : `#${v.publicId}`)),
+    state ? viewSegmentEl(state) : '');
+  const card = el('div', { class: 'wv-card' + (compact ? ' compact' : '') }, head);
+  if (v.description) card.append(el('div', { class: 'wv-card-desc' }, v.description));
+  const fields = segs.filter((x) => x.kind === 'field');
+  if (fields.length) {
+    card.append(el('dl', { class: 'wv-card-fields' },
+      ...fields.flatMap((f) => [el('dt', {}, f.label), el('dd', {}, f.value)])));
+  }
+  return card;
+}
+/* An unhidden view in the grid: read-only, drawn as itself. */
+function viewCell(v, f, { compact = false } = {}) {
+  if (!v || typeof v !== 'object') return el('span', { class: 'k k-empty' }, '—');
+  return f.shape === 'card' || v.shape === 'card' ? viewCardEl(v, { compact }) : viewChipEl(v);
+}
+/* Every relation chip: the far row's chip, with the avatar a person wears
+   and the home badge a target-set member needs. */
+function relationChipEl(f, s, { extra = null } = {}) {
+  const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [] };
+  return viewChipEl(v, {
+    lead: personAvatar(f, s),
+    tail: f.targetDbIds && s.db ? el('span', { class: 'k-home' }, s.db.split('/').pop()) : null,
+    extra,
+  });
+}
+// The caret toggles the segments open, wherever the chip is (doc pages carry
+// their own copy of this in src/markdown.js).
+function toggleMentionCaret(caret) {
+  const open = caret.closest('.mention-wrap').classList.toggle('open');
+  caret.setAttribute('aria-expanded', String(open));
+}
+document.addEventListener('click', (ev) => {
+  const caret = ev.target.closest('.mention-caret');
+  if (!caret || !caret.closest('#app, .modal, .cell-pop')) return;
+  ev.preventDefault();
+  toggleMentionCaret(caret);
+});
+
 function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
@@ -1850,6 +1943,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     return ico ? iconEl(ico, 'ico wv-icon') : null;
   }
 
+  if (f.type === 'view') return viewCell(item.raw?.[f.name], f, { compact });
   if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
     // Read-only: the glyph says "computed, not editable" at a glance so these
     // are not mistaken for the chips and inputs beside them.
@@ -1951,28 +2045,22 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
          it goes somewhere. The mark used to be a ::after on the chip, i.e.
          OUTSIDE the <a>, so the one pixel advertising navigation was the one
          pixel that did nothing (Kyle, 2026-08-26). */
-      const chip = el('span', { class: 'k k-rel' },
-        el('a', { href: `#/entity/${s.id}`, onclick: (e) => e.stopPropagation() },
-          personAvatar(f, s), s.name || `#${s.publicId}`,
-          /* A target-set chip says where it lives — a Task and a Space can
-             share a name, and the table is the disambiguator. */
-          f.targetDbIds && s.db ? el('span', { class: 'k-home' }, s.db.split('/').pop()) : ''));
       /* Unlinking is an edit, and a grid is a record: in a table the × was
          chrome on every chip of every row. The cell's picker owns removal
          there; the entity page keeps its × because the page IS the edit
-         surface (Kyle, 2026-08-26). */
-      if (!compact) {
-        chip.append(el('span', {
-          class: 'x',
-          onclick: async () => {
-            try {
-              await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
-              await saved();
-            } catch (err) { toast(err.message, true); }
-          },
-        }, iconEl('lucide:x', 'wv-icon wv-icon-xs')));
-      }
-      box.append(chip, ' ');
+         surface (Kyle, 2026-08-26). The chip itself is the far row's Chip
+         (2026-09-04): a target-set chip says where it lives — a Task and a
+         Space can share a name, and the table is the disambiguator. */
+      const x = compact ? null : el('span', {
+        class: 'x',
+        onclick: async () => {
+          try {
+            await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
+            await saved();
+          } catch (err) { toast(err.message, true); }
+        },
+      }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
+      box.append(relationChipEl(f, s, { extra: x }), ' ');
     }
     if (hidden > 0) {
       box.append(el('span', {
@@ -3443,6 +3531,65 @@ function dsection(label, ...kids) {
   return el('div', { class: 'dlg-sec full' }, el('div', { class: 'dlg-lbl' }, label), ...kids);
 }
 
+/* The chip/card config pane (Kyle, 2026-09-04): what rides on the view.
+   Two switches, one size control, and the field list — a checkbox per
+   glanceable column in column order, or "the first few" when nobody
+   chooses, which is the default and the rule the doc chips already follow. */
+function viewSection(db, dlg, changed, redraw) {
+  const v = dlg.view ?? (dlg.view = fieldDialogCore.blankView());
+  /* The preview (Kyle, 2026-09-04): the chip or card as it will look, drawn
+     for one real row under the config as it stands in the form — fetched
+     through the same renderView the page uses, so the two cannot differ.
+     The row is the one the reader came from when the dialog opened on an
+     entity page, else the table's first. */
+  const previewBox = el('div', { class: 'wv-view-preview' }, el('span', { class: 'wv-muted' }, '…'));
+  let sampleId = state.route?.page === 'entity' && state.route.dbId === db.id ? state.route.id : null;
+  let timer = null;
+  const refreshPreview = async () => {
+    try {
+      if (!sampleId) {
+        const r = await api('POST', `/tables/${db.id}/query`, { limit: 1 });
+        sampleId = r.items?.[0]?.id ?? null;
+      }
+      if (!sampleId) { previewBox.replaceChildren(el('span', { class: 'wv-muted' }, `No ${db.term?.singular ?? 'record'} to preview yet.`)); return; }
+      const cfg = { ...v, fields: Array.isArray(v.fields) ? v.fields : null };
+      const view = await api('GET', `/entities/${sampleId}/view?shape=${encodeURIComponent(v.shape)}&config=${encodeURIComponent(JSON.stringify(cfg))}`);
+      previewBox.replaceChildren(viewCell(view, { shape: v.shape }));
+    } catch (err) {
+      previewBox.replaceChildren(el('span', { class: 'wv-muted' }, err.message));
+    }
+  };
+  const bump = () => { changed(); clearTimeout(timer); timer = setTimeout(refreshPreview, 120); };
+  const sw = (key, label, hint) => el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
+    el('input', { type: 'checkbox', class: 'form-check-input', checked: v[key] ? '' : undefined, onchange: (e) => { v[key] = e.target.checked; bump(); } }),
+    el('span', { class: 'form-check-label' }, label, hint ? el('span', { class: 'fx-hint' }, ` ${hint}`) : ''));
+  const auto = v.fields == null;
+  const eligible = viewCore.eligibleFields(db);
+  const pick = el('div', { class: 'wv-view-fields' + (auto ? ' auto' : '') },
+    ...eligible.map((f) => {
+      const on = !auto && v.fields.includes(f.name);
+      return el('label', { class: 'form-check' },
+        el('input', {
+          type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, disabled: auto ? '' : undefined,
+          onchange: (e) => {
+            const cur = Array.isArray(v.fields) ? v.fields.filter((n) => n !== f.name) : [];
+            v.fields = e.target.checked ? [...cur, f.name] : cur;
+            bump();
+          },
+        }),
+        el('span', { class: 'form-check-label' }, f.name, el('span', { class: 'wv-tag' }, f.type)));
+    }));
+  const autoSw = el('label', { class: 'form-check full', style: 'margin:0 0 4px' },
+    el('input', { type: 'checkbox', class: 'form-check-input', checked: auto ? '' : undefined, onchange: (e) => { v.fields = e.target.checked ? null : []; changed(); redraw(); } }),
+    el('span', { class: 'form-check-label' }, 'The first few non-empty fields, in column order', el('span', { class: 'fx-hint' }, ' arranging the columns is the curation')));
+  refreshPreview();
+  return [
+    dsection('How it will look', previewBox),
+    dsection('Shows', sw('link', 'The #id, as a permalink'), sw('state', 'The workflow state, first')),
+    dsection('Description preview', segCtl(fieldDialogCore.DESCRIPTION_SIZES, v.description ?? 'none', (id) => { v.description = id; bump(); })),
+    dsection('Fields', autoSw, eligible.length ? pick : el('div', { class: 'wv-note' }, 'No other field can ride along yet.')),
+  ];
+}
 function segCtl(options, value, onPick) {
   const wrap = el('div', { class: 'seg-ctl', role: 'group' });
   const norm = options.map((o) => (typeof o === 'string' ? { id: o, label: o } : o));
@@ -3878,7 +4025,9 @@ function fieldDialog(db, existing, after) {
     if (isEdit && state.type !== existing.type && !state.computed) {
       note = el('div', { class: 'modal-note migrate-note' }, `Saving converts this ${existing.type} field to ${state.type}; every row's value is migrated in place.`);
     } else if (isEdit && !migratable) {
-      note = el('div', { class: 'modal-note' }, existing.role === 'name' ? 'a name is text, or a formula (ƒ below)' : `${existing.type} field — the type is fixed`);
+      note = el('div', { class: 'modal-note' }, existing.role === 'name' ? 'a name is text, or a formula (ƒ below)'
+        : existing.type === 'view' ? `the ${existing.shape ?? existing.role}: how every ${db.term?.singular ?? 'record'} appears ${existing.role === 'card' ? 'as a tile' : 'inline'} — rename it, configure it, never delete it`
+        : `${existing.type} field — the type is fixed`);
     } else if (isEdit) {
       note = el('div', { class: 'modal-note' }, `${existing.type} field — it can also become ${choices.slice(1).map((t) => t.id).join(', ')}`);
     }
@@ -3956,6 +4105,8 @@ function fieldDialog(db, existing, after) {
             kids.push(dsection('Inverse field on the target', el('input', { class: 'form-control', value: r.inverseName ?? '', placeholder: `${autoName} (created automatically — rename here)`, oninput: (e) => { r.inverseName = e.target.value; changed(); } })));
           }
         }
+      } else if (t === 'view') {
+        kids.push(...viewSection(db, state, changed, drawCfg));
       } else if (t === 'attachments') {
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.multiple !== false ? '' : undefined, onchange: (e) => { state.multiple = e.target.checked; changed(); } }),
@@ -5459,6 +5610,23 @@ function docSectionCollapse(entityId, field, next) {
 
 /* ---------- entity page ---------- */
 
+function appearsAsPanel(db, entity, refresh) {
+  const chipF = viewFieldOf(db, 'chip');
+  const cardF = viewFieldOf(db, 'card');
+  if (!chipF && !cardF) return null;
+  const gear = (f) => el('button', {
+    type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny wv-appears-cfg', title: `Configure the ${f.role} for every ${db.term?.singular ?? 'record'}`,
+    onclick: () => fieldDialog(db, f, refresh),
+  }, iconEl('lucide:sliders-horizontal', 'wv-icon'));
+  const slot = (f, node) => el('div', { class: `wv-appears-slot wv-appears-${f.role}` },
+    el('div', { class: 'wv-appears-lbl' }, f.name, gear(f)), node);
+  const panel = el('div', { class: 'wv-appears' },
+    el('div', { class: 'wv-appears-title' }, 'Appears as'));
+  if (chipF) panel.append(slot(chipF, viewCell(entity.raw?.[chipF.name], chipF)));
+  if (cardF) panel.append(slot(cardF, viewCell(entity.raw?.[cardF.name], cardF)));
+  return panel;
+}
+
 async function showEntity(id) {
   let entity;
   try {
@@ -5755,7 +5923,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   let dragFrom = null;   // a value field, moving inside the field block
   let blockFrom = null;  // a whole block, moving among the blocks
   const hidden = new Set(db.hiddenFields ?? []);
-  const shown = db.fields.filter((f) => f.role !== 'name' && !hidden.has(f.name));
+  const shown = db.fields.filter((f) => f.role !== 'name' && f.type !== 'view' && !hidden.has(f.name));
   const blocks = new Map();
 
   /* Every block wears the same anchor — a ⠿ that is itself draggable, so the
@@ -5878,6 +6046,13 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const node = blocks.get(key);
     if (node && !node.isConnected) left.append(node);
   }
+  /* How this row appears elsewhere (Kyle, 2026-09-04): its chip and its
+     card, drawn from the same objects every other surface draws from, so
+     what the reader sees here is what a relation cell, a doc mention or a
+     board will show. Hidden in the grid or not, the page always shows both;
+     the gear opens the field dialog on the table's config. */
+  const appears = appearsAsPanel(db, entity, refresh);
+  if (appears) left.prepend(appears);
 
   /* References, both directions. A chip in a document is deliberately not a
      relation — nothing was configured, so there is nothing to unlink; each
@@ -5897,10 +6072,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       el('div', { class: 'card-header' },
         el('h3', { class: 'card-title' }, `${title} · ${refs.length}`)),
       el('div', { class: 'card-body ref-backlinks' },
-        ...refs.map((r) => el('span', { class: 'k k-rel' },
-          el('a', { href: `#/entity/${r.id}` },
-            r.name || `#${r.publicId}`,
-            el('span', { class: 'k-home' }, r.db.split('/').pop())))))));
+        ...refs.map((r) => relationChipEl({ targetDbIds: true }, r)))));
   };
   if (sideOpen) {
     api('GET', `/entities/${id}/references-from`)
