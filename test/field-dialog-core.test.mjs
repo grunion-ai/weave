@@ -531,3 +531,72 @@ test('the Name field\'s row term rides the definition both ways', () => {
   assert.deepEqual(core.definitionFromState(s).config.term, { singular: 'deal', plural: 'deals' });
   assert.equal(core.definitionFromState(core.blankState('text')).config.term, undefined, 'unset stays absent');
 });
+
+/* ---------- the fold-back and the patch body (moved from app.js) ----------
+   definitionFromFieldView folds the schema's flattened field view back into
+   the canonical {type, config} the dialog state round-trips with; the tray
+   reopens showing what the column actually is. editPatchConfig builds the
+   PATCH body per type — the engine merges config keys, so clearing a costume
+   key means sending an explicit null. Both were private to app.js and only
+   regex-tested; here they are behavior-tested. */
+
+test('definitionFromFieldView folds a credential column back into config', () => {
+  const d = core.definitionFromFieldView({ type: 'key', kind: 'ssn', keystore: 'vault' });
+  assert.deepEqual(d, { type: 'key', config: { kind: 'ssn', keystore: 'vault' } });
+  const bare = core.definitionFromFieldView({ type: 'key' });
+  assert.deepEqual(bare.config, { kind: 'apikey', keystore: 'local' }, 'absent config folds to the defaults');
+});
+
+test('definitionFromFieldView carries each type\'s flattened config', () => {
+  const sel = core.definitionFromFieldView({ type: 'select', optionsFull: [{ name: 'a', hue: 'red' }], options: ['a'] });
+  assert.deepEqual(sel.config.options, [{ name: 'a', hue: 'red' }], 'optionsFull wins');
+  const selOld = core.definitionFromFieldView({ type: 'select', options: ['a', 'b'] });
+  assert.deepEqual(selOld.config.options, [{ name: 'a', color: '' }, { name: 'b', color: '' }], 'names alone are wrapped');
+  const wf = core.definitionFromFieldView({ type: 'workflow', states: [{ name: 'Open', category: 'to-do' }] });
+  assert.deepEqual(wf.config.states, [{ name: 'Open', category: 'to-do' }]);
+  const num = core.definitionFromFieldView({ type: 'number', format: 'currency', currency: 'EUR', decimals: 2 });
+  assert.deepEqual(num.config, { format: 'currency', currency: 'EUR', decimals: 2 }, 'absent costume keys stay absent');
+  const dt = core.definitionFromFieldView({ type: 'date', grain: { year: true, month: true, day: false }, format: 'us', pad: true });
+  assert.deepEqual(dt.config, { grain: { year: true, month: true, day: false }, format: 'us', pad: true });
+  const fx = core.definitionFromFieldView({ type: 'formula', expression: 'len(Name)', format: 'number' });
+  assert.equal(fx.config.expression, 'len(Name)');
+  assert.equal(fx.config.format, 'number', 'a formula wears the number costume');
+  const lk = core.definitionFromFieldView({ type: 'lookup', via: 'Deal', targetField: 'Amount' });
+  assert.deepEqual(lk.config, { relationField: 'Deal', targetField: 'Amount', aggregate: undefined });
+  const doc = core.definitionFromFieldView({ type: 'document', kind: 'html' });
+  assert.equal(doc.config.kind, 'html');
+  const att = core.definitionFromFieldView({ type: 'attachments', multiple: false });
+  assert.equal(att.config.multiple, false);
+  const fld = core.definitionFromFieldView({ type: 'field', depth: 2 });
+  assert.equal(fld.config.depth, 2);
+  const dflt = core.definitionFromFieldView({ type: 'text', default: 'x', term: { singular: 'deal', plural: 'deals' } });
+  assert.equal(dflt.config.default, 'x');
+  assert.deepEqual(dflt.config.term, { singular: 'deal', plural: 'deals' });
+});
+
+test('editPatchConfig clears an absent costume key with an explicit null', () => {
+  const def = { type: 'number', config: { format: 'number', decimals: 1 } };
+  const p = core.editPatchConfig({ type: 'number' }, def, {});
+  assert.equal(p.format, 'number');
+  assert.equal(p.decimals, 1);
+  for (const k of ['unit', 'currency', 'separator', 'accounting']) assert.equal(p[k], null, `${k} clears`);
+  const dp = core.editPatchConfig({ type: 'date' }, { type: 'date', config: { grain: { year: true, month: true, day: true } } }, {});
+  for (const k of ['format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) assert.equal(dp[k], null, `${k} clears`);
+});
+
+test('editPatchConfig builds each type\'s patch body', () => {
+  const sel = core.editPatchConfig({ type: 'select' }, { type: 'select', config: { options: [{ name: 'a' }, { name: '  ' }, { name: '' }] } }, {});
+  assert.deepEqual(sel.options, [{ name: 'a' }], 'unnamed options are dropped');
+  const wf = core.editPatchConfig({ type: 'workflow' }, { type: 'workflow', config: { states: [{ name: 'Open' }, { name: ' ' }] } }, {});
+  assert.deepEqual(wf.states, [{ name: 'Open' }], 'unnamed states are dropped');
+  const fx = core.editPatchConfig({ type: 'formula' }, { type: 'formula', config: {} }, { expression: 'len(Name)' });
+  assert.equal(fx.expression, 'len(Name)');
+  const att = core.editPatchConfig({ type: 'attachments' }, { type: 'attachments', config: {} }, { multiple: false });
+  assert.equal(att.multiple, false);
+  const doc = core.editPatchConfig({ type: 'document' }, { type: 'document', config: {} }, { kind: 'html' });
+  assert.equal(doc.kind, 'html');
+  const name = core.editPatchConfig({ type: 'text', role: 'name' }, { type: 'text', config: {} }, {});
+  assert.equal(name.term, null, 'null clears the term');
+  const dflt = core.editPatchConfig({ type: 'text' }, { type: 'text', config: {} }, {});
+  assert.equal(dflt.default, null, 'an emptied input clears the default');
+});

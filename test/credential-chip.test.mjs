@@ -76,13 +76,10 @@ test('reopening a credential column shows the kind it actually has', () => {
      tray reads {type, config}. Without the fold-back every existing column
      reopened saying "API key / weave" — and pressing Save would have written
      that over an SSN column's real config. */
-  const fold = APP.slice(APP.indexOf('const defFromFieldView'));
-  // The arrow body ends at `return { type: f.type, config: c };` — slicing on
-  // the first `};` stopped at `const c = {};` on line one and read nothing.
-  const body = fold.slice(0, fold.indexOf('return { type: f.type'));
-  assert.match(body, /f\.type === 'key'/, 'defFromFieldView handles a credential column');
-  assert.match(body, /c\.kind = f\.kind/, 'and carries its kind back');
-  assert.match(body, /c\.keystore = f\.keystore/, 'and its keystore');
+  // The fold-back moved to field-dialog-core.definitionFromFieldView, where
+  // it is behavior-tested (an SSN/vault column folds back as itself, not the
+  // apikey/local defaults). Here only the dialog's delegation is pinned.
+  assert.match(APP, /fdc\.definitionFromFieldView\(existing\)/, 'the tray reopens a column through the tested fold-back');
 });
 
 test('reveal lives on the entity page, behind a deliberate press', () => {

@@ -596,10 +596,10 @@ test('the field menu edits a field rather than dropping and rebuilding it', () =
   const dlg = fnBody('fieldDialog');
   assert.match(dlg, /'PATCH'/, 'F1: editing a field is a PATCH to /fields/:id');
   assert.doesNotMatch(dlg, /'DELETE'/, 'never delete-and-recreate — that drops the column data');
-  const patchCfg = fnBody('editPatchConfig');
-  assert.match(patchCfg, /options/, 'the editor reaches the type config, not just the name');
-  assert.match(patchCfg, /states/, 'workflow states are editable');
-  assert.match(patchCfg, /expression/, 'formula expressions are editable');
+  // The patch body itself (options/states/expression per type) moved to
+  // field-dialog-core.editPatchConfig — behavior-tested in
+  // field-dialog-core.test.mjs; here only the delegation is pinned.
+  assert.match(dlg, /fdc\.editPatchConfig\(existing, def, state\)/, 'the dialog builds its PATCH through the tested core');
 });
 
 test('deleting a field from the header is guarded and never offered for Name', () => {
@@ -1146,7 +1146,8 @@ test('the field dialogs offer a default value for the types that can hold one', 
     assert.ok(!listed.includes(`'${t}'`), `${t} must not offer one — the engine refuses it`);
   }
   assert.match(fnBody('fieldDialog'), /DEFAULTABLE\.includes/, 'the dialog consults the core list');
-  assert.match(fnBody('editPatchConfig'), /default = c\.default \?\? null/, 'an emptied input clears the default');
+  // an emptied input clearing the default (null, not omission) is
+  // behavior-tested on field-dialog-core.editPatchConfig
   const read = CORE.slice(CORE.indexOf('function typedDefault'), CORE.indexOf('\n  }', CORE.indexOf('function typedDefault')));
   assert.match(read, /checkbox/, 'a checkbox default is a boolean, not the string "true"');
   assert.match(read, /Number\(/, 'a number default is a number');
@@ -1619,7 +1620,8 @@ test('number costume controls: unit for plain numbers, an ISO-code picker for cu
   assert.match(ctl, /fdc\.CURRENCIES/, 'codes come from the tested core list');
   const dlg = fnBody('fieldDialog');
   assert.match(dlg, /numberCostumeControls\(state, drawCfg, changed, \{ label: 'Result format' \}\)/, 'a formula result wears the same costume');
-  assert.match(fnBody('editPatchConfig'), /\['format', 'unit', 'currency', 'decimals', 'separator', 'accounting'\]\) patch\[k\] = c\[k\] \?\? null/, 'currency clears like the other costume keys');
+  // currency clearing like the other costume keys is behavior-tested on
+  // field-dialog-core.editPatchConfig
 });
 
 test('Enter in the date popover commits and closes, time kept', () => {
@@ -2114,7 +2116,7 @@ test('the Name field\'s dialog carries the grouped term picker', () => {
   assert.match(APP, /groups = false, custom = null \}\) \{/, 'searchPicker grew the two options');
   assert.match(fnBody('searchPicker'), /const drawGroups = /, 'grouped text cells are the picker\'s third dialect');
   assert.match(fnBody('searchPicker'), /as a custom term/, 'the custom row names what it does');
-  assert.match(fnBody('editPatchConfig'), /if \(existing\.role === 'name'\) patch\.term = c\.term \?\? null/, 'null clears the term');
+  // null clearing the term is behavior-tested on field-dialog-core.editPatchConfig
   const css = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
   assert.match(css, /\.picker-cell\.picker-term\.on/, 'the chosen term is marked');
 });

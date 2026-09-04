@@ -3821,26 +3821,9 @@ function fieldDialog(db, existing, after) {
   const fdc = fieldDialogCore;
   const isEdit = !!existing;
 
-  const defFromFieldView = (f) => {
-    const c = {};
-    if (f.type === 'select' || f.type === 'multiselect') c.options = f.optionsFull ?? (f.options ?? []).map((n) => ({ name: n, color: '' }));
-    if (f.type === 'workflow') c.states = f.states ?? [];
-    if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting']) { if (f[k] != null) c[k] = f[k]; }
-    if (f.type === 'date' || f.type === 'daterange') for (const k of ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) { if (f[k] != null) c[k] = f[k]; }
-    if (f.type === 'formula') c.expression = f.expression ?? '';
-    if (f.type === 'field') c.depth = f.depth ?? 1;
-    if (f.type === 'attachments') c.multiple = f.multiple !== false;
-    if (f.type === 'document' && f.kind) c.kind = f.kind;
-    // The schema flattens a credential's config onto the field, so the tray
-    // has to fold it back or every existing column reopens claiming to be a
-    // local API key — which is the one wrong answer for an SSN column.
-    if (f.type === 'key') { c.kind = f.kind ?? 'apikey'; c.keystore = f.keystore ?? 'local'; }
-    if (f.type === 'lookup' || f.type === 'rollup') { c.relationField = f.via ?? ''; c.targetField = f.targetField ?? ''; c.aggregate = f.aggregate; }
-    if (f.default !== undefined) c.default = f.default;
-    if (f.term) c.term = { ...f.term };
-    return { type: f.type, config: c };
-  };
-  const state = isEdit ? fdc.stateFromDefinition(defFromFieldView(existing)) : fdc.blankState('text');
+  // The schema flattens a field's config onto the field view; the fold-back
+  // to the canonical {type, config} lives in field-dialog-core — tested there.
+  const state = isEdit ? fdc.stateFromDefinition(fdc.definitionFromFieldView(existing)) : fdc.blankState('text');
   if (isEdit && existing.type === 'formula') state.computed = 'formula';
 
   const nameInput = el('input', {
@@ -4083,41 +4066,13 @@ function fieldDialog(db, existing, after) {
         patch.type = def.type;
         patch.config = def.config;
       } else {
-        patch.config = editPatchConfig(existing, def, state);
+        patch.config = fdc.editPatchConfig(existing, def, state);
       }
       await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(existing.id)}`, patch);
     }
     await loadSchema();
     after();
   }, isEdit ? 'Save changes' : 'Create');
-}
-
-/* The PATCH body per type. The engine merges config keys, so clearing a
-   number/date costume key means sending an explicit null — the canonical
-   minimal def omits defaults, which would silently keep the old value. */
-function editPatchConfig(existing, def, state) {
-  const c = def.config;
-  const patch = {};
-  // The row term is a lane of its own on the Name field: null clears it.
-  if (existing.role === 'name') patch.term = c.term ?? null;
-  if (existing.type === 'number' || existing.type === 'formula') {
-    for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting']) patch[k] = c[k] ?? null;
-  }
-  if (existing.type === 'date' || existing.type === 'daterange') {
-    // Every lane, every time: a null clears (a grain back to full drops the key).
-    for (const k of ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) patch[k] = c[k] ?? null;
-  } else if (existing.type === 'select' || existing.type === 'multiselect') {
-    patch.options = (c.options ?? []).filter((o) => o.name && o.name.trim());
-  } else if (existing.type === 'workflow') {
-    patch.states = (c.states ?? []).filter((s) => s.name && s.name.trim());
-  }
-  if (existing.type === 'formula' && state.expression) patch.expression = state.expression;
-  if (existing.type === 'attachments') patch.multiple = state.multiple !== false;
-  if (existing.type === 'document') patch.kind = state.kind ?? 'markdown';
-  if (fieldDialogCore.DEFAULTABLE.includes(existing.type)) {
-    patch.default = c.default ?? null;
-  }
-  return patch;
 }
 
 /* A field edit redraws the table; the page and the grid must not snap back
