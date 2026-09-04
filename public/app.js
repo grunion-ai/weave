@@ -909,17 +909,6 @@ function personAvatar(f, target) {
   return el('span', { class: `av hue-${chipCore.hueForName(name)}` }, chipCore.initialsFor(name));
 }
 
-function documentFields(db) {
-  return db.fields.filter((f) => f.type === 'document');
-}
-
-/* The description, by the role the schema marks — never by the name, which is
-   Kyle's to change (2026-08-27). Null once he deletes it. */
-function descriptionFieldOf(db) {
-  return db?.fields?.find((f) => f.type === 'document' && f.role === 'description') ?? null;
-}
-
-
 /* What this table is to the slide composer (Feature #118): a table with a
    many-relation named Slides is a deck, a table with a Model document is a
    slide. The same convention the server composes on, read off the schema so

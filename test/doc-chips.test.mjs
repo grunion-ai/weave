@@ -77,7 +77,7 @@ test('a document cell is a named chip that says what kind it holds', () => {
 });
 
 test('the description keeps its first-lines preview; only it previews (Kyle, 2026-08-27)', () => {
-  assert.match(APP, /function descriptionFieldOf\(/, 'the description is found by role, never by the name Kyle can change');
+  assert.doesNotMatch(APP, /name === 'Description'/, 'the description is found by role, never by the name Kyle can change');
   assert.match(APP, /role === 'description'[^]*?docPreviewCell|docPreviewCell[^]*?role === 'description'/,
     'the preview cell is the description role’s alone; every other document is a chip');
 });

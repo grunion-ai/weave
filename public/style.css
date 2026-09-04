@@ -1269,11 +1269,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .filter-chip:hover { border-color: var(--tblr-primary); color: var(--tblr-body-color); }
 .filter-chip.on { border-color: transparent; background: var(--fill, rgba(var(--tblr-primary-rgb), .10));
   color: var(--text, var(--tblr-primary)); font-weight: 600; }
-/* ---------- type-or-pick dates (Feature #44) ---------- */
-.date-cell { display: inline-flex; align-items: center; gap: 2px; }
-.date-cell .date-text { min-width: 90px; }
-.date-cell .date-pick { width: 22px; height: 24px; padding: 0; border: 0; background: none; color: var(--tblr-secondary); cursor: pointer; }
-.date-cell .date-pick::-webkit-calendar-picker-indicator { cursor: pointer; }
 /* ---------- entity dock (one entity surface) ----------
    The split pane the table view opens an entity into: a real layout column
    beside #main, styled as its twin panel — not an overlay. The rules live
