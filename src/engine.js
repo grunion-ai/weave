@@ -3119,6 +3119,7 @@ export class Weave {
     }
     this.save();
     if (!db.system) this.#audit('field-deleted', { table: db.name, name: field.name });
+    return { id: field.id, name: field.name, db: this.qualifiedName(db), deleted: true };
   }
 
   #removeFieldRaw(db, fieldId) {
@@ -4082,6 +4083,7 @@ export class Weave {
     if (removed) this.#recordUndo('comment-delete', e, { comment: removed });
     this.#mark(e);
     this.save();
+    return { id: commentId, deleted: Boolean(removed) };
   }
 
   /* ---------------- the workspace Activity table ----------------
@@ -4244,8 +4246,10 @@ export class Weave {
   }
 
   deleteAutomation(id) {
+    const existed = id in this.state.automations;
     delete this.state.automations[id];
     this.save();
+    return { id, deleted: existed };
   }
 
   #runAutomations(db, e, event, depth) {
@@ -4551,6 +4555,7 @@ export class Weave {
 
   deleteFile(entityId, fileId) {
     const e = this.getEntity(entityId);
+    const had = e.files.some((f) => f.id === fileId);
     e.files = e.files.filter((f) => f.id !== fileId);
     // No ghost pointers: an attachments column loses the file with the file.
     const db = this.state.tables[e.dbId];
@@ -4562,6 +4567,7 @@ export class Weave {
     if (this.state.fileBlobs) delete this.state.fileBlobs[fileId];
     this.#mark(e);
     this.save();
+    return { id: fileId, entity: e.id, deleted: had };
   }
 
   // ---------------- CSV import ----------------
