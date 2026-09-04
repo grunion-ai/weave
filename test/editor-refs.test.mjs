@@ -93,9 +93,16 @@ test('the caret degrades a chip back to literal text', () => {
   assert.match(APP, /selectionchange/, 'caret moves must re-evaluate chips');
 });
 
-test('teardown clears the chip layers with the editors', () => {
-  const teardown = APP.match(/function teardownDocEditors\(\)[^]{0,500}/)[0];
-  assert.match(teardown, /refChipLayers|RefChips/, 'stale layers must not outlive their editor');
+test('teardown clears every decoration registry with the editors', () => {
+  const teardown = APP.match(/function teardownDocEditors\(\)[^]{0,700}/)[0];
+  // The registries scheduleDecorFor feeds are the registries teardown must
+  // empty; docCodeAuto was left out once and its passes outlived the page.
+  const scheduled = APP.match(/function scheduleDecorFor\(host\) \{\s*for \(const s of \[([^\]]+)\]\)/)[1]
+    .split(',').map((n) => n.trim().replace(/^\.\.\./, ''));
+  assert.ok(scheduled.length >= 4, `scheduleDecorFor names the registries: ${scheduled}`);
+  for (const name of scheduled) {
+    assert.match(teardown, new RegExp(`${name}\\.clear\\(\\)`), `${name} must be cleared on teardown`);
+  }
 });
 
 /* ---------- the chip looks like the preview chip and stays clickable ---------- */

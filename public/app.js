@@ -5595,6 +5595,8 @@ function teardownDocEditors() {
     st.layer.remove();
   }
   docFolds.clear();
+  for (const st of docCodeAuto) clearTimeout(st.timer);
+  docCodeAuto.clear();
 }
 
 // Collapse state per entity+field: read with two args, write with three.
