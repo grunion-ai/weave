@@ -905,14 +905,16 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   // the table's do (Kyle, 2026-08-23: "move the entity 3 dots menu to be in
   // line with the breadcrumbs and include the show/hide eye just like on the
   // table view"). The title row is the title.
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*el\('span', \{ class: 'crumb-path' \},[\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, dlBtn, \.\.\.poseControls\)/,
-    'the entity activity toggle, eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
-  // Kyle, 2026-08-23: "create an activity button as well — when clicked it
-  // shows comments and activity in the right panel; by default it is hidden."
-  // The side column is a toggle, remembered per browser, off until asked for.
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*el\('span', \{ class: 'crumb-path' \},[\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, eye, dlBtn, \.\.\.poseControls\)/,
+    'the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
+  /* The side column (comments, activity, references) follows the table's own
+     Activity system toggle — the same switch that adds the ⚡ column to the
+     grid. Kyle, 2026-09-04 (Issue #177): "once visibility is fixed the
+     dedicated activity button is not needed on entity view." The button and
+     its per-browser localStorage memory are gone: one switch, on the table. */
   const body = fnBody('renderEntityView');
-  assert.match(body, /const sideOpen = localStorage\.getItem\('wv-entity-side'\) === '1';/, 'hidden by default, remembered once opened');
-  assert.match(body, /class: 'btn btn-sm activity-btn' \+ \(sideOpen \? ' active-toggle' : ''\)/, 'the button shows its state');
+  assert.match(body, /const sideOpen = \(db\.systemFields \?\? \[\]\)\.includes\('Activity'\);/, 'the column opens with the Activity system field');
+  assert.ok(!body.includes('activity-btn') && !body.includes('wv-entity-side'), 'no second switch, no per-browser memory');
   assert.match(body, /grid\.classList\.toggle\('side-open', sideOpen\)/, 'the grid carries the state');
   assert.equal(rulesFor('.entity-grid')['grid-template-columns'], 'minmax(0, 1fr)', 'one column at rest');
   assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) 320px; \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');
@@ -947,7 +949,7 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
 });
 
 /* Reference panels (Kyle, 2026-09-02): hidden with comments and activity —
-   they live in the entity-side column the Activity button opens, dressed
+   they live in the entity-side column the Activity system toggle opens, dressed
    like Activity, and nothing is fetched until the column is open. The chips
    are the pointer-tier relation chip. The DOM proof — not fetched at rest,
    appears below Activity on the click, hides with the column, remembered per
@@ -2158,6 +2160,15 @@ test('a behind instance raises the toast and tints its chip', () => {
   assert.match(nav, /promote/, 'and the way out');
   const chip = rulesFor('.nav-health.is-behind');
   assert.ok(chip.color, 'the stale chip changes color');
+});
+
+test('the entity page draws the System toggles — one read-only row per systemFields name, Activity excepted (Issue #174)', () => {
+  const body = fnBody('renderEntityView');
+  assert.match(body, /for \(const n of \(db\.systemFields \?\? \[\]\)\) \{\s*\n\s*if \(n === 'Activity' \|\| !SYSTEM_COLS\[n\]\) continue;/,
+    'the page reads the same list the grid reads, and the same formatter');
+  assert.match(body, /class: 'fieldrow fieldrow-system'/, 'a system row is a fieldrow, marked');
+  assert.match(body, /SYSTEM_COLS\[n\]\(entity\)/, 'the value comes off the entity payload, like the grid cell');
+  assert.equal(rulesFor('.fieldrow-system .fieldrow-value').color, 'var(--tblr-secondary)', 'read-only, dressed quiet');
 });
 
 test('the entity name wraps instead of clipping: a content-sized textarea, Enter commits (Issue #175)', () => {

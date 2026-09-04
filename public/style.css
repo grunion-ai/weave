@@ -691,6 +691,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .open-link:hover { color: var(--tblr-primary); }
 .computed .wv-tag { font-size: 10px; color: var(--tblr-secondary); margin-left: 6px; }
 .fieldrow .computed { color: var(--tblr-body-color); }
+.fieldrow-system .fieldrow-value { color: var(--tblr-secondary); font-size: 13px; }
+.fieldrow-system .opt-grip { visibility: hidden; }
 
 /* ---------- entity page ---------- */
 /* The entity head is a .wv-toolbar row, so it must not fight the toolbar's

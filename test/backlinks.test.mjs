@@ -199,7 +199,7 @@ test('GET /api/entities/:ref/references-from serves the outbound refs', async ()
 /* ---------- references live in the side column, house chips ----------
    (Kyle, 2026-09-02): references are hidden from the entity view by default,
    exactly like comments and activity — they live in the entity-side column
-   the Activity button opens, so the resting page never mentions them and
+   the Activity system toggle opens, so the resting page never mentions them and
    nothing is even fetched until the reader asks. The chips are formatted
    exactly like a linked relation chip — the k k-rel span with its k-home
    table badge. Source-level gate. */

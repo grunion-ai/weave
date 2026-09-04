@@ -5571,13 +5571,11 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   // The eye (Feature #114), the table's own: one hidden set per table, so a
   // field hidden here is hidden in the grid and back. No Rows section — a
   // page has no rows to show deleted.
-  // Comments + activity are a side column the reader asks for: off by
-  // default, remembered per browser once opened.
-  const sideOpen = localStorage.getItem('wv-entity-side') === '1';
-  const activityBtn = el('button', {
-    class: 'btn btn-sm activity-btn' + (sideOpen ? ' active-toggle' : ''), title: 'Comments & activity', 'aria-pressed': String(sideOpen),
-    onclick: () => { localStorage.setItem('wv-entity-side', sideOpen ? '0' : '1'); refresh(); },
-  }, `Activity${entity.comments.length ? ` · ${entity.comments.length}` : ''}`);
+  /* Comments + activity + references are a side column, and the switch is
+     the table's Activity system toggle in the eye — the one that adds the ⚡
+     column to the grid. Stored on the table like every visibility choice;
+     the separate button and its per-browser memory went with Issue #177. */
+  const sideOpen = (db.systemFields ?? []).includes('Activity');
   const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields', 'aria-label': 'Show or hide fields' }, eyeGlyph());
   eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false }); });
   /* One entity surface: the full page IS the dock's expanded pose, so its
@@ -5607,7 +5605,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
           class: 'permalink-copy', title: 'Copy permalink',
           onclick: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied'),
         }, `#${entity.publicId} ⧉`)),
-        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
+        el('span', { class: 'crumb-actions wv-toolbar' }, eye, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, nameInput)),
   );
   /* The crumb's table link on the full page means "re-dock", not "leave":
@@ -5837,6 +5835,17 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     }
     node.setAttribute('draggable', 'true');
     values.append(dragRow(node, node, f));
+  }
+  /* The System toggles (Feature #65) reach the page too — Kyle, 2026-09-04
+     (Issue #174): every System row on in the eye, none of them drawn. One
+     read-only row per name, the grid's own formatter, after the fields.
+     Activity is the side column, not a row. */
+  for (const n of (db.systemFields ?? [])) {
+    if (n === 'Activity' || !SYSTEM_COLS[n]) continue;
+    values.append(el('div', { class: 'fieldrow fieldrow-system' },
+      el('span', { class: 'opt-grip', 'aria-hidden': 'true' }),
+      el('label', { class: 'fieldrow-label' }, n),
+      el('span', { class: 'fieldrow-value' }, SYSTEM_COLS[n](entity))));
   }
 
   if (values.childElementCount) {

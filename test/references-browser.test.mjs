@@ -4,8 +4,8 @@
 
    1. Hidden with comments and activity. "References" (what this entity's
       documents mention) and "Referenced by" (who mentions it) live in the
-      entity-side column the Activity button opens — off by default, remembered
-      per browser once opened, exactly the comments/activity contract. The
+      entity-side column the Activity system toggle opens — off by default, stored
+      on the table once flipped, exactly the comments/activity contract. The
       resting page never mentions them, and nothing is even fetched until the
       column is open. They wear the same card dress as Activity and sit below
       it, so the column reads: what people said, what happened, what this
@@ -51,25 +51,27 @@ if (!chromium) {
     server?.close();
   });
 
-  /* Every page is a fresh context — fresh localStorage — so "off by default"
-     is what a first visit sees. `side: true` pre-remembers the column open,
-     the way a browser that opened it once remembers it. */
+  /* `side: true` opens the column the only way it opens: the table's
+     Activity system toggle. Off is what a fresh table sees. */
   const open = async (id, { colorScheme = 'light', side = false } = {}) => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
     page.refRequests = [];
     page.on('request', (r) => { if (/\/references(-from)?$/.test(r.url())) page.refRequests.push(r.url()); });
-    if (side) {
-      // Remembered the way a browser remembers it: written once, then left
-      // alone — an init script would re-arm it on every reload and hide the
-      // very forgetting the tests below look for.
-      await page.goto(`${base}/`, { waitUntil: 'load' });
-      await page.evaluate(() => localStorage.setItem('wv-entity-side', '1'));
-    }
+    /* The column follows the table's Activity system toggle (Issue #177):
+       stored on the table, so every browser sees the same choice. */
+    const db = weave.getEntity(id).dbId;
+    weave.updateTable(db, { systemFields: side ? ['Activity'] : [] });
     await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'load' });
     await page.waitForSelector('.entity-grid');
     return page;
   };
   const card = (page, sel) => page.waitForSelector(sel, { state: 'attached' });
+  /* The switch is the eye's Activity row — the same row that adds the ⚡
+     column to the grid. */
+  const flipActivity = async (page) => {
+    await page.click('.eye-btn');
+    await page.click('.chip-pop .eye-row:has(.eye-label:text-is("Activity"))');
+  };
   const panelTitles = (page) => page.$$eval('.entity-side > .card.panel', (ns) =>
     ns.map((n) => n.querySelector('.card-title')?.textContent));
   const chipStyle = (page, sel) => page.$eval(`${sel} .k.k-rel`, (chip) => {
@@ -91,13 +93,13 @@ if (!chromium) {
     };
   });
 
-  test('references are hidden with comments and activity, and not even fetched, until the Activity button opens the column', async () => {
+  test('references are hidden with comments and activity, and not even fetched, until the Activity toggle opens the column', async () => {
     const page = await open(issue.id);
     await page.waitForTimeout(150); // a fetch that was going to happen has happened by now
     assert.equal(await page.$('.ref-backlinks-card'), null, 'the resting page never mentions references');
     assert.equal(await page.isVisible('.entity-side'), false, 'the side column is closed');
     assert.deepEqual(page.refRequests, [], 'nothing is fetched until the reader asks');
-    await page.click('.activity-btn');
+    await flipActivity(page);
     await card(page, '.ref-outbound-card');
     assert.ok(await page.$eval('.entity-grid', (g) => g.classList.contains('side-open')), 'the column is open');
     assert.equal(await page.isVisible('.ref-outbound-card'), true, 'and the panel shows in it');
@@ -110,18 +112,18 @@ if (!chromium) {
     await page.close();
   });
 
-  test('closing the column hides the references again, and the choice is remembered per browser', async () => {
+  test('closing the column hides the references again, and the choice is remembered on the table', async () => {
     const page = await open(issue.id, { side: true });
     await card(page, '.ref-outbound-card');
-    assert.equal(await page.isVisible('.ref-outbound-card'), true, 'a browser that opened the column once sees references on load');
-    await page.click('.activity-btn');
+    assert.equal(await page.isVisible('.ref-outbound-card'), true, 'a table with Activity on sees references on load');
+    await flipActivity(page);
     await page.waitForSelector('.entity-grid:not(.side-open)');
     assert.equal(await page.$('.ref-backlinks-card'), null, 'closing the column takes the references with it');
     assert.equal(await page.isVisible('.entity-side'), false);
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('.entity-grid');
     await page.waitForTimeout(150);
-    assert.equal(await page.$('.ref-backlinks-card'), null, 'and the next load remembers it closed');
+    assert.equal(await page.$('.ref-backlinks-card'), null, 'and the next load finds it closed — the table remembers, not the browser');
     await page.close();
   });
 
