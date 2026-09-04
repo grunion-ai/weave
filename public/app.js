@@ -2811,8 +2811,8 @@ function renderTable(main, db, items, onSaved) {
     if (e.key !== 'Escape' || !chosen().size) return;
     // A dialog, popover or open cell editor owns Escape first — clearing the
     // selection out from under one of those would answer a keystroke the
-    // reader aimed somewhere else.
-    if (document.querySelector('.chip-pop, .tray-back, .modal-back')) return;
+    // reader aimed somewhere else. The same list the dock defers to.
+    if (document.querySelector(DOCK_ESC_OWNERS)) return;
     clearChosen();
   });
 

@@ -188,6 +188,22 @@ if (!chromium) {
     } finally { await page.close(); }
   });
 
+  test('Escape aimed at a dialog closes the dialog and leaves the selection alone', async () => {
+    // The guard used to look for .tray-back and .modal-back as classes; the
+    // backdrops only ever carry ids, so the guard never matched and the
+    // keystroke that closed the tray also emptied the selection under it.
+    const page = await grid();
+    try {
+      await boxes(page).nth(1).check();
+      await page.click('.add-field-btn');
+      await page.waitForSelector('#tray-back');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('#tray-back'), null, { timeout: 2000 });
+      assert.equal(await page.locator('.wv-grid tbody .sel-box:checked').count(), 1,
+        'the tray took the Escape; the row stays chosen');
+    } finally { await page.close(); }
+  });
+
   /* ── the puck (slice 2) ─────────────────────────────────────────────── */
   test('there is no bar until a row is chosen, and none left once it is cleared', async () => {
     const page = await grid();
