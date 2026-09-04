@@ -46,11 +46,6 @@ const MIME = {
   '.json': 'application/json',
 };
 
-function statusFor(err) {
-  if (!(err instanceof WeaveError)) return 500;
-  return { 'not-found': 404, conflict: 409, invalid: 400, ambiguous: 400 }[err.code] ?? 400;
-}
-
 async function readBody(req) {
   const chunks = [];
   let size = 0;

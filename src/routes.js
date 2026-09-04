@@ -19,7 +19,7 @@ import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
-  return { 'not-found': 404, conflict: 409, invalid: 400, ambiguous: 400 }[err.code] ?? 400;
+  return { 'not-found': 404, conflict: 409, invalid: 400, ambiguous: 400, forbidden: 403 }[err.code] ?? 400;
 }
 
 const STARTED_AT = new Date().toISOString();

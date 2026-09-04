@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { statusFor } from '../src/routes.js';
+import { WeaveError } from '../src/store.js';
 
 let base, server;
 
@@ -244,4 +246,12 @@ test('health reports the running commit and whether main has moved on', async ()
     assert.equal(typeof h.behind, 'boolean', 'behind is a verdict, not a maybe');
     assert.match(h.latestSha ?? '', /^[0-9a-f]{7}$/, 'and names what main is at');
   }
+});
+
+test('every WeaveError code the engine throws has its own HTTP status', () => {
+  const expected = { 'not-found': 404, conflict: 409, invalid: 400, ambiguous: 400, forbidden: 403 };
+  for (const [code, status] of Object.entries(expected)) {
+    assert.equal(statusFor(new WeaveError('x', code)), status, `${code} → ${status}`);
+  }
+  assert.equal(statusFor(new Error('boom')), 500, 'anything that is not a WeaveError is a 500');
 });

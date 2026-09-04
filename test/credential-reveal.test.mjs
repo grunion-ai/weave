@@ -165,3 +165,23 @@ test('a formula cannot launder a secret out through a text column', () => {
   assert.ok(!JSON.stringify(w.exportJSON()).includes('s3cret-value'));
   assert.ok(!JSON.stringify(w.query('Service', { limit: 10 })).includes('s3cret-value'));
 });
+
+test('a reveal the engine refuses answers 403 over HTTP, not 400', async () => {
+  // The engine says 'forbidden'; the status map used to have no entry for it
+  // and fell through to "bad request", which told the caller to fix the
+  // request when the answer was "not yours".
+  const { w } = fresh('kyle');
+  const { token } = w.createAccount({ name: 'sajit', role: 'admin' });
+  w.setKey('stripe', 'sk_live_hush');
+  const { server } = await startServer(w, { port: 0 });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const denied = await fetch(`${base}/api/keys/stripe/reveal`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+    });
+    assert.equal(denied.status, 403);
+    assert.equal((await denied.json()).code, 'forbidden');
+  } finally {
+    server.close();
+  }
+});
