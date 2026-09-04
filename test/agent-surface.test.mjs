@@ -18,71 +18,75 @@ import { TOOLS } from '../src/mcp.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = readFileSync(join(ROOT, 'bin/weave.js'), 'utf8');
 const MCP = readFileSync(join(ROOT, 'src/mcp.js'), 'utf8');
+const ROUTES = readFileSync(join(ROOT, 'src/routes.js'), 'utf8');
 const AGENTS = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
 const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 
 /* capability: engine methods → the MCP tool that reaches them → the CLI
-   command that reaches them. A CLI entry is "<command>" or "<command> <sub>". */
+   command that reaches them → the HTTP routes that reach them. A CLI entry
+   is "<command>" or "<command> <sub>"; an HTTP entry is "<METHOD> <path>"
+   with :ref for a one-segment parameter and :rest for a greedy one, spelled
+   the way routes.js spells them (a literal route string, or the path regex). */
 const SURFACE = [
-  ['schema.describe', ['describeSchema'], 'weave_schema', 'schema'],
-  ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply'],
-  ['vocabulary', [], 'weave_vocabulary', 'vocabulary'],
-  ['space.create', ['createSpace'], 'weave_create_space', 'space create'],
-  ['space.list', ['listSpaces'], 'weave_schema', 'space'],
-  ['space.update', ['updateSpace'], 'weave_update_space', 'space update'],
-  ['space.delete', ['deleteSpace'], 'weave_delete_space', 'space delete'],
-  ['space.restore', ['restoreSpace'], 'weave_restore_space', 'space restore'],
-  ['table.create', ['createTable'], 'weave_create_table', 'table create'],
-  ['table.list', ['listTables'], 'weave_schema', 'table'],
-  ['table.update', ['updateTable'], 'weave_update_table', 'table update'],
-  ['table.move', ['moveTable'], 'weave_move_table', 'table move'],
-  ['table.duplicate', ['duplicateTable'], 'weave_duplicate_table', 'table duplicate'],
-  ['table.delete', ['deleteTable'], 'weave_delete_table', 'table delete'],
-  ['table.restore', ['restoreTable'], 'weave_restore_table', 'table restore'],
-  ['field.add', ['addField', 'materializeField'], 'weave_add_field', 'field add'],
-  ['field.update', ['updateField'], 'weave_update_field', 'field update'],
-  ['field.delete', ['deleteField'], 'weave_delete_field', 'field delete'],
-  ['relation.add', ['addRelation'], 'weave_add_relation', 'relation add'],
-  ['formula.check', ['checkFormula'], 'weave_check_formula', 'formula check'],
-  ['entity.create', ['createEntity'], 'weave_create_entity', 'create'],
-  ['entity.read', ['readEntity', 'getEntity', 'query', 'listEntities'], 'weave_get_entity', 'get'],
-  ['entity.query', ['query'], 'weave_query', 'query'],
-  ['entity.update', ['updateEntity'], 'weave_update_entity', 'update'],
-  ['entity.delete', ['deleteEntity'], 'weave_delete_entity', 'delete'],
-  ['entity.restore', ['restoreEntity'], 'weave_restore_entity', 'restore'],
-  ['entity.trash', ['listTrash'], 'weave_trash', 'trash'],
-  ['entity.link', ['link'], 'weave_link', 'link'],
-  ['entity.unlink', ['unlink'], 'weave_unlink', 'unlink'],
-  ['entity.state', ['setState'], 'weave_set_state', 'state'],
-  ['doc.read', ['getDoc'], 'weave_get_doc', 'doc'],
-  ['doc.write', ['setDoc', 'appendDoc'], 'weave_set_doc', 'doc'],
-  ['comment.add', ['addComment'], 'weave_add_comment', 'comment'],
-  ['comment.delete', ['deleteComment'], 'weave_delete_comment', 'comment delete'],
-  ['search', ['search', 'universalSearch'], 'weave_search', 'search'],
-  ['undo', ['undo', 'listUndo'], 'weave_undo', 'undo'],
-  ['csv.export', ['exportCSV'], 'weave_export_csv', 'csv'],
-  ['csv.import', ['importCSV'], 'weave_import_csv', 'csv import'],
-  ['json.export', ['exportJSON'], 'weave_export_json', 'export'],
-  ['json.import', ['importJSON'], 'weave_import_json', 'import'],
-  ['file.attach', ['attachFile', 'attachToField'], 'weave_attach_file', 'file attach'],
-  ['file.read', ['readFile'], 'weave_files', 'file read'],
-  ['file.delete', ['deleteFile'], 'weave_files', 'file delete'],
-  ['view', ['createView', 'listViews', 'getView', 'deleteView', 'shareView', 'unshareView', 'resolveView'], 'weave_views', 'view'],
-  ['automation.create', ['createAutomation'], 'weave_create_automation', 'automation create'],
-  ['automation.manage', ['listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'], 'weave_automations', 'automation'],
-  ['activity', ['activityFeed', 'getActivity'], 'weave_activity', 'activity'],
-  ['audit', ['listAudit'], 'weave_audit', 'audit'],
-  ['workspace.record', ['getWorkspace', 'updateWorkspace'], 'weave_workspace', 'workspace'],
-  ['workspace.logo', ['setWorkspaceLogo', 'getWorkspaceLogo', 'deleteWorkspaceLogo'], 'weave_workspace', 'workspace logo'],
-  ['accounts', ['createAccount', 'listAccounts', 'deleteAccount', 'setRequireAuth'], 'weave_accounts', 'account'],
-  ['keys', ['setKey', 'listKeys', 'deleteKey'], 'weave_keys', 'key'],
+  ['schema.describe', ['describeSchema'], 'weave_schema', 'schema', ['GET /api/schema']],
+  ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply', ['PUT /api/schema']],
+  ['vocabulary', [], 'weave_vocabulary', 'vocabulary', ['GET /api/vocabulary']],
+  ['space.create', ['createSpace'], 'weave_create_space', 'space create', ['POST /api/spaces']],
+  ['space.list', ['listSpaces'], 'weave_schema', 'space', ['GET /api/spaces']],
+  ['space.update', ['updateSpace'], 'weave_update_space', 'space update', ['PATCH /api/spaces/:ref']],
+  ['space.delete', ['deleteSpace'], 'weave_delete_space', 'space delete', ['DELETE /api/spaces/:ref']],
+  ['space.restore', ['restoreSpace'], 'weave_restore_space', 'space restore', ['POST /api/spaces/:ref/restore']],
+  ['table.create', ['createTable'], 'weave_create_table', 'table create', ['POST /api/tables']],
+  ['table.list', ['listTables'], 'weave_schema', 'table', ['GET /api/tables']],
+  ['table.update', ['updateTable'], 'weave_update_table', 'table update', ['PATCH /api/tables/:ref']],
+  ['table.move', ['moveTable'], 'weave_move_table', 'table move', ['POST /api/tables/:ref/move']],
+  ['table.duplicate', ['duplicateTable'], 'weave_duplicate_table', 'table duplicate', ['POST /api/tables/:ref/duplicate']],
+  ['table.delete', ['deleteTable'], 'weave_delete_table', 'table delete', ['DELETE /api/tables/:ref']],
+  ['table.restore', ['restoreTable'], 'weave_restore_table', 'table restore', ['POST /api/tables/:ref/restore']],
+  ['field.add', ['addField', 'materializeField'], 'weave_add_field', 'field add', ['POST /api/tables/:ref/fields']],
+  ['field.update', ['updateField'], 'weave_update_field', 'field update', ['PATCH /api/tables/:ref/fields/:ref']],
+  ['field.delete', ['deleteField'], 'weave_delete_field', 'field delete', ['DELETE /api/tables/:ref/fields/:ref']],
+  ['relation.add', ['addRelation'], 'weave_add_relation', 'relation add', ['POST /api/tables/:ref/relations']],
+  ['formula.check', ['checkFormula'], 'weave_check_formula', 'formula check', ['POST /api/tables/:ref/formula-check']],
+  ['entity.create', ['createEntity'], 'weave_create_entity', 'create', ['POST /api/tables/:ref/entities']],
+  ['entity.read', ['readEntity', 'getEntity', 'query', 'listEntities'], 'weave_get_entity', 'get', ['GET /api/entities/:ref']],
+  ['entity.query', ['query'], 'weave_query', 'query', ['POST /api/tables/:ref/query']],
+  ['entity.update', ['updateEntity'], 'weave_update_entity', 'update', ['PATCH /api/entities/:ref']],
+  ['entity.delete', ['deleteEntity'], 'weave_delete_entity', 'delete', ['DELETE /api/entities/:ref']],
+  ['entity.restore', ['restoreEntity'], 'weave_restore_entity', 'restore', ['POST /api/entities/:ref/restore']],
+  ['entity.trash', ['listTrash'], 'weave_trash', 'trash', ['GET /api/tables/:ref/trash']],
+  ['entity.link', ['link'], 'weave_link', 'link', ['POST /api/entities/:ref/link']],
+  ['entity.unlink', ['unlink'], 'weave_unlink', 'unlink', ['POST /api/entities/:ref/unlink']],
+  ['entity.state', ['setState'], 'weave_set_state', 'state', ['POST /api/entities/:ref/state']],
+  ['doc.read', ['getDoc'], 'weave_get_doc', 'doc', ['GET /api/entities/:ref/doc']],
+  ['doc.write', ['setDoc', 'appendDoc'], 'weave_set_doc', 'doc', ['PUT /api/entities/:ref/doc', 'POST /api/entities/:ref/doc']],
+  ['comment.add', ['addComment'], 'weave_add_comment', 'comment', ['POST /api/entities/:ref/comments']],
+  ['comment.delete', ['deleteComment'], 'weave_delete_comment', 'comment delete', ['DELETE /api/entities/:ref/comments/:ref']],
+  ['search', ['search', 'universalSearch'], 'weave_search', 'search', ['GET /api/search']],
+  ['undo', ['undo', 'listUndo'], 'weave_undo', 'undo', ['GET /api/undo', 'POST /api/undo']],
+  ['csv.export', ['exportCSV'], 'weave_export_csv', 'csv', ['GET /api/tables/:ref/export.csv']],
+  ['csv.import', ['importCSV'], 'weave_import_csv', 'csv import', ['POST /api/tables/:ref/import.csv']],
+  ['json.export', ['exportJSON'], 'weave_export_json', 'export', ['GET /api/export']],
+  ['json.import', ['importJSON'], 'weave_import_json', 'import', ['POST /api/import']],
+  ['file.attach', ['attachFile', 'attachToField'], 'weave_attach_file', 'file attach', ['POST /api/entities/:ref/files', 'POST /api/entities/:ref/fields/:ref/files']],
+  ['file.read', ['readFile'], 'weave_files', 'file read', ['GET /api/files/:ref']],
+  ['file.delete', ['deleteFile'], 'weave_files', 'file delete', ['DELETE /api/entities/:ref/files/:ref']],
+  ['view', ['createView', 'listViews', 'getView', 'deleteView', 'shareView', 'unshareView', 'resolveView'], 'weave_views', 'view', ['GET /api/views', 'POST /api/views', 'GET /api/views/:ref', 'DELETE /api/views/:ref', 'POST /api/views/:ref/share', 'DELETE /api/views/:ref/share']],
+  ['automation.create', ['createAutomation'], 'weave_create_automation', 'automation create', ['POST /api/automations']],
+  ['automation.manage', ['listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'], 'weave_automations', 'automation', ['GET /api/automations', 'PATCH /api/automations/:ref', 'DELETE /api/automations/:ref']],
+  ['activity', ['activityFeed', 'getActivity'], 'weave_activity', 'activity', ['GET /api/activity', 'GET /api/activity/:rest']],
+  ['audit', ['listAudit'], 'weave_audit', 'audit', ['GET /api/audit']],
+  ['workspace.record', ['getWorkspace', 'updateWorkspace'], 'weave_workspace', 'workspace', ['GET /api/workspace', 'PATCH /api/workspace']],
+  ['workspace.logo', ['setWorkspaceLogo', 'getWorkspaceLogo', 'deleteWorkspaceLogo'], 'weave_workspace', 'workspace logo', ['GET /api/workspace/logo', 'PUT /api/workspace/logo', 'DELETE /api/workspace/logo']],
+  ['accounts', ['createAccount', 'listAccounts', 'deleteAccount', 'setRequireAuth'], 'weave_accounts', 'account', ['GET /api/accounts', 'POST /api/accounts', 'DELETE /api/accounts/:rest']],
+  ['keys', ['setKey', 'listKeys', 'deleteKey'], 'weave_keys', 'key', ['GET /api/keys', 'POST /api/keys', 'DELETE /api/keys/:rest']],
   /* Reveal has no MCP tool ON PURPOSE (Feature #143). A human asking for their
      own credential is the use case; an agent holding a token that can drain
      the keystore is the threat. The CLI and the HTTP surface carry it, both
      behind the credential's own access list, and both audited. */
-  ['keys.reveal', ['revealKey', 'grantKey', 'revokeKey'], null, 'key reveal'],
-  ['registry', ['registryReport', 'rebuildRegistry'], 'weave_registry', 'registry'],
-  ['relation.map', ['relationMapMmd'], 'weave_relation_map', 'map'],
+  ['keys.reveal', ['revealKey', 'grantKey', 'revokeKey'], null, 'key reveal', ['POST /api/keys/:ref/reveal', 'POST /api/keys/:ref/share', 'DELETE /api/keys/:ref/share']],
+  ['registry', ['registryReport', 'rebuildRegistry'], 'weave_registry', 'registry', ['GET /api/registry', 'POST /api/registry/rebuild']],
+  ['relation.map', ['relationMapMmd'], 'weave_relation_map', 'map', ['GET /api/relation-map.mmd']],
 ];
 
 /* Methods that are not capabilities: resolvers an argument already covers,
@@ -137,6 +141,36 @@ test('every capability has a CLI command that exists', () => {
       assert.ok(block.includes(`'${sub}'`), `${capability}: '${command}' has no '${sub}' subcommand`);
     }
   }
+});
+
+/* routes.js matches a literal route as `route === 'GET /api/x'` (or the
+   path alone, `path === '/api/x'`, with the method tested inside) and a
+   parameterised one as `path.match(/^\/api\/x\/([^/]+)$/)`. Spell each
+   SURFACE entry the ways the file would, then look for one of them. */
+function routeSignatures(entry) {
+  const [method, path] = entry.split(' ');
+  if (!path.includes(':')) return [`'${method} ${path}'`, `path === '${path}'`];
+  const src = path.replace(/\//g, '\\/').replace(/\./g, '\\.')
+    .replace(/:ref/g, '([^/]+)').replace(/:rest/g, '(.+)');
+  return [`/^${src}$/`];
+}
+
+test('every capability has an HTTP route that exists', () => {
+  // The MCP and CLI doors were gated from the start; HTTP was not, which is
+  // how registry.* stayed reachable from two doors and absent from the third.
+  for (const [capability, , , , http] of SURFACE) {
+    for (const entry of http) {
+      const sigs = routeSignatures(entry);
+      assert.ok(sigs.some((sig) => ROUTES.includes(sig)), `${capability}: routes.js has no ${entry} (looked for ${sigs.join(' or ')})`);
+    }
+  }
+});
+
+test('the key actions MCP offers are the CLI\'s minus reveal, and nothing else has drifted', () => {
+  const cliList = CLI.match(/Unknown key subcommand '\$\{sub\}'\. Try: ([a-z, ]+)`/)[1].split(', ');
+  const mcpList = MCP.match(/Unknown keys action '\$\{args\.action\}' \(([a-z, ]+)\)/)[1].split(', ');
+  assert.deepEqual(new Set(mcpList), new Set(cliList.filter((a) => a !== 'reveal')),
+    'the two advertised lists are hand-typed in two files; reveal is the only sanctioned difference (Feature #143)');
 });
 
 /* Presence is not parity: a tool can name a capability and still leave half

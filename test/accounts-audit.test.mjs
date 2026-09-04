@@ -92,6 +92,12 @@ test('a Bearer token names the actor and its role gates what it may do', async (
     assert.equal((await call('POST', '/api/spaces', { name: 'Nope' }, writer)).status, 403);
     assert.equal((await call('DELETE', '/api/tables/Task', undefined, writer)).status, 403);
 
+    // The registry is structure: a writer reads the report and cannot rebuild.
+    const report = await call('GET', '/api/registry', undefined, writer);
+    assert.equal(report.status, 200);
+    assert.ok(Array.isArray((await report.json()).problems), 'the report lists its problems');
+    assert.equal((await call('POST', '/api/registry/rebuild', undefined, writer)).status, 403);
+
     // Reader: reads only.
     assert.equal((await call('GET', '/api/schema', undefined, reader)).status, 200);
     assert.equal((await call('POST', '/api/tables/Task/entities', { name: 'X' }, reader)).status, 403);

@@ -147,7 +147,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const read = m2 === 'GET' || m2 === 'HEAD'
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'));
       const schemaWrite = !read && (
-        /^\/api\/(spaces|automations|accounts)/.test(path)
+        /^\/api\/(spaces|automations|accounts|registry)/.test(path)
         // MCP carries every tool, schema tools included — a capped token must
         // not widen itself through the tunnel. Admin (or the edge gate) only.
         || path === '/api/mcp'
@@ -381,6 +381,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/relation-map.mmd') {
           return out(200, weave.relationMapMmd());
         }
+        // The meta-model registries, the third door beside MCP and the CLI.
+        if (route === 'GET /api/registry') return out(200, weave.registryReport());
+        if (route === 'POST /api/registry/rebuild') return out(200, weave.rebuildRegistry());
         if (route === 'GET /api/views') return out(200, weave.listViews());
         if (route === 'POST /api/views') return out(201, weave.createView(body ?? {}));
         if ((m = path.match(/^\/api\/views\/([^/]+)$/))) {

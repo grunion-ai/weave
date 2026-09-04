@@ -119,6 +119,10 @@ as the schema verb — useful when you are already holding an entity tool:
 The dedicated verbs (`weave_update_table`, `weave_update_field`, …) do the same
 work with an argument list instead of a row, and reach the three settings the
 registry has no column for: a table's `icon` and `noun`, and its `systemFields`.
+`weave_registry` (`weave registry`, `GET /api/registry`) reports drift between
+the rows and the structures they mirror; `action: rebuild` (`weave registry
+rebuild`, `POST /api/registry/rebuild`) resyncs them, and counts as a schema
+write for a capped token.
 
 **A schema document round-trips.** `weave_schema` out, edit, `weave_apply_schema`
 back — with `dryRun` first for the plan. Everything the description emits
