@@ -84,5 +84,7 @@ test('the formatting showcase and the icon library use the form themselves', () 
   assert.match(page, /:ring-empty: :ring-quarter: :ring-half-left: :ring-half: :ring-three-quarters: :ring-full:/, 'the rings by their aliases');
   assert.ok((page.match(/^\| :[a-z0-9-]+: \| `lucide:[a-z0-9-]+` \|/gm) || []).length >= 120, 'the gallery draws every icon in the inventory beside its value');
   assert.doesNotMatch(page, /:[^a-z0-9\s|`'][^:\s]*:/, 'no bare-character token anywhere on the page');
-  for (const g of ['load-wave.gif', 'hover.gif', 'picker-scroll.gif']) assert.ok(page.includes(`/showcase/icons/${g}`), `${g} shows the motion a still cannot`);
+  assert.ok(page.includes('/showcase/icons/hover.gif'), 'hover.gif shows the motion a still cannot');
+  for (const g of ['load-wave.gif', 'picker-scroll.gif']) assert.ok(!page.includes(g), `${g} showed a trigger that no longer exists (Issue #192)`);
+  assert.doesNotMatch(page, /plays \*\*once\*\* when the page loads/, 'the Handbook must not promise a load wave (Issue #192)');
 });
