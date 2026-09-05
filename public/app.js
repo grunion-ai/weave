@@ -4071,7 +4071,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
    definition (direction E), both views of the same state object in
    field-dialog-core.js. Any field can be a formula: ƒ is a toggle, not a
    grid tile. The section/grid/list-editor pieces are the house dialog
-   framework — addRelationDialog composes from the same parts. */
+   framework. */
 
 function dsection(label, ...kids) {
   return el('div', { class: 'dlg-sec full' }, el('div', { class: 'dlg-lbl' }, label), ...kids);
@@ -6743,67 +6743,16 @@ function quickCreate(db) {
   });
 }
 
-function openSchemaEditor(db) {
-  const main = $('#main');
-  main.replaceChildren(
-    el('div', { class: 'wv-toolbar' },
-      el('h1', {}, `${db.space} / ${db.name} — fields`),
-      el('button', { class: 'btn btn-sm', onclick: () => showDatabase(db.id) }, '← Back')),
-  );
-  const panel = el('div', { class: 'card panel' });
-  const body = el('div', { class: 'card-body' });
-  const table = el('table', { class: 'table table-sm table-vcenter schema-table' },
-    el('thead', {}, el('tr', {}, el('th', {}, 'Field'), el('th', {}, 'Type'), el('th', {}, 'Details'), el('th', {}, ''))),
-    el('tbody', {}, ...db.fields.map((f) => el('tr', {},
-      el('td', {}, fieldNameLabel(f)),
-      el('td', { class: 'type' }, f.type),
-      el('td', { class: 'type' },
-        f.options ? f.options.join(', ')
-          : f.states ? f.states.map((s) => s.name).join(' → ')
-          : f.targetDbs ? `→ ${f.targetDbs.join(' | ')}${f.many ? ' (many)' : ''}`
-          : f.targetDb ? `→ ${f.targetDb}${f.many ? ' (many)' : ''}`
-          : f.via ? `via ${f.via}${f.targetField ? ` . ${f.targetField}` : ''}${f.aggregate ? ` (${f.aggregate})` : ''}`
-          : f.expression ?? ''),
-      el('td', {}, f.role === 'name' ? '' : holdToConfirm('Delete', async () => {
-        try {
-          await api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`);
-          await loadSchema();
-          openSchemaEditor(allTables().find((d) => d.id === db.id));
-        } catch (err) { toast(err.message, true); }
-      }, { holdingLabel: 'Hold…' }))))));
-  body.append(table,
-    el('div', { style: 'margin-top:12px; display:flex; gap:8px' },
-      el('button', { class: 'btn btn-sm', onclick: () => addFieldDialog(db) }, '+ Field'),
-      el('button', { class: 'btn btn-sm', onclick: () => addRelationDialog(db) }, '+ Relation')));
-  panel.append(body);
-  main.append(panel);
-}
-
 function addFieldDialog(db) {
-  // Back to wherever the add started: the table keeps its scroll, the
-  // schema editor redraws itself.
-  fieldDialog(db, null, () => (state.route?.page === 'db'
-    ? keepScroll(() => showDatabase(db.id, state.route.view))
-    : openSchemaEditor(allTables().find((d) => d.id === db.id))));
+  /* Back to wherever the add started (Issue #196): the table keeps its
+     scroll; every other surface — the Spaces grid on the workspace home,
+     the Tables grid on a space page — redraws its own route. The v0.3.0
+     schema page that used to catch the off-table case is gone. */
+  fieldDialog(db, null, () => keepScroll(() => (state.route?.page === 'db'
+    ? showDatabase(db.id, state.route.view)
+    : renderRoute())));
 }
 
-function addRelationDialog(db) {
-  tray('Add relation', [
-    dsection('Name', el('input', { name: 'name', placeholder: 'Field name (e.g. Project)', class: 'form-control' })),
-    dsection('Target table', pickerSelect({ name: 'targetDb', placeholder: 'Choose a table…', options: allTables().map((d) => ({ id: d.id, label: d.qualified })), value: allTables()[0]?.id ?? null })),
-    dsection('Cardinality', pickerSelect({ name: 'cardinality', value: 'many-to-one', options: ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'].map((c) => ({ id: c, label: c })) })),
-    dsection('Inverse field', el('input', { name: 'inverseName', placeholder: 'Inverse field name (optional)', class: 'form-control' })),
-  ], async (fd) => {
-    await api('POST', `/tables/${db.id}/relations`, {
-      name: fd.get('name'),
-      targetDb: fd.get('targetDb'),
-      cardinality: fd.get('cardinality'),
-      inverseName: fd.get('inverseName') || undefined,
-    });
-    await loadSchema();
-    openSchemaEditor(allTables().find((d) => d.id === db.id));
-  });
-}
 
 /* ---------- related records, rendered as the table they live in ----------
    A collection relation was chips in the Fields panel: enough to see what is
