@@ -1942,8 +1942,11 @@ function viewChipEl(v, { lead = null, tail = null, extra = null, href = null } =
      draws a doc mention: the whole chip stays the link, the ↗ stays its
      last pixel (grid-chrome test 3), and the caret is the one pixel that
      does not navigate. */
-  const a = el('a', { href: href ?? `#/entity/${v.id}`, onclick: (e) => e.stopPropagation() },
-    lead, viewCore.viewTitle(v), tail,
+  /* The name is its own span so a chip in a narrow column can truncate the
+     label alone and keep the badge and the ↗ at its right end (Issue #201);
+     the full name rides in the title. */
+  const a = el('a', { href: href ?? `#/entity/${v.id}`, title: String(v?.name ?? ''), onclick: (e) => e.stopPropagation() },
+    lead, el('span', { class: 'k-label' }, viewCore.viewTitle(v)), tail,
     ...(segs.length ? [
       el('button', {
         type: 'button', class: 'mention-caret', 'aria-expanded': 'false', title: 'Show fields',
