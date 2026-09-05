@@ -91,6 +91,20 @@ test('date config drops iso format, keeps time only when true', () => {
   assert.deepEqual(core.definitionFromState({ type: 'date', date: { format: 'long', time: true } }).config, { format: 'long', time: true });
 });
 
+/* Issue #197: a range default is { start, end } on the wire and JSON text in
+   the dialog state, so the form and the code pane are two views of one
+   string — never '[object Object]', never a string the engine refuses. */
+test('a daterange default round-trips as a range: JSON text in state, an object in the definition', () => {
+  const def = core.definitionFromState({ ...core.blankState('daterange'), default: '{"start":"2026-10-01","end":"2026-10-05"}' });
+  assert.deepEqual(def.config.default, { start: '2026-10-01', end: '2026-10-05' });
+  const state = core.stateFromDefinition({ type: 'daterange', config: { default: { start: '2026-10-01', end: '2026-10-05' } } });
+  assert.equal(state.default, '{"start":"2026-10-01","end":"2026-10-05"}', 'the stored range comes back as text the control can read');
+  assert.deepEqual(core.rangeDefault(state.default), { start: '2026-10-01', end: '2026-10-05' });
+  assert.equal(core.rangeDefault('2026-10-01'), null, 'half a range is no default');
+  assert.equal(core.rangeDefault(''), null);
+  assert.equal(core.definitionFromState({ ...core.blankState('daterange'), default: 'october' }).config.default, undefined, 'free text is not a range default');
+});
+
 test('field type carries depth', () => {
   assert.deepEqual(core.definitionFromState({ type: 'field', depth: 3 }).config, { depth: 3 });
 });

@@ -290,9 +290,21 @@
     view: blankView(),    // view: the chip/card config, whole
   });
 
+  /* A range default rides the dialog state as JSON text — '{"start":…,"end":…}'
+     — and is the object again on the way out. Anything else (the old free
+     text, half a range) is no default at all. */
+  function rangeDefault(raw) {
+    if (raw && typeof raw === 'object') return raw.start && raw.end ? { start: raw.start, end: raw.end } : null;
+    try {
+      const r = JSON.parse(String(raw ?? ''));
+      return r && r.start && r.end ? { start: r.start, end: r.end } : null;
+    } catch { return null; }
+  }
+
   function typedDefault(type, raw) {
     const s = String(raw ?? '').trim();
     if (!s || !DEFAULTABLE.includes(type)) return undefined;
+    if (type === 'daterange') return rangeDefault(s) ?? undefined;
     if (type === 'checkbox') return ['true', 'yes', '1'].includes(s.toLowerCase());
     if (type === 'number') return Number(s);
     if (type === 'multiselect') return s.split(',').map((x) => x.trim()).filter(Boolean);
@@ -442,7 +454,8 @@
       state.aggregate = c.aggregate ?? 'count';
     }
     if (c.default !== undefined && c.default !== null) {
-      state.default = Array.isArray(c.default) ? c.default.join(', ') : String(c.default);
+      state.default = Array.isArray(c.default) ? c.default.join(', ')
+        : typeof c.default === 'object' ? JSON.stringify(c.default) : String(c.default);
     }
     return state;
   }
@@ -590,7 +603,7 @@
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
-    NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
+    NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     blankState, definitionFromState, stateFromDefinition,
     definitionFromFieldView, editPatchConfig,

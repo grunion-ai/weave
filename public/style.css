@@ -1568,17 +1568,16 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .date-cell .date-text { min-width: 0; width: 120px; }
 .date-cell .date-text-wide { width: 200px; }
 /* A range is two date controls sharing one dash (Issue #91). */
-.range-box { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: 100%; }
+/* The range control (Issue #197): one box, one calendar button — the same
+   .date-cell the single date wears, wide enough for both ends. */
 .range-sep { color: var(--tblr-secondary); }
-/* On the record page the range lays out as it always has (the entity grid
-   gives it two tracks and lets the end wrap alone at one column); only the
-   grid cell groups the dash with the end. */
-.range-end { display: contents; }
-.range-compact .range-end { display: inline-flex; align-items: center; gap: 6px; }
-/* In a grid cell the two ends share the column: narrower boxes, same control,
-   and a column too narrow for both wraps the end under the start rather than
-   clipping it (Issue #156). */
-.range-compact .date-text { width: 96px; }
+.range-text { min-width: 200px; }
+/* The range dialog: the span between the two lit ends has a paint of its
+   own, a theme token so dark mode gets its tint. */
+.date-pop.range .date-smart-label { display: inline-block; width: 38px; font-size: 11px; color: var(--tblr-secondary); }
+.date-pop.range .date-pop-smart { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0 6px; }
+.date-pop.range .date-pop-smart .date-smart-preview { grid-column: 2; }
+.date-day.in-range, .date-pick-cell.in-range { background: var(--tblr-active-bg, var(--tblr-bg-surface-secondary)); border-radius: 0; }
 .k-range.is-empty { color: var(--tblr-secondary); }
 .date-pick-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--tblr-secondary); cursor: pointer; }
 .date-pick-btn:hover { color: var(--tblr-body-color); background: var(--tblr-bg-surface-secondary); border-color: var(--tblr-border-color); }
