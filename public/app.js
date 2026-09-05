@@ -897,9 +897,14 @@ function renderNav() {
         toast(`This instance is behind main (${h.sha} → ${h.latestSha}) — run weave service promote`, true);
       }
     }).catch(() => { status.textContent = 'offline'; });
-    document.body.append(status);
+    hubFoot().append(status);
   }
 }
+
+/* The bottom-right utility cluster's lower row: the workspace trash glyph,
+   then the instance tag. One fixed flex box, created by whichever renders
+   first, so the two stay side by side however wide the tag reads. */
+const hubFoot = () => document.querySelector('#hub-foot') ?? document.body.appendChild(el('div', { id: 'hub-foot' }));
 
 /* ---------- shared value rendering ---------- */
 
@@ -7271,16 +7276,18 @@ async function buildWsRail() {
         if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) openMenu(e); });
         return chip;
       }));
-    // The trash: one chip below the workspace list, only while something is
-    // in it, opening a sheet with a Restore per workspace.
+    // The trash: a utility glyph in the corner cluster — under the bug button,
+    // beside the version/uptime tag — only while something is in it, opening
+    // a sheet with a Restore per workspace. It left the chip column because a
+    // chip-sized tile there read as one more workspace (Issue #204).
     $('#ws-trash')?.remove();
     const trashed = (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt);
     if (trashed.length) {
-      listBox.after(el('button', {
-        id: 'ws-trash', class: 'ws-icon ws-trash', type: 'button',
-        title: `Trash — ${trashed.length} workspace${trashed.length === 1 ? '' : 's'}`,
+      hubFoot().prepend(el('button', {
+        id: 'ws-trash', class: 'ws-trash', type: 'button',
+        title: `Trashed workspaces (${trashed.length})`, 'aria-label': `Trashed workspaces (${trashed.length})`,
         onclick: () => showWorkspaceTrash(trashed),
-      }, iconEl('lucide:trash-2', 'wv-icon')));
+      }, iconEl('lucide:trash-2', 'ws-trash-icon')));
     }
   } catch { /* single-workspace hub */ }
 }
@@ -7309,11 +7316,11 @@ function contextMenu(e, items, extraClass = '') {
 
 /* Delete a workspace (Issue #190): soft, through DELETE /api/workspaces/:id,
    confirmed by typing the workspace's name — a hold is too cheap for a whole
-   workspace. The trash chip on the rail is where it comes back from. */
+   workspace. The trash glyph in the bottom-right corner is where it comes back from. */
 function confirmDeleteWorkspace(w, { current = false } = {}) {
   modal(`Delete workspace ${w.name}`, [
     el('p', { class: 'text-secondary', style: 'margin:0 0 8px' },
-      `The workspace moves to the trash — its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities stay on disk and Restore brings it back from the trash chip on the rail. Type `,
+      `The workspace moves to the trash — its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities stay on disk and Restore brings it back from the trash glyph in the bottom-right corner, beside the version tag. Type `,
       el('code', {}, w.name), ' to confirm.'),
     el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off', style: 'width:100%' }),
   ], async (fd) => {

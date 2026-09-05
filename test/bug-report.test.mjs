@@ -549,7 +549,8 @@ test('a toast never covers the report button', () => {
 
 test('the panel does not sit on top of the instance chip it shares a corner with', () => {
   const fab = CSS.match(/\.bug-fab\s*{([^}]*)}/)[1];
-  const health = CSS.match(/\.nav-health\s*{([^}]*)}/)[1];
+  // The version chip sits in the corner cluster's lower row, #hub-foot (Issue #204).
+  const health = CSS.match(/#hub-foot\s*{([^}]*)}/)[1];
   const bottom = (decl) => Number(decl.match(/bottom:\s*(\d+)px/)[1]);
   assert.ok(bottom(fab) > bottom(health), 'the report button stacks above the version chip');
 });
