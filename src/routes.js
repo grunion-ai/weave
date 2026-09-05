@@ -415,6 +415,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/undo') {
           return out(200, weave.listUndo({ limit: Number(rx.searchParams.get('limit') ?? 20) }));
         }
+        /* One write for a whole selection (Feature #132, slice 3): body is
+           { ids, op, ...params }; the reply names what landed and what did not. */
+        if (route === 'POST /api/bulk') {
+          const { ids, op, ...params } = body ?? {};
+          return out(200, weave.bulk(ids, op, params));
+        }
         if (route === 'POST /api/undo') {
           return out(200, weave.undo({ steps: Math.max(1, Number(body?.steps ?? 1)) }));
         }

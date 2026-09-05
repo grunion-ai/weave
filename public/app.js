@@ -1469,18 +1469,14 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     if (r.state) { st = r.state; input.value = st.query; drawChips(); draw(); }
     if (!r.effect) return;
     if (r.effect.type === 'pick') await pick(r.effect.option);
-    else if (r.effect.type === 'close') dismiss();
+    // The Escape that closes the picker is spent: left to bubble it reached
+    // the grid's own listener AFTER the popover was gone, which read "no
+    // owner" and emptied the selection the picker was acting on.
+    else if (r.effect.type === 'close') { ev.stopPropagation(); dismiss(); }
     else if (multi) await commit();
     else dismiss();
   });
   document.body.append(pop);
-  if (anchor?.getBoundingClientRect) {
-    const r = anchor.getBoundingClientRect();
-    pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
-    pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? Math.max(8, r.top - pop.offsetHeight - 4) : r.bottom + 4) + 'px';
-  } else {
-    pop.classList.add('picker-centered');
-  }
   const close = (ev) => {
     if (pop.contains(ev.target)) return;
     removeEventListener('click', close, true);
@@ -1492,6 +1488,48 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   input.focus();
   drawChips();
   draw();
+  // Placed AFTER the list is drawn: a picker that flips above its trigger
+  // (the puck's, at the bottom of the window) measures its full height.
+  anchorPop(pop, anchor);
+  return pop;
+}
+
+/* Where a popover lands: under its trigger, above it when the bottom of the
+   viewport is too close (the puck's pickers always flip, the bar being at the
+   bottom), centered when there is no trigger at all. */
+function anchorPop(pop, anchor) {
+  if (anchor?.getBoundingClientRect) {
+    const r = anchor.getBoundingClientRect();
+    pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
+    pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? Math.max(8, r.top - pop.offsetHeight - 4) : r.bottom + 4) + 'px';
+  } else {
+    pop.classList.add('picker-centered');
+  }
+}
+
+/* The picker's sibling for a value that is typed rather than chosen: one
+   box with the cursor already in it and one button, Return applies. Set a
+   field… reaches for it on a text, number or date field, Roll up… for the
+   new parent's name. Esc and a click elsewhere let it go. */
+function valuePop({ anchor = null, title = '', type = 'text', placeholder = '', apply = 'Apply', onApply }) {
+  document.querySelector('.chip-pop')?.remove();
+  const input = el('input', { class: 'form-control form-control-sm', type, placeholder });
+  const pop = el('div', { class: 'chip-pop picker-pop value-pop' },
+    title ? el('div', { class: 'picker-title' }, title) : null,
+    el('form', {
+      class: 'value-form',
+      onsubmit: async (ev) => { ev.preventDefault(); pop.remove(); await onApply(input.value); },
+    }, input, el('button', { class: 'btn btn-primary btn-sm', type: 'submit' }, apply)));
+  input.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); pop.remove(); anchor?.focus?.(); } });
+  document.body.append(pop);
+  anchorPop(pop, anchor);
+  const close = (ev) => {
+    if (pop.contains(ev.target)) return;
+    removeEventListener('click', close, true);
+    pop.remove();
+  };
+  addEventListener('click', close, true);
+  input.focus();
   return pop;
 }
 
@@ -2928,8 +2966,10 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
      Only commands this release can actually RUN reach it. A designed-but-
      unbuilt button reads as broken rather than forthcoming, so `BUILT` is the
      gate and it grows as slice 3 lands. */
-  const BUILT = ['dup', 'trash'];
+  const BUILT = ['fields', 'link', 'dup', 'more', 'trash'];
+  const MORE_BUILT = ['move', 'rollup', 'copy'];
   const CMD_ICON = { fields: 'lucide:pencil', link: 'lucide:arrow-left-right', dup: '⧉', more: 'lucide:ellipsis', trash: 'lucide:trash-2' };
+  const MORE_ICON = { move: 'send', rollup: 'layers', copy: 'link' };
   const puck = el('div', { class: 'sel-puck-wrap' });
 
   const runOnSelection = async (verb, each) => {
@@ -2946,7 +2986,104 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     await onSaved?.();
   };
 
+  /* Slice 3: one write for the whole selection (POST /api/bulk), the engine
+     reporting per row. The toast says what did NOT land. */
+  const runBulk = async (verb, op, params) => {
+    const ids = [...chosen()];
+    let result;
+    try { result = await api('POST', '/bulk', { ids, op, ...params }); } catch (err) { toast(err.message, true); return; }
+    const t = SEL().bulkToast({ verb, count: ids.length, term: db.term, result });
+    toast(t.msg, t.err);
+    clearChosen();
+    await onSaved?.();
+  };
+  const relations = () => db.fields.filter((f) => f.type === 'relation');
+  const otherTables = () => allTables().filter((t) => !t.system && t.id !== db.id);
+  const nRows = () => SEL().countLabel(chosen().size, db.term);
+  const picker = (anchor, opts) => searchPicker({ anchor, ...opts });
+
+  /* Set a field…: field, then value — the value editor the field's type
+     calls for (state chips, options, a checked/unchecked pair, a typed box). */
+  const setField = (anchor) => picker(anchor, {
+    title: `Set a field on ${nRows()}`, placeholder: 'Search fields…',
+    options: SEL().settableFields(db.fields).map((f) => ({ id: f.name, label: f.name, hint: f.type })),
+    onPick: (o) => setValue(anchor, db.fields.find((f) => f.name === o.id)),
+  });
+  const setValue = (anchor, f) => {
+    const write = (v) => runBulk('Set', 'set', { values: { [f.name]: v } });
+    const title = `${f.name} on ${nRows()}`;
+    if (f.type === 'workflow') {
+      return picker(anchor, { title, placeholder: 'Search states…',
+        options: f.states.map((st) => ({ id: st.name, label: stateLabel(f, st.name), cls: stateChipClass(f, st.name), chip: true })),
+        onPick: (o) => write(o.id) });
+    }
+    if (f.type === 'select') {
+      return picker(anchor, { title, placeholder: 'Search options…',
+        options: [{ id: '—', label: '—' }, ...f.options.map((name) => ({ id: name, label: name, chip: true, cls: `k k-select hue-${chipCore.hueFromHex((f.optionsFull ?? []).find((x) => x.name === name)?.color)}` }))],
+        onPick: (o) => write(o.id === '—' ? null : o.id) });
+    }
+    if (f.type === 'multiselect') {
+      return picker(anchor, { title, placeholder: 'Search options…',
+        options: f.options.map((name) => ({ id: name, label: name, chip: true, cls: `k k-multi hue-${chipCore.hueFromHex((f.optionsFull ?? []).find((x) => x.name === name)?.color)}` })),
+        multi: { selected: [], onCommit: (ids) => write(ids) } });
+    }
+    if (f.type === 'checkbox') {
+      return picker(anchor, { title, placeholder: 'Checked or unchecked…',
+        options: [{ id: 'on', label: 'Checked' }, { id: 'off', label: 'Unchecked' }],
+        onPick: (o) => write(o.id === 'on') });
+    }
+    valuePop({ anchor, title, apply: `Set on ${nRows()}`,
+      type: f.type === 'number' ? 'number' : f.type === 'date' ? (f.time ? 'datetime-local' : 'date') : f.type === 'url' ? 'url' : f.type === 'email' ? 'email' : 'text',
+      onApply: (v) => write(v === '' ? null : v) });
+  };
+
+  /* Link to…: relation, then search the far table, one target. */
+  const relationPicker = (anchor, title, onPick) => picker(anchor, {
+    title, placeholder: 'Search relations…',
+    options: relations().map((f) => ({ id: f.name, label: f.name, hint: f.targetDbs ? f.targetDbs.join(', ') : f.targetDb })),
+    onPick: (o) => onPick(relations().find((f) => f.name === o.id)),
+  });
+  const targetsOf = (f) => (f.targetDbIds ?? [f.targetDbId]).map((tid) => allTables().find((d) => d.id === tid)).filter(Boolean);
+  const linkTo = (anchor) => relationPicker(anchor, `Link ${nRows()} to…`, async (f) => {
+    const targets = targetsOf(f);
+    const lists = await Promise.all(targets.map((t) => api('POST', `/tables/${t.id}/query`, { select: ['Name'] })));
+    picker(anchor, {
+      title: f.name, placeholder: `Search ${termOfTable(f.targetDbId).plural}…`,
+      options: targets.flatMap((t, i) => lists[i].items.map((o) => ({
+        id: o.id, label: o.name || '(unnamed)',
+        hint: f.targetDbIds ? `${t.qualified} · #${o.publicId}` : `#${o.publicId}`,
+      }))),
+      onPick: (o) => runBulk('Linked', 'link', { field: f.name, targets: [o.id] }),
+    });
+  });
+
+  /* The overflow: Move to table…, Roll up…, Copy links. */
+  const MORE_CMDS = {
+    move: (anchor) => picker(anchor, {
+      title: `Move ${nRows()} to…`, placeholder: 'Search tables…',
+      options: otherTables().map((t) => ({ id: t.id, label: t.name, hint: t.space })),
+      onPick: (o) => runBulk('Moved', 'move', { table: o.id }),
+    }),
+    rollup: (anchor) => relationPicker(anchor, `Roll ${nRows()} up through…`, (f) => {
+      const term = termOfTable(f.targetDbId);
+      valuePop({ anchor, title: `New ${term.singular}`, placeholder: 'Name', apply: 'Create & link',
+        onApply: (name) => runBulk('Rolled up', 'rollup', { field: f.name, name }) });
+    }),
+    // Copying spends nothing: the selection stays for whatever comes next.
+    copy: () => copyText([...chosen()].map((id) => `${location.origin}${WS_PREFIX}/e/${id}`).join('\n'),
+      `${SEL().countLabel(chosen().size, db.term)} — links copied`),
+  };
+  const more = (anchor) => picker(anchor, {
+    title: 'More', placeholder: 'Search…',
+    options: moreCmds().map((c) => ({ id: c.id, label: c.label, lucide: MORE_ICON[c.id] })),
+    onPick: (o) => MORE_CMDS[o.id](anchor),
+  });
+  const moreCmds = () => SEL().moreCommands({ built: MORE_BUILT, term: db.term, relations: relations().map((f) => f.name), otherTables: otherTables().length });
+
   const COMMANDS = {
+    fields: setField,
+    link: linkTo,
+    more,
     dup: () => runOnSelection('Duplicated', async (id) => {
       const row = await api('GET', `/entities/${id}`);
       const values = { ...row.fields };
@@ -2965,9 +3102,10 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     if (!sel.size) { puck.replaceChildren(); return; }
     const L = SEL();
     const cmds = L.barCommands({
-      relations: db.fields.filter((f) => f.type === 'relation').map((f) => f.name),
-      writableFields: db.fields.filter((f) => !READONLY_FIELD_TYPES.includes(f.type)).map((f) => f.name),
+      relations: relations().map((f) => f.name),
+      writableFields: L.settableFields(db.fields).map((f) => f.name),
       built: BUILT,
+      more: moreCmds(),
     });
     puck.replaceChildren(el('div', { class: 'sel-puck glass' },
       el('span', { class: 'sel-count' }, L.countLabel(sel.size, db.term)),
@@ -2978,7 +3116,7 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
         el('button', {
           class: 'sel-act' + (c.danger ? ' danger' : ''), type: 'button',
           title: c.label, 'aria-label': c.label,
-          onclick: () => COMMANDS[c.id]?.(),
+          onclick: (ev) => COMMANDS[c.id]?.(ev.currentTarget),
         }, iconEl(CMD_ICON[c.id], 'wv-icon'), el('span', { class: 'sel-tip' }, c.label)),
       ]).flat()));
   };
@@ -6649,6 +6787,7 @@ function activitySummary(a) {
     case 'state-changed': return `${d.field}: ${d.from ?? '—'} → ${d.to}`;
     case 'field-updated': return `${d.field}: ${fmtValue(d.from)} → ${fmtValue(d.to)}`;
     case 'relation-updated': return `${d.field} changed`;
+    case 'moved': return `moved from ${d.from} #${d.publicId}` + (d.skipped?.length ? ` — left behind: ${d.skipped.join(', ')}` : '');
     case 'comment-added': return `comment by ${d.author ?? 'someone'}`;
     case 'file-attached': return `attached ${d.name}`;
     case 'automation-ran': return `automation “${d.name}” ran`;

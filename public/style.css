@@ -293,10 +293,11 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 /* ---------- the puck ----------
    Direction 2 of the five-bars study (Kyle, 2026-08-24): icon only, hover
    labels, a count in an accent pill, trash past a hairline. It floats over the
-   bottom of the grid, so the grid grows a floor while one is up — otherwise
-   the bar covers the last row it is acting on. */
+   bottom of the VIEWPORT (Issue #161: hung off the table's bottom it sat
+   below the fold on any grid taller than the window), and the grid grows a
+   floor while one is up so the bar never covers the last row it acts on. */
 .table-wrap.has-selection { padding-bottom: 62px; }
-.sel-puck-wrap { position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; pointer-events: none; z-index: 3; }
+.sel-puck-wrap { position: fixed; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; pointer-events: none; z-index: 1030; }
 .sel-puck {
   pointer-events: auto; display: flex; align-items: center; gap: 2px;
   padding: 6px; border-radius: 999px; max-width: 100%;
@@ -341,6 +342,10 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
   transition: opacity .12s, transform .12s;
 }
 .sel-act:hover .sel-tip, .sel-act:focus-visible .sel-tip { opacity: 1; transform: translateX(-50%); }
+/* A typed value's popover: one box, one button, the picker's shell. */
+.value-pop { min-width: 260px; }
+.value-form { display: flex; gap: 6px; padding: 8px; }
+.value-form .form-control { flex: 1; }
 /* ---------- the Ledger grid (Kyle, 2026-08-24 — direction A) ----------
    The grid was a form: every cell wore a control and hovering drew a box
    around each one, so a row read as ruled between its fields. It is a record

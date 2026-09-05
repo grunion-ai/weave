@@ -94,6 +94,19 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' } } },
   },
   {
+    name: 'weave_bulk',
+    description: 'One write for a whole selection. op "set" writes values across every id; "link" links every id to targets through field; "move" re-creates each id in table by field name (same name, same type — unmatched fields, files and comments stay behind and are named in moved[].skipped) and trashes the original; "rollup" creates one parent (name/values) in field\'s target table (or table) and links every id to it. Each row is its own attempt: done names what landed, failed names what did not and why. Each row keeps its own undo step.',
+    inputSchema: { type: 'object', properties: {
+      ids: { type: 'array', items: { type: 'string' } },
+      op: { type: 'string', enum: ['set', 'link', 'move', 'rollup'] },
+      values: { type: 'object', description: 'set: the values to write; rollup: the parent\'s values' },
+      field: { type: 'string', description: 'link / rollup: the relation field' },
+      targets: { type: 'array', items: { type: 'string' }, description: 'link: the rows to link to' },
+      table: { type: 'string', description: 'move: the destination; rollup: overrides the relation\'s target table' },
+      name: { type: 'string', description: 'rollup: the new parent\'s name' },
+    }, required: ['ids', 'op'] },
+  },
+  {
     name: 'weave_set_state',
     description: 'Move an entity to a workflow state (multistate field).',
     inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, state: { type: 'string' } }, required: ['entity', 'field', 'state'] },
@@ -415,6 +428,10 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_undo':
       if (args.list) return { history: weave.listUndo({ limit: Number(args.limit ?? 20) }) };
       return weave.undo({ steps: Math.max(1, Number(args.steps ?? 1)) });
+    case 'weave_bulk': {
+      const { ids, op, ...params } = args;
+      return weave.bulk(ids, op, params);
+    }
     case 'weave_set_state':
       weave.setState(args.entity, args.field, args.state);
       return weave.readEntity(args.entity);

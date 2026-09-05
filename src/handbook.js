@@ -820,9 +820,23 @@ Because a bare cell click already means *edit this cell*, it cannot also mean *c
 
 A selection is a set of **records**, not of positions: sort the table and the same rows stay chosen. Rows that leave the page — trashed, filtered out — leave the selection with them. Trashed rows carry no box at all.
 
-Once a row is chosen, a bar floats over the bottom of the grid saying how many it holds. It carries **Duplicate** and, past a hairline, **Move to trash**. The bar shows only commands that can run, so it grows as more of them are built.
+Once a row is chosen, a bar sits at the bottom centre of the window saying how many it holds — the window, not the table, so it is in reach on a grid taller than the screen, and the grid keeps a floor under it so the last row is never covered. The bar is contextual: a table with no relation gets no *Link to…*, a workspace with one table gets no *Move to table…*.
 
-Duplicate copies every writable field; computed fields and documents are not copied, because a computed field is a read and recomputes itself on the copy. If part of a bulk command fails, the bar says what did **not** land rather than reporting a success it cannot vouch for.
+| On the bar | What it does |
+| --- | --- |
+| **Set a field…** | pick a field, then a value — state chips, options, checked or unchecked, or a typed box — and it is written across the selection. State is a field like any other here, so a table with two workflow fields needs no second button |
+| **Link to…** | pick a relation, search the far table, pick one row: every chosen row is linked to it |
+| **Duplicate** | copies each row's writable fields; computed fields and documents are not copied, because a computed field is a read and recomputes itself on the copy |
+| **⋯** | the overflow below |
+| **Move to trash** | past a hairline, on its own |
+
+| Under ⋯ | What it does |
+| --- | --- |
+| **Move to table…** | re-creates each row in the chosen table, matching fields by name and type, and trashes the original. Fields the far table lacks, files and comments stay behind — the bar names them |
+| **Roll up into a new …** | pick a relation, name one new parent in its table, and every chosen row is linked to it |
+| **Copy links** | one permalink per chosen row on the clipboard; the selection stays |
+
+Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/bulk\`, \`weave bulk\`, \`weave_bulk\`), reported per row. If part of it fails, the bar says what did **not** land rather than reporting a success it cannot vouch for, and each row keeps its own undo step.
 
 ## Column order, width, and what is on screen at all
 

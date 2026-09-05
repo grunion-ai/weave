@@ -19,13 +19,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let tasks, people, ids = [];
+let tasks, people, ids = [], ann;
 const s = await launch('row selection', (weave) => {
   weave.createSpace({ name: 'Product' });
   people = weave.createTable({ space: 'Product', name: 'Person' });
   tasks = weave.createTable({ space: 'Product', name: 'Task' });
   weave.addField(tasks, { name: 'Estimate', type: 'number' });
+  weave.addField(tasks, { name: 'Status', type: 'workflow', config: { states: [
+    { name: 'Open', category: 'not-started', default: true }, { name: 'Done', category: 'done' }] } });
   weave.addRelation(tasks, { name: 'Owner', targetDb: people, cardinality: 'many-to-one', inverseName: 'Tasks' });
+  ann = weave.createEntity(people, { name: 'Ann' });
+  weave.createEntity(people, { name: 'Bob' });
   // Five rows, named so a sort re-orders them against insertion order —
   // that is what proves the selection is keyed on id and not on position.
   for (const [name, est] of [['Echo', 5], ['Delta', 4], ['Charlie', 3], ['Bravo', 2], ['Alpha', 1]]) {
@@ -218,8 +222,8 @@ if (s) {
       await boxes(page).nth(0).check();
       const labels = await page.locator('.sel-puck .sel-act').evaluateAll(
         (bs) => bs.map((b) => b.getAttribute('aria-label')));
-      assert.deepEqual(labels, ['Duplicate', 'Move to trash'],
-        'Set a field… and Link to… are designed but unbuilt, so they are absent');
+      assert.deepEqual(labels, ['Set a field…', 'Link to…', 'Duplicate', 'More', 'Move to trash'],
+        'slice 3: the full designed set is built');
       // Trash is past a hairline, and it is the only one wearing danger.
       assert.equal(await page.locator('.sel-puck .sel-sep').count(), 1);
       assert.equal(await page.locator('.sel-puck .sel-act.danger').count(), 1);
@@ -255,6 +259,178 @@ if (s) {
         before, { timeout: 4000 });
       assert.equal(await count(), before + 1);
       assert.equal(await page.locator('.sel-puck').count(), 0, 'the bar goes with the selection');
+    } finally { await page.close(); }
+  });
+
+  /* ── the commands (slice 3) ─────────────────────────────────────────── */
+  const act = (page, label) => page.locator(`.sel-puck .sel-act[aria-label="${label}"]`);
+  const pickRow = (page, text) => page.locator('.picker-pop .picker-row', { hasText: text }).first().click();
+
+  test('Set a field… walks field → value and writes one state across the selection', async () => {
+    const page = await grid();
+    try {
+      await boxes(page).nth(0).check();
+      await boxes(page).nth(1).check();
+      await act(page, 'Set a field…').click();
+      // Step one is the field list, search-first (Feature #100), and it
+      // offers no relation, no computed field.
+      await page.waitForSelector('.picker-pop .picker-search:focus');
+      const fields = await page.locator('.picker-pop .picker-row .picker-label').allTextContents();
+      assert.deepEqual(fields, ['Name', 'Estimate', 'Status'], 'Owner is a relation: Link to…\'s, not here');
+      await pickRow(page, 'Status');
+      // Step two: the state chips.
+      await page.waitForSelector('.picker-pop .picker-search:focus');
+      await pickRow(page, 'Done');
+      await page.waitForFunction(() =>
+        document.querySelectorAll('.wv-grid tbody tr.entity-row td[data-field="Status"] button')
+          .length && !document.querySelector('.sel-puck'), null, { timeout: 4000 });
+      const states = await page.locator('.wv-grid tbody tr.entity-row td[data-field="Status"] button').allTextContents();
+      assert.equal(states.filter((t) => /Done/.test(t)).length, 2, 'both chosen rows are Done, the rest untouched');
+      assert.equal(await page.locator('.sel-puck').count(), 0, 'the bar goes with the selection');
+    } finally { await page.close(); }
+  });
+
+  test('Set a field… on a number takes a typed value and applies it on Return', async () => {
+    const page = await grid();
+    try {
+      await boxes(page).nth(2).check();
+      await act(page, 'Set a field…').click();
+      await pickRow(page, 'Estimate');
+      const input = page.locator('.value-pop input');
+      await input.waitFor();
+      assert.ok(await input.evaluate((n) => n === document.activeElement), 'the cursor is already in the box');
+      await input.fill('42');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => !document.querySelector('.sel-puck'), null, { timeout: 4000 });
+      // A number rests as its input, so the value is read off the control.
+      const cells = await page.locator('.wv-grid tbody tr.entity-row td[data-field="Estimate"] input').evaluateAll((ns) => ns.map((n) => n.value));
+      assert.equal(cells.filter((t) => t === '42').length, 1);
+    } finally { await page.close(); }
+  });
+
+  test('Link to… walks relation → target and connects every chosen row', async () => {
+    const page = await grid();
+    try {
+      await boxes(page).nth(3).check();
+      await boxes(page).nth(4).check();
+      await act(page, 'Link to…').click();
+      await page.waitForSelector('.picker-pop .picker-search:focus');
+      await pickRow(page, 'Owner');
+      // The target step searches the far table.
+      await page.waitForSelector('.picker-pop .picker-search:focus');
+      await page.keyboard.type('an');
+      await pickRow(page, 'Ann');
+      await page.waitForFunction(() => !document.querySelector('.sel-puck'), null, { timeout: 4000 });
+      const owners = await page.locator('.wv-grid tbody tr.entity-row td[data-field="Owner"]').allTextContents();
+      assert.equal(owners.filter((t) => /Ann/.test(t)).length, 2);
+    } finally { await page.close(); }
+  });
+
+  test('Escape closes a puck picker and leaves the selection alone', async () => {
+    // The picker removed itself on Escape and the same keystroke then reached
+    // the grid's listener, which saw no popover and emptied the selection.
+    const page = await grid();
+    try {
+      await boxes(page).nth(0).check();
+      await act(page, 'Set a field…').click();
+      await page.waitForSelector('.picker-pop .picker-search:focus');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.picker-pop'), null, { timeout: 2000 });
+      assert.equal(await page.locator('.wv-grid tbody .sel-box:checked').count(), 1, 'the picker took the Escape');
+      await act(page, 'Set a field…').click();
+      await pickRow(page, 'Estimate');
+      await page.locator('.value-pop input').waitFor();
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.value-pop'), null, { timeout: 2000 });
+      assert.equal(await page.locator('.wv-grid tbody .sel-box:checked').count(), 1, 'so did the value box');
+    } finally { await page.close(); }
+  });
+
+  test('⋯ opens the overflow: Move to table…, Roll up…, Copy links', async () => {
+    const page = await grid();
+    try {
+      await boxes(page).nth(0).check();
+      await act(page, 'More').click();
+      await page.waitForSelector('.picker-pop .picker-search:focus');
+      const rows = (await page.locator('.picker-pop .picker-row .picker-label').allTextContents()).map((t) => t.trim());
+      assert.deepEqual(rows, ['Move to table…', 'Roll up into a new record…', 'Copy links']);
+    } finally { await page.close(); }
+  });
+
+  test('Copy links puts one permalink per chosen row on the clipboard', async () => {
+    const page = await grid();
+    try {
+      await page.evaluate(() => {
+        window.__copied = null;
+        navigator.clipboard.writeText = async (t) => { window.__copied = t; };
+      });
+      await boxes(page).nth(0).check();
+      await boxes(page).nth(1).check();
+      await act(page, 'More').click();
+      await pickRow(page, 'Copy links');
+      await page.waitForFunction(() => window.__copied != null, null, { timeout: 4000 });
+      const lines = (await page.evaluate(() => window.__copied)).split('\n');
+      assert.equal(lines.length, 2);
+      assert.ok(lines.every((l) => /^http:\/\/127\.0\.0\.1:\d+\/e\/[0-9a-f-]{36}$/.test(l)), `permalinks: ${lines.join(' ')}`);
+      assert.equal(await page.locator('.sel-puck').count(), 1, 'copying does not spend the selection');
+    } finally { await page.close(); }
+  });
+
+  test('Roll up… creates one parent in the relation\'s table and links the selection to it', async () => {
+    const page = await grid();
+    try {
+      await boxes(page).nth(0).check();
+      await boxes(page).nth(1).check();
+      await act(page, 'More').click();
+      await pickRow(page, 'Roll up');
+      await page.waitForSelector('.picker-pop .picker-search:focus');
+      await pickRow(page, 'Owner');
+      const input = page.locator('.value-pop input');
+      await input.waitFor();
+      await input.fill('Carol');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => !document.querySelector('.sel-puck'), null, { timeout: 4000 });
+      const owners = await page.locator('.wv-grid tbody tr.entity-row td[data-field="Owner"]').allTextContents();
+      assert.equal(owners.filter((t) => /Carol/.test(t)).length, 2);
+    } finally { await page.close(); }
+  });
+
+  test('Move to table… re-homes the rows and they leave this grid', async () => {
+    const page = await grid();
+    try {
+      const count = () => page.locator('.wv-grid tbody tr.entity-row').count();
+      const before = await count();
+      await boxes(page).nth(0).check();
+      await act(page, 'More').click();
+      await pickRow(page, 'Move to table');
+      await page.waitForSelector('.picker-pop .picker-search:focus');
+      const tables = await page.locator('.picker-pop .picker-row .picker-label').allTextContents();
+      assert.ok(tables.includes('Person') && !tables.includes('Task'), `other tables only: ${tables}`);
+      await pickRow(page, 'Person');
+      await page.waitForFunction((n) =>
+        document.querySelectorAll('.wv-grid tbody tr.entity-row').length === n - 1, before, { timeout: 4000 });
+      assert.equal(await count(), before - 1);
+    } finally { await page.close(); }
+  });
+
+  /* ── Issue #161 · the bar is fixed to the viewport, not the table ───── */
+  test('the bar sits at the bottom centre of the viewport even when the table runs off it', async () => {
+    const page = await browser.newPage({ viewport: { width: 1100, height: 260 } });
+    try {
+      await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      await boxes(page).nth(0).check();
+      await page.waitForSelector('.sel-puck');
+      // Let the 14px rise land before measuring where the bar rests.
+      await page.locator('.sel-puck').evaluate((n) => Promise.all(n.getAnimations().map((a) => a.finished)));
+      const geo = await page.evaluate(() => {
+        const p = document.querySelector('.sel-puck').getBoundingClientRect();
+        const last = [...document.querySelectorAll('.wv-grid tbody tr.entity-row')].at(-1).getBoundingClientRect();
+        return { bottom: p.bottom, cx: (p.left + p.right) / 2, w: innerWidth, h: innerHeight, lastBottom: last.bottom };
+      });
+      assert.ok(geo.lastBottom > geo.h, 'the table runs past the viewport');
+      assert.ok(geo.h - geo.bottom >= 8 && geo.h - geo.bottom <= 24, `the bar hugs the viewport bottom (${geo.h - geo.bottom}px)`);
+      assert.ok(Math.abs(geo.cx - geo.w / 2) < 2, `the bar is centred on the viewport (${geo.cx} vs ${geo.w / 2})`);
     } finally { await page.close(); }
   });
 

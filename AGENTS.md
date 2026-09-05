@@ -66,7 +66,7 @@ Point an MCP client at the stdio server:
 }
 ```
 
-Fifty tools, grouped. Every one of them reaches something the web UI can
+Fifty-one tools, grouped. Every one of them reaches something the web UI can
 do — there is no configuration that needs a browser, and none that needs a
 human.
 
@@ -79,6 +79,7 @@ human.
 | Whole schema | `weave_apply_schema` |
 | Entities | `weave_query`, `weave_get_entity`, `weave_create_entity`, `weave_update_entity`, `weave_delete_entity`, `weave_restore_entity`, `weave_trash`, `weave_undo` |
 | Relations & state | `weave_link`, `weave_unlink`, `weave_set_state` |
+| Many rows at once | `weave_bulk` — set values, link, move to another table, or roll up into a new parent across a list of ids; the reply names what did not land |
 | Documents & comments | `weave_get_doc`, `weave_set_doc`, `weave_add_comment`, `weave_delete_comment` |
 | Search & data | `weave_search`, `weave_export_csv`, `weave_import_csv`, `weave_export_json`, `weave_import_json` |
 | Files | `weave_attach_file`, `weave_files` |
@@ -139,7 +140,7 @@ workspace. Every MCP tool has a command:
 | --- | --- | --- |
 | `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
 | `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` |
-| `weave map` | `weave field add` / `weave field update` / `weave field delete` | `weave link` / `weave unlink` / `weave state` |
+| `weave map` | `weave field add` / `weave field update` / `weave field delete` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
 | `weave registry` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
 | `weave audit` | `weave view` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |

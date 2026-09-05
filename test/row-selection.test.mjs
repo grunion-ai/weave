@@ -106,7 +106,7 @@ test('the count speaks the table\'s row term, singular at one — the puck says 
   assert.equal(SEL.countLabel(12), '12 records');
   assert.equal(SEL.countLabel(1, { singular: 'deal', plural: 'deals' }), '1 deal');
   assert.equal(SEL.countLabel(3, { singular: 'deal', plural: 'deals' }), '3 deals');
-  assert.match(SEL.moreCommands({ term: { singular: 'deal', plural: 'deals' } }).find((c) => c.id === 'rollup').label, /new deal/);
+  assert.match(SEL.moreCommands({ term: { singular: 'deal', plural: 'deals' }, relations: ['P'] }).find((c) => c.id === 'rollup').label, /new deal/);
 });
 
 /* ---------- the puck (slice 2) ----------
@@ -131,5 +131,53 @@ test('with everything built the bar is the full designed set', () => {
 test('the overflow answers to the same rule, and can be empty', () => {
   assert.deepEqual(SEL.moreCommands({ built: ['copy'] }).map((c) => c.id), ['copy']);
   assert.deepEqual(SEL.moreCommands({ built: [] }), [], 'nothing built, no ⋯');
-  assert.deepEqual(SEL.moreCommands().map((c) => c.id), ['move', 'rollup', 'copy']);
+  assert.deepEqual(SEL.moreCommands({ relations: ['P'] }).map((c) => c.id), ['move', 'rollup', 'copy']);
+});
+
+/* ---------- the commands (slice 3) ----------
+   The overflow is contextual too: Move to table… needs somewhere to move to,
+   Roll up… needs a relation to hang the new parent on, and Copy links always
+   has something to copy. When the overflow is empty, the ⋯ itself leaves the
+   bar — a button that opens nothing is the dead icon the built rule exists
+   to keep off. */
+test('the overflow hides Move to table… when this is the only table, and Roll up… without a relation', () => {
+  const alone = SEL.moreCommands({ relations: [], otherTables: 0 }).map((c) => c.id);
+  assert.deepEqual(alone, ['copy']);
+  const full = SEL.moreCommands({ relations: ['Project'], otherTables: 2 }).map((c) => c.id);
+  assert.deepEqual(full, ['move', 'rollup', 'copy']);
+});
+
+test('an empty overflow takes the ⋯ off the bar', () => {
+  const cmds = SEL.barCommands({ writableFields: ['Name'], more: [] }).map((c) => c.id);
+  assert.ok(!cmds.includes('more'));
+  const withMore = SEL.barCommands({ writableFields: ['Name'], more: [{ id: 'copy' }] }).map((c) => c.id);
+  assert.ok(withMore.includes('more'));
+});
+
+/* Only fields the bulk editor can give ONE value to reach Set a field…:
+   chips, options, a checkbox, a typed value. Relations are Link to…'s,
+   documents are prose, and computed fields are reads. */
+test('settable fields are the ones a single value fits', () => {
+  const fields = [
+    { name: 'Name', type: 'text' }, { name: 'Est', type: 'number' }, { name: 'Due', type: 'date' },
+    { name: 'Status', type: 'workflow' }, { name: 'Kind', type: 'select' }, { name: 'Tags', type: 'multiselect' },
+    { name: 'Done', type: 'checkbox' }, { name: 'Site', type: 'url' }, { name: 'Mail', type: 'email' },
+    { name: 'Owner', type: 'relation' }, { name: 'Body', type: 'document' }, { name: 'Total', type: 'rollup' },
+    { name: 'Twice', type: 'formula' }, { name: 'Files', type: 'attachments' }, { name: 'Token', type: 'key' },
+  ];
+  assert.deepEqual(SEL.settableFields(fields).map((f) => f.name),
+    ['Name', 'Est', 'Due', 'Status', 'Kind', 'Tags', 'Done', 'Site', 'Mail']);
+});
+
+/* The toast after a bulk command says what did NOT land — a half-working
+   command that reports success is how a row goes missing quietly. */
+test('the bulk toast names failures and what a move left behind', () => {
+  const term = { singular: 'task', plural: 'tasks' };
+  const ok = SEL.bulkToast({ verb: 'Set', count: 3, term, result: { done: ['a', 'b', 'c'], failed: [] } });
+  assert.deepEqual(ok, { msg: 'Set 3 tasks', err: false });
+  const bad = SEL.bulkToast({ verb: 'Set', count: 3, term, result: { done: ['a'], failed: [{ id: 'b', error: 'x is not a number' }, { id: 'c', error: 'x is not a number' }] } });
+  assert.equal(bad.err, true);
+  assert.equal(bad.msg, 'Set: 2 of 3 failed — x is not a number');
+  const moved = SEL.bulkToast({ verb: 'Moved', count: 2, term, result: { done: ['a', 'b'], failed: [], moved: [{ skipped: ['Project', 'files'] }, { skipped: ['Project'] }] } });
+  assert.deepEqual(moved, { msg: 'Moved 2 tasks — left behind: Project, files', err: false });
 });

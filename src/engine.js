@@ -641,6 +641,9 @@ const MIN_COLUMN_WIDTH = 60;
 // is treated as a field value, so a flat create behaves like a flat update.
 const CREATE_INPUT_KEYS = new Set(['values', 'name', 'doc', 'docs']);
 
+// What bulk() can do to a selection (Feature #132, slice 3).
+const BULK_OPS = ['set', 'link', 'move', 'rollup'];
+
 export { WeaveError };
 
 function nowISO() {
@@ -3663,6 +3666,107 @@ export class Weave {
     this.#mark(id); // absent from state at save time → row delete
     this.save();
     return { id, purged: true };
+  }
+
+  /* ---------------- bulk (Feature #132, slice 3) ----------------
+     One call for a whole selection: the puck's Set a field…, Link to…,
+     Move to table… and Roll up… each reach the engine here instead of
+     looping rows from the browser. Every row is its own attempt — `done`
+     names what landed, `failed` names what did not and why — because a bulk
+     command that half works and reports success is how a row goes missing
+     quietly. Each row keeps its own undo step and activity entry; the verbs
+     underneath are the single-row ones, so nothing here can drift from them.
+       set    { values }                 one value set written across every row
+       link   { field, targets }         every row linked to the same targets
+       move   { table }                  each row re-created there by field
+                                         name (same name, same type) and the
+                                         original trashed — files, comments
+                                         and unmatched fields stay behind and
+                                         are named in `moved[].skipped`
+       rollup { field, name?, values?, table? }
+                                         one parent created in the relation's
+                                         target table, every row linked to it
+     ponytail: each row saves on its own; one deferred save is the upgrade
+     if a thousand-row selection ever shows up in a profile. */
+  bulk(ids, op, params = {}) {
+    const list = ids == null ? [] : Array.isArray(ids) ? ids : [ids];
+    if (!list.length) throw new WeaveError('ids is required: the rows to act on', 'invalid');
+    if (!BULK_OPS.includes(op)) throw new WeaveError(`Unknown bulk op '${op}' (${BULK_OPS.join(', ')})`, 'invalid');
+    const out = { op, done: [], failed: [] };
+    const each = (fn) => {
+      for (const id of list) {
+        try { fn(this.getEntity(id)); out.done.push(id); } catch (err) { out.failed.push({ id, error: err.message }); }
+      }
+    };
+    switch (op) {
+      case 'set':
+        each((e) => this.updateEntity(e.id, params.values ?? {}));
+        break;
+      case 'link':
+        each((e) => this.link(e.id, params.field, params.targets ?? []));
+        break;
+      case 'move': {
+        const to = this.getTable(params.table);
+        out.moved = [];
+        each((e) => {
+          const from = this.state.tables[e.dbId];
+          if (to.system || from.system) throw new WeaveError('Rows cannot move into or out of a system table', 'invalid');
+          if (to.id === from.id) throw new WeaveError(`Already in ${this.qualifiedName(to)}`, 'invalid');
+          out.moved.push(this.#moveEntity(e, from, to));
+        });
+        break;
+      }
+      case 'rollup': {
+        const first = this.getEntity(list[0]);
+        const db = this.state.tables[first.dbId];
+        const field = this.getField(db.id, params.field);
+        if (field.type !== 'relation') throw new WeaveError(`Field '${field.name}' is not a relation`, 'invalid');
+        const target = params.table ? this.getTable(params.table) : this.state.tables[this.relationTargetDbIds(field)[0]];
+        const parent = this.createEntity(target, { name: params.name, values: params.values ?? {} });
+        each((e) => this.link(e.id, field.name, [parent.id]));
+        out.parent = this.readEntity(parent.id);
+        break;
+      }
+    }
+    return out;
+  }
+
+  /* A row's values, spelled the way another table can read them: option and
+     state NAMES rather than ids (a same-named select on the far table has
+     its own option ids), relation targets as ids. */
+  #portable(e, f) {
+    const raw = e.values[f.id];
+    if (f.type === 'select') return f.config.options.find((o) => o.id === raw)?.name ?? raw;
+    if (f.type === 'multiselect') return (raw ?? []).map((id) => f.config.options.find((o) => o.id === id)?.name ?? id);
+    if (f.type === 'workflow') return f.config.states.find((s) => s.id === raw)?.name ?? raw;
+    return raw;
+  }
+
+  #moveEntity(e, from, to) {
+    const values = {}, docs = {}, skipped = [];
+    for (const f of Object.values(from.fields)) {
+      if (COMPUTED_TYPES.includes(f.type)) continue; // a read; it recomputes over there
+      const raw = f.type === 'document' ? (e.docs[f.id] ?? '') : e.values[f.id];
+      if (raw == null || raw === '' || raw === false || (Array.isArray(raw) && !raw.length)) continue;
+      const tf = Object.values(to.fields).find((x) => x.name === f.name && x.type === f.type);
+      if (!tf) { skipped.push(f.name); continue; }
+      try {
+        if (f.type === 'document') { docs[tf.name] = raw; continue; }
+        const v = this.#portable(e, f);
+        // Checked by the far field's own rule before anything is written, so
+        // a value that does not fit skips its field instead of the whole row.
+        if (tf.type === 'relation') this.#normalizeRelationInput(tf, v);
+        else if (tf.type === 'workflow') { if (!tf.config.states.some((s) => s.name === v)) throw new WeaveError(`'${v}' is not a state of '${tf.name}'`, 'invalid'); }
+        else this.#validateValue(tf, v);
+        values[tf.name] = v;
+      } catch { skipped.push(f.name); }
+    }
+    const made = this.createEntity(to, { values, docs });
+    if (e.files.length) skipped.push('files');
+    if (e.comments.length) skipped.push('comments');
+    this.#logActivity(made, 'moved', { from: this.qualifiedName(from), publicId: e.publicId, skipped });
+    this.deleteEntity(e.id);
+    return { from: e.id, to: made.id, skipped };
   }
 
   restoreEntity(id) {

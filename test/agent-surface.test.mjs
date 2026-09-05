@@ -58,6 +58,7 @@ const SURFACE = [
   ['entity.link', ['link'], 'weave_link', 'link', ['POST /api/entities/:ref/link']],
   ['entity.unlink', ['unlink'], 'weave_unlink', 'unlink', ['POST /api/entities/:ref/unlink']],
   ['entity.state', ['setState'], 'weave_set_state', 'state', ['POST /api/entities/:ref/state']],
+  ['entity.bulk', ['bulk'], 'weave_bulk', 'bulk', ['POST /api/bulk']],
   ['doc.read', ['getDoc'], 'weave_get_doc', 'doc', ['GET /api/entities/:ref/doc']],
   ['doc.write', ['setDoc', 'appendDoc'], 'weave_set_doc', 'doc', ['PUT /api/entities/:ref/doc', 'POST /api/entities/:ref/doc']],
   ['comment.add', ['addComment'], 'weave_add_comment', 'comment', ['POST /api/entities/:ref/comments']],

@@ -124,6 +124,7 @@ Entities
   trash [table]                       Deleted entities, one table or all
   state <ref> <field> <state>         Move workflow state
   link <ref> <field> <target...>
+  bulk <set|link|move|rollup> <ref...> [--values '{json}'] [--field F --targets a,b] [--table T] [--name N]
   unlink <ref> <field> <target...>
 
 Documents (entities can carry several document fields; --field picks one,
@@ -559,6 +560,16 @@ async function main() {
       const e = resolveEntityRef(w, ref, flags.db);
       w.setState(e.id, field, stateParts.join(' '));
       return out(w.readEntity(e.id));
+    }
+    case 'bulk': {
+      // weave bulk <set|link|move|rollup> <ref...> [--values '{json}'] [--field F --targets a,b] [--table T] [--name N]
+      const [op, ...refs] = args;
+      const ids = refs.map((r) => resolveEntityRef(w, r, flags.db).id);
+      const params = pickFlags(['field', 'table', 'name']);
+      const values = parseJsonFlag('values');
+      if (values) params.values = values;
+      if (flags.targets != null) params.targets = splitList(flags.targets);
+      return out(w.bulk(ids, op, params));
     }
     case 'link':
     case 'unlink': {
