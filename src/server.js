@@ -135,6 +135,10 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
           entities: Object.keys(w.state.entities).length,
           logo: !!w.state.meta.logo,
           deletedAt: w.state.meta.deletedAt ?? null,
+          // What the UI may offer a delete on (Issue #190): a hub without
+          // remove() reports nothing deletable, and the two workspaces the
+          // app stands on never are.
+          deletable: !!this.remove && name !== defaultName && name !== 'weave' && !w.state.meta.deletedAt,
         }));
     },
     /* Workspace trash, two rungs (lifecycle gate Phase 0b + Issue #122).

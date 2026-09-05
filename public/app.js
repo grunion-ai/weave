@@ -6621,12 +6621,12 @@ async function showHome() {
   const dbs = allTables();
   let ws = { name: $('#ws-name').textContent || 'workspace', description: '' };
   try { ws = await api('GET', '/workspace'); } catch { /* older server */ }
-  // Deleting a workspace lives on the workspace's own page (Issue #122) —
-  // the same place a space and a table keep their destructive act. The
-  // default and the weave docs workspaces cannot go; theirs shows no menu.
+  // Deleting a workspace lives on the workspace's own page (Issue #122) and
+  // on its rail chip (Issue #190) — the hub says which rows may go; the
+  // default and the weave docs workspaces never do, and theirs shows no menu.
   let wsRow = null;
   try { wsRow = (await api('GET', '/workspaces')).find((w) => w.name === ws.name); } catch { /* single-workspace hub */ }
-  const deletable = wsRow && !wsRow.default && ws.name !== 'weave';
+  const deletable = !!wsRow?.deletable;
   main.replaceChildren(
     viewHeader({
       crumbs: [],
@@ -6641,13 +6641,8 @@ async function showHome() {
       onSaveDescription: async (md) => { await api('PATCH', '/workspace', { description: md }); },
       ...(deletable ? {
         actions: [dotsMenu([{
-          hold: 'Delete workspace', holdingLabel: 'Hold to delete workspace…',
-          run: async () => {
-            try {
-              await api('DELETE', `/workspaces/${wsRow.id}`);
-              location.href = '/';
-            } catch (err) { toast(err.message, true); }
-          },
+          label: 'Delete workspace…', danger: true,
+          run: () => confirmDeleteWorkspace(wsRow, { current: true }),
         }], { title: 'Workspace actions', align: 'right' })],
       } : {}),
     }),
@@ -7046,15 +7041,91 @@ async function buildWsRail() {
         }, w.logo
           ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name })
           : w.name.slice(0, 1).toUpperCase());
-        if (w.name === current) {
-          chip.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            uploadWorkspaceLogo();
-          });
-        }
+        // Right-click: set the logo (current chip) and delete (Issue #190 —
+        // the hub's `deletable` decides; a hosted hub without it offers none).
+        chip.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          const items = [
+            w.name === current ? { label: 'Set logo…', run: uploadWorkspaceLogo } : null,
+            w.deletable ? { label: 'Delete workspace…', danger: true, run: () => confirmDeleteWorkspace(w, { current: w.name === current }) } : null,
+          ].filter(Boolean);
+          if (items.length) contextMenu(e, items, 'ws-ctx');
+        });
         return chip;
       }));
+    // The trash: one chip below the workspace list, only while something is
+    // in it, opening a sheet with a Restore per workspace.
+    $('#ws-trash')?.remove();
+    const trashed = (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt);
+    if (trashed.length) {
+      listBox.after(el('button', {
+        id: 'ws-trash', class: 'ws-icon ws-trash', type: 'button',
+        title: `Trash — ${trashed.length} workspace${trashed.length === 1 ? '' : 's'}`,
+        onclick: () => showWorkspaceTrash(trashed),
+      }, iconEl('lucide:trash-2', 'wv-icon')));
+    }
   } catch { /* single-workspace hub */ }
+}
+
+/* A menu at the pointer, in the dots-menu costume: Escape, a click
+   elsewhere, or picking an item closes it. */
+function contextMenu(e, items, extraClass = '') {
+  contextMenu.close?.();
+  const menu = el('div', { class: `dl-menu wv-ctx ${extraClass}`, style: `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:120` });
+  const close = () => { menu.remove(); removeEventListener('click', away); removeEventListener('keydown', esc); contextMenu.close = null; };
+  const away = (ev) => { if (!menu.contains(ev.target)) close(); };
+  const esc = (ev) => { if (ev.key === 'Escape') close(); };
+  for (const it of items) {
+    menu.append(el('button', {
+      class: 'dropdown-item' + (it.danger ? ' text-danger' : ''), type: 'button',
+      onclick: async () => { close(); await it.run(); },
+    }, it.label));
+  }
+  document.body.append(menu);
+  // A right-click never dispatches `click`, so the listeners can go on now.
+  addEventListener('click', away);
+  addEventListener('keydown', esc);
+  contextMenu.close = close;
+  return menu;
+}
+
+/* Delete a workspace (Issue #190): soft, through DELETE /api/workspaces/:id,
+   confirmed by typing the workspace's name — a hold is too cheap for a whole
+   workspace. The trash chip on the rail is where it comes back from. */
+function confirmDeleteWorkspace(w, { current = false } = {}) {
+  modal(`Delete workspace ${w.name}`, [
+    el('p', { class: 'text-secondary', style: 'margin:0 0 8px' },
+      `The workspace moves to the trash — its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities stay on disk and Restore brings it back from the trash chip on the rail. Type `,
+      el('code', {}, w.name), ' to confirm.'),
+    el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off', style: 'width:100%' }),
+  ], async (fd) => {
+    if (fd.get('confirm') !== w.name) throw new Error(`Type ${w.name} exactly to delete it`);
+    await api('DELETE', `/workspaces/${w.id}`);
+    if (current) { location.href = '/'; return; }
+    toast(`Workspace ${w.name} moved to the trash`, false, {
+      label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); buildWsRail(); },
+    });
+    buildWsRail();
+  }, 'Delete');
+  // A destructive submit wears the danger colour, not the primary one.
+  document.querySelector('#modal button[type="submit"]')?.classList.replace('btn-primary', 'btn-danger');
+}
+
+function showWorkspaceTrash(trashed) {
+  modal('Workspace trash', trashed.map((w) => el('div', { class: 'wv-toolbar', style: 'margin-bottom:6px;gap:8px' },
+    el('span', { style: 'flex:1' }, w.name, ' ', el('span', { class: 'text-secondary' }, `deleted ${new Date(w.deletedAt).toLocaleString()}`)),
+    el('button', {
+      class: 'btn btn-sm', type: 'button',
+      onclick: async () => {
+        try {
+          await api('POST', `/workspaces/${w.id}/restore`);
+          toast(`Workspace ${w.name} restored`);
+          document.querySelector('#modal-back')?.remove();
+          buildWsRail();
+        } catch (err) { toast(err.message, true); }
+      },
+    }, 'Restore'))),
+  async () => {}, 'Done');
 }
 
 // Workspace logo: picked file → base64 → PUT /api/workspace/logo (current

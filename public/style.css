@@ -132,7 +132,10 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .ws-icon.ws-new:hover { border-color: var(--tblr-primary); color: var(--tblr-primary); background: transparent; }
 /* The glyph is the whole content: the .wv-icon label gap would push it
    2.5px left of centre (Issue #191). */
-.ws-icon.ws-new .wv-icon { margin-right: 0; }
+.ws-icon.ws-new .wv-icon, .ws-icon.ws-trash .wv-icon { margin-right: 0; }
+/* The workspace trash (Issue #190): muted until hovered, red on hover so the rail says what it is. */
+.ws-icon.ws-trash { border: 1px dashed var(--wv-canvas-muted); }
+.ws-icon.ws-trash:hover { border-color: var(--tblr-danger); color: var(--tblr-danger); background: transparent; }
 .ws-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 /* Pinned weave chip: the bare rope mark, larger than workspace chips
    (also when active — .ws-icon.active must not repaint it). The mark fills

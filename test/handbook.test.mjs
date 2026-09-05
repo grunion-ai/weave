@@ -116,7 +116,7 @@ test('the customization guide covers what a reader can change', () => {
   assert.ok(guide, 'there is no customization guide');
   for (const topic of [
     'lucide:', 'noun', 'side peek', 'board', 'saved view', 'audit',
-    '260px', 'Created At', 'costume', 'relation map', 'automation',
+    '260px', 'Created At', 'costume', 'relation map', 'automation', 'delete the workspace', 'trash',
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the customization guide never mentions ${topic}`);
   }

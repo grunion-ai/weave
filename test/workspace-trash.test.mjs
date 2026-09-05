@@ -115,3 +115,30 @@ test('a deleted name cannot be re-created while it sits in the trash', async () 
     assert.match(res.data.error, /trash/i);
   });
 });
+
+/* Issue #190: the UI needs to know which rows it may offer a delete on, and
+   it addresses workspaces by durable id, so the routes must take the id. */
+test('the hub list says which workspaces are deletable: never the default, never weave', async () => {
+  await withHub(async ({ api }) => {
+    await api('POST', '/api/workspaces', { name: 'scratch' });
+    await api('POST', '/api/workspaces', { name: 'weave' });
+    const byName = Object.fromEntries((await api('GET', '/api/workspaces')).data.map((w) => [w.name, w]));
+    assert.equal(byName.main.deletable, false, 'the default workspace is not deletable');
+    assert.equal(byName.weave.deletable, false, 'the weave docs workspace is not deletable');
+    assert.equal(byName.scratch.deletable, true, 'a sibling workspace is deletable');
+    assert.equal((await api('DELETE', '/api/workspaces/weave')).status, 400);
+  });
+});
+
+test('delete and restore accept the durable id as well as the name', async () => {
+  await withHub(async ({ api }) => {
+    await api('POST', '/api/workspaces', { name: 'scratch' });
+    const { id } = (await api('GET', '/api/workspaces')).data.find((w) => w.name === 'scratch');
+    assert.equal((await api('DELETE', `/api/workspaces/${id}`)).status, 200);
+    const trashed = (await api('GET', '/api/workspaces?deleted=1')).data.find((w) => w.id === id);
+    assert.ok(trashed?.deletedAt, 'trashed by id');
+    assert.equal(trashed.deletable, false, 'a trashed row is not offered for deletion again');
+    assert.equal((await api('POST', `/api/workspaces/${id}/restore`)).status, 200);
+    assert.ok((await api('GET', '/api/workspaces')).data.some((w) => w.id === id), 'restored by id');
+  });
+});
