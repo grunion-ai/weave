@@ -168,9 +168,9 @@ const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: 
      quietly slide onto different records. */
   selected: new Map() };
 
-// Single entry point for opening an entity. The page IS the destination
-// (Feature #117): a row click lands here; the side peek below is kept for
-// callers that want a slide-over on top of a page, not as a row target.
+// Single entry point for opening an entity as a PAGE (Feature #117). From
+// the grid, the #id link and ⌘Return open the record in the dock instead;
+// the side peek is gone (2026-09-02), and nothing here reaches for it.
 function openEntity(id) { location.hash = `#/entity/${id}`; }
 
 /* ---------- the clicks the browser owns (Issue #134) ----------
@@ -1235,7 +1235,10 @@ function rememberGridFocus() {
   try {
     if (at.selectionStart != null) caret = [at.selectionStart, at.selectionEnd];
   } catch { /* number and date inputs refuse to be asked */ }
-  state.refocus = { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell), caret };
+  /* Cells rest as values (Feature #134): focus on the <td> itself is the
+     resting cursor, focus on something inside it is an open cell. The redraw
+     puts back whichever it found. */
+  state.refocus = { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell), caret, open: at !== cell };
 }
 
 /* Put focus back on the cell that triggered a redraw (see showPopover). */
@@ -1245,12 +1248,15 @@ function restoreGridFocus() {
   if (!want) return;
   requestAnimationFrame(() => {
     const td = $(`tr[data-eid="${want.eid}"]`)?.children[want.col];
+    if (!td) return;
+    // A resting cursor comes back as a resting cursor: the cell is the stop.
+    if (want.open === false) return td.focus();
     /* Not every cell holds a form control: a description preview, a dressed
        number and a marked-up text value all rest as a `tabindex` span and
        become their input on demand. Leaving those out is how focus still
        landed on <body> for the column the reader tabbed into most (#83). */
-    const box = td?.querySelector('button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
-    if (!box) return;
+    const box = td.querySelector('button,input,select,textarea,[tabindex]');
+    if (!box) return td.focus();
     box.focus();
     // Landing the caret where it was, for the same reason activateCell does:
     // a bare focus() leaves a text input selected whole in some browsers, and
@@ -1634,7 +1640,10 @@ function activateCell(cell) {
     case 'open-picker': return (cell.querySelector('.chip-trigger') ?? cell.querySelector('.ms-box'))?.click();
     case 'open-button': return cell.querySelector('button')?.click();
     default: {
-      const input = cell.querySelector('input, select');
+      let input = cell.querySelector('input, select');
+      // A dressed number or marked-up text rests as a span that swaps its
+      // input in on click; opening the cell from a key goes through it.
+      if (!input) { cell.querySelector('.num-dressed, .text-dressed')?.click(); input = cell.querySelector('input, select'); }
       if (!input) return;
       input.focus();
       // Placing the cursor is the point — a bare focus() leaves a text input
@@ -2363,7 +2372,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
    A document that is not prose is named, not flattened: docPreview hands back
    a label for an HTML app, a JSON model or a mermaid diagram, and the cell
    wears it as the chip's kind rather than pretending a doctype is a sentence.
-   Clicking opens the side peek, never an inline input — a document is not
+   Clicking opens the dock, never an inline input — a document is not
    edited in a cell (Issue #74). */
 function docPreviewCell(md, name, onOpen) {
   const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md);
@@ -2653,8 +2662,12 @@ function drawDatabase(db, items, trashCount = 0) {
     await loadSchema();
     const fresh = await api('POST', `/tables/${db.id}/query`, {});
     drawDatabase(db, fresh.items);
-    requestAnimationFrame(() =>
-      $(`tr[data-eid="${created.id}"]`)?.querySelector('td:nth-child(2) input')?.focus());
+    // The first FIELD cell: the box and the #id link come before it. Opened,
+    // with the (empty) value selected, so the reader types the name straight in.
+    requestAnimationFrame(() => {
+      const td = $(`tr[data-eid="${created.id}"]`)?.querySelector('td[data-field]');
+      if (td) { activateCell(td); td.querySelector('input')?.select(); }
+    });
   };
 
   renderTable(main, db, items, onSaved);
@@ -2956,7 +2969,12 @@ function renderTable(main, db, items, onSaved) {
              the row's own prose and one click opens it (Kyle, 2026-08-27), so
              it takes the plain cell every text value takes. */
           const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
-            : (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') ? ' cell-computed' : '';
+            : (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') ? ' cell-computed'
+            /* A document chip is not a cell: it opens the record, it holds
+               no value the grid edits, so the arrows and Tab pass over it
+               (Feature #134, the open question, decided 2026-09-05). The
+               description is the row's own prose and stays a stop. */
+            : (f.type === 'document' && f.role !== 'description') ? ' cell-nostop' : '';
           return el('td', {
             dataset: { ftype: f.type, field: f.name },
             // The leading column carries the row's identity — Name by default,
@@ -3045,6 +3063,15 @@ function renderTable(main, db, items, onSaved) {
         // Adding a field lives where the fields are: the end of the header bar.
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db)))),
       tbody);
+    /* Cells rest as values (Feature #134): the CELL is the focus stop and
+       nothing inside it is. Tab lands on every field cell — select, multi-
+       select, checkbox and date included, which the browser's own order
+       skipped or fell through to its chrome from (Issue #84) — and the
+       keymap below decides what a key means from there. A document chip
+       column is passed over; the box and the #id link are pointer targets,
+       with Space and ⌘Return their keys. */
+    for (const td of table.querySelectorAll('tbody tr.entity-row > td[data-field]:not(.cell-nostop)')) td.tabIndex = 0;
+    for (const n of table.querySelectorAll('tbody tr.entity-row td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     wrap.replaceChildren(table, puck);
     // A row that left the page — trashed, filtered out, sorted away — is no
     // longer selected. Done after the draw so it reads the rows that exist.
@@ -3057,6 +3084,84 @@ function renderTable(main, db, items, onSaved) {
     markDockedRow();
   };
   draw();
+
+  /* ---------- the keymap (Feature #134, REST) ----------
+     One listener, one pure core (public/grid-keymap.js). Rest is focus on
+     the <td>; open is a live text control inside it. A picker's popover
+     and a chip button both count as rest — Return opens or reopens them,
+     the arrows walk on. Tab never leaves the grid (Issue #84): the end of
+     the last row is the end. */
+  const KM = () => globalThis.WeaveGridKeymap;
+  const OPEN_CONTROLS = 'input:not([type="checkbox"]), select, textarea, [contenteditable]';
+  const stops = (row) => [...row.querySelectorAll(':scope > td[tabindex="0"]')];
+  const rowsOf = () => [...wrap.querySelectorAll('tbody tr.entity-row')];
+  // What Return does on this cell, or null when nothing here opens: the
+  // field type's own activation, else the description's preview.
+  const openerOf = (td) => {
+    if (globalThis.WeaveEditorLib.cellActivation(td.dataset.ftype) !== 'none') return () => activateCell(td);
+    const preview = td.querySelector('.doc-preview');
+    return preview ? () => preview.click() : null;
+  };
+  const cellAt = (r, c) => stops(rowsOf()[r])?.[c] ?? null;
+  const landOn = (td, verb) => {
+    const rows = rowsOf();
+    const row = td.parentElement;
+    const r = rows.indexOf(row), c = stops(row).indexOf(td);
+    const to = KM().step({ r, c, rows: rows.length, cols: stops(row).length }, verb);
+    // Focusing the next cell blurs the open one, which is what commits it.
+    (to ? cellAt(to.r, to.c) : td)?.focus();
+  };
+  const apply = (verb, td, at) => {
+    const eid = td.parentElement.dataset.eid;
+    switch (verb.type) {
+      case 'move': case 'commitMove': landOn(td, verb); return true;
+      case 'edit': {
+        const activation = globalThis.WeaveEditorLib.cellActivation(td.dataset.ftype);
+        // A character does not flip a checkbox; Return does.
+        if (verb.select === 'replace' && activation === 'toggle') return true;
+        openerOf(td)?.();
+        const input = td.querySelector(OPEN_CONTROLS);
+        if (input && input === document.activeElement) {
+          try { input.select(); } catch { /* not a text box */ }
+          // 'replace': the key that opened the cell is the first character
+          // typed into it — the browser delivers it to the input focus just
+          // moved to, so the default is kept.
+          return verb.select !== 'replace';
+        }
+        return true;
+      }
+      case 'revert': {
+        if ('defaultValue' in at) at.value = at.defaultValue;
+        td.focus();
+        return true;
+      }
+      case 'open': dockEntity(db, eid); return true;
+      case 'newRow': state.inlineAdd?.(); return true;
+      case 'toggleSelect': anchor = eid; setChosen(SEL().toggle(chosen(), eid)); return true;
+      case 'extendSelect': {
+        const out = KM().extend({ ids: drawnIds(), anchor, at: eid, dir: verb.dir });
+        anchor = out.anchor;
+        setChosen(out.selected);
+        const c = stops(td.parentElement).indexOf(td);
+        stops(wrap.querySelector(`tbody tr.entity-row[data-eid="${out.at}"]`))?.[c]?.focus();
+        return true;
+      }
+      case 'selectAll': anchor = null; setChosen(SEL().selectAll(drawnIds())); return true;
+      // Escape with a selection is the standing listener's (above); with none,
+      // the browser's. Either way the keymap lets it through.
+      default: return false;
+    }
+  };
+  wrap.addEventListener('keydown', (e) => {
+    if (e.isComposing) return;
+    const at = e.target;
+    const td = at?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
+    if (!td) return;
+    const open = at !== td && at.matches(OPEN_CONTROLS);
+    const verb = KM().keymap(KM().keyOf(e), { mode: open ? 'edit' : 'rest', readonly: !openerOf(td), sel: chosen() });
+    if (apply(verb, td, at)) { e.preventDefault(); e.stopPropagation(); }
+  });
+
   // A clipped cell opens over the grid on hover, in a layer of its own —
   // the cell keeps its box, so no column ever moves (Kyle, 2026-08-24).
   wrap.addEventListener('mouseover', (e) => {

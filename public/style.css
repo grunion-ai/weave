@@ -367,6 +367,17 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    focused control is the only thing that draws itself a box. */
 .wv-grid .inline-edit:hover { border-color: transparent; background: none; }
 .wv-grid .inline-edit:focus { border-color: var(--tblr-primary); background: var(--tblr-bg-surface); }
+/* Cells rest as values; the cell is the cursor (Feature #134, REST). Focus
+   on the <td> is the resting cursor and draws itself as a ring INSIDE the
+   cell, so no column moves and no line lands between fields. Tokens, so it
+   reads the same in both themes. */
+.wv-grid tbody td[tabindex]:focus { outline: none; box-shadow: inset 0 0 0 2px var(--tblr-primary); border-radius: 4px; }
+/* Hover ARMS a cell — the one under the pointer shows the control a click
+   would open. One cell, never the row: Kyle's Ledger rule is that a row
+   hover draws no lines between fields, and it still does not. */
+.wv-grid tbody td[tabindex]:hover .inline-edit:not(:focus) { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
+.wv-grid tbody td[tabindex]:hover .chip-trigger { border-color: var(--tblr-border-color); }
+.wv-grid tbody td.cell-pick { cursor: pointer; }
 /* Remove and link are chrome about the row, not part of it. */
 .wv-grid .chip .x, .wv-grid .k .x, .wv-grid .ms-box > .btn, .wv-grid .date-pick-btn { opacity: 0; transition: opacity .12s ease; }
 .wv-grid tr:hover .chip .x, .wv-grid tr:hover .k .x, .wv-grid tr:hover .ms-box > .btn, .wv-grid tr:hover .date-pick-btn,

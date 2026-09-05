@@ -6,6 +6,11 @@
    and dropped focus on <body> — and the next Tab restarted at the top of the
    page instead of continuing along the row.
 
+   Since Feature #134 (cells rest as values) Tab out of an open cell commits
+   it and lands the resting cursor on the NEXT CELL — the <td> is the focus
+   stop, its control is not — so what the redraw has to put back is the
+   cell, not a control inside it. The shape of the bug is the same.
+
    Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,6 +39,12 @@ if (s) {
     return { eid: cell.parentElement.dataset.eid, field: cell.dataset.field ?? null, tag: document.activeElement.tagName };
   });
 
+  const settledOn = (page, eid, field) => page.waitForFunction(([e, f]) => {
+    if (document.querySelector('#main tbody[data-mark]')) return false; // the redraw has not landed yet
+    const td = document.activeElement?.closest?.('tr[data-eid] > td');
+    return document.activeElement === td && td?.parentElement.dataset.eid === e && td?.dataset.field === f;
+  }, [eid, field], { timeout: 5000 });
+
   test('a redraw triggered by an edit leaves focus on the row the reader tabbed into', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
@@ -48,28 +59,28 @@ if (s) {
     await page.keyboard.type('!');
     await page.keyboard.press('Tab');
 
-    // Focus is on Tail of the same row before the redraw — that much the
-    // browser does on its own.
-    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Tail', tag: 'INPUT' },
+    // The cursor rests on Tail of the same row once the redraw has landed
+    // and put it back; where it is in the frame between is not the contract.
+    await settledOn(page, second.id, 'Tail');
+    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Tail', tag: 'TD' },
       'Tab moves along the row');
 
     await page.waitForFunction(() => !document.querySelector('#main tbody[data-mark]'), null, { timeout: 5000 });
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
     // ...and it is still there after the grid rebuilds itself underneath.
-    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Tail', tag: 'INPUT' },
+    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Tail', tag: 'TD' },
       'the redraw puts focus back on the cell Tab had reached');
 
     // Which is what makes the NEXT Tab continue along the row instead of
     // restarting at the top of the page.
     await page.keyboard.press('Tab');
-    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Extra', tag: 'INPUT' },
+    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Extra', tag: 'TD' },
       'the next Tab carries on along the same row');
 
-    // Backwards walks from the same place, for the same reason: nothing
-    // handles Tab, so restoring focus is all Shift-Tab ever needed.
+    // Backwards walks from the same place, for the same reason.
     await page.keyboard.press('Shift+Tab');
-    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Tail', tag: 'INPUT' },
+    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Tail', tag: 'TD' },
       'Shift-Tab walks back from the same cell');
 
     await page.close();
@@ -88,13 +99,14 @@ if (s) {
     await page.click(`tr[data-eid="${second.id}"] td[data-field="Name"] input`);
     await page.keyboard.type('!');
     await page.keyboard.press('Tab');
-    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Description', tag: 'SPAN' },
+    await settledOn(page, second.id, 'Description');
+    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Description', tag: 'TD' },
       'Tab reaches the description cell');
 
     await page.waitForFunction(() => !document.querySelector('#main tbody[data-mark]'), null, { timeout: 5000 });
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Description', tag: 'SPAN' },
-      'the redraw puts focus back on the span the reader tabbed into');
+    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Description', tag: 'TD' },
+      'the redraw puts focus back on the cell the reader tabbed into');
 
     await page.close();
   });
