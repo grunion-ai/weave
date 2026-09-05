@@ -7101,8 +7101,8 @@ document.addEventListener('keydown', (e) => {
 
 /* Workspace rail: the weave docs workspace is pinned first as the
    brand-colored chip (it always exists); every other workspace stacks below,
-   showing its uploaded logo when it has one (right-click the active chip to
-   set it). */
+   showing its uploaded logo when it has one (the chip menu — right-click, or a
+   left click on the current chip — updates or removes it, Issue #202). */
 async function buildWsRail() {
   const listBox = $('#ws-list');
   if (!listBox) return;
@@ -7132,20 +7132,30 @@ async function buildWsRail() {
         const chip = el('a', {
           class: 'ws-icon' + (w.name === current ? ' active' : ''),
           href: w.default ? '/' : (w.url ?? `/w/${w.id}/`),
-          title: `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (right-click to set logo)' : ''),
+          title: `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
         }, w.logo
           ? el('img', { src: `${prefix}/api/workspace/logo`, alt: w.name })
           : w.name.slice(0, 1).toUpperCase());
-        // Right-click: set the logo (current chip) and delete (Issue #190 —
-        // the hub's `deletable` decides; a hosted hub without it offers none).
-        chip.addEventListener('contextmenu', (e) => {
+        // The chip menu: Update logo… on every chip, current or not, logo or
+        // not (Issue #202 — the logo route is per-workspace, so each chip
+        // targets its own), Remove logo while one exists, and delete (Issue
+        // #190 — the hub's `deletable` decides; a hosted hub without it
+        // offers none). Right-click opens it anywhere; a left click on the
+        // current chip, which used to reload the page, opens it too — a left
+        // click on any other chip still switches workspace.
+        const openMenu = (e) => {
           e.preventDefault();
-          const items = [
-            w.name === current ? { label: 'Set logo…', run: uploadWorkspaceLogo } : null,
+          // The menu closes on the next `click` anywhere; a left click that
+          // opened it must not be that click.
+          e.stopPropagation();
+          contextMenu(e, [
+            { label: 'Update logo…', run: () => uploadWorkspaceLogo(w) },
+            w.logo ? { label: 'Remove logo', run: () => removeWorkspaceLogo(w) } : null,
             w.deletable ? { label: 'Delete workspace…', danger: true, run: () => confirmDeleteWorkspace(w, { current: w.name === current }) } : null,
-          ].filter(Boolean);
-          if (items.length) contextMenu(e, items, 'ws-ctx');
-        });
+          ].filter(Boolean), 'ws-ctx');
+        };
+        chip.addEventListener('contextmenu', openMenu);
+        if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) openMenu(e); });
         return chip;
       }));
     // The trash: one chip below the workspace list, only while something is
@@ -7223,9 +7233,21 @@ function showWorkspaceTrash(trashed) {
   async () => {}, 'Done');
 }
 
-// Workspace logo: picked file → base64 → PUT /api/workspace/logo (current
-// workspace), then the rail re-renders with the image chip.
-function uploadWorkspaceLogo() {
+// Workspace logo (Feature #57, Issue #202): picked file → base64 → PUT
+// /w/<ws>/api/workspace/logo on the chip's OWN workspace — not `api()`, which
+// is pinned to the workspace being viewed — then the rail re-renders.
+const wsApiPrefix = (w) => (w.default ? '' : `/w/${w.id}`) + '/api';
+async function wsApi(w, method, path, body) {
+  const res = await fetch(wsApiPrefix(w) + path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? `${res.status}`);
+  return data;
+}
+function uploadWorkspaceLogo(w) {
   const input = el('input', { type: 'file', accept: 'image/*', style: 'display:none' });
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
@@ -7235,13 +7257,20 @@ function uploadWorkspaceLogo() {
     let bin = '';
     for (const b of buf) bin += String.fromCharCode(b);
     try {
-      await api('PUT', '/workspace/logo', { name: file.name, mime: file.type || 'image/png', contentBase64: btoa(bin) });
-      toast('Workspace logo set');
+      await wsApi(w, 'PUT', '/workspace/logo', { name: file.name, mime: file.type || 'image/png', contentBase64: btoa(bin) });
+      toast(`${w.name} logo updated`);
       buildWsRail();
     } catch (err) { toast(err.message, true); }
   });
   document.body.append(input);
   input.click();
+}
+async function removeWorkspaceLogo(w) {
+  try {
+    await wsApi(w, 'DELETE', '/workspace/logo');
+    toast(`${w.name} logo removed`);
+    buildWsRail();
+  } catch (err) { toast(err.message, true); }
 }
 
 function wireWsNew() {
