@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="kind" content="design-review"><meta name="generated-at" content="2026-09-05"><meta name="repo" content="grunion-ai/weave">
+<title>weave — chip anatomy alternatives (Feature #185)</title>
+<style>
+/* weave chip system, lifted from public/style.css — the same rules a table cell uses */
+:root { --wv-chip-font: 13px; --wv-chip-line: 22px; }
+.k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: var(--wv-chip-font); line-height: var(--wv-chip-line); padding: 1px 8px; border-radius: 4px; border: 0; }
+.k .ico { font-size: 10.5px; line-height: 1; opacity: .85; flex: none; }
+.k-state, .k-select, .k-multi, .k-key { background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); border: 0; }
+.k-state.cat-not-started { --fill: rgba(0, 5, 20, .05); --text: #60646c; }
+.k-state.cat-in-progress { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; }
+.k-state.cat-done { --fill: rgba(46, 160, 67, .14); --text: #218358; }
+.k-state.cat-canceled { --fill: rgba(229, 72, 77, .12); --text: #ce2c31; text-decoration: line-through; }
+[data-bs-theme="dark"] .k-state.cat-not-started { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
+[data-bs-theme="dark"] .k-state.cat-in-progress { --fill: rgba(99, 140, 245, .18); --text: #9eb1ff; }
+[data-bs-theme="dark"] .k-state.cat-done { --fill: rgba(70, 180, 110, .16); --text: #71d083; }
+[data-bs-theme="dark"] .k-state.cat-canceled { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
+.k-key { font-family: var(--tblr-font-monospace); font-size: 11px; letter-spacing: .02em; }
+.k-key .store { margin-left: 5px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--tblr-border-color); font-size: 9px; letter-spacing: .04em; text-transform: uppercase; opacity: .75; }
+.k-rel, .k-doc, .k-attach, .k-more { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-body-color); cursor: pointer; }
+.k-rel:hover, .k-doc:hover, .k-attach:hover, .k-more:hover { border-color: var(--tblr-primary); color: var(--tblr-primary); }
+.k-rel > a::after, .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: 10px; margin-left: 1px; }
+.k-rel { padding: 0; }
+.k-rel > a { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 2px; color: inherit; text-decoration: none; }
+.k-rel > .x { margin: 0 6px 0 -3px; padding: 0 2px; }
+.mention-wrap, .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
+.k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; opacity: .6; }
+.k-rel .k-home { font-family: var(--tblr-font-monospace); font-size: .78em; opacity: .55; }
+.k-more { font-family: var(--tblr-font-monospace); font-size: 10.5px; }
+.k-add, .k-doc.is-empty, .k-attach.is-empty { background: none; border: 1px dashed var(--tblr-border-color); color: var(--tblr-secondary); cursor: pointer; }
+.k-doc.is-empty, .k-attach.is-empty { border-style: dashed; }
+.k-doc.is-empty::after, .k-attach.is-empty::after { content: "+"; opacity: .55; }
+.k-computed { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
+.k-sys { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 9.5px; line-height: 1.9; letter-spacing: .11em; text-transform: uppercase; padding: 0 7px; }
+.k .x { margin-left: 2px; cursor: pointer; color: var(--tblr-secondary); font-size: 11px; }
+.k .x:hover { color: var(--tblr-danger); }
+.k.deleted { opacity: .55; text-decoration: line-through; }
+.av { flex: none; width: 17px; height: 17px; border-radius: 3px; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; font-family: var(--tblr-font-monospace); font-size: 8.5px; font-weight: 600; letter-spacing: .02em; background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
+.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.unknown { background: none; box-shadow: inset 0 0 0 1px var(--tblr-border-color); color: var(--tblr-secondary); }
+.hue-slate { --fill: rgba(0, 5, 20, .05); --text: #60646c; --dot: transparent; }
+.hue-blue { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; --dot: #4769eb; }
+.hue-green { --fill: rgba(46, 160, 67, .14); --text: #218358; --dot: #2ea043; }
+.hue-amber { --fill: rgba(245, 159, 0, .16); --text: #7a5209; --dot: #f59f00; }
+.hue-red { --fill: rgba(229, 72, 77, .12); --text: #ce2c31; --dot: #e5484d; }
+.hue-purple { --fill: rgba(142, 78, 198, .12); --text: #7a3fb8; --dot: #8e4ec6; }
+.hue-cyan { --fill: rgba(0, 162, 199, .14); --text: #0a6379; --dot: #00a2c7; }
+.hue-pink { --fill: rgba(214, 64, 159, .12); --text: #a32677; --dot: #d6409f; }
+.hue-teal { --fill: rgba(18, 165, 148, .14); --text: #10695c; --dot: #12a594; }
+.hue-orange { --fill: rgba(247, 107, 21, .14); --text: #9a4310; --dot: #f76b15; }
+[data-bs-theme="dark"] .hue-slate { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
+[data-bs-theme="dark"] .hue-blue { --fill: rgba(99, 140, 245, .18); --text: #9eb1ff; }
+[data-bs-theme="dark"] .hue-green { --fill: rgba(70, 180, 110, .16); --text: #71d083; }
+[data-bs-theme="dark"] .hue-amber { --fill: rgba(240, 190, 80, .18); --text: #f2c968; }
+[data-bs-theme="dark"] .hue-red { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
+[data-bs-theme="dark"] .hue-purple { --fill: rgba(180, 120, 240, .18); --text: #c9a6f5; }
+[data-bs-theme="dark"] .hue-cyan { --fill: rgba(80, 190, 240, .18); --text: #7fd3f5; }
+[data-bs-theme="dark"] .hue-pink { --fill: rgba(240, 120, 170, .18); --text: #f79ec0; }
+[data-bs-theme="dark"] .hue-teal { --fill: rgba(70, 200, 180, .16); --text: #6fdcc8; }
+[data-bs-theme="dark"] .hue-orange { --fill: rgba(250, 150, 80, .18); --text: #ffb183; }
+.mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
+.mention-fields { display: none; }
+.mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: .85em; }
+.mention-f-label { opacity: .65; margin-right: 3px; }
+.mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: 4px; color: var(--tblr-secondary); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
+.mention-wrap.open .mention-caret { transform: rotate(180deg); }
+.mention-caret svg { width: 12px; height: 12px; display: block; }
+.k-range.is-empty { color: var(--tblr-secondary); }
+.k-rel > a > .mention-caret { margin-left: 2px; }
+.k-rel > a > .mention-fields { align-items: center; }
+.k-rel .mention-fields .k-state, .wv-seg-state { font-size: .82em; padding: 0 6px; line-height: 1.5; }
+.wv-card { display: flex; flex-direction: column; gap: 6px; min-width: 180px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 13px; line-height: 1.35; white-space: normal; }
+.wv-card.compact { gap: 3px; padding: 5px 8px; font-size: 12px; max-width: 280px; }
+.wv-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wv-card-title { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; color: inherit; text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.wv-card-title:hover { color: var(--tblr-primary); }
+.wv-card-id { font-family: var(--tblr-font-monospace); font-size: .82em; font-weight: 500; opacity: .55; }
+.wv-card-desc { color: var(--tblr-secondary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.wv-card.compact .wv-card-desc { -webkit-line-clamp: 1; }
+.wv-card-fields { display: grid; grid-template-columns: max-content 1fr; column-gap: 10px; row-gap: 2px; margin: 0; }
+.wv-card-fields dt { color: var(--tblr-secondary); font-weight: 400; opacity: .8; }
+.wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+:root { --bg: #ecebe6; --fg: #1a1d23; --muted: #6b7280; --line: #d9d6ce; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
+[data-bs-theme="light"] {
+  --tblr-border-color: #e6e3dc; --tblr-body-color: #1a1d23; --tblr-secondary: #6b7280;
+  --tblr-primary: #2563eb; --tblr-primary-rgb: 37, 99, 235; --tblr-danger: #d63939;
+  --tblr-bg-surface: #fafaf8; --tblr-bg-surface-secondary: #f3f1ec;
+  --tblr-font-monospace: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --panel: #f3f1ec; --paper: #fafaf8;
+}
+[data-bs-theme="dark"] {
+  --tblr-border-color: #2c3a52; --tblr-body-color: #e0dcd4; --tblr-secondary: #9aa3b5;
+  --tblr-primary: #4f8df7; --tblr-primary-rgb: 79, 141, 247; --tblr-danger: #ff6b6b;
+  --tblr-bg-surface: #16243d; --tblr-bg-surface-secondary: #1c2c48;
+  --tblr-font-monospace: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --panel: #0c1b33; --paper: #16243d;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width: 1480px; margin: 0 auto; padding: 36px 28px 80px; }
+h1 { font-size: 22px; margin: 0 0 6px; }
+.lead { color: var(--muted); margin: 0 0 18px; max-width: 84ch; }
+.lead code, .cfg, .keys th { font-family: var(--mono); font-size: 12px; }
+blockquote { margin: 0 0 22px; padding: 8px 14px; border-left: 3px solid var(--line); color: var(--muted); max-width: 84ch; }
+.legend { list-style: none; margin: 0 0 30px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--muted); font-size: 13px; }
+.legend li::before { content: ""; display: inline-block; width: 22px; height: 12px; margin: 0 8px -1px 0; border-radius: 3px; }
+.legend .l-link::before { outline: 1.5px solid rgba(128,128,128,.7); outline-offset: -1px; }
+.legend .l-seg::before { outline: 1.5px dashed #0e8a7a; outline-offset: -1px; }
+.legend .l-caret::before { outline: 1.5px dashed #e5484d; outline-offset: -1px; }
+.legend .l-x::before { outline: 1.5px dashed #ce2c31; outline-offset: -1px; }
+.legend .l-ghost::before { border: 1px dotted var(--muted); opacity: .6; }
+.opt { margin: 0 0 40px; }
+.opt h2 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: baseline; gap: 10px; }
+.opt h2 .key { font-family: var(--mono); font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; }
+.opt .note, .opt .today { margin: 0 0 8px; color: var(--muted); max-width: 96ch; }
+.opt .note b, .opt .today b { color: var(--fg); font-weight: 600; }
+.cfg { display: block; color: var(--muted); margin: 0 0 12px; }
+.surfaces { display: grid; grid-template-columns: 100px 1fr 1fr; gap: 10px 14px; align-items: stretch; margin: 0 0 12px; }
+.surfaces .sl { font-size: 12px; color: var(--muted); padding-top: 22px; }
+.panel { background: var(--panel); color: var(--tblr-body-color); border-radius: 10px; padding: 26px 18px 18px; position: relative; min-height: 84px; display: flex; align-items: center; overflow: hidden; }
+.panel::before { content: attr(data-bs-theme); position: absolute; top: 6px; right: 10px; font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--tblr-secondary); }
+.keys { border-collapse: collapse; width: 100%; max-width: 96ch; font-size: 13px; margin: 0 0 8px; }
+.keys th, .keys td { border-top: 1px solid var(--line); padding: 4px 8px 4px 0; text-align: left; vertical-align: top; }
+.keys th { width: 92px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+/* ---- the surfaces ---- */
+.cell-mock { display: flex; align-items: center; gap: 10px; background: var(--paper); border: 1px solid var(--tblr-border-color); border-radius: 4px; padding: 5px 10px; width: 100%; }
+.cell-label { font: 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); flex: none; }
+.doc-mock { margin: 0; font-size: 15px; line-height: 1.8; }
+.ref-card { width: 100%; background: var(--paper); border: 1px solid var(--tblr-border-color); border-radius: 6px; }
+.ref-head { font-size: 12px; font-weight: 600; padding: 6px 12px; border-bottom: 1px solid var(--tblr-border-color); }
+.ref-backlinks { padding: 10px 12px; }
+.ref-backlinks { display: flex; flex-wrap: wrap; gap: 6px; }
+/* ---- the hitboxes (as the anatomy guide draws them) ---- */
+.hit-link { outline: 1.5px solid rgba(128,128,128,.55); outline-offset: 2px; }
+.hit-seg { outline: 1.5px dashed #0e8a7a; outline-offset: 2px; cursor: pointer; }
+.hit-caret { outline: 1.5px dashed #e5484d; outline-offset: 2px; }
+.hit-x { outline: 1.5px dashed #ce2c31; outline-offset: 2px; }
+/* ---- what every option shares on top of the shipped chip ---- */
+.wv-alt .k-rel > a::after { content: none; }                       /* ruling: drop 7 — the chip IS the link */
+.wv-alt .k-rel > a { padding: 1px 8px; }                            /* the ↗'s left slot closes, the padding evens out */
+.wv-alt .k-rel .k-home { margin-left: 5px; }
+.wv-alt, .wv-alt .k-rel, .wv-alt .k-rel > a, .wv-alt .k-label { max-width: none; overflow: visible; flex: none; } /* the specimen shows its whole name; truncation (Issue #201) is the cell's business */
+.wv-alt .mention-caret { transform: none; }                          /* Issue #193: the retract caret faces the text */
+.wv-alt.open .mention-caret { transform: rotate(180deg); }
+.wv-alt .mention-fields { display: inline-flex; align-items: center; }
+.wv-alt .mention-fields.wv-live { gap: 6px; font-size: var(--wv-chip-font); color: inherit; }
+.wv-alt .mention-fields.wv-live > .k { font-size: var(--wv-chip-font); line-height: var(--wv-chip-line); padding: 1px 8px; } /* ruling: 6 at the shared size, over the .82em the shipped segment wears */
+.wv-alt .k-rel > .x { margin: 0 8px 0 2px; }
+/* P, T: segments beside the link, inside the chip's outline, after a rule */
+.wv-p .mention-fields, .wv-t .mention-fields { margin: 0 6px 0 4px; padding-left: 8px; border-left: 1px solid var(--tblr-border-color); }
+/* Q: one link at rest; the strip hangs under the chip */
+.wv-q { position: relative; display: inline-flex; padding-bottom: 32px; }
+.wv-q .wv-strip { position: absolute; left: 0; top: 100%; margin-top: -28px; background: var(--paper); border: 1px solid var(--tblr-border-color); border-radius: 4px; padding: 3px 6px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+/* R: two halves under one outline */
+.wv-split { padding: 0; overflow: hidden; }
+.wv-half { display: inline-flex; align-items: center; }
+.wv-half-ptr { padding-right: 4px; }
+.wv-half-ptr > a { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; color: inherit; text-decoration: none; } /* the anchor sits one level deeper than .k-rel > a */
+.wv-half-ptr > a::after { content: none; }
+.wv-half-val { background: var(--tblr-bg-surface-secondary); border-left: 1px solid var(--tblr-border-color); padding: 2px 6px; }
+.wv-half-val .mention-fields { margin: 0; }
+/* S: name + state at rest; the ghost is what hover or focus reveals */
+.wv-ghost { display: inline-flex; align-items: center; gap: 5px; margin-left: 2px; opacity: .38; border: 1px dotted var(--tblr-secondary); border-radius: 3px; padding: 0 4px; font-size: var(--wv-chip-font); }
+.wv-ghost .mention-caret { margin-left: 0; transform: none; } /* the revealed caret offers to expand, so it points away from the text */
+.wv-s .mention-fields { margin-left: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Chip anatomy, round 2</h1>
+<p class="lead">Five alternatives to the chip the <b>Chip and card anatomy</b> guide (Feature #180) documents, for its own specimen — Task #12, <i>Ship the editor</i>, state Doing, Severity High, Tags Editor · Docs. Each is the real <code>k k-rel</code> markup at the live size (<code>--wv-chip-font</code> / <code>--wv-chip-line</code>), in the three surfaces a chip lives in, light and dark side by side. Every option keeps the <b>home badge</b> (4) and the <b>caret</b> (5), drops the <b>avatar</b> (1) as a default and the <b>↗</b> (7) outright, and draws the <b>segments</b> (6) as the same state, select and multiselect chips a grid cell wears — at the same size, and live: a click on one opens its picker and changes the row. The <b>×</b> (8) survives in one option, in one surface.</p>
+<blockquote>“I like 5 (caret), I like 4 (home badge). 1 (avatar) rarely makes sense since we don't often have avatars. 7 (open mark ↗) doesn't make sense if the whole thing is a link. Chips in 6 (segments) should be represented the same size and way they are elsewhere so they can be interacted with — a state can be changed, a multiselect can be changed. 8 (×) may not be necessary since we use this chip inline and it can be deleted with backspace.” — Kyle, 2026-09-05</blockquote>
+<ul class="legend"><li class="l-link">the link — a click opens the row</li><li class="l-seg">a live segment — a click opens its picker</li><li class="l-caret">the caret — folds, never navigates</li><li class="l-x">the × — unlinks, outside the link</li><li class="l-ghost">shown on hover or focus only</li></ul>
+<section class="opt" id="option-p">
+<h2><span class="key">Option P</span>Name-link + live segments</h2>
+<p class="note">Trades <b>one undivided link for two kinds of click — the name navigates, a segment edits — so the pointer has to read the chip before clicking; in return every value in the chip is a control, at the size it has in the grid.</b></p>
+<code class="cfg">{ shape: 'chip', link: true, state: true, fields: ['Severity', 'Tags'], segments: 'inline' }</code>
+<div class="surfaces">
+<div class="sl">Relation cell</div>
+<div class="panel" data-bs-theme="light" data-surface="cell"><div class="cell-mock"><span class="cell-label">Blocks</span><span class="mention-wrap open wv-alt wv-p"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></div><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="cell"><div class="cell-mock"><span class="cell-label">Blocks</span><span class="mention-wrap open wv-alt wv-p"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></div><!-- /panel --></div>
+<div class="sl">[[…]] mention in a document</div>
+<div class="panel" data-bs-theme="light" data-surface="mention"><p class="doc-mock">Blocked until <span class="mention-wrap open wv-alt wv-p"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span> lands.</p><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="mention"><p class="doc-mock">Blocked until <span class="mention-wrap open wv-alt wv-p"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span> lands.</p><!-- /panel --></div>
+<div class="sl">References list</div>
+<div class="panel" data-bs-theme="light" data-surface="refs"><div class="ref-card"><div class="ref-head">References · 1</div><div class="ref-backlinks"><span class="mention-wrap open wv-alt wv-p"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></div></div><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="refs"><div class="ref-card"><div class="ref-head">References · 1</div><div class="ref-backlinks"><span class="mention-wrap open wv-alt wv-p"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></div></div><!-- /panel --></div>
+</div>
+<table class="keys"><tbody><tr><th>Tab</th><td>lands on the name link; a second Tab on the caret; then one stop per segment (← → move between them)</td></tr><tr><th>Enter</th><td>on the name: opens the row (⌘/Ctrl-Enter in a new tab); on a segment: opens its picker</td></tr><tr><th>Space</th><td>on the caret: folds the segments; on a segment: opens its picker; on the name: nothing</td></tr><tr><th>Backspace</th><td>on any part of a focused chip: removes the chip — unlinks in a cell, deletes the mention in a document; Delete does the same</td></tr><tr><th>Esc</th><td>closes an open picker, focus back on the segment</td></tr></tbody></table>
+<p class="today"><b>Markup change.</b> The segments leave the anchor and become the cell’s own state / select / multiselect chips with their pickers; one CSS rule drops the ↗. The caret, the home badge and the cell’s × plumbing are today’s.</p>
+</section>
+<section class="opt" id="option-q">
+<h2><span class="key">Option Q</span>Whole-chip link, segments pop on caret</h2>
+<p class="note">Trades <b>a second row of height whenever the strip is open — in a grid cell that row overlaps the next line — for a collapsed chip that stays exactly one link, so the resting surface never asks the pointer to aim.</b></p>
+<code class="cfg">{ shape: 'chip', link: true, state: true, fields: ['Severity', 'Tags'], segments: 'strip' }</code>
+<div class="surfaces">
+<div class="sl">Relation cell</div>
+<div class="panel" data-bs-theme="light" data-surface="cell"><div class="cell-mock"><span class="cell-label">Blocks</span><span class="mention-wrap open wv-alt wv-q"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="mention-fields wv-live wv-strip"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></div><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="cell"><div class="cell-mock"><span class="cell-label">Blocks</span><span class="mention-wrap open wv-alt wv-q"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="mention-fields wv-live wv-strip"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></div><!-- /panel --></div>
+<div class="sl">[[…]] mention in a document</div>
+<div class="panel" data-bs-theme="light" data-surface="mention"><p class="doc-mock">Blocked until <span class="mention-wrap open wv-alt wv-q"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="mention-fields wv-live wv-strip"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span> lands.</p><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="mention"><p class="doc-mock">Blocked until <span class="mention-wrap open wv-alt wv-q"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="mention-fields wv-live wv-strip"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span> lands.</p><!-- /panel --></div>
+<div class="sl">References list</div>
+<div class="panel" data-bs-theme="light" data-surface="refs"><div class="ref-card"><div class="ref-head">References · 1</div><div class="ref-backlinks"><span class="mention-wrap open wv-alt wv-q"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="mention-fields wv-live wv-strip"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></div></div><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="refs"><div class="ref-card"><div class="ref-head">References · 1</div><div class="ref-backlinks"><span class="mention-wrap open wv-alt wv-q"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="mention-fields wv-live wv-strip"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></div></div><!-- /panel --></div>
+</div>
+<table class="keys"><tbody><tr><th>Tab</th><td>lands on the chip link; a second Tab on the caret; the strip is skipped while closed</td></tr><tr><th>Enter</th><td>on the link: opens the row; on the caret: toggles the strip; on a strip chip: opens its picker</td></tr><tr><th>Space</th><td>on the caret: toggles the strip; ↓ from the caret enters the strip, ← → move along it; on a strip chip: opens its picker</td></tr><tr><th>Backspace</th><td>on the link or the caret: removes the chip; inside the strip: nothing (the strip is values, not the chip)</td></tr><tr><th>Esc</th><td>in the strip: closes it, focus back on the caret</td></tr></tbody></table>
+<p class="today"><b>Closest to today.</b> The collapsed chip is today’s chip minus the ↗ (one CSS rule). The strip is today’s <code>.mention-fields</code> moved after the anchor, at full size, with pickers.</p>
+</section>
+<section class="opt" id="option-r">
+<h2><span class="key">Option R</span>Split chip</h2>
+<p class="note">Trades <b>a heavier chip — a rule down the middle and two backgrounds to read — for the two kinds of click being two visible halves: left half goes, right half edits, and the pointer knows which before it lands.</b></p>
+<code class="cfg">{ shape: 'chip', link: true, state: true, fields: ['Severity', 'Tags'], segments: 'split' }</code>
+<div class="surfaces">
+<div class="sl">Relation cell</div>
+<div class="panel" data-bs-theme="light" data-surface="cell"><div class="cell-mock"><span class="cell-label">Blocks</span><span class="mention-wrap open wv-alt wv-r"><span class="k k-rel has-segs wv-split"><span class="wv-half wv-half-ptr"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="wv-half wv-half-val"><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></span></div><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="cell"><div class="cell-mock"><span class="cell-label">Blocks</span><span class="mention-wrap open wv-alt wv-r"><span class="k k-rel has-segs wv-split"><span class="wv-half wv-half-ptr"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="wv-half wv-half-val"><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></span></div><!-- /panel --></div>
+<div class="sl">[[…]] mention in a document</div>
+<div class="panel" data-bs-theme="light" data-surface="mention"><p class="doc-mock">Blocked until <span class="mention-wrap open wv-alt wv-r"><span class="k k-rel has-segs wv-split"><span class="wv-half wv-half-ptr"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="wv-half wv-half-val"><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></span> lands.</p><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="mention"><p class="doc-mock">Blocked until <span class="mention-wrap open wv-alt wv-r"><span class="k k-rel has-segs wv-split"><span class="wv-half wv-half-ptr"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="wv-half wv-half-val"><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></span> lands.</p><!-- /panel --></div>
+<div class="sl">References list</div>
+<div class="panel" data-bs-theme="light" data-surface="refs"><div class="ref-card"><div class="ref-head">References · 1</div><div class="ref-backlinks"><span class="mention-wrap open wv-alt wv-r"><span class="k k-rel has-segs wv-split"><span class="wv-half wv-half-ptr"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="wv-half wv-half-val"><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></span></div></div><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="refs"><div class="ref-card"><div class="ref-head">References · 1</div><div class="ref-backlinks"><span class="mention-wrap open wv-alt wv-r"><span class="k k-rel has-segs wv-split"><span class="wv-half wv-half-ptr"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button></span><span class="wv-half wv-half-val"><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></span></div></div><!-- /panel --></div>
+</div>
+<table class="keys"><tbody><tr><th>Tab</th><td>lands on the pointer half; a second Tab on the caret; then one stop per chip in the value half</td></tr><tr><th>Enter</th><td>on the pointer half: opens the row; on a value chip: opens its picker</td></tr><tr><th>Space</th><td>on the caret: folds the value half away; on a value chip: opens its picker</td></tr><tr><th>Backspace</th><td>on either half: removes the whole chip (the halves are one thing to the cell and to the document)</td></tr><tr><th>Esc</th><td>closes an open picker</td></tr></tbody></table>
+<p class="today"><b>Markup change.</b> A pointer half (today’s anchor: id, name, home badge, caret) and a value half (the live segments) under one 4px outline; the halves are new, the chips inside them are today’s.</p>
+</section>
+<section class="opt" id="option-s">
+<h2><span class="key">Option S</span>Minimal</h2>
+<p class="note">Trades <b>the id, the home badge and every non-state field for the quietest chip — name and state, nothing else at rest; the rest appears on hover or focus, so a scan of a column reads two things per row and a pause reads the whole.</b></p>
+<code class="cfg">{ shape: 'chip', link: false, state: true, fields: [], reveal: 'hover' }</code>
+<div class="surfaces">
+<div class="sl">Relation cell</div>
+<div class="panel" data-bs-theme="light" data-surface="cell"><div class="cell-mock"><span class="cell-label">Blocks</span><span class="mention-wrap open wv-alt wv-s"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link"><span class="k-label">Ship the editor</span></a><span class="wv-ghost" aria-hidden="true">#12<span class="k-home">Task</span><button type="button" class="mention-caret hit-caret" aria-expanded="false" title="Show fields">›</button></span><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span></span></span></span></div><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="cell"><div class="cell-mock"><span class="cell-label">Blocks</span><span class="mention-wrap open wv-alt wv-s"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link"><span class="k-label">Ship the editor</span></a><span class="wv-ghost" aria-hidden="true">#12<span class="k-home">Task</span><button type="button" class="mention-caret hit-caret" aria-expanded="false" title="Show fields">›</button></span><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span></span></span></span></div><!-- /panel --></div>
+<div class="sl">[[…]] mention in a document</div>
+<div class="panel" data-bs-theme="light" data-surface="mention"><p class="doc-mock">Blocked until <span class="mention-wrap open wv-alt wv-s"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link"><span class="k-label">Ship the editor</span></a><span class="wv-ghost" aria-hidden="true">#12<span class="k-home">Task</span><button type="button" class="mention-caret hit-caret" aria-expanded="false" title="Show fields">›</button></span><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span></span></span></span> lands.</p><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="mention"><p class="doc-mock">Blocked until <span class="mention-wrap open wv-alt wv-s"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link"><span class="k-label">Ship the editor</span></a><span class="wv-ghost" aria-hidden="true">#12<span class="k-home">Task</span><button type="button" class="mention-caret hit-caret" aria-expanded="false" title="Show fields">›</button></span><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span></span></span></span> lands.</p><!-- /panel --></div>
+<div class="sl">References list</div>
+<div class="panel" data-bs-theme="light" data-surface="refs"><div class="ref-card"><div class="ref-head">References · 1</div><div class="ref-backlinks"><span class="mention-wrap open wv-alt wv-s"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link"><span class="k-label">Ship the editor</span></a><span class="wv-ghost" aria-hidden="true">#12<span class="k-home">Task</span><button type="button" class="mention-caret hit-caret" aria-expanded="false" title="Show fields">›</button></span><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span></span></span></span></div></div><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="refs"><div class="ref-card"><div class="ref-head">References · 1</div><div class="ref-backlinks"><span class="mention-wrap open wv-alt wv-s"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link"><span class="k-label">Ship the editor</span></a><span class="wv-ghost" aria-hidden="true">#12<span class="k-home">Task</span><button type="button" class="mention-caret hit-caret" aria-expanded="false" title="Show fields">›</button></span><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span></span></span></span></div></div><!-- /panel --></div>
+</div>
+<table class="keys"><tbody><tr><th>Tab</th><td>lands on the name link; a second Tab on the state chip; focus reveals what hover reveals</td></tr><tr><th>Enter</th><td>on the name: opens the row; on the state: opens the state picker</td></tr><tr><th>Space</th><td>on the state: opens the state picker</td></tr><tr><th>Backspace</th><td>on the name or the state: removes the chip</td></tr><tr><th>Esc</th><td>closes the picker; a second Esc hides the revealed parts</td></tr></tbody></table>
+<p class="today"><b>Config only.</b> <code>link: false, state: true, fields: []</code> is today’s renderer drawing exactly this at rest, once the ↗ rule is off and the state segment is the live chip at full size. The hover reveal (id, badge, caret) is new.</p>
+</section>
+<section class="opt" id="option-t">
+<h2><span class="key">Option T</span>Cell-only ×</h2>
+<p class="note">Trades <b>P’s chip, plus a × that exists in the relation cell alone — on hover or focus, outside the link — so a mouse can unlink without a keyboard; the mention and the References list keep Backspace as the only remove.</b></p>
+<code class="cfg">{ shape: 'chip', link: true, state: true, fields: ['Severity', 'Tags'], segments: 'inline', remove: 'cell' }</code>
+<div class="surfaces">
+<div class="sl">Relation cell</div>
+<div class="panel" data-bs-theme="light" data-surface="cell"><div class="cell-mock"><span class="cell-label">Blocks</span><span class="mention-wrap open wv-alt wv-t"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span><span class="x hit-x" title="Unlink">×</span></span></span></div><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="cell"><div class="cell-mock"><span class="cell-label">Blocks</span><span class="mention-wrap open wv-alt wv-t"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span><span class="x hit-x" title="Unlink">×</span></span></span></div><!-- /panel --></div>
+<div class="sl">[[…]] mention in a document</div>
+<div class="panel" data-bs-theme="light" data-surface="mention"><p class="doc-mock">Blocked until <span class="mention-wrap open wv-alt wv-t"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span> lands.</p><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="mention"><p class="doc-mock">Blocked until <span class="mention-wrap open wv-alt wv-t"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span> lands.</p><!-- /panel --></div>
+<div class="sl">References list</div>
+<div class="panel" data-bs-theme="light" data-surface="refs"><div class="ref-card"><div class="ref-head">References · 1</div><div class="ref-backlinks"><span class="mention-wrap open wv-alt wv-t"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></div></div><!-- /panel --></div>
+<div class="panel" data-bs-theme="dark" data-surface="refs"><div class="ref-card"><div class="ref-head">References · 1</div><div class="ref-backlinks"><span class="mention-wrap open wv-alt wv-t"><span class="k k-rel has-segs"><a href="#" onclick="return false" class="hit-link">#12 <span class="k-label">Ship the editor</span><span class="k-home">Task</span></a><button type="button" class="mention-caret hit-caret" aria-expanded="true" title="Hide fields">›</button><span class="mention-fields wv-live"><span class="k k-state cat-in-progress hue-blue hit-seg" title="Change state">Doing</span><span class="k k-select hue-amber hit-seg" title="Change Severity">High</span><span class="k k-multi hue-purple hit-seg" title="Change Tags">Editor</span><span class="k k-multi hue-green hit-seg" title="Change Tags">Docs</span></span></span></span></div></div><!-- /panel --></div>
+</div>
+<table class="keys"><tbody><tr><th>Tab</th><td>as P; in a cell the × is the last stop, reached with → from the last segment</td></tr><tr><th>Enter</th><td>as P; on the ×: unlinks</td></tr><tr><th>Space</th><td>as P; on the ×: unlinks</td></tr><tr><th>Backspace</th><td>as P — the × and Backspace do the same thing in a cell; in a document Backspace is the only remove</td></tr><tr><th>Esc</th><td>closes an open picker</td></tr></tbody></table>
+<p class="today"><b>P plus today’s ×.</b> The cell already passes the × in as <code>extra</code> and the mention and References surfaces already omit it; T only hides it until hover or focus.</p>
+</section>
+<p class="lead" style="margin-top:8px">Shared by every option: 4px radius; no fill behind a pointer chip; one chip size from <code>--wv-chip-font</code> / <code>--wv-chip-line</code> for the chip and for every segment in it; the caret is the one pixel that never navigates and it faces the text it folds (Issue #193); a person table may still opt the avatar back in through its Chip view config. Pick one; a Feature lands it in <code>viewChipEl</code> and updates the guide (#180) and the chip system (#175).</p>
+</div>
+</body>
+</html>
