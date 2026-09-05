@@ -140,10 +140,7 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .ws-icon.ws-new:hover { border-color: var(--tblr-primary); color: var(--tblr-primary); background: transparent; }
 /* The glyph is the whole content: the .wv-icon label gap would push it
    2.5px left of centre (Issue #191). */
-.ws-icon.ws-new .wv-icon, .ws-icon.ws-trash .wv-icon { margin-right: 0; }
-/* The workspace trash (Issue #190): muted until hovered, red on hover so the rail says what it is. */
-.ws-icon.ws-trash { border: 1px dashed var(--wv-canvas-muted); }
-.ws-icon.ws-trash:hover { border-color: var(--tblr-danger); color: var(--tblr-danger); background: transparent; }
+.ws-icon.ws-new .wv-icon { margin-right: 0; }
 .ws-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 /* Pinned weave chip: the bare rope mark, larger than workspace chips
    (also when active — .ws-icon.active must not repaint it). The mark fills
@@ -1291,7 +1288,18 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    Honour a reduced-motion request by dropping the fade, not the loader. */
 @media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }
 .fielddef-edit { display: inline-flex; align-items: center; gap: 4px; }
-.nav-health { position: fixed; right: 12px; bottom: 10px; z-index: 55; font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 5px; padding: 2px 8px; opacity: .85; }
+/* The corner cluster's lower row (Issue #204): the workspace trash glyph,
+   then the instance tag, pinned bottom-right under the bug button. */
+#hub-foot { position: fixed; right: 12px; bottom: 10px; z-index: 55; display: flex; align-items: center; gap: 6px; }
+.nav-health { font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 5px; padding: 2px 8px; opacity: .85; }
+/* The workspace trash (Issues #190, #204): the bug button's size and costume,
+   muted at rest, red only on hover so the corner says what it is. Present only
+   while a workspace is in the trash. */
+.ws-trash { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; color: var(--tblr-secondary); cursor: pointer; opacity: .85; transition: color .12s, border-color .12s; }
+.ws-trash:hover, .ws-trash:focus-visible { color: var(--tblr-danger); border-color: var(--tblr-danger); opacity: 1; }
+.ws-trash:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
+.ws-trash-icon { display: flex; width: var(--wv-icon-md); height: var(--wv-icon-md); margin: 0; }
+.ws-trash-icon svg { width: 100%; height: 100%; }
 /* A stale instance wears the warning: the chip is how you notice without
    the toast (Kyle, 2026-09-02). */
 .nav-health.is-behind { color: var(--tblr-warning); border-color: var(--tblr-warning); }
@@ -1691,13 +1699,14 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .chip-pop { max-height: min(70vh, 560px); overflow-y: auto; }
 
 /* ---------- bug reporter (Feature #141) ----------
-   The button lives in the bottom-right corner, stacked above the instance
-   chip it shares that corner with (.nav-health sits at bottom: 10px). The
+   The button lives in the bottom-right corner, stacked above the row it
+   shares that corner with (#hub-foot — trash glyph + instance chip — sits at
+   bottom: 10px, 26px tall; 40px clears it by 4px). The
    panel floats beside it rather than over the page: reporting a bug must not
    cover the bug. Small on purpose (Kyle, 2026-08-25) — this is a corner
    affordance, not a form. Every surface is a Tabler token, so both themes
    follow. */
-.bug-fab { position: fixed; right: 12px; bottom: 34px; z-index: 1150; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.10); cursor: pointer; opacity: .62; transition: opacity .12s, border-color .12s; }
+.bug-fab { position: fixed; right: 12px; bottom: 40px; z-index: 1150; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.10); cursor: pointer; opacity: .62; transition: opacity .12s, border-color .12s; }
 .bug-fab:hover, .bug-fab[aria-expanded="true"] { opacity: 1; border-color: var(--tblr-secondary); }
 .bug-fab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
 .bug-fab-icon { display: flex; width: var(--wv-icon-md); height: var(--wv-icon-md); color: var(--tblr-body-color); }
