@@ -168,10 +168,41 @@ const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: 
      quietly slide onto different records. */
   selected: new Map() };
 
-// Single entry point for opening an entity as a PAGE (Feature #117). From
-// the grid, the #id link and ⌘Return open the record in the dock instead;
-// the side peek is gone (2026-09-02), and nothing here reaches for it.
-function openEntity(id) { location.hash = `#/entity/${id}`; }
+/* Single entry point for opening an entity, and it DOCKS (Issue #198). The
+   ONE entity view opens beside its table (ruling of 2026-09-02); the
+   outward arrows expand it to the #/entity page. A reader elsewhere travels
+   to the entity's table first — that is a new place, so it is a real
+   history entry — and the dock itself is presentation, never a navigation
+   (the ledger's #id link set that rule). The route stays the page: a new
+   tab, a permalink and the expand arrows all land on #/entity/<id>. */
+async function openEntity(id) {
+  let entity;
+  try { entity = await api('GET', `/entities/${id}`); } catch (err) { return toast(err.message, true); }
+  const db = allTables().find((d) => d.id === entity.dbId);
+  if (!db) { location.hash = `#/entity/${id}`; return; }
+  if (!(state.route?.page === 'db' && state.route.dbId === db.id)) {
+    teardownDocEditors();
+    dockClose();
+    history.pushState(null, '', `#/table/${db.id}`);
+    await withPageLoader(() => showDatabase(db.id));
+  }
+  await dockEntity(db, id);
+}
+
+/* Every plain click on an entity link docks, wherever the link was drawn —
+   a relation chip, a card, a mention chip in a document, a crumb. Capture
+   phase, because a chip stops propagation at its own anchor. Modifier
+   clicks are the browser's (Issue #134) and fall through to the href; a
+   control riding inside the link (the mention caret) keeps its own click. */
+document.addEventListener('click', (e) => {
+  if (nativeClick(e)) return;
+  const a = e.target.closest?.('a[href^="#/entity/"]');
+  if (!a || e.target.closest('button, input, select, textarea, label')) return;
+  const m = a.getAttribute('href').match(/^#\/entity\/([^/?]+)$/);
+  if (!m) return;
+  e.preventDefault();
+  openEntity(m[1]);
+}, true);
 
 /* ---------- the clicks the browser owns (Issue #134) ----------
    ⌘/Ctrl means "open a tab", Shift means "open a window", the middle button

@@ -257,8 +257,10 @@ if (s) {
       // The arrow is the last few pixels of the chip — the exact spot that
       // promises navigation, and the exact spot that used to do nothing.
       await page.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
-      await page.waitForFunction(() => location.hash.startsWith('#/entity/'), null, { timeout: 3000 });
-      assert.match(page.url(), /#\/entity\//, 'the arrow navigates');
+      // Issue #198: the arrow opens the record DOCKED beside the table it
+      // lives in — the one entity view's default pose — never the full page.
+      await page.waitForSelector('#dock:not([hidden]) .name-edit', { timeout: 3000 });
+      assert.match(page.url(), /#\/table\//, 'the arrow docks; the dock is not a navigation');
     } finally { await page.close(); }
   });
 
