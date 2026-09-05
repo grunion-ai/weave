@@ -3234,7 +3234,10 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
           style: colField(db, c).width ? columnWidthStyle(colField(db, c).width) : null,
           // Click opens the field in the tray (Kyle, 2026-08-23: editing is
           // what a header click should mean); sorting lives in the ⋮ menu.
-          onclick: () => editFieldDialog(db, colField(db, c)),
+          // A resize's own click lands here in Safari (the click of a captured
+          // drag resolves to the header under the pointer) — the grip marks
+          // the gesture and this click is inert (Issue #98).
+          onclick: (e) => { if (!e.currentTarget.dataset.resized) editFieldDialog(db, colField(db, c)); },
           // Dragging a header moves the column. The drop lands before the
           // target when the column travels left, after it when it travels
           // right — the same "insert where the gap opened" reading as a
@@ -3485,12 +3488,28 @@ function columnResizeGrip(db, f) {
     const wasDraggable = th.draggable;
     th.draggable = false;
     try { grip.setPointerCapture(e.pointerId); } catch { /* older engines */ }
+    // The gesture's own click must not open the field dialog (Issue #98):
+    // the header wears the mark until the next press anywhere.
+    th.dataset.resized = '1';
+    document.addEventListener('pointerdown', () => { delete th.dataset.resized; }, { capture: true, once: true });
     const startX = e.clientX;
     const base = th.getBoundingClientRect().width;
-    let width = base;
+    // The header can never hide its own label (Issue #100): the floor is the
+    // label plus the padding around it, and the engine's minimum under that.
+    const cs = getComputedStyle(th);
+    const floor = WeaveColumnResize.floor({
+      label: th.querySelector('.col-label')?.getBoundingClientRect().width ?? 0,
+      padLeft: parseFloat(cs.paddingLeft) || 0, padRight: parseFloat(cs.paddingRight) || 0,
+      min: MIN_COLUMN_WIDTH,
+    });
+    let width = Math.round(base);
     const move = (ev) => {
-      width = Math.max(MIN_COLUMN_WIDTH, Math.round(base + ev.clientX - startX));
-      th.style.width = `${width}px`;
+      width = WeaveColumnResize.width({ base, startX, x: ev.clientX, floor });
+      // Painted the way it will be stored — header AND cells, width with its
+      // floor and cap. A stored width leaves min/max-width on the column, so
+      // a bare style.width could not move it and the column only jumped on
+      // release (Issue #160).
+      paintColumnWidth(th, width);
     };
     let done = false;
     const up = () => {
@@ -3501,7 +3520,7 @@ function columnResizeGrip(db, f) {
       grip.removeEventListener('pointercancel', up);
       grip.removeEventListener('lostpointercapture', up);
       th.draggable = wasDraggable;
-      if (Math.round(width) !== Math.round(base)) setColumnWidth(db, f, width, th);
+      if (width !== Math.round(base)) setColumnWidth(db, f, width, th);
     };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
@@ -3524,20 +3543,24 @@ function applyColumnWidth(cell, width) {
   cell.style.maxWidth = width ? `${width}px` : '';
 }
 
+/* The header and every cell under it take one width — during a drag and on
+   the commit alike, so release repaints nothing (Issue #160). */
+function paintColumnWidth(th, width) {
+  applyColumnWidth(th, width);
+  const idx = [...th.parentElement.children].indexOf(th);
+  for (const row of th.closest('table')?.querySelectorAll('tbody tr') ?? []) {
+    const cell = row.children[idx];
+    if (cell && cell.colSpan === 1) applyColumnWidth(cell, width);
+  }
+}
+
 async function setColumnWidth(db, f, width, th = null) {
   try {
     await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, { config: { width } });
     // Commit in place: the header keeps (or sheds) its width and the cells
     // follow, without tearing the grid down mid-gesture (Kyle, 2026-08-22).
     f.width = width ?? undefined;
-    if (th) {
-      applyColumnWidth(th, width);
-      const idx = [...th.parentElement.children].indexOf(th);
-      for (const row of th.closest('table')?.querySelectorAll('tbody tr') ?? []) {
-        const cell = row.children[idx];
-        if (cell && cell.colSpan === 1) applyColumnWidth(cell, width);
-      }
-    }
+    if (th) paintColumnWidth(th, width);
     loadSchema().catch(() => {}); // background truth refresh, no repaint
   } catch (err) { toast(err.message, true); showDatabase(db.id); }
 }
