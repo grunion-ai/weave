@@ -1598,7 +1598,11 @@ test('number costume controls: unit for plain numbers, an ISO-code picker for cu
 
 test('Enter in the date popover commits and closes, time kept', () => {
   const pop = fnBody('datePopover');
-  assert.match(pop, /const local = readSmart\(\);[\s\S]{0,200}commit\(local, true\)/, 'Enter commits the typed stamp and closes; readTypedDate carried the time of day');
+  // The typed stamp splits into its day and its time of day; a single date
+  // commits both and closes (the range mode of the same dialog, Issue #197,
+  // keeps the dialog open until its second end lands).
+  assert.match(pop, /const local = readSmart\(\);[\s\S]{0,400}if \(t\) clocks\[which\] = t;[\s\S]{0,200}if \(!range\) \{ ends\.start = day; return commit\(true\); \}/,
+    'Enter commits the typed stamp and closes; readTypedDate carried the time of day');
 });
 
 /* Kyle, 2026-08-23: the eyeball replaces Manage fields; the header + opens

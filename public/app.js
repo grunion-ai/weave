@@ -2409,30 +2409,13 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
       placeholder: 'today, 15 sep, 9/15/26…', onChange: (iso) => patch(iso),
     });
   }
-  /* A range is two of the same control (Issue #91). The generic text
-     fallback painted the stored `{ start, end }` as '[object Object]' and
-     could only ever hand the server a string it must refuse, so a range
-     edits end by end and commits once both ends read as dates. */
+  /* A range is ONE control (Issue #197): one box reading the whole span and
+     one calendar button opening the range dialog — start on the first
+     click, end on the second. The grid cell is that same control, not a
+     read-only chip that sent you to the record page (Issue #156). Half a
+     range is not a range: the control only ever hands over both ends. */
   if (f.type === 'daterange') {
-    const cur = item.raw?.[f.name] ?? null;
-    const range = { start: cur?.start ?? '', end: cur?.end ?? '' };
-    const opts = { costume: f };
-    /* The grid cell is the same two controls, not a read-only chip that sent
-       you to the record page: a range is edited where a date is (Issue #156).
-       Each end is the date control the single-date cell already uses, so a
-       typed 'next friday' and the calendar both work at either end. */
-    const commit = () => {
-      // Half a range is not a range: the server refuses one end, so an
-      // unfinished edit stays in the box until the other end lands.
-      if (range.start && range.end) patch({ ...range });
-      else if (!range.start && !range.end) patch(null);
-    };
-    return el('span', { class: 'range-box' + (compact ? ' range-compact' : ''), onclick: (e) => e.stopPropagation() },
-      dateControl({ ...opts, compact, value: range.start, placeholder: 'start', onChange: (iso) => { range.start = iso ?? ''; commit(); } }),
-      // The dash travels with the end, so a wrapped range reads "start / – end".
-      el('span', { class: 'range-end' },
-        el('span', { class: 'range-sep' }, '–'),
-        dateControl({ ...opts, compact, value: range.end, placeholder: 'end', onChange: (iso) => { range.end = iso ?? ''; commit(); } })));
+    return rangeControl({ value: item.raw?.[f.name] ?? null, costume: f, compact, onChange: (r) => patch(r) });
   }
   const rawVal = item.raw?.[f.name] ?? val;
   /* A value with a shape and no renderer (Issue #200, the class Issue #91
@@ -3696,16 +3679,9 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
     onclick: (e) => e.stopPropagation(),
   });
   const set = (iso) => { current = iso ?? ''; text.value = show(current); onChange(current || null); };
-  /* A local wall clock → the stored form: an instant folds to UTC, a
-     partial grain is cut to its parts, the full grain stores as typed. */
-  const store = (localIso) => {
-    if (!localIso) return null;
-    if (c.zone === 'instant') return dc.toInstant(localIso.includes('T') ? localIso : localIso + 'T00:00', LOCAL_ZONE);
-    if (c.grain == null) return localIso;
-    return dc.coerce(c, localIso);
-  };
+  const { store, local: toLocal } = dateStoreFns(c);
   // What the popover and the typed-time fallback see: the local wall clock.
-  const local = () => (c.zone === 'instant' && current ? dc.fromInstant(current, LOCAL_ZONE) : current);
+  const local = () => toLocal(current);
   text.addEventListener('change', () => {
     const typed = text.value.trim();
     if (!typed) return set('');
@@ -3729,6 +3705,80 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
   const wrap = el('span', { class: 'date-cell' }, text, btn);
   wrap.setValue = (iso) => { current = iso ?? ''; text.value = show(current); };
   return wrap;
+}
+
+/* Both date controls share the two conversions between the local wall
+   clock a person reads and the stored form. store(): an instant folds to
+   UTC, a partial grain is cut to its parts, the full grain stores as typed.
+   local(): the stored form back to the wall clock the popover shows. */
+function dateStoreFns(c) {
+  const dc = weaveDateCore;
+  return {
+    store: (localIso) => {
+      if (!localIso) return null;
+      if (c.zone === 'instant') return dc.toInstant(localIso.includes('T') ? localIso : localIso + 'T00:00', LOCAL_ZONE);
+      if (c.grain == null) return localIso;
+      return dc.coerce(c, localIso);
+    },
+    local: (stored) => (c.zone === 'instant' && stored ? dc.fromInstant(stored, LOCAL_ZONE) : (stored ?? '')),
+  };
+}
+
+/* The range control (Issue #197): ONE box that reads the whole span in the
+   field's costume — '2026-08-01 – 2026-09-15', 'Aug 1 – Sep 15, 2026' — and
+   ONE calendar button opening the range dialog (datePopover in range mode:
+   first click start, second click end). Typing works too: 'start – end',
+   'start to end', 'start - end', each end read the way a single date is. It
+   is the same control in the grid cell, on the entity page and in the
+   tray's default, so Kyle's "start and end in the same date dialog" holds
+   everywhere a range is edited. Half a range never leaves this control. */
+function rangeControl({ value = null, costume, compact = true, placeholder = 'start – end', onChange }) {
+  const dc = weaveDateCore;
+  const c = { ...costume };
+  const view = { ...c, viewerZone: LOCAL_ZONE };
+  const { store, local } = dateStoreFns(c);
+  let current = value?.start && value?.end ? { start: value.start, end: value.end } : null;
+  const show = (r) => (r ? dc.formatDateRange(r, view) : '');
+  const text = el('input', {
+    class: 'form-control form-control-sm inline-edit date-text range-text' + (compact ? '' : ' date-text-wide'),
+    value: show(current), placeholder,
+    onclick: (e) => e.stopPropagation(),
+  });
+  const set = (r) => { current = r; text.value = show(current); onChange(current); };
+  text.addEventListener('change', () => {
+    const typed = text.value.trim();
+    if (!typed) return set(null);
+    // The separator: an en/em dash, a spaced hyphen, or the word 'to'.
+    const ends = typed.split(/\s*[–—]\s*|\s+-\s+|\s+to\s+/i).filter(Boolean);
+    try {
+      if (ends.length !== 2) throw new Error('two ends');
+      set(orderRange({ start: store(readTypedDate(ends[0], c, local(current?.start))), end: store(readTypedDate(ends[1], c, local(current?.end))) }));
+    } catch {
+      toast(`Could not read '${typed}' as a range — type start – end`, true);
+      text.value = show(current);
+    }
+  });
+  text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } });
+  const btn = el('button', {
+    type: 'button', class: 'date-pick-btn', title: 'Pick the range from the calendar', 'aria-label': 'Open the range calendar',
+    onclick: (e) => {
+      e.stopPropagation();
+      datePopover({
+        anchor: btn, costume: c, range: true,
+        value: current ? { start: local(current.start), end: local(current.end) } : null,
+        onPick: (r) => {
+          try { set(r ? orderRange({ start: store(r.start), end: store(r.end) }) : null); } catch (err) { toast(err.message, true); }
+        },
+      });
+    },
+  }, calendarGlyph());
+  const wrap = el('span', { class: 'date-cell range-cell', onclick: (e) => e.stopPropagation() }, text, btn);
+  wrap.setValue = (r) => { current = r?.start && r?.end ? { start: r.start, end: r.end } : null; text.value = show(current); };
+  return wrap;
+}
+// A range runs forwards: whichever end was picked second, the earlier one starts it.
+function orderRange(r) {
+  return String(r.start) > String(r.end) ? { start: r.end, end: r.start } : r;
 }
 
 /* Typed text → a local ISO stamp the store() step cuts to the grain. Throws
@@ -3780,8 +3830,11 @@ function calendarGlyph() {
 /* The picker opens on the view the grain asks for: a calendar for a full
    date, the month grid for year·month, the year grid for a year, a 1–31
    grid for a day of the month, a clock alone for a time of day. Every pick
-   hands back a LOCAL wall-clock stamp; the control cuts it to the grain. */
-function datePopover({ anchor, value, time, format, costume = null, onPick }) {
+   hands back a LOCAL wall-clock stamp; the control cuts it to the grain.
+   `range: true` is the same dialog holding two ends (Issue #197): the first
+   pick starts a span, the second closes it, the days between are lit, and
+   onPick receives { start, end } once — never half a range. */
+function datePopover({ anchor, value, time, format, costume = null, range = false, onPick }) {
   const dc = weaveDateCore;
   const c = costume ?? { time, format };
   time = !!c.time;
@@ -3792,54 +3845,120 @@ function datePopover({ anchor, value, time, format, costume = null, onPick }) {
   document.querySelector('.date-pop')?.remove();
   const todayIso = dc.todayIso();
   const [ty, tm, td] = todayIso.split('-').map(Number);
-  const p = dc.partsOf(value || '') ?? {};
+  /* Range mode (Issue #197): the same dialog holds TWO ends. `ends` is what
+     has been chosen so far — a start alone is a range half-made — and
+     `picking` names the end the next click sets. A single date is the same
+     machine with one end. */
+  const startVal = range ? (value?.start ?? '') : (value || '');
+  const p = dc.partsOf(startVal) ?? {};
   let y = p.y ?? ty, m = p.m ?? tm;
-  let selected = p.d != null ? `${y}-${pad(m)}-${pad(p.d)}` : '';
-  let clock = p.t ?? '';
+  const dayOf = (iso) => { const q = dc.partsOf(iso || ''); return q?.d != null ? `${q.y}-${pad(q.m)}-${pad(q.d)}` : ''; };
+  const clockOf = (iso) => dc.partsOf(iso || '')?.t ?? '';
+  const ends = range
+    ? { start: dayOf(value?.start), end: dayOf(value?.end) }
+    : { start: dayOf(value), end: '' };
+  const clocks = range
+    ? { start: clockOf(value?.start), end: clockOf(value?.end) }
+    : { start: clockOf(value), end: '' };
+  let picking = range && ends.start && !ends.end ? 'end' : 'start';
   let view = !hasY && !hasM && !hasD ? 'clock' : hasD && !hasM ? 'daylist' : hasM && !hasD ? 'months' : hasY && !hasM ? 'years' : 'days';
   let decadeBase = y;
-  const pop = el('div', { class: 'date-pop', role: 'dialog', onclick: (e) => e.stopPropagation() });
-  const commit = (iso, close) => {
-    onPick(iso);
+  const pop = el('div', { class: 'date-pop' + (range ? ' range' : ''), role: 'dialog', onclick: (e) => e.stopPropagation() });
+  const withClock = (day, which = 'start') => (time ? `${day}T${clocks[which] || '00:00'}` : day);
+  const stamp = (which) => (view === 'clock' ? clocks[which] : (ends[which] ? withClock(ends[which], which) : ''));
+  /* One commit for both modes: a single date hands back its stamp (or null);
+     a range hands back { start, end } only once both ends are there. */
+  const commit = (close) => {
+    if (range) {
+      const both = view === 'clock' ? clocks.start && clocks.end : ends.start && ends.end;
+      if (both) onPick({ start: stamp('start'), end: stamp('end') });
+    } else {
+      onPick(view === 'clock' ? (clocks.start || null) : (ends.start ? stamp('start') : null));
+    }
     if (close) pop.remove();
     else draw();
   };
-  const withClock = (day) => (time ? `${day}T${clock || '00:00'}` : day);
-  const smart = el('input', {
-    class: 'form-control form-control-sm date-smart',
-    placeholder: view === 'clock' ? '9:15, 5:40 pm…' : hasD ? 'today, 15 sep, 9/15/26…' : hasM ? 'aug 2026, 08/2026…' : '2026…',
-    value: dc.formatDate(value || '', { ...c, viewerZone: LOCAL_ZONE }),
-  });
-  const preview = el('div', { class: 'date-smart-preview' });
-  const readSmart = () => {
-    try { return readTypedDate(smart.value, c, value || ''); } catch { return null; }
+  const clear = () => { ends.start = ''; ends.end = ''; clocks.start = ''; clocks.end = ''; picking = 'start'; onPick(null); pop.remove(); };
+  /* A pick lands on the end being chosen. Single: it is the value. Range:
+     the first click starts a new span and clears the old end; the second
+     closes it — swapped if it came before the start — and, without a time
+     of day to set, that is done. */
+  const pick = (dayIso) => {
+    if (!range) { ends.start = dayIso; return commit(!time); }
+    if (picking === 'start') { ends.start = dayIso; ends.end = ''; picking = 'end'; return draw(); }
+    ends.end = dayIso;
+    if (ends.end < ends.start) [ends.start, ends.end] = [ends.end, ends.start];
+    picking = 'start';
+    commit(!time);
   };
-  smart.addEventListener('input', () => {
-    const local = readSmart();
-    let shown = '…';
-    if (local) { try { shown = `→ ${dc.formatDate(c.grain == null ? local : dc.coerce(c, local), { ...c, format: c.grain == null ? 'long' : format })}`; } catch { shown = '…'; } }
-    preview.textContent = smart.value.trim() ? shown : '';
-  });
-  smart.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    const local = readSmart();
-    if (!local) return toast(`Could not read '${smart.value}' as a ${view === 'clock' ? 'time' : 'date'}`, true);
-    // Enter is "done": commit and close, time of day kept (Kyle, 2026-08-23).
-    commit(local, true);
-  });
-  const body = el('div', { class: 'date-pop-body' });
-  const timeRow = () => {
-    const t = el('input', { type: 'time', class: 'form-control form-control-sm date-time', value: clock });
-    t.addEventListener('change', () => {
-      clock = t.value;
-      if (view === 'clock') { if (clock) commit(clock, false); return; }
-      if (selected) commit(withClock(selected), false);
+  const dayClass = (iso) => (
+    (iso === todayIso ? ' today' : '')
+    + (iso === ends.start || iso === ends.end ? ' sel' : '')
+    + (range && ends.start && ends.end && iso > ends.start && iso < ends.end ? ' in-range' : ''));
+  const smartFor = (which) => {
+    const cur = range ? (value?.[which] ?? '') : (value || '');
+    const smart = el('input', {
+      class: 'form-control form-control-sm date-smart',
+      'aria-label': range ? (which === 'start' ? 'Start' : 'End') : 'Date',
+      placeholder: view === 'clock' ? '9:15, 5:40 pm…' : hasD ? 'today, 15 sep, 9/15/26…' : hasM ? 'aug 2026, 08/2026…' : '2026…',
+      value: dc.formatDate(cur, { ...c, viewerZone: LOCAL_ZONE }),
     });
-    return el('div', { class: 'date-pop-time' }, el('span', {}, 'Time'), t);
+    const preview = el('div', { class: 'date-smart-preview' });
+    const readSmart = () => {
+      try { return readTypedDate(smart.value, c, cur); } catch { return null; }
+    };
+    smart.addEventListener('input', () => {
+      const local = readSmart();
+      let shown = '…';
+      if (local) { try { shown = `→ ${dc.formatDate(c.grain == null ? local : dc.coerce(c, local), { ...c, format: c.grain == null ? 'long' : format })}`; } catch { shown = '…'; } }
+      preview.textContent = smart.value.trim() ? shown : '';
+    });
+    smart.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const local = readSmart();
+      if (!local) return toast(`Could not read '${smart.value}' as a ${view === 'clock' ? 'time' : 'date'}`, true);
+      if (view === 'clock') { clocks[which] = local; return commit(!range || !!(clocks.start && clocks.end)); }
+      const day = local.split('T')[0];
+      const t = local.split('T')[1];
+      if (t) clocks[which] = t;
+      // Enter is "done": commit and close, time of day kept (Kyle, 2026-08-23).
+      if (!range) { ends.start = day; return commit(true); }
+      /* A typed end follows the click rule: a start begins a new span (the
+         old end goes, focus moves to the end input), an end closes it —
+         swapped if it came first — and Enter on the end is done. The
+         calendar follows whichever end was typed. */
+      [y, m] = day.split('-').map(Number);
+      if (which === 'start') {
+        ends.start = day; ends.end = ''; picking = 'end';
+        draw();
+        pop.querySelector('.date-pop-smart-end .date-smart')?.focus();
+        return;
+      }
+      ends.end = day;
+      if (!ends.start) { picking = 'start'; return draw(); }
+      if (ends.end < ends.start) [ends.start, ends.end] = [ends.end, ends.start];
+      picking = 'start';
+      commit(true);
+    });
+    return el('div', { class: 'date-pop-smart' + (range ? ' date-pop-smart-' + which : '') },
+      range ? el('span', { class: 'date-smart-label' }, which === 'start' ? 'Start' : 'End') : null, smart, preview);
   };
+  const body = el('div', { class: 'date-pop-body' });
+  const timeInput = (which) => {
+    const t = el('input', { type: 'time', class: 'form-control form-control-sm date-time', 'aria-label': range ? `${which} time` : 'Time', value: clocks[which] });
+    t.addEventListener('change', () => {
+      clocks[which] = t.value;
+      if (view === 'clock') { commit(false); return; }
+      if (ends.start && (!range || ends.end)) commit(false);
+    });
+    return t;
+  };
+  const timeRow = () => el('div', { class: 'date-pop-time' },
+    el('span', {}, 'Time'), timeInput('start'),
+    ...(range ? [el('span', { class: 'range-sep' }, '–'), timeInput('end')] : []));
   const foot = (todayPick) => el('div', { class: 'date-pop-foot' },
-    el('button', { type: 'button', class: 'date-pop-link', onclick: () => { selected = ''; clock = ''; commit(null, true); } }, 'Clear'),
+    el('button', { type: 'button', class: 'date-pop-link', onclick: clear }, 'Clear'),
     el('button', { type: 'button', class: 'date-pop-link', onclick: todayPick }, 'Today'));
   function draw() {
     body.replaceChildren();
@@ -3855,30 +3974,37 @@ function datePopover({ anchor, value, time, format, costume = null, onPick }) {
         for (const cell of week) {
           grid.append(el('button', {
             type: 'button',
-            class: 'date-day' + (cell.inMonth ? '' : ' out') + (cell.iso === todayIso ? ' today' : '') + (cell.iso === selected ? ' sel' : ''),
-            onclick: () => { selected = cell.iso; [y, m] = cell.iso.split('-').map(Number); commit(withClock(cell.iso), !time); },
+            class: 'date-day' + (cell.inMonth ? ' in' : ' out') + dayClass(cell.iso),
+            onclick: () => { [y, m] = cell.iso.split('-').map(Number); pick(cell.iso); },
           }, String(cell.day)));
         }
       }
       body.append(grid);
       if (time) body.append(timeRow());
-      body.append(foot(() => { selected = todayIso; [y, m] = [ty, tm]; commit(withClock(todayIso), !time); }));
+      body.append(foot(() => { [y, m] = [ty, tm]; pick(todayIso); }));
     } else if (view === 'daylist') {
       // A day of the month, of no particular month: 1 to 31.
       const grid = el('div', { class: 'date-grid' });
       for (let d = 1; d <= 31; d++) {
+        const iso = `${ty}-${pad(tm)}-${pad(d)}`;
         grid.append(el('button', {
-          type: 'button', class: 'date-day' + (d === td ? ' today' : '') + (d === p.d ? ' sel' : ''),
-          onclick: () => { selected = `${ty}-${pad(tm)}-${pad(d)}`; commit(withClock(selected), !time); },
+          type: 'button', class: 'date-day in' + dayClass(iso),
+          onclick: () => pick(iso),
         }, String(d)));
       }
       body.append(grid);
       if (time) body.append(timeRow());
-      body.append(foot(() => { selected = todayIso; commit(withClock(todayIso), !time); }));
+      body.append(foot(() => pick(todayIso)));
     } else if (view === 'clock') {
       body.append(timeRow(), el('div', { class: 'date-pop-foot' },
-        el('button', { type: 'button', class: 'date-pop-link', onclick: () => { clock = ''; commit(null, true); } }, 'Clear'),
-        el('button', { type: 'button', class: 'date-pop-link', onclick: () => { const d = new Date(); clock = `${pad(d.getHours())}:${pad(d.getMinutes())}`; commit(clock, true); } }, 'Now')));
+        el('button', { type: 'button', class: 'date-pop-link', onclick: clear }, 'Clear'),
+        el('button', { type: 'button', class: 'date-pop-link', onclick: () => {
+          const d = new Date();
+          const now = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+          if (!range) { clocks.start = now; return commit(true); }
+          if (picking === 'start') { clocks.start = now; clocks.end = ''; picking = 'end'; return draw(); }
+          clocks.end = now; picking = 'start'; commit(true);
+        } }, 'Now')));
     } else if (view === 'months') {
       body.append(el('div', { class: 'date-pop-head' },
         hasY ? el('button', { type: 'button', class: 'date-pop-title', onclick: () => { if (hasD) { view = 'days'; draw(); } else { view = 'years'; decadeBase = y; draw(); } } }, `${y}${hasD ? '' : ' ▾'}`) : el('span', { class: 'date-pop-title' }, 'Month'),
@@ -3886,17 +4012,19 @@ function datePopover({ anchor, value, time, format, costume = null, onPick }) {
         ...(hasY ? [
           el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y--; draw(); } }, iconEl('↑')),
           el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { y++; draw(); } }, iconEl('↓'))] : [])));
-      body.append(el('div', { class: 'date-pick-grid' }, ...dc.MONTHS.map((name, i) => el('button', {
-        type: 'button', class: 'date-pick-cell' + (i + 1 === m ? ' sel' : ''),
-        onclick: () => {
-          m = i + 1;
-          if (hasD) { view = 'days'; draw(); return; }
-          selected = `${y}-${pad(m)}-01`;
-          commit(withClock(selected), !time);
-        },
-      }, name))));
+      body.append(el('div', { class: 'date-pick-grid' }, ...dc.MONTHS.map((name, i) => {
+        const iso = `${y}-${pad(i + 1)}-01`;
+        return el('button', {
+          type: 'button', class: 'date-pick-cell' + (hasD ? (i + 1 === m ? ' sel' : '') : dayClass(iso).replace(' today', '')),
+          onclick: () => {
+            m = i + 1;
+            if (hasD) { view = 'days'; draw(); return; }
+            pick(iso);
+          },
+        }, name);
+      })));
       if (!hasD && time) body.append(timeRow());
-      if (!hasD) body.append(foot(() => { y = ty; m = tm; selected = `${ty}-${pad(tm)}-01`; commit(withClock(selected), !time); }));
+      if (!hasD) body.append(foot(() => { y = ty; m = tm; pick(`${ty}-${pad(tm)}-01`); }));
     } else {
       const years = dc.decade(decadeBase);
       body.append(el('div', { class: 'date-pop-head' },
@@ -3904,20 +4032,23 @@ function datePopover({ anchor, value, time, format, costume = null, onPick }) {
         el('span', { class: 'date-pop-spacer' }),
         el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase -= 10; draw(); } }, iconEl('↑')),
         el('button', { type: 'button', class: 'date-pop-arrow', onclick: () => { decadeBase += 10; draw(); } }, iconEl('↓'))));
-      body.append(el('div', { class: 'date-pick-grid' }, ...years.map((yr) => el('button', {
-        type: 'button', class: 'date-pick-cell' + (yr === y ? ' sel' : ''),
-        onclick: () => {
-          y = yr;
-          if (hasM) { view = 'months'; draw(); return; }
-          selected = `${y}-01-01`;
-          commit(withClock(selected), !time);
-        },
-      }, String(yr)))));
-      if (!hasM) body.append(foot(() => { y = ty; selected = `${ty}-01-01`; commit(withClock(selected), !time); }));
+      body.append(el('div', { class: 'date-pick-grid' }, ...years.map((yr) => {
+        const iso = `${yr}-01-01`;
+        return el('button', {
+          type: 'button', class: 'date-pick-cell' + (hasM ? (yr === y ? ' sel' : '') : dayClass(iso).replace(' today', '')),
+          onclick: () => {
+            y = yr;
+            if (hasM) { view = 'months'; draw(); return; }
+            pick(iso);
+          },
+        }, String(yr));
+      })));
+      if (!hasM) body.append(foot(() => { y = ty; pick(`${ty}-01-01`); }));
     }
   }
   draw();
-  pop.append(el('div', { class: 'date-pop-smart' }, smart, preview), body);
+  const smarts = range ? [smartFor('start'), smartFor('end')] : [smartFor('start')];
+  pop.append(...smarts, body);
   document.body.append(pop);
   const r = anchor.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
@@ -3925,7 +4056,7 @@ function datePopover({ anchor, value, time, format, costume = null, onPick }) {
   const close = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); removeEventListener('click', close, true); } };
   addEventListener('click', close, true);
   pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); pop.remove(); anchor.focus(); } });
-  smart.focus();
+  smarts[0].querySelector('.date-smart').focus();
   return pop;
 }
 
@@ -4589,6 +4720,16 @@ function fieldDialog(db, existing, after) {
           }));
         }
         kids.push(dsection('Default', body));
+      } else if (t === 'daterange') {
+        /* A range default wears the SAME control and dialog the cell does
+           (Issue #197): a bare text box could only hand the engine a string
+           it refuses. The state keeps the range as JSON text so the code
+           pane and the form stay two views of one string. */
+        kids.push(dsection('Default', rangeControl({
+          value: fdc.rangeDefault(state.default), costume: fdc.dateCostume(state.date, t), compact: false,
+          placeholder: 'No default — pick a range',
+          onChange: (r) => { state.default = r ? JSON.stringify(r) : ''; changed(); },
+        })));
       } else if (t === 'checkbox') {
         // A checkbox default is one of two states, not typed text.
         const cur = state.default === '' ? 'none' : ['true', 'yes', '1'].includes(String(state.default).toLowerCase()) ? 'checked' : 'unchecked';
