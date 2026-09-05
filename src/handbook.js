@@ -845,13 +845,13 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 | Control | Where | What it does |
 | --- | --- | --- |
 | Drag a header | table view | reorders columns, stored on the schema for everyone |
-| Drag a header's right edge | table view | sets a width |
+| Drag a header's right edge | table view | sets a width — the column follows the pointer and stops at its own label |
 | Double-click that edge | table view | fits the column to its content, no cutoff |
 | Click a header | table view | opens the field tray — rename, retype, reconfigure |
 | 👁 | view toolbar | show or hide any field, the system columns, and deleted rows |
 | Drag ⠿ | entity page | reorders fields; the table's columns follow |
 
-Two facts about width decide how a table reads: **an unset column caps at 260px and ellipsises**, and **a set width is a floor as well as a ceiling** (60px minimum), so the column holds its width in a grid wider than its card. Set one only where the default clips something a reader needs.
+Two facts about width decide how a table reads: **an unset column caps at 260px and ellipsises**, and **a set width is a floor as well as a ceiling** (60px minimum, and never narrower than the header's label), so the column holds its width in a grid wider than its card. Set one only where the default clips something a reader needs.
 
 The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record.
 

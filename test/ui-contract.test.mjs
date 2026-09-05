@@ -552,7 +552,8 @@ test('every column header carries a field menu; a header click edits, sorting li
   // moved into the ⋮ menu (asc / desc / clear) so it is still one click away.
   const head = fnBody('renderTable');
   assert.match(head, /fieldMenuButton\(/, 'each column th mounts the field menu');
-  assert.match(head, /onclick: \(\) => editFieldDialog\(db, colField\(db, c\)\)/, 'the header click opens the field editor');
+  assert.match(head, /onclick: \(e\) => \{ if \(!e\.currentTarget\.dataset\.resized\) editFieldDialog\(db, colField\(db, c\)\); \}/,
+    'the header click opens the field editor — unless it is the click a resize gesture leaves behind (Issue #98)');
   assert.match(head, /onSort: \(dir\) =>/, 'the menu is handed the sort control');
   const menu = fnBody('fieldMenuButton');
   assert.match(menu, /showPopover\(/, 'the menu reuses the chip popover, not a new overlay');
@@ -757,6 +758,15 @@ test('a resize grip commits once, on release', () => {
   assert.equal(commits.length, 2, 'exactly two commits: release and auto-fit — never per move');
   assert.match(grip, /dblclick/, 'double-click auto-fits');
   assert.match(grip, /stopPropagation/, 'grabbing the grip must not sort the column');
+  // Issues #98, #100, #160 (2026-09-05): the drag paints header AND cells on
+  // every move through the same helper the commit uses, the floor is the
+  // label's own width, and the header is marked so the gesture's click is inert.
+  assert.match(grip, /paintColumnWidth\(th, width\)/, 'every move paints the column the way release will');
+  assert.match(grip, /WeaveColumnResize\.floor\(/, 'the floor is measured from the label');
+  assert.match(grip, /WeaveColumnResize\.width\(/, 'one width rule, shared with the pure core');
+  assert.match(grip, /th\.dataset\.resized = '1'/, 'the header wears the gesture mark');
+  assert.match(grip, /delete th\.dataset\.resized/, 'and sheds it on the next press');
+  assert.match(readFileSync(join(ROOT, 'public/index.html'), 'utf8'), /<script src="\/column-resize\.js"><\/script>/, 'the pure core is loaded');
 });
 
 test('double-click fits the column to its content (measured), a schema write like any resize', () => {
@@ -1442,10 +1452,11 @@ test('a select clears through its own empty option; a state cannot be emptied', 
 
 test('resize and reorder commit in place — the grid never tears down mid-gesture', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
-  const resize = app.slice(app.indexOf('async function setColumnWidth'), app.indexOf('function fieldMenuButton'));
+  const resize = app.slice(app.indexOf('function paintColumnWidth'), app.indexOf('function fieldMenuButton'));
   assert.ok(!resize.includes('showDatabase(db.id);\n') || resize.includes('catch'), 'redraw only on failure');
   assert.ok(resize.includes('applyColumnWidth(th, width)'), 'the header keeps its width locally');
   assert.ok(resize.includes('applyColumnWidth(cell, width)'), 'cells follow without a repaint');
+  assert.ok(resize.includes('if (th) paintColumnWidth(th, width)'), 'the commit paints through the same helper the drag paints with (Issue #160)');
   const apply = fnBody('applyColumnWidth');
   assert.ok(apply.includes('style.width') && apply.includes('style.maxWidth'),
     'and the width is written as inline style, not a redraw');

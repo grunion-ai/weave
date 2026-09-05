@@ -153,4 +153,91 @@ if (s) {
       assert.ok(after < 300, `a fit reads the column, not the table, got ${Math.round(after)}px`);
     } finally { await page.close(); }
   });
+
+  /* ---------- the drag itself (Issues #98, #100, #160) ---------- */
+
+  // Press the grip and move the pointer by dx, leaving the button DOWN so the
+  // caller can read the grid mid-gesture.
+  async function pressAndDrag(page, label, dx) {
+    const box = await page.locator(gripFor(label)).boundingBox();
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + dx, y, { steps: 6 });
+    return { y };
+  }
+  const widthOf = (page, label) => page.locator(headFor(label)).evaluate((th) => th.getBoundingClientRect().width);
+  const storedWidth = (label) => {
+    const t = weave.getTable(db.id);
+    return Object.values(t.fields).find((f) => f.name === label).config.width;
+  };
+
+  test('the column follows the pointer while the button is down, and release stores what was painted (Issue #160)', async () => {
+    const page = await openGrid();
+    try {
+      // A column that was resized once carries width + min-width + max-width
+      // on its header and cells — the second drag is the one that jumped.
+      const owner = Object.values(weave.getTable(db.id).fields).find((f) => f.name === 'Owner');
+      weave.updateField(db.id, owner.id, { config: { width: 150 } });
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('table.wv-grid th.col-head');
+      const before = await widthOf(page, 'Owner');
+      assert.ok(Math.abs(before - 150) <= 2, `the fixture starts at its stored width, got ${Math.round(before)}`);
+      await pressAndDrag(page, 'Owner', 80);
+      const during = await widthOf(page, 'Owner');
+      assert.ok(Math.abs(during - (before + 80)) <= 2,
+        `mid-drag the header must sit under the pointer: ${Math.round(before)} + 80 vs ${Math.round(during)}`);
+      // Every cell in the column moved with its header — not just the <th>.
+      const cells = await page.locator(headFor('Owner')).evaluate((th) => {
+        const idx = [...th.parentElement.children].indexOf(th);
+        return [...th.closest('table').querySelectorAll('tbody tr.entity-row')].map((r) => r.children[idx].getBoundingClientRect().width);
+      });
+      for (const w of cells) assert.ok(Math.abs(w - during) <= 2, `a cell must match its header mid-drag: ${Math.round(w)} vs ${Math.round(during)}`);
+      await page.mouse.up();
+      // The schema write is in flight; wait for the field to carry a width.
+      for (let i = 0; i < 20 && !storedWidth('Owner'); i++) await page.waitForTimeout(100);
+      await page.waitForTimeout(200);
+      const after = await widthOf(page, 'Owner');
+      assert.ok(Math.abs(after - during) <= 1, `no jump on release: painted ${Math.round(during)}, settled ${Math.round(after)}`);
+      assert.equal(storedWidth('Owner'), Math.round(during), 'the stored width is the painted width');
+    } finally { await page.close(); }
+  });
+
+  test('a drag on the grip never opens the field dialog on release (Issue #98)', async () => {
+    const page = await openGrid();
+    try {
+      await pressAndDrag(page, 'Owner', 6);
+      await page.mouse.up();
+      // Safari resolves the click of a captured drag to the header under the
+      // pointer; the gesture's own click must be inert wherever it lands.
+      await page.locator(headFor('Owner')).evaluate((th) => th.click());
+      await page.waitForTimeout(250);
+      assert.equal(await page.locator('#tray-back').count(), 0, 'the field dialog stays closed after a resize');
+      // A plain click on the header still opens it — the guard is per gesture.
+      await page.locator(headFor('Owner')).click({ position: { x: 10, y: 10 } });
+      await page.waitForSelector('#tray-back', { timeout: 2000 });
+    } finally { await page.close(); }
+  });
+
+  test('a column cannot be dragged narrower than its own label (Issue #100)', async () => {
+    const page = await openGrid();
+    try {
+      await pressAndDrag(page, 'Owner', -400);
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      const got = await page.locator(headFor('Owner')).evaluate((th) => {
+        const cs = getComputedStyle(th);
+        const label = th.querySelector('.col-label').getBoundingClientRect();
+        const box = th.getBoundingClientRect();
+        return {
+          width: box.width,
+          need: label.width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight),
+          clipped: label.right > box.right - parseFloat(cs.paddingRight) + 1 || label.left < box.left - 1,
+        };
+      });
+      assert.ok(got.width >= got.need - 1, `the header stops at its label: ${Math.round(got.width)}px vs ${Math.round(got.need)}px needed`);
+      assert.equal(got.clipped, false, 'the label sits inside the header after the drag');
+      assert.ok(storedWidth('Owner') >= Math.floor(got.need), 'the stored width respects the same floor');
+    } finally { await page.close(); }
+  });
 }
