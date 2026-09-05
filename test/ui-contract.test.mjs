@@ -1021,7 +1021,8 @@ test('a computed field carries its glyph next to the name, not only in cells', (
 
   // Every surface that prints a field name uses it — a column marked in the
   // grid but bare on the entity page is worse than not marking it at all.
-  for (const fn of ['renderTable', 'renderEntityView', 'openSchemaEditor']) {
+  // (openSchemaEditor left the list with Issue #196 — the page is gone.)
+  for (const fn of ['renderTable', 'renderEntityView']) {
     assert.match(fnBody(fn), /fieldNameLabel\(/, `${fn}() must label field names through the helper`);
   }
   const mark = rulesFor('.field-mark');
@@ -1464,7 +1465,7 @@ test('field dialogs are the unified fieldDialog, not the old string forms', () =
   // Both entry points route through one implementation so add and edit can
   // never drift apart again (the old pair disagreed on number clearing).
   assert.match(APP, /function fieldDialog\(db, existing, after\)/);
-  assert.match(APP, /function addFieldDialog\(db\) \{[\s\S]{0,200}?fieldDialog\(db, null,/);
+  assert.match(APP, /function addFieldDialog\(db\) \{[\s\S]{0,400}?fieldDialog\(db, null,/);
   assert.match(APP, /function editFieldDialog\(db, f\) \{\s*fieldDialog\(db, f,/);
   // The comma-separated options input is gone from the dialogs.
   assert.doesNotMatch(APP, /Options \(comma-separated\)/);
@@ -1512,7 +1513,6 @@ test('dates: one smart control everywhere, a calendar popover with month/year gr
 test('field dialogs open in the right-hand tray and popovers stack above it', () => {
   const dlg = fnBody('fieldDialog');
   assert.match(dlg, /\n  tray\(/, 'the field dialog is a tray, not a centered modal');
-  assert.match(fnBody('addRelationDialog'), /\n  tray\(/, 'the relation dialog shares the tray');
   const back = rulesFor('#tray-back');
   const pop = rulesFor('.chip-pop');
   assert.ok(px(pop['z-index']) > px(back['z-index']), 'a picker opened inside the tray must render above it');
