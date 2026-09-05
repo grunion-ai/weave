@@ -111,6 +111,23 @@ test('the polymorphic-relations guide covers the target set and the ruling behin
   }
 });
 
+test('the polymorphic-relations guide points each use case at its Showcase table (Feature #182)', () => {
+  const guide = GUIDES.find((g) => g.name === 'Polymorphic relations');
+  const section = guide.doc.split('## See it in Showcase')[1];
+  assert.ok(section, 'the guide has no "See it in Showcase" section');
+  // One case per row, each naming the pointing field and linking its table
+  // with a [[table:Showcase/…]] reference so the chip renders and resolves.
+  for (const [table, field] of [
+    ['Comments', 'On'], ['Activity', 'Subject'], ['Notes', 'Related'],
+    ['Approvals', 'Of'], ['Tags', 'Applied to'], ['Line Items', 'Expense'],
+  ]) {
+    assert.ok(section.includes(`[[table:Showcase/${table}]]`), `the Showcase section never links Showcase/${table}`);
+    assert.ok(section.includes(`\`${field}\``), `the Showcase section never names ${table}.${field}`);
+  }
+  assert.ok(section.includes('counter-example'), 'the section does not call out the single-target counter-example');
+  assert.ok(section.includes('[[Article#5]]'), 'the section does not link the Wiki walkthrough');
+});
+
 test('the customization guide covers what a reader can change', () => {
   const guide = GUIDES.find((g) => g.name === 'Making a workspace your own');
   assert.ok(guide, 'there is no customization guide');
