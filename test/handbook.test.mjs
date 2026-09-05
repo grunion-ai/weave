@@ -281,3 +281,71 @@ test('re-applying keeps the one page rather than seeding twelve beside it', () =
   assert.equal(rows.length, 1);
   assert.equal(rows[0].id, first, 'the page was replaced instead of updated — inbound links would break');
 });
+
+/* ---------- Chip and card anatomy (Feature #180, 2026-09-05) ----------
+   Kyle: "Drop a visual HTML breakdown of chip and card anatomy — what each
+   element does and how to use (copy link, click to open) — with hitboxes."
+   The page is a Guide whose figures are the REAL chip and card markup (the
+   same classes app.js emits, so the app's own CSS draws them and the caret
+   in the figure toggles for real), each element outlined in a colour that
+   the legend beneath repeats. The same page is exported as ONE
+   self-contained HTML file for sharing outside the app; the export and the
+   source must not drift. */
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { ROOT } from './lib/source.mjs';
+const ANATOMY = GUIDES.find((g) => g.name === 'Chip and card anatomy');
+
+test('the anatomy guide exists, is for both audiences, and follows the view page', () => {
+  assert.ok(ANATOMY, 'a Handbook/Guide named "Chip and card anatomy"');
+  assert.equal(ANATOMY.audience, 'Both');
+  assert.ok(ANATOMY.order > Math.max(...GUIDES.filter((g) => g !== ANATOMY).map((g) => g.order)), 'last in the guide order');
+  assert.match(ANATOMY.doc, /\[\[Handbook\/Fields#view\]\]|\bview\b/, 'points at the view field page it explains the face of');
+});
+
+test('the anatomy names every element of the chip and the card, what it does, and how you use it', () => {
+  const doc = ANATOMY.doc;
+  for (const term of ['avatar', 'public id', 'name', 'home badge', 'caret', 'segment', '↗', '×', 'state', 'description', 'fields']) {
+    assert.ok(doc.toLowerCase().includes(term.toLowerCase()), `names the ${term}`);
+  }
+  for (const use of ['click', 'copy link', '⌘', 'middle', 'hover', 'expand', 'collapse', 'unlink']) {
+    assert.ok(doc.toLowerCase().includes(use.toLowerCase()), `says how to ${use}`);
+  }
+  assert.match(doc, /hitbox/i, 'says what a hitbox is on this page');
+});
+
+test('the figures are the real chip and the real card, with each hitbox drawn as an outline', () => {
+  const doc = ANATOMY.doc;
+  // The chip specimen: the classes app.js emits, open so the segments show.
+  for (const cls of ['mention-wrap open', 'k k-rel', 'mention-caret', 'mention-fields', 'k-state', 'k-home', 'mention-f-label']) {
+    assert.ok(doc.includes(cls), `the chip figure carries .${cls.split(' ').pop()}`);
+  }
+  // The card specimen.
+  for (const cls of ['wv-card', 'wv-card-head', 'wv-card-title', 'wv-card-id', 'wv-card-desc', 'wv-card-fields']) {
+    assert.ok(doc.includes(`class="${cls}`), `the card figure carries .${cls}`);
+  }
+  const outlines = doc.match(/outline:\s*[^;"]+dashed[^;"]*/g) ?? [];
+  assert.ok(outlines.length >= 12, `every element carries a dashed outline as its drawn hitbox, got ${outlines.length}`);
+  const badges = doc.match(/class="wv-anat-n"/g) ?? [];
+  assert.ok(badges.length >= 12, `every outlined element is numbered, got ${badges.length}`);
+  // Raw HTML blocks end at a blank line — a figure with one inside would render half as prose.
+  for (const block of doc.split(/\n\s*\n/).filter((b) => b.startsWith('<'))) {
+    assert.ok(/^<\w/.test(block) && /<\/(div|figure)>\s*$/.test(block), 'each figure is one unbroken raw-HTML block');
+  }
+  assert.doesNotMatch(doc, /<style|<script|src="http|href="http/, 'no stylesheet, script or external asset — the app draws it');
+});
+
+test('docs/chip-card-anatomy.html is the exported page, self-contained, and current', () => {
+  const file = join(ROOT, 'docs/chip-card-anatomy.html');
+  assert.ok(existsSync(file), 'the standalone export is checked in');
+  const html = readFileSync(file, 'utf8');
+  const fresh = execFileSync(process.execPath, [join(ROOT, 'scripts/export-chip-card-anatomy.mjs'), '--stdout'], { encoding: 'utf8' });
+  assert.equal(html, fresh, 'the checked-in export drifted from the guide — run scripts/export-chip-card-anatomy.mjs');
+  assert.doesNotMatch(html, /(src|href)=["'](https?:)?\/\//, 'no network requests: no external src or href');
+  assert.doesNotMatch(html, /<link[^>]+rel="stylesheet"/, 'no linked stylesheet — the chip CSS is inlined');
+  assert.match(html, /--wv-chip-font:\s*13px/, 'the chip tokens ride along, so the specimen is the real size');
+  assert.match(html, /data-bs-theme="dark"\]|prefers-color-scheme:\s*dark/, 'both themes');
+  assert.match(html, /class="k k-rel has-segs"/, 'the chip figure is in the export');
+  assert.match(html, /class="wv-card"/, 'and the card figure');
+});
