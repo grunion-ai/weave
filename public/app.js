@@ -1654,6 +1654,46 @@ function activateCell(cell) {
   }
 }
 
+/* ---------- a new row takes the caret (Issues #125, #195) ----------
+   Creating a row from the grid — the "+ New" foot button, Shift+Enter from a
+   row — is the start of typing, so the new row's Name cell opens with the
+   caret inside and the row scrolled into view. The row is found by id, not
+   by column position: `td:nth-child(2) input` was the Name cell until the
+   selection column landed in front of it (Feature #132), then silently
+   aimed at the #id link for a week. Polled by frame because the row arrives
+   after a redraw — and, on the entity page, after a fetch the redraw does
+   not await — and re-asserted only while focus rests on <body>: a second
+   redraw (the commit Shift+Enter left behind) tears the input out, but a
+   reader who has already tabbed on is left alone. The watch ends at the
+   reader's first key or pointer after it placed them — the row is theirs
+   from there — or when the next new row starts its own. Without that, the
+   watch from one Shift+Enter re-grabbed the input the next Shift+Enter had
+   just blurred, and the commit's redraw restored focus to the old row. */
+let newRowTurn = 0;
+function focusNewRow(eid, { field = null, scope = '#main', select = false, frames = 120, grace = 30 } = {}) {
+  const turn = ++newRowTurn;
+  let placed = false;
+  const done = () => { if (turn === newRowTurn) newRowTurn++; };
+  const step = () => {
+    if (turn !== newRowTurn || frames-- <= 0 || (placed && grace-- <= 0)) return;
+    const row = document.querySelector(`${scope} tr[data-eid="${eid}"]`);
+    const input = (field && row?.querySelector(`td[data-field="${CSS.escape(field)}"] input`))
+      || row?.querySelector('td input:not([type="checkbox"])');
+    if (input && (!placed || document.activeElement === document.body)) {
+      // Instant, not the page's smooth scroll: the reader is about to type.
+      row.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      activateCell(input.closest('td'));
+      if (select) input.select();
+      if (!placed) {
+        for (const ev of ['keydown', 'pointerdown']) document.addEventListener(ev, done, { once: true, capture: true });
+      }
+      placed = true;
+    }
+    requestAnimationFrame(step);
+  };
+  step();
+}
+
 /* ---------- Ledger: a capped column says what it is hiding ----------
    A cell whose value does not fit shows a marker and, on hover, the whole
    value — as a COPY in an overlay layer over the grid. The cell itself is
@@ -2662,15 +2702,10 @@ function drawDatabase(db, items, trashCount = 0) {
     await loadSchema();
     const fresh = await api('POST', `/tables/${db.id}/query`, {});
     drawDatabase(db, fresh.items);
-    // The first FIELD cell: the box and the #id link come before it. Opened,
-    // with the (empty) value selected, so the reader types the name straight in.
-    requestAnimationFrame(() => {
-      const td = $(`tr[data-eid="${created.id}"]`)?.querySelector('td[data-field]');
-      if (td) { activateCell(td); td.querySelector('input')?.select(); }
-    });
+    focusNewRow(created.id, { field: nameFieldOf(db)?.name });
   };
 
-  renderTable(main, db, items, onSaved);
+  renderTable(main, db, items, onSaved, state.inlineAdd);
 }
 
 /* Show / hide, one list: the table's fields, then the system columns, then
@@ -2766,7 +2801,11 @@ function visibleCols(db) {
   return db.fields.filter((f) => !hidden.has(f.name)).map((f) => f.name);
 }
 
-function renderTable(main, db, items, onSaved) {
+/* onAdd is the foot button's verb — the table page's inlineAdd, a registry
+   grid's create-and-name. Without one the grid has no foot button: the old
+   button reached for state.inlineAdd, which on a space page was whatever
+   table the reader had visited last (Issue #195). */
+function renderTable(main, db, items, onSaved, onAdd = null) {
   const cols = visibleCols(db);
   // Header bar = checkbox + id + one per field + the "+" field control.
   // Full-width rows span it, so it is derived once rather than restated per
@@ -2992,12 +3031,14 @@ function renderTable(main, db, items, onSaved) {
     }
     // Creating an entity is the last row of the grid, not a detached bar:
     // the table reads as one surface that grows from the bottom.
-    tbody.append(el('tr', { class: 'add-entity-row' },
-      el('td', { colspan: String(colCount) },
-        el('button', {
-          class: 'add-entity-btn', type: 'button', title: `New ${db.term.singular}`,
-          onclick: () => state.inlineAdd?.(),
-        }, `+ New ${db.term.singular}`))));
+    if (onAdd) {
+      tbody.append(el('tr', { class: 'add-entity-row' },
+        el('td', { colspan: String(colCount) },
+          el('button', {
+            class: 'add-entity-btn', type: 'button', title: `New ${db.term.singular}`,
+            onclick: () => onAdd(),
+          }, `+ New ${db.term.singular}`))));
+    }
 
     const table = el('table', {
       class: 'table table-sm table-vcenter card-table table-hover wv-grid',
@@ -3136,7 +3177,14 @@ function renderTable(main, db, items, onSaved) {
         return true;
       }
       case 'open': dockEntity(db, eid); return true;
-      case 'newRow': state.inlineAdd?.(); return true;
+      case 'newRow': {
+        // Save-and-create-another (Issue #125): the blur commits the open
+        // cell before the new row is asked for. onAdd is THIS grid's verb —
+        // on a registry grid state.inlineAdd belongs to some other table.
+        if (at !== td) at.blur();
+        onAdd?.();
+        return true;
+      }
       case 'toggleSelect': anchor = eid; setChosen(SEL().toggle(chosen(), eid)); return true;
       case 'extendSelect': {
         const out = KM().extend({ ids: drawnIds(), anchor, at: eid, dir: verb.dir });
@@ -4611,7 +4659,17 @@ async function showSpace(spaceId) {
       await showSpace(spaceId);
       restoreGridFocus();
     };
-    renderTable(main, reg, items, onSaved);
+    // A new table is born here with a placeholder name, selected whole in
+    // the row's Name cell so typing replaces it (Issue #195).
+    const onAdd = async () => {
+      try {
+        const made = await api('POST', `/tables/${reg.id}/entities`, { name: 'New table', values: { Space: space.space } });
+        await loadSchema();
+        await showSpace(spaceId);
+        focusNewRow(made.id, { field: 'Name', select: true });
+      } catch (err) { toast(err.message, true); }
+    };
+    renderTable(main, reg, items, onSaved, onAdd);
   }
   // A space draws its own map — itself and whatever it touches — instead of
   // sending the reader to the workspace-wide one (Kyle, 2026-08-24).
@@ -6451,7 +6509,7 @@ async function relatedGrid(entity, f, onSaved) {
   const body = el('tbody', {},
     ...rows.map((item) => el('tr', {
       class: 'entity-row',
-      dataset: { href: `#/entity/${item.id}` },
+      dataset: { eid: item.id, href: `#/entity/${item.id}` },
       onclick: (e) => {
         const pick = rowClickTarget(e);
         if (pick === 'ignore') return;
@@ -6486,6 +6544,9 @@ async function relatedGrid(entity, f, onSaved) {
             try {
               const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: `New ${target.name}` } });
               await link([made.id]);
+              // The refresh redraws the page and fetches this grid again;
+              // the new row's Name cell takes the caret when it lands.
+              focusNewRow(made.id, { scope: '.related-block', select: true });
             } catch (err) { toast(err.message, true); }
           },
         }, `+ New ${target.term.singular}`),
@@ -6764,8 +6825,16 @@ async function showHome() {
       await showHome();
       restoreGridFocus();
     };
+    const onAdd = async () => {
+      try {
+        const made = await api('POST', `/tables/${reg.id}/entities`, { name: 'New space' });
+        await loadSchema();
+        await showHome();
+        focusNewRow(made.id, { field: 'Name', select: true });
+      } catch (err) { toast(err.message, true); }
+    };
     const sysCard = main.querySelector('.system-tables');
-    renderTable(main, reg, res.items, onSaved);
+    renderTable(main, reg, res.items, onSaved, onAdd);
     // renderTable appends; the registry grid belongs above the system card.
     const wrap = main.lastElementChild;
     if (sysCard && wrap && wrap !== sysCard) main.insertBefore(wrap, sysCard);
@@ -7089,7 +7158,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' || !e.shiftKey) return;
   if (state.route?.page !== 'db') return;
   const editing = e.target.closest?.('input,select,textarea,[contenteditable]');
-  if (editing && !editing.closest('tr[data-eid]')) return;
+  // The grid's own rows only: a relation grid docked beside the table now
+  // carries data-eid too (Issue #195), and its editors keep their keys.
+  if (editing && !editing.closest('.wv-grid tr[data-eid]')) return;
   if ($('#modal-back') || $('#cmdk-back')) return;
   const db = allTables().find((d) => d.id === state.route.dbId);
   if (!db) return;
