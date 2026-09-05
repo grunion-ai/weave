@@ -2037,6 +2037,10 @@ test('dock: the Handbook ledger page teaches the new contract', () => {
   assert.match(section, /document chip in a cell opens its entity in the dock/, 'a doc chip docks, and the page says so');
   assert.doesNotMatch(section, /side peek/, 'the retired peek is gone from the page');
   assert.match(APP, /return docChipCell\(f, item, \(\) => dockEntity\(db, id\)\);/, 'and from the code');
+  // The peek was excised 2026-09-02 and docked became the default pose for
+  // every opener with Issue #198: the page says so and never names the peek.
+  assert.match(section, /\*\*Docked is the default pose\*\*/, 'the page states the default');
+  assert.match(section, /outward diagonal arrows .* expand/, 'and how to reach the full page');
 });
 
 /* ---------- Feature #168: the Name field is configurable ----------
