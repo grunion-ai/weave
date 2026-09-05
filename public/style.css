@@ -828,7 +828,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: .85em; }
 .mention-f-label { opacity: .65; margin-right: 3px; }
 .mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: 4px; color: var(--tblr-secondary); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
-.mention-wrap.open .mention-caret { transform: rotate(90deg); }
+.mention-wrap.open .mention-caret { transform: rotate(180deg); }
 /* Reference panels sit in the entity-side column, dressed like Activity;
    the chips inside are the shared k k-rel language — no local chip styling
    here, on purpose. */

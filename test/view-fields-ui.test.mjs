@@ -101,6 +101,23 @@ test('a relation chip carries the far row’s segments behind a caret', () => {
   assert.match(APP, /\.mention-caret/, 'and the same delegated toggle');
 });
 
+/* Issue #193: the retract caret faces the text. The expand › points right,
+   at the segments; rotated 90° the open state pointed down, at nothing. Open
+   is a half turn — ‹ — so the pair reads as one control folding in and out.
+   Two stylesheets draw the chip (style.css in the app, the page CSS in
+   src/markdown.js for /doc.html), and they must agree. */
+test('the open caret turns a half circle to face the label, in both stylesheets', () => {
+  const MD = readFileSync(join(ROOT, 'src/markdown.js'), 'utf8');
+  for (const [name, css] of [['style.css', CSS], ['markdown.js', MD]]) {
+    const rule = css.match(/\.mention-wrap\.open \.mention-caret\s*\{([^}]*)\}/);
+    assert.ok(rule, `${name} styles the open caret`);
+    assert.match(rule[1], /rotate\(180deg\)/, `${name}: open = 180°, facing the text — not 90° (down)`);
+    assert.doesNotMatch(rule[1], /rotate\(90deg\)/, `${name}: no down-pointing retract caret`);
+    const rest = css.match(/\.mention-caret\s*\{([^}]*)\}/);
+    assert.ok(rest && !/rotate/.test(rest[1]), `${name}: at rest the caret is unrotated — › points at the segments`);
+  }
+});
+
 test('the entity page shows both views, hidden or not, with a way to configure each', () => {
   assert.match(APP, /function appearsAsPanel\(/);
   assert.match(APP, /appearsAsPanel\(db, entity/, 'the panel is built from the entity read');

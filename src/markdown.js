@@ -394,7 +394,7 @@ a.mention { background: var(--soft); border: 1px solid var(--line); border-radiu
 .mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--line); color: var(--muted); font-size: .85em; }
 .mention-f-label { opacity: .65; margin-right: 3px; }
 .mention-caret { border: 1px solid var(--line); background: none; border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
-.mention-wrap.open .mention-caret { transform: rotate(90deg); }
+.mention-wrap.open .mention-caret { transform: rotate(180deg); }
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 /* A code block sits on the ground its palette was drawn for — white for
    github, #0d1117 for github-dark — because a token colour answers to the
