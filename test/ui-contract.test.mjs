@@ -1253,7 +1253,7 @@ test('clicking the open space in the nav folds it instead of navigating nowhere 
     'only the already-open space repurposes the click');
   assert.match(nav, /e\.preventDefault\(\);\s*\n\s*toggleFold\(space\.spaceId\)/,
     'the dead navigation becomes the fold toggle');
-  assert.match(nav, /e\.metaKey \|\| e\.ctrlKey/, '⌘-click still opens the space in a tab');
+  assert.match(nav, /nativeClick\(e\)/, '⌘-click still opens the space in a tab — the one shared predicate');
 });
 
 test('vendored mermaid is at or past the 11.9.0 security release (Issue #8)', () => {
@@ -1914,7 +1914,7 @@ test('opening a registry row opens the structure it stands for', () => {
   assert.match(body, /#\/space\/\$\{/, 'a Spaces row opens the space');
   assert.match(body, /sysId/, 'navigation uses the row sysId, not a name match');
   const grid = fnBody('renderTable');
-  assert.match(grid, /openRegistryRow/, 'the grid routes row clicks through it');
+  assert.match(grid, /dataset: \{ eid: item\.id, href: registryHref\(db, item\) \?\? /, 'the grid routes row clicks through it');
   assert.match(grid, /registryHref\(db, item\) \?\? `#\/entity\//,
     'the #N open link is the same affordance: structure for registry rows, entity page otherwise');
 });
@@ -1994,10 +1994,10 @@ test('dock: a repaint releases what the last pass mounted, and the docked row ta
 test('dock: the #id link docks plain rows only; registry rows and modified clicks keep the href', () => {
   const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
   const link = grid.match(/class: 'open-link',[\s\S]*?`#\$\{item\.publicId\} ↗`/)[0];
-  assert.match(link, /if \(e\.metaKey \|\| e\.ctrlKey \|\| e\.shiftKey \|\| registryHref\(db, item\)\) return;/, 'a modifier or a registry row falls through to the real href');
+  assert.match(link, /if \(nativeClick\(e\) \|\| registryHref\(db, item\)\) return;/, 'a modifier or a registry row falls through to the real href');
   assert.match(link, /e\.preventDefault\(\);\s*dockEntity\(db, item\.id\);/, 'a plain click docks');
   assert.match(link, /`Open \$\{db\.term\.singular\} beside the table — ⌘-click for a new tab`/, 'the title speaks the row term (row-term work) and names both gestures');
-  assert.match(grid, /if \(!openRegistryRow\(db, item\)\) window\.open\(`\$\{location\.pathname\}#\/entity\/\$\{item\.id\}`, '_blank'\);/, '⌘-click on the row opens a tab, registry rows aside');
+  assert.match(grid, /href: registryHref\(db, item\) \?\? `#\/entity\/\$\{item\.id\}`/, '⌘-click on the row opens a tab, registry rows aside — the row carries the destination and openNativeClick opens it');
   const dockFn = fnBody('dockEntity');
   assert.match(dockFn, /dock && dock\.db\.id === db\.id\s*\?\s*S\.open\(dock\.state, frame\)/, 'a second open in the same table keeps the pane state');
   assert.match(dockFn, /S\.init\(\{ tableId: db\.id, tableName: db\.name \}\)/, 'a different table re-anchors');

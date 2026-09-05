@@ -172,6 +172,41 @@ const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: 
 // (Feature #117): a row click lands here; the side peek below is kept for
 // callers that want a slide-over on top of a page, not as a row target.
 function openEntity(id) { location.hash = `#/entity/${id}`; }
+
+/* ---------- the clicks the browser owns (Issue #134) ----------
+   ⌘/Ctrl means "open a tab", Shift means "open a window", the middle button
+   means a tab again. A reader expects that of every link on every page, so
+   weave hands those clicks back whatever chrome they land on. Alt stays out
+   of it: in a browser Alt-click means "download this", which a hash route
+   cannot honour, and claiming it would take Option-click away from the text
+   inputs that fill half the grid's cells.
+
+   Two halves, and this is the first: the question a routing click handler
+   asks before it routes. An element that is already an <a href> needs only
+   this — bail, and the browser does the rest itself. */
+function nativeClick(e) {
+  return !!(e.metaKey || e.ctrlKey || e.shiftKey) || (e.button ?? 0) !== 0;
+}
+
+/* The second half, for every surface that navigates WITHOUT being a link: a
+   grid row, the relation panel's rows, an activity row, a ⌘K hit, a node on
+   the relation map. Each declares where it goes as data-href — nothing else —
+   and this ONE listener opens the tab, in the capture phase so the routing
+   handler underneath never runs. Real anchors are left to the browser, and
+   form controls keep their own modifiers: shift-click still extends a text
+   selection, and the row checkbox still range-selects. */
+const NATIVE_CLICK_KEEPS = 'a[href], input, textarea, select, button, label, [contenteditable]';
+function openNativeClick(e) {
+  if (!nativeClick(e)) return;
+  if (e.target?.closest?.(NATIVE_CLICK_KEEPS)) return;
+  const host = e.target?.closest?.('[data-href]');
+  if (!host) return;
+  e.preventDefault();
+  e.stopPropagation();
+  window.open(new URL(host.dataset.href, location.href).href, '_blank');
+}
+addEventListener('click', openNativeClick, true);
+addEventListener('auxclick', openNativeClick, true);
 /* The row term of a table by id (Feature #40) — for surfaces that hold a
    target id rather than the table. Unknown ids speak the default, "record". */
 /* The field that carries a table's row identity — by ROLE (Feature #168: the
@@ -761,7 +796,7 @@ function renderNav() {
         // keeps ⌘-click and middle-click untouched: only the plain click on
         // the already-open space is repurposed.
         onclick: (e) => {
-          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+          if (nativeClick(e)) return;
           if (state.route?.page === 'space' && state.route.spaceId === space.spaceId) {
             e.preventDefault();
             toggleFold(space.spaceId);
@@ -1705,12 +1740,6 @@ function registryHref(db, item) {
   if (db.system === 'tables' && item.sysId) return `#/table/${item.sysId}`;
   if (db.system === 'spaces' && item.sysId) return `#/space/${item.sysId}`;
   return null;
-}
-
-function openRegistryRow(db, item) {
-  const href = registryHref(db, item);
-  if (href) { location.hash = href; return true; }
-  return false;
 }
 
 function rowClickTarget(e) {
@@ -2819,18 +2848,14 @@ function renderTable(main, db, items, onSaved) {
     for (const item of sorted) {
       const row = el('tr', {
         class: 'entity-row' + (item.deleted ? ' row-deleted' : ''),
-        dataset: { eid: item.id },
         /* Ledger's one rule: the #id link opens, every cell edits. A bare
            row click raises the cell's own editor; the #id link docks the
-           entity beside the table. ⌘-click anywhere on the row gives the
-           entity its own browser tab — the modifier means "own window",
-           same as every link. */
+           entity beside the table. data-href is what the row navigates to,
+           and openNativeClick above turns a ⌘-click on any cell into that
+           record's own tab — the modifier means "not here", same as every
+           link. A registry row points at the structure it stands for. */
+        dataset: { eid: item.id, href: registryHref(db, item) ?? `#/entity/${item.id}` },
         onclick: (e) => {
-          if (e.metaKey || e.ctrlKey) {
-            e.preventDefault();
-            if (!openRegistryRow(db, item)) window.open(`${location.pathname}#/entity/${item.id}`, '_blank');
-            return;
-          }
           if (e.target.closest('a, button, input, select, textarea, label')) return;
           const cell = e.target.closest('td');
           if (cell) activateCell(cell);
@@ -2853,7 +2878,7 @@ function renderTable(main, db, items, onSaved) {
             // Plain click docks the entity beside the table; a modifier
             // falls through to the real href, so ⌘-click opens a tab.
             onclick: (e) => {
-              if (e.metaKey || e.ctrlKey || e.shiftKey || registryHref(db, item)) return;
+              if (nativeClick(e) || registryHref(db, item)) return;
               e.preventDefault();
               dockEntity(db, item.id);
             },
@@ -4478,7 +4503,7 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
 
   for (const n of map.nodes) {
     const x = n.x - n.w / 2, y = n.y - n.h / 2;
-    const g = svgEl('g', { class: 'table-node' + (n.foreign ? ' foreign' : ''), cursor: 'pointer' });
+    const g = svgEl('g', { class: 'table-node' + (n.foreign ? ' foreign' : ''), cursor: 'pointer', 'data-href': `#/table/${n.id}` });
     g.addEventListener('click', () => { location.hash = `#/table/${n.id}`; });
     g.append(svgEl('rect', { x, y, width: n.w, height: n.h, rx: 10, class: 'node-box' }));
     g.append(svgEl('text', { x: n.x, y: y + 24, 'text-anchor': 'middle', class: 'node-title' }, n.name));
@@ -6254,6 +6279,7 @@ async function relatedGrid(entity, f, onSaved) {
   const body = el('tbody', {},
     ...rows.map((item) => el('tr', {
       class: 'entity-row',
+      dataset: { href: `#/entity/${item.id}` },
       onclick: (e) => {
         const pick = rowClickTarget(e);
         if (pick === 'ignore') return;
@@ -6389,6 +6415,7 @@ async function showActivity(param) {
 
   const rows = feed.items.map((a) => el('tr', {
     class: 'activity-row',
+    dataset: { href: `#/activity/${a.id}` },
     onclick: () => { location.hash = `#/activity/${a.id}`; },
   },
     el('td', { class: 'activity-when', title: a.ts }, new Date(a.ts).toLocaleString()),
@@ -6502,7 +6529,7 @@ async function showView(id) {
       el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, b.table)),
       el('div', { class: 'table-wrap' }, el('table', { class: 'table table-sm wv-grid' },
         el('thead', {}, el('tr', {}, ...cols.map((c) => el('th', {}, c)))),
-        el('tbody', {}, ...b.items.map((e) => el('tr', { onclick: () => openEntity(e.id), style: 'cursor:pointer' },
+        el('tbody', {}, ...b.items.map((e) => el('tr', { dataset: { href: `#/entity/${e.id}` }, onclick: () => openEntity(e.id), style: 'cursor:pointer' },
           ...cols.map((c) => {
             const val = e.fields[c];
             return el('td', {}, Array.isArray(val) ? val.map((x) => x?.name ?? x).join(', ') : (val && typeof val === 'object' ? val.name ?? '' : String(val ?? '')));
@@ -6554,7 +6581,7 @@ async function showHome() {
        rather than the user's — they are reached from here because they belong
        to no space. */
     el('div', { class: 'card list-rows system-tables' },
-      el('div', { class: 'list-row', onclick: () => { location.hash = '#/activity'; } },
+      el('div', { class: 'list-row', dataset: { href: '#/activity' }, onclick: () => { location.hash = '#/activity'; } },
         el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
         el('span', { class: 'spacer' }),
         el('span', { class: 'pid' }, 'every event in this workspace'))));
@@ -6581,7 +6608,7 @@ async function showHome() {
     const views = await api('GET', '/views');
     if (views.length) {
       main.append(el('div', { class: 'card list-rows' },
-        ...views.map((v) => el('div', { class: 'list-row', onclick: () => { location.hash = `#/view/${v.id}`; } },
+        ...views.map((v) => el('div', { class: 'list-row', dataset: { href: `#/view/${v.id}` }, onclick: () => { location.hash = `#/view/${v.id}`; } },
           el('span', {}, v.name),
           v.shared ? el('span', { class: 'k k-sys' }, 'shared') : null,
           el('span', { class: 'spacer' }),
@@ -6613,9 +6640,9 @@ function navigateToResult(hit) {
   else location.hash = '#/';
 }
 
-function resultRow(hit, onPick) {
+function resultRow(hit, onPick, { href = null } = {}) {
   const permalink = location.origin + hit.url;
-  return el('div', { class: 'result', onclick: () => onPick(hit) },
+  return el('div', { class: 'result', ...(href ? { dataset: { href } } : {}), onclick: () => onPick(hit) },
     el('div', { class: 'result-main' },
       el('span', { class: 'k k-sys' },
         ...(hit.kind === 'workspace'
@@ -6676,7 +6703,7 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
       // asks for all of them.
       if (kinds) hits = hits.filter((h) => kinds.includes(h.kind));
       rowEls = hits.map((h, i) => {
-        const row = resultRow(h, pick);
+        const row = resultRow(h, pick, { href: onPick ? null : h.url });
         row.addEventListener('mouseenter', () => setSel(i, false));
         return row;
       });
