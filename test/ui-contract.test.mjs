@@ -1141,6 +1141,7 @@ test('a collection relation renders as the target table grid, in the body', () =
   assert.match(grid, /openEntity\(item\.id\)/, 'and a click elsewhere opens the row\'s page (Feature #117)');
   assert.match(grid, /\['id', 'in', linked\.map/, 'the rows are fetched whole, by id');
   assert.match(grid, /c\.name !== f\.inverseField/, 'the column pointing back at this record is dropped');
+  assert.match(grid, /visibleCols\(target\)/, 'and the target table\'s hidden set applies — Chip/Card stay hidden until unhidden (Issue #200)');
 
   const body = fnBody('renderEntityView'); // the one entity rendering — page and peek both mount it
   assert.match(body, /relatedGrid\(entity, f, refresh\)/, 'the entity page mounts one per collection relation');
