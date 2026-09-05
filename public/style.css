@@ -12,6 +12,14 @@
    ink-tint pills. Colors are the Grunion brand kit (brand-grunion-skill.md):
    light = Paper Tint canvas / Warm White panel; dark = Deep Navy canvas /
    Elevated Panel. Brand blue #2563eb (--tblr-primary default) + rope mark. */
+:root {
+  /* The chip's one size, decided here and read everywhere a chip draws
+     (Issue #194, Kyle: "default chip view is likely too small"). 13px is one
+     step below the 14px body; 22px of line plus 1px of padding each side is
+     the 24px hit target. Change these two, not a surface. */
+  --wv-chip-font: 13px;
+  --wv-chip-line: 22px;
+}
 :root, [data-bs-theme="light"] {
   --wv-canvas: #f3f1ec;                      /* Kami Paper Tint */
   --wv-canvas-muted: #7e8394;                /* Kami Muted Tertiary */
@@ -475,7 +483,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    public/chip-core.js. */
 
 .k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
-     font-size: 11.5px; line-height: 1.7; padding: 1px 8px; border-radius: 4px; border: 0; }
+     font-size: var(--wv-chip-font); line-height: var(--wv-chip-line); padding: 1px 8px; border-radius: 4px; border: 0; }
 .k .ico { font-size: 10.5px; line-height: 1; opacity: .85; flex: none; }
 
 /* tier 1 — value. --fill and --text come from the .hue-* class beside it. */
@@ -623,7 +631,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 
 /* .chip stays as an alias for one release: the board, the list, the doc rail
    and the cell popover all still ask for it while their callers migrate. */
-.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; line-height: 1.7;
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: var(--wv-chip-font); line-height: var(--wv-chip-line);
         border-radius: 4px; padding: 1px 8px; border: 0;
         background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
 .chip .x { margin-left: 2px; cursor: pointer; color: var(--tblr-secondary); }
@@ -1269,7 +1277,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .filter-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); margin-right: 2px; }
 /* The state filters sit directly above the chips they filter, so they wear
    the same tier: off is a quiet outline, on is the category's own fill. */
-.filter-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; line-height: 1.7;
+.filter-chip { display: inline-flex; align-items: center; gap: 5px; font-size: var(--wv-chip-font); line-height: var(--wv-chip-line);
   padding: 1px 8px; border-radius: 4px; border: 1px solid var(--tblr-border-color);
   background: none; color: var(--tblr-secondary); cursor: pointer; }
 .filter-chip:hover { border-color: var(--tblr-primary); color: var(--tblr-body-color); }

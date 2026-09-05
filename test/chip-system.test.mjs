@@ -251,7 +251,7 @@ test('a chip keeps its own type on a picker button', () => {
   assert.equal(trigger.font, undefined,
     'the font shorthand resets size and must not fight the chip base');
   assert.equal(trigger['font-size'], undefined, 'nor may it set a size directly');
-  assert.equal(rulesFor('.k')['font-size'], '11.5px', 'one size for every tier');
+  assert.equal(rulesFor('.k')['font-size'], 'var(--wv-chip-font)', 'one size for every tier, read from the token');
 });
 
 test('an empty chip is dashed, never dimmed', () => {
@@ -268,7 +268,8 @@ test('the filter row above the grid speaks the row’s vocabulary', () => {
   // is the thing this whole system set out to remove.
   const f = rulesFor('.filter-chip');
   assert.equal(f['border-radius'], '4px', 'same 4px as every chip');
-  assert.equal(f['font-size'], '11.5px', 'same size as every chip');
+  assert.equal(f['font-size'], 'var(--wv-chip-font)', 'same size as every chip: the token');
+  assert.equal(f['line-height'], 'var(--wv-chip-line)', 'and the same line');
 });
 
 /* ---------- the tray edits the chip you will get ---------- */
@@ -316,4 +317,24 @@ test('a chip is sized by its label even as a flex item', () => {
   // .doc-chips is a flex container, and the default align-items: stretch grew
   // each doc chip to the full height of the cell (66px against a 21px chip).
   assert.equal(rulesFor('.doc-chips')['align-items'], 'center');
+});
+
+/* ---------- one chip size, from two tokens (Issue #194, 2026-09-05) ----------
+   Kyle: "Default chip view is likely too small." 11.5px under a 14px body,
+   a ~21px box. The size is decided once on :root and read by every chip
+   surface — .k (every tier), .chip (the alias), .filter-chip — so the next
+   adjustment is two numbers, not a hunt through the sheet. */
+test('the chip size is two tokens on :root: 13px label, 22px line — a 24px target with the 1px padding', () => {
+  const root = rulesFor(':root');
+  assert.equal(root['--wv-chip-font'], '13px', 'one step below the 14px body, never smaller');
+  assert.equal(root['--wv-chip-line'], '22px', '22 + 1 + 1 = 24px, the hit target');
+  assert.equal(rulesFor('body')['font-size'], '14px', 'the body the chip is one step below');
+  for (const sel of ['.k', '.chip', '.filter-chip']) {
+    const r = rulesFor(sel);
+    assert.equal(r['font-size'], 'var(--wv-chip-font)', `${sel} reads the font token`);
+    assert.equal(r['line-height'], 'var(--wv-chip-line)', `${sel} reads the line token`);
+    assert.equal(r.padding, '1px 8px', `${sel} keeps the 1px vertical padding the 24px sum counts on`);
+  }
+  assert.ok(!/font-size:\s*11\.5px[^;]*;[^}]*border-radius:\s*4px/.test(CSS),
+    'no chip-shaped rule keeps its own 11.5px');
 });
