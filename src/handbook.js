@@ -773,9 +773,37 @@ The **noun** is what one row is called — the table's *row term*. It lives on t
 
 ## The grid reads as a record
 
-The table view is a ledger, not a form. The \`#id\` link opens the row in the **dock** beside the table; **every other cell edits in place**, raising that field type's own editor with the cursor already in it. Chips keep their tint and lose their box. Computed cells keep their glyph and drop their ground. No cell draws a border on hover — the row's tint is the feedback.
+The table view is a ledger, not a form. The \`#id\` link opens the row in the **dock** beside the table; **every other cell edits in place**, raising that field type's own editor with the cursor already in it. Chips keep their tint and lose their box. Computed cells keep their glyph and drop their ground. A row hover draws no lines between fields; the row's tint is the feedback. The one cell under the pointer shows the control a click would open.
 
-The dock is the entity itself, not a preview: edit there and the table keeps its place, the docked row stays lit, Esc closes it. ⌘-click a row (or its \`#id\` link) to give the record its own browser tab. Every navigating surface in weave answers the same three gestures — ⌘/Ctrl, Shift, and the middle button — so an activity row, a ⌘K hit and a node on the relation map open in a tab the same way. Text cells keep their own modifiers: shift-click still extends a selection there. A document chip in a cell still opens its entity in the **side peek**.
+The dock is the entity itself, not a preview: edit there and the table keeps its place, the docked row stays lit, Esc closes it. ⌘-click a row (or its \`#id\` link) to give the record its own browser tab. Every navigating surface in weave answers the same three gestures — ⌘/Ctrl, Shift, and the middle button — so an activity row, a ⌘K hit and a node on the relation map open in a tab the same way. Text cells keep their own modifiers: shift-click still extends a selection there. A document chip in a cell opens its entity in the dock.
+
+## The grid from the keyboard
+
+Cells **rest as values** and open on purpose. The cursor is a ring on one cell; the arrows and Tab move it, and a cell opens when you ask. That is what gives ← and → to navigation: a text caret only owns them while a cell is open, and hands them back when you Tab, Return or Esc out.
+
+| At rest | What it does |
+| --- | --- |
+| \`← → ↑ ↓\` | move the cursor |
+| \`Tab\` / \`⇧Tab\` | along the row, wrapping into the next or previous row; the last cell of the last row is the end, never the browser's chrome |
+| \`Return\` | open the cell: a caret with the value selected, a picker, a flipped checkbox |
+| any character | open the cell and start typing over the value |
+| \`Space\` | pick the row up |
+| \`⇧↑\` / \`⇧↓\` | extend the run of chosen rows |
+| \`⌘A\` | take the whole table |
+| \`⇧Return\` | make the next row, open on its name |
+| \`⌘Return\` | open the record in the dock |
+| \`Esc\` | let the selection go |
+
+| In an open cell | What it does |
+| --- | --- |
+| \`← →\` | the caret's; they never step out of the cell |
+| \`Return\` | commit, move down the column |
+| \`Tab\` / \`⇧Tab\` | commit, move across |
+| \`↑\` / \`↓\` | commit, move up or down |
+| \`Esc\` | put the value back and rest |
+| \`Space\` | a space |
+
+Every field cell is a stop, select, multi-select, checkbox and date included. A document chip column is not: it is a door to the record, not a value, so the cursor passes over it. The checkbox column and the \`#id\` link are pointer targets; \`Space\` and \`⌘Return\` are their keys.
 
 ## Working on many rows at once
 

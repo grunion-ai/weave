@@ -2031,8 +2031,11 @@ test('dock: the Handbook ledger page teaches the new contract', () => {
   const section = hb.slice(hb.indexOf('## The grid reads as a record'), hb.indexOf('## Working on many rows at once'));
   assert.match(section, /link opens the row in the \*\*dock\*\* beside the table/);
   assert.match(section, /⌘-click a row .* own browser tab/);
-  assert.match(section, /side peek/, 'the peek still exists for doc chips and says so');
-  assert.doesNotMatch(section, /⌘-click opens a row in the \*\*side peek\*\*/, 'the retired ⌘-click-peeks contract is gone from the page');
+  // The peek was excised on 2026-09-02 (doc chips dock too), and Feature
+  // #134 dropped its last mention from the page.
+  assert.match(section, /document chip in a cell opens its entity in the dock/, 'a doc chip docks, and the page says so');
+  assert.doesNotMatch(section, /side peek/, 'the retired peek is gone from the page');
+  assert.match(APP, /return docChipCell\(f, item, \(\) => dockEntity\(db, id\)\);/, 'and from the code');
 });
 
 /* ---------- Feature #168: the Name field is configurable ----------
