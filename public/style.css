@@ -569,6 +569,12 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    link's own right padding so the chip reads as one piece, with air before
    the edge — it was spaced as if it came first (Issue #93). */
 .k-rel > .x { margin: 0 6px 0 -3px; padding: 0 2px; }
+/* A pointer chip is never wider than the column it stands in (Issue #201):
+   in a constrained column — the References card, Comments, Activity, a
+   relation cell — the label alone truncates with an ellipsis, and the home
+   badge and the ↗ stay visible at the right end. The full name is the title. */
+.mention-wrap, .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
+.k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; opacity: .6; }
 /* Target-set chips carry their home table: a Task and a Space can share a
    name, and the table is what tells them apart. */
