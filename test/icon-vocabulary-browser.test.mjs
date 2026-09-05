@@ -20,9 +20,10 @@ let tasks, row;
 const s = await launch('icon vocabulary', (weave) => {
   weave.createSpace({ name: 'Product' });
   tasks = weave.createTable({ space: 'Product', name: 'Task' });
-  // A nav row with a moving icon of its own: the load-wave test below used
-  // to lean on the Relation map row's compass, which left the nav 2026-09-02.
+  // Two nav rows with moving icons of their own: the motion test below needs
+  // one to hover and one to prove untouched (Issue #192).
   weave.createTable({ space: 'Product', name: 'Pulse', icon: 'lucide:activity' });
+  weave.createTable({ space: 'Product', name: 'Inbox', icon: 'lucide:bell' });
   weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: [
     { name: 'Urgent', icon: 'iconly:danger' },
     { name: 'Later', icon: '○' },
@@ -321,28 +322,64 @@ if (s) {
     await page.close();
   });
 
-  test('an icon plays once on load and once per hover, and rests — nothing loops (Kyle, 2026-09-02)', async () => {
-    const page = await browser.newPage();
-    await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await page.goto(`${base}/#/entity/${row}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#nav .wv-icon.mi:not([data-ms="0"])');
-    // The load wave: inside the load window some icon wears its motion parts.
-    await page.waitForFunction(() => [...document.querySelectorAll('#nav .mi [data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), null, { timeout: 4000 });
-    // …and every one of them rests again: nothing loops.
-    await page.waitForFunction(() => ![...document.querySelectorAll('#nav .mi [data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), null, { timeout: 8000 });
-    const SEL = '#nav .wv-icon.mi:not([data-ms="0"])';
-    const host = page.locator(SEL).first();
-    const ms = Number(await host.getAttribute('data-ms'));
-    // Playing is the motion classes on every part; resting is none on any.
-    const playing = (sel) => [...document.querySelector(sel).querySelectorAll('[data-mi]')].every((p) => p.classList.contains(p.dataset.mi.split(' ')[0]));
-    const resting = (sel) => ![...document.querySelector(sel).querySelectorAll('[data-mi]')].some((p) => p.classList.contains(p.dataset.mi.split(' ')[0]));
-    await host.hover();
-    await page.waitForFunction(playing, SEL, { timeout: 3000 }).catch(() => assert.fail('a hover plays the icon'));
-    await page.waitForFunction(resting, SEL, { timeout: ms + 3000 })
-      .catch(() => assert.fail(`after its ${ms} ms run the icon rests — it does not loop`));
-    await page.close();
-  });
-
+  /* Issue #192 (Kyle, 2026-09-05): every icon on screen used to play at
+     once on refresh or login — the "load wave" of 2026-09-02. The ruling is
+     one run per trigger, never a loop, and the trigger is the icon's OWN
+     hover or press, never the page arriving. Both themes, because the
+     chrome restyles under dark and the motion classes ride the same nodes. */
+  const playingParts = (sel) => [...document.querySelectorAll(sel)].flatMap((h) => [...h.querySelectorAll('[data-mi]')])
+    .filter((p) => p.classList.contains(p.dataset.mi.split(' ')[0])).length;
+  const NAV = '#nav .wv-icon.mi:not([data-ms="0"])';
+  for (const theme of ['light', 'dark']) {
+    test(`nothing animates on mount; an icon plays once on its own hover or press, then rests (${theme})`, async () => {
+      const page = await browser.newPage();
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
+      await page.goto(`${base}/#/entity/${row}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector(NAV);
+      assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
+      // t=0 and t=500ms: no icon anywhere wears its motion parts.
+      assert.equal(await page.evaluate(playingParts, '.mi'), 0, 'an icon animated on mount');
+      await page.waitForTimeout(500);
+      assert.equal(await page.evaluate(playingParts, '.mi'), 0, 'an icon animated inside the first 500 ms');
+      assert.ok(await page.locator(NAV).count() >= 2, 'the nav needs two moving icons to tell "only that one" apart');
+      // Hover one: that icon plays, every other one stays still.
+      const host = page.locator(NAV).first();
+      const ms = Number(await host.getAttribute('data-ms'));
+      await host.hover();
+      await page.waitForFunction((sel) => {
+        const h = document.querySelector(sel);
+        return [...h.querySelectorAll('[data-mi]')].every((p) => p.classList.contains(p.dataset.mi.split(' ')[0]));
+      }, NAV, { timeout: 3000 }).catch(() => assert.fail('a hover plays the icon'));
+      const others = await page.evaluate((sel) => {
+        const [first, ...rest] = document.querySelectorAll(sel);
+        void first;
+        return rest.flatMap((h) => [...h.querySelectorAll('[data-mi]')]).filter((p) => p.classList.contains(p.dataset.mi.split(' ')[0])).length;
+      }, NAV);
+      assert.equal(others, 0, 'only the hovered icon plays');
+      // …and it rests again: nothing loops.
+      await page.waitForFunction((sel) => ![...document.querySelector(sel).querySelectorAll('[data-mi]')]
+        .some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), NAV, { timeout: ms + 3000 })
+        .catch(() => assert.fail(`after its ${ms} ms run the icon rests — it does not loop`));
+      // A press is the other trigger: the second icon plays on pointerdown.
+      const second = page.locator(NAV).nth(1);
+      const box = await second.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.waitForTimeout(Number(await second.getAttribute('data-ms')) + 100);
+      await page.mouse.down();
+      assert.ok(await page.evaluate((sel) => {
+        const h = document.querySelectorAll(sel)[1];
+        return [...h.querySelectorAll('[data-mi]')].every((p) => p.classList.contains(p.dataset.mi.split(' ')[0]));
+      }, NAV), 'a press plays the icon');
+      await page.mouse.up();
+      // Reload: still nothing on mount.
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForSelector(NAV);
+      await page.waitForTimeout(500);
+      assert.equal(await page.evaluate(playingParts, '.mi'), 0, 'a reload must not replay the load wave');
+      await page.close();
+    });
+  }
   test('every icon on the page is drawn to the one size scale', async () => {
     const page = await entityPage();
     const sizes = await page.evaluate(() => {

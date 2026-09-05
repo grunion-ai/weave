@@ -574,10 +574,13 @@ function navTableMenu(db, space, row) {
 
 /* One Lucide icon wearing its motion (moving icons, 2026-09-02). The svg's
    parts carry the classes their keyframes need as data-mi; adding them plays
-   the icon once, removing them after its run puts it back. Three triggers,
-   each a single run, none looping (Kyle: "fire on load but not loop"): mount
-   inside the load window, scrolling into a picker grid, and hover. */
-const ICON_LOAD_WINDOW_MS = 2500;
+   the icon once, removing them after its run puts it back. Two triggers,
+   each a single run, none looping, and both belong to the icon itself:
+   hover and press. Nothing plays on mount — the first cut fired every icon
+   on screen as the page arrived (the "load wave") and a picker grid played
+   each cell as it scrolled in; Kyle ruled both out (Issue #192): a refresh
+   or a login must draw the chrome still, and an icon moves only when it is
+   pointed at. */
 const iconRuns = new WeakMap();
 function playIcon(host) {
   const ms = Number(host.dataset.ms) || 0;
@@ -589,36 +592,24 @@ function playIcon(host) {
     iconRuns.delete(host);
   }, ms));
 }
-let iconMountQueue = [];
 function lucideEl(name, cls = 'wv-icon') {
   const reg = window.weaveIconRegistry;
   const span = el('span', { class: `${cls} mi mi-${name}`, 'data-ms': String(reg.MOTION[name] || 0) });
   span.innerHTML = window.LUCIDE_MOVING[name];
-  // The load wave: icons born while the page is still arriving play once, a
-  // beat apart, then rest. A re-render minutes later draws them still.
-  if (reg.MOTION[name] && performance.now() < ICON_LOAD_WINDOW_MS) {
-    iconMountQueue.push(span);
-    if (iconMountQueue.length === 1) {
-      requestAnimationFrame(() => {
-        const q = iconMountQueue; iconMountQueue = [];
-        q.forEach((s, i) => setTimeout(() => { if (s.isConnected) playIcon(s); }, 120 + i * 24));
-      });
-    }
-  }
   return span;
 }
+/* The icon's own triggers. mouseover rather than mouseenter because the
+   hosts are born after this listener; relatedTarget filters the moves
+   between an icon's own parts. pointerdown is the press — a click on a
+   still icon (a nav row, a chip) plays it once as the row answers. */
 document.addEventListener('mouseover', (e) => {
   const host = e.target.closest?.('.mi');
   if (host && !(e.relatedTarget && host.contains(e.relatedTarget))) playIcon(host);
 });
-/* Grid icons play once as they scroll into view, then rest. */
-function playIconsInView(container) {
-  const io = new IntersectionObserver((entries) => {
-    entries.filter((en) => en.isIntersecting).forEach((en, i) => { io.unobserve(en.target); setTimeout(() => playIcon(en.target), i * 18); });
-  });
-  container.querySelectorAll('.mi').forEach((m) => io.observe(m));
-}
-
+document.addEventListener('pointerdown', (e) => {
+  const host = e.target.closest?.('.mi');
+  if (host) playIcon(host);
+});
 /* An icon value on a space or table: 'lucide:<name>' renders the vendored
    set inline (currentColor — it inherits text color); anything else is
    text, which keeps old emoji icons working (Feature #101). */
@@ -1363,7 +1354,6 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
         el('div', { class: 'picker-cells' }, ...g.items.map((o) => cell(o))),
       ]));
     if (!groups.length && !clear) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
-    playIconsInView(list);
   };
   /* Grouped text cells (the row-term picker, Feature #40): the icon grid's
      dialect with words instead of glyphs — categories are the only labels, a
