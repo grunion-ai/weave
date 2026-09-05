@@ -2323,6 +2323,14 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
         dateControl({ ...opts, compact, value: range.end, placeholder: 'end', onChange: (iso) => { range.end = iso ?? ''; commit(); } })));
   }
   const rawVal = item.raw?.[f.name] ?? val;
+  /* A value with a shape and no renderer (Issue #200, the class Issue #91
+     opened): a text box would paint String(obj) — '[object Object]' — and
+     could only hand the server a string it must refuse. The marker says what
+     is missing instead, so the gap is visible and a test can find it. */
+  if (rawVal != null && typeof rawVal === 'object') {
+    return el('span', { class: 'k k-computed wv-unrendered', title: `${f.type} — no cell renderer for this value` },
+      `unrendered ${f.type}`);
+  }
   /* A percent field stores the fraction and talks to people in percent
      (Issue #127): the box shows 32.5 for a stored 0.325 and typing 50
      stores 0.5 — the number in the box is the number in the "32.5%" the
@@ -6437,10 +6445,13 @@ async function relatedGrid(entity, f, onSaved) {
   const rows = linked.length
     ? (await api('POST', `/tables/${target.id}/query`, { where: [['id', 'in', linked.map((s) => s.id)]] })).items
     : [];
-  // Every column the target table has, minus its documents (edited on their
-  // own page) and minus the relation pointing back at the record you are
-  // already looking at.
-  const cols = target.fields.filter((c) => c.type !== 'document' && c.name !== f.inverseField);
+  /* The target table's own view, as it shows it (Issue #200): its column
+     order and its hidden set — the eye and the Tables row's Hidden Fields
+     reach here too, so Chip and Card (hidden by default, Feature #175) stay
+     out until someone unhides them. Minus its documents (edited on their own
+     page) and the relation pointing back at the record you are looking at. */
+  const shownCols = new Set(visibleCols(target));
+  const cols = target.fields.filter((c) => shownCols.has(c.name) && c.type !== 'document' && c.name !== f.inverseField);
   const colCount = cols.length + 2;
 
   const link = async (targets) => {

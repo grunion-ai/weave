@@ -592,6 +592,9 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 /* tier 3 — computed. Never a chip: the glyph says "not editable" before a
    click has to prove it. */
 .k-computed { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
+/* A cell whose value has no renderer (Issue #200): named, dashed, in the
+   warning colour — visible in both themes, never '[object Object]'. */
+.wv-unrendered { border: 1px dashed var(--tblr-warning); color: var(--tblr-warning); padding: 0 6px; font-family: var(--tblr-font-monospace); font-size: 10.5px; }
 
 /* One neutral system chip, replacing .system-chip and the old .kind-badge —
    they differed only by case and letter-spacing and never shared a row. */
