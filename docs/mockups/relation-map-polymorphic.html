@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="kind" content="design-review"><meta name="generated-at" content="2026-09-05T18:00:00Z"><meta name="repo" content="grunion-ai/weave"><meta name="branch" content="feature-183">
+<title>weave relation map: polymorphic junctions as hubs (Feature #183)</title>
+<style>
+/* ---------- page chrome (neutral; the panes carry the two weave themes) ---------- */
+:root{--pg-bg:#eceff3;--pg-fg:#1f2937;--pg-muted:#6b7280;--pg-line:#d9dee5;--pg-accent:#066fd1;--pg-accent-soft:#dbeafe;--mono:Monaco,Consolas,"Liberation Mono","Courier New",monospace;--sans:"Inter Var",Inter,-apple-system,BlinkMacSystemFont,"San Francisco","Segoe UI",Roboto,"Helvetica Neue",sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--pg-bg);color:var(--pg-fg);font:14px/1.5 var(--sans)}
+.wrap{max-width:1760px;margin:0 auto;padding:0 24px 90px}
+.plan-header{border-bottom:1px solid var(--pg-line);margin-bottom:22px}
+.topbar{display:flex;align-items:baseline;gap:14px;padding:22px 0 8px;font-family:var(--mono)}
+.kind{background:var(--pg-accent-soft);color:var(--pg-accent);font-size:11px;letter-spacing:.08em;padding:3px 8px;border-radius:4px;font-weight:700}
+.topbar h1{font-size:16px;margin:0;font-weight:600;font-family:inherit}.topbar time{margin-left:auto;color:var(--pg-muted);font-size:12px}
+dl.meta{display:grid;grid-template-columns:repeat(4,auto);gap:0 28px;padding:6px 0 16px;margin:0;font-family:var(--mono);font-size:11.5px}
+dl.meta dt{color:var(--pg-muted)}dl.meta dd{margin:0 0 6px}
+.intro{max-width:980px}
+.intro p{margin:0 0 10px}
+.howto{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--pg-muted);margin:12px 0 0}
+.howto .sw{display:inline-block;width:26px;height:0;border-top:1.4px solid #6b7280;vertical-align:middle;margin-right:6px;opacity:.7}
+.howto .sw.poly{border-top:2.2px solid #ae3ec9;opacity:1}
+section.option{margin:40px 0 0}
+section.option h2{font-size:17px;margin:0 0 4px;display:flex;align-items:baseline;gap:10px}
+section.option h2 .tag{font:600 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--pg-muted);background:#fff;border:1px solid var(--pg-line);padding:2px 7px;border-radius:4px}
+.caption{margin:0 0 14px;max-width:1120px;color:#374151}
+.caption b{color:var(--pg-fg)}
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:1240px){.panes{grid-template-columns:1fr}}
+
+/* ---------- the two weave themes, as Tabler tokens on each pane ---------- */
+.pane{border-radius:12px;padding:16px;background:var(--tblr-body-bg);color:var(--tblr-body-color);border:1px solid var(--tblr-border-color);font-family:var(--tblr-font-sans-serif)}
+.pane[data-bs-theme="light"]{--tblr-bg-surface:#ffffff;--tblr-bg-surface-secondary:#f9fafb;--tblr-border-color:#e5e7eb;--tblr-body-bg:#f9fafb;--tblr-body-color:#1f2937;--tblr-secondary:#6b7280;--tblr-primary:#066fd1;--tblr-warning:#f59f00;--tblr-font-sans-serif:var(--sans);--tblr-font-monospace:var(--mono);--tblr-border-radius-lg:8px;--set-alpha:22}
+.pane[data-bs-theme="dark"]{--tblr-bg-surface:#1f2937;--tblr-bg-surface-secondary:#111827;--tblr-border-color:#2e3c51;--tblr-body-bg:#111827;--tblr-body-color:#e5e7eb;--tblr-secondary:#9ca3af;--tblr-primary:#4299e1;--tblr-warning:#f59f00;--tblr-font-sans-serif:var(--sans);--tblr-font-monospace:var(--mono);--tblr-border-radius-lg:8px;--set-alpha:38}
+.pane .card{background:var(--tblr-bg-surface);border:1px solid var(--tblr-border-color);border-radius:var(--tblr-border-radius-lg)}
+.pane .card-header{display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--tblr-border-color)}
+.pane .card-title{font-size:14px;font-weight:600;margin:0}
+.pane .theme-tag{margin-left:auto;font:10.5px var(--tblr-font-monospace);color:var(--tblr-secondary);letter-spacing:.05em;text-transform:uppercase}
+.pane .card-body{padding:14px}
+/* Copied from public/style.css "relation map" so the node card is the one Kyle likes. */
+.map-wrap{border:1px solid var(--tblr-border-color);border-radius:var(--tblr-border-radius-lg);background:var(--tblr-bg-surface);overflow:hidden}
+.relmap{display:block;width:100%;height:auto}
+.relmap .space-box{fill:var(--tblr-bg-surface-secondary);stroke:var(--tblr-border-color);stroke-dasharray:5 4;opacity:.7}
+.relmap .space-label{font:600 10.5px var(--tblr-font-sans-serif);letter-spacing:.06em;text-transform:uppercase;fill:var(--tblr-secondary)}
+.relmap .node-box{fill:var(--tblr-bg-surface);stroke:var(--tblr-border-color);stroke-width:1.2}
+.relmap .table-node:hover .node-box{stroke:var(--tblr-primary)}
+.relmap .table-node.foreign .node-box{stroke-dasharray:4 3}
+.relmap .table-node.foreign .node-title{fill:var(--tblr-secondary)}
+.relmap .rel-arrow{fill:var(--tblr-secondary);opacity:.75}
+.relmap .node-title{font:600 13px var(--tblr-font-sans-serif);fill:var(--tblr-body-color)}
+.relmap .node-sub{font:10.5px var(--tblr-font-sans-serif);fill:var(--tblr-secondary)}
+.relmap .rel-line{stroke:var(--tblr-secondary);stroke-width:1.1;opacity:.55;fill:none}
+.relmap .rel-label-bg{fill:var(--tblr-body-bg);stroke:var(--tblr-border-color)}
+.relmap .rel-label{font:10px var(--tblr-font-monospace);fill:var(--tblr-body-color)}
+.map-legend{display:flex;gap:18px;color:var(--tblr-secondary);font-size:12px;margin-top:8px;flex-wrap:wrap}
+/* ---------- new in this study ---------- */
+/* A polymorphic (target-set) relation is drawn in its set's colour, heavier,
+   and its label pill wears the ◆ glyph. Plain relations keep today's grey. */
+.relmap .rel-line.poly{stroke:var(--set);opacity:.8;stroke-width:1.5}
+.relmap .rel-line.trunk{stroke-linecap:round;opacity:.85}
+.relmap .rel-label-bg.poly{stroke:var(--set);stroke-width:1.2}
+.relmap .rel-label .glyph{fill:var(--set);font-weight:700}
+.relmap .junction .jx-box{fill:var(--set);fill-opacity:.14;stroke:var(--set);stroke-width:1.4}
+.relmap .junction:hover .jx-box{fill-opacity:.3}
+.relmap .junction .jx-label{font:10px var(--tblr-font-monospace);fill:var(--tblr-body-color)}
+.relmap .ring{fill:none;stroke:var(--tblr-border-color);stroke-dasharray:3 5;opacity:.9}
+.relmap .band{fill:var(--tblr-bg-surface-secondary);stroke:var(--tblr-border-color);stroke-dasharray:5 4;opacity:.55}
+.relmap .band-label{font:600 10px var(--tblr-font-sans-serif);letter-spacing:.06em;text-transform:uppercase;fill:var(--tblr-secondary)}
+.relmap [data-trigger]{cursor:pointer}
+/* Focus: one set lit, the rest faded. Shared by both panes of an option. */
+.setable{transition:opacity .16s ease}
+.setable.dim{opacity:.1}
+.relmap .rel-line.lit{opacity:1;stroke-width:2.2}
+.relmap .rel-line.trunk.lit{stroke-width:calc(var(--w) * 1.25)}
+.relmap .table-node.lit .node-box{stroke:var(--set);stroke-width:1.8}
+.legend-chip{display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:2px 8px;border-radius:999px;border:1px solid var(--tblr-border-color);background:var(--tblr-bg-surface);color:var(--tblr-body-color);font:11px var(--tblr-font-monospace)}
+.legend-chip .dot{width:9px;height:9px;border-radius:2px;background:var(--set);transform:rotate(45deg)}
+.legend-chip.lit{border-color:var(--set)}
+.pin-hint{font-size:11.5px;color:var(--tblr-secondary);margin-left:auto}
+/* Option D's grid: the record beneath the picture. */
+.matrix{margin-top:14px;border:1px solid var(--tblr-border-color);border-radius:var(--tblr-border-radius-lg);overflow-x:auto;background:var(--tblr-bg-surface)}
+.matrix table{border-collapse:collapse;font-size:12px;min-width:100%}
+.matrix th,.matrix td{border-bottom:1px solid var(--tblr-border-color);padding:0;text-align:center;height:30px}
+.matrix thead th{height:96px;vertical-align:bottom;padding-bottom:8px;font:600 10.5px var(--tblr-font-sans-serif);color:var(--tblr-secondary)}
+.matrix thead th span{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;display:inline-block}
+.matrix thead th.ws span{color:var(--tblr-secondary);opacity:.8;font-style:italic}
+.matrix th.row{ text-align:left;padding:0 12px;font:11px var(--tblr-font-monospace);color:var(--tblr-body-color);white-space:nowrap;cursor:pointer;background:var(--tblr-bg-surface);position:sticky;left:0}
+.matrix th.row .dot{display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--set);transform:rotate(45deg);margin-right:8px;vertical-align:middle}
+.matrix th.row .dot.plain{border-radius:50%;background:var(--tblr-secondary);transform:none}
+.matrix th.row .g{color:var(--set);font-weight:700;margin-left:6px}
+.matrix tr.lit th.row{background:var(--tblr-bg-surface-secondary)}
+.matrix td .cell{display:inline-block;width:11px;height:11px;border-radius:50%;border:1.6px solid var(--set)}
+.matrix td .cell.many{background:var(--set)}
+.matrix td .cell.plain{border-color:var(--tblr-secondary)}
+.matrix td .cell.plain.many{background:var(--tblr-secondary)}
+.matrix tfoot td{font:10.5px var(--tblr-font-monospace);color:var(--tblr-secondary);text-align:left;padding:8px 12px;height:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="plan-header">
+  <div class="topbar"><span class="kind">design-review</span><h1>Relation map: polymorphic junctions as hubs, four layouts</h1><time datetime="2026-09-05">2026-09-05</time></div>
+  <dl class="meta">
+    <div><dt>Repo</dt><dd>grunion-ai/weave</dd></div>
+    <div><dt>Branch</dt><dd>feature-183</dd></div>
+    <div><dt>Feature</dt><dd>Development/Feature #183 (follows #129, #182)</dd></div>
+    <div><dt>Data</dt><dd>Showcase space, GET /w/weave/api/schema, 2026-09-05</dd></div>
+  </dl>
+</header>
+
+<div class="intro">
+  <p>Today's map draws a target-set relation as one edge per member table, so Showcase's five polymorphic tables (<code>Comments.On</code>, <code>Activity.Subject</code>, <code>Notes.Related</code>, <code>Approvals.Of</code>, <code>Tags.Applied to</code>) collapse into one column of arrows and nothing says that <b>Activity</b> reaches everything, that <b>Comments</b> and <b>Tags</b> share three targets, or that <b>Notes.Related</b> points at structure as well as rows. Plain pairs and target sets look the same.</p>
+  <p>Four layouts below, each drawn on the live Showcase schema in both themes. The node card is today's card, untouched. Hover a polymorphic source, its field pill, junction or legend chip to light that set; click to pin it. The three unrelated Showcase tables (Formatting, Documents, Icons) are left out of every drawing.</p>
+  <div class="howto"><span><span class="sw"></span>plain relation: grey, thin, today's <code>1–∗</code> pill</span><span><span class="sw poly"></span>polymorphic relation: set colour, heavier, <b>◆</b> in the pill</span><span>◇ dashed card: a table from another space (Workspace/*)</span></div>
+</div>
+
+<section class="option" id="opt-a">
+  <h2>A. Junction node <span class="tag">3 columns</span></h2>
+  <p class="caption"><b>Communicates.</b> A target set is one thing: the junction is the hub and its fan is the membership, so Activity's twelve members read as one node reaching everything and Comments and Tags visibly share Tasks · Docs · Meetings. <b>Costs.</b> Five nodes that are not tables and a third column; the source-side members of Activity (Notes, Comments, Approvals, Tags) have to be reached by curves that double back.</p>
+  <div class="panes"><div class="pane" data-bs-theme="light"></div><div class="pane" data-bs-theme="dark"></div></div>
+</section>
+
+<section class="option" id="opt-b">
+  <h2>B. Bundled edges <span class="tag">tables only</span></h2>
+  <p class="caption"><b>Communicates.</b> One relation is one stroke: the trunk's weight is the set's size and the field name sits on it exactly once, so the eye counts five relations instead of twenty-eight arrows. <b>Costs.</b> Bundling is drawn geometry rather than a layout: every split point is placed by hand-tuned rules, a single member edge is hard to pick out or click, and a hub whose members sit on both sides still loops back.</p>
+  <div class="panes"><div class="pane" data-bs-theme="light"></div><div class="pane" data-bs-theme="dark"></div></div>
+</section>
+
+<section class="option" id="opt-c">
+  <h2>C. Concentric hub-and-spoke <span class="tag">rings</span></h2>
+  <p class="caption"><b>Communicates.</b> Hub-ness by position: the polymorphic tables sit in the centre, everything they reach rings them, structure has its own outer band, and stroke weight says how many kinds of row each set spans. <b>Costs.</b> Space boxes disappear, so the map stops saying "this space holds these tables"; plain pairs keep only ring adjacency; past a dozen tables the angles crowd and Activity's spokes dominate the picture.</p>
+  <div class="panes"><div class="pane" data-bs-theme="light"></div><div class="pane" data-bs-theme="dark"></div></div>
+</section>
+
+<section class="option" id="opt-d">
+  <h2>D. Matrix companion <span class="tag">map + grid</span></h2>
+  <p class="caption"><b>Communicates.</b> The exact record: every relation × every table, cardinality per cell, with the map kept above it only for shape. A shared target is a shared column, and hovering a row lights the same set in the picture. <b>Costs.</b> Two views to keep in step; the grid grows with sources × tables and needs horizontal scroll early; the map on its own is still today's fan of arrows.</p>
+  <div class="panes"><div class="pane" data-bs-theme="light"></div><div class="pane" data-bs-theme="dark"></div></div>
+</section>
+</div>
+
+<script>
+/* ---------- the schema, as GET /w/weave/api/schema returned it on 2026-09-05 ----------
+   Showcase plus the two Workspace tables that Notes.Related points at. Only
+   relation fields are kept; counts and terms feed the card's second line. */
+const SCHEMA = {
+  Showcase: [
+    { name: 'People', count: 3, term: ['person', 'people'], rels: [
+      { name: 'Owns', many: true, to: 'Field Types', inverse: 'Owner', inverseMany: false },
+      { name: 'Peer of', many: true, to: 'Field Types', inverse: 'Peers', inverseMany: true }] },
+    { name: 'Field Types', count: 4, term: ['example', 'examples'], rels: [
+      { name: 'Owner', many: false, to: 'People', inverse: 'Owns', inverseMany: true },
+      { name: 'Peers', many: true, to: 'People', inverse: 'Peer of', inverseMany: true }] },
+    { name: 'Projects', count: 6, term: ['record', 'records'], rels: [
+      { name: 'Tasks', many: true, to: 'Tasks', inverse: 'Project', inverseMany: false }] },
+    { name: 'Meetings', count: 6, term: ['record', 'records'], rels: [] },
+    { name: 'Docs', count: 6, term: ['record', 'records'], rels: [] },
+    { name: 'Notes', count: 6, term: ['record', 'records'], rels: [
+      { name: 'Related', many: true, poly: true, to: ['Projects', 'Meetings', 'Docs', 'Tables', 'Spaces'] }] },
+    { name: 'Tasks', count: 7, term: ['record', 'records'], rels: [
+      { name: 'Project', many: false, to: 'Projects', inverse: 'Tasks', inverseMany: true }] },
+    { name: 'Comments', count: 7, term: ['record', 'records'], rels: [
+      { name: 'On', many: false, poly: true, to: ['Tasks', 'Docs', 'Meetings'] }] },
+    { name: 'Expenses', count: 5, term: ['record', 'records'], rels: [
+      { name: 'Line items', many: true, to: 'Line Items', inverse: 'Expense', inverseMany: false }] },
+    { name: 'Contracts', count: 5, term: ['record', 'records'], rels: [] },
+    { name: 'Deploys', count: 5, term: ['record', 'records'], rels: [] },
+    { name: 'Approvals', count: 7, term: ['record', 'records'], rels: [
+      { name: 'Of', many: false, poly: true, to: ['Expenses', 'Contracts', 'Deploys'] }] },
+    { name: 'Line Items', count: 6, term: ['record', 'records'], rels: [
+      { name: 'Expense', many: false, to: 'Expenses', inverse: 'Line items', inverseMany: true }] },
+    { name: 'Tags', count: 6, term: ['record', 'records'], rels: [
+      { name: 'Applied to', many: true, poly: true, to: ['Tasks', 'Docs', 'Projects', 'Meetings', 'Deploys'] }] },
+    { name: 'Activity', count: 8, term: ['record', 'records'], rels: [
+      { name: 'Subject', many: false, poly: true, to: ['Tasks', 'Docs', 'Meetings', 'Projects', 'Notes', 'Comments', 'Expenses', 'Contracts', 'Deploys', 'Approvals', 'Tags', 'Line Items'] }] },
+  ],
+  Workspace: [
+    { name: 'Tables', count: 30, term: ['table', 'tables'], rels: [] },
+    { name: 'Spaces', count: 6, term: ['space', 'spaces'], rels: [] },
+  ],
+};
+// Tabler's option palette, one colour per target set, in schema order.
+const SET_COLORS = ['#ae3ec9', '#066fd1', '#0ca678', '#f76707', '#d6336c'];
+
+const TABLES = {};
+for (const [space, list] of Object.entries(SCHEMA)) for (const t of list) TABLES[t.name] = { ...t, space };
+const card = (many) => (many ? '∗' : '1');
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+const countText = (t) => `${t.count} ${t.count === 1 ? t.term[0] : t.term[1]}`;
+
+/* Target sets: one per polymorphic field. Plain pairs: one per relation pair,
+   first-seen side wins, exactly as relmap-layout.js dedupes them. */
+const SETS = [];
+const PLAIN = [];
+const seenPair = new Set();
+let ci = 0;
+for (const t of Object.values(TABLES)) {
+  for (const r of t.rels) {
+    if (r.poly) {
+      SETS.push({ key: slug(`${t.name}-${r.name}`), source: t.name, field: r.name, many: r.many, members: r.to, color: SET_COLORS[ci++ % SET_COLORS.length], label: `◆ ${r.name} 1–${card(r.many)}` });
+    } else {
+      const pk = [t.name + '.' + r.name, r.to + '.' + r.inverse].sort().join('|');
+      if (seenPair.has(pk)) continue;
+      seenPair.add(pk);
+      PLAIN.push({ key: slug(`plain-${t.name}-${r.name}`), from: t.name, to: r.to, field: r.name, many: r.many, label: `${r.name} ${card(r.inverseMany)}–${card(r.many)}` });
+    }
+  }
+}
+const setsOf = (name) => SETS.filter((s) => s.source === name || s.members.includes(name)).map((s) => s.key);
+const plainOf = (name) => PLAIN.filter((p) => p.from === name || p.to === name).map((p) => p.key);
+const setTags = (name) => [...setsOf(name), ...plainOf(name), ...(plainOf(name).length ? ['plain'] : [])].join(' ');
+
+/* ---------- drawing primitives ---------- */
+const NW = 170, NH = 50;
+const NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs = {}, ...kids) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) if (v != null) e.setAttribute(k, v);
+  for (const k of kids) e.append(k);
+  return e;
+}
+/* Where the segment from a's centre to b's centre leaves a's box (relmap-layout.js). */
+function border(a, b, w = NW, h = NH) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  if (!dx && !dy) return { x: a.x, y: a.y };
+  const sx = dx ? (w / 2) / Math.abs(dx) : Infinity;
+  const sy = dy ? (h / 2) / Math.abs(dy) : Infinity;
+  const s = Math.min(sx, sy);
+  return { x: a.x + dx * s, y: a.y + dy * s };
+}
+function newSvg(w, h) {
+  const svg = svgEl('svg', { viewBox: `0 0 ${w} ${h}`, class: 'relmap' });
+  const defs = svgEl('defs');
+  const marker = (id, cls, fill) => {
+    const m = svgEl('marker', { id, viewBox: '0 0 8 8', refX: '7', refY: '4', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' });
+    m.append(svgEl('path', { d: 'M0,0 L8,4 L0,8 z', class: cls, fill }));
+    return m;
+  };
+  defs.append(marker('arrow-plain', 'rel-arrow'));
+  for (const s of SETS) defs.append(marker(`arrow-${s.key}`, null, s.color));
+  svg.append(defs);
+  // Markers must be unique per document; suffix them per svg after append.
+  svg._uid = 'm' + Math.random().toString(36).slice(2, 7);
+  for (const m of defs.querySelectorAll('marker')) m.id = svg._uid + '-' + m.id;
+  return svg;
+}
+const arrowFor = (svg, key) => `url(#${svg._uid}-arrow-${key})`;
+
+/* The node card, verbatim from relationMapView(): box, title, count line. */
+function nodeCard(svg, name, p, { foreign = false, trigger = null } = {}) {
+  const t = TABLES[name];
+  const x = p.x - NW / 2, y = p.y - NH / 2;
+  const g = svgEl('g', { class: 'table-node setable' + (foreign ? ' foreign' : ''), 'data-set': setTags(name), 'data-trigger': trigger });
+  if (trigger) g.style.setProperty('--set', SETS.find((s) => s.key === trigger).color);
+  g.append(svgEl('rect', { x, y, width: NW, height: NH, rx: 10, class: 'node-box' }));
+  g.append(svgEl('text', { x: p.x, y: y + 21, 'text-anchor': 'middle', class: 'node-title' }, name));
+  g.append(svgEl('text', { x: p.x, y: y + 38, 'text-anchor': 'middle', class: 'node-sub' }, foreign ? `${t.space} • ${countText(t)}` : countText(t)));
+  svg.append(g);
+  return g;
+}
+function pill(svg, x, y, label, { set = null, trigger = null } = {}) {
+  const tw = label.length * 6.2 + 14;
+  const g = svgEl('g', { class: 'setable', 'data-set': set ? set.key : 'plain', 'data-trigger': trigger });
+  if (set) g.style.setProperty('--set', set.color);
+  g.append(svgEl('rect', { x: x - tw / 2, y: y - 9, width: tw, height: 18, rx: 9, class: 'rel-label-bg' + (set ? ' poly' : '') }));
+  const text = svgEl('text', { x, y: y + 4, 'text-anchor': 'middle', class: 'rel-label' });
+  if (set) { text.append(svgEl('tspan', { class: 'glyph' }, '◆ ')); text.append(label.slice(2)); } else text.append(label);
+  g.append(text);
+  svg.append(g);
+  return g;
+}
+function edge(svg, d, { set = null, tags = null, width = null, trunk = false } = {}) {
+  const e = svgEl('path', { d, class: 'rel-line setable' + (set ? ' poly' : '') + (trunk ? ' trunk' : ''), 'marker-end': trunk ? null : arrowFor(svg, set ? set.key : 'plain'), 'data-set': tags ?? (set ? set.key : 'plain') });
+  if (set) e.style.setProperty('--set', set.color);
+  if (width) { e.style.strokeWidth = width; e.style.setProperty('--w', width + 'px'); }
+  svg.append(e);
+  return e;
+}
+const line = (a, b) => `M${a.x},${a.y} L${b.x},${b.y}`;
+const curve = (a, b, k = 0.45) => { const dx = (b.x - a.x) * k; return `M${a.x},${a.y} C${a.x + dx},${a.y} ${b.x - dx},${b.y} ${b.x},${b.y}`; };
+function spaceBox(svg, name, x, y, w, h) {
+  svg.append(svgEl('rect', { x, y, width: w, height: h, rx: 14, class: 'space-box' }));
+  svg.append(svgEl('text', { x: x + 14, y: y + 18, class: 'space-label' }, name));
+}
+/* Plain edge between two placed cards, today's way: border to border, pill at the middle. */
+function plainEdge(svg, pos, p, { shift = 0, labelDx = 0, labelDy = 0 } = {}) {
+  const a = { ...pos[p.from], x: pos[p.from].x + shift }, b = { ...pos[p.to], x: pos[p.to].x + shift };
+  const p1 = border(a, b), p2 = border(b, a);
+  edge(svg, line(p1, p2), { tags: `${p.key} plain` });
+  pill(svg, (p1.x + p2.x) / 2 + labelDx, (p1.y + p2.y) / 2 + labelDy, p.label, { trigger: p.key });
+}
+function plainEdges(svg, pos) {
+  // People–Field Types carry two relations: spread them so both pills show.
+  const twin = PLAIN.filter((p) => new Set([p.from, p.to]).has('People'));
+  for (const p of PLAIN) {
+    const i = twin.indexOf(p);
+    plainEdge(svg, pos, p, i < 0 ? {} : { shift: i ? 48 : -48 });
+  }
+}
+
+/* ---------- the shared two-column placement (A, B, D) ---------- */
+const SRC = SETS.map((s) => s.source);                           // Notes, Comments, Approvals, Tags, Activity
+const TGT = ['Projects', 'Tasks', 'Meetings', 'Docs', 'Expenses', 'Line Items', 'Contracts', 'Deploys'];
+function columns({ srcStep = 70, tgtStep = 72, top = 60, tgtTop = 50 } = {}) {
+  const pos = {};
+  SRC.forEach((n, i) => { pos[n] = { x: 125, y: top + i * srcStep }; });
+  pos.People = { x: 125, y: top + SRC.length * srcStep + 20 };
+  pos['Field Types'] = { x: 125, y: pos.People.y + 80 };
+  TGT.forEach((n, i) => { pos[n] = { x: 700, y: tgtTop + i * tgtStep }; });
+  const wsY = Math.max(pos['Field Types'].y, pos.Deploys.y) + 25 + 30 + 42;
+  pos.Tables = { x: 615, y: wsY }; pos.Spaces = { x: 800, y: wsY };
+  return pos;
+}
+function drawColumnsGround(svg, pos) {
+  const showcaseBottom = Math.max(pos['Field Types'].y, pos.Deploys.y) + NH / 2 + 14;
+  spaceBox(svg, 'Showcase', 20, 14, 860, showcaseBottom - 14);
+  spaceBox(svg, 'Workspace', 520, pos.Tables.y - NH / 2 - 30, 370, NH + 44);
+}
+function drawColumnsNodes(svg, pos) {
+  for (const n of Object.keys(pos)) {
+    const set = SETS.find((s) => s.source === n);
+    nodeCard(svg, n, pos[n], { foreign: TABLES[n].space === 'Workspace', trigger: set?.key ?? null });
+  }
+}
+/* An Activity member that sits in the source column is reached from below:
+   the curve leaves rightwards and lands on the member's bottom edge. */
+function backCurve(from, member) {
+  const ex = member.x + 46, ey = member.y + NH / 2;
+  return `M${from.x},${from.y} C${from.x - 90},${from.y} ${ex + 40},${ey + 70} ${ex},${ey}`;
+}
+
+/* ---------- A. junction node ---------- */
+function optionA(svg) {
+  const pos = columns();
+  drawColumnsGround(svg, pos);
+  const JX = 425;
+  const junctions = {};
+  for (const s of SETS) {
+    const src = pos[s.source];
+    const w = s.label.length * 6.2 + 30;
+    junctions[s.key] = { x: JX, y: src.y, w };
+    // source → junction, one heavier stroke
+    edge(svg, line({ x: src.x + NW / 2, y: src.y }, { x: JX - w / 2, y: src.y }), { set: s, width: 2.2, trunk: true });
+    // junction → each member
+    for (const m of s.members) {
+      const t = pos[m];
+      if (t.x < JX) { edge(svg, backCurve({ x: JX - w / 2, y: src.y }, t), { set: s }); continue; }
+      const p2 = border(t, { x: JX, y: src.y });
+      edge(svg, curve({ x: JX + w / 2, y: src.y }, p2, 0.4), { set: s });
+    }
+  }
+  plainEdges(svg, pos);
+  drawColumnsNodes(svg, pos);
+  for (const s of SETS) {
+    const j = junctions[s.key];
+    const g = svgEl('g', { class: 'junction setable', 'data-set': s.key, 'data-trigger': s.key });
+    g.style.setProperty('--set', s.color);
+    const h = 26, x0 = j.x - j.w / 2, x1 = j.x + j.w / 2, y0 = j.y - h / 2, y1 = j.y + h / 2;
+    g.append(svgEl('path', { class: 'jx-box', d: `M${x0},${j.y} L${x0 + 12},${y0} L${x1 - 12},${y0} L${x1},${j.y} L${x1 - 12},${y1} L${x0 + 12},${y1} Z` }));
+    const t = svgEl('text', { x: j.x, y: j.y + 3.5, 'text-anchor': 'middle', class: 'jx-label' });
+    t.append(svgEl('tspan', { fill: s.color, 'font-weight': '700' }, '◆ '), s.label.slice(2));
+    g.append(t);
+    svg.append(g);
+  }
+}
+
+/* ---------- B. bundled edges ---------- */
+function optionB(svg) {
+  const pos = columns();
+  drawColumnsGround(svg, pos);
+  const SPLIT = 440;
+  for (const s of SETS) {
+    const src = pos[s.source];
+    const w = 1.2 + s.members.length * 0.35;
+    const start = { x: src.x + NW / 2, y: src.y }, split = { x: SPLIT, y: src.y };
+    edge(svg, line(start, split), { set: s, width: w, trunk: true });
+    for (const m of s.members) {
+      const t = pos[m];
+      if (t.x < SPLIT) { edge(svg, backCurve(split, t), { set: s }); continue; }
+      edge(svg, curve(split, border(t, split), 0.55), { set: s });
+    }
+    pill(svg, (start.x + split.x) / 2, src.y, s.label, { set: s, trigger: s.key });
+  }
+  plainEdges(svg, pos);
+  drawColumnsNodes(svg, pos);
+}
+
+/* ---------- C. concentric hub-and-spoke ---------- */
+function optionC(svg) {
+  const cx = 450, cy = 350;
+  const R1 = [215, 120], R2 = [365, 250], R3 = [420, 320];
+  const at = (r, deg) => ({ x: cx + r[0] * Math.cos(deg * Math.PI / 180), y: cy + r[1] * Math.sin(deg * Math.PI / 180) });
+  const ring = (names, r, start = -90) => Object.fromEntries(names.map((n, i) => [n, at(r, start + i * 360 / names.length)]));
+  const hubs = [...SETS].sort((a, b) => b.members.length - a.members.length).map((s) => s.source);
+  const outer = ['Projects', 'Tasks', 'Meetings', 'Docs', 'People', 'Field Types', 'Contracts', 'Deploys', 'Expenses', 'Line Items'];
+  // The inner ring starts 18° off the outer one so its cards sit in the outer ring's gaps.
+  const pos = { ...ring(hubs, R1, -72), ...ring(outer, R2), Tables: at(R3, 62), Spaces: at(R3, 118) };
+  // Ground: the structure band outermost, the two rings as guides.
+  svg.append(svgEl('ellipse', { cx, cy, rx: R3[0], ry: R3[1], class: 'band' }));
+  svg.append(svgEl('ellipse', { cx, cy, rx: R2[0], ry: R2[1], class: 'ring' }));
+  svg.append(svgEl('ellipse', { cx, cy, rx: R1[0], ry: R1[1], class: 'ring' }));
+  svg.append(svgEl('text', { x: cx, y: cy + R3[1] - 8, 'text-anchor': 'middle', class: 'band-label' }, 'Workspace · structure'));
+  svg.append(svgEl('text', { x: cx, y: cy - R2[1] - 42, 'text-anchor': 'middle', class: 'band-label' }, 'Showcase · plain tables'));
+  for (const s of SETS) {
+    const src = pos[s.source];
+    const w = 1 + Math.min(s.members.length, 8) * 0.3;
+    for (const m of s.members) edge(svg, line(border(src, pos[m]), border(pos[m], src)), { set: s, width: w });
+  }
+  const twin = PLAIN.filter((q) => new Set([q.from, q.to]).has('People'));
+  for (const p of PLAIN) {
+    const p1 = border(pos[p.from], pos[p.to]), p2 = border(pos[p.to], pos[p.from]);
+    edge(svg, line(p1, p2), { tags: `${p.key} plain` });
+  }
+  for (const n of Object.keys(pos)) {
+    const set = SETS.find((s) => s.source === n);
+    nodeCard(svg, n, pos[n], { foreign: TABLES[n].space === 'Workspace', trigger: set?.key ?? null });
+    if (set) pill(svg, pos[n].x, pos[n].y + NH / 2 + 12, set.label, { set, trigger: set.key });
+  }
+  // Pills last: ring neighbours sit close, so a label drawn earlier hides under a card.
+  for (const p of PLAIN) {
+    const i = twin.indexOf(p);
+    const p1 = border(pos[p.from], pos[p.to]), p2 = border(pos[p.to], pos[p.from]);
+    pill(svg, (p1.x + p2.x) / 2 + (i < 0 ? 0 : i ? 44 : -44), (p1.y + p2.y) / 2 + (i < 0 ? 0 : i ? 10 : -10), p.label, { trigger: p.key });
+  }
+}
+
+/* ---------- D. matrix companion ---------- */
+function optionD(svg) {
+  const pos = columns({ srcStep: 66, tgtStep: 62, top: 64, tgtTop: 46 });
+  drawColumnsGround(svg, pos);
+  // The map keeps today's fan — one edge per member — but each set in its colour,
+  // unlabelled: the grid below is the record.
+  for (const s of SETS) {
+    const src = pos[s.source];
+    for (const m of s.members) {
+      const t = pos[m];
+      if (t.x < 400) { edge(svg, backCurve({ x: src.x + NW / 2, y: src.y }, t), { set: s }); continue; }
+      edge(svg, curve(border(src, t), border(t, src), 0.35), { set: s });
+    }
+  }
+  plainEdges(svg, pos);
+  drawColumnsNodes(svg, pos);
+}
+function matrixTable() {
+  const cols = [...SRC, ...TGT, 'People', 'Field Types', 'Tables', 'Spaces'];
+  const box = document.createElement('div');
+  box.className = 'matrix';
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const hr = document.createElement('tr');
+  hr.append(Object.assign(document.createElement('th'), { className: 'row', textContent: 'relation ↓  ·  target →' }));
+  for (const c of cols) {
+    const th = document.createElement('th');
+    if (TABLES[c].space === 'Workspace') th.className = 'ws';
+    th.append(Object.assign(document.createElement('span'), { textContent: TABLES[c].space === 'Workspace' ? `Workspace/${c}` : c }));
+    hr.append(th);
+  }
+  thead.append(hr);
+  table.append(thead);
+  const tbody = document.createElement('tbody');
+  const rows = [
+    ...SETS.map((s) => ({ key: s.key, set: s, owner: s.source, field: s.field, many: s.many, hits: new Set(s.members) })),
+    ...PLAIN.map((p) => ({ key: p.key, set: null, owner: p.from, field: p.field, many: p.many, hits: new Set([p.to]) })),
+  ];
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    tr.className = 'setable';
+    tr.dataset.set = r.set ? r.key : `${r.key} plain`;
+    tr.dataset.trigger = r.key;
+    if (r.set) tr.style.setProperty('--set', r.set.color);
+    const th = document.createElement('th');
+    th.className = 'row';
+    th.innerHTML = `<span class="dot${r.set ? '' : ' plain'}"></span>${r.owner} · ${r.field}${r.set ? '<span class="g">◆</span>' : ''}`;
+    tr.append(th);
+    for (const c of cols) {
+      const td = document.createElement('td');
+      if (r.hits.has(c)) td.innerHTML = `<span class="cell${r.many ? ' many' : ''}${r.set ? '' : ' plain'}" title="${r.owner}.${r.field} → ${c} (${r.many ? 'many' : 'one'})"></span>`;
+      tr.append(td);
+    }
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  const tfoot = document.createElement('tfoot');
+  tfoot.innerHTML = `<tr><td colspan="${cols.length + 1}">○ member of the set, one row per link · ● member, many rows per link · ◆ polymorphic field · grey = plain relation</td></tr>`;
+  table.append(tfoot);
+  box.append(table);
+  return box;
+}
+
+/* ---------- assembling a section: two panes, one focus state ---------- */
+function legend() {
+  const l = document.createElement('div');
+  l.className = 'map-legend';
+  l.append(Object.assign(document.createElement('span'), { textContent: '▢ table (click to open)' }));
+  l.append(Object.assign(document.createElement('span'), { textContent: '→ relation (1/∗ = cardinality)' }));
+  for (const s of SETS) {
+    const chip = document.createElement('span');
+    chip.className = 'legend-chip setable';
+    chip.dataset.set = s.key; chip.dataset.trigger = s.key;
+    chip.style.setProperty('--set', s.color);
+    chip.innerHTML = `<span class="dot"></span>${s.source}.${s.field} · ${s.members.length}`;
+    l.append(chip);
+  }
+  l.append(Object.assign(document.createElement('span'), { className: 'pin-hint', textContent: 'hover lights a set · click pins it' }));
+  return l;
+}
+function fillPane(p, draw, { h, extra = null } = {}) {
+  const theme = p.dataset.bsTheme;
+  const svg = newSvg(900, h);
+  draw(svg);
+  const wrap = document.createElement('div'); wrap.className = 'map-wrap'; wrap.append(svg);
+  const body = document.createElement('div'); body.className = 'card-body'; body.append(wrap);
+  if (extra) body.append(extra());
+  body.append(legend());
+  const c = document.createElement('div'); c.className = 'card panel home-map';
+  c.innerHTML = `<div class="card-header"><h3 class="card-title">Relation map</h3><span class="theme-tag">${theme} theme</span></div>`;
+  c.append(body);
+  p.append(c);
+}
+function wireFocus(section) {
+  let pinned = null;
+  const apply = (key) => {
+    for (const el of section.querySelectorAll('.setable')) {
+      const sets = (el.dataset.set || '').split(' ');
+      const lit = !!key && sets.includes(key);
+      el.classList.toggle('dim', !!key && !lit);
+      el.classList.toggle('lit', lit);
+    }
+    section.dataset.focus = key || '';
+  };
+  section.addEventListener('mouseover', (e) => {
+    const t = e.target.closest?.('[data-trigger]');
+    if (t && !pinned) apply(t.dataset.trigger);
+  });
+  section.addEventListener('mouseout', (e) => {
+    const t = e.target.closest?.('[data-trigger]');
+    if (t && !pinned && !t.contains(e.relatedTarget)) apply(null);
+  });
+  section.addEventListener('click', (e) => {
+    const t = e.target.closest?.('[data-trigger]');
+    if (!t) { pinned = null; apply(null); return; }
+    pinned = pinned === t.dataset.trigger ? null : t.dataset.trigger;
+    apply(pinned);
+  });
+}
+const OPTIONS = [
+  ['opt-a', optionA, { h: 720 }],
+  ['opt-b', optionB, { h: 720 }],
+  ['opt-c', optionC, { h: 700 }],
+  ['opt-d', optionD, { h: 650, extra: matrixTable }],
+];
+for (const [id, draw, opts] of OPTIONS) {
+  const section = document.getElementById(id);
+  for (const p of section.querySelectorAll('.pane')) fillPane(p, draw, opts);
+  wireFocus(section);
+}
+</script>
+</body>
+</html>
