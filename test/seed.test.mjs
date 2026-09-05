@@ -76,3 +76,28 @@ test('seedFieldShowcase is idempotent — a second run is a no-op', () => {
   assert.equal(w.describeSchema().filter((s) => s.space === 'Showcase').length, 1);
   assert.equal(w.describeSchema().find((s) => s.space === 'Showcase').tables.length, before);
 });
+
+/* ---------- Every seeded space and table wears a Lucide icon (Issue #203) ----------
+   Development/Release seeded blank, Issue as a legacy alias, Feature as a
+   glyph; the Handbook rule is that every table carries a `lucide:*` icon from
+   the vendored set. The gate walks whatever the seed builds, so a table added
+   later without an icon fails here rather than shipping a blank. */
+import { existsSync } from 'node:fs';
+await import('../public/icon-registry.js');
+test('seedWeaver gives every space and table a lucide: icon that exists in public/vendor/icons', () => {
+  const w = seedWeaver(new Weave());
+  const svg = (icon) => new URL(`../public/vendor/icons/${icon.slice('lucide:'.length)}.svg`, import.meta.url);
+  for (const sp of w.describeSchema().filter((s) => !s.system)) {
+    assert.match(sp.icon ?? '', /^lucide:/, `space ${sp.space} has a lucide icon`);
+    assert.ok(existsSync(svg(sp.icon)), `${sp.space} icon ${sp.icon} is vendored`);
+    for (const t of sp.tables) {
+      assert.match(t.icon ?? '', /^lucide:/, `table ${sp.space}/${t.name} has a lucide icon`);
+      assert.ok(existsSync(svg(t.icon)), `${sp.space}/${t.name} icon ${t.icon} is vendored`);
+    }
+  }
+  const dev = w.describeSchema().find((s) => s.space === 'Development');
+  const icon = (n) => dev.tables.find((t) => t.name === n).icon;
+  assert.equal(icon('Issue'), 'lucide:bug');
+  assert.equal(icon('Feature'), 'lucide:star');
+  assert.equal(icon('Release'), 'lucide:rocket');
+});

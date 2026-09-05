@@ -21,13 +21,13 @@ export { DEFINABLE_TYPES };
    applied to a workspace seeded before it existed. */
 export function seedFieldShowcase(w) {
   if (w.listSpaces().some((sp) => sp.name === 'Showcase')) return w;
-  w.createSpace({ name: 'Showcase', description: 'Every field type, in several configurations — the range of what a field can be, visible in one grid' });
+  w.createSpace({ name: 'Showcase', icon: 'lucide:compass', description: 'Every field type, in several configurations — the range of what a field can be, visible in one grid' });
 
-  const people = w.createTable({ space: 'Showcase', name: 'People', noun: 'person' });
+  const people = w.createTable({ space: 'Showcase', name: 'People', noun: 'person', icon: 'lucide:users' });
   w.addField(people, { name: 'Email', type: 'email' });
   w.addField(people, { name: 'Age', type: 'number' });
 
-  const ft = w.createTable({ space: 'Showcase', name: 'Field Types', noun: 'example' });
+  const ft = w.createTable({ space: 'Showcase', name: 'Field Types', noun: 'example', icon: 'lucide:settings' });
   // --- text family
   w.addField(ft, { name: 'Notes', type: 'text', config: { default: 'n/a' } });
   w.addField(ft, { name: 'Site', type: 'url' });
@@ -122,8 +122,8 @@ export function seedWeaver(w) {
   w.state.meta.name = 'weave';
 
   // ---------- Handbook ----------
-  w.createSpace({ name: 'Handbook', description: 'Official documentation and how-tos' });
-  const guides = w.createTable({ space: 'Handbook', name: 'Guide' });
+  w.createSpace({ name: 'Handbook', icon: 'lucide:file-text', description: 'Official documentation and how-tos' });
+  const guides = w.createTable({ space: 'Handbook', name: 'Guide', icon: 'lucide:file-text' });
   w.addField(guides, { name: 'Audience', type: 'select', config: { options: ['Human', 'Agent', 'Both'] } });
   w.addField(guides, { name: 'Order', type: 'number' });
 
@@ -174,8 +174,8 @@ The REST API mirrors everything under \`/api\` (workspace-scoped under \`/w/<nam
   });
 
   // ---------- Wiki ----------
-  w.createSpace({ name: 'Wiki', description: 'Design notes and architecture' });
-  const articles = w.createTable({ space: 'Wiki', name: 'Article' });
+  w.createSpace({ name: 'Wiki', icon: 'lucide:bookmark', description: 'Design notes and architecture' });
+  const articles = w.createTable({ space: 'Wiki', name: 'Article', icon: 'lucide:bookmark' });
   w.addField(articles, { name: 'Topic', type: 'select', config: { options: ['Architecture', 'Philosophy', 'Internals'] } });
   w.createEntity(articles, {
     name: 'Zero-dependency philosophy', values: { Topic: 'Philosophy' },
@@ -197,9 +197,9 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
   });
 
   // ---------- Quality: the test suite, mirrored as data ----------
-  w.createSpace({ name: 'Quality', description: 'The Weave test suite, dogfooded' });
-  const suites = w.createTable({ space: 'Quality', name: 'Suite' });
-  const cases = w.createTable({ space: 'Quality', name: 'Case' });
+  w.createSpace({ name: 'Quality', icon: 'lucide:shield-check', description: 'The Weave test suite, dogfooded' });
+  const suites = w.createTable({ space: 'Quality', name: 'Suite', icon: 'lucide:shield-check' });
+  const cases = w.createTable({ space: 'Quality', name: 'Case', icon: 'lucide:square-check' });
   w.addField(cases, {
     name: 'Status', type: 'workflow', config: {
       states: [
@@ -221,8 +221,8 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
   syncQualityMirror(w, scanSuites(join(dirname(fileURLToPath(import.meta.url)), '..')));
 
   // ---------- Development: public issues + roadmap ----------
-  w.createSpace({ name: 'Development', description: 'Open issues and the roadmap, maintained as Weave is built' });
-  const issues = w.createTable({ space: 'Development', name: 'Issue' });
+  w.createSpace({ name: 'Development', icon: 'lucide:activity', description: 'Open issues and the roadmap, maintained as Weave is built' });
+  const issues = w.createTable({ space: 'Development', name: 'Issue', icon: 'lucide:bug' });
   w.addField(issues, {
     name: 'Status', type: 'workflow', config: {
       states: [
@@ -238,7 +238,7 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
      true of one bug, and a report filed on a note alone leaves it empty. */
   w.addField(issues, { name: SYMPTOM_FIELD, type: 'multiselect', config: { options: SYMPTOM_OPTIONS } });
 
-  const features = w.createTable({ space: 'Development', name: 'Feature' });
+  const features = w.createTable({ space: 'Development', name: 'Feature', icon: 'lucide:star' });
   w.addField(features, {
     name: 'Status', type: 'workflow', config: {
       states: [
@@ -327,7 +327,7 @@ export function ensureReleaseTable(w) {
   const issues = table('Development/Issue');
   const features = table('Development/Feature');
   if (!issues || !features) return null;
-  const rel = w.createTable({ space: 'Development', name: 'Release' });
+  const rel = w.createTable({ space: 'Development', name: 'Release', icon: 'lucide:rocket' });
   w.addField(rel, { name: 'Date', type: 'date' });
   w.addField(rel, { name: 'Commit', type: 'text' });
   w.addRelation(rel, { name: 'Fixes', targetDb: issues.id, cardinality: 'many-to-many', inverseName: 'Fixed in' });
