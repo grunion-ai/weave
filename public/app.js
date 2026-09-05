@@ -1224,6 +1224,29 @@ function holdToConfirm(label, onConfirm, {
   return btn;
 }
 
+/* Where focus is in the grid right now, so a redraw can put it back.
+
+   The picker path records its own cell before its popover takes focus off it
+   (see showPopover). This covers the plain one: a text cell that was TABBED
+   out of. `change` fires on the way out, PATCHes, and redraws the grid a beat
+   after the browser has already moved focus along the row — so the rebuild
+   tore out the cell the reader had just reached, dropped focus on <body>, and
+   the next Tab restarted at the top of the page (Issue #83).
+
+   Only writes when it finds a grid cell: a picker has already recorded the
+   cell it came from, and by the time its redraw runs the focus is on the
+   popover, which is nowhere near the row. */
+function rememberGridFocus() {
+  const at = document.activeElement;
+  const cell = at?.closest?.('tr[data-eid] > td');
+  if (!cell) return;
+  let caret = null;
+  try {
+    if (at.selectionStart != null) caret = [at.selectionStart, at.selectionEnd];
+  } catch { /* number and date inputs refuse to be asked */ }
+  state.refocus = { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell), caret };
+}
+
 /* Put focus back on the cell that triggered a redraw (see showPopover). */
 function restoreGridFocus() {
   const want = state.refocus;
@@ -1231,7 +1254,17 @@ function restoreGridFocus() {
   if (!want) return;
   requestAnimationFrame(() => {
     const td = $(`tr[data-eid="${want.eid}"]`)?.children[want.col];
-    td?.querySelector('button,input,select')?.focus();
+    /* Not every cell holds a form control: a description preview, a dressed
+       number and a marked-up text value all rest as a `tabindex` span and
+       become their input on demand. Leaving those out is how focus still
+       landed on <body> for the column the reader tabbed into most (#83). */
+    const box = td?.querySelector('button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
+    if (!box) return;
+    box.focus();
+    // Landing the caret where it was, for the same reason activateCell does:
+    // a bare focus() leaves a text input selected whole in some browsers, and
+    // the next keystroke would wipe the value the reader is part-way through.
+    if (want.caret) { try { box.setSelectionRange(want.caret[0], want.caret[1]); } catch { /* not a text box */ } }
   });
 }
 
@@ -2575,6 +2608,7 @@ function drawDatabase(db, items, trashCount = 0) {
   if (strip) main.append(strip);
 
   const onSaved = async () => {
+    rememberGridFocus();
     const w2 = filterWhere(db);
     const fresh = await api('POST', `/tables/${db.id}/query`, w2 ? { where: w2 } : {});
     drawDatabase(db, fresh.items);
@@ -4435,6 +4469,7 @@ async function showSpace(spaceId) {
     // space iff its sysId names one of the space's tables. Names can drift.
     const items = res.items.filter((i) => space.tables.some((t) => t.id === i.sysId));
     const onSaved = async () => {
+      rememberGridFocus();
       await loadSchema();
       await showSpace(spaceId);
       restoreGridFocus();
@@ -6592,6 +6627,7 @@ async function showHome() {
   if (reg && dbs.length) {
     const res = await api('POST', `/tables/${reg.id}/query`, {});
     const onSaved = async () => {
+      rememberGridFocus();
       await loadSchema();
       await showHome();
       restoreGridFocus();

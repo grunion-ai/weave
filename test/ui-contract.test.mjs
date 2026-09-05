@@ -268,6 +268,17 @@ test('focus survives the redraw a pick causes', () => {
   assert.match(APP, /refocus: null/, 'state must declare the slot');
 });
 
+test('every grid redraw remembers where focus was before it runs (Issue #83)', () => {
+  // A pick records its own cell; a TABBED-OUT text cell has nobody to do that
+  // for it, so each onSaved reads the live focus on the way in. Behaviour is
+  // gated by test/grid-tab-focus-browser.test.mjs — this pins all three
+  // grid-bearing pages so a fourth cannot land without it.
+  assert.match(APP, /function rememberGridFocus/);
+  const saves = [...APP.matchAll(/const onSaved = async \(\) => \{\n\s*([^\n]*)/g)].map((m) => m[1]);
+  assert.ok(saves.length >= 3, `expected the three grid pages, found ${saves.length}`);
+  for (const first of saves) assert.match(first, /rememberGridFocus\(\);/);
+});
+
 test('the focused popover row is as visible as the hovered one', () => {
   assert.ok(rulesFor('.chip-pop-row:focus').background, 'focus must be styled, not only hover');
   assert.ok(rulesFor('.chip-pop-row:focus-visible')['box-shadow']);
