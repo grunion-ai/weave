@@ -1780,12 +1780,41 @@ function rowClickTarget(e) {
   return e.target.closest('.cell-pick');
 }
 
+/* Which side an anchored panel hangs off, in numbers (Issue #133).
+   A left placement runs from the anchor's left edge rightwards; a right
+   placement ends at the anchor's right edge. `prefer` is the caller's
+   default and wins whenever it fits — the flip is a rescue, not a policy.
+   When neither side fits (a panel wider than its bounds) the preference
+   stands, because moving it only trades one clipped edge for the other. */
+function menuSide({ anchorLeft, anchorRight, width, boundsLeft, boundsRight, prefer = 'left', pad = 4 }) {
+  const fits = (left) => left >= boundsLeft + pad && left + width <= boundsRight - pad;
+  const other = prefer === 'right' ? 'left' : 'right';
+  const start = (side) => (side === 'right' ? anchorRight - width : anchorLeft);
+  if (fits(start(prefer))) return prefer;
+  return fits(start(other)) ? other : prefer;
+}
+
+/* The box the panel has to live inside: the nearest ancestor that clips its
+   overflow, else the viewport. The side peek is the reason — a menu there
+   clips against the panel's edge long before it reaches the window's. */
+function menuBounds(node) {
+  const viewport = { left: 0, right: document.documentElement.clientWidth };
+  for (let p = node.parentElement; p && p !== document.body; p = p.parentElement) {
+    if (getComputedStyle(p).overflowX === 'visible') continue;
+    const r = p.getBoundingClientRect();
+    return { left: Math.max(viewport.left, r.left), right: Math.min(viewport.right, r.right) };
+  }
+  return viewport;
+}
+
 /* The ⋮ overflow menu, one implementation for every view that has one.
    items: {label, href, download} for a link, {label, run, danger} for a
    button, {hold: label, run} for a hold-to-confirm, or 'divider'.
    align 'right' hangs the panel off the right edge — the table and space
    menus sit at the end of the header toolbar, where left-aligning would
-   push the panel off-screen. */
+   push the panel off-screen. It is the DEFAULT, not the decision: the side
+   is measured on open (Issue #133), because the same ⋮ that has room in one
+   view is flush against the edge in the next. */
 function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } = {}) {
   const menu = el('div', { class: `dl-menu hidden${align === 'right' ? ' dl-menu-right' : ''}` });
   const close = () => menu.classList.add('hidden');
@@ -1805,6 +1834,18 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
       onclick: async () => { close(); await it.run(); },
     }, it.label));
   }
+  /* Measured while the panel is visible — a hidden box has no width — and
+     re-measured on every open, so a menu that flipped once flips back when
+     the pane it sits in grows. */
+  const place = () => {
+    const a = wrap.getBoundingClientRect();
+    const bounds = menuBounds(wrap);
+    const side = menuSide({
+      anchorLeft: a.left, anchorRight: a.right, width: menu.offsetWidth,
+      boundsLeft: bounds.left, boundsRight: bounds.right, prefer: align,
+    });
+    menu.classList.toggle('dl-menu-right', side === 'right');
+  };
   const wrap = el('span', { class: `dl-wrap ${extraClass}`.trim() },
     el('button', {
       class: 'btn btn-sm btn-ghost-secondary dots-btn', title, type: 'button',
@@ -1815,6 +1856,7 @@ function dotsMenu(items, { title = 'Actions', align = 'left', extraClass = '' } 
         for (const m of document.querySelectorAll('.dl-menu')) m.classList.add('hidden');
         if (!opening) return;
         menu.classList.remove('hidden');
+        place();
         addEventListener('click', function away(ev) {
           if (wrap.contains(ev.target)) return;
           close();
