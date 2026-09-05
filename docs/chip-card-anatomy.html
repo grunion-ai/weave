@@ -1,0 +1,216 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chip and card anatomy</title>
+<style>
+:root { --fg: #1a1d23; --muted: #6b7280; --line: #e5e7eb; --accent: #4f46e5; --bg: #ffffff; --soft: #f6f7f9; --code-bg: #ffffff; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg: #e5e7eb; --muted: #9ca3af; --line: #30343c; --accent: #818cf8; --bg: #111318; --soft: #1a1d23; --code-bg: #0d1117; }
+}
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 760px; padding: 48px 24px; background: var(--bg); color: var(--fg);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+h1, h2, h3, h4 { line-height: 1.25; margin: 1.4em 0 0.5em; }
+h1:first-child { margin-top: 0; }
+.doc-meta { color: var(--muted); font-size: 13px; margin-bottom: 2em; border-bottom: 1px solid var(--line); padding-bottom: 1em; }
+a { color: var(--accent); }
+a.mention { background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; text-decoration: none; }
+.md-icon { display: inline-flex; width: 1em; height: 1em; vertical-align: -.15em; margin-right: .15em; }
+.md-icon svg { width: 1em; height: 1em; }
+.mention.broken { color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 0 4px; }
+/* A leading glyph says what kind of thing a reference points at, so a chip is
+   readable without following it. Generated content, so it never lands in a
+   copy-paste of the text. */
+.mention::before { color: var(--muted); margin-right: 4px; font-size: .9em; }
+.mention-entity::before { content: "#"; }
+.mention-table::before { content: "▦"; }
+.mention-space::before { content: "◇"; }
+.mention-workspace::before { content: "⬡"; }
+/* Collapsed chip shows the name; the caret opens the preview segments. The
+   whole chip is the link — the caret is the only non-navigating pixel. */
+.mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
+.mention-fields { display: none; }
+.mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--line); color: var(--muted); font-size: .85em; }
+.mention-f-label { opacity: .65; margin-right: 3px; }
+.mention-caret { border: 1px solid var(--line); background: none; border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
+.mention-wrap.open .mention-caret { transform: rotate(180deg); }
+code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+/* A code block sits on the ground its palette was drawn for — white for
+   github, #0d1117 for github-dark — because a token colour answers to the
+   surface under it, not to the theme around it (Issue #81). On --soft's grey
+   the github keyword red measured 4.27:1, under AA by a hair. The border is
+   what makes the block a block when the slab matches the page. */
+pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; position: relative; }
+pre code { background: none; padding: 0; }
+/* hljs contributes token colours only; the block chrome (background, border,
+   padding, copy button) stays the page's own. */
+pre code.hljs { background: none; padding: 0; }
+/* Code is there to be taken, so the button is always on the block rather than
+   waiting for a hover that a touch screen never sends. */
+.code-copy { position: absolute; top: 8px; right: 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--muted); font: 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  padding: 5px 7px; cursor: pointer; opacity: .6; }
+.code-copy:hover { opacity: 1; color: var(--fg); }
+blockquote { border-left: 3px solid var(--line); margin: 1em 0; padding: 2px 0 2px 16px; color: var(--muted); }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+th { background: var(--soft); }
+hr { border: none; border-top: 1px solid var(--line); margin: 2em 0; }
+img { display: block; margin: 8px auto; max-width: 60%; }
+iframe.wv-file { display: block; margin: 8px auto; width: 60%; max-width: 60%; aspect-ratio: 4 / 3;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align: center; }
+@media print { .pagebreak { page-break-after: always; break-after: page; } .code-copy { display: none; } }
+</style>
+<style>
+/* weave chip system, lifted from public/style.css */
+:root { --wv-chip-font: 13px; --wv-chip-line: 22px; }
+.k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: var(--wv-chip-font); line-height: var(--wv-chip-line); padding: 1px 8px; border-radius: 4px; border: 0; }
+.k .ico { font-size: 10.5px; line-height: 1; opacity: .85; flex: none; }
+.k-state, .k-select, .k-multi, .k-key { background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); border: 0; }
+.k-state.cat-not-started { --fill: rgba(0, 5, 20, .05); --text: #60646c; }
+.k-state.cat-in-progress { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; }
+.k-state.cat-done { --fill: rgba(46, 160, 67, .14); --text: #218358; }
+.k-state.cat-canceled { --fill: rgba(229, 72, 77, .12); --text: #ce2c31; text-decoration: line-through; }
+[data-bs-theme="dark"] .k-state.cat-not-started { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
+[data-bs-theme="dark"] .k-state.cat-in-progress { --fill: rgba(99, 140, 245, .18); --text: #9eb1ff; }
+[data-bs-theme="dark"] .k-state.cat-done { --fill: rgba(70, 180, 110, .16); --text: #71d083; }
+[data-bs-theme="dark"] .k-state.cat-canceled { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
+.k-key { font-family: var(--tblr-font-monospace); font-size: 11px; letter-spacing: .02em; }
+.k-key .store { margin-left: 5px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--tblr-border-color); font-size: 9px; letter-spacing: .04em; text-transform: uppercase; opacity: .75; }
+.k-rel, .k-doc, .k-attach, .k-more { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-body-color); cursor: pointer; }
+.k-rel:hover, .k-doc:hover, .k-attach:hover, .k-more:hover { border-color: var(--tblr-primary); color: var(--tblr-primary); }
+.k-rel > a::after, .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: 10px; margin-left: 1px; }
+.k-rel { padding: 0; }
+.k-rel > a { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 2px; color: inherit; text-decoration: none; }
+.k-rel > .x { margin: 0 6px 0 -3px; padding: 0 2px; }
+.k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; opacity: .6; }
+.k-rel .k-home { font-family: var(--tblr-font-monospace); font-size: .78em; opacity: .55; }
+.k-more { font-family: var(--tblr-font-monospace); font-size: 10.5px; }
+.k-add, .k-doc.is-empty, .k-attach.is-empty { background: none; border: 1px dashed var(--tblr-border-color); color: var(--tblr-secondary); cursor: pointer; }
+.k-doc.is-empty, .k-attach.is-empty { border-style: dashed; }
+.k-doc.is-empty::after, .k-attach.is-empty::after { content: "+"; opacity: .55; }
+.k-computed { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
+.k-sys { background: none; border: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 9.5px; line-height: 1.9; letter-spacing: .11em; text-transform: uppercase; padding: 0 7px; }
+.k .x { margin-left: 2px; cursor: pointer; color: var(--tblr-secondary); font-size: 11px; }
+.k .x:hover { color: var(--tblr-danger); }
+.k.deleted { opacity: .55; text-decoration: line-through; }
+.av { flex: none; width: 17px; height: 17px; border-radius: 3px; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; font-family: var(--tblr-font-monospace); font-size: 8.5px; font-weight: 600; letter-spacing: .02em; background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
+.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.unknown { background: none; box-shadow: inset 0 0 0 1px var(--tblr-border-color); color: var(--tblr-secondary); }
+.hue-slate { --fill: rgba(0, 5, 20, .05); --text: #60646c; --dot: transparent; }
+.hue-blue { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; --dot: #4769eb; }
+.hue-green { --fill: rgba(46, 160, 67, .14); --text: #218358; --dot: #2ea043; }
+.hue-amber { --fill: rgba(245, 159, 0, .16); --text: #7a5209; --dot: #f59f00; }
+.hue-red { --fill: rgba(229, 72, 77, .12); --text: #ce2c31; --dot: #e5484d; }
+.hue-purple { --fill: rgba(142, 78, 198, .12); --text: #7a3fb8; --dot: #8e4ec6; }
+.hue-cyan { --fill: rgba(0, 162, 199, .14); --text: #0a6379; --dot: #00a2c7; }
+.hue-pink { --fill: rgba(214, 64, 159, .12); --text: #a32677; --dot: #d6409f; }
+.hue-teal { --fill: rgba(18, 165, 148, .14); --text: #10695c; --dot: #12a594; }
+.hue-orange { --fill: rgba(247, 107, 21, .14); --text: #9a4310; --dot: #f76b15; }
+[data-bs-theme="dark"] .hue-slate { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
+[data-bs-theme="dark"] .hue-blue { --fill: rgba(99, 140, 245, .18); --text: #9eb1ff; }
+[data-bs-theme="dark"] .hue-green { --fill: rgba(70, 180, 110, .16); --text: #71d083; }
+[data-bs-theme="dark"] .hue-amber { --fill: rgba(240, 190, 80, .18); --text: #f2c968; }
+[data-bs-theme="dark"] .hue-red { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
+[data-bs-theme="dark"] .hue-purple { --fill: rgba(180, 120, 240, .18); --text: #c9a6f5; }
+[data-bs-theme="dark"] .hue-cyan { --fill: rgba(80, 190, 240, .18); --text: #7fd3f5; }
+[data-bs-theme="dark"] .hue-pink { --fill: rgba(240, 120, 170, .18); --text: #f79ec0; }
+[data-bs-theme="dark"] .hue-teal { --fill: rgba(70, 200, 180, .16); --text: #6fdcc8; }
+[data-bs-theme="dark"] .hue-orange { --fill: rgba(250, 150, 80, .18); --text: #ffb183; }
+.mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
+.mention-fields { display: none; }
+.mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: .85em; }
+.mention-f-label { opacity: .65; margin-right: 3px; }
+.mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: 4px; color: var(--tblr-secondary); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
+.mention-wrap.open .mention-caret { transform: rotate(180deg); }
+.mention-caret svg { width: 12px; height: 12px; display: block; }
+.k-range.is-empty { color: var(--tblr-secondary); }
+.k-rel > a > .mention-caret { margin-left: 2px; }
+.k-rel > a > .mention-fields { align-items: center; }
+.k-rel .mention-fields .k-state, .wv-seg-state { font-size: .82em; padding: 0 6px; line-height: 1.5; }
+.wv-card { display: flex; flex-direction: column; gap: 6px; min-width: 180px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 13px; line-height: 1.35; white-space: normal; }
+.wv-card.compact { gap: 3px; padding: 5px 8px; font-size: 12px; max-width: 280px; }
+.wv-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wv-card-title { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; color: inherit; text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.wv-card-title:hover { color: var(--tblr-primary); }
+.wv-card-id { font-family: var(--tblr-font-monospace); font-size: .82em; font-weight: 500; opacity: .55; }
+.wv-card-desc { color: var(--tblr-secondary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.wv-card.compact .wv-card-desc { -webkit-line-clamp: 1; }
+.wv-card-fields { display: grid; grid-template-columns: max-content 1fr; column-gap: 10px; row-gap: 2px; margin: 0; }
+.wv-card-fields dt { color: var(--tblr-secondary); font-weight: 400; opacity: .8; }
+.wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+:root, [data-bs-theme="light"] {
+  --tblr-border-color: #e6e3dc; --tblr-body-color: #1a1d23; --tblr-secondary: #6b7280;
+  --tblr-primary: #2563eb; --tblr-primary-rgb: 37, 99, 235; --tblr-danger: #d63939;
+  --tblr-bg-surface: #fafaf8; --tblr-bg-surface-secondary: #f3f1ec;
+  --tblr-font-monospace: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-bs-theme="light"]) {
+    --tblr-border-color: #2c3a52; --tblr-body-color: #e0dcd4; --tblr-secondary: #9aa3b5;
+    --tblr-primary: #4f8df7; --tblr-primary-rgb: 79, 141, 247; --tblr-danger: #ff6b6b;
+    --tblr-bg-surface: #16243d; --tblr-bg-surface-secondary: #1c2c48;
+  }
+}
+[data-bs-theme="dark"] {
+  --tblr-border-color: #2c3a52; --tblr-body-color: #e0dcd4; --tblr-secondary: #9aa3b5;
+  --tblr-primary: #4f8df7; --tblr-primary-rgb: 79, 141, 247; --tblr-danger: #ff6b6b;
+  --tblr-bg-surface: #16243d; --tblr-bg-surface-secondary: #1c2c48;
+}
+/* The figures sit on the page's own ground; tables keep the app's density. */
+body { font-size: 15px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+.wv-anat { background: var(--soft); }
+</style>
+</head>
+<body>
+<div class="doc-meta">Handbook · Guide</div>
+<h1>Chip and card anatomy</h1>
+<p>A row appears in two shapes outside its own page: the <strong>chip</strong>, inline — a relation cell, a <code>[[…]]</code> mention in a document, a reference card, a picker — and the <strong>card</strong>, a tile. Both are drawn from the table's two <code>view</code> fields (the <strong>view</strong> page in <a class="mention mention-table" href="#fields">Fields</a> says what they can contain; the entity page's <strong>Appears as</strong> strip shows the live pair). This page is the face: every element, what it does, how you use it, and its <strong>hitbox</strong> — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.</p>
+<h2>The chip</h2>
+<div class="wv-anat" style="font-family:var(--tblr-font-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif);font-size:14px;line-height:1.5;color:var(--tblr-body-color,inherit);display:inline-flex;align-items:center;gap:18px;padding:26px 22px 16px;border:1px dashed rgba(128,128,128,.45);border-radius:8px;margin:4px 0 8px">
+<span class="mention-wrap open"><span class="k k-rel has-segs"><a href="#" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px" onclick="return false"><span class="av hue-blue" style="overflow:visible;position:relative;outline:1.5px dashed #d6409f;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d6409f">1</i>AL</span><span style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">2</i>#12</span> <span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">3</i>Ship the editor</span> <span class="k-home" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a">4</i>Task</span><button type="button" class="mention-caret" aria-expanded="true" title="Hide fields" style="position:relative;outline:1.5px dashed #e5484d;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;bottom:-15px;transform:rotate(180deg);font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#e5484d">5</i>›</button><span class="mention-fields" style="position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">6</i><span class="k k-state cat-in-progress hue-blue wv-seg-state">Doing</span><span class="mention-f"><span class="mention-f-label">Due</span>2026-09-12</span><span class="mention-f"><span class="mention-f-label">Severity</span>High</span></span><span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px;display:inline-block;width:9px;height:14px;margin-right:-11px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">7</i></span></a><span class="x" style="position:relative;outline:1.5px dashed #ce2c31;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#ce2c31">8</i>×</span></span></span>
+</div>
+<p>The whole chip is one link to the row. Everything inside the grey box navigates on click except the caret; the × sits outside it.</p>
+<table><thead><tr><th>№</th><th>Element</th><th>What it does</th><th>How you use it</th><th>Hitbox</th></tr></thead><tbody><tr><td>1</td><td><strong>Avatar</strong> (<code>.av</code>)</td><td>initials, or the picture, of a person-table row; hue from the name</td><td>none of its own — part of the link</td><td>inside the link</td></tr><tr><td>2</td><td><strong>Public id</strong> (<code>#12</code>)</td><td>the row's number; shows when the chip's <code>link</code> setting is on</td><td>read it, quote it — <code>[[Task#12]]</code> written in any document becomes this chip</td><td>inside the link</td></tr><tr><td>3</td><td><strong>Name</strong></td><td>the row's <code>Name</code> field</td><td><strong>click</strong> opens the row; <strong>⌘/Ctrl/Shift-click or middle-click</strong> opens it in a new tab; <strong>right-click → Copy Link</strong> copies its permalink (the chip is a real anchor); <strong>hover</strong> turns the outline brand-blue</td><td>inside the link — the label, its padding, and the space between elements all count</td></tr><tr><td>4</td><td><strong>Home badge</strong> (<code>.k-home</code>)</td><td>names the far table when a relation can point at several (a target set)</td><td>none of its own</td><td>inside the link</td></tr><tr><td>5</td><td><strong>Caret</strong> (<code>›</code> / <code>‹</code>)</td><td>folds the segments in and out; shows only when there is a segment to show</td><td><strong>click to expand</strong>; it turns to face the label (<code>‹</code>) and a second click <strong>collapses</strong> — the caret is the one pixel of the chip that never navigates</td><td>its own 12×18px button; the click stops there</td></tr><tr><td>6</td><td><strong>Segments</strong></td><td>the state as a state chip (the category owns the colour), then label·value pairs from the view's <code>fields</code>; three at most in a chip</td><td>read them; the state's colour is the same one the grid cell wears</td><td>inside the link — a click on a segment opens the row</td></tr><tr><td>7</td><td><strong>Open mark</strong> (<code>↗</code>)</td><td>promises navigation; always the last pixel inside the link</td><td>click it like the name</td><td>inside the link</td></tr><tr><td>8</td><td><strong>Remove</strong> (<code>×</code>)</td><td>in a relation cell only: unlinks this row from the field — never deletes it</td><td><strong>click to unlink</strong>; <code>weave undo</code> (or the activity row) puts it back</td><td>its own box, outside the link</td></tr></tbody></table>
+<p>The mark (7) and the caret (5) are why the chip never fills behind a pointer: colour is spent on values, and a pointer is a place to go. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in <code>--wv-chip-font</code> and <code>--wv-chip-line</code>.</p>
+<h2>The card</h2>
+<div class="wv-anat" style="font-family:var(--tblr-font-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif);font-size:14px;line-height:1.5;color:var(--tblr-body-color,inherit);display:inline-block;padding:26px 22px 16px;border:1px dashed rgba(128,128,128,.45);border-radius:8px;margin:4px 0 8px">
+<div class="wv-card" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px;gap:16px;padding-top:12px"><div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false" style="overflow:visible;position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">10</i><span class="wv-card-id" style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">9</i>#12</span>Ship the editor</a><span class="k k-state cat-in-progress hue-blue wv-seg-state" style="position:relative;outline:1.5px dashed #218358;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#218358">11</i>Doing</span></div><div class="wv-card-desc" style="overflow:visible;position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">12</i>The editor is the renderer: no edit mode, no preview pane, no save button.</div><dl class="wv-card-fields" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a;grid-column:1/-1">13</i><dt>Severity</dt><dd>High</dd><dt>Symptom</dt><dd>Looks broken</dd><dt>Due</dt><dd>2026-09-12</dd></dl></div>
+</div>
+<p>Only the title is a link. The rest of the tile is inert — in a grid cell the cell's own click applies, on a board the column's.</p>
+<table><thead><tr><th>№</th><th>Element</th><th>What it does</th><th>How you use it</th><th>Hitbox</th></tr></thead><tbody><tr><td>9</td><td><strong>Public id</strong> (<code>.wv-card-id</code>)</td><td>the row's number, when the card's <code>link</code> setting is on (it is, by default)</td><td>read it, quote it</td><td>inside the title link</td></tr><tr><td>10</td><td><strong>Title</strong> (<code>.wv-card-title</code>)</td><td>the row's <code>Name</code>, bold</td><td><strong>click</strong> opens the row; <strong>⌘/Ctrl/Shift-click or middle-click</strong> for a new tab; <strong>right-click → Copy Link</strong> for the permalink; <strong>hover</strong> turns it brand-blue</td><td>the title text, the id, and the gap between them</td></tr><tr><td>11</td><td><strong>State</strong></td><td>the workflow state as the same state chip the grid cell wears, right of the title</td><td>read it — a card's state changes on the row, not on the card</td><td>none — display only</td></tr><tr><td>12</td><td><strong>Description</strong></td><td>the first lines of the description document at the view's <code>description</code> size — small (one line), medium (~120 chars), large (~320); prose only, three lines at most, one on a compact card</td><td>read it; the row's page has the rest</td><td>none</td></tr><tr><td>13</td><td><strong>Fields</strong> (<code>.wv-card-fields</code>)</td><td>label · value pairs from the view's <code>fields</code> — the first few glanceable values in column order by default, four at most counting the state</td><td>read them; arranging the table's columns IS the curation</td><td>none</td></tr></tbody></table>
+<h2>Where the same chip shows up</h2>
+<table><thead><tr><th>Surface</th><th>Which chip</th><th>What differs</th></tr></thead><tbody><tr><td>a relation cell in the grid</td><td>the far row's chip</td><td>carries the × (8); the avatar (1) on a person relation; the home badge (4) on a target set</td></tr><tr><td>a <code>[[…]]</code> mention in a document</td><td>the same chip, from the same config</td><td>no ×, no avatar — a reference is text, there is nothing to unlink</td></tr><tr><td>a reference panel on the entity page</td><td>the same chip</td><td>home badge on, no ×</td></tr><tr><td>the relation picker</td><td>the same chip</td><td>the × means &quot;take it out of the selection&quot;</td></tr><tr><td>the entity page's Appears as strip</td><td>this table's own chip and card</td><td>a gear beside each opens the table's config; the strip shows what every other surface will draw</td></tr></tbody></table>
+<p>To change what a chip or card contains — the id, the state, the description size, which fields ride along — open the gear on the Appears as strip or <code>weave field update Task Chip --config '{&quot;fields&quot;:[&quot;Due&quot;]}'</code>. It changes every row of the table at once.</p>
+
+<script>
+for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
+  const btn = document.createElement('button');
+  btn.className = 'code-copy';
+  btn.type = 'button';
+  btn.textContent = 'Copy';
+  btn.onclick = async () => {
+    const code = pre.querySelector('code') ?? pre;
+    try { await navigator.clipboard.writeText(code.textContent); btn.textContent = 'Copied'; }
+    catch { btn.textContent = 'Press ⌘C'; getSelection().selectAllChildren(code); }
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+  };
+  pre.append(btn);
+}
+document.addEventListener('click', (ev) => {
+  const caret = ev.target.closest('.mention-caret');
+  if (!caret) return;
+  const open = caret.closest('.mention-wrap').classList.toggle('open');
+  caret.setAttribute('aria-expanded', String(open));
+});
+</script>
+
+
+</body>
+</html>

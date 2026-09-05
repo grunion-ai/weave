@@ -1037,6 +1037,63 @@ A target set that only ever holds one member is a classic pair wearing a costume
 
 MCP: \`weave_add_relation\` takes \`targetDbs\` as a list; a single-element list is the pair. REST and the CLI mirror it with \`--target-dbs\`.`,
   },
+  {
+    name: 'Chip and card anatomy',
+    audience: 'Both',
+    order: 11,
+    doc: `# Chip and card anatomy
+
+A row appears in two shapes outside its own page: the **chip**, inline — a relation cell, a \`[[…]]\` mention in a document, a reference card, a picker — and the **card**, a tile. Both are drawn from the table's two \`view\` fields (the **view** page in [[table:Handbook/Fields|Fields]] says what they can contain; the entity page's **Appears as** strip shows the live pair). This page is the face: every element, what it does, how you use it, and its **hitbox** — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.
+
+## The chip
+
+<div class="wv-anat" style="font-family:var(--tblr-font-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif);font-size:14px;line-height:1.5;color:var(--tblr-body-color,inherit);display:inline-flex;align-items:center;gap:18px;padding:26px 22px 16px;border:1px dashed rgba(128,128,128,.45);border-radius:8px;margin:4px 0 8px">
+<span class="mention-wrap open"><span class="k k-rel has-segs"><a href="#" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px" onclick="return false"><span class="av hue-blue" style="overflow:visible;position:relative;outline:1.5px dashed #d6409f;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d6409f">1</i>AL</span><span style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">2</i>#12</span> <span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">3</i>Ship the editor</span> <span class="k-home" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a">4</i>Task</span><button type="button" class="mention-caret" aria-expanded="true" title="Hide fields" style="position:relative;outline:1.5px dashed #e5484d;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;bottom:-15px;transform:rotate(180deg);font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#e5484d">5</i>›</button><span class="mention-fields" style="position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">6</i><span class="k k-state cat-in-progress hue-blue wv-seg-state">Doing</span><span class="mention-f"><span class="mention-f-label">Due</span>2026-09-12</span><span class="mention-f"><span class="mention-f-label">Severity</span>High</span></span><span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px;display:inline-block;width:9px;height:14px;margin-right:-11px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">7</i></span></a><span class="x" style="position:relative;outline:1.5px dashed #ce2c31;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#ce2c31">8</i>×</span></span></span>
+</div>
+
+The whole chip is one link to the row. Everything inside the grey box navigates on click except the caret; the × sits outside it.
+
+| № | Element | What it does | How you use it | Hitbox |
+| --- | --- | --- | --- | --- |
+| 1 | **Avatar** (\`.av\`) | initials, or the picture, of a person-table row; hue from the name | none of its own — part of the link | inside the link |
+| 2 | **Public id** (\`#12\`) | the row's number; shows when the chip's \`link\` setting is on | read it, quote it — \`[[Task#12]]\` written in any document becomes this chip | inside the link |
+| 3 | **Name** | the row's \`Name\` field | **click** opens the row; **⌘/Ctrl/Shift-click or middle-click** opens it in a new tab; **right-click → Copy Link** copies its permalink (the chip is a real anchor); **hover** turns the outline brand-blue | inside the link — the label, its padding, and the space between elements all count |
+| 4 | **Home badge** (\`.k-home\`) | names the far table when a relation can point at several (a target set) | none of its own | inside the link |
+| 5 | **Caret** (\`›\` / \`‹\`) | folds the segments in and out; shows only when there is a segment to show | **click to expand**; it turns to face the label (\`‹\`) and a second click **collapses** — the caret is the one pixel of the chip that never navigates | its own 12×18px button; the click stops there |
+| 6 | **Segments** | the state as a state chip (the category owns the colour), then label·value pairs from the view's \`fields\`; three at most in a chip | read them; the state's colour is the same one the grid cell wears | inside the link — a click on a segment opens the row |
+| 7 | **Open mark** (\`↗\`) | promises navigation; always the last pixel inside the link | click it like the name | inside the link |
+| 8 | **Remove** (\`×\`) | in a relation cell only: unlinks this row from the field — never deletes it | **click to unlink**; \`weave undo\` (or the activity row) puts it back | its own box, outside the link |
+
+The mark (7) and the caret (5) are why the chip never fills behind a pointer: colour is spent on values, and a pointer is a place to go. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in \`--wv-chip-font\` and \`--wv-chip-line\`.
+
+## The card
+
+<div class="wv-anat" style="font-family:var(--tblr-font-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif);font-size:14px;line-height:1.5;color:var(--tblr-body-color,inherit);display:inline-block;padding:26px 22px 16px;border:1px dashed rgba(128,128,128,.45);border-radius:8px;margin:4px 0 8px">
+<div class="wv-card" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px;gap:16px;padding-top:12px"><div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false" style="overflow:visible;position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">10</i><span class="wv-card-id" style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">9</i>#12</span>Ship the editor</a><span class="k k-state cat-in-progress hue-blue wv-seg-state" style="position:relative;outline:1.5px dashed #218358;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#218358">11</i>Doing</span></div><div class="wv-card-desc" style="overflow:visible;position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">12</i>The editor is the renderer: no edit mode, no preview pane, no save button.</div><dl class="wv-card-fields" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a;grid-column:1/-1">13</i><dt>Severity</dt><dd>High</dd><dt>Symptom</dt><dd>Looks broken</dd><dt>Due</dt><dd>2026-09-12</dd></dl></div>
+</div>
+
+Only the title is a link. The rest of the tile is inert — in a grid cell the cell's own click applies, on a board the column's.
+
+| № | Element | What it does | How you use it | Hitbox |
+| --- | --- | --- | --- | --- |
+| 9 | **Public id** (\`.wv-card-id\`) | the row's number, when the card's \`link\` setting is on (it is, by default) | read it, quote it | inside the title link |
+| 10 | **Title** (\`.wv-card-title\`) | the row's \`Name\`, bold | **click** opens the row; **⌘/Ctrl/Shift-click or middle-click** for a new tab; **right-click → Copy Link** for the permalink; **hover** turns it brand-blue | the title text, the id, and the gap between them |
+| 11 | **State** | the workflow state as the same state chip the grid cell wears, right of the title | read it — a card's state changes on the row, not on the card | none — display only |
+| 12 | **Description** | the first lines of the description document at the view's \`description\` size — small (one line), medium (~120 chars), large (~320); prose only, three lines at most, one on a compact card | read it; the row's page has the rest | none |
+| 13 | **Fields** (\`.wv-card-fields\`) | label · value pairs from the view's \`fields\` — the first few glanceable values in column order by default, four at most counting the state | read them; arranging the table's columns IS the curation | none |
+
+## Where the same chip shows up
+
+| Surface | Which chip | What differs |
+| --- | --- | --- |
+| a relation cell in the grid | the far row's chip | carries the × (8); the avatar (1) on a person relation; the home badge (4) on a target set |
+| a \`[[…]]\` mention in a document | the same chip, from the same config | no ×, no avatar — a reference is text, there is nothing to unlink |
+| a reference panel on the entity page | the same chip | home badge on, no × |
+| the relation picker | the same chip | the × means "take it out of the selection" |
+| the entity page's Appears as strip | this table's own chip and card | a gear beside each opens the table's config; the strip shows what every other surface will draw |
+
+To change what a chip or card contains — the id, the state, the description size, which fields ride along — open the gear on the Appears as strip or \`weave field update Task Chip --config '{"fields":["Due"]}'\`. It changes every row of the table at once.`,
+  },
 ];
 
 /* ----------------------------------------------------- formatting samples
