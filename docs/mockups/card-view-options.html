@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="kind" content="design-review"><meta name="generated-at" content="2026-09-05"><meta name="repo" content="grunion-ai/weave">
-<title>weave — card view options (Feature #181)</title>
+<title>weave — card view options (Features #181, #184)</title>
 <style>
 /* weave chip system, lifted from public/style.css — the same rules a table cell uses */
 :root { --wv-chip-font: 13px; --wv-chip-line: 22px; }
@@ -84,6 +84,53 @@
 .wv-card-fields { display: grid; grid-template-columns: max-content 1fr; column-gap: 10px; row-gap: 2px; margin: 0; }
 .wv-card-fields dt { color: var(--tblr-secondary); font-weight: 400; opacity: .8; }
 .wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the picker and the date control, lifted the same way — Option O's edit costume */
+.chip-pop { position: fixed; z-index: 1200; min-width: 140px; padding: 4px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg, 8px); box-shadow: 0 8px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px; }
+.chip-pop-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: none; border: 0; border-radius: var(--tblr-border-radius); cursor: pointer; text-align: left; color: var(--tblr-body-color); }
+.chip-pop-row:hover, .chip-pop-row:focus { background: var(--tblr-active-bg, rgba(0,0,0,.05)); outline: none; }
+.chip-pop-row:focus-visible { box-shadow: inset 0 0 0 2px var(--tblr-primary); }
+.chip-pop-check { margin-left: auto; color: var(--tblr-primary); font-weight: 700; }
+.chip-pop { animation: wv-pop-in .12s ease-out both; transform-origin: top left; }
+.chip-pop { animation: none; }
+.chip-pop-row.wv-menu-row { gap: 9px; width: 100%; padding: 5px 8px; font: inherit; font-size: 13.5px; line-height: 20px; }
+.picker-pop { padding: 6px; min-width: 220px; }
+.picker-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); padding: 2px 4px 6px; }
+.picker-box { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; width: 100%; border: 1px solid var(--tblr-border-color); border-radius: 5px; background: var(--tblr-bg-surface); padding: 3px 5px; margin-bottom: 6px; cursor: text; }
+.picker-box:focus-within { border-color: var(--tblr-primary); }
+.picker-chips { display: contents; }
+.picker-chip { cursor: default; }
+.picker-chip.sel { outline: 2px solid var(--tblr-primary); outline-offset: 1px; }
+.picker-search { flex: 1 1 90px; min-width: 90px; border: 0; border-radius: 3px; background: none; color: var(--tblr-body-color); font-size: 13px; padding: 3px 3px; outline: none; }
+.picker-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
+.picker-row { display: flex; align-items: center; gap: 8px; }
+.picker-row.active { background: rgba(var(--tblr-primary-rgb), .10); border-radius: 5px; }
+.picker-hint { color: var(--tblr-secondary); font-size: 11.5px; margin-left: auto; }
+.picker-num { flex: 0 0 11px; text-align: right; color: var(--tblr-secondary); font-size: 10.5px; font-variant-numeric: tabular-nums; opacity: .55; user-select: none; }
+.picker-row.active .picker-num, .picker-row:hover .picker-num { opacity: 1; }
+.picker-cat { padding: 9px 6px 3px; font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); }
+.picker-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap: 2px; }
+.picker-cell { display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--wv-icon-rest); cursor: pointer; }
+.picker-cell:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); color: var(--tblr-body-color); }
+.picker-cell.on { color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .10); box-shadow: inset 0 0 0 1px var(--tblr-primary); }
+.picker-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--tblr-primary); color: var(--tblr-body-color); }
+.picker-cell .wv-icon { margin-right: 0; }
+.picker-none { color: var(--tblr-secondary); }
+.picker-none .wv-icon { opacity: .75; }
+.picker-pop:has(.picker-cells) { min-width: 292px; }
+.picker-empty { color: var(--tblr-secondary); font-size: 12.5px; padding: 8px 6px; }
+.picker-face { text-align: left; cursor: pointer; width: 100%; }
+.picker-wrap { display: block; width: 100%; }
+.picker-centered { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); min-width: 320px; }
+.picker-cells.picker-terms { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); }
+.picker-cell.picker-term { display: block; aspect-ratio: auto; width: auto; height: auto; text-align: left; padding: 4px 8px; font-size: 12.5px; line-height: 1.4; color: var(--tblr-body-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picker-pop:has(.picker-terms) .picker-list { max-height: 340px; }
+.picker-cell.picker-term.on { color: var(--tblr-primary); font-weight: 600; background: rgba(var(--tblr-primary-rgb), .10); }
+.picker-custom { display: block; width: 100%; text-align: left; font-size: 12.5px; color: var(--tblr-primary); background: none; border: none; border-top: 1px solid var(--tblr-border-color); margin-top: 4px; padding: 8px 6px 4px; cursor: pointer; }
+.picker-pop:has(.picker-terms) { min-width: 372px; }
+.picker-iconly { display: inline-flex; align-items: center; gap: 8px; }
+.date-pick-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--tblr-secondary); cursor: pointer; }
+.date-pick-btn:hover { color: var(--tblr-body-color); background: var(--tblr-bg-surface-secondary); border-color: var(--tblr-border-color); }
+.chip-pop { max-height: min(70vh, 560px); overflow-y: auto; }
 
 :root { --bg: #ecebe6; --fg: #1a1d23; --muted: #6b7280; --line: #d9d6ce; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
 [data-bs-theme="light"] {
@@ -130,12 +177,117 @@ h1 { font-size: 22px; margin: 0 0 6px; }
 .wv-date svg { margin-right: 4px; opacity: .6; }
 .k .ico svg { display: block; }
 .k-rel .k-home { margin-left: 5px; }
+/* ---- round 2 (Feature #184) ---- */
+.matrix-wrap { overflow-x: auto; margin: 0 0 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--tblr-bg-surface, #fafaf8); }
+.matrix { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.matrix th, .matrix td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
+.matrix thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.matrix tbody th { font-family: var(--mono); font-weight: 500; }
+.matrix tbody th a { color: inherit; text-decoration: none; }
+.matrix tbody th a:hover { color: var(--tblr-primary); }
+.matrix tbody tr:last-child th, .matrix tbody tr:last-child td { border-bottom: 0; }
+.matrix td.r-config { color: #218358; }
+.matrix td.r-new { color: #9a4310; }
+.matrix tr.round2 th { background: rgba(37, 99, 235, .06); }
+.panel.wide .wv-card { max-width: 100%; width: 100%; }
+.panel.column { background: var(--tblr-bg-surface-secondary); }
+.panel.column .wv-card { max-width: 300px; }
+.renderers { margin: 8px 0 0; padding: 18px 20px; border: 1px solid var(--line); border-radius: 8px; }
+.renderers h2 { font-size: 15px; margin: 0 0 8px; }
+.renderers p { margin: 0 0 8px; max-width: 90ch; }
+.renderers ul { margin: 0; padding-left: 20px; }
+.renderers li { margin: 2px 0; }
+.renderers code { font-family: var(--mono); font-size: 12px; }
+/* F — a cover band across the top in the state colour; the fill token the
+   state chip already carries, so the band and the chip agree by construction. */
+.wv-opt-f { padding: 0; overflow: hidden; }
+.wv-card-cover { padding: 8px 10px; background: var(--fill, var(--tblr-bg-surface-secondary)); border-bottom: 1px solid var(--tblr-border-color); }
+.wv-card-cover .k-state { background: var(--tblr-bg-surface); }
+.wv-opt-f .wv-card-head, .wv-opt-f .wv-card-desc, .wv-opt-f .wv-card-foot { margin: 0 10px; }
+.wv-opt-f .wv-card-head { margin-top: 8px; }
+.wv-opt-f .wv-card-foot { margin-bottom: 8px; }
+/* G — two columns: prose left, a labelled ledger right. */
+.wv-opt-g { flex-direction: row; gap: 14px; max-width: 560px; }
+.wv-split-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.wv-split-aside { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding-left: 14px; border-left: 1px solid var(--tblr-border-color); }
+.wv-cf-stack { flex-direction: column; align-items: flex-start; gap: 1px; }
+.wv-cf-stack .wv-cf-l { font-size: 11px; }
+/* H — a board tile: who and when, the ends of the row. */
+.wv-foot-between { justify-content: space-between; }
+/* I — a 3px accent in the state colour; the id in the corner. */
+.wv-accent-state { border-left: 3px solid var(--text, var(--tblr-secondary)); position: relative; padding-right: 44px; }
+.wv-card-corner-id { position: absolute; top: 6px; right: 8px; font-family: var(--tblr-font-monospace); font-size: 11px; opacity: .55; }
+.wv-foot-nowrap { flex-wrap: nowrap; overflow: hidden; }
+.wv-foot-nowrap > * { flex: none; }
+/* J — the row lifted out of the grid: inline cells in column order. */
+.wv-opt-j { flex-direction: row; align-items: center; gap: 0; max-width: 100%; padding: 0; }
+.wv-row-cell { padding: 6px 10px; border-right: 1px solid var(--tblr-border-color); white-space: nowrap; display: inline-flex; align-items: center; }
+.wv-row-cell:last-child { border-right: 0; }
+.wv-row-name { flex: 1 1 auto; min-width: 0; }
+.wv-row-name .wv-card-title { white-space: nowrap; min-width: 0; }
+.wv-card-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pair.stack { grid-template-columns: 1fr; }
+/* K — the table icon large at left; one field; the kind named quietly. */
+.wv-opt-k { flex-direction: row; align-items: center; gap: 12px; max-width: 420px; }
+.wv-card-ticon { flex: none; width: 36px; height: 36px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); }
+.wv-card-ticon svg { display: block; }
+.wv-icon-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wv-card-kind { font-family: var(--tblr-font-monospace); font-size: 11px; opacity: .55; margin-left: 4px; }
+/* L — 32px tall, one line, the name gives way first. */
+.wv-card.wv-opt-l { flex-direction: row; align-items: center; gap: 6px; height: 32px; padding: 0 10px; max-width: 420px; }
+.wv-opt-l .wv-card-title { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.wv-opt-l .k { flex: none; }
+.wv-rel-count { letter-spacing: .02em; }
+/* M — the cluster leads; the head trails. */
+.wv-rel-cluster { display: flex; flex-wrap: wrap; gap: 6px; }
+.wv-opt-m .wv-card-head .k-state { opacity: .8; }
+/* N — the range as a bar, dated at both ends; fields hang beneath. */
+.wv-range-bar { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.wv-range-fill { flex: 1 1 auto; height: 6px; border-radius: 3px; background: rgba(var(--tblr-primary-rgb), .35); position: relative; }
+.wv-range-fill::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 40%; border-radius: 3px; background: var(--tblr-primary); }
+.wv-range-tick { font-family: var(--tblr-font-monospace); font-size: 11px; color: var(--tblr-secondary); }
+.wv-foot-hang { padding-left: 14px; border-left: 2px solid var(--tblr-border-color); margin-left: 6px; }
+/* O — the edit costume: every chip in its picker box; one picker open in
+   place (the live one is position: fixed; here it hangs under its cell). */
+.wv-card-editing { max-width: 440px; }
+.wv-card-editing .picker-box { margin-bottom: 0; width: auto; display: inline-flex; }
+.wv-card-editing .picker-search { flex: 0 0 62px; min-width: 0; width: 62px; }
+.wv-foot-edit { align-items: flex-start; position: relative; }
+.wv-card-editing .wv-card-head .picker-box { flex-wrap: nowrap; }
+.wv-edit-cell { display: inline-flex; }
+.wv-edit-open > .picker-box { border-color: var(--tblr-primary); }
+.wv-pop-inline { position: absolute; top: calc(100% + 4px); left: 0; z-index: 3; animation: none; }
+.wv-card-editing { padding-bottom: 218px; }
+.wv-pop-inline.picker-pop { min-width: 200px; }
+.wv-pop-inline .picker-box { display: flex; width: 100%; margin-bottom: 6px; }
+.wv-pop-inline .picker-row { width: 100%; }
+.wv-date-edit .date-text { width: 92px; font-family: var(--tblr-font-monospace); }
+.wv-date-edit .date-pick-btn svg { display: block; }
 </style>
 </head>
 <body>
 <div class="wrap">
 <h1>Card view options</h1>
-<p class="lead">Five ways to lay out the <b>Card</b> view (Feature #175) for one <code>Development/Issue</code> row — Issue #193 as it stands. Every field value is the <b>same chip the table cell and the entity view draw</b>: the state chip with its glyph (category owns the colour), select and multiselect value chips, the relation as a pointer chip with the ↗ mark and no fill, a date in the quiet costume the grid gives a plain value, and a <code>+N</code> chip where a row overflows. Options vary field placement, density, whether labels show, and how overflow folds. Light and dark side by side. Pick one; a separate Feature lands it in the Card renderer.</p>
+<p class="lead">Fifteen ways to lay out the <b>Card</b> view (Feature #175) for one <code>Development/Issue</code> row — Issue #193 as it stands. A–E are round 1 (Feature #181); F–O are round 2 (Feature #184), varying axes A–E left alone: a cover band, a two-column split, a board tile, a sidebar accent, a lifted table row, an icon-led result, a 32px list item, relations first, a date-range bar, and every chip in its edit costume. Every field value is the <b>same chip the table cell and the entity view draw</b>: the state chip with its glyph (category owns the colour), select and multiselect value chips, the relation as a pointer chip with the ↗ mark and no fill, a person as the same pointer with its avatar, a date in the quiet costume the grid gives a plain value, and a <code>+N</code> chip where a row overflows. Light and dark side by side. The matrix compares them on one screen; the note at the foot says which are one renderer under a different config and which need a new shape. Pick one; a separate Feature lands it in the Card renderer.</p>
+<div class="matrix-wrap"><table class="matrix">
+<thead><tr><th>Option</th><th>Field placement</th><th>Density</th><th>Labels</th><th>Overflow</th><th>State</th><th>Description</th><th>Renderer</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="#option-a">A</a> Header line</th><td>header line</td><td>medium</td><td>no</td><td>+N in the head</td><td>chip in the head</td><td>small</td><td class="r-config">config</td></tr>
+<tr><th scope="row"><a href="#option-b">B</a> Footer row</th><td>footer row</td><td>medium</td><td>no</td><td>+N in the foot</td><td>chip in the head</td><td>medium</td><td class="r-config">config</td></tr>
+<tr><th scope="row"><a href="#option-c">C</a> Labelled grid</th><td>labelled grid</td><td>medium</td><td>yes, column</td><td>configured list</td><td>chip in the head</td><td>small</td><td class="r-config">config</td></tr>
+<tr><th scope="row"><a href="#option-d">D</a> Compact</th><td>footer row</td><td>compact</td><td>no</td><td>+N in the foot</td><td>chip in the head</td><td>none</td><td class="r-config">config</td></tr>
+<tr><th scope="row"><a href="#option-e">E</a> Reading card</th><td>labelled wrap</td><td>large</td><td>yes, inline</td><td>all configured</td><td>chip in the head</td><td>large</td><td class="r-config">config</td></tr>
+<tr class="round2"><th scope="row"><a href="#option-f">F</a> Cover card</th><td>footer row</td><td>medium</td><td>no</td><td>+N in the foot</td><td>cover band + chip</td><td>small</td><td class="r-new">new shape</td></tr>
+<tr class="round2"><th scope="row"><a href="#option-g">G</a> Two-column split</th><td>right stack</td><td>wide</td><td>yes, stacked</td><td>configured list</td><td>chip in the head</td><td>medium</td><td class="r-new">new shape</td></tr>
+<tr class="round2"><th scope="row"><a href="#option-h">H</a> Kanban tile</th><td>footer row</td><td>compact</td><td>no</td><td>two fields, none</td><td>implied by column</td><td>none</td><td class="r-config">config</td></tr>
+<tr class="round2"><th scope="row"><a href="#option-i">I</a> Sidebar accent</th><td>single row</td><td>medium</td><td>no</td><td>+N, no wrap</td><td>3px accent + chip</td><td>small</td><td class="r-new">new shape</td></tr>
+<tr class="round2"><th scope="row"><a href="#option-j">J</a> Table-row card</th><td>inline cells</td><td>one line</td><td>no</td><td>configured list</td><td>cell in order</td><td>none</td><td class="r-new">new shape</td></tr>
+<tr class="round2"><th scope="row"><a href="#option-k">K</a> Icon-led</th><td>one field</td><td>compact</td><td>no</td><td>one field, none</td><td>none</td><td>none</td><td class="r-new">new shape</td></tr>
+<tr class="round2"><th scope="row"><a href="#option-l">L</a> Dense list item</th><td>inline</td><td>32px</td><td>no</td><td>relation count</td><td>chip inline</td><td>none</td><td class="r-new">new shape</td></tr>
+<tr class="round2"><th scope="row"><a href="#option-m">M</a> Relation-forward</th><td>cluster first</td><td>medium</td><td>no</td><td>configured list</td><td>chip trailing</td><td>none</td><td class="r-config">config</td></tr>
+<tr class="round2"><th scope="row"><a href="#option-n">N</a> Timeline card</th><td>under the bar</td><td>medium</td><td>no</td><td>configured list</td><td>chip in the head</td><td>none</td><td class="r-new">new shape</td></tr>
+<tr class="round2"><th scope="row"><a href="#option-o">O</a> Editable card</th><td>footer row</td><td>medium</td><td>no</td><td>+N in the foot</td><td>edit box in the head</td><td>medium</td><td class="r-config">config</td></tr>
+</tbody></table></div>
 <section class="opt" id="option-a">
 <h2><span class="key">Option A</span>Header line</h2>
 <p class="note">Optimises for <b>scanning a board column — state and the first chips read on the same eyeline as the title; the description is the second glance.</b></p>
@@ -216,6 +368,215 @@ h1 { font-size: 22px; margin: 0 0 6px; }
   <div class="wv-card-foot wv-foot-labelled"><span class="wv-cf"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></span><span class="wv-cf"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span><span class="wv-cf"><span class="wv-cf-l">Area</span><span class="k k-select hue-purple">Chips</span></span></div>
 </div></div>
 </div>
+</section>
+<section class="opt" id="option-f">
+<h2><span class="key">Option F</span>Cover card</h2>
+<p class="note">Optimises for <b>a gallery read from across the room — the state owns a colour band across the top (an attachment thumbnail would take the same slot), so the column of cards reads as a heat map before a single word is read.</b></p>
+<code class="cfg">{ shape: 'card', link: true, state: true, description: 'small', fields: null }</code>
+<div class="pair">
+<div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-f">
+  <div class="wv-card-cover cat-not-started hue-slate"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a></div>
+  <div class="wv-card-desc wv-desc-small">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400).</div>
+  <div class="wv-card-foot"><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="k k-more">+2</span></div>
+</div></div>
+<div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-f">
+  <div class="wv-card-cover cat-not-started hue-slate"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a></div>
+  <div class="wv-card-desc wv-desc-small">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400).</div>
+  <div class="wv-card-foot"><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="k k-more">+2</span></div>
+</div></div>
+</div>
+</section>
+<section class="opt" id="option-g">
+<h2><span class="key">Option G</span>Two-column split</h2>
+<p class="note">Optimises for <b>a wide card in a two-up gallery or a peek — prose keeps the left column at reading width; the facts stack on the right as a labelled ledger, each value still the chip.</b></p>
+<code class="cfg">{ shape: 'card', link: true, state: true, description: 'medium', fields: ['Severity','Symptom','Fixed in','Reported'] }</code>
+<div class="pair">
+<div class="panel wide" data-bs-theme="light"><div class="wv-card wv-opt-g">
+  <div class="wv-split-main">
+    <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
+    <div class="wv-card-desc wv-desc-medium">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400). Symptom. On a collapsible chip preview, the expand caret is right; the retract…</div>
+  </div>
+  <div class="wv-split-aside"><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span></div>
+</div></div>
+<div class="panel wide" data-bs-theme="dark"><div class="wv-card wv-opt-g">
+  <div class="wv-split-main">
+    <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
+    <div class="wv-card-desc wv-desc-medium">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400). Symptom. On a collapsible chip preview, the expand caret is right; the retract…</div>
+  </div>
+  <div class="wv-split-aside"><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Severity</span><span class="k k-select hue-green">Low</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Symptom</span><span class="k k-multi hue-amber">Looks broken</span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Fixed in</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></span><span class="wv-cf wv-cf-stack"><span class="wv-cf-l">Reported</span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></span></div>
+</div></div>
+</div>
+</section>
+<section class="opt" id="option-h">
+<h2><span class="key">Option H</span>Kanban tile</h2>
+<p class="note">Optimises for <b>a board column — the column already says the state, so no state chip; who and when are the only facts a tile needs to be dragged. (Issue has no person field; the Owner chip is borrowed from a People-target relation.)</b></p>
+<code class="cfg">{ shape: 'card', link: true, state: false, description: 'none', fields: ['Owner','Due'] }</code>
+<div class="pair">
+<div class="panel column" data-bs-theme="light"><div class="wv-card wv-opt-h">
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a></div>
+  <div class="wv-card-foot wv-foot-between"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false"><span class="av hue-teal">KA</span>Kyle Adriany<span class="k-home">People</span></a></span></span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-12</span></div>
+</div></div>
+<div class="panel column" data-bs-theme="dark"><div class="wv-card wv-opt-h">
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a></div>
+  <div class="wv-card-foot wv-foot-between"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false"><span class="av hue-teal">KA</span>Kyle Adriany<span class="k-home">People</span></a></span></span><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-12</span></div>
+</div></div>
+</div>
+</section>
+<section class="opt" id="option-i">
+<h2><span class="key">Option I</span>Sidebar accent</h2>
+<p class="note">Optimises for <b>a list of cards where the state should be felt, not read — a 3px accent in the state colour at the left edge, one row of chips, the id tucked in the corner so the title starts flush.</b></p>
+<code class="cfg">{ shape: 'card', link: true, state: true, description: 'small', fields: null }</code>
+<div class="pair">
+<div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-i wv-accent-state cat-not-started hue-slate">
+  <span class="wv-card-corner-id">#193</span>
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false">Collapsible chip: retract caret points down; it should face the text</a></div>
+  <div class="wv-card-desc wv-desc-small">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400).</div>
+  <div class="wv-card-foot wv-foot-nowrap"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="k k-more">+2</span></div>
+</div></div>
+<div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-i wv-accent-state cat-not-started hue-slate">
+  <span class="wv-card-corner-id">#193</span>
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false">Collapsible chip: retract caret points down; it should face the text</a></div>
+  <div class="wv-card-desc wv-desc-small">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400).</div>
+  <div class="wv-card-foot wv-foot-nowrap"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span><span class="k k-select hue-green">Low</span> <span class="k k-multi hue-amber">Looks broken</span> <span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="k k-more">+2</span></div>
+</div></div>
+</div>
+</section>
+<section class="opt" id="option-j">
+<h2><span class="key">Option J</span>Table-row card</h2>
+<p class="note">Optimises for <b>lifting a row out of the grid — the card keeps the table's column order as inline cells, so a card dragged from a table to a board or a document still reads left to right the way the row did.</b></p>
+<code class="cfg">{ shape: 'card', link: true, state: true, description: 'none', fields: ['Severity','Symptom','Fixed in','Reported'] }</code>
+<div class="pair stack">
+<div class="panel wide" data-bs-theme="light"><div class="wv-card wv-opt-j">
+  <div class="wv-row-cell wv-row-name"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span><span class="wv-card-name">Collapsible chip: retract caret points down; it should face the text</span></a></div>
+  <div class="wv-row-cell"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
+  <div class="wv-row-cell"><span class="k k-select hue-green">Low</span></div>
+  <div class="wv-row-cell"><span class="k k-multi hue-amber">Looks broken</span></div>
+  <div class="wv-row-cell"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></div>
+  <div class="wv-row-cell"><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></div>
+</div></div>
+<div class="panel wide" data-bs-theme="dark"><div class="wv-card wv-opt-j">
+  <div class="wv-row-cell wv-row-name"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span><span class="wv-card-name">Collapsible chip: retract caret points down; it should face the text</span></a></div>
+  <div class="wv-row-cell"><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
+  <div class="wv-row-cell"><span class="k k-select hue-green">Low</span></div>
+  <div class="wv-row-cell"><span class="k k-multi hue-amber">Looks broken</span></div>
+  <div class="wv-row-cell"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></div>
+  <div class="wv-row-cell"><span class="k k-computed wv-date"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>2026-09-05</span></div>
+</div></div>
+</div>
+</section>
+<section class="opt" id="option-k">
+<h2><span class="key">Option K</span>Icon-led</h2>
+<p class="note">Optimises for <b>a picker row or a search result — the table's icon large at the left says what kind of thing this is before the name does; one key field and nothing else, so twenty results still scan.</b></p>
+<code class="cfg">{ shape: 'card', link: true, state: false, description: 'none', fields: ['Severity'] }</code>
+<div class="pair">
+<div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-k">
+  <span class="wv-card-ticon" title="Issue"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg></span>
+  <div class="wv-icon-body">
+    <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a></div>
+    <div class="wv-card-foot"><span class="k k-select hue-green">Low</span><span class="wv-card-kind">Issue</span></div>
+  </div>
+</div></div>
+<div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-k">
+  <span class="wv-card-ticon" title="Issue"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 2 1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg></span>
+  <div class="wv-icon-body">
+    <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a></div>
+    <div class="wv-card-foot"><span class="k k-select hue-green">Low</span><span class="wv-card-kind">Issue</span></div>
+  </div>
+</div></div>
+</div>
+</section>
+<section class="opt" id="option-l">
+<h2><span class="key">Option L</span>Dense list item</h2>
+<p class="note">Optimises for <b>a long relation list in the entity side column — 32px tall, the name ellipsised, the state and one chip, and a count of what else this row points at, so fifty items fit where five cards would.</b></p>
+<code class="cfg">{ shape: 'card', link: true, state: true, description: 'none', fields: ['Severity'] }</code>
+<div class="pair">
+<div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-l">
+  <a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span><span class="wv-card-name">Collapsible chip: retract caret points down; it should face the text</span></a>
+  <span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span><span class="k k-select hue-green">Low</span>
+  <span class="k k-more wv-rel-count" title="4 related rows">⇄ 4</span>
+</div></div>
+<div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-l">
+  <a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span><span class="wv-card-name">Collapsible chip: retract caret points down; it should face the text</span></a>
+  <span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span><span class="k k-select hue-green">Low</span>
+  <span class="k k-more wv-rel-count" title="4 related rows">⇄ 4</span>
+</div></div>
+</div>
+</section>
+<section class="opt" id="option-m">
+<h2><span class="key">Option M</span>Relation-forward</h2>
+<p class="note">Optimises for <b>a CRM or a people table where the connections ARE the row — the relation targets lead as a chip cluster (who and what this touches), the name second, the state trailing quietly.</b></p>
+<code class="cfg">{ shape: 'card', link: true, state: true, description: 'none', fields: ['Fixed in','Owner','Area'] }</code>
+<div class="pair">
+<div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-m">
+  <div class="wv-rel-cluster"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false"><span class="av hue-teal">KA</span>Kyle Adriany<span class="k-home">People</span></a></span></span><span class="k k-select hue-purple">Chips</span></div>
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
+</div></div>
+<div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-m">
+  <div class="wv-rel-cluster"><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false"><span class="av hue-teal">KA</span>Kyle Adriany<span class="k-home">People</span></a></span></span><span class="k k-select hue-purple">Chips</span></div>
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
+</div></div>
+</div>
+</section>
+<section class="opt" id="option-n">
+<h2><span class="key">Option N</span>Timeline card</h2>
+<p class="note">Optimises for <b>a daterange-carrying table — the range is drawn as a bar with its ends dated, the other fields hang beneath it, so a column of these cards is already a rough Gantt.</b></p>
+<code class="cfg">{ shape: 'card', link: true, state: true, description: 'none', fields: ['Window','Severity','Fixed in'] }</code>
+<div class="pair">
+<div class="panel" data-bs-theme="light"><div class="wv-card wv-opt-n">
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
+  <div class="wv-range-bar" aria-label="2026-09-05 to 2026-09-12"><span class="wv-range-tick">Sep 5</span><span class="wv-range-fill"></span><span class="wv-range-tick">Sep 12</span></div>
+  <div class="wv-card-foot wv-foot-hang"><span class="k k-select hue-green">Low</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></div>
+</div></div>
+<div class="panel" data-bs-theme="dark"><div class="wv-card wv-opt-n">
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><span class="k k-state cat-not-started hue-slate"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></div>
+  <div class="wv-range-bar" aria-label="2026-09-05 to 2026-09-12"><span class="wv-range-tick">Sep 5</span><span class="wv-range-fill"></span><span class="wv-range-tick">Sep 12</span></div>
+  <div class="wv-card-foot wv-foot-hang"><span class="k k-select hue-green">Low</span><span class="mention-wrap"><span class="k k-rel"><a href="#" onclick="return false">v0.4.6<span class="k-home">Release</span></a></span></span></div>
+</div></div>
+</div>
+</section>
+<section class="opt" id="option-o">
+<h2><span class="key">Option O</span>Editable card</h2>
+<p class="note">Optimises for <b>in-card editing — B's layout with every chip in its edit costume: each value sits in the picker box the cell becomes on click, and one picker (Severity) is open with the caret on Medium, to show the card is a surface you change on, not only read.</b></p>
+<code class="cfg">{ shape: 'card', link: true, state: true, description: 'medium', fields: null }</code>
+<div class="pair">
+<div class="panel wide" data-bs-theme="light"><div class="wv-card wv-opt-o wv-card-editing">
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><div class="picker-box"><span class="picker-chips"><span class="k k-state cat-not-started hue-slate picker-chip sel"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></span><input class="picker-search" placeholder="Search…" type="text" readonly></div></div>
+  <div class="wv-card-desc wv-desc-medium">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400). Symptom. On a collapsible chip preview, the expand caret is right; the retract…</div>
+  <div class="wv-card-foot wv-foot-edit">
+    <span class="wv-edit-cell wv-edit-open"><div class="picker-box"><span class="picker-chips"><span class="k k-select hue-green picker-chip">Low<span class="x" title="Remove">×</span></span></span><input class="picker-search" placeholder="Search…" type="text" readonly></div><div class="chip-pop picker-pop wv-pop-inline"><div class="picker-title">Severity</div><div class="picker-box"><span class="picker-chips"><span class="k k-select hue-green picker-chip">Low<span class="x" title="Remove">×</span></span></span><input class="picker-search" placeholder="Search…" type="text" readonly></div><div class="picker-list"><button class="chip-pop-row picker-row" type="button"><span class="picker-num">1</span><span class="k k-select hue-green">Low</span><span class="chip-pop-check">✓</span></button><button class="chip-pop-row picker-row active" type="button"><span class="picker-num">2</span><span class="k k-select hue-amber">Medium</span></button><button class="chip-pop-row picker-row" type="button"><span class="picker-num">3</span><span class="k k-select hue-orange">High</span></button><button class="chip-pop-row picker-row" type="button"><span class="picker-num">4</span><span class="k k-select hue-red">Blocking</span></button></div></div></span>
+    <span class="wv-edit-cell"><div class="picker-box"><span class="picker-chips"><span class="k k-multi hue-amber picker-chip">Looks broken<span class="x" title="Remove">×</span></span></span><input class="picker-search" placeholder="Search…" type="text" readonly></div></span>
+    <span class="wv-edit-cell"><div class="picker-box"><span class="picker-chips"><span class="k k-multi hue-slate picker-chip">v0.4.6<span class="x" title="Remove">×</span></span></span><input class="picker-search" placeholder="Search…" type="text" readonly></div></span>
+    <span class="k k-more">+2</span>
+  </div>
+</div></div>
+<div class="panel wide" data-bs-theme="dark"><div class="wv-card wv-opt-o wv-card-editing">
+  <div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false"><span class="wv-card-id">#193</span>Collapsible chip: retract caret points down; it should face the text</a><div class="picker-box"><span class="picker-chips"><span class="k k-state cat-not-started hue-slate picker-chip sel"><span class="ico"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg></span>Open</span></span><input class="picker-search" placeholder="Search…" type="text" readonly></div></div>
+  <div class="wv-card-desc wv-desc-medium">Reported by Kyle 2026-09-05 (stream of consciousness while using :4400). Symptom. On a collapsible chip preview, the expand caret is right; the retract…</div>
+  <div class="wv-card-foot wv-foot-edit">
+    <span class="wv-edit-cell wv-edit-open"><div class="picker-box"><span class="picker-chips"><span class="k k-select hue-green picker-chip">Low<span class="x" title="Remove">×</span></span></span><input class="picker-search" placeholder="Search…" type="text" readonly></div><div class="chip-pop picker-pop wv-pop-inline"><div class="picker-title">Severity</div><div class="picker-box"><span class="picker-chips"><span class="k k-select hue-green picker-chip">Low<span class="x" title="Remove">×</span></span></span><input class="picker-search" placeholder="Search…" type="text" readonly></div><div class="picker-list"><button class="chip-pop-row picker-row" type="button"><span class="picker-num">1</span><span class="k k-select hue-green">Low</span><span class="chip-pop-check">✓</span></button><button class="chip-pop-row picker-row active" type="button"><span class="picker-num">2</span><span class="k k-select hue-amber">Medium</span></button><button class="chip-pop-row picker-row" type="button"><span class="picker-num">3</span><span class="k k-select hue-orange">High</span></button><button class="chip-pop-row picker-row" type="button"><span class="picker-num">4</span><span class="k k-select hue-red">Blocking</span></button></div></div></span>
+    <span class="wv-edit-cell"><div class="picker-box"><span class="picker-chips"><span class="k k-multi hue-amber picker-chip">Looks broken<span class="x" title="Remove">×</span></span></span><input class="picker-search" placeholder="Search…" type="text" readonly></div></span>
+    <span class="wv-edit-cell"><div class="picker-box"><span class="picker-chips"><span class="k k-multi hue-slate picker-chip">v0.4.6<span class="x" title="Remove">×</span></span></span><input class="picker-search" placeholder="Search…" type="text" readonly></div></span>
+    <span class="k k-more">+2</span>
+  </div>
+</div></div>
+</div>
+</section>
+<section class="renderers">
+<h2>Which options are the shipped renderer, and which need a new shape</h2>
+<p><b>A, B, C, D, E, H, M, O</b> are the same <code>renderView(ref, 'card', { config })</code> under a different <code>Card</code> config — the contract already carries <code>link</code>, <code>state</code>, <code>description</code> and <code>fields</code>, and <code>viewCardEl</code> draws head, description, foot in that order. What varies between them is only which of those are on and how many fields ride along: H is <code>state: false, description: 'none', fields: [Owner, Due]</code>; M is the configured fields drawn before the head instead of after (one flag on the card tile, <code>fieldsFirst</code>, or a field-order convention); O is the same tile with each chip swapped for the cell's edit control, which the grid already knows how to do (<code>picker-box</code> + <code>picker-pop</code>) — a card-level <code>editable</code> switch, no new markup.</p>
+<p><b>F, G, I, J, K, L, N</b> each change the tile's geometry, so they need a new <code>shape</code> beside <code>chip</code> and <code>card</code> (or a <code>layout</code> key inside the Card config that <code>viewCardEl</code> switches on):</p>
+<ul>
+<li><b>F</b> cover — a band above the head that reads the state's <code>--fill</code>; the head loses its state chip to the band.</li>
+<li><b>G</b> split — two flex columns; the aside stacks label-over-chip, which no shipped rule does.</li>
+<li><b>I</b> accent — a left border in the state's <code>--text</code> and an absolutely placed id; the foot refuses to wrap.</li>
+<li><b>J</b> row — inline cells in the table's <code>fieldOrder</code>, not the Card's <code>fields</code> list; the only option that reads the grid's column order.</li>
+<li><b>K</b> icon-led — a table-icon slot the card has no notion of today; one field, the table name as a caption.</li>
+<li><b>L</b> list item — a fixed 32px single line plus a relation count the renderer does not compute.</li>
+<li><b>N</b> timeline — a range drawn as a bar, which is a new value costume, not a chip.</li>
+</ul>
+<p>Recommendation: land the config-only four first (H, M, O and any of A–E Kyle picks), then add one <code>layout</code> key to the Card contract for the new shapes rather than minting seven <code>shape</code> values — <code>shape</code> stays the coarse answer to "chip or card", <code>layout</code> the fine one.</p>
 </section>
 <p class="lead" style="margin-top:8px">Shared by every option: 4px radius on every chip; no fill behind a pointer chip; the chip size from <code>--wv-chip-font</code> / <code>--wv-chip-line</code>; the card's title is the only link, the rest of the tile is inert.</p>
 </div>
