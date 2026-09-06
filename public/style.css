@@ -1408,6 +1408,12 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
    chips, not a second kind of selection. */
 .picker-chip.sel { outline: 2px solid var(--tblr-primary); outline-offset: 1px; }
 .picker-search { flex: 1 1 90px; min-width: 90px; border: 0; border-radius: 3px; background: none; color: var(--tblr-body-color); font-size: 13px; padding: 3px 3px; outline: none; }
+/* The grid's name readout (Issue #142): the icon under the pointer or the
+   focus ring, named at the far end of the search bar. It rides the box's own
+   row after the caret, never takes the caret's minimum width, and an empty one
+   is gone entirely — every picker that is not the grid keeps its plain box. */
+.picker-name { flex: 0 1 auto; margin-left: auto; padding: 0 2px 0 8px; max-width: 50%; color: var(--tblr-secondary); font-size: 11.5px; font-family: var(--tblr-font-monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; user-select: none; }
+.picker-name:empty { display: none; }
 .picker-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
 .picker-row { display: flex; align-items: center; gap: 8px; }
 .picker-row.active { background: rgba(var(--tblr-primary-rgb), .10); border-radius: 5px; }

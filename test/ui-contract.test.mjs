@@ -1405,7 +1405,11 @@ test('the picker is a token box: chips sit inside the field, ahead of the caret'
   const picker = app.slice(app.indexOf('function searchPicker('), app.indexOf('function pickerSelect('));
   // One box, chips first, then the input — not a chosen-list stacked above a
   // separate search bar (what it was until 2026-08-25).
-  assert.match(picker, /el\('div', \{ class: 'picker-box' \}, chips, input\)/, 'chips and the caret share one box');
+  // One box, chips first, then the input, then the grid's name readout — which
+  // sits AFTER the caret so it can never push it around (Issue #142).
+  assert.match(picker, /el\('div', \{ class: 'picker-box' \}, chips, input, readout\)/, 'chips and the caret share one box');
+  assert.equal(rulesFor('.picker-name:empty')['display'], 'none', 'and an empty readout takes no room at all');
+  assert.equal(rulesFor('.picker-name')['pointer-events'], 'none', 'the readout is text, never a target');
   assert.ok(!picker.includes('picker-chosen'), 'the separate chosen list is gone');
   assert.ok(picker.includes("class: 'picker-chips'"), 'the chips are their own element');
   assert.ok(picker.includes("st.caret === i ? ' sel' : ''"), 'the chip under the cursor is marked');

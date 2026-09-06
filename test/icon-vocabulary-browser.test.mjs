@@ -15,14 +15,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let tasks, row;
+let tasks, pulse, row;
 
 const s = await launch('icon vocabulary', (weave) => {
   weave.createSpace({ name: 'Product' });
   tasks = weave.createTable({ space: 'Product', name: 'Task' });
   // Two nav rows with moving icons of their own: the motion test below needs
-  // one to hover and one to prove untouched (Issue #192).
-  weave.createTable({ space: 'Product', name: 'Pulse', icon: 'lucide:activity' });
+  // one to hover and one to prove untouched (Issue #192). Pulse doubles as the
+  // table that already wears an icon, for the name readout (Issue #142).
+  pulse = weave.createTable({ space: 'Product', name: 'Pulse', icon: 'lucide:activity' });
   weave.createTable({ space: 'Product', name: 'Inbox', icon: 'lucide:bell' });
   weave.addField(tasks, { name: 'Priority', type: 'select', config: { options: [
     { name: 'Urgent', icon: 'iconly:danger' },
@@ -261,6 +262,86 @@ if (s) {
     await page.waitForTimeout(400);
     const db = weave.getTable(typeof tasks === 'string' ? tasks : tasks.id);
     assert.equal(db.icon, 'lucide:wallet');
+    await page.close();
+  });
+
+  /* Issue #142, Kyle: "Icon names should show in sear bar on select or hover".
+     He set `star` on the Feature table, reopened the picker, and had no way to
+     read back which cell he had picked: the name lived in a native tooltip,
+     which makes a mouse wait and answers a keyboard not at all. The grid stays
+     a grid — the name goes in the picker's own search bar, one at a time. */
+  const gridPickerOn = async (page, table) => {
+    await page.goto(`${base}/#/table/${table.id ?? table}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.icon-btn');
+    await page.locator('.icon-btn').first().click();
+    await page.waitForSelector('.picker-cells');
+  };
+
+  test('the search bar names the cell under the pointer, and rests on the icon already set', async () => {
+    const page = await entityPage();
+    await gridPickerOn(page, pulse);
+    const readout = page.locator('.picker-name');
+    assert.equal(await readout.count(), 1, 'the search bar carries a name readout');
+    assert.equal((await readout.textContent()).trim(), 'activity',
+      'reopening the picker must say what the current icon is called');
+
+    await page.locator('.picker-cell[title="wallet"]').hover();
+    await page.waitForTimeout(120);
+    assert.equal((await readout.textContent()).trim(), 'wallet', 'hovering a cell names it in the search bar');
+
+    // Off the grid, the readout goes back to the icon that is actually set.
+    await page.locator('.picker-title').hover();
+    await page.waitForTimeout(120);
+    assert.equal((await readout.textContent()).trim(), 'activity', 'the name reverts when the pointer leaves');
+
+    // The grid itself is untouched: still no word inside any cell.
+    const text = (await page.locator('.picker-cell').allTextContents()).join('');
+    assert.doesNotMatch(text, /[a-z0-9]/i, 'the readout must not become a label on every cell');
+    await page.close();
+  });
+
+  test('the keyboard reads the same name — focus is not a hover', async () => {
+    const page = await entityPage();
+    await gridPickerOn(page, pulse);
+    const readout = page.locator('.picker-name');
+    // A mouse left resting on a cell must not answer for the keyboard: park
+    // the pointer on `flag` and never move it again.
+    await page.locator('.picker-cell[title="flag"]').hover();
+    await page.locator('.picker-search').focus();
+    // Tab out of the search box: the cells are buttons, so focus walks them.
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(80);
+    assert.equal((await readout.textContent()).trim(), 'No icon', 'the clear cell names itself on focus');
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(80);
+    const focused = await page.evaluate(() => document.activeElement?.getAttribute('title'));
+    assert.ok(focused, 'focus landed on a named cell');
+    assert.equal((await readout.textContent()).trim(), focused, 'the focused cell is the one named');
+    await page.close();
+  });
+
+  test('a table with no icon rests on nothing — the readout never says "No icon" at rest', async () => {
+    const bare = weave.createTable({ space: 'Product', name: 'Bare' });
+    const page = await entityPage();
+    await gridPickerOn(page, bare);
+    const readout = page.locator('.picker-name');
+    assert.equal((await readout.textContent()).trim(), '', 'nothing is set, so nothing is named');
+    // Hovering the clear cell still answers: it is a cell like any other.
+    await page.locator('.picker-cell.picker-none').hover();
+    await page.waitForTimeout(120);
+    assert.equal((await readout.textContent()).trim(), 'No icon');
+    await page.close();
+  });
+
+  test('a picker that is not the grid stays a token box — no readout in its way', async () => {
+    const page = await entityPage();
+    // The Priority chip opens the list dialect; its box holds chips and a caret.
+    await page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first().locator('.k-select').first().click();
+    await page.waitForSelector('.picker-row');
+    const readout = page.locator('.picker-name');
+    assert.equal((await readout.textContent().catch(() => '')).trim(), '', 'a list picker names nothing there');
+    assert.equal(await readout.evaluate((n) => getComputedStyle(n).display).catch(() => 'none'), 'none',
+      'and an empty readout takes no room');
     await page.close();
   });
 

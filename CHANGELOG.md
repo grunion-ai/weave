@@ -2,6 +2,10 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## Unreleased
+
+- **The icon picker names what you are pointing at** (Issue #142): the grid said everything in shapes and kept every name in a native tooltip — slow for a mouse, silent for a keyboard, and no help at all to someone reopening the picker to check which icon is set. The search bar now reads out the name of the cell under the pointer or the focus ring, and rests on the icon already set when neither is on the grid. The grid is unchanged: no name beside any cell, same icons, same groups.
+
 ## v0.4.6 — 2026-09-05
 
 - **The grid from the keyboard** (Feature #134, Issue #84): cells rest as values and open on purpose. At rest, ←→↑↓ move, Tab and ⇧Tab move and wrap row to row without ever leaving the grid, Return opens the cell (value selected, picker up, checkbox flipped), any character opens it and types over the value, Space toggles the row, ⇧↑/⇧↓ extend the run, ⌘A takes the table, ⇧Return makes the next row open on its name, ⌘Return docks the record. Open, Return commits down, Tab commits across, ↑↓ commit and move, Esc puts the value back. Every field `<td>` is the focus stop, so Tab now lands on select, multi-select, checkbox and date cells the browser's own order skipped, and the last cell of the last row is the end of the grid rather than the start of the browser chrome. The keymap is one pure core, `public/grid-keymap.js`; the Handbook grid section carries both tables.

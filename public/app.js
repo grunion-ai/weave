@@ -1333,7 +1333,16 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   // Chips are their own element so redrawing them never detaches the focused
   // input; display:contents keeps them in the box's own flex row.
   const chips = el('span', { class: 'picker-chips' });
-  const box = el('div', { class: 'picker-box' }, chips, input);
+  /* The grid's readout (Issue #142). A grid says everything in shapes, and a
+     shape you cannot name is a guess: the name was in the cell's tooltip,
+     which makes a mouse wait and answers a keyboard not at all. So the search
+     bar names whatever the pointer or the focus ring is on, one at a time, and
+     rests on the icon already set — reopening the picker says what it is
+     called. Empty everywhere else, and CSS gives an empty one no room, so the
+     token box the other pickers wear is unchanged. Hidden from screen readers:
+     it repeats the name the focused cell already carries. */
+  const readout = el('span', { class: 'picker-name', 'aria-hidden': 'true' });
+  const box = el('div', { class: 'picker-box' }, chips, input, readout);
   const list = el('div', { class: 'picker-list' });
   const pop = el('div', { class: 'chip-pop picker-pop' },
     title ? el('div', { class: 'picker-title' }, title) : null,
@@ -1374,9 +1383,18 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   /* Icons draw as a grid, not a list (Kyle, 2026-08-29). A name beside every
      icon is a column you read instead of a set you scan, and 119 of them was
      a very long column. The name still does its work: it is what the search
-     matches and it is the tooltip. Categories are the only labels, and a
-     heading leaves with its icons. Nothing is numbered — ⌥1–9 is for a list
-     you read down, not a field you aim at. */
+     matches, it is the tooltip, and since Issue #142 it is read out in the
+     search bar for the one cell the pointer or the keyboard is on. Categories
+     are the only labels, and a heading leaves with its icons. Nothing is
+     numbered — ⌥1–9 is for a list you read down, not a field you aim at. */
+  // What the readout falls back to: the icon this picker was opened on. An
+  // unset icon names nothing rather than announcing "No icon" at rest.
+  const restName = () => (currentId ? options.find((o) => o.id === currentId)?.label ?? '' : '');
+  // The pointer and the focus ring can be on two different cells at once, so
+  // each keeps its own slot and focus outranks the pointer: a mouse left
+  // resting somewhere must never answer for the cell the keyboard is on.
+  let hovering = null, focusing = null;
+  const showName = () => { readout.textContent = focusing ?? hovering ?? restName(); };
   const drawGrid = () => {
     const vis = core.visible(st);
     const groups = fieldDialogCore.iconGroups(vis);
@@ -1385,6 +1403,11 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
       class: `picker-cell${extra}` + (o.id === currentId ? ' on' : ''), type: 'button',
       title: o.label, 'aria-label': o.label,
       onclick: async () => { await pick(o); },
+      // Hover and focus are the same event to a reader: both say "this one".
+      onmouseenter: () => { hovering = o.label; showName(); },
+      onmouseleave: () => { if (hovering === o.label) hovering = null; showName(); },
+      onfocus: () => { focusing = o.label; showName(); },
+      onblur: () => { if (focusing === o.label) focusing = null; showName(); },
     }, o.lucide ? iconEl(`lucide:${o.lucide}`) : iconEl(o.mark) ?? el('span', { class: 'wv-icon icon-ghost' }, '◌'));
     // Clearing is the FIRST cell, not a footer (Kyle, 2026-08-29): setting an
     // icon back to none is the same gesture as setting it to anything else,
@@ -1396,6 +1419,10 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
         el('div', { class: 'picker-cells' }, ...g.items.map((o) => cell(o))),
       ]));
     if (!groups.length && !clear) list.append(el('div', { class: 'picker-empty' }, 'No matches'));
+    // A search replaces the cells the pointer and the focus ring were on, and
+    // a removed node never fires its leave or blur: every redraw rests both.
+    hovering = focusing = null;
+    showName();
   };
   /* Grouped text cells (the row-term picker, Feature #40): the icon grid's
      dialect with words instead of glyphs — categories are the only labels, a
