@@ -4,6 +4,7 @@ weave's tracker (the Development space in the weave workspace) is the changelog 
 
 ## Unreleased
 
+- **A name that runs past its column expands on hover again** (Issue #157): the marker that opens the hover expansion was measured on the `<td>`, and a text cell's `<input>` is `width: 100%` — the value overflows inside the control, the cell never reports overflow, and so no Name on any grid was ever marked. Clipping is now read from the control as well as the cell, so every text-backed cell participates. The expansion itself was the second half: it cloned the `<input>`, and a cloned control falls back to its own intrinsic width, so hovering opened a box that cut the value off in the same place. The copy is now the value as text, carrying the control's own font, weight and metrics, and it wraps inside the popover the way a description's lines do.
 - **The icon picker names what you are pointing at** (Issue #142): the grid said everything in shapes and kept every name in a native tooltip — slow for a mouse, silent for a keyboard, and no help at all to someone reopening the picker to check which icon is set. The search bar now reads out the name of the cell under the pointer or the focus ring, and rests on the icon already set when neither is on the grid. The grid is unchanged: no name beside any cell, same icons, same groups.
 
 ## v0.4.6 — 2026-09-05

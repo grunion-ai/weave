@@ -1814,6 +1814,10 @@ function cellPopLayer(wrap) {
    cellFitProbe() below: read the computed value, write it on the clone. */
 const CELL_TYPE_PROPS = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
   'letterSpacing', 'lineHeight', 'color', 'textAlign'];
+/* The controls that hold a value longer than their box — a text cell's input
+   and a textarea. A checkbox has no value to cut off; a select paints the
+   option the browser sizes it to. */
+const CLIPPABLE_CONTROLS = 'input:not([type="checkbox"]), textarea';
 function copyCellType(src, dst) {
   const cs = getComputedStyle(src);
   for (const p of CELL_TYPE_PROPS) dst.style[p] = cs[p];
@@ -1851,6 +1855,26 @@ function showCellPop(td, wrap) {
   const src = td.querySelectorAll('*');
   const clones = pop.querySelectorAll('*');
   for (let i = 0; i < clones.length && i < src.length; i++) copyCellType(src[i], clones[i]);
+  /* An <input> is a box the CELL sized: it cannot wrap and it cannot grow, so
+     a copy of one hides exactly what the cell hid — the expansion opened and
+     showed no more of the name than the row already had (Issue #157). The
+     value becomes text, which wraps inside the popover's measure the way a
+     description's lines do. The control's own metrics ride along, class name
+     included, so the copy still reads at the cell's type (Issue #67) — the
+     unclassed twin of this swap is in cellFitProbe(), which measures off the
+     grid where a class would bring its own max-width. */
+  const controls = td.querySelectorAll(CLIPPABLE_CONTROLS);
+  pop.querySelectorAll(CLIPPABLE_CONTROLS).forEach((copy, i) => {
+    const from = controls[i];
+    if (!from) return;
+    const text = el('span', { class: copy.className }, from.value || from.placeholder || '');
+    copyCellType(from, text);
+    for (const prop of ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']) {
+      text.style[prop] = getComputedStyle(from)[prop];
+    }
+    text.style.borderStyle = 'solid';
+    copy.replaceWith(text);
+  });
   layer.replaceChildren(pop);
   /* The expansion opens OVER the value, not beside it (Kyle, 2026-08-26): the
      cell pads 9px/4px, the popover 8px/10px over a border, and the cell
@@ -1869,14 +1893,25 @@ function hideCellPop(wrap) {
 
 /* Clipped is measured, never assumed: a value that fits gets no marker, so
    the marker always means there is more to see. */
+const overflowsX = (n) => n.scrollWidth > n.clientWidth + 1;
 function markClippedCells(grid) {
+  // A text cell's value is cut off INSIDE its control: the <input> is
+  // `width: 100%`, so it never outgrows the cell and the cell never reports
+  // overflow. Every Name on Kyle's Issue grid ran past its column and not one
+  // was marked, so hovering did nothing (Issue #157). The control knows what
+  // it is hiding — ask it, in ONE pass over the grid rather than a selector
+  // run per cell.
+  const cutOff = new Set();
+  for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
+    if (overflowsX(c)) cutOff.add(c.closest('td'));
+  }
   for (const td of grid.querySelectorAll('tbody td')) {
     // A description holds lines the row has no height for; they are in the
     // cell, hidden, and only the pop can show them. Width alone would call
     // that cell unclipped and the rest of the description would never be
     // reachable, so having more than one line counts as clipped too.
     const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > 1;
-    td.classList.toggle('clipped', td.scrollWidth > td.clientWidth + 1 || hasHiddenLines);
+    td.classList.toggle('clipped', overflowsX(td) || cutOff.has(td) || hasHiddenLines);
   }
 }
 
