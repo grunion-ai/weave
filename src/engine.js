@@ -3090,6 +3090,13 @@ export class Weave {
     if (field.id === db.nameFieldId) throw new WeaveError('Cannot delete the Name field', 'invalid');
     if (field.type === 'view') throw new WeaveError(`Cannot delete '${field.name}': every row has a ${field.config.shape} by existing — hide it instead`, 'invalid');
     if (field.system) throw new WeaveError(`Field '${field.name}' is part of the system registry`, 'invalid');
+    // A lookup or rollup reading this column has no other target and no verb
+    // to be repointed with, so the delete is refused rather than left dangling
+    // (Issue #206: the dangling id crashed every read reaching the row).
+    const readers = this.#targetFieldReaders(field.id);
+    if (readers.length) {
+      throw new WeaveError(`Cannot delete '${field.name}': ${readers.join(', ')} read${readers.length === 1 ? 's' : ''} it — delete ${readers.length === 1 ? 'that field' : 'those fields'} first`, 'invalid');
+    }
     // A view that named this field loses the segment, not its footing.
     for (const shape of VIEW_SHAPES) {
       const v = this.viewField(db, shape);
@@ -3123,6 +3130,18 @@ export class Weave {
     this.save();
     if (!db.system) this.#audit('field-deleted', { table: db.name, name: field.name });
     return { id: field.id, name: field.name, db: this.qualifiedName(db), deleted: true };
+  }
+
+  /* Every lookup/rollup, in any table, whose targetField is this column —
+     named `Table.Field` for the refusal message. */
+  #targetFieldReaders(fieldId) {
+    const out = [];
+    for (const t of Object.values(this.state.tables)) {
+      for (const f of Object.values(t.fields)) {
+        if ((f.type === 'lookup' || f.type === 'rollup') && f.config.targetField === fieldId) out.push(`${t.name}.${f.name}`);
+      }
+    }
+    return out;
   }
 
   #removeFieldRaw(db, fieldId) {
@@ -3812,10 +3831,14 @@ export class Weave {
       case 'relation':
         // Deleted targets stay linked in storage but are never read back out.
         return this.#relationIds(e, field).filter((id) => this.#liveEntity(id));
+      // A relation or target field that is gone (a workspace from before
+      // deleteField refused it — Issue #206) resolves to null: one dangling
+      // id must not take down every read that reaches the row.
       case 'lookup': {
         const rel = db.fields[field.config.relationField];
-        const targetDb = this.state.tables[rel.config.targetDb];
-        const targetField = targetDb.fields[field.config.targetField];
+        const targetDb = rel && this.state.tables[rel.config.targetDb];
+        const targetField = targetDb?.fields[field.config.targetField];
+        if (!targetField) return null;
         const vals = this.#relationIds(e, rel)
           .map((id) => this.#liveEntity(id))
           .filter(Boolean)
@@ -3824,10 +3847,12 @@ export class Weave {
       }
       case 'rollup': {
         const rel = db.fields[field.config.relationField];
-        const targetDb = this.state.tables[rel.config.targetDb];
+        const targetDb = rel && this.state.tables[rel.config.targetDb];
+        if (!targetDb) return null;
         const related = this.#relationIds(e, rel).map((id) => this.#liveEntity(id)).filter(Boolean);
         if (field.config.aggregate === 'count') return related.length;
         const targetField = targetDb.fields[field.config.targetField];
+        if (!targetField) return null;
         const vals = related.map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
         const display = vals.map((v) => this.#displayValue(targetDb, targetField, v));
         const nums = vals.map(Number).filter(Number.isFinite);

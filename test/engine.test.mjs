@@ -276,6 +276,83 @@ test('field deletion cascades: relation pairs and dependent computeds', () => {
   assert.equal(w.findField(w.getTable(tasks.id), 'Project'), undefined); // paired end dropped
 });
 
+// Issue #206: a rollup or lookup whose targetField is gone must not take down
+// every read of the row. deleteField refuses while something still reads the
+// column; a workspace that already carries the dangling id (uno, 2026-09-06)
+// resolves it to null and keeps counting.
+function personTaskWorkspace() {
+  const w = new Weave();
+  w.createSpace({ name: 'Ops' });
+  const people = w.createTable({ space: 'Ops', name: 'Person' });
+  const tasks = w.createTable({ space: 'Ops', name: 'Task' });
+  const estimate = w.addField(tasks, { name: 'Estimate', type: 'number' });
+  w.addRelation(tasks, { name: 'Assignee', targetDb: people, cardinality: 'many-to-one', inverseName: 'Assigned Tasks' });
+  const person = w.createEntity(people, { name: 'Ann' });
+  w.createEntity(tasks, { name: 'T1', values: { Estimate: 3, Assignee: 'Ann' } });
+  w.createEntity(tasks, { name: 'T2', values: { Estimate: 5, Assignee: 'Ann' } });
+  return { w, people, tasks, estimate, person };
+}
+// The pre-fix state: the column left, the dependant kept its id.
+function dropRaw(w, table, field) {
+  const db = w.getTable(table.id);
+  delete db.fields[field.id];
+  db.fieldOrder = db.fieldOrder.filter((id) => id !== field.id);
+}
+
+test('deleting a field a rollup reads is refused, naming the dependant (#206)', () => {
+  const { w, people, tasks, estimate, person } = personTaskWorkspace();
+  w.addField(people, { name: 'Load', type: 'rollup', config: { relationField: 'Assigned Tasks', targetField: 'Estimate', aggregate: 'sum' } });
+  assert.throws(() => w.deleteField(tasks, 'Estimate'), /Person\.Load/);
+  assert.equal(w.findField(w.getTable(tasks.id), 'Estimate').id, estimate.id, 'the column stays');
+  assert.equal(w.readEntity(person.id).fields.Load, 8);
+  assert.deepEqual(w.registryReport().problems, []);
+});
+
+test('deleting a field a lookup reads is refused, naming the dependant (#206)', () => {
+  const { w, people, tasks } = personTaskWorkspace();
+  w.addField(people, { name: 'First Estimate', type: 'lookup', config: { relationField: 'Assigned Tasks', targetField: 'Estimate' } });
+  assert.throws(() => w.deleteField(tasks, 'Estimate'), /Person\.First Estimate/);
+  assert.deepEqual(w.registryReport().problems, []);
+});
+
+test('a count rollup does not hold its relation\'s target fields (#206)', () => {
+  const { w, people, tasks, person } = personTaskWorkspace();
+  w.addField(people, { name: 'Open Load', type: 'rollup', config: { relationField: 'Assigned Tasks', aggregate: 'count' } });
+  w.deleteField(tasks, 'Estimate');
+  assert.equal(w.readEntity(person.id).fields['Open Load'], 2);
+  assert.deepEqual(w.registryReport().problems, []);
+});
+
+test('a rollup whose target field is already gone resolves to null, and every read survives (#206)', () => {
+  const { w, people, tasks, estimate, person } = personTaskWorkspace();
+  for (const [name, aggregate] of [['Load', 'sum'], ['Avg', 'avg'], ['Min', 'min'], ['Max', 'max'], ['Names', 'join']]) {
+    w.addField(people, { name, type: 'rollup', config: { relationField: 'Assigned Tasks', targetField: 'Estimate', aggregate } });
+  }
+  w.addField(people, { name: 'Count', type: 'rollup', config: { relationField: 'Assigned Tasks', aggregate: 'count' } });
+  dropRaw(w, tasks, estimate);
+  const read = w.readEntity(person.id);
+  for (const name of ['Load', 'Avg', 'Min', 'Max', 'Names']) assert.equal(read.fields[name], null, `${name} is null`);
+  assert.equal(read.fields.Count, 2, 'count keeps counting');
+  // The Task rows reach the Person through the Assignee chip.
+  assert.equal(w.query(tasks).total, 2);
+  assert.equal(w.query(people).items[0].fields.Load, null);
+});
+
+test('a lookup whose target field is already gone resolves to null (#206)', () => {
+  const { w, people, tasks, estimate, person } = personTaskWorkspace();
+  w.addField(people, { name: 'First Estimate', type: 'lookup', config: { relationField: 'Assigned Tasks', targetField: 'Estimate' } });
+  dropRaw(w, tasks, estimate);
+  assert.equal(w.readEntity(person.id).fields['First Estimate'], null);
+  assert.equal(w.query(tasks).total, 2);
+});
+
+test('a rollup whose relation is gone resolves to null instead of throwing (#206)', () => {
+  const { w, people, tasks, person } = personTaskWorkspace();
+  w.addField(people, { name: 'Count', type: 'rollup', config: { relationField: 'Assigned Tasks', aggregate: 'count' } });
+  w.deleteTable(tasks, { hard: true }); // takes the paired 'Assigned Tasks' with it; the rollup stays
+  assert.equal(w.readEntity(person.id).fields.Count, null);
+});
+
 test('CSV export and schema description', () => {
   const { w, tasks } = buildWorkspace();
   w.createEntity(tasks, { name: 'Comma, task', values: { Estimate: 2 } });

@@ -364,7 +364,9 @@ Renders on a tinted background marked \`↗\`. Nothing writes to it.
 
 A lookup that returns null usually means the \`relationField\` name is wrong — it is the **field** name on this table, not the target table's name.
 
-Across a to-many relation a lookup takes the first match; use a \`rollup\` with \`join\` when you want all of them.` },
+Across a to-many relation a lookup takes the first match; use a \`rollup\` with \`join\` when you want all of them.
+
+The \`targetField\` cannot be deleted while a lookup reads it — the delete is refused and names the lookup; delete the lookup first. A lookup that already lost its target (a workspace from before that refusal) reads \`null\`.` },
 
   { name: 'rollup', kind: 'Computed', doc: `# rollup
 
@@ -387,7 +389,9 @@ Renders on a tinted background marked \`Σ\`. \`join\` accepts a \`separator\`; 
 
 ## Gotchas
 
-A rollup crosses a relation; a formula stays on the row. Reaching for a formula where a rollup does the job is the most common way to end up with a number that will not update.` },
+A rollup crosses a relation; a formula stays on the row. Reaching for a formula where a rollup does the job is the most common way to end up with a number that will not update.
+
+The \`targetField\` cannot be deleted while a rollup reads it — the delete is refused and names the rollup; delete the rollup first. A rollup that already lost its target (a workspace from before that refusal) reads \`null\`; \`count\` never had a target and keeps counting.` },
 
   { name: 'formula', kind: 'Computed', doc: `# formula
 
