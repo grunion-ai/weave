@@ -121,7 +121,7 @@ export const VOCABULARY = {
   // because it is the schema verb.
   registries: {
     'Workspace/Spaces': ['Name', 'Description'],
-    'Workspace/Tables': ['Name', 'Description', 'Field Order', 'Hidden Fields'],
+    'Workspace/Tables': ['Name', 'Description', 'Field Order', 'Hidden Fields', 'Filter', 'Sort', 'Hide Rollups'],
     'Workspace/Fields': ['Name', 'Definition'],
   },
 };

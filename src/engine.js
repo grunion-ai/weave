@@ -1234,6 +1234,12 @@ export class Weave {
       });
       if (out.length) db.sort = out; else delete db.sort;
     }
+    /* The Σ row's switch (Issue #233): shown unless hidden, so only `true`
+       is stored — false is the absence, the way an empty sort is. */
+    if (patch.hideRollups != null) {
+      if (typeof patch.hideRollups !== 'boolean') throw new WeaveError('hideRollups is true or false', 'invalid');
+      if (patch.hideRollups) db.hideRollups = true; else delete db.hideRollups;
+    }
     if (patch.hiddenFields != null) {
       if (!Array.isArray(patch.hiddenFields)) throw new WeaveError('hiddenFields is a list of field names', 'invalid');
       const system = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
@@ -1363,7 +1369,7 @@ export class Weave {
     const db = {
       ...structuredClone({ description: src.description, icon: src.icon, noun: src.noun,
         systemFields: src.systemFields, hiddenFields: src.hiddenFields,
-        filters: src.filters, sort: src.sort }),
+        filters: src.filters, sort: src.sort, hideRollups: src.hideRollups }),
       id: newId,
       spaceId: src.spaceId,
       name,
@@ -1734,6 +1740,7 @@ export class Weave {
         if ('sort' in tDoc && JSON.stringify(tDoc.sort ?? []) !== JSON.stringify(db.sort ?? [])) {
           tPatch.sort = tDoc.sort ?? [];
         }
+        if ('hideRollups' in tDoc && !!tDoc.hideRollups !== !!db.hideRollups) tPatch.hideRollups = !!tDoc.hideRollups;
         if (Object.keys(tPatch).length) act('update-table', qualified, () => this.updateTable(db.id, tPatch));
         for (const fDoc of tDoc.fields ?? []) {
           let existing = Object.values(db.fields).find((x) => x.name === fDoc.name);
@@ -1864,6 +1871,7 @@ export class Weave {
     if (tDoc.systemFields?.length) patch.systemFields = [...tDoc.systemFields];
     if (tDoc.filters && Object.keys(tDoc.filters).length) patch.filters = tDoc.filters;
     if (tDoc.sort?.length) patch.sort = tDoc.sort;
+    if (tDoc.hideRollups) patch.hideRollups = true;
     const wanted = [];
     for (const fDoc of tDoc.fields ?? []) {
       const f = Object.values(db.fields).find((x) => x.name === fDoc.name);
@@ -2372,6 +2380,7 @@ export class Weave {
     if (!this.#sysField(tablesT, 'Hidden Fields')) this.addField(tablesT.id, { name: 'Hidden Fields', type: 'text' }).system = true;
     if (!this.#sysField(tablesT, 'Filter')) this.addField(tablesT.id, { name: 'Filter', type: 'text' }).system = true;
     if (!this.#sysField(tablesT, 'Sort')) this.addField(tablesT.id, { name: 'Sort', type: 'text' }).system = true;
+    if (!this.#sysField(tablesT, 'Hide Rollups')) this.addField(tablesT.id, { name: 'Hide Rollups', type: 'checkbox' }).system = true;
     const fieldsT = this.#sysTable('fields')
       ?? mkTable('Fields', 'fields', 'Every field of every table, as a row related to its table and carrying its definition. Creating a row creates the column; renaming it renames the column; editing its Definition changes the config; hard-deleting it deletes the column.');
     if (!this.#sysField(fieldsT, 'Table')) {
@@ -2569,6 +2578,8 @@ export class Weave {
       const txt = formatSort(db.sort);
       if ((row.values[sortF.id] ?? '') !== txt) patch.Sort = txt;
     }
+    const hideF = this.#sysField(t, 'Hide Rollups');
+    if (hideF && !!row.values[hideF.id] !== !!db.hideRollups) patch['Hide Rollups'] = !!db.hideRollups;
     if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
     return row;
   }
@@ -2747,6 +2758,7 @@ export class Weave {
         if ('Hidden Fields' in patch) { structural.hiddenFields = split(patch['Hidden Fields']); delete patch['Hidden Fields']; }
         if ('Filter' in patch) { structural.filters = parseFilters(patch.Filter); delete patch.Filter; }
         if ('Sort' in patch) { structural.sort = parseSort(patch.Sort); delete patch.Sort; }
+        if ('Hide Rollups' in patch) { structural.hideRollups = !!patch['Hide Rollups']; delete patch['Hide Rollups']; }
       }
       if (Object.keys(structural).length) {
         if (db.system === 'spaces') this.updateSpace(e.sysId, structural);
@@ -5055,6 +5067,7 @@ export class Weave {
         ...(db.hiddenFields?.length ? { hiddenFields: [...db.hiddenFields] } : {}),
         ...(db.filters ? { filters: Object.fromEntries(Object.entries(db.filters).map(([k, v]) => [k, [...v]])) } : {}),
         ...(db.sort?.length ? { sort: db.sort.map((s) => ({ ...s })) } : {}),
+        ...(db.hideRollups ? { hideRollups: true } : {}),
         bodyBlocks: this.bodyBlocks(db),
         term: this.termOf(db),
         // `noun` is the term's singular under its pre-2026-09 name, emitted

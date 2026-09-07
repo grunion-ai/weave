@@ -1654,6 +1654,7 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
   assert.match(eye, /hiddenFields: \[\.\.\.next\]/, 'hidden fields persist on the table');
   assert.match(eye, /systemFields: \[\.\.\.next\]/, 'system columns toggle from the same list');
   assert.match(eye, /state\.showDeleted/, 'deleted rows are a session switch');
+  assert.match(eye, /hideRollups: !cur\.hideRollups/, 'the Σ row switch is table truth (Issue #233)');
   assert.match(fnBody('renderTable'), /const cols = visibleCols\(db\)/, 'the grid honours the hidden set');
   assert.match(fnBody('reorderField'), /const cols = visibleCols\(db\)/, 'reorder mirrors the same columns');
   assert.doesNotMatch(APP, /row\('⚙ Manage fields'/, 'the Manage fields row is gone');
