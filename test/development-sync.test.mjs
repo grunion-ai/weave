@@ -113,7 +113,7 @@ test('sync creates the Release table on a workspace seeded before it existed, th
   assert.equal(r.applied, true);
   const rel2 = findRelease(w, 'v9.9.9');
   assert.ok(rel2, 'release row created');
-  assert.equal(rel2.fields.Date, '2026-09-05');
+  assert.equal(rel2.fields.Date, 'Sep 5, 2026');
   assert.equal(rel2.fields.Commit, 'abc1234');
   assert.match(rel2.docs.Description, /filter builder/);
   assert.deepEqual(rel2.fields.Fixes.map((x) => x.name ?? x), [target]);

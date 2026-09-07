@@ -21,6 +21,11 @@
   const PARTS = ['year', 'month', 'day'];
   const DATE_FORMATS = ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative'];
   const CLOCKS = ['24h', '12h'];
+  /* What a field wears when it says nothing (Kyle, 2026-09-07): 'Aug 15,
+     2026 2:32 PM'. The engine, the field dialog and every control read these
+     two, so iso and 24h are choices a field makes and stores. */
+  const DEFAULT_FORMAT = 'long';
+  const DEFAULT_CLOCK = '12h';
   const ZONES = ['floating', 'fixed', 'instant'];
   /* What a style needs from the grain. Absent means "any date part at all". */
   const NEEDS = { month: ['month'], quarter: ['month'], ordinal: ['day'], relative: ['year'] };
@@ -281,8 +286,8 @@
     } else if (time && parts.t && c.zone === 'fixed' && c.zoneName) {
       tag = ' ' + zoneAbbr(new Date(parts.y != null ? asUtcMs(parts) : now.getTime()), c.zoneName);
     }
-    const date = dateText(parts, grain, c.format ?? 'iso', !!c.pad, now);
-    const clock = time && parts.t ? clockText(parts.t, c.clock ?? '24h') : '';
+    const date = dateText(parts, grain, c.format ?? DEFAULT_FORMAT, !!c.pad, now);
+    const clock = time && parts.t ? clockText(parts.t, c.clock ?? DEFAULT_CLOCK) : '';
     return (date && clock ? `${date} ${clock}` : date || clock) + (clock ? tag : '');
   }
   /* A range wears the same costume at both ends (Issue #91). A long range
@@ -293,7 +298,7 @@
     const { start, end } = value;
     if (!start && !end) return '';
     let text;
-    if (c.format === 'long' && !c.time && start && end && String(start).slice(0, 4) === String(end).slice(0, 4) && grainOf(c).length === 3) {
+    if ((c.format ?? DEFAULT_FORMAT) === 'long' && !c.time && start && end && String(start).slice(0, 4) === String(end).slice(0, 4) && grainOf(c).length === 3) {
       text = `${formatDate(start, c).replace(`, ${String(start).slice(0, 4)}`, '')} – ${formatDate(end, c)}`;
     } else {
       text = `${start ? formatDate(start, c) : ''} – ${end ? formatDate(end, c) : ''}`.trim();
@@ -306,7 +311,7 @@
   }
 
   root.weaveDateGrain = {
-    PARTS, DATE_FORMATS, CLOCKS, ZONES, NEEDS, MON, MON_LONG,
+    PARTS, DATE_FORMATS, CLOCKS, DEFAULT_FORMAT, DEFAULT_CLOCK, ZONES, NEEDS, MON, MON_LONG,
     normalizeGrain, grainOf, legalFormats, formatProblem,
     partsOf, storeOf, coerce, coerceInstant, isZone, toInstant, fromInstant, wallIn, zoneAbbr,
     formatDate, formatDateRange, clockText, parseClock, elapsedText, ordinal,

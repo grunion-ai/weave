@@ -96,7 +96,7 @@ test('a datetime keeps its time and shows it', () => {
   w.createTable({ space: 'Dev', name: 'Task' });
   w.addField('Task', { name: 'At', type: 'date', config: { time: true, format: 'long' } });
   const e = w.createEntity('Task', { name: 'T', values: { At: '2026-08-21T14:30' } });
-  assert.match(String(w.readEntity(e.id).fields.At), /Aug 21, 2026.*14:30/);
+  assert.match(String(w.readEntity(e.id).fields.At), /Aug 21, 2026.*2:30 PM/);
 });
 
 test('formulas do date math', () => {
@@ -119,12 +119,12 @@ test('updateField edits the date costume too', () => {
   w.createSpace({ name: 'Dev' });
   w.createTable({ space: 'Dev', name: 'Task' });
   w.addField('Task', { name: 'Due', type: 'date' });
-  w.updateField('Task', 'Due', { config: { format: 'long', time: true } });
+  w.updateField('Task', 'Due', { config: { format: 'us', time: true } });
   const f = Object.values(w.getTable('Task').fields).find((x) => x.name === 'Due');
-  assert.equal(f.config.format, 'long');
+  assert.equal(f.config.format, 'us');
   assert.equal(f.config.time, true);
   w.updateField('Task', 'Due', { config: { width: 140 } });
-  assert.equal(f.config.format, 'long', 'width edits never clobber the costume');
+  assert.equal(f.config.format, 'us', 'width edits never clobber the costume');
 });
 
 /* Issue #127 — percent scales: stored fraction, displayed ×100, and values

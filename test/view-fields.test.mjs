@@ -166,7 +166,7 @@ test('renderView chip: name, state first, then the first non-empty fields in ord
   assert.equal(v.link, false);
   assert.deepEqual(v.state, { name: 'Doing', category: 'in-progress' });
   assert.equal(v.description, null);
-  assert.deepEqual(v.fields, [{ label: 'Due', value: '2026-09-12' }, { label: 'Notes', value: 'polish pass' }]);
+  assert.deepEqual(v.fields, [{ label: 'Due', value: 'Sep 12, 2026' }, { label: 'Notes', value: 'polish pass' }]);
 });
 
 test('renderView card: link on, small description, state, and three fields', () => {
@@ -208,16 +208,16 @@ test('the description sizes clip the plain first lines of the description docume
 test('readEntity: the view fields ride as a display line in fields and the object in raw', () => {
   const { w, t } = build();
   const e = w.readEntity(t.id);
-  assert.equal(e.fields.Chip, 'Ship the editor · Doing · Due 2026-09-12 · Notes polish pass');
+  assert.equal(e.fields.Chip, 'Ship the editor · Doing · Due Sep 12, 2026 · Notes polish pass');
   assert.equal(e.raw.Chip.shape, 'chip');
   assert.equal(e.raw.Card.shape, 'card');
-  assert.match(e.fields.Card, /^#1 Ship the editor · Doing · First line of the story\. · Due 2026-09-12/);
+  assert.match(e.fields.Card, /^#1 Ship the editor · Doing · First line of the story\. · Due Sep 12, 2026/);
 });
 
 test('previewFields is the chip: state and fields, capped at three, so every doc mention follows the config', () => {
   const { w, tasks, t } = build();
   assert.deepEqual(w.previewFields(t.id), [
-    { label: 'State', value: 'Doing' }, { label: 'Due', value: '2026-09-12' }, { label: 'Notes', value: 'polish pass' },
+    { label: 'State', value: 'Doing' }, { label: 'Due', value: 'Sep 12, 2026' }, { label: 'Notes', value: 'polish pass' },
   ]);
   w.updateField(tasks, 'Chip', { config: { fields: ['Points'], state: false } });
   assert.deepEqual(w.previewFields(t.id), [{ label: 'Points', value: '3' }]);
