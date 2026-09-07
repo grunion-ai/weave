@@ -46,11 +46,29 @@ const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
    stored as UTC and rendered in the reader's zone — the server learns the
    zone from this header and the cell uses it directly. */
 const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
+/* A field mid-edit saves when the page leaves it (Kyle, 2026-09-07). Every
+   plain editor commits through its native `change`, which a browser fires on
+   blur — so clicking elsewhere already saved. A route change, a dock swap or
+   a closing tab tore the focused input out of the page with no blur, and the
+   keystrokes went with it. Blurring the active editor first IS the save;
+   each leaving path calls this before it rebuilds. */
+function commitActiveEdit() {
+  const a = document.activeElement;
+  if (a && a.matches?.('input, textarea, select')) a.blur();
+}
+// Set while the page unloads: a write started then rides `keepalive` so the
+// browser finishes it after the page is gone (bodies stay under its 64KB cap).
+let leaving = false;
+for (const ev of ['beforeunload', 'pagehide']) {
+  window.addEventListener(ev, () => { leaving = true; commitActiveEdit(); });
+}
+
 async function api(method, path, body) {
   const res = await fetch(WS_PREFIX + '/api' + path, {
     method,
     headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE },
     body: body === undefined ? undefined : JSON.stringify(body),
+    keepalive: leaving,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? `${res.status}`);
@@ -385,6 +403,7 @@ async function collapseToSplit(entity) {
 
 function dockClose() {
   if (!dock) return;
+  commitActiveEdit();
   releaseDockPanel();
   const panel = $('#dock');
   panel.hidden = true;
@@ -395,6 +414,7 @@ function dockClose() {
 }
 
 async function dockEntity(db, id) {
+  commitActiveEdit();
   const S = weaveEntitySurface;
   const frame = { kind: 'entity', id, tableId: db.id, tableName: db.name };
   const state = dock && dock.db.id === db.id
@@ -800,7 +820,6 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         try {
           await onSaveDescription(md);
           current = md;
-          toast('Saved');
         } catch (err) { toast(err.message, true); }
         showRendered(current);
       };
@@ -2316,9 +2335,10 @@ document.addEventListener('click', (ev) => {
 function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
+  // No 'Saved' toast: a save is the default outcome of leaving a field, and
+  // a message for the default is noise (Issue #135). Failures still toast.
   const saved = async () => {
     const fresh = await api('GET', `/entities/${id}`);
-    toast('Saved');
     onSaved(fresh);
   };
   const patch = async (value) => {
@@ -7729,6 +7749,8 @@ function route() {
   return withPageLoader(renderRoute);
 }
 
+// Registered ahead of route, so the edit commits before the page rebuilds.
+window.addEventListener('hashchange', commitActiveEdit);
 window.addEventListener('hashchange', route);
 
 /* Collapsible chip previews arrive wherever /api/markdown HTML lands (doc
