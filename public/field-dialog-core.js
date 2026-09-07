@@ -239,7 +239,7 @@
     ];
   }
 
-  const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
+  const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'];
   const NUMBER_FORMATS = ['number', 'currency', 'percent', 'compact'];
   // ISO 4217 codes offered in the picker (any valid code types in too).
   const CURRENCIES = [

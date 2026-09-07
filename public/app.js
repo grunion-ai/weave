@@ -2915,6 +2915,9 @@ function drawDatabase(db, items, trashCount = 0) {
       // Export and delete are occasional and one of them is irreversible, so
       // they live in the overflow rather than the toolbar.
       dotsMenu([
+        // Every column summarised on demand — nothing stored; the footer's
+        // Σ row is where a figure is kept.
+        { label: 'Column stats…', run: () => columnStatsPanel(db) },
         { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
         'divider',
         // A saved view is this table + these filters, named (Feature #17).
@@ -3021,8 +3024,12 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       const pop = document.querySelector('.chip-pop');
       if (pop) {
         const scroll = pop.scrollTop;
+        const wasFocused = document.activeElement?.closest?.('.eye-row')?.querySelector('.eye-label')?.textContent ?? null;
         pop.replaceChildren(...buildRows(fresh));
         pop.scrollTop = scroll;
+        // The pressed row is a new node now; focus follows it so Escape still
+        // closes and the arrows still move (a late Escape used to go to body).
+        if (wasFocused != null) [...pop.querySelectorAll('.eye-row')].find((r) => r.querySelector('.eye-label')?.textContent === wasFocused)?.focus();
       }
     } catch (err) { toast(err.message, true); }
   };
@@ -3475,7 +3482,10 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
           el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·')))),
         // Adding a field lives where the fields are: the end of the header bar.
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db)))),
-      tbody);
+      tbody,
+      // The Σ row: this table's space rollups, one cell per column, painted
+      // once the stats arrive (registry grids have no space to roll up to).
+      db.system ? null : renderFooter(db, cols));
     /* Cells rest as values (Feature #134): the CELL is the focus stop and
        nothing inside it is. Tab lands on every field cell — select, multi-
        select, checkbox and date included, which the browser's own order
@@ -3486,6 +3496,8 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     for (const td of table.querySelectorAll('tbody tr.entity-row > td[data-field]:not(.cell-nostop)')) td.tabIndex = 0;
     for (const n of table.querySelectorAll('tbody tr.entity-row td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     wrap.replaceChildren(table, puck);
+    const foot = table.querySelector('tfoot');
+    if (foot) fillFooter(db, foot);
     // A row that left the page — trashed, filtered out, sorted away — is no
     // longer selected. Done after the draw so it reads the rows that exist.
     if (chosen().size) setChosen(SEL().prune(chosen(), drawnIds()));
@@ -5165,6 +5177,262 @@ function addFieldMenuButton(db) {
   return btn;
 }
 
+/* ---------- statistics: the grid footer, its picker, space tiles, column stats ----------
+   Kyle's ruling (2026-09-06): "all footer values live at the space level."
+   The Σ under a column is a rollup field on the Workspace/Spaces row of the
+   space that holds the table (config.via names the table). The footer READS
+   those rollups — it stores nothing of its own — and its picker creates and
+   deletes them like any other field, so a total is addressable, auditable
+   and lookup-able. The stats panel is the other half: every column
+   summarised on demand (GET /api/tables/:id/stats), nothing kept. */
+const FOOT_LABELS = { count: 'n', sum: 'Σ', avg: 'avg', median: 'med', min: 'min', max: 'max', stdev: 'σ', range: 'range', distinct: '≠', filled: 'filled', empty: 'empty' };
+const FOOT_NUMERIC = ['sum', 'avg', 'median', 'min', 'max', 'stdev', 'range'];
+
+/* Which aggregates a column can wear: numbers the whole family, dates their
+   extremes, everything else how many say something and how many things
+   they say. The Name column carries the row count. */
+function footAggregatesFor(db, f) {
+  if (!f) return [];
+  if (f.role === 'name' || f.id === db.fields.find((x) => x.role === 'name')?.id) return ['count', 'distinct'];
+  if (f.type === 'number' || f.type === 'formula' || f.type === 'rollup') return [...FOOT_NUMERIC, 'filled', 'empty'];
+  if (f.type === 'date') return ['min', 'max', 'filled', 'empty'];
+  if (f.type === 'view' || f.type === 'document' || f.type === 'attachments' || f.type === 'key' || f.type === 'field') return [];
+  return ['filled', 'empty', 'distinct'];
+}
+
+const spaceRollupName = (db, col, agg) => (agg === 'count' ? `${db.name} · count` : `${db.name} · ${col} · ${agg}`);
+
+/* The footer row: one cell per column, painted from the table's stats once
+   they arrive. Empty cells still take a click, which is how the first Σ is
+   added. */
+function renderFooter(db, cols) {
+  const spacesT = registryTable('spaces');
+  if (!spacesT) return null;
+  const cell = (c) => {
+    const f = colField(db, c);
+    const aggs = footAggregatesFor(db, f);
+    return el('td', {
+      class: 'foot-cell' + (aggs.length ? ' foot-open' : '') + (f?.type === 'number' || f?.type === 'formula' ? ' num' : ''),
+      dataset: { col: c },
+      title: aggs.length ? `Statistics for ${c}` : null,
+      tabindex: aggs.length ? '0' : null,
+      onclick: (e) => { if (aggs.length) footerPicker(e.currentTarget, db, c); },
+      onkeydown: (e) => { if (aggs.length && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); footerPicker(e.currentTarget, db, c); } },
+    });
+  };
+  return el('tfoot', {}, el('tr', { class: 'wv-foot' },
+    el('td', { class: 'sel-cell' }),
+    el('td', { class: 'pid-cell foot-mark' }, 'Σ'),
+    ...cols.map(cell),
+    ...(db.systemFields ?? []).map(() => el('td')),
+    el('td')));
+}
+
+/* Paint the footer from the live rollups. `rollups` may be handed in by a
+   caller that already fetched them; otherwise one read. */
+async function fillFooter(db, tfoot, rollups = null) {
+  if (!tfoot) return;
+  try {
+    rollups ??= (await api('GET', `/tables/${db.id}/stats`)).rollups;
+  } catch { return; }
+  // The grid is drawn before it is attached, so connection is checked after
+  // the read, not before; a footer a redraw replaced meanwhile is left alone.
+  if (!tfoot.isConnected) return;
+  const nameCol = db.fields.find((f) => f.role === 'name')?.name ?? 'Name';
+  for (const td of tfoot.querySelectorAll('td.foot-cell')) {
+    const col = td.dataset.col;
+    const mine = rollups.filter((r) => (r.targetField ?? nameCol) === col && FOOT_LABELS[r.aggregate]);
+    td.replaceChildren(...mine.map((r) => el('span', { class: 'foot-stat', title: r.name + (r.where ? ' (filtered)' : '') },
+      el('span', { class: 'foot-agg' }, FOOT_LABELS[r.aggregate]),
+      el('span', { class: 'foot-val' }, r.display ?? '—'))));
+    td.classList.toggle('has-stats', mine.length > 0);
+  }
+  tfoot.dataset.rollups = String(rollups.length);
+}
+
+/* The picker: one switch per aggregate the column can wear. On creates the
+   space rollup, off deletes it. The popover stays put and its rows relearn
+   the truth, the way the eye does. */
+async function footerPicker(anchor, db, col) {
+  const spacesT = registryTable('spaces');
+  const f = colField(db, col);
+  const aggs = footAggregatesFor(db, f);
+  if (!spacesT || !aggs.length) return;
+  const nameCol = db.fields.find((x) => x.role === 'name')?.name ?? 'Name';
+  let rollups = [];
+  const load = async () => { rollups = (await api('GET', `/tables/${db.id}/stats`)).rollups; };
+  const have = (agg) => rollups.find((r) => (r.targetField ?? nameCol) === col && r.aggregate === agg && !r.where);
+  const row = (agg) => {
+    const on = !!have(agg);
+    return el('button', {
+      class: 'chip-pop-row eye-row foot-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
+      dataset: { agg },
+      onclick: async (e) => {
+        e.stopPropagation();
+        try {
+          const cur = have(agg);
+          if (cur) await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
+          else await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
+          await load();
+          const pop = document.querySelector('.chip-pop');
+          if (pop) {
+            pop.replaceChildren(...build());
+            // The row that was pressed is a new node now; focus follows it so
+            // Escape still closes and the arrows still move.
+            pop.querySelector(`[data-agg="${agg}"]`)?.focus();
+          }
+          fillFooter(db, anchor.closest('tfoot'), rollups);
+          loadSchema();
+        } catch (err) { toast(err.message, true); }
+      },
+    }, el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg),
+    el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
+  };
+  const build = () => [
+    el('div', { class: 'chip-pop-title' }, `${col} · space rollups`),
+    ...aggs.map(row),
+    el('div', { class: 'chip-pop-note' }, 'Each switch is a rollup field on this space\'s row'),
+  ];
+  try { await load(); } catch (err) { toast(err.message, true); return; }
+  showPopover(anchor, build());
+}
+
+/* The space page's tiles: every space rollup pointed at one of its tables,
+   read off the space's own registry row. A tile opens its table. */
+async function spaceStatTiles(space) {
+  const spacesT = registryTable('spaces');
+  if (!spacesT) return null;
+  const mine = spacesT.fields.filter((f) => f.type === 'rollup' && f.viaTableId && space.tables.some((t) => t.id === f.viaTableId));
+  if (!mine.length) return null;
+  let row = null;
+  try {
+    const res = await api('POST', `/tables/${spacesT.id}/query`, { where: [['Name', '=', space.space]] });
+    row = res.items[0] ?? null;
+  } catch { return null; }
+  if (!row) return null;
+  return el('div', { class: 'wv-stat-tiles' }, ...mine.map((f) => {
+    const t = space.tables.find((x) => x.id === f.viaTableId);
+    const v = row.fields[f.name];
+    return el('a', { class: 'wv-stat-tile', href: `#/table/${f.viaTableId}`, title: f.name },
+      el('span', { class: 'wv-stat-value' }, v == null || v === '' ? '—' : String(v)),
+      el('span', { class: 'wv-stat-label' }, `${t?.name ?? ''}${f.targetField ? ` · ${f.targetField}` : ''}`),
+      el('span', { class: 'wv-stat-agg' }, FOOT_LABELS[f.aggregate] ?? f.aggregate, f.where ? ' · filtered' : ''));
+  }));
+}
+
+/* Column stats: every column summarised, on demand, nothing stored. Numbers
+   get the five-number summary and a histogram, chips a ranked distribution,
+   dates their span and a month strip, text its distinct count. `by` groups
+   the numeric columns on one field. */
+async function columnStatsPanel(db) {
+  document.querySelector('#modal-back')?.remove();
+  const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) back.remove(); } });
+  const body = el('div', { class: 'wv-stats-body' }, el('div', { class: 'wv-muted' }, 'Reading…'));
+  // Both controls speak the picker dialect (no native <select> in the app).
+  // The group-by list is known once the first read names the chip columns,
+  // so the face is placed after it and the figure picker stays hidden until
+  // there are groups to apply it to.
+  const ctl = el('div', { class: 'wv-stats-ctl' }, el('span', { class: 'wv-muted' }, 'Group by'));
+  let bySel = null;
+  const statSel = pickerSelect({ name: 'stat', title: 'Group figure', value: 'sum', options: ['sum', 'avg', 'median', 'min', 'max'].map((k) => ({ id: k, label: k })) });
+  statSel.classList.add('wv-stats-stat');
+  const panel = el('div', { id: 'modal', class: 'wv-stats' },
+    el('div', { class: 'wv-stats-head' },
+      el('h2', {}, `${db.name} · statistics`),
+      el('div', { class: 'wv-stats-ctl-row' }, ctl, statSel,
+        el('button', { class: 'btn btn-sm', type: 'button', onclick: () => back.remove() }, 'Close'))),
+    body);
+  back.append(panel);
+  document.body.append(back);
+  addEventListener('keydown', function esc(e) {
+    if (!back.isConnected) return removeEventListener('keydown', esc);
+    if (e.key === 'Escape') { back.remove(); removeEventListener('keydown', esc); }
+  });
+  const fmt = (n) => (n == null ? '—' : typeof n === 'number' ? (Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 2 })) : String(n));
+  const bars = (dist, total, { top = 8 } = {}) => {
+    const max = Math.max(1, ...dist.map((d) => d.count));
+    const shown = dist.slice(0, top);
+    return el('div', { class: 'wv-dist' },
+      ...shown.map((d) => el('div', { class: 'wv-dist-row' },
+        el('span', { class: 'wv-dist-label' + (d.value == null ? ' empty' : '') }, d.value == null ? '(empty)' : String(d.value)),
+        el('span', { class: 'wv-dist-bar' }, el('span', { class: 'wv-dist-fill', style: `width:${Math.round(100 * d.count / max)}%` })),
+        el('span', { class: 'wv-dist-n' }, `${d.count} · ${Math.round(100 * d.count / Math.max(1, total))}%`))),
+      dist.length > top ? el('div', { class: 'wv-muted' }, `+ ${dist.length - top} more`) : null);
+  };
+  const hist = (h) => {
+    const max = Math.max(1, ...h.map((b) => b.count));
+    return el('div', { class: 'wv-hist', title: 'Distribution' }, ...h.map((b) => el('span', {
+      class: 'wv-hist-bar', style: `height:${Math.max(2, Math.round(100 * b.count / max))}%`,
+      title: `${b.fromDisplay} – ${b.toDisplay}: ${b.count}`,
+    })));
+  };
+  const render = (s) => {
+    const numbers = s.columns.filter((c) => c.kind === 'number');
+    const cats = s.columns.filter((c) => c.kind === 'category');
+    const dates = s.columns.filter((c) => c.kind === 'date');
+    const texts = s.columns.filter((c) => c.kind === 'text');
+    const parts = [el('div', { class: 'wv-stats-rows' }, `${s.rows.toLocaleString()} ${s.rows === 1 ? db.term.singular : db.term.plural}`,
+      s.rollups.length ? el('span', { class: 'wv-muted' }, ` · ${s.rollups.length} space rollup${s.rollups.length === 1 ? '' : 's'} on this table`) : null)];
+    if (s.groups) {
+      const k = statSel.input.value || 'sum';
+      parts.push(el('h3', {}, `By ${s.by} · ${k}`),
+        el('div', { class: 'table-wrap' }, el('table', { class: 'table table-sm wv-grid wv-stats-table' },
+          el('thead', {}, el('tr', {}, el('th', {}, s.by), el('th', { class: 'num' }, 'rows'), ...numbers.map((c) => el('th', { class: 'num' }, c.name)))),
+          el('tbody', {}, ...s.groups.map((g) => el('tr', {},
+            el('td', { class: g.value == null ? 'wv-muted' : '' }, g.value == null ? '(empty)' : String(g.value)),
+            el('td', { class: 'num' }, fmt(g.rows)),
+            ...numbers.map((c) => el('td', { class: 'num' }, g.display[c.name]?.[k] ?? '—'))))))));
+    }
+    if (numbers.length) {
+      parts.push(el('h3', {}, 'Numbers'),
+        el('div', { class: 'table-wrap' }, el('table', { class: 'table table-sm wv-grid wv-stats-table' },
+          el('thead', {}, el('tr', {}, el('th', {}, 'Column'), el('th', { class: 'num' }, 'filled'), ...['sum', 'avg', 'median', 'min', 'max', 'stdev'].map((k) => el('th', { class: 'num' }, k)), el('th', {}, 'distribution'))),
+          el('tbody', {}, ...numbers.map((c) => el('tr', { dataset: { col: c.name } },
+            el('td', {}, c.name),
+            el('td', { class: 'num' }, `${c.filled}${c.empty ? ` / ${c.empty} empty` : ''}`),
+            ...['sum', 'avg', 'median', 'min', 'max', 'stdev'].map((k) => el('td', { class: 'num' }, c.display[k] ?? '—')),
+            el('td', {}, hist(c.histogram))))))));
+    }
+    if (cats.length) {
+      parts.push(el('h3', {}, 'Chips and boxes'), el('div', { class: 'wv-stats-cards' }, ...cats.map((c) => el('div', { class: 'wv-stats-card', dataset: { col: c.name } },
+        el('div', { class: 'wv-stats-card-title' }, c.name, el('span', { class: 'wv-muted' }, ` · ${c.distribution.filter((d) => d.value != null).length} values`)),
+        bars(c.distribution, s.rows)))));
+    }
+    if (dates.length) {
+      parts.push(el('h3', {}, 'Dates'), el('div', { class: 'wv-stats-cards' }, ...dates.map((c) => el('div', { class: 'wv-stats-card', dataset: { col: c.name } },
+        el('div', { class: 'wv-stats-card-title' }, c.name),
+        el('div', { class: 'wv-muted' }, c.earliest == null ? 'no dates' : `${c.earliestDisplay} → ${c.latestDisplay} · ${c.spanDays} day${c.spanDays === 1 ? '' : 's'} · ${c.filled} filled`),
+        c.byMonth?.length ? bars([...c.byMonth].sort((a, b) => String(a.value).localeCompare(String(b.value))), c.filled, { top: 12 }) : null))));
+    }
+    if (texts.length) {
+      parts.push(el('h3', {}, 'Text'), el('div', { class: 'wv-stats-cards' }, ...texts.map((c) => el('div', { class: 'wv-stats-card', dataset: { col: c.name } },
+        el('div', { class: 'wv-stats-card-title' }, c.name),
+        el('div', { class: 'wv-muted' }, `${c.filled} filled · ${c.empty} empty · ${c.distinct} distinct`)))));
+    }
+    body.replaceChildren(...parts);
+  };
+  const load = async () => {
+    try {
+      const by = bySel?.input.value || '';
+      const s = await api('GET', `/tables/${db.id}/stats${by ? `?by=${encodeURIComponent(by)}` : ''}`);
+      if (!bySel) {
+        bySel = pickerSelect({ name: 'by', title: 'Group by', placeholder: 'No grouping', options: [
+          { id: '', label: 'No grouping' },
+          ...s.columns.filter((x) => x.kind === 'category').map((c) => ({ id: c.name, label: c.name })),
+        ] });
+        bySel.classList.add('wv-stats-by');
+        bySel.input.addEventListener('change', load);
+        ctl.append(bySel);
+      }
+      statSel.hidden = !s.groups;
+      render(s);
+    } catch (err) { body.replaceChildren(el('div', { class: 'wv-muted' }, err.message)); }
+  };
+  statSel.input.addEventListener('change', load);
+  statSel.hidden = true;
+  await load();
+}
+
 /* ---------- space page ---------- */
 
 async function showSpace(spaceId) {
@@ -5227,6 +5495,10 @@ async function showSpace(spaceId) {
   // the same rows the engine syncs, with every field — Description, Field
   // Order, Hidden Fields, the Fields relation — editable in place. Opening a
   // row opens the table, because the row IS the table.
+  // The space's own figures first: every space rollup over one of its
+  // tables, as tiles read off its registry row.
+  const tiles = await spaceStatTiles(space);
+  if (tiles) main.append(tiles);
   const reg = registryTable('tables');
   if (reg) {
     const res = await api('POST', `/tables/${reg.id}/query`, {});

@@ -9,6 +9,7 @@ import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
 import { Store, WeaveError } from './store.js';
 import { evaluate, check as checkExpression } from './formula.js';
+import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
 
 /* An icon value is one of the inventory (`lucide:<name>`), a legacy alias that
    still resolves (`iconly:<name>`), or a drawn mark — anything else is refused
@@ -191,7 +192,9 @@ function normaliseOption(o) {
     color: HUE_HEX[hue],
   };
 }
-const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join'];
+// Two families plus join — src/stats.js computes them; this literal is the
+// contract every surface (vocabulary, field dialog, handbook) is gated on.
+const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'];
 const MAX_COMPUTE_DEPTH = 8;
 
 /* The `field` type holds a field DEFINITION as its value — the schema of a
@@ -1433,6 +1436,13 @@ export class Weave {
       if (auto.dbId === db.id) delete this.state.automations[id];
     }
     for (const f of Object.values(db.fields)) this.#dropFieldRow(f.id);
+    // A space rollup over this table has nothing left to read.
+    const spacesT = this.#sysTable('spaces');
+    if (spacesT) {
+      for (const f of Object.values(spacesT.fields)) {
+        if (f.type === 'rollup' && f.config.via === db.id) { this.#removeFieldRaw(spacesT, f.id); this.#dropFieldRow(f.id); }
+      }
+    }
     delete this.state.tables[db.id];
     this.#dropSysRow('tables', db.id);
     this.#audit('table-deleted', { name: db.name });
@@ -1606,6 +1616,8 @@ export class Weave {
       if (f.states) config.states = f.states;
       if (f.expression) config.expression = f.expression;
       if (f.via) config.relationField = f.via;
+      if (f.viaTable) config.via = f.viaTable;
+      if (f.where) config.where = f.where;
       if (f.targetField) config.targetField = f.targetField;
       if (f.aggregate) config.aggregate = f.aggregate;
       if (f.default !== undefined) config.default = f.default;
@@ -1628,7 +1640,7 @@ export class Weave {
        workspace, so the comparison is descriptor against descriptor — never
        config against config, where a relation field is an id on one side and a
        name on the other. */
-    const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'targetField', 'aggregate',
+    const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'viaTable', 'where', 'targetField', 'aggregate',
       'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'time', 'kind', 'multiple', 'types', 'depth',
       'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term', 'link', 'state', 'description', 'fields'];
     const colorsOf = (full) => JSON.stringify((full ?? []).map((o) => ({ name: o.name, color: o.color ?? '' })));
@@ -1796,6 +1808,29 @@ export class Weave {
             act('delete-table', `${spDoc.space}/${db.name}`, () => this.deleteTable(db.id));
           }
         }
+      }
+    }
+    /* Space rollups live on the Workspace/Spaces registry row, the one system
+       table a document may add fields to. Applied after every user table
+       exists, since each names one. Computed config has no verb to change
+       it: a differing descriptor is a delete and a create. */
+    const spacesT = this.#sysTable('spaces');
+    const spacesDoc = doc.find((sp) => sp.system === 'workspace')?.tables?.find((t) => t.system === 'spaces');
+    if (spacesT && spacesDoc) {
+      const wantedRollups = (spacesDoc.fields ?? []).filter((f) => f.type === 'rollup' && f.viaTable);
+      const cfgOf = (f) => ({ via: f.viaTable, targetField: f.targetField, aggregate: f.aggregate, ...(f.where ? { where: f.where } : {}) });
+      for (const fDoc of wantedRollups) {
+        const existing = Object.values(spacesT.fields).find((x) => x.name === fDoc.name);
+        const have = current.get('Workspace/Spaces')?.fields.find((x) => x.name === fDoc.name);
+        if (existing && !fieldChanged(fDoc, have)) continue;
+        if (existing) act('delete-field', `Workspace/Spaces.${fDoc.name}`, () => this.deleteField(spacesT.id, existing.id));
+        act('create-field', `Workspace/Spaces.${fDoc.name}`, () => this.addField(spacesT.id, { name: fDoc.name, type: 'rollup', config: cfgOf(fDoc) }));
+      }
+      for (const existing of Object.values(spacesT.fields)) {
+        if (existing.type !== 'rollup' || !existing.config.via) continue;
+        if (wantedRollups.some((f) => f.name === existing.name)) continue;
+        if (!allowDestructive) throw new WeaveError(`Applying this document would delete 'Workspace/Spaces.${existing.name}' — a destructive change needs allowDestructive`, 'invalid');
+        act('delete-field', `Workspace/Spaces.${existing.name}`, () => this.deleteField(spacesT.id, existing.id));
       }
     }
     // Omitted spaces are deletions.
@@ -2794,17 +2829,34 @@ export class Weave {
       const target = this.getField(rel.config.targetDb, config.targetField);
       field.config = { relationField: rel.id, targetField: target.id };
     } else if (type === 'rollup') {
-      const rel = this.getField(db.id, config.relationField ?? config.relation);
-      if (rel.type !== 'relation') throw new WeaveError('Rollup must point at a relation field', 'invalid');
-      if (rel.config.targetDbs) throw new WeaveError('Rollup needs a single-target relation', 'invalid');
       const aggregate = config.aggregate ?? 'count';
       if (!AGGREGATES.includes(aggregate)) throw new WeaveError(`Invalid aggregate '${aggregate}' (use ${AGGREGATES.join(', ')})`, 'invalid');
-      let targetFieldId = null;
-      if (aggregate !== 'count') {
-        const target = this.getField(rel.config.targetDb, config.targetField);
-        targetFieldId = target.id;
+      if (config.via != null && config.relationField == null && config.relation == null) {
+        /* A rollup over a WHOLE table, no relation to cross. Kyle's ruling
+           (2026-09-06): a table-wide aggregate — the Σ under a grid column —
+           lives on the Spaces registry row of the space that holds the
+           table, where it is addressable, auditable and lookup-able like any
+           field. `where` narrows the rows; the grid footer reads these. */
+        if (db.system !== 'spaces') throw new WeaveError('A rollup over a whole table lives on the Spaces registry row that holds the table — add it there (config.via names the table)', 'invalid');
+        const viaT = this.getTable(config.via);
+        if (viaT.system) throw new WeaveError(`Table '${viaT.name}' is part of the system registry — roll up your own tables`, 'invalid');
+        let targetFieldId = null;
+        if (aggregate !== 'count') targetFieldId = this.getField(viaT.id, config.targetField).id;
+        const where = config.where && (Array.isArray(config.where) ? config.where.length : true) ? config.where : null;
+        if (where) this.#checkWhere(viaT, where);
+        field.config = { via: viaT.id, targetField: targetFieldId, aggregate, ...(where ? { where } : {}) };
+      } else {
+        const rel = this.getField(db.id, config.relationField ?? config.relation);
+        if (rel.type !== 'relation') throw new WeaveError('Rollup must point at a relation field', 'invalid');
+        if (rel.config.targetDbs) throw new WeaveError('Rollup needs a single-target relation', 'invalid');
+        let targetFieldId = null;
+        if (aggregate !== 'count') {
+          const target = this.getField(rel.config.targetDb, config.targetField);
+          targetFieldId = target.id;
+        }
+        field.config = { relationField: rel.id, targetField: targetFieldId, aggregate };
       }
-      field.config = { relationField: rel.id, targetField: targetFieldId, aggregate };
+      if (config.separator != null) field.config.separator = String(config.separator);
     } else if (type === 'formula') {
       if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
       const checked = checkExpression(config.expression, Object.values(db.fields).map((f) => f.name));
@@ -3898,24 +3950,28 @@ export class Weave {
         return rel.config.many ? vals : (vals[0] ?? null);
       }
       case 'rollup': {
-        const rel = db.fields[field.config.relationField];
-        const targetDb = rel && this.state.tables[rel.config.targetDb];
+        const { targetDb, targetField } = this.#rollupTarget(db, field);
         if (!targetDb) return null;
-        const related = this.#relationIds(e, rel).map((id) => this.#liveEntity(id)).filter(Boolean);
-        if (field.config.aggregate === 'count') return related.length;
-        const targetField = targetDb.fields[field.config.targetField];
-        if (!targetField) return null;
-        const vals = related.map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
-        const display = vals.map((v) => this.#displayValue(targetDb, targetField, v));
-        const nums = vals.map(Number).filter(Number.isFinite);
-        switch (field.config.aggregate) {
-          case 'sum': return nums.reduce((a, b) => a + b, 0);
-          case 'avg': return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
-          case 'min': return nums.length ? Math.min(...nums) : null;
-          case 'max': return nums.length ? Math.max(...nums) : null;
-          case 'join': return display.filter((v) => v != null && v !== '').join(', ');
+        let rows;
+        if (field.config.via) {
+          // A space rollup answers on the row of the space that holds the
+          // table; every other Spaces row reads null, the way a rollup that
+          // lost its target does.
+          if (e.sysId !== targetDb.spaceId) return null;
+          rows = this.listEntities(targetDb.id);
+          const w = field.config.where;
+          if (w) {
+            try { rows = rows.filter((r) => this.#matchNode(r, targetDb, Array.isArray(w) ? { and: w } : w)); } catch { return null; }
+          }
+        } else {
+          const rel = db.fields[field.config.relationField];
+          rows = this.#relationIds(e, rel).map((id) => this.#liveEntity(id)).filter(Boolean);
         }
-        return null;
+        if (field.config.aggregate === 'count') return rows.length;
+        if (!targetField) return null;
+        const vals = rows.map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
+        const display = rows.map((t, i) => this.#displayValue(targetDb, targetField, vals[i], t));
+        return aggregateValues(field.config.aggregate, vals, { display, separator: field.config.separator ?? ', ' });
       }
       case 'view':
         return this.renderView(e.id, field.config.shape);
@@ -4010,9 +4066,190 @@ export class Weave {
         });
         return field.config.many ? names : (names[0] ?? null);
       }
+      case 'rollup': {
+        // The figure wears the column it summarises: a sum of dollars is
+        // dollars, the earliest of a date column is a date. Counts stay
+        // counts; join is already text.
+        const { targetField } = this.#rollupTarget(db, field);
+        const agg = field.config.aggregate;
+        if (!targetField || !NUMERIC_AGGREGATES.includes(agg)) return resolved;
+        if (typeof resolved === 'number' && (targetField.type === 'number' || targetField.type === 'formula')) {
+          // A mean or a deviation of whole numbers is rarely whole; two
+          // decimals unless the column already says how many.
+          const c = targetField.config;
+          const fractional = !Number.isInteger(resolved) && c.decimals == null && c.format !== 'currency';
+          return dressNumber(fractional ? { ...c, decimals: 2 } : c, resolved);
+        }
+        if (typeof resolved === 'string' && targetField.type === 'date' && (agg === 'min' || agg === 'max')) {
+          return dressDate({ ...targetField.config, now: this.now(), viewerZone: this.viewerZone ?? 'UTC' }, resolved);
+        }
+        return resolved;
+      }
       default:
         return resolved;
     }
+  }
+
+  /* Where a rollup reads from: the relation's far table, or the table `via`
+     names. Either may be gone (Issue #206); the caller treats null as null. */
+  #rollupTarget(db, field) {
+    let targetDb = null;
+    if (field.config.via) {
+      targetDb = this.state.tables[field.config.via];
+      if (targetDb?.deletedAt) targetDb = null;
+    } else {
+      const rel = db.fields[field.config.relationField];
+      targetDb = rel && this.state.tables[rel.config.targetDb];
+    }
+    const targetField = targetDb && field.config.targetField ? targetDb.fields[field.config.targetField] ?? null : null;
+    return { targetDb: targetDb ?? null, targetField };
+  }
+
+  /* A `where` is checked when it is stored, not when a row happens to be
+     read: every path must name a field (or `id`/`publicId`), hopping only
+     through single-target relations. Mirrors #pathValue's rules. */
+  #checkWhere(db, node) {
+    if (Array.isArray(node)) {
+      if (node.length === 3 && typeof node[0] === 'string') {
+        const parts = node[0].split('.');
+        let cdb = db;
+        for (let i = 0; i < parts.length; i++) {
+          const last = i === parts.length - 1;
+          if (last && (parts[i] === 'id' || parts[i] === 'publicId')) return;
+          const f = this.findField(cdb, parts[i]);
+          if (!f) throw new WeaveError(`Field '${parts[i]}' not found in table '${cdb.name}'`, 'not-found');
+          if (!last) {
+            if (f.type !== 'relation' || !f.config.targetDb) throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');
+            cdb = this.state.tables[f.config.targetDb];
+          }
+        }
+        return;
+      }
+      for (const n of node) this.#checkWhere(db, n);
+      return;
+    }
+    if (node && typeof node === 'object' && (node.and || node.or)) {
+      for (const n of node.and ?? node.or) this.#checkWhere(db, n);
+      return;
+    }
+    throw new WeaveError('Invalid where node', 'invalid');
+  }
+
+  /* The space rollups pointed at a table, with their live values — what the
+     grid footer draws under each column and the space page draws as tiles. */
+  tableRollups(dbRef) {
+    const db = this.getTable(dbRef);
+    const spacesT = this.#sysTable('spaces');
+    const row = spacesT && this.#sysRow('spaces', db.spaceId);
+    if (!row) return [];
+    const out = [];
+    for (const fid of spacesT.fieldOrder) {
+      const f = spacesT.fields[fid];
+      if (f?.type !== 'rollup' || f.config.via !== db.id) continue;
+      const value = this.#resolve(row, spacesT, f, 0);
+      const display = value == null ? null : this.#displayValue(spacesT, f, value, row);
+      out.push({
+        fieldId: f.id, name: f.name, spaceRowId: row.id,
+        targetField: f.config.targetField ? db.fields[f.config.targetField]?.name ?? null : null,
+        aggregate: f.config.aggregate, where: f.config.where ?? null,
+        value, display: display == null ? null : String(display),
+      });
+    }
+    return out;
+  }
+
+  /* Every column of a table, summarised: the five-number summary and a
+     histogram for numbers, a distribution for chips and checkboxes, the span
+     for dates, the distinct count for text. `by` groups the numeric columns
+     on one field; `where` narrows the rows. One read, computed on demand —
+     nothing is stored, so nothing can go stale. */
+  tableStats(dbRef, { by = null, where = null } = {}) {
+    const db = this.getTable(dbRef);
+    let rows = this.listEntities(db.id);
+    if (where && (Array.isArray(where) ? where.length : true)) {
+      this.#checkWhere(db, where);
+      rows = rows.filter((r) => this.#matchNode(r, db, Array.isArray(where) ? { and: where } : where));
+    }
+    const SKIP = new Set(['view', 'document', 'attachments', 'key', 'field']);
+    const fields = db.fieldOrder.map((id) => db.fields[id]).filter((f) => f && !SKIP.has(f.type));
+    const isBlank = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
+    const read = (f) => {
+      const vals = rows.map((e) => this.#resolve(e, db, f, 0));
+      const display = rows.map((e, i) => this.#displayValue(db, f, vals[i], e));
+      return { vals, display };
+    };
+    const numericCostume = (f) => {
+      if (f.type === 'number' || f.type === 'formula') return f.config;
+      if (f.type === 'rollup') return this.#rollupTarget(db, f).targetField?.config ?? {};
+      return {};
+    };
+    const dress = (f, v) => {
+      if (v == null) return null;
+      if (typeof v !== 'number') return String(v);
+      const c = numericCostume(f);
+      const fractional = !Number.isInteger(v) && c.decimals == null && c.format !== 'currency';
+      return String(dressNumber(fractional ? { ...c, decimals: 2 } : c, v));
+    };
+    const kindOf = (f, vals) => {
+      if (f.type === 'number') return 'number';
+      if (f.type === 'formula' || f.type === 'rollup' || f.type === 'lookup') {
+        return vals.some((v) => typeof v === 'number') ? 'number' : vals.some((v) => Array.isArray(v)) ? 'category' : 'text';
+      }
+      if (['select', 'multiselect', 'workflow', 'checkbox', 'relation'].includes(f.type)) return 'category';
+      if (f.type === 'date') return 'date';
+      return 'text';
+    };
+    const dayOf = (iso) => Date.parse(String(iso).length <= 10 ? `${iso}T00:00:00Z` : iso);
+    const columns = fields.map((f) => {
+      const { vals, display } = read(f);
+      const kind = kindOf(f, vals);
+      const col = { id: f.id, name: f.name, type: f.type, kind, filled: vals.filter((v) => !isBlank(v)).length, empty: vals.filter(isBlank).length };
+      if (kind === 'number') {
+        col.summary = describeNumbers(vals);
+        col.display = Object.fromEntries(Object.entries(col.summary).map(([k, v]) => [k, k === 'n' ? String(v) : dress(f, v)]));
+        col.histogram = histogram(vals, 10).map((b) => ({ ...b, fromDisplay: dress(f, b.from), toDisplay: dress(f, b.to) }));
+      } else if (kind === 'category') {
+        col.distribution = distribution(display);
+      } else if (kind === 'date') {
+        const iso = vals.filter((v) => typeof v === 'string' && v);
+        col.earliest = aggregateValues('min', iso);
+        col.latest = aggregateValues('max', iso);
+        col.earliestDisplay = col.earliest == null ? null : this.#displayValue(db, f, col.earliest);
+        col.latestDisplay = col.latest == null ? null : this.#displayValue(db, f, col.latest);
+        col.spanDays = col.earliest == null ? null : Math.round((dayOf(col.latest) - dayOf(col.earliest)) / 86400000);
+        col.byMonth = distribution(iso.map((v) => v.slice(0, 7)));
+      } else {
+        col.distinct = aggregateValues('distinct', display);
+      }
+      return col;
+    });
+    const out = { table: this.qualifiedName(db), rows: rows.length, columns, rollups: this.tableRollups(db.id) };
+    if (by) {
+      const byF = this.getField(db.id, by);
+      const { display: keys } = read(byF);
+      const numeric = columns.filter((c) => c.kind === 'number' && c.id !== byF.id).map((c) => db.fields[c.id]);
+      const buckets = new Map();
+      rows.forEach((e, i) => {
+        const ks = isBlank(keys[i]) ? [null] : (Array.isArray(keys[i]) ? keys[i] : [keys[i]]);
+        for (const k of ks) {
+          const key = isBlank(k) ? null : (typeof k === 'object' ? JSON.stringify(k) : k);
+          if (!buckets.has(key)) buckets.set(key, []);
+          buckets.get(key).push(e);
+        }
+      });
+      out.by = byF.name;
+      out.groups = [...buckets].map(([value, members]) => {
+        const g = { value, rows: members.length, columns: {}, display: {} };
+        for (const f of numeric) {
+          const vals = members.map((e) => this.#resolve(e, db, f, 0));
+          const d = describeNumbers(vals);
+          g.columns[f.name] = { n: d.n, sum: d.sum, avg: d.avg, median: d.median, min: d.min, max: d.max };
+          g.display[f.name] = Object.fromEntries(Object.entries(g.columns[f.name]).map(([k, v]) => [k, k === 'n' ? String(v) : dress(f, v)]));
+        }
+        return g;
+      }).sort((a, b) => b.rows - a.rows || (a.value == null) - (b.value == null) || String(a.value).localeCompare(String(b.value)));
+    }
+    return out;
   }
 
   // Full materialized read: everything by field name, display values + raw.
@@ -4852,7 +5089,14 @@ export class Weave {
             out.inverseFieldId = f.config.inverseFieldId;
             out.inverseField = target.fields[f.config.inverseFieldId]?.name ?? null;
           }
-          if (f.type === 'lookup' || f.type === 'rollup') {
+          if (f.type === 'rollup' && f.config.via) {
+            // A space rollup: the table it reads, not a relation it crosses.
+            const tdb = this.state.tables[f.config.via];
+            if (tdb) { out.viaTable = this.qualifiedName(tdb); out.viaTableId = tdb.id; }
+            if (f.config.targetField) out.targetField = tdb?.fields[f.config.targetField]?.name;
+            if (f.config.where) out.where = f.config.where;
+            out.aggregate = f.config.aggregate;
+          } else if (f.type === 'lookup' || f.type === 'rollup') {
             const rel = db.fields[f.config.relationField];
             out.via = rel?.name;
             if (f.config.targetField) {

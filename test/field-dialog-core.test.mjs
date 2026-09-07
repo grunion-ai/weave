@@ -197,7 +197,7 @@ test('parseDefinition mirrors engine bounds: decimals 0..6, depth 1..4', () => {
 test('parseDefinition mirrors engine enums: date format, state category, aggregate', () => {
   assert.match(core.parseDefinition('{ "type": "date", "config": { "format": "dmy" } }').error, /iso, us, eu, long/);
   assert.match(core.parseDefinition('{ "type": "workflow", "config": { "states": [{ "name": "X", "category": "later" }] } }').error, /not-started/);
-  assert.match(core.parseDefinition('{ "type": "rollup", "config": { "relationField": "T", "aggregate": "median" } }').error, /count, sum/);
+  assert.match(core.parseDefinition('{ "type": "rollup", "config": { "relationField": "T", "aggregate": "mode" } }').error, /count, sum/);
 });
 
 test('parseDefinition requires a formula expression and at least one workflow state', () => {

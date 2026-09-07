@@ -24,7 +24,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'workflow', renders: 'one state chip, colored by its category; a board groups on it', config: ['states'] },
   { type: 'relation', renders: 'chips carrying the target\'s name, each with ×, plus "+ link"', config: ['targetDb', 'targetDbs', 'cardinality', 'inverseName'], verb: 'add_relation' },
   { type: 'lookup', renders: 'read-only cell on a tinted background, marked ↗', config: ['relationField', 'targetField'] },
-  { type: 'rollup', renders: 'read-only cell on a tinted background, marked Σ', config: ['relationField', 'targetField', 'aggregate'] },
+  { type: 'rollup', renders: 'read-only cell on a tinted background, marked Σ, wearing the target column\'s costume; on a Workspace/Spaces row a `via` rollup is the figure the grid footer shows under that column', config: ['relationField', 'via', 'where', 'targetField', 'aggregate', 'separator'] },
   { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting'] },
   { type: 'document', renders: 'every document field is a column of its own: the description previews its first lines; any other renders as a named chip wearing its kind', config: ['kind'] },
   { type: 'attachments', renders: 'file chips', config: ['multiple'] },
@@ -100,7 +100,7 @@ export const VOCABULARY = {
   documentKinds: ['markdown', 'html', 'code'],
   cardinalities: ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'],
   stateCategories: ['not-started', 'in-progress', 'done', 'canceled'],
-  aggregates: ['count', 'sum', 'avg', 'min', 'max', 'join'],
+  aggregates: ['count', 'sum', 'avg', 'min', 'max', 'join', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'],
   // Off by default; add them where provenance is part of the record.
   systemFields: ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'],
   // A board groups by the first workflow field, falling back to the first

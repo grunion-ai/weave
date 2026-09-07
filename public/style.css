@@ -1859,3 +1859,47 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .wv-view-fields .form-check-label .wv-tag { margin-left: 6px; }
 .wv-view-preview { padding: 8px 10px; border: 1px dashed var(--tblr-border-color); border-radius: 6px; min-height: 34px; display: flex; align-items: center; }
 .wv-muted { color: var(--tblr-secondary); font-size: 12px; }
+
+/* ---------- statistics: the Σ footer, space tiles, column stats ---------- */
+.wv-grid tfoot td { border-top: 2px solid var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); font-size: 12px; color: var(--tblr-secondary); vertical-align: top; white-space: nowrap; padding-top: 4px; padding-bottom: 4px; }
+.wv-grid tfoot td.foot-mark { font-weight: 600; opacity: .55; }
+.wv-grid tfoot td.foot-open { cursor: pointer; min-height: 22px; }
+.wv-grid tfoot td.foot-open:hover, .wv-grid tfoot td.foot-open:focus-visible { background: var(--tblr-bg-surface); color: var(--tblr-body-color); outline: none; }
+.wv-grid tfoot td.foot-open:not(.has-stats)::after { content: '+ Σ'; opacity: 0; font-size: 11px; }
+.wv-grid tfoot td.foot-open:not(.has-stats):hover::after, .wv-grid tfoot td.foot-open:not(.has-stats):focus-visible::after { opacity: .6; }
+.foot-stat { display: flex; gap: 6px; align-items: baseline; justify-content: flex-end; line-height: 1.5; }
+.wv-grid tfoot td:not(.num) .foot-stat { justify-content: flex-start; }
+.foot-agg { font-size: 10.5px; opacity: .65; min-width: 2.2em; text-align: right; }
+.foot-val { font-variant-numeric: tabular-nums; color: var(--tblr-body-color); font-weight: 500; }
+.chip-pop-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--tblr-secondary); padding: 4px 6px 2px; }
+.chip-pop-note { font-size: 11px; color: var(--tblr-secondary); padding: 4px 6px 2px; max-width: 220px; white-space: normal; }
+.foot-row .eye-label { display: flex; gap: 6px; align-items: baseline; }
+.wv-stat-tiles { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.wv-stat-tile { display: flex; flex-direction: column; gap: 1px; min-width: 128px; padding: 8px 12px; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg, 8px); background: var(--tblr-bg-surface); text-decoration: none; color: var(--tblr-body-color); }
+.wv-stat-tile:hover { border-color: var(--tblr-primary); text-decoration: none; }
+.wv-stat-value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wv-stat-label { font-size: 12px; color: var(--tblr-secondary); }
+.wv-stat-agg { font-size: 10.5px; color: var(--tblr-secondary); opacity: .8; }
+#modal.wv-stats { width: 960px; max-width: 94vw; }
+.wv-stats-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.wv-stats-head h2 { margin: 0; }
+.wv-stats-ctl, .wv-stats-ctl-row { display: flex; align-items: center; gap: 8px; }
+.wv-stats-ctl-row .picker-wrap { width: auto; }
+.wv-stats-ctl-row .picker-face { min-width: 120px; }
+.wv-stats h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--tblr-secondary); margin: 14px 0 6px; }
+.wv-stats-rows { font-weight: 600; }
+.wv-stats-table th, .wv-stats-table td { font-size: 12.5px; }
+.wv-stats-table td.num, .wv-stats-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.wv-hist { display: flex; align-items: flex-end; gap: 1px; height: 22px; width: 90px; }
+.wv-hist-bar { flex: 1; background: var(--tblr-primary); opacity: .55; border-radius: 1px 1px 0 0; min-height: 1px; }
+.wv-hist-bar:hover { opacity: 1; }
+.wv-stats-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.wv-stats-card { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); padding: 8px 10px; }
+.wv-stats-card-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.wv-dist { display: flex; flex-direction: column; gap: 3px; }
+.wv-dist-row { display: grid; grid-template-columns: minmax(70px, 38%) 1fr auto; gap: 8px; align-items: center; font-size: 12px; }
+.wv-dist-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wv-dist-label.empty { color: var(--tblr-secondary); font-style: italic; }
+.wv-dist-bar { height: 8px; background: var(--tblr-bg-surface-secondary); border-radius: 4px; overflow: hidden; }
+.wv-dist-fill { display: block; height: 100%; background: var(--tblr-primary); opacity: .6; }
+.wv-dist-n { color: var(--tblr-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }

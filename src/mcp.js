@@ -89,6 +89,11 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { table: { type: 'string' } } },
   },
   {
+    name: 'weave_stats',
+    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (a multiselect row counts in every chip it wears); `where` narrows the rows with the same clauses as weave_query. Nothing is stored — to keep a figure on the record, add a rollup on the Workspace/Spaces row instead (weave_add_field with config.via).',
+    inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: {} }, required: ['table'] },
+  },
+  {
     name: 'weave_undo',
     description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting.',
     inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' } } },
@@ -162,7 +167,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_field',
-    description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, date, daterange, checkbox, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count,sum,avg,min,max,join); {expression} for formula. Any of text, number, date, daterange, checkbox, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a row.',
+    description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, date, daterange, checkbox, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range) — or, on the Workspace/Spaces registry row only, {via: <table>, targetField, aggregate, where?} for a rollup over a WHOLE table (the figure the grid footer shows under that column; where takes weave_query clauses); {expression} for formula. Any of text, number, date, daterange, checkbox, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a row.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
@@ -425,6 +430,8 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.restoreEntity(args.entity);
     case 'weave_trash':
       return { items: weave.listTrash(args.table ?? null) };
+    case 'weave_stats':
+      return weave.tableStats(args.table, { by: args.by ?? null, where: args.where ?? null });
     case 'weave_undo':
       if (args.list) return { history: weave.listUndo({ limit: Number(args.limit ?? 20) }) };
       return weave.undo({ steps: Math.max(1, Number(args.steps ?? 1)) });

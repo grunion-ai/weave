@@ -78,6 +78,7 @@ human.
 | Formulas | `weave_check_formula` — validate + preview an expression before saving it |
 | Whole schema | `weave_apply_schema` |
 | Entities | `weave_query`, `weave_get_entity`, `weave_create_entity`, `weave_update_entity`, `weave_delete_entity`, `weave_restore_entity`, `weave_trash`, `weave_undo` |
+| Statistics | `weave_stats` — every column of a table summarised in one read (sum, avg, median, min, max, p25/p75, stdev, a histogram for numbers; a ranked distribution for chips; earliest/latest/span for dates), the space rollups pointed at the table, and per-group figures with `by`. To keep a figure on the record, add a rollup on the `Workspace/Spaces` row with `config.via` naming the table (`aggregate` from the vocabulary, optional `where`) — that is the Σ the grid footer draws under the column |
 | Relations & state | `weave_link`, `weave_unlink`, `weave_set_state` |
 | Many rows at once | `weave_bulk` — set values, link, move to another table, or roll up into a new parent across a list of ids; the reply names what did not land |
 | Documents & comments | `weave_get_doc`, `weave_set_doc`, `weave_add_comment`, `weave_delete_comment` |
@@ -148,7 +149,7 @@ workspace. Every MCP tool has a command:
 | Read | Schema | Data |
 | --- | --- | --- |
 | `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
-| `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` |
+| `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` / `weave stats <table> [--by F] [--where J]` |
 | `weave map` | `weave field add` / `weave field update` / `weave field delete` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
 | `weave registry` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |

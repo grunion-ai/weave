@@ -81,7 +81,7 @@ Right-aligned with tabular figures, so a column of figures lines up on the decim
 
 ## In formulas & rollups
 
-Aggregates: \`sum\`, \`avg\`, \`min\`, \`max\`, \`count\`. Formula: \`round(Price * Count)\`.
+Aggregates: \`sum\`, \`avg\`, \`median\`, \`min\`, \`max\`, \`range\`, \`stdev\`, \`count\`, \`filled\`, \`empty\`, \`distinct\`. Formula: \`round(Price * Count)\`. A rollup of this column wears its costume.
 
 ## Gotchas
 
@@ -370,22 +370,42 @@ The \`targetField\` cannot be deleted while a lookup reads it — the delete is 
 
   { name: 'rollup', kind: 'Computed', doc: `# rollup
 
-An aggregate over everything on the far side of a relation.
+An aggregate over everything on the far side of a relation — or, on a space's row, over a whole table.
 
 ## Config
 
 \`relationField\`, \`aggregate\`, and \`targetField\` for every aggregate except \`count\`.
 
-Aggregates: \`count\`, \`sum\`, \`avg\`, \`min\`, \`max\`, \`join\`.
+| Aggregate | Reads | Answers |
+| --- | --- | --- |
+| \`count\` | the rows | how many |
+| \`filled\` / \`empty\` | the rows | how many say something / nothing in \`targetField\` |
+| \`distinct\` | the rows | how many different values \`targetField\` holds (a multiselect counts each chip) |
+| \`sum\` / \`avg\` / \`median\` | the numbers | the total, the mean, the middle value |
+| \`min\` / \`max\` | the numbers, or the strings when there are none | the extremes — the earliest and latest of a date column |
+| \`range\` / \`stdev\` | the numbers | max − min; the sample standard deviation |
+| \`join\` | the display values | one string, \`separator\` between (default \`, \`) |
 
 \`\`\`json
 { "name": "Peer names", "type": "rollup",
   "config": { "relationField": "Peers", "aggregate": "join", "targetField": "Name" } }
 \`\`\`
 
+## Over a whole table: the space rollup
+
+The Σ under a grid column is a rollup on the **Workspace/Spaces** row of the space that holds the table (Kyle, 2026-09-06: "all footer values live at the space level"). \`via\` names the table instead of a relation; \`where\` narrows the rows with the same clauses a query takes.
+
+\`\`\`json
+{ "name": "Sessions · Cost · sum", "type": "rollup",
+  "config": { "via": "Agent/Sessions", "targetField": "Cost (USD)", "aggregate": "sum",
+              "where": [["Kind", "=", "scheduled"]] } }
+\`\`\`
+
+The grid footer draws every space rollup under its column and offers the aggregates on click; the space page draws them as tiles; \`weave stats <table>\` / \`weave_stats\` / \`GET /api/tables/:ref/stats\` summarise every column on demand without storing anything. A space rollup answers on its own space's row and reads \`null\` on every other; \`via\` is refused anywhere but the Spaces registry and on registry tables.
+
 ## Usage
 
-Renders on a tinted background marked \`Σ\`. \`join\` accepts a \`separator\`; the default is \`, \`.
+Renders on a tinted background marked \`Σ\`, wearing the target column's costume: a sum of dollars is dollars, the \`max\` of a date column is a date; a mean of whole numbers shows two decimals. \`join\` accepts a \`separator\`; the default is \`, \`.
 
 ## Gotchas
 
