@@ -1780,7 +1780,7 @@ function activateCell(cell) {
       let input = cell.querySelector('input, select');
       // A dressed number or marked-up text rests as a span that swaps its
       // input in on click; opening the cell from a key goes through it.
-      if (!input) { cell.querySelector('.num-dressed, .text-dressed')?.click(); input = cell.querySelector('input, select'); }
+      if (!input) { cell.querySelector('.num-dressed, .text-dressed, .url-edit')?.click(); input = cell.querySelector('input, select'); }
       if (!input) return;
       input.focus();
       // Placing the cursor is the point — a bare focus() leaves a text input
@@ -2165,6 +2165,34 @@ function dressedText(md, input) {
     dressed.replaceWith(input);
     input.focus();
   });
+  input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
+  return dressed;
+}
+
+/* A url value at rest: a real anchor, so a plain click opens a new tab and
+   ⌘-click and middle-click stay the browser's. One link colour end to end
+   (Kyle, 2026-09-07); the host is set a touch heavier so a column scans by
+   site. The pencil (visible on hover and focus), a double-click on the span,
+   and Return through the keymap swap the input in; blur swaps the link
+   back, as dressedText does. */
+function dressedUrl(value, input) {
+  const parts = globalThis.WeaveEditorLib.urlParts(value);
+  const dressed = el('span', { class: 'url-dressed', tabindex: 0, title: parts.href });
+  const edit = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dressed.replaceWith(input);
+    input.focus();
+  };
+  const link = el('a', {
+    class: 'url-link', href: parts.href, target: '_blank', rel: 'noopener',
+    // The click is the browser's: no docking, no row navigation underneath.
+    onclick: (e) => e.stopPropagation(),
+  }, el('span', { class: 'url-host' }, parts.host), el('span', { class: 'url-rest' }, parts.rest));
+  const pen = el('button', { class: 'url-edit', type: 'button', title: 'Edit the link', onclick: edit },
+    iconEl('lucide:pencil', 'wv-icon'));
+  dressed.append(link, pen);
+  dressed.addEventListener('dblclick', edit);
   input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
   return dressed;
 }
@@ -2595,6 +2623,13 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   // wears the marks and hands over the source on click (the #97 pattern).
   if (f.type === 'text' && typeof rawVal === 'string' && hasInlineMarkup(rawVal)) {
     return dressedText(rawVal, input);
+  }
+  // A url rests as a link — the Handbook promised "opening in a new tab" and
+  // the cell drew a text box. The pencil, a double-click, or Return on the
+  // focused cell hands the input over (the #97 costume). A value that is not
+  // an http(s) url keeps the plain box below.
+  if (f.type === 'url' && globalThis.WeaveEditorLib.urlParts(rawVal)) {
+    return dressedUrl(rawVal, input);
   }
   // A formatted number (#97) shows its costume at rest — '30 days' — and
   // hands over the raw number the moment it is clicked.

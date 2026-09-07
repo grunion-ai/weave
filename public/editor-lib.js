@@ -56,6 +56,22 @@ globalThis.WeaveEditorLib = {
     }[type] ?? (type ? 'focus-input' : 'none');
   },
 
+  /* ---------- a url value as a link (Issue: url cells opened nothing) ----------
+     The Handbook promised "a string the grid renders as a link, opening in a
+     new tab"; the cell drew a text box. The pure half: what the anchor
+     carries. Only http(s) draws as a link — anything else (a bare word, a
+     javascript: string, an empty value) stays the text box, so a stored
+     value can never run in the reader's tab. host and rest are the two
+     weights the cell sets: a column of links scans by site. */
+  urlParts(value) {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    let u;
+    try { u = new URL(value.trim()); } catch { return null; }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:' || !u.host) return null;
+    const rest = (u.pathname === '/' ? '' : u.pathname) + u.search + u.hash;
+    return { href: u.href, host: u.host, rest };
+  },
+
   /* ---------- what kind of thing a document is ----------
      A document field holds whatever was written into it, and weave already
      treats some of that specially: a complete HTML file runs as an app

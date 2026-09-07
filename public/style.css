@@ -677,6 +677,22 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
   background: rgba(var(--tblr-primary-rgb), .08); }
 .text-dressed s { color: var(--tblr-secondary); }
 
+/* A url value at rest: a link with a pencil beside it (see dressedUrl in
+   app.js). Padded like the input it stands in for, so the swap never
+   reflows the row; the host leads and carries the weight. */
+.url-dressed { display: flex; align-items: center; gap: 4px; max-width: 100%; padding: 4px 4px 4px 7px;
+  border: 1px solid transparent; border-radius: var(--tblr-border-radius); min-width: 0; }
+.url-dressed:hover, .url-dressed:focus-within { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
+.url-dressed .url-link { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--tblr-primary); text-decoration: underline; text-underline-offset: 2px; }
+.url-dressed .url-host { font-weight: 500; }
+.url-dressed .url-edit { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: none;
+  color: var(--tblr-secondary); cursor: pointer; opacity: 0; display: grid; place-items: center; }
+.url-dressed:hover .url-edit, .url-dressed:focus-within .url-edit, .wv-grid tbody td[tabindex]:focus .url-edit { opacity: 1; }
+.url-dressed .url-edit:hover { color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .08); }
+.url-dressed .url-edit .wv-icon { width: 14px; height: 14px; }
+.wv-grid tbody .url-dressed { padding-top: 1px; padding-bottom: 1px; }
+
 /* A description at rest: its first few lines, formatted (Kyle, 2026-08-27).
    The cell shows ONE of them, because a comfortable row is 48px and a compact
    one 34px and those numbers are Kyle's. The rest are in the same cell,

@@ -202,7 +202,7 @@ Boolean. Null normalizes to \`false\`, so a checkbox is never empty.
 
   { name: 'url', kind: 'Value', doc: `# url
 
-A string the grid renders as a link, opening in a new tab.
+A string the grid renders as a link, opening in a new tab. Click the link to open it; use the pencil beside it, double-click, or press Return on the cell to change the address.
 
 ## Config
 
@@ -210,7 +210,7 @@ A string the grid renders as a link, opening in a new tab.
 
 ## Usage
 
-\`{"Repo": "https://github.com/grunion-ai/weave"}\` — no scheme validation is enforced; the UI links the string as it stands.
+\`{"Repo": "https://github.com/grunion-ai/weave"}\` — no scheme validation is enforced on write. Only an \`http(s)://\` value draws as a link; anything else rests as a text box, so a stored string can never run in the reader's tab.
 
 ## Gotchas
 
