@@ -272,11 +272,57 @@ globalThis.WeaveEditorLib = {
 
   /* The tracker: index of the last heading at or above the reading line
      (viewport-relative tops), the first section before any heading passes it,
-     -1 when there are no headings. */
+     -1 when there are no headings.
+
+     "At" means within a pixel: the rail's own jump lands a heading ON the
+     line, and a scroll offset the browser keeps in fractions put it at 80.15
+     against a line of 80 — so jumping to a section left the tracker pointing
+     at the one above it (Issue #69). */
   currentSection(tops, line) {
     let current = tops.length ? 0 : -1;
-    tops.forEach((top, i) => { if (top <= line) current = i; });
+    tops.forEach((top, i) => { if (top <= line + 1) current = i; });
     return current;
+  },
+
+  /* ---------- programmatic scrolling (Issue #69) ----------
+     `Element.scrollIntoView()` is defined to scroll every scrollable ancestor
+     of its target, so bringing one heading into view also reset the docked
+     panel around it and the page behind that. The caller has to name the ONE
+     box that may move and where it lands; that arithmetic is these two, and
+     neither touches the DOM. */
+
+  /* Which box scrolls: walking out from the target's parent, the first one
+     that both allows overflow and has more content than room. Entries are
+     `{ overflowY, scrollHeight, clientHeight }`. -1 means nothing in the
+     chain scrolls and the caller moves the page itself. */
+  scrollBoxIndex(boxes) {
+    return (Array.isArray(boxes) ? boxes : []).findIndex((b) =>
+      /^(auto|scroll|overlay)$/.test(b?.overflowY ?? '')
+      && b.scrollHeight > b.clientHeight + 1);
+  },
+
+  /* Where that box's scrollTop has to land. Every measurement shares one
+     coordinate space (viewport rects do fine): the box shows the band
+     [viewTop, viewTop + viewHeight] and the target sits at [targetTop,
+     + targetHeight]. `block: 'start'` puts the target at the top of the band,
+     `padding` below whatever covers that edge; `'nearest'` moves the least
+     that brings the target inside, and nothing at all when it already is. */
+  scrollTopFor({
+    scrollTop = 0, scrollHeight = 0, viewTop = 0, viewHeight = 0,
+    targetTop = 0, targetHeight = 0, block = 'start', padding = 0,
+  } = {}) {
+    const toTop = scrollTop + (targetTop - viewTop) - padding;
+    if (block === 'nearest') {
+      const above = targetTop < viewTop + padding;
+      const below = targetTop + targetHeight > viewTop + viewHeight;
+      if (!above && !below) return scrollTop;
+      if (below && !above) {
+        return Math.min(Math.max(
+          scrollTop + (targetTop + targetHeight) - (viewTop + viewHeight), 0),
+        Math.max(0, scrollHeight - viewHeight));
+      }
+    }
+    return Math.min(Math.max(toTop, 0), Math.max(0, scrollHeight - viewHeight));
   },
 
   /* What a fold hides (Issue #88): the block indices after heading i, up to

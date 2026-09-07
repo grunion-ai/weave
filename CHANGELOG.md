@@ -2,6 +2,10 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## Unreleased
+
+- **One scroll moves one box** (Issue #69): `Element.scrollIntoView()` is defined to scroll every scrollable ancestor of its target, so jumping to a heading in a docked document dragged the page behind the dock along with it — the reset Kyle reported against the outline rail. The four programmatic scrolls (the outline rail, the editor's slash menu, the search palette, a new grid row taking the caret) now go through `scrollTargetIntoView()`, which resolves the one box that may move and leaves every other scroller where the reader left it. The rail's jump became a glide, and lands the heading on the same reading line its tracker measures from; a reader who asked for less motion, and a hidden tab that would never run the animation frames, still get the instant landing. `keepScroll()` holds every box the reader had scrolled instead of the grid's alone. The arithmetic — which box, and where its scrollTop lands — is pure, in `public/editor-lib.js`.
+
 ## v0.4.7 — 2026-09-06
 
 - **A name that runs past its column expands on hover again** (Issue #157): the marker that opens the hover expansion was measured on the `<td>`, and a text cell's `<input>` is `width: 100%` — the value overflows inside the control, the cell never reports overflow, and so no Name on any grid was ever marked. Clipping is now read from the control as well as the cell, so every text-backed cell participates. The expansion itself was the second half: it cloned the `<input>`, and a cloned control falls back to its own intrinsic width, so hovering opened a box that cut the value off in the same place. The copy is now the value as text, carrying the control's own font, weight and metrics, and it wraps inside the popover the way a description's lines do.

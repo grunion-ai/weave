@@ -62,6 +62,13 @@ test('the tracker picks the last heading above the reading line', () => {
   assert.equal(LIB.currentSection([], 80), -1, 'no headings, no section');
 });
 
+test('a heading resting on the reading line is the current section', () => {
+  // What the rail's own jump produces: the heading lands at the line, and a
+  // fractional scroll offset leaves it a sliver below it (Issue #69).
+  assert.equal(LIB.currentSection([-900, 80.15625, 900], 80), 1);
+  assert.equal(LIB.currentSection([-900, 82, 900], 80), 0, 'a pixel of slack, not ten');
+});
+
 /* ---------- wiring contracts ---------- */
 
 test("Vditor's own outline stays disabled", () => {
@@ -119,6 +126,9 @@ test('the document text is indented off the gutter', () => {
   assert.match(CSS, /\.doc-section\s*\{[^}]*padding-left:\s*18px/);
 });
 
-test('clicking a dash scrolls to its section', () => {
-  assert.match(APP, /doc-rail-dash[^]{0,400}scrollIntoView/);
+test('clicking a dash scrolls to its section, moving only the box it sits in', () => {
+  // scrollIntoView() would drag every scrollable ancestor along (Issue #69).
+  assert.match(APP, /doc-rail-dash[^]{0,500}scrollTargetIntoView\(heads\[i\]/);
+  assert.match(APP, /scrollTargetIntoView\(heads\[i\][^)]*padding: DASH_READING_LINE/,
+    'the heading lands on the line the tracker reads from, clear of the header');
 });

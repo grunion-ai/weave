@@ -1755,6 +1755,51 @@ function activateCell(cell) {
   }
 }
 
+/* ---------- one scroll moves one box (Issue #69) ----------
+   `Element.scrollIntoView()` is defined to scroll EVERY scrollable ancestor of
+   its target. A weave document sits in a scrolling body, often inside a docked
+   panel, so jumping to a heading also reset scroll positions the reader never
+   asked about — which is what Kyle reported against the outline rail. Every
+   programmatic scroll in the app goes through here instead: the box that may
+   move is resolved explicitly, the rest hold, and the move animates.
+
+   Instant only when the animation would be a lie: a reader who asked for less
+   motion, or a hidden tab, which never runs the frames a smooth scroll rides
+   on and would otherwise never land. */
+const smoothScrollOk = () =>
+  !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// The one box that scrolls, or null for the page itself.
+function scrollBoxOf(target) {
+  const chain = [];
+  for (let p = target.parentElement; p && p !== document.body; p = p.parentElement) {
+    chain.push({
+      el: p,
+      overflowY: getComputedStyle(p).overflowY,
+      scrollHeight: p.scrollHeight,
+      clientHeight: p.clientHeight,
+    });
+  }
+  const i = globalThis.WeaveEditorLib.scrollBoxIndex(chain);
+  return i < 0 ? null : chain[i].el;
+}
+
+function scrollTargetIntoView(target, { block = 'start', padding = 0, instant = false } = {}) {
+  if (!target?.isConnected) return;
+  const box = scrollBoxOf(target);
+  const t = target.getBoundingClientRect();
+  const view = box ? box.getBoundingClientRect() : null;
+  const top = globalThis.WeaveEditorLib.scrollTopFor({
+    scrollTop: box ? box.scrollTop : window.scrollY,
+    scrollHeight: box ? box.scrollHeight : document.documentElement.scrollHeight,
+    viewTop: view ? view.top : 0,
+    viewHeight: box ? box.clientHeight : window.innerHeight,
+    targetTop: t.top, targetHeight: t.height, block, padding,
+  });
+  const behavior = !instant && smoothScrollOk() ? 'smooth' : 'instant';
+  (box ?? window).scrollTo({ top, behavior });
+}
+
 /* ---------- a new row takes the caret (Issues #125, #195) ----------
    Creating a row from the grid — the "+ New" foot button, Shift+Enter from a
    row — is the start of typing, so the new row's Name cell opens with the
@@ -1781,8 +1826,9 @@ function focusNewRow(eid, { field = null, scope = '#main', select = false, frame
     const input = (field && row?.querySelector(`td[data-field="${CSS.escape(field)}"] input`))
       || row?.querySelector('td input:not([type="checkbox"])');
     if (input && (!placed || document.activeElement === document.body)) {
-      // Instant, not the page's smooth scroll: the reader is about to type.
-      row.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      // Instant, not the page's smooth animation: the reader is about to type,
+      // and this poll re-asserts every frame until the caret is placed.
+      scrollTargetIntoView(row, { block: 'nearest', instant: true });
       activateCell(input.closest('td'));
       if (select) input.select();
       if (!placed) {
@@ -4868,14 +4914,27 @@ function fieldDialog(db, existing, after) {
 }
 
 /* A field edit redraws the table; the page and the grid must not snap back
-   to the top-left (Kyle, 2026-08-23). */
+   to the top-left (Kyle, 2026-08-23). Every box the reader had scrolled is
+   held, not just the grid's — a redraw inside a docked panel used to reset
+   the panel with it (Issue #69). A non-zero scrollTop/scrollLeft is its own
+   proof of a scroller, so no computed style is read; a box resting at the
+   origin has nothing to restore. Boxes the redraw replaced are gone from the
+   document, which is why the grid scroller — the one weave rebuilds
+   wholesale — is re-found by selector afterwards. */
 async function keepScroll(redraw) {
-  const grid = document.querySelector('.wv-grid');
-  const scroller = grid?.parentElement;
-  const x = window.scrollX, y = window.scrollY, left = scroller?.scrollLeft ?? 0;
+  const x = window.scrollX, y = window.scrollY;
+  const boxes = [...document.querySelectorAll('*')]
+    .filter((e) => e.scrollTop || e.scrollLeft)
+    .map((e) => ({ el: e, top: e.scrollTop, left: e.scrollLeft }));
+  const left = document.querySelector('.wv-grid')?.parentElement?.scrollLeft ?? 0;
   await redraw();
   requestAnimationFrame(() => {
     window.scrollTo(x, y);
+    for (const b of boxes) {
+      if (!b.el.isConnected) continue;
+      b.el.scrollTop = b.top;
+      b.el.scrollLeft = b.left;
+    }
     const again = document.querySelector('.wv-grid')?.parentElement;
     if (again) again.scrollLeft = left;
   });
@@ -5626,7 +5685,7 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
       host.addEventListener('keydown', (e) => {
         if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
         requestAnimationFrame(() =>
-          host.querySelector('.vditor-hint--current')?.scrollIntoView({ block: 'nearest' }));
+          scrollTargetIntoView(host.querySelector('.vditor-hint--current'), { block: 'nearest' }));
       });
       attachToolbarBubble(host);
       attachFileTools(host, editor, onInput);
@@ -6037,9 +6096,12 @@ function refreshDashRail(st) {
     class: 'doc-rail-dash' + (i === current ? ' active' : ''),
     type: 'button',
     title: d.text,
-    // Instant, not smooth: a backgrounded tab never runs the animation
-    // frames a smooth scroll rides on, and the jump is the point anyway.
-    onclick: () => { heads[i].scrollIntoView({ block: 'start' }); st.close(); },
+    // The heading lands on the same reading line the tracker measures from,
+    // so the section the rail says you are in is the one under the header.
+    onclick: () => {
+      scrollTargetIntoView(heads[i], { block: 'start', padding: DASH_READING_LINE });
+      st.close();
+    },
   },
   el('i', { class: 'doc-rail-tick', style: `width:${d.width}px` }),
   el('span', { class: 'doc-rail-label' }, d.text))));
@@ -7292,7 +7354,7 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     if (!rowEls.length) return;
     sel = ((i % rowEls.length) + rowEls.length) % rowEls.length; // wrap at ends
     rowEls.forEach((r, j) => r.classList.toggle('active', j === sel));
-    if (scroll) rowEls[sel].scrollIntoView({ block: 'nearest' });
+    if (scroll) scrollTargetIntoView(rowEls[sel], { block: 'nearest' });
   };
   input.addEventListener('input', () => {
     clearTimeout(timer);
