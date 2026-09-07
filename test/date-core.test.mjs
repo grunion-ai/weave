@@ -25,7 +25,7 @@ test('formatDate matches the engine costume for every format, with and without t
 
 test('formatDate never reads the local zone: the stored wall-clock parts are what render', () => {
   assert.equal(core.formatDate('2026-08-21', { format: 'long' }), 'Aug 21, 2026');
-  assert.equal(core.formatDate('2026-08-21T23:30', { format: 'us', time: true }), '8/21/2026 23:30');
+  assert.equal(core.formatDate('2026-08-21T23:30', { format: 'us', time: true, clock: '24h' }), '8/21/2026 23:30');
 });
 
 test('calendarMonth lays out a Sunday-first grid of full weeks with in-month flags (the native picker Kyle liked)', () => {
@@ -82,9 +82,10 @@ const rangeField = (config) => {
 };
 
 test('a daterange reads as text, never as an object (Issue #91)', () => {
-  const shown = rangeField({})({ start: '2026-08-01', end: '2026-09-15' });
+  const shown = rangeField({ format: 'iso' })({ start: '2026-08-01', end: '2026-09-15' });
   assert.equal(typeof shown, 'string');
   assert.equal(shown, '2026-08-01 – 2026-09-15');
+  assert.equal(rangeField({})({ start: '2026-08-01', end: '2026-09-15' }), 'Aug 1 – Sep 15, 2026', 'no format: the long default');
   assert.ok(!shown.includes('object'));
 });
 
@@ -108,12 +109,14 @@ test('numeric formats keep both ends whole', () => {
 
 test('time rides on both ends when the field asks for it', () => {
   const value = { start: '2026-08-01T09:00', end: '2026-08-01T17:30' };
-  assert.equal(core.formatDateRange(value, { time: true }), '2026-08-01 09:00 – 2026-08-01 17:30');
-  assert.equal(rangeField({ time: true })(value), '2026-08-01 09:00 – 2026-08-01 17:30');
+  const iso24 = { format: 'iso', clock: '24h', time: true };
+  assert.equal(core.formatDateRange(value, iso24), '2026-08-01 09:00 – 2026-08-01 17:30');
+  assert.equal(rangeField(iso24)(value), '2026-08-01 09:00 – 2026-08-01 17:30');
+  assert.equal(core.formatDateRange(value, { time: true }), 'Aug 1, 2026 9:00 AM – Aug 1, 2026 5:30 PM', 'no costume: long and AM/PM');
 });
 
 test('a half-written range says what it has rather than painting an object', () => {
   assert.equal(core.formatDateRange(null, {}), '');
-  assert.equal(core.formatDateRange({ start: '2026-08-01', end: '' }, {}), '2026-08-01 –');
-  assert.equal(core.formatDateRange({ start: '', end: '2026-09-15' }, {}), '– 2026-09-15');
+  assert.equal(core.formatDateRange({ start: '2026-08-01', end: '' }, { format: 'iso' }), '2026-08-01 –');
+  assert.equal(core.formatDateRange({ start: '', end: '2026-09-15' }, { format: 'iso' }), '– 2026-09-15');
 });

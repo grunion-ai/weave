@@ -514,12 +514,12 @@ function normalizeSelfContainedConfig(type, config = {}) {
     if (config.format != null) {
       const problem = DG.formatProblem(parts, config.format);
       if (problem) throw new WeaveError(problem, 'invalid');
-      if (config.format !== 'iso') out.format = config.format;
+      if (config.format !== DG.DEFAULT_FORMAT) out.format = config.format;
     }
     if (config.clock != null) {
       if (!DG.CLOCKS.includes(config.clock)) throw new WeaveError(`Invalid clock '${config.clock}' (${DG.CLOCKS.join(', ')})`, 'invalid');
       if (!time) throw new WeaveError('A clock needs a time of day', 'invalid');
-      if (config.clock !== '24h') out.clock = config.clock;
+      if (config.clock !== DG.DEFAULT_CLOCK) out.clock = config.clock;
     }
     if (config.zone != null) {
       if (!DG.ZONES.includes(config.zone)) throw new WeaveError(`Invalid zone '${config.zone}' (${DG.ZONES.join(', ')})`, 'invalid');
@@ -3965,10 +3965,9 @@ export class Weave {
         return names.join(', ');
       }
       case 'date': {
-        const c = field.config;
-        // A partial grain dresses even in iso: the parts print, never the dashes.
-        if (!c.format && !c.time && c.grain == null) return resolved;
-        return dressDate({ ...c, now: this.now(), viewerZone: this.viewerZone ?? 'UTC' }, resolved);
+        // A field that says nothing still dresses: the default costume
+        // (date-grain's DEFAULT_FORMAT / DEFAULT_CLOCK) is a costume too.
+        return dressDate({ ...field.config, now: this.now(), viewerZone: this.viewerZone ?? 'UTC' }, resolved);
       }
       case 'daterange':
         return dressDateRange({ ...field.config, now: this.now(), viewerZone: this.viewerZone ?? 'UTC' }, resolved);
