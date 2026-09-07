@@ -276,6 +276,10 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    relation grids) — keeps its sideways scroll. */
 .table-wrap { overflow-x: auto; position: relative; }
 .table-wrap.wv-fit { overflow-x: clip; }
+/* A wide grid on the table page scrolls vertically in its wrap as well
+   (Issue #233): fitGridScroller sets the max-height; border-box so that is
+   the box the page sees. The header and the Σ row stick to it. */
+.table-wrap.wv-grid-scroll { box-sizing: border-box; }
 .wv-grid thead th { position: sticky; top: 0; z-index: 2; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }

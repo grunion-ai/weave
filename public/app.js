@@ -1856,6 +1856,18 @@ function activateCell(cell) {
   }
 }
 
+/* ---------- a wide grid scrolls in its own box (Issue #233) ----------
+   The wrap of a grid wider than its card is a scroll container (sideways),
+   and a sticky cell sticks to the nearest one — so on the table page that
+   wrap is made the vertical scroller too, cut to the viewport from its own
+   top. At least half a screen when the chrome above it is tall; the page
+   scrolls the rest. A wrap that lost the class gets its height back. */
+function fitGridScroller(wrap) {
+  if (!wrap.isConnected || !wrap.classList.contains('wv-grid-scroll')) { wrap.style.maxHeight = ''; return; }
+  const top = wrap.getBoundingClientRect().top + window.scrollY;
+  wrap.style.maxHeight = `max(50vh, calc(100vh - ${Math.round(top)}px - 40px))`;
+}
+
 /* ---------- one scroll moves one box (Issue #69) ----------
    `Element.scrollIntoView()` is defined to scroll EVERY scrollable ancestor of
    its target. A weave document sits in a scrolling body, often inside a docked
@@ -3213,8 +3225,18 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
      neither the header nor the + New foot ever held against the page.
      Measured, not assumed: a grid wider than its card keeps its sideways
      scroll, and so does every wrap this observer does not watch. */
-  const fitWatch = new ResizeObserver(() =>
-    wrap.classList.toggle('wv-fit', wrap.scrollWidth <= wrap.clientWidth + 1));
+  const fitWatch = new ResizeObserver(() => {
+    const fit = wrap.scrollWidth <= wrap.clientWidth + 1;
+    wrap.classList.toggle('wv-fit', fit);
+    /* A grid wider than its card keeps its sideways scroll, so its wrap IS
+       the scroll container — and the header and the Σ row (Issue #233) can
+       only stick to it. On the table page such a wrap scrolls vertically
+       too: sized to the viewport, so the body moves inside it under a
+       header that stays; a space or workspace page keeps its grids in the
+       flow. Fitting grids clip and stick to the page as before. */
+    wrap.classList.toggle('wv-grid-scroll', !fit && state.route?.page === 'db');
+    fitGridScroller(wrap);
+  });
 
   /* ---------- Feature #132: row selection ----------
      The Puck won the five-bars study (Kyle, 2026-08-24). This is the layer
@@ -3627,8 +3649,14 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
        with Space and ⌘Return their keys. */
     for (const td of table.querySelectorAll('tbody tr.entity-row > td[data-field]:not(.cell-nostop)')) td.tabIndex = 0;
     for (const n of table.querySelectorAll('tbody tr.entity-row td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
+    const kept = wrap.scrollTop;
     wrap.replaceChildren(table, puck);
-    fitWatch.disconnect(); fitWatch.observe(wrap); fitWatch.observe(table);
+    // A redraw is not a scroll: a wrap that scrolls (wide grid) is clamped
+    // to 0 for the instant it is empty.
+    wrap.scrollTop = kept;
+    // main is watched too: a description that arrives after the grid, or a
+    // filter strip, moves the wrap's top, which is what its height is cut from.
+    fitWatch.disconnect(); fitWatch.observe(wrap); fitWatch.observe(table); fitWatch.observe(main);
     const foot = table.querySelector('tr.wv-foot');
     if (foot) {
       fillFooter(db, foot);
