@@ -153,8 +153,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         || path === '/api/mcp'
         || /^\/api\/tables$/.test(path)
         || (/^\/api\/tables\/[^/]+$/.test(path) && (m2 === 'PATCH' || m2 === 'DELETE'))
-        // Re-homing or cloning a table is structure too (nav kebab, 2026-08-31).
-        || /^\/api\/tables\/[^/]+\/(move|duplicate)$/.test(path)
+        // Re-homing, cloning or un-trashing a table is structure too (nav
+        // kebab, 2026-08-31; restore since Issue #149).
+        || /^\/api\/tables\/[^/]+\/(move|duplicate|restore)$/.test(path)
         || /^\/api\/tables\/[^/]+\/fields/.test(path)
         || (/^\/api\/schema$/.test(path))
         || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH'));

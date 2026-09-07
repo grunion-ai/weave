@@ -580,6 +580,9 @@ function normalizeSelfContainedConfig(type, config = {}) {
   }
   // Files: one or many (Kyle, 2026-08-23 — files are not documents).
   if (type === 'attachments') return { multiple: config.multiple == null ? true : !!config.multiple };
+  // Text: literal paints the characters — a column of syntax, a regex, a
+  // glob — instead of dressing inline markdown (Issue #86). Off is unmarked.
+  if (type === 'text') return config.literal ? { literal: true } : {};
   // Documents: what kind of document. markdown is the unmarked default.
   if (type === 'document') {
     if (config.kind != null && config.kind !== 'markdown') {
@@ -2813,7 +2816,7 @@ export class Weave {
     if (type === 'view') throw new WeaveError('The chip and the card are minted on every table; configure those instead', 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
-    if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'daterange', 'attachments', 'document', 'key'].includes(type)) {
+    if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'daterange', 'attachments', 'document', 'key', 'text'].includes(type)) {
       // One normaliser, shared with `field` value validation — see the note on
       // normalizeSelfContainedConfig. If these drift, a definition can describe
       // a field addField would reject.
@@ -3037,6 +3040,9 @@ export class Weave {
         }
       }
       if (field.type === 'view') field.config = this.#normalizeViewConfig(db, field, patch.config);
+      if (field.type === 'text' && 'literal' in patch.config) {
+        if (normalizeSelfContainedConfig('text', patch.config).literal) field.config.literal = true; else delete field.config.literal;
+      }
       if (field.type === 'attachments' && 'multiple' in patch.config) {
         field.config.multiple = normalizeSelfContainedConfig('attachments', patch.config).multiple;
       }
@@ -5135,6 +5141,8 @@ export class Weave {
           }
           if (f.type === 'formula') out.expression = f.config.expression;
           if (f.type === 'field') { out.types = [...f.config.types]; out.depth = f.config.depth; }
+          // A literal text column paints its characters (Issue #86).
+          if (f.type === 'text' && f.config.literal) out.literal = true;
           if (f.config?.default !== undefined) out.default = f.config.default;
           return out;
         }),

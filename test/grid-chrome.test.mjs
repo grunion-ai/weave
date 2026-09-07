@@ -86,9 +86,10 @@ if (s) {
   test('a clipped cell expands where its value already sits', async () => {
     const page = await grid();
     try {
-      const off = await page.evaluate(() => {
+      const off = await page.evaluate(async () => {
         const td = [...document.querySelectorAll('.wv-grid tbody td.clipped')][0];
         td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 400)); // the expansion waits out its hover delay (Issue #67)
         const pop = document.querySelector('.cell-pop');
         if (!pop) return null;
         const box = (n) => (n.firstElementChild ?? n).getBoundingClientRect();
@@ -107,9 +108,10 @@ if (s) {
   test('a clipped name keeps its type in the expansion', async () => {
     const page = await grid();
     try {
-      const type = await page.evaluate(() => {
+      const type = await page.evaluate(async () => {
         const td = document.querySelector('.wv-grid tbody td.name-cell.clipped');
         td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 400)); // the expansion waits out its hover delay (Issue #67)
         const pop = document.querySelector('.cell-pop');
         if (!pop) return null;
         const read = (n) => {
@@ -120,6 +122,29 @@ if (s) {
       });
       assert.ok(type, 'the name cell is clipped and expands');
       assert.deepEqual(type.pop, type.cell, 'same font, same size, same weight');
+    } finally { await page.close(); }
+  });
+
+  /* Issue #67 (Kyle): "crossing a row of clipped cells still flashes several
+     in sequence". The expansion is a read surface; it opens for a pointer
+     that RESTS on a cell, not one passing through. */
+  test('a pointer passing through a clipped cell opens nothing', async () => {
+    const page = await grid();
+    try {
+      const flashed = await page.evaluate(async () => {
+        const tds = [...document.querySelectorAll('.wv-grid tbody td.clipped')];
+        if (!tds.length) return null;
+        const wrap = tds[0].closest('.table-wrap');
+        for (const td of tds) {
+          td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+          await new Promise((r) => setTimeout(r, 40));
+        }
+        wrap.dispatchEvent(new MouseEvent('mouseleave'));
+        await new Promise((r) => setTimeout(r, 400));
+        return { pop: !!document.querySelector('.cell-pop') };
+      });
+      assert.ok(flashed, 'there are clipped cells to cross');
+      assert.equal(flashed.pop, false, 'nothing opened for a pointer that never rested');
     } finally { await page.close(); }
   });
 
@@ -180,13 +205,14 @@ if (s) {
   test('hovering a description shows the lines the row had no room for', async () => {
     const page = await grid();
     try {
-      const lines = await page.evaluate(() => {
+      const lines = await page.evaluate(async () => {
         const td = document.querySelector('.wv-grid tbody td:has(> .doc-preview)');
         if (!td) return null;
         const visible = (n) => [...n.querySelectorAll('.doc-preview-line')]
           .filter((l) => getComputedStyle(l).display !== 'none').length;
         const inCell = visible(td);
         td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 400)); // the expansion waits out its hover delay (Issue #67)
         const pop = document.querySelector('.cell-pop');
         return pop ? { inCell, inPop: visible(pop) } : { inCell, inPop: 0 };
       });

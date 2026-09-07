@@ -1980,6 +1980,7 @@ function contentRect(node) {
   const r = range.getBoundingClientRect();
   return r.width || r.height ? r : node.getBoundingClientRect();
 }
+const CELL_POP_DELAY = 180; // ms a pointer rests on a clipped cell before it expands (Issue #67)
 function showCellPop(td, wrap) {
   const layer = cellPopLayer(wrap);
   const base = wrap.getBoundingClientRect();
@@ -2706,7 +2707,9 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   // Space and table descriptions are markdown living in a text field. A grid
   // that paints them raw reads `**Official docs** — the pages`, so the cell
   // wears the marks and hands over the source on click (the #97 pattern).
-  if (f.type === 'text' && typeof rawVal === 'string' && hasInlineMarkup(rawVal)) {
+  // A literal field paints its characters (Issue #86): a column of syntax,
+  // a regex, a glob — the marks ARE the value.
+  if (f.type === 'text' && !f.literal && typeof rawVal === 'string' && hasInlineMarkup(rawVal)) {
     return dressedText(rawVal, input);
   }
   // A url rests as a link — the Handbook promised "opening in a new tab" and
@@ -3661,11 +3664,17 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
 
   // A clipped cell opens over the grid on hover, in a layer of its own —
   // the cell keeps its box, so no column ever moves (Kyle, 2026-08-24).
+  // It opens for a pointer that RESTS on the cell: crossing a row of
+  // clipped cells used to flash each one in turn (Issue #67). The delay is
+  // per grid, and a pointer that leaves before it elapses opens nothing.
+  let popTimer = 0;
   wrap.addEventListener('mouseover', (e) => {
     const td = e.target.closest('td.clipped');
-    if (td && wrap.contains(td)) showCellPop(td, wrap); else hideCellPop(wrap);
+    clearTimeout(popTimer);
+    if (td && wrap.contains(td)) popTimer = setTimeout(() => showCellPop(td, wrap), CELL_POP_DELAY);
+    else hideCellPop(wrap);
   });
-  wrap.addEventListener('mouseleave', () => hideCellPop(wrap));
+  wrap.addEventListener('mouseleave', () => { clearTimeout(popTimer); hideCellPop(wrap); });
   main.append(wrap);
 }
 
@@ -3966,6 +3975,17 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
    opens a small popover laid out like the native picker Kyle liked:
    month ▾ / year ▾ (each a grid), ↑ ↓ months, Sunday-first days, a time row
    when the field carries time, Clear / Today. */
+/* The width of a string in an element's font, off a canvas: what an input
+   cannot say about its own value. 0 while the element is not on the page. */
+let measureCtx = null;
+function textWidth(str, node) {
+  if (!node.isConnected) return 0;
+  const font = getComputedStyle(node).font;
+  if (!font) return 0;
+  measureCtx ??= document.createElement('canvas').getContext('2d');
+  measureCtx.font = font;
+  return measureCtx.measureText(str).width;
+}
 function dateControl({ value = '', time = false, format = 'iso', costume = null, placeholder = 'type a date…', onChange, compact = true }) {
   const dc = weaveDateCore;
   /* The field's costume (grain · format · time · clock · zone · pad, 2026-09-02)
@@ -3984,7 +4004,17 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
     value: show(current), placeholder: timeOnly ? '9:15, 5:40 pm…' : placeholder,
     onclick: (e) => e.stopPropagation(),
   });
-  const set = (iso) => { current = iso ?? ''; text.value = show(current); onChange(current || null); };
+  /* The box is as wide as the date it shows (Issue #159): a fixed 120/200px
+     box cut an ordinal date — "Wednesday 30th September 2026" — off inside
+     its own control. The text is measured in the box's own font once it is
+     on the page (a detached input has no font to measure with), and again
+     whenever the value changes; the stylesheet width stays as the floor. */
+  const fit = () => {
+    const w = textWidth(text.value || text.placeholder, text);
+    if (w) text.style.minWidth = `${Math.ceil(w) + 22}px`;
+  };
+  requestAnimationFrame(fit);
+  const set = (iso) => { current = iso ?? ''; text.value = show(current); fit(); onChange(current || null); };
   const { store, local: toLocal } = dateStoreFns(c);
   // What the popover and the typed-time fallback see: the local wall clock.
   const local = () => toLocal(current);
@@ -4009,7 +4039,7 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
     },
   }, calendarGlyph());
   const wrap = el('span', { class: 'date-cell' }, text, btn);
-  wrap.setValue = (iso) => { current = iso ?? ''; text.value = show(current); };
+  wrap.setValue = (iso) => { current = iso ?? ''; text.value = show(current); fit(); };
   return wrap;
 }
 
@@ -4968,6 +4998,13 @@ function fieldDialog(db, existing, after) {
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.multiple !== false ? '' : undefined, onchange: (e) => { state.multiple = e.target.checked; changed(); } }),
           el('span', { class: 'form-check-label' }, 'Allow multiple files')));
+      } else if (t === 'text' && !(isEdit && existing.role === 'name')) {
+        /* Issue #86: a column that holds syntax opts out of the markdown
+           costume. The Name column never wears one, so it has nothing to opt
+           out of. */
+        kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
+          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.literal ? '' : undefined, onchange: (e) => { state.literal = e.target.checked; changed(); } }),
+          el('span', { class: 'form-check-label' }, 'Literal ', el('span', { class: 'date-format-eg' }, 'show **marks** and `syntax` as typed, never dressed'))));
       } else if (t === 'document') {
         kids.push(dsection('Kind', segCtl(fdc.DOCUMENT_KINDS, state.kind ?? 'markdown', (v) => { state.kind = v; changed(); })));
       } else if (t === 'key') {
