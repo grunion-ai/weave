@@ -552,7 +552,7 @@ Storing a name the keystore does not hold is allowed on purpose — set the row 
 
   { name: 'view', kind: 'Meta', doc: `# view
 
-How one row **appears elsewhere**. Every table carries two, minted with it and hidden from the grid until someone unhides them: **Chip**, the row inline — a relation cell, a \`[[Table#12]]\` mention in a document, a reference card — and **Card**, the row as a tile — a board column, a gallery, a peek. The config is the table's and the same for every row, so a task looks like a task wherever it turns up. The entity page draws both, so a reader sees the row the way the rest of the workspace will.
+How one row **appears elsewhere**. Every table carries two, minted with it and hidden from the grid until someone unhides them: **Chip**, the row inline — a relation cell, a \`[[Table#12]]\` mention in a document, a reference card — and **Card**, the row as a tile — a board column, a gallery, a peek. The config is the table's and the same for every row, so a task looks like a task wherever it turns up. The entity page draws each one the eye leaves on, in its **Appears as** strip, so a reader sees the row the way the rest of the workspace will; switch Chip or Card on in the eye to see it there, off and it goes from the strip and the grid alike.
 
 ## Config
 

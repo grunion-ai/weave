@@ -38,6 +38,9 @@ const s = await launch('chip', (weave) => {
   task = weave.createEntity('Task', { name: 'Ship the editor', Severity: 'High', Due: '2026-09-12' });
   weave.setState(task.id, 'State', 'Doing');
   weave.link(task.id, 'Owner', [ada.id]);
+  // The strip follows the eye now (appears-hidden-browser.test.mjs); a new
+  // table hides both views, so this suite switches them on to draw the chip.
+  weave.updateTable(tasks, { hiddenFields: [] });
 });
 if (s) {
   const { base, browser } = s;

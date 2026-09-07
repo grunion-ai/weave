@@ -14,8 +14,11 @@ import test from 'node:test';
 import { Weave } from '../../src/engine.js';
 import { startServer } from '../../src/server.js';
 
+/* WEAVE_BROWSER=webkit runs the same suites in WebKit — Kyle reads weave in
+   Safari, and a drag that Chromium accepts can be one WebKit refuses. The
+   export keeps its old name; every suite only ever calls launch(). */
 export const chromium = await import('playwright')
-  .then((pw) => pw.chromium)
+  .then((pw) => pw[process.env.WEAVE_BROWSER || 'chromium'] ?? pw.chromium)
   .catch(() => null);
 
 /* launch(name, seed, options)

@@ -6339,8 +6339,14 @@ function docSectionCollapse(entityId, field, next) {
 /* ---------- entity page ---------- */
 
 function appearsAsPanel(db, entity, refresh) {
-  const chipF = viewFieldOf(db, 'chip');
-  const cardF = viewFieldOf(db, 'card');
+  // The eye rules here too (Kyle, 2026-09-07): a Chip or Card switched off
+  // in the table's hidden set leaves the strip, and with both off the
+  // strip itself goes — the same hidden set the grid and the field rows
+  // already honour, so one toggle means one thing everywhere.
+  const hidden = new Set(db.hiddenFields ?? []);
+  const shownView = (role) => { const f = viewFieldOf(db, role); return f && !hidden.has(f.name) ? f : null; };
+  const chipF = shownView('chip');
+  const cardF = shownView('card');
   if (!chipF && !cardF) return null;
   const gear = (f) => el('button', {
     type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny wv-appears-cfg', title: `Configure the ${f.role} for every ${db.term?.singular ?? 'record'}`,

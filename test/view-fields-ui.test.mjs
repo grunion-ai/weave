@@ -1,10 +1,11 @@
 /* The chip and the card in the browser (Kyle, 2026-09-04): the field dialog
    edits a view's config through the same core the other types use, the grid
    draws an unhidden view as a read-only cell, every relation chip carries the
-   far row's segments behind a caret, and the entity page shows both views —
-   hidden or not — so a reader sees the row the way the rest of the workspace
-   will. The DOM paths are source-gated here; the browser suites cover the
-   rest. */
+   far row's segments behind a caret, and the entity page shows each view
+   the eye leaves on (Kyle, 2026-09-07: a Chip or Card switched off must not
+   show; one hidden set rules the grid, the field rows and the Appears-as
+   strip). The DOM paths are source-gated here; the browser suites cover the
+   rest — appears-hidden-browser.test.mjs drives the eye for real. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -118,11 +119,12 @@ test('the open caret turns a half circle to face the label, in both stylesheets'
   }
 });
 
-test('the entity page shows both views, hidden or not, with a way to configure each', () => {
+test('the entity page shows each view the eye leaves on, with a way to configure each', () => {
   assert.match(APP, /function appearsAsPanel\(/);
   assert.match(APP, /appearsAsPanel\(db, entity/, 'the panel is built from the entity read');
-  assert.match(APP, /viewFieldOf\(db, 'chip'\)/);
-  assert.match(APP, /viewFieldOf\(db, 'card'\)/);
+  assert.match(APP, /const hidden = new Set\(db\.hiddenFields \?\? \[\]\);\s+const shownView = /, 'the strip reads the same hidden set as the grid');
+  assert.match(APP, /shownView\('chip'\)/);
+  assert.match(APP, /shownView\('card'\)/);
   assert.match(APP, /f\.role !== 'name' && f\.type !== 'view' && !hidden\.has\(f\.name\)/, 'the value grid leaves the views to their panel');
 });
 
