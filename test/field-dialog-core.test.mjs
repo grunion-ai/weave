@@ -86,9 +86,16 @@ test('number config is canonical-minimal, like the engine normaliser output', ()
   assert.deepEqual(rich.config, { format: 'currency', currency: 'USD', decimals: 2, separator: true });
 });
 
-test('date config drops iso format, keeps time only when true', () => {
-  assert.deepEqual(core.definitionFromState({ type: 'date', date: { format: 'iso', time: false } }).config, {});
-  assert.deepEqual(core.definitionFromState({ type: 'date', date: { format: 'long', time: true } }).config, { format: 'long', time: true });
+test('date config drops the long format and the 12h clock (the defaults), keeps time only when true', () => {
+  assert.deepEqual(core.definitionFromState({ type: 'date', date: { format: 'long', time: false } }).config, {});
+  assert.deepEqual(core.definitionFromState({ type: 'date', date: { format: 'iso', time: true, clock: '24h' } }).config, { format: 'iso', time: true, clock: '24h' });
+  assert.deepEqual(core.definitionFromState({ type: 'date', date: { format: 'long', time: true, clock: '12h' } }).config, { time: true });
+  const blank = core.blankState('date').date;
+  assert.equal(blank.format, 'long', 'a new date field starts on the default');
+  assert.equal(blank.clock, '12h');
+  const back = core.stateFromDefinition({ type: 'date', config: { time: true } }).date;
+  assert.equal(back.format, 'long', 'a stored field that says nothing reads back as the default');
+  assert.equal(back.clock, '12h');
 });
 
 /* Issue #197: a range default is { start, end } on the wire and JSON text in
@@ -470,17 +477,17 @@ test('DATE_FORMATS is the engine\'s nine styles; NUMBER_FORMATS gained compact',
   assert.deepEqual(core.ZONES, ['floating', 'fixed', 'instant']);
 });
 
-test('date state → config: a full grain and a 24h floating clock say nothing; everything else is named', () => {
-  const full = core.definitionFromState({ type: 'date', date: { grain: { year: true, month: true, day: true }, format: 'iso', time: false, clock: '24h', zone: 'floating', pad: false } });
+test('date state → config: a full grain, long, and a 12h floating clock say nothing; everything else is named', () => {
+  const full = core.definitionFromState({ type: 'date', date: { grain: { year: true, month: true, day: true }, format: 'long', time: false, clock: '12h', zone: 'floating', pad: false } });
   assert.deepEqual(full.config, {});
   const expiry = core.definitionFromState({ type: 'date', date: { grain: { year: true, month: true, day: false }, format: 'us', pad: true, time: false } });
   assert.deepEqual(expiry.config, { grain: ['year', 'month'], format: 'us', pad: true });
   const rent = core.definitionFromState({ type: 'date', date: { grain: { year: false, month: false, day: true }, format: 'ordinal', time: false } });
   assert.deepEqual(rent.config, { grain: ['day'], format: 'ordinal' });
-  const opening = core.definitionFromState({ type: 'date', date: { grain: { year: false, month: false, day: false }, format: 'iso', time: true, clock: '12h', zone: 'fixed', zoneName: 'America/Los_Angeles' } });
-  assert.deepEqual(opening.config, { grain: [], time: true, clock: '12h', zone: 'fixed', zoneName: 'America/Los_Angeles' });
-  const meeting = core.definitionFromState({ type: 'date', date: { grain: { year: true, month: true, day: true }, format: 'long', time: true, clock: '12h', zone: 'instant' } });
-  assert.deepEqual(meeting.config, { format: 'long', time: true, clock: '12h', zone: 'instant' });
+  const opening = core.definitionFromState({ type: 'date', date: { grain: { year: false, month: false, day: false }, format: 'long', time: true, clock: '24h', zone: 'fixed', zoneName: 'America/Los_Angeles' } });
+  assert.deepEqual(opening.config, { grain: [], time: true, clock: '24h', zone: 'fixed', zoneName: 'America/Los_Angeles' });
+  const meeting = core.definitionFromState({ type: 'date', date: { grain: { year: true, month: true, day: true }, format: 'iso', time: true, clock: '12h', zone: 'instant' } });
+  assert.deepEqual(meeting.config, { format: 'iso', time: true, zone: 'instant' });
   const hours = core.definitionFromState({ type: 'daterange', date: { grain: { year: false, month: false, day: false }, time: true, elapsed: true } });
   assert.deepEqual(hours.config, { grain: [], time: true, elapsed: true });
   const noElapsed = core.definitionFromState({ type: 'date', date: { grain: { year: true, month: true, day: true }, time: true, elapsed: true } });
@@ -488,23 +495,24 @@ test('date state → config: a full grain and a 24h floating clock say nothing; 
 });
 
 test('config → date state round-trips, and a config with no grain reads as the full grain', () => {
-  const s = core.stateFromDefinition({ type: 'date', config: { grain: ['month', 'day'], format: 'long', time: true, clock: '12h', zone: 'instant', pad: true } });
+  const s = core.stateFromDefinition({ type: 'date', config: { grain: ['month', 'day'], format: 'us', time: true, clock: '24h', zone: 'instant', pad: true } });
   assert.deepEqual(s.date.grain, { year: false, month: true, day: true });
-  assert.equal(s.date.format, 'long');
+  assert.equal(s.date.format, 'us');
   assert.equal(s.date.time, true);
-  assert.equal(s.date.clock, '12h');
+  assert.equal(s.date.clock, '24h');
   assert.equal(s.date.zone, 'instant');
   assert.equal(s.date.pad, true);
   const plain = core.stateFromDefinition({ type: 'date', config: {} });
   assert.deepEqual(plain.date.grain, { year: true, month: true, day: true });
-  assert.equal(plain.date.clock, '24h');
+  assert.equal(plain.date.clock, '12h');
+  assert.equal(plain.date.format, 'long');
   assert.equal(plain.date.zone, 'floating');
   const t = core.stateFromDefinition({ type: 'daterange', config: { grain: [], time: true, elapsed: true } });
   assert.deepEqual(t.date.grain, { year: false, month: false, day: false });
   assert.equal(t.date.elapsed, true);
   for (const def of [
     { type: 'date', config: { grain: ['year', 'month'], format: 'quarter' } },
-    { type: 'date', config: { grain: [], time: true, clock: '12h' } },
+    { type: 'date', config: { grain: [], time: true, clock: '24h' } },
     { type: 'daterange', config: { time: true, elapsed: true, zone: 'fixed', zoneName: 'Europe/Berlin' } },
   ]) {
     assert.deepEqual(core.definitionFromState(core.stateFromDefinition(def)), def, JSON.stringify(def));

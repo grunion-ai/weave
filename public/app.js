@@ -3892,7 +3892,7 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
      decides what the box parses, what the popover offers and what is stored.
      Callers that predate it pass { time, format } and get the full grain. */
   const c = costume ? { ...costume } : { time, format };
-  format = c.format ?? 'iso';
+  format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
   time = !!c.time;
   const view = { ...c, viewerZone: LOCAL_ZONE };
   const grain = dc.grainOf(c);
@@ -4014,7 +4014,7 @@ function orderRange(r) {
 function readTypedDate(typed, c, current) {
   const dc = weaveDateCore;
   const grain = dc.grainOf(c);
-  const format = c.format ?? 'iso';
+  const format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
   const pad = (n) => String(n).padStart(2, '0');
   const clock = c.time ? dc.parseClock(typed) : null;
   if (!grain.length) {
@@ -4064,7 +4064,7 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   const dc = weaveDateCore;
   const c = costume ?? { time, format };
   time = !!c.time;
-  format = c.format ?? 'iso';
+  format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
   const grain = dc.grainOf(c);
   const hasY = grain.includes('year'), hasM = grain.includes('month'), hasD = grain.includes('day');
   const pad = (n) => String(n).padStart(2, '0');
@@ -4655,12 +4655,12 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
     : 'No date parts: a time of day, stored and compared as a clock reading.';
   kids.push(dsection('Stores',
     el('div', { class: 'date-grain' }, tick('year', 'Year', g.year, setPart('year')), tick('month', 'Month', g.month, setPart('month')), tick('day', 'Day', g.day, setPart('day')),
-      tick('time', 'Time of day', d.time, (on) => { d.time = on; if (!on && !parts.length) g.year = g.month = g.day = true; if (!on) { d.clock = '24h'; d.zone = 'floating'; d.elapsed = false; } })),
+      tick('time', 'Time of day', d.time, (on) => { d.time = on; if (!on && !parts.length) g.year = g.month = g.day = true; if (!on) { d.clock = weaveDateGrain.DEFAULT_CLOCK; d.zone = 'floating'; d.elapsed = false; } })),
     el('div', { class: 'hintnote' }, storesHint)));
   const legal = fdc.legalFormats(g);
   if (legal.length) {
     kids.push(dsection('Format', el('div', { class: 'date-format-list' }, ...legal.map((fmt) => el('button', {
-      type: 'button', class: 'date-format-opt' + ((d.format ?? 'iso') === fmt ? ' on' : ''),
+      type: 'button', class: 'date-format-opt' + ((d.format ?? weaveDateGrain.DEFAULT_FORMAT) === fmt ? ' on' : ''),
       onclick: () => { d.format = fmt; redraw(); changed(); },
     }, el('span', { class: 'date-format-id' }, fmt), el('span', { class: 'date-format-eg' }, dc.formatDate(todayIso, { ...costume, format: fmt, time: false })))))));
     if (['us', 'eu'].includes(d.format)) {
@@ -4670,7 +4670,7 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
     }
   }
   if (d.time) {
-    kids.push(dsection('Clock', segCtl(fdc.CLOCKS.map((id) => ({ id, label: dc.formatDate(todayIso + 'T14:30', { ...costume, clock: id, time: true }).split(' ').slice(parts.length ? 1 : 0).join(' ') })), d.clock ?? '24h', (v) => { d.clock = v; redraw(); changed(); })));
+    kids.push(dsection('Clock', segCtl(fdc.CLOCKS.map((id) => ({ id, label: dc.formatDate(todayIso + 'T14:30', { ...costume, clock: id, time: true }).split(' ').slice(parts.length ? 1 : 0).join(' ') })), d.clock ?? weaveDateGrain.DEFAULT_CLOCK, (v) => { d.clock = v; redraw(); changed(); })));
     const zoneHint = {
       floating: 'The wall clock as typed, no zone stored — 09:15 is 09:15 everywhere. What every field did before.',
       fixed: 'The zone travels with the field: a store opening at 09:15 PT opens at 09:15 PT for a reader in Berlin.',
@@ -7193,6 +7193,9 @@ const fmtValue = (v) => {
   if (v == null || v === '') return '—';
   if (Array.isArray(v)) return v.join(', ');
   if (typeof v === 'object') {
+    // ponytail: the feed has the field's name, not its costume, so a range
+    // wears the default (long). Plumb the config through when a feed row can
+    // reach its table.
     if ('start' in v || 'end' in v) return weaveDateCore.formatDateRange(v, {});
     return v.name ?? JSON.stringify(v);
   }

@@ -30,7 +30,8 @@ let sprints;
 const s = await launch('daterange', (weave) => {
   weave.createSpace({ name: 'Product' });
   sprints = weave.createTable({ space: 'Product', name: 'Sprint' });
-  weave.addField(sprints, { name: 'Window', type: 'daterange' });
+  // iso on purpose: these cases are about the control, not the costume.
+  weave.addField(sprints, { name: 'Window', type: 'daterange', config: { format: 'iso' } });
   weave.addField(sprints, { name: 'Readable', type: 'daterange', config: { format: 'long' } });
   weave.addField(sprints, { name: 'Quarter', type: 'daterange', config: { grain: ['year', 'month'] } });
 });
@@ -77,7 +78,9 @@ if (s) {
     await page.waitForSelector('.activity-item', { state: 'attached' });
     const leaks = await page.locator('text=[object Object]').count();
     assert.equal(leaks, 0, 'the history painted the stored object');
-    assert.match(await page.locator('.activity-item').first().textContent(), /2026-08-03/);
+    // The feed wears the default costume (long), not the field's: it names the
+    // day either way.
+    assert.match(await page.locator('.activity-item').first().textContent(), /Aug 3/);
     await page.close();
   });
 

@@ -102,7 +102,7 @@ if (s) {
   });
 
   /* Issue #67: the copy lands outside the cell, so every cell-scoped rule
-     stops matching it. The leading column is 15px/600 in the row; it was the
+     stops matching it. The leading column is 600 weight in the row; it was the
      grid default in the popover, and the value changed size as you read it. */
   test('a clipped name keeps its type in the expansion', async () => {
     const page = await grid();

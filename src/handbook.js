@@ -97,10 +97,10 @@ A date field declares two things separately. Its **grain** is which parts it sto
 | Key | Values | Effect |
 | --- | --- | --- |
 | \`grain\` | a list from \`year\`, \`month\`, \`day\` — \`["year","month"]\`, \`["month","day"]\`, \`["day"]\`, \`["year"]\`, \`["month"]\`, or \`[]\` with \`time\` | which parts the field stores; omitted means all three |
-| \`format\` | \`iso\` (default), \`us\`, \`eu\`, \`long\`, \`short\`, \`month\`, \`quarter\`, \`ordinal\`, \`relative\` | \`2026-09-15\` · \`9/15/2026\` · \`15.9.2026\` · \`Sep 15, 2026\` · \`Sep 15\` (the year only when it is not this one) · \`September 2026\` · \`Q3 2026\` · \`September 15th, 2026\` · \`in 2 weeks\` |
+| \`format\` | \`long\` (default), \`iso\`, \`us\`, \`eu\`, \`short\`, \`month\`, \`quarter\`, \`ordinal\`, \`relative\` | \`Sep 15, 2026\` · \`2026-09-15\` · \`9/15/2026\` · \`15.9.2026\` · \`Sep 15\` (the year only when it is not this one) · \`September 2026\` · \`Q3 2026\` · \`September 15th, 2026\` · \`in 2 weeks\` |
 | \`pad\` | boolean | zero-padded numerals on \`us\` and \`eu\` — \`08/2026\` for a card expiry |
 | \`time\` | boolean | store and show a time of day as well |
-| \`clock\` | \`24h\` (default), \`12h\` | \`14:32\` or \`2:32 PM\` |
+| \`clock\` | \`12h\` (default), \`24h\` | \`2:32 PM\` or \`14:32\` |
 | \`zone\` | \`floating\` (default), \`fixed\`, \`instant\` | what the clock time means — see below |
 | \`zoneName\` | an IANA zone — \`America/Los_Angeles\`, \`Europe/Berlin\` | the zone a \`fixed\` field lives in |
 | \`default\` | a date, or \`today()\` / \`now()\` | what a new row starts with, evaluated per row and cut to the grain |

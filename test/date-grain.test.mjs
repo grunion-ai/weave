@@ -189,7 +189,7 @@ test('the nine styles, on the full grain (the four shipped ones unchanged)', () 
 
 test('a partial grain dresses only the parts it holds — even iso, which prints the parts, never the dashes', () => {
   const ym = { grain: ['year', 'month'] };
-  both({ ...ym }, '2026-08', '2026-08', 'iso');
+  both({ ...ym, format: 'iso' }, '2026-08', '2026-08', 'iso');
   both({ ...ym, format: 'us' }, '2026-08', '8/2026', 'card expiry, unpadded');
   both({ ...ym, format: 'us', pad: true }, '2026-08', '08/2026', 'card expiry, MM/YYYY');
   both({ ...ym, format: 'eu' }, '2026-08', '8.2026');
@@ -202,12 +202,12 @@ test('a partial grain dresses only the parts it holds — even iso, which prints
   both({ ...ym, format: 'relative' }, '2026-08', 'this month');
 
   const y = { grain: ['year'] };
-  both({ ...y }, '2026', '2026');
+  both({ ...y, format: 'iso' }, '2026', '2026');
   for (const format of ['us', 'eu', 'long', 'short']) both({ ...y, format }, '2026', '2026', format);
   both({ ...y, format: 'relative' }, '2027', 'next year');
 
   const md = { grain: ['month', 'day'] };
-  both({ ...md }, '--08-15', '08-15');
+  both({ ...md, format: 'iso' }, '--08-15', '08-15');
   both({ ...md, format: 'us' }, '--08-15', '8/15');
   both({ ...md, format: 'eu' }, '--08-15', '15.8.');
   both({ ...md, format: 'long' }, '--08-15', 'Aug 15', 'an anniversary');
@@ -217,7 +217,7 @@ test('a partial grain dresses only the parts it holds — even iso, which prints
   both({ ...md, format: 'ordinal' }, '--08-15', 'August 15th');
 
   const d = { grain: ['day'] };
-  both({ ...d }, '---15', '15');
+  both({ ...d, format: 'iso' }, '---15', '15');
   both({ ...d, format: 'us' }, '---15', '15');
   both({ ...d, format: 'eu' }, '---15', '15.');
   both({ ...d, format: 'long' }, '---15', 'the 15th', 'rent day');
@@ -226,20 +226,38 @@ test('a partial grain dresses only the parts it holds — even iso, which prints
   both({ ...d, format: 'ordinal' }, '---03', 'the 3rd');
 
   const m = { grain: ['month'] };
-  both({ ...m }, '--08', '08');
+  both({ ...m, format: 'iso' }, '--08', '08');
   both({ ...m, format: 'us' }, '--08', '8');
   both({ ...m, format: 'long' }, '--08', 'Aug');
   both({ ...m, format: 'month' }, '--08', 'August');
   both({ ...m, format: 'quarter' }, '--08', 'Q3');
 });
 
-test('a clock is 24h unless the field says 12h; it rides every style and the time-only grain', () => {
-  both({ time: true }, '2026-08-15T14:32', '2026-08-15 14:32');
-  both({ time: true, clock: '12h' }, '2026-08-15T14:32', '2026-08-15 2:32 PM');
+/* Kyle, 2026-09-07: long is the default date format and AM/PM the default
+   clock. A field that says nothing wears them; iso and 24h are now choices a
+   field has to make, so they are stored when chosen. */
+test('a field that says nothing wears long and AM/PM — the defaults live on date-grain, once', () => {
+  assert.equal(core.DEFAULT_FORMAT, 'long');
+  assert.equal(core.DEFAULT_CLOCK, '12h');
+  both({}, '2026-08-15', 'Aug 15, 2026', 'no format: long');
+  both({ time: true }, '2026-08-15T14:32', 'Aug 15, 2026 2:32 PM', 'no clock: AM/PM');
+  both({ grain: [], time: true }, '17:40', '5:40 PM', 'a time-only grain too');
+  both({ grain: ['year', 'month'] }, '2026-08', 'Aug 2026', 'long on a partial grain');
+  assert.equal(fieldOf(fresh({ format: 'long' })).config.format, undefined, 'long is the default and says nothing');
+  assert.equal(fieldOf(fresh({ format: 'iso' })).config.format, 'iso', 'iso is a choice now, so it is stored');
+  assert.equal(fieldOf(fresh({ time: true, clock: '12h' })).config.clock, undefined, '12h is the default and says nothing');
+  assert.equal(fieldOf(fresh({ time: true, clock: '24h' })).config.clock, '24h', '24h is a choice now, so it is stored');
+  assert.deepEqual(core.formatDateRange({ start: '2026-08-01', end: '2026-09-15' }, {}), 'Aug 1 – Sep 15, 2026', 'a range with no format folds the year like long does');
+});
+
+test('a clock is 12h unless the field says 24h; it rides every style and the time-only grain', () => {
+  both({ time: true, clock: '24h' }, '2026-08-15T14:32', 'Aug 15, 2026 14:32');
+  both({ time: true, clock: '24h', format: 'iso' }, '2026-08-15T14:32', '2026-08-15 14:32');
+  both({ time: true, clock: '12h', format: 'iso' }, '2026-08-15T14:32', '2026-08-15 2:32 PM');
   both({ time: true, clock: '12h', format: 'long' }, '2026-08-15T09:05', 'Aug 15, 2026 9:05 AM');
-  both({ time: true, clock: '12h' }, '2026-08-15T00:15', '2026-08-15 12:15 AM');
-  both({ time: true, clock: '12h' }, '2026-08-15T12:00', '2026-08-15 12:00 PM');
-  both({ grain: [], time: true }, '09:15', '09:15', 'opening time');
+  both({ time: true, clock: '12h', format: 'iso' }, '2026-08-15T00:15', '2026-08-15 12:15 AM');
+  both({ time: true, clock: '12h', format: 'iso' }, '2026-08-15T12:00', '2026-08-15 12:00 PM');
+  both({ grain: [], time: true, clock: '24h' }, '09:15', '09:15', 'opening time');
   both({ grain: [], time: true, clock: '12h' }, '17:40', '5:40 PM');
   assert.throws(() => fresh({ clock: '12h' }), /time/i, 'a clock without a time of day is nothing');
   assert.throws(() => fresh({ time: true, clock: '10h' }), /clock/i);
@@ -253,12 +271,13 @@ test('what a clock time means: floating (today\'s silent rule, now named), a fix
   assert.throws(() => fresh({ time: true, zone: 'sometimes' }), /zone/i);
 
   // fixed: the wall clock stays as typed and the zone travels with the field.
-  both({ time: true, zone: 'fixed', zoneName: 'America/Los_Angeles' }, '2026-08-15T09:15', '2026-08-15 09:15 PDT');
-  both({ time: true, zone: 'fixed', zoneName: 'America/Los_Angeles' }, '2026-01-15T09:15', '2026-01-15 09:15 PST', 'the abbreviation follows the date');
+  const iso24 = { format: 'iso', clock: '24h' };
+  both({ ...iso24, time: true, zone: 'fixed', zoneName: 'America/Los_Angeles' }, '2026-08-15T09:15', '2026-08-15 09:15 PDT');
+  both({ ...iso24, time: true, zone: 'fixed', zoneName: 'America/Los_Angeles' }, '2026-01-15T09:15', '2026-01-15 09:15 PST', 'the abbreviation follows the date');
   both({ time: true, zone: 'fixed', zoneName: 'Europe/Berlin', clock: '12h', format: 'long' }, '2026-08-15T17:40', 'Aug 15, 2026 5:40 PM GMT+2');
 
   // instant: stored as UTC, rendered in whatever zone is reading it.
-  const w = fresh({ time: true, zone: 'instant' });
+  const w = fresh({ ...iso24, time: true, zone: 'instant' });
   assert.equal(stored(w, '2026-08-15T16:15Z'), '2026-08-15T16:15Z');
   assert.equal(stored(w, '2026-08-15T09:15-07:00'), '2026-08-15T16:15Z', 'an offset is folded into UTC');
   assert.equal(stored(w, '2026-08-15T16:15'), '2026-08-15T16:15Z', 'a bare wall clock written through the API is taken as UTC');
@@ -287,11 +306,11 @@ test('a range wears the grain and costume at both ends; elapsed time is opt-in a
   };
   assert.equal(rng({ grain: ['year', 'month'], format: 'long' })({ start: '2026-08', end: '2026-11' }), 'Aug 2026 – Nov 2026');
   assert.equal(rng({ grain: [], time: true, clock: '12h' })({ start: '09:15', end: '17:40' }), '9:15 AM – 5:40 PM', 'opening hours');
-  assert.equal(rng({ grain: [], time: true, elapsed: true })({ start: '09:15', end: '17:40' }), '09:15 – 17:40 · 8h 25m');
-  assert.equal(rng({ grain: [], time: true, elapsed: true })({ start: '22:00', end: '06:00' }), '22:00 – 06:00 · 8h', 'a night shift crosses midnight');
-  assert.equal(rng({ time: true, elapsed: true, format: 'short' })({ start: '2026-08-15T09:15', end: '2026-08-15T17:40' }), 'Aug 15 09:15 – Aug 15 17:40 · 8h 25m');
-  assert.equal(rng({ time: true, elapsed: true })({ start: '2026-08-15T22:00', end: '2026-08-17T06:30' }), '2026-08-15 22:00 – 2026-08-17 06:30 · 1d 8h 30m');
-  assert.equal(rng({ time: true })({ start: '2026-08-15T09:15', end: '2026-08-15T17:40' }), '2026-08-15 09:15 – 2026-08-15 17:40', 'no elapsed unless asked');
+  assert.equal(rng({ grain: [], time: true, clock: '24h', elapsed: true })({ start: '09:15', end: '17:40' }), '09:15 – 17:40 · 8h 25m');
+  assert.equal(rng({ grain: [], time: true, clock: '24h', elapsed: true })({ start: '22:00', end: '06:00' }), '22:00 – 06:00 · 8h', 'a night shift crosses midnight');
+  assert.equal(rng({ time: true, clock: '24h', elapsed: true, format: 'short' })({ start: '2026-08-15T09:15', end: '2026-08-15T17:40' }), 'Aug 15 09:15 – Aug 15 17:40 · 8h 25m');
+  assert.equal(rng({ time: true, clock: '24h', format: 'iso', elapsed: true })({ start: '2026-08-15T22:00', end: '2026-08-17T06:30' }), '2026-08-15 22:00 – 2026-08-17 06:30 · 1d 8h 30m');
+  assert.equal(rng({ time: true, clock: '24h', format: 'iso' })({ start: '2026-08-15T09:15', end: '2026-08-15T17:40' }), '2026-08-15 09:15 – 2026-08-15 17:40', 'no elapsed unless asked');
   assert.throws(() => fresh({ elapsed: true }, 'daterange'), /time/i, 'elapsed needs a clock at both ends');
   assert.equal(rng({ format: 'long' })({ start: '2026-08-01', end: '2026-09-15' }), 'Aug 1 – Sep 15, 2026', 'the same-year collapse survives');
 });
@@ -314,10 +333,10 @@ test('grain and costume travel through describeSchema, updateField lanes, and th
   w.updateField('T', 'D', { config: { grain: ['year', 'month', 'day'] } });
   assert.equal(fieldOf(w).config.grain, undefined, 'widening back to the full grain drops the key');
 
-  const t = fresh({ grain: [], time: true, clock: '12h', zone: 'fixed', zoneName: 'Europe/Berlin' });
+  const t = fresh({ grain: [], time: true, clock: '24h', zone: 'fixed', zoneName: 'Europe/Berlin' });
   const td = t.describeSchema().find((sp) => sp.space === 'Dev').tables[0].fields.find((f) => f.name === 'D');
   assert.deepEqual(td.grain, []);
-  assert.equal(td.clock, '12h');
+  assert.equal(td.clock, '24h');
   assert.equal(td.zone, 'fixed');
   assert.equal(td.zoneName, 'Europe/Berlin');
 
@@ -329,16 +348,16 @@ test('grain and costume travel through describeSchema, updateField lanes, and th
 });
 
 test('a schema document round-trips every grain and costume key', () => {
-  const w = fresh({ grain: ['month', 'day'], format: 'long' });
-  w.addField('T', { name: 'At', type: 'date', config: { time: true, clock: '12h', zone: 'instant' } });
+  const w = fresh({ grain: ['month', 'day'], format: 'ordinal' });
+  w.addField('T', { name: 'At', type: 'date', config: { time: true, clock: '24h', zone: 'instant' } });
   w.addField('T', { name: 'Hours', type: 'daterange', config: { grain: [], time: true, elapsed: true } });
   const doc = w.describeSchema();
   const w2 = new Weave();
   w2.applySchema(doc);
   const f = (name) => Object.values(w2.getTable('T').fields).find((x) => x.name === name).config;
   assert.deepEqual(f('D').grain, ['month', 'day']);
-  assert.equal(f('D').format, 'long');
-  assert.equal(f('At').clock, '12h');
+  assert.equal(f('D').format, 'ordinal');
+  assert.equal(f('At').clock, '24h');
   assert.equal(f('At').zone, 'instant');
   assert.deepEqual(f('Hours').grain, []);
   assert.equal(f('Hours').elapsed, true);

@@ -232,7 +232,8 @@ test('a costume is part of the sentence, so a clear can name what it takes', () 
   assert.equal(say({ type: 'number', config: { format: 'currency', currency: 'EUR', decimals: 2 } }), 'number · currency EUR');
   assert.equal(say({ type: 'number', config: { unit: 'days' } }), 'number · days');
   assert.equal(say({ type: 'number', config: { format: 'percent' } }), 'number · percent');
-  assert.equal(say({ type: 'date', config: { format: 'long' } }), 'date · long');
+  assert.equal(say({ type: 'date', config: { format: 'us' } }), 'date · us');
+  assert.equal(say({ type: 'date', config: { format: 'long' } }), 'date', 'long is the default and says nothing');
   assert.equal(say({ type: 'date', config: { time: true } }), 'date · with time');
   assert.equal(say({ type: 'document', config: { kind: 'code' } }), 'document · code');
   // A definition that IS a definition needs a host deep enough to hold one.

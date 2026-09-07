@@ -278,7 +278,7 @@
     options: [],              // [{name, color}]
     states: [],               // [{name, category, default}]
     number: { format: 'number', unit: '', currency: 'USD', decimals: null, separator: false, accounting: false },
-    date: { grain: { year: true, month: true, day: true }, format: 'iso', time: false, clock: '24h', zone: 'floating', zoneName: '', pad: false, elapsed: false },
+    date: { grain: { year: true, month: true, day: true }, format: DG().DEFAULT_FORMAT, time: false, clock: DG().DEFAULT_CLOCK, zone: 'floating', zoneName: '', pad: false, elapsed: false },
     depth: 1,
     multiple: true,           // attachments: one file or many
     kind: 'markdown',         // document: markdown | html | code
@@ -330,17 +330,18 @@
   }
 
   /* The date grain + costume, canonical-minimal like the engine stores it:
-     the full grain, a 24h floating clock and iso all say nothing. */
+     the full grain, a floating clock and the date-grain defaults (long,
+     12h) all say nothing. */
   function dateCostume(d = {}, type = 'date') {
     const config = {};
     const g = d.grain ?? { year: true, month: true, day: true };
     const parts = ['year', 'month', 'day'].filter((p) => g[p]);
     if (parts.length < 3) config.grain = parts;
-    if (d.format && d.format !== 'iso') config.format = d.format;
+    if (d.format && d.format !== DG().DEFAULT_FORMAT) config.format = d.format;
     if (d.pad && ['us', 'eu'].includes(d.format)) config.pad = true;
     if (d.time) {
       config.time = true;
-      if (d.clock && d.clock !== '24h') config.clock = d.clock;
+      if (d.clock && d.clock !== DG().DEFAULT_CLOCK) config.clock = d.clock;
       if (d.zone && d.zone !== 'floating') {
         config.zone = d.zone;
         if (d.zone === 'fixed' && d.zoneName) config.zoneName = d.zoneName;
@@ -435,7 +436,7 @@
       const parts = c.grain ?? ['year', 'month', 'day'];
       state.date = {
         grain: { year: parts.includes('year'), month: parts.includes('month'), day: parts.includes('day') },
-        format: c.format ?? 'iso', time: !!c.time, clock: c.clock ?? '24h', zone: c.zone ?? 'floating',
+        format: c.format ?? DG().DEFAULT_FORMAT, time: !!c.time, clock: c.clock ?? DG().DEFAULT_CLOCK, zone: c.zone ?? 'floating',
         zoneName: c.zoneName ?? '', pad: !!c.pad, elapsed: !!c.elapsed,
       };
     } else if (def.type === 'field') {

@@ -37,7 +37,7 @@ test('previewFields: workflow first, then non-empty in schema order, capped at 3
   const fields = w.previewFields(target.id);
   assert.equal(fields.length, 3);
   assert.deepEqual(fields[0], { label: 'State', value: 'In Progress' });
-  assert.deepEqual(fields[1], { label: 'Due', value: '2026-09-12' });
+  assert.deepEqual(fields[1], { label: 'Due', value: 'Sep 12, 2026' });
   assert.deepEqual(fields[2], { label: 'Notes', value: 'polish pass' });
 });
 
@@ -100,7 +100,7 @@ test('mention chip with preview fields collapses behind a caret and stays a link
     label: 'Ship the editor',
     fields: [
       { label: 'State', value: 'In Progress' },
-      { label: 'Due', value: '2026-09-12' },
+      { label: 'Due', value: 'Sep 12, 2026' },
       { label: 'Owner', value: 'Kyle' },
       { label: 'Fourth', value: 'never shown' },
     ],
@@ -109,7 +109,7 @@ test('mention chip with preview fields collapses behind a caret and stays a link
   assert.match(html, /<span class="mention-wrap"><a class="mention mention-entity" href="\/w\/weave\/e\/abc\/doc.html">/);
   assert.match(html, /<button type="button" class="mention-caret" aria-expanded="false"/);
   assert.match(html, /mention-f-label">State<\/span>In Progress/);
-  assert.match(html, /Due<\/span>2026-09-12/);
+  assert.match(html, /Due<\/span>Sep 12, 2026/);
   assert.ok(!html.includes('never shown'), 'preview caps at three fields');
 });
 

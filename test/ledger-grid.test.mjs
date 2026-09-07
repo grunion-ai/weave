@@ -141,3 +141,27 @@ test('a table remembers the density it was last read at', () => {
   assert.match(fn, /weave-grid-density:/, 'keyed like the other per-entity view state');
   assert.match(APP, /Comfortable/, 'and it is a visible control, not a hidden setting');
 });
+
+/* ── one type size ─────────────────────────────────────────────────────── */
+
+/* Kyle, 2026-09-07, from a screenshot of the sessions table: a text box at
+   rest was Tabler's 12px form-control-sm, a number's costume ('13 min') was
+   the 14px body, a chip was 13px, a system column 12.5px, the name 15px. Five
+   sizes across one row. The grid reads one token now, and it is the chip's,
+   so a value and the chip beside it are the same size by construction. */
+test('every value surface in the grid is set at one size, and it is the chip size', () => {
+  const root = rulesFor(':root');
+  assert.equal(root['--wv-grid-font'], 'var(--wv-chip-font)', 'the grid size IS the chip size');
+  for (const sel of ['.wv-grid tbody td', '.wv-grid tbody .inline-edit', '.wv-grid .num-dressed',
+    '.wv-grid .text-dressed', '.wv-grid td.sys-cell']) {
+    assert.equal(rulesFor(sel)['font-size'], 'var(--wv-grid-font)', `${sel} reads the grid token`);
+  }
+  assert.equal(root['--wv-grid-line'], '20px', 'a whole-pixel line, so a row height is a whole pixel');
+  for (const sel of ['.wv-grid tbody td', '.wv-grid tbody .inline-edit']) {
+    assert.equal(rulesFor(sel)['line-height'], 'var(--wv-grid-line)', `${sel} reads the line token`);
+  }
+  assert.equal(rulesFor('.wv-grid tbody .inline-edit')['font-family'], 'inherit',
+    'a control at rest wears the grid face, not the form face');
+  const name = rulesFor('.wv-grid td.name-cell .inline-edit');
+  assert.equal(name['font-size'], undefined, 'the name column is heavier, never larger');
+});

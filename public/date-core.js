@@ -77,5 +77,6 @@
     MONTHS, MONTHS_LONG, WEEKDAYS, DYNAMIC_DATE_DEFAULTS,
     formatDate, formatDateRange, calendarMonth, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
     legalFormats, toInstant, fromInstant, partsOf, storeOf, coerce, grainOf, parseClock, DATE_FORMATS, CLOCKS, ZONES,
+    get DEFAULT_FORMAT() { return DG().DEFAULT_FORMAT; }, get DEFAULT_CLOCK() { return DG().DEFAULT_CLOCK; },
   };
 })(globalThis);
