@@ -12,7 +12,7 @@ test('headings and paragraphs', () => {
 
 test('links, images, strikethrough', () => {
   const html = renderMarkdown('See [docs](https://example.com) and ![alt](img.png) and ~~gone~~.');
-  assert.match(html, /<a href="https:\/\/example.com">docs<\/a>/);
+  assert.match(html, /<a href="https:\/\/example.com" target="_blank" rel="noopener">docs<\/a>/, 'a link that leaves weave opens a new tab');
   assert.match(html, /<img src="img.png" alt="alt">/);
   assert.match(html, /<del>gone<\/del>/);
 });

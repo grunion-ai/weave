@@ -41,6 +41,15 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+/* A link that leaves weave opens in a new tab (Kyle, 2026-09-07): the
+   reader keeps the page they were on. Anything with a scheme and host is
+   "leaving"; a route (#/entity/…), a workspace path (/e/…) or a bare
+   fragment stays in place. rel=noopener so the far page never holds the
+   opener. */
+function linkTarget(href) {
+  return /^https?:\/\//i.test(String(href)) ? ' target="_blank" rel="noopener"' : '';
+}
+
 function renderInline(text, resolveMention) {
   let out = '';
   let i = 0;
@@ -125,7 +134,7 @@ function renderInline(text, resolveMention) {
     if (src[i] === '[') {
       const m = src.slice(i).match(/^\[([^\]]+)\]\(([^)\s]+)\)/);
       if (m) {
-        out += `<a href="${escapeHtml(m[2])}">${renderInline(m[1], resolveMention)}</a>`;
+        out += `<a href="${escapeHtml(m[2])}"${linkTarget(m[2])}>${renderInline(m[1], resolveMention)}</a>`;
         i += m[0].length;
         continue;
       }

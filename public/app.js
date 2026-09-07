@@ -219,6 +219,23 @@ function nativeClick(e) {
   return !!(e.metaKey || e.ctrlKey || e.shiftKey) || (e.button ?? 0) !== 0;
 }
 
+/* Every link that leaves weave opens in a new tab (Kyle, 2026-09-07) —
+   a markdown link in a description, a url cell, a mention that resolved to
+   a far site — so the reader never loses the page they were on. Routes and
+   same-origin paths stay in place. One capture-phase listener: the anchor
+   is retargeted before the browser follows it, whatever surface drew it,
+   and an anchor that already chose its target keeps it. */
+function externalLinksOpenInTabs(e) {
+  const a = e.target?.closest?.('a[href]');
+  if (!a || a.target) return;
+  let u;
+  try { u = new URL(a.getAttribute('href'), location.href); } catch { return; }
+  if (u.origin === location.origin || !/^https?:$/.test(u.protocol)) return;
+  a.target = '_blank';
+  a.rel = 'noopener';
+}
+addEventListener('click', externalLinksOpenInTabs, true);
+
 /* The second half, for every surface that navigates WITHOUT being a link: a
    grid row, the relation panel's rows, an activity row, a ⌘K hit, a node on
    the relation map. Each declares where it goes as data-href — nothing else —
