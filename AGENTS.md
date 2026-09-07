@@ -177,6 +177,13 @@ Notes that save round trips:
   signature, group (logic, text, number, date), a one-line doc and an example
   that parses — the same card the dialog shows on a chip. A formula cannot
   read a document or an attachments field.
+  The verdict carries `type` — what the preview computed to: `number`,
+  `text`, `boolean`, `list`, `null`, `error`. Pass `scan: true` (`--scan` on
+  the CLI) to evaluate over up to 200 rows: `scan: {rows, capped, nulls,
+  errors, sampleByOutcome: {ok, null, error}}`, each sample naming the row
+  (and `error` its message). A formula valid on row 1 and null on a third of
+  the table is the bug one preview cannot show — assert `nulls` and `errors`
+  before saving.
 - **Read the schema first.** `weave_schema` returns spaces, tables, fields, and
   types, including each table's own description — the workspace documents itself.
 - **Documents are addressable.** Over HTTP, `/e/Task#12/doc.md`, `.html`, and

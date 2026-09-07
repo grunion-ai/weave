@@ -180,3 +180,83 @@ test('formula-check on a missing table is a 404, not a crash', async () => {
   const r = await post('/api/tables/Nope/formula-check', { expression: '1 + 1' });
   assert.ok(r.status === 404 || r.status === 400, `got ${r.status}`);
 });
+
+/* ---------- scan: the whole table, not one row (direction B, 2026-09-07) ----------
+   One preview row proves the formula parses; it does not prove it is right.
+   scan:true evaluates over up to 200 rows and returns the null and error
+   counts, a sample row per outcome, and the result type — the numbers an
+   agent asserts against and the dialog draws. */
+function scanSeeded() {
+  const w = new Weave();
+  w.createSpace({ name: 'Sales' });
+  const t = w.createTable({ space: 'Sales', name: 'Deals' });
+  w.addField(t.id, { name: 'Amount', type: 'number' });
+  w.addField(t.id, { name: 'Close Date', type: 'date' });
+  w.addField(t.id, { name: 'Unit', type: 'text' });
+  w.createEntity(t.id, { Name: 'Acme', Amount: 21, 'Close Date': '2026-10-01', Unit: 'days' });
+  w.createEntity(t.id, { Name: 'Bolt', Amount: 5, Unit: 'days' });
+  w.createEntity(t.id, { Name: 'Cara', Amount: 30, 'Close Date': '2026-11-01', Unit: 'fortnights' });
+  return { w, t };
+}
+
+test('checkFormula reports the result type of the preview', () => {
+  const { w, t } = scanSeeded();
+  assert.equal(w.checkFormula(t.id, 'Amount * 2').type, 'number');
+  assert.equal(w.checkFormula(t.id, 'concat(Name, "!")').type, 'text');
+  assert.equal(w.checkFormula(t.id, 'Amount > 10').type, 'boolean');
+  assert.equal(w.checkFormula(t.id, 'dateadd([Close Date], 1, "days")').type, 'text');
+  const empty = new Weave(); empty.createSpace({ name: 'S' }); const et = empty.createTable({ space: 'S', name: 'T' });
+  assert.equal('type' in empty.checkFormula(et.id, '1 + 1'), false, 'no row, no type');
+});
+
+test('checkFormula scan counts nulls and errors over the table and samples each outcome', () => {
+  const { w, t } = scanSeeded();
+  // The static check stubs every field as 0, so a unit read from a field
+  // has to sit behind a branch the stub does not take — the shape of the
+  // bug a scan exists to catch: valid on row 1, wrong further down.
+  const r = w.checkFormula(t.id, 'datediff([Close Date], today(), if(Amount > 10, Unit, "days"))', { scan: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.scan.rows, 3);
+  assert.equal(r.scan.nulls, 1, 'Bolt has no Close Date');
+  assert.equal(r.scan.errors, 1, 'Cara\'s unit is not one the function takes');
+  assert.equal(r.scan.sampleByOutcome.null.entity, 'Bolt');
+  assert.equal(r.scan.sampleByOutcome.error.entity, 'Cara');
+  assert.match(r.scan.sampleByOutcome.error.error, /Unknown date unit/);
+  assert.equal(r.scan.sampleByOutcome.ok.entity, 'Acme');
+  assert.equal(typeof r.scan.sampleByOutcome.ok.value, 'number');
+  assert.equal(r.type, 'number', 'the type comes from the rows that computed, not the first row alone');
+  // The preview row is still the first row.
+  assert.equal(r.previewEntity, 'Acme');
+});
+
+test('checkFormula scan is capped at 200 rows and absent without the option', () => {
+  const { w, t } = scanSeeded();
+  for (let i = 0; i < 210; i++) w.createEntity(t.id, { Name: `Row ${i}`, Amount: i });
+  const r = w.checkFormula(t.id, 'Amount', { scan: true });
+  assert.equal(r.scan.rows, 200);
+  assert.equal(r.scan.capped, true);
+  assert.equal('scan' in w.checkFormula(t.id, 'Amount'), false);
+  const clean = w.checkFormula(t.id, 'Amount', { scan: true });
+  assert.equal(clean.scan.nulls, 0);
+  assert.equal(clean.scan.errors, 0);
+  assert.equal(clean.scan.sampleByOutcome.null, null);
+  assert.equal(clean.scan.sampleByOutcome.error, null);
+});
+
+test('a scan of an invalid expression is the same verdict, no scan block', () => {
+  const { w, t } = scanSeeded();
+  const r = w.checkFormula(t.id, 'if(upper(', { scan: true });
+  assert.equal(r.ok, false);
+  assert.equal('scan' in r, false);
+});
+
+test('formula-check endpoint accepts scan and returns the type', async () => {
+  await post('/api/tables/Deals/entities', { Name: 'NoAmount' });
+  const r = await post('/api/tables/Deals/formula-check', { expression: 'Amount * 2', scan: true });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.type, 'number');
+  assert.equal(r.data.scan.rows, 2);
+  assert.equal(r.data.scan.nulls, 0, 'a missing number multiplies to 0, not null');
+  const plain = await post('/api/tables/Deals/formula-check', { expression: 'Amount * 2' });
+  assert.equal('scan' in plain.data, false);
+});

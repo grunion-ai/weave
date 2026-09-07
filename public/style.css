@@ -1610,6 +1610,11 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .fx-status { min-height: 18px; margin-top: 4px; font-family: var(--tblr-font-monospace); font-size: 11.5px; }
 .fx-status.ok { color: var(--tblr-success, #2fb344); }
 .fx-status.err { color: var(--tblr-danger, #d63939); }
+.fx-type { font-family: var(--tblr-font-monospace); font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--tblr-primary-lt, #e8f0ff); color: var(--tblr-primary); margin-left: 4px; vertical-align: 1px; }
+.fx-rowpick { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-family: var(--tblr-font-monospace); font-size: 11.5px; color: var(--tblr-secondary); }
+.fx-rowpick button { border: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); border-radius: 5px; font-size: 12px; line-height: 1.3; padding: 0 6px; color: var(--tblr-secondary); cursor: pointer; }
+.fx-rowpick button:disabled { opacity: .4; cursor: default; }
+.fx-scan { margin-left: auto; color: var(--tblr-warning, #f59f00); }
 .fx-chip-rows { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
 .fx-chip-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
 .fx-chip-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--tblr-secondary); margin-right: 2px; }

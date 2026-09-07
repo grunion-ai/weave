@@ -609,7 +609,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.query(m[1], { ...body, viewerZone }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/formula-check$/)) && rx.method === 'POST') {
-          return out(200, weave.checkFormula(m[1], body?.expression, { entity: body?.entity ?? null, excludeField: body?.excludeField ?? null }));
+          return out(200, weave.checkFormula(m[1], body?.expression, { entity: body?.entity ?? null, excludeField: body?.excludeField ?? null, scan: Boolean(body?.scan) }));
         }
         // Every column summarised — the five-number summary and a histogram
         // for numbers, a distribution for chips, the span for dates — plus

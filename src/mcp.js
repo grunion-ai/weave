@@ -176,10 +176,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_check_formula',
-    description: 'Validate a formula expression against a table BEFORE saving it — syntax, function names, field names — and, when the table has rows, preview the computed value on one real entity. The authoring loop: check → fix until ok:true → weave_add_field/weave_update_field with {expression} → read the cell back. Returns {ok, error?, preview?, previewEntity?}; never throws on a bad expression. Pass excludeField (field name or id) when editing an existing formula field so it cannot reference itself; pass entity (id) to preview a specific row.',
+    description: 'Validate a formula expression against a table BEFORE saving it — syntax, function names, field names — and, when the table has rows, preview the computed value on one real entity. The authoring loop: check → fix until ok:true → weave_add_field/weave_update_field with {expression} → read the cell back. Returns {ok, error?, preview?, previewEntity?, type?} — type is what the preview computed to (number, text, boolean, list, null, error); never throws on a bad expression. Pass excludeField (field name or id) when editing an existing formula field so it cannot reference itself; pass entity (id) to preview a specific row. scan: true evaluates over up to 200 rows and adds scan: {rows, capped, nulls, errors, sampleByOutcome: {ok, null, error}} — a formula valid on row 1 and null on a third of the table is the bug one preview cannot show; assert nulls and errors are what you expect before saving.',
     inputSchema: {
       type: 'object',
-      properties: { db: { type: 'string' }, expression: { type: 'string' }, entity: { type: 'string' }, excludeField: { type: 'string' } },
+      properties: { db: { type: 'string' }, expression: { type: 'string' }, entity: { type: 'string' }, excludeField: { type: 'string' }, scan: { type: 'boolean' } },
       required: ['db', 'expression'],
     },
   },
@@ -467,7 +467,7 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_add_field':
       return weave.addField(args.db, { name: args.name, type: args.type, config: args.config ?? {} });
     case 'weave_check_formula':
-      return weave.checkFormula(args.db, args.expression, { entity: args.entity ?? null, excludeField: args.excludeField ?? null });
+      return weave.checkFormula(args.db, args.expression, { entity: args.entity ?? null, excludeField: args.excludeField ?? null, scan: Boolean(args.scan) });
     case 'weave_add_relation':
       return weave.addRelation(args.db, { name: args.name, targetDb: args.targetDb, targetDbs: args.targetDbs, cardinality: args.cardinality ?? 'many-to-one', inverseName: args.inverseName });
     case 'weave_create_automation':

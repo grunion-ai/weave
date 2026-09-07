@@ -26,7 +26,8 @@ const s = await launch('formula builder chips', (weave) => {
   weave.addField(deals, { name: 'Close Date', type: 'date' });
   weave.addField(deals, { name: 'Notes', type: 'document' });
   weave.addField(deals, { name: 'Files', type: 'attachments' });
-  weave.createEntity(deals, { name: 'Acme deal', values: { Amount: 12000 } });
+  weave.createEntity(deals, { name: 'Acme deal', values: { Amount: 12000, 'Close Date': '2026-10-01' } });
+  weave.createEntity(deals, { name: 'Bolt deal', values: { Amount: 500 } });
 });
 
 if (s) {
@@ -131,6 +132,54 @@ if (s) {
     // The name follows too.
     await page.fill('#tray input[name="name"]', 'Shout');
     await page.waitForFunction(() => document.querySelector('#tray .fx-agent pre')?.textContent.includes('Deals Shout formula'));
+    await page.close();
+  });
+}
+
+/* Direction B: a typed result badge, a row cycler, and the null/error count
+   from a scan of the table; the number costume only for a numeric result. */
+if (s) {
+  const { browser, base } = s;
+  const openBuilder = async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+    await page.click('.wv-grid .add-field-btn');
+    await page.waitForSelector('#tray');
+    await page.locator('#tray .fx-toggle input').check();
+    await page.waitForSelector('#tray .fx-expr');
+    return page;
+  };
+  const costume = (page) => page.locator('#tray .dlg-sec', { has: page.locator('.dlg-lbl', { hasText: /^Result format$/ }) });
+
+  test('the verdict wears the result type, and the number costume follows it', async () => {
+    const page = await openBuilder();
+    await page.fill('#tray .fx-expr', 'Amount * 2');
+    await page.waitForSelector('#tray .fx-status.ok');
+    await page.waitForFunction(() => document.querySelector('#tray .fx-type')?.textContent === 'number');
+    assert.match(await page.locator('#tray .fx-status').textContent(), /= 24000/);
+    assert.equal(await costume(page).count(), 1, 'a number result takes a costume');
+    await page.fill('#tray .fx-expr', 'upper([Name])');
+    await page.waitForFunction(() => document.querySelector('#tray .fx-type')?.textContent === 'text');
+    await page.waitForFunction(() => ![...document.querySelectorAll('#tray .dlg-lbl')].some((l) => l.textContent === 'Result format'));
+    assert.equal(await costume(page).count(), 0, 'a text result has nothing to format');
+    await page.close();
+  });
+
+  test('the row cycler steps through the table and the scan counts the rows that did not compute', async () => {
+    const page = await openBuilder();
+    await page.fill('#tray .fx-expr', 'dateadd([Close Date], 1, "days")');
+    await page.waitForSelector('#tray .fx-status.ok');
+    const pick = page.locator('#tray .fx-rowpick');
+    await page.waitForFunction(() => /row 1 of 2/.test(document.querySelector('#tray .fx-rowpick')?.textContent ?? ''));
+    assert.match(await pick.textContent(), /Acme deal/);
+    await page.waitForFunction(() => /1 row → null/.test(document.querySelector('#tray .fx-scan')?.textContent ?? ''));
+    await pick.locator('button.next').click();
+    await page.waitForFunction(() => /row 2 of 2/.test(document.querySelector('#tray .fx-rowpick')?.textContent ?? ''));
+    assert.match(await pick.textContent(), /Bolt deal/);
+    await page.waitForFunction(() => /= null/.test(document.querySelector('#tray .fx-status')?.textContent ?? ''));
+    assert.match(await page.locator('#tray .fx-scan').textContent(), /1 row → null/, 'the scan figures stay while stepping');
+    await pick.locator('button.next').click();
+    await page.waitForFunction(() => /row 1 of 2/.test(document.querySelector('#tray .fx-rowpick')?.textContent ?? ''));
     await page.close();
   });
 }

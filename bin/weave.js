@@ -516,10 +516,11 @@ async function main() {
       throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, delete`);
     }
     case 'formula': {
-      // weave formula check <db> '<expression>' [--entity id] [--exclude-field name]
-      // Validate before saving; previews on a real row when the table has one.
+      // weave formula check <db> '<expression>' [--entity id] [--exclude-field name] [--scan]
+      // Validate before saving; previews on a real row when the table has one;
+      // --scan evaluates over up to 200 rows for the null and error counts.
       const [sub, db, expression] = args;
-      if (sub === 'check') return out(w.checkFormula(db, expression, { entity: flags.entity ?? null, excludeField: flags['exclude-field'] ?? null }));
+      if (sub === 'check') return out(w.checkFormula(db, expression, { entity: flags.entity ?? null, excludeField: flags['exclude-field'] ?? null, scan: Boolean(flags.scan) }));
       throw new WeaveError(`Unknown formula subcommand '${sub}'. Try: check`);
     }
     case 'relation': {

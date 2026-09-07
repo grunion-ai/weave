@@ -40,6 +40,8 @@ const FUNCS = {
   // Date math (Feature #44). Units: days, weeks, months, years. dateadd
   // returns the value's own shape — a date in, a date out.
   dateadd: (date, n, unit = 'days') => {
+    // An empty date is null, not the epoch: new Date(null) is 1970 (Issue #237).
+    if (date == null || date === '') return null;
     const d = new Date(date);
     if (Number.isNaN(d.getTime())) return null;
     const u = String(unit).replace(/s$/, '');

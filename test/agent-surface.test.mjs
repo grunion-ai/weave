@@ -249,3 +249,24 @@ test('the field-type list in the tool descriptions is the whole list', () => {
   assert.match(addField.description, /weave_vocabulary/,
     'the tool that takes a type must point at the list of types');
 });
+
+/* An option is a capability too. checkFormula grew `scan` (direction B,
+   2026-09-07); a door that takes the expression but drops the option is
+   half a door. Every option the engine's signature names must be accepted
+   by the MCP schema, the CLI flags and the HTTP route. */
+test('every checkFormula option reaches every door', () => {
+  const ENGINE = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
+  const sig = ENGINE.match(/\n  checkFormula\(dbRef, expression, \{([^}]*)\}/)?.[1] ?? '';
+  const options = sig.split(',').map((p) => p.trim().split(/[=\s]/)[0]).filter(Boolean);
+  assert.ok(options.includes('scan'), 'the engine takes scan');
+  const tool = TOOLS.find((t) => t.name === 'weave_check_formula');
+  const cliBlock = CLI.slice(CLI.indexOf("case 'formula'"), CLI.indexOf("case 'formula'") + 1200);
+  const routeBlock = ROUTES.slice(ROUTES.indexOf('formula-check'), ROUTES.indexOf('formula-check') + 600);
+  const kebab = (k) => k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+  for (const k of options) {
+    assert.ok(tool.inputSchema.properties[k], `weave_check_formula schema lacks ${k}`);
+    assert.ok(cliBlock.includes(`'${kebab(k)}'`) || cliBlock.includes(`flags.${k}`), `weave formula check lacks --${kebab(k)}`);
+    assert.ok(routeBlock.includes(`body?.${k}`), `POST /api/tables/:ref/formula-check drops ${k}`);
+  }
+  assert.match(AGENTS, /scan/, 'AGENTS.md must say what scan returns');
+});

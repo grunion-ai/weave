@@ -57,3 +57,9 @@ test('errors', () => {
   assert.throws(() => evaluate('[Unclosed', get));
   assert.throws(() => evaluate('"unclosed', get));
 });
+
+test('dateadd on an empty date is null, not the epoch (Issue #237)', () => {
+  assert.equal(evaluate('dateadd(Empty, 1, "days")', (n) => fields[n]), null);
+  assert.equal(evaluate('dateadd("", 1, "days")', () => null), null);
+  assert.equal(evaluate('dateadd("2026-10-01", 1, "days")', () => null), '2026-10-02');
+});

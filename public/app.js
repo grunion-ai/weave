@@ -4771,34 +4771,62 @@ function stateListEditor(state, onChange) {
 
 /* The formula builder: expression plus insertable chips for this table's
    fields and the engine's functions — the two vocabularies a formula has. */
-function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () => selfName ?? '' } = {}) {
+function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () => selfName ?? '', onType = null } = {}) {
   const ta = el('textarea', {
     class: 'fx-expr', rows: 3, spellcheck: 'false',
     placeholder: 'e.g. if(Estimate > 5, "big", "small")',
   });
   ta.value = state.expression ?? '';
   /* Live verdict under the expression: the same check the save runs, so
-     nothing is a surprise at submit. Valid + a row → a real preview value;
-     invalid → the parser's message, in place, while typing. */
+     nothing is a surprise at submit. Valid + a row → a real preview value
+     with its type; invalid → the parser's message, in place, while typing.
+     Direction B (2026-09-07): the check scans the table behind the preview
+     (up to 200 rows) for the null and error counts, and the row cycler
+     steps the preview through the rows — one row proves the formula
+     parses, not that it is right. */
   const status = el('div', { class: 'fx-status' });
+  const scanNote = el('span', { class: 'fx-scan' });
+  const pickLabel = el('span', { class: 'fx-rowpick-lbl' });
+  const prevBtn = el('button', { type: 'button', class: 'prev', 'aria-label': 'Previous row', onclick: () => step(-1) }, '‹');
+  const nextBtn = el('button', { type: 'button', class: 'next', 'aria-label': 'Next row', onclick: () => step(1) }, '›');
+  const rowpick = el('div', { class: 'fx-rowpick', hidden: '' }, prevBtn, pickLabel, nextBtn, scanNote);
+  let rows = [], idx = 0, lastScan = null, lastType = null;
   let seq = 0, timer;
-  const runCheck = async () => {
+  const fmt = (v) => (typeof v === 'string' ? JSON.stringify(v) : v === null || v === undefined ? 'null' : Array.isArray(v) ? JSON.stringify(v) : String(v));
+  const drawPick = () => {
+    rowpick.hidden = !rows.length;
+    pickLabel.textContent = rows.length ? `row ${idx + 1} of ${rows.length} — ${JSON.stringify(rows[idx].name ?? '')}` : '';
+    prevBtn.disabled = nextBtn.disabled = rows.length < 2;
+    const parts = [];
+    if (lastScan?.nulls) parts.push(`${lastScan.nulls} row${lastScan.nulls === 1 ? '' : 's'} → null`);
+    if (lastScan?.errors) parts.push(`${lastScan.errors} → #ERR`);
+    scanNote.textContent = parts.length ? `⚠ ${parts.join(' · ')}${lastScan.capped ? ' (first 200 rows)' : ''}` : '';
+  };
+  const setType = (t) => { if (t !== lastType) { lastType = t; onType?.(t); } };
+  const runCheck = async ({ scan = true } = {}) => {
     const expr = (state.expression ?? '').trim();
     const mine = ++seq;
-    if (!expr) { status.className = 'fx-status'; status.textContent = ''; return; }
+    if (!expr) { status.className = 'fx-status'; status.textContent = ''; lastScan = null; drawPick(); return; }
     try {
-      const r = await api('POST', `/tables/${db.id}/formula-check`, { expression: expr, excludeField: selfName });
+      const r = await api('POST', `/tables/${db.id}/formula-check`, { expression: expr, excludeField: selfName, scan, entity: rows[idx]?.id ?? null });
       if (mine !== seq) return;
       status.className = 'fx-status ' + (r.ok ? 'ok' : 'err');
-      status.textContent = r.ok
-        ? ('preview' in r ? `= ${typeof r.preview === 'string' ? JSON.stringify(r.preview) : r.preview}${r.previewEntity ? `   (${r.previewEntity})` : ''}` : '✓ valid')
-        : r.error;
+      status.replaceChildren();
+      if (!r.ok) { status.textContent = r.error; lastScan = null; drawPick(); return; }
+      if (!('preview' in r)) { status.textContent = '✓ valid'; drawPick(); return; }
+      status.append(`= ${fmt(r.preview)}`, ' ', el('span', { class: 'fx-type' }, r.type), r.previewEntity ? `   (${r.previewEntity})` : '');
+      if (scan) lastScan = r.scan ?? null;
+      setType(r.type);
+      drawPick();
     } catch (err) {
       if (mine !== seq) return;
       status.className = 'fx-status err';
       status.textContent = err.message;
     }
   };
+  const step = (d) => { if (rows.length < 2) return; idx = (idx + d + rows.length) % rows.length; drawPick(); runCheck({ scan: false }); };
+  // The rows the cycler walks: the same first 200 the scan reads.
+  api('GET', `/tables/${db.id}/entities?limit=200`).then((r) => { rows = (r.items ?? []).map((e) => ({ id: e.id, name: e.name })); drawPick(); }).catch(() => {});
   const queueCheck = () => { clearTimeout(timer); timer = setTimeout(runCheck, 250); };
   /* The agent panel (direction C, 2026-09-07): the CLI lines and MCP
      sequence for what is being built, closed by default, live with the
@@ -4865,6 +4893,7 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
   return el('div', {},
     ta,
     status,
+    rowpick,
     el('div', { class: 'fx-chip-rows' },
       el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'fields'), ...fieldChips),
       ...fnRows),
@@ -5071,9 +5100,15 @@ function fieldDialog(db, existing, after) {
     const kids = [];
     if (state.computed === 'formula') {
       // The script editor lives in the tray (Kyle, 2026-08-23), not a window.
-      kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null, fieldName: () => nameInput.value })));
-      // A numeric result wears the same costume a number field does.
-      kids.push(...numberCostumeControls(state, drawCfg, changed, { label: 'Result format' }));
+      // A numeric result wears the same costume a number field does — and
+      // only a numeric one: the section draws once the check names the type
+      // (direction B), and stays for a table with no rows to type it on.
+      const costumeWrap = el('div', { class: 'full' });
+      let resultType = null;
+      const drawCostume = () => costumeWrap.replaceChildren(...(resultType === null || resultType === 'number' ? numberCostumeControls(state, drawCostume, changed, { label: 'Result format' }) : []));
+      kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null, fieldName: () => nameInput.value, onType: (t) => { resultType = t; drawCostume(); } })));
+      drawCostume();
+      kids.push(costumeWrap);
     } else {
       const t = state.type;
       // The Name field carries the table's row term (Feature #40).

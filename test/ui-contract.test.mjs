@@ -1633,7 +1633,8 @@ test('number costume controls: unit for plain numbers, an ISO-code picker for cu
   assert.match(ctl, /dsection\('Currency', pick/, 'currency takes a code through the picker dialect');
   assert.match(ctl, /fdc\.CURRENCIES/, 'codes come from the tested core list');
   const dlg = fnBody('fieldDialog');
-  assert.match(dlg, /numberCostumeControls\(state, drawCfg, changed, \{ label: 'Result format' \}\)/, 'a formula result wears the same costume');
+  assert.match(dlg, /numberCostumeControls\(state, drawCostume, changed, \{ label: 'Result format' \}\)/, 'a formula result wears the same costume');
+  assert.match(dlg, /resultType === null \|\| resultType === 'number'/, 'and only a numeric result wears it (Feature #206) — a table with no rows to type on keeps the section');
   // currency clearing like the other costume keys is behavior-tested on
   // field-dialog-core.editPatchConfig
 });

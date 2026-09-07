@@ -198,6 +198,9 @@ function normaliseOption(o) {
 // contract every surface (vocabulary, field dialog, handbook) is gated on.
 const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'];
 const MAX_COMPUTE_DEPTH = 8;
+// A formula scan reads this many rows at most: enough to catch a null on a
+// third of the table, cheap enough to run on every keystroke.
+const FORMULA_SCAN_CAP = 200;
 
 /* The `field` type holds a field DEFINITION as its value — the schema of a
    field one level down the hierarchy. It is what terminates the meta-model's
@@ -3131,16 +3134,41 @@ export class Weave {
   /* The authoring loop for formulas — validate an expression against a
      table's fields and, when the table has rows, evaluate it on one so the
      author (human or agent) sees a real result before saving. Never throws
-     on a bad expression: the verdict is the return value. */
-  checkFormula(dbRef, expression, { entity = null, excludeField = null } = {}) {
+     on a bad expression: the verdict is the return value. `type` names what
+     the preview computed to (number, text, boolean, list, null, error).
+     scan:true (direction B, 2026-09-07) evaluates over up to 200 rows —
+     one preview row proves the formula parses, not that it is right — and
+     returns {rows, capped, nulls, errors, sampleByOutcome: {ok, null,
+     error}}; the type then comes from the rows that computed. */
+  checkFormula(dbRef, expression, { entity = null, excludeField = null, scan = false } = {}) {
     const db = this.getTable(dbRef);
     const names = Object.values(db.fields).filter((f) => f.id !== excludeField && f.name !== excludeField).map((f) => f.name);
     const checked = checkExpression(expression, names);
     if (!checked.ok) return checked;
-    const e = entity ? this.getEntity(entity) : this.listEntities(db.id)[0];
+    const rows = this.listEntities(db.id);
+    const e = entity ? this.getEntity(entity) : rows[0];
     if (!e) return { ok: true };
     const temp = { id: '__preview', name: '__preview', type: 'formula', config: { expression } };
-    return { ok: true, preview: this.#resolve(e, db, temp, 0), previewEntity: String(e.values[db.nameFieldId] ?? '') };
+    const nameOf = (row) => String(row.values[db.nameFieldId] ?? '');
+    const kindOf = (v) => (v == null ? 'null' : typeof v === 'string' && v.startsWith('#ERR: ') ? 'error'
+      : Array.isArray(v) ? 'list' : typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'boolean' : 'text');
+    const preview = this.#resolve(e, db, temp, 0);
+    const result = { ok: true, preview, previewEntity: nameOf(e), type: kindOf(preview) };
+    if (!scan) return result;
+    const sample = rows.slice(0, FORMULA_SCAN_CAP);
+    const out = { rows: sample.length, capped: rows.length > FORMULA_SCAN_CAP, nulls: 0, errors: 0, sampleByOutcome: { ok: null, null: null, error: null } };
+    const types = {};
+    for (const row of sample) {
+      const v = this.#resolve(row, db, temp, 0);
+      const kind = kindOf(v);
+      if (kind === 'null') { out.nulls++; out.sampleByOutcome.null ??= { entity: nameOf(row), id: row.id }; }
+      else if (kind === 'error') { out.errors++; out.sampleByOutcome.error ??= { entity: nameOf(row), id: row.id, error: v.slice(6) }; }
+      else { types[kind] = (types[kind] ?? 0) + 1; out.sampleByOutcome.ok ??= { entity: nameOf(row), id: row.id, value: v }; }
+    }
+    const dominant = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
+    if (dominant) result.type = dominant[0];
+    result.scan = out;
+    return result;
   }
 
   /* Change a field's type along TYPE_MIGRATIONS, coercing every row's value
