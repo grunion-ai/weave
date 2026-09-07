@@ -375,6 +375,27 @@ test('the description block is compact', () => {
   assert.equal(floor, px(edit['min-height']), 'autosize floor must match CSS min-height');
 });
 
+/* ---------- Feature #186: the description clamps to five lines ----------
+   A long glossary under a table title pushed the grid a screen down. The
+   rendered markdown sits in .view-desc-body; the clamp is a max-height of
+   five description line-heights, so "five lines" stays true if the
+   line-height ever moves, and a Show more control toggles it. */
+
+test('the description clamp is five description line-heights, toggled by a control the editor ignores', () => {
+  const desc = rulesFor('.view-desc');
+  const clamped = rulesFor('.view-desc-body.clamped');
+  assert.equal(clamped.overflow, 'hidden');
+  const m = clamped['max-height']?.match(/calc\((\d+) \* ([\d.]+)em\)/);
+  assert.ok(m, `max-height is calc(<lines> * <line-height>em), got ${clamped['max-height']}`);
+  assert.equal(Number(m[1]), 5, 'five lines');
+  assert.equal(m[2], desc['line-height'], 'in the description\'s own line-height');
+  const vh = fnBody('viewHeader');
+  assert.match(vh, /class: 'view-desc-body clamped'/, 'the rendered markdown has its own body element, born clamped');
+  assert.match(vh, /class: 'view-desc-more'/, 'the Show more control exists');
+  assert.match(vh, /closest\('a,textarea,button'\)/, 'a click on the control does not start an edit');
+  assert.ok(rulesFor('.view-desc-more').cursor, 'the control reads as clickable');
+});
+
 /* ---------- defect: edits did not appear without a hard reload ---------- */
 
 test('static UI assets are served revalidating', async () => {
