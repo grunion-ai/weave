@@ -475,6 +475,8 @@ The script editor validates as you type: a parse error, an unknown function or a
 
 The chips under the script are the whole vocabulary: this table's fields first, then the functions in the four groups the grammar has — **logic** (\`if\`, \`empty\`, \`contains\`), **text**, **number**, **date**. Hover, focus or tap a chip and a card shows its signature, one sentence of what it does and an example; click it and the call lands with the caret between the parens. A document or an attachments field is listed greyed with the reason — a formula reads values, not prose or files — rather than left out. \`weave vocabulary formulaFunctions\` (and \`weave_vocabulary\`, \`GET /api/vocabulary\`) serves the same cards verbatim.
 
+Under the chips, **As an agent would do it** (closed by default) prints the three calls that do what the dialog is doing — \`weave formula check\`, \`weave field add\` (or \`update\`) with the expression, \`weave get\` to read the cell back — and the MCP sequence \`weave_check_formula → weave_add_field → weave_get_entity\`, live with the typing. Copy it into a script and the browser was never the only door.
+
 ## Gotchas
 
 A formula reads **raw** values. A number's currency and unit are display costumes and never reach the expression, which is what keeps \`Price * Count\` from breaking when someone turns on thousands separators.

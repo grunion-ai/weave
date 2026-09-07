@@ -585,6 +585,31 @@
     return bareSafe ? name : `[${name}]`;
   }
 
+  /* The agent panel (design review 2026-09-01, direction C): the calls an
+     agent would make for what the dialog just built — check until ok:true,
+     save, read a cell back — as CLI lines and the MCP tool sequence, from
+     what the dialog knows (table, field, expression). Static text: a human
+     copies it; the panel that could not express what the dialog did would
+     mean a browser-only gate slipped past the agent-surface suite. */
+  const shq = (v) => "'" + String(v).replace(/'/g, "'\\''") + "'";
+  // A placeholder (<name>) stays bare: it is for the reader to replace.
+  const arg = (v) => (/^[A-Za-z0-9_./#-]+$|^<[a-z]+>$/.test(v) ? v : shq(v));
+  function agentRecipe({ table, field, expression, edit = false }) {
+    const expr = (expression ?? '').trim() || '<expression>';
+    const name = (field ?? '').trim() || '<name>';
+    const t = arg(table);
+    const cfg = shq(JSON.stringify({ expression: expr }));
+    const cli = [
+      { note: 'check until ok:true (previews on a real row)', cmd: 'weave formula check ' + t + ' ' + shq(expr) + (edit ? ' --exclude-field ' + arg(name) : '') },
+      { note: 'save — an invalid expression is rejected with the same error',
+        cmd: edit ? 'weave field update ' + t + ' ' + arg(name) + ' --config ' + cfg : 'weave field add ' + t + ' ' + arg(name) + ' formula --config ' + cfg },
+      { note: 'verify the cell', cmd: 'weave get ' + t + '#1' },
+    ];
+    const mcp = ['weave_check_formula', edit ? 'weave_update_field' : 'weave_add_field', 'weave_get_entity'];
+    const text = cli.map((l, i) => '# ' + (i + 1) + ' · ' + l.note + '\n' + l.cmd).join('\n') + '\n# MCP: ' + mcp.join(' → ');
+    return { cli, mcp, text };
+  }
+
   /* The fold-back: the schema flattens a field's config onto the field view,
      and the tray reads {type, config} — so reopening a column means folding
      the flat view back into the canonical definition. Without it every
@@ -643,7 +668,7 @@
   }
 
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
+    FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,

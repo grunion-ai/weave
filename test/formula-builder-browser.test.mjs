@@ -106,3 +106,31 @@ if (s) {
     await page.close();
   });
 }
+
+/* Direction C: the agent panel — a collapsed footer under the script that
+   prints the equivalent CLI lines and MCP sequence, live with the typing. */
+if (s) {
+  const { browser, base } = s;
+  test('the script section carries a collapsed "As an agent would do it" footer that follows the typing', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+    await page.click('.wv-grid .add-field-btn');
+    await page.waitForSelector('#tray');
+    await page.fill('#tray input[name="name"]', 'Health');
+    await page.locator('#tray .fx-toggle input').check();
+    const panel = page.locator('#tray .fx-agent');
+    await panel.waitFor();
+    assert.equal(await panel.locator('details').evaluate((d) => d.open), false, 'closed on load');
+    assert.match(await panel.locator('summary').textContent(), /as an agent would do it/i);
+    await page.fill('#tray .fx-expr', 'upper([Name])');
+    await page.locator('#tray .fx-agent summary').click();
+    const text = await panel.locator('pre').textContent();
+    assert.ok(text.includes(`weave formula check Deals 'upper([Name])'`), text);
+    assert.ok(text.includes(`weave field add Deals Health formula --config '{"expression":"upper([Name])"}'`), text);
+    assert.ok(text.includes('weave_check_formula → weave_add_field → weave_get_entity'), text);
+    // The name follows too.
+    await page.fill('#tray input[name="name"]', 'Shout');
+    await page.waitForFunction(() => document.querySelector('#tray .fx-agent pre')?.textContent.includes('Deals Shout formula'));
+    await page.close();
+  });
+}

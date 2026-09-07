@@ -1618,6 +1618,9 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .fx-chip:hover, .fx-chip:focus-visible { border-color: var(--tblr-primary); outline: none; }
 .fx-chip.excluded { opacity: .45; cursor: not-allowed; text-decoration: line-through; }
 .fx-chip.excluded:hover { border-color: var(--tblr-border-color); }
+.fx-agent { margin-top: 12px; border-top: 1px dashed var(--tblr-border-color); padding-top: 8px; }
+.fx-agent summary { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); font-weight: 700; cursor: pointer; }
+.fx-agent pre { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--tblr-dark, #1b2733); color: #cfe0f2; font-family: var(--tblr-font-monospace); font-size: 11px; line-height: 1.6; overflow-x: auto; white-space: pre; }
 .fx-sigcard { margin-top: 8px; padding: 8px 12px; border: 1px solid var(--tblr-border-color); border-radius: 8px; background: var(--tblr-bg-surface); box-shadow: 0 6px 18px rgba(10, 20, 35, .12); max-width: 360px; }
 .fx-sigcard .sig { font-family: var(--tblr-font-monospace); font-size: 12px; color: var(--tblr-primary); }
 .fx-sigcard .doc { font-size: 12px; color: var(--tblr-secondary); margin-top: 2px; }

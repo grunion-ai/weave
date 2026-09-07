@@ -1525,7 +1525,8 @@ test('formula is a checkbox; the script editor lives inside the tray (Kyle, 2026
   const dlg = fnBody('fieldDialog');
   assert.doesNotMatch(dlg, /def-code|\{ \} definition/, 'no definition pane');
   assert.doesNotMatch(APP, /formulaScriptDialog/, 'no separate script window');
-  assert.match(dlg, /dsection\('Script', formulaBuilder\(db, state, changed, \{ selfName: existing\?\.name \?\? null \}\)\)/, 'the builder is a tray section, told which field it edits');
+  assert.match(dlg, /dsection\('Script', formulaBuilder\(db, state, changed, \{ selfName: existing\?\.name \?\? null, fieldName: \(\) => nameInput\.value/, 'the builder is a tray section, told which field it edits and what it is being called');
+  assert.match(fnBody('formulaBuilder'), /class: 'fx-agent'/, 'the agent panel rides under the script (Feature #205)');
   assert.match(dlg, /fdc\.typeChoices\(isEdit \? existing\.type : null\)/, 'existing fields see self + migrations only');
   assert.match(dlg, /patch\.type = def\.type/, 'a changed type is sent as a migration');
 });

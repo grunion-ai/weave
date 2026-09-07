@@ -4771,7 +4771,7 @@ function stateListEditor(state, onChange) {
 
 /* The formula builder: expression plus insertable chips for this table's
    fields and the engine's functions — the two vocabularies a formula has. */
-function formulaBuilder(db, state, onChange, { selfName = null } = {}) {
+function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () => selfName ?? '' } = {}) {
   const ta = el('textarea', {
     class: 'fx-expr', rows: 3, spellcheck: 'false',
     placeholder: 'e.g. if(Estimate > 5, "big", "small")',
@@ -4800,7 +4800,16 @@ function formulaBuilder(db, state, onChange, { selfName = null } = {}) {
     }
   };
   const queueCheck = () => { clearTimeout(timer); timer = setTimeout(runCheck, 250); };
-  ta.addEventListener('input', () => { state.expression = ta.value; onChange(); queueCheck(); });
+  /* The agent panel (direction C, 2026-09-07): the CLI lines and MCP
+     sequence for what is being built, closed by default, live with the
+     typing — the dialog prints its own API where the human is standing. */
+  const agentPre = el('pre', {});
+  const agent = el('div', { class: 'fx-agent' }, el('details', {}, el('summary', {}, 'As an agent would do it'), agentPre));
+  const drawAgent = () => {
+    agentPre.textContent = fieldDialogCore.agentRecipe({ table: db.name, field: fieldName(), expression: state.expression, edit: !!selfName }).text;
+  };
+  agent.addEventListener('refresh', drawAgent);
+  ta.addEventListener('input', () => { state.expression = ta.value; onChange(); queueCheck(); drawAgent(); });
   const insert = (text, cursorBack = 0) => {
     const at = ta.selectionStart ?? ta.value.length;
     ta.setRangeText(text, at, ta.selectionEnd ?? at, 'end');
@@ -4812,6 +4821,7 @@ function formulaBuilder(db, state, onChange, { selfName = null } = {}) {
     ta.focus();
     onChange();
     queueCheck();
+    drawAgent();
   };
   /* The signature card (direction A, 2026-09-07): one element under the
      chips, filled from whichever chip is hovered, focused or tapped — the
@@ -4851,13 +4861,15 @@ function formulaBuilder(db, state, onChange, { selfName = null } = {}) {
       ...fns.map((fn) => teach(el('button', { type: 'button', class: 'fx-chip fn', onclick: () => insert(`${fn.name}()`, 1) }, `${fn.name}()`),
         { sig: fn.sig, doc: fn.doc, eg: fn.example }))));
   if ((state.expression ?? '').trim()) runCheck();
+  drawAgent();
   return el('div', {},
     ta,
     status,
     el('div', { class: 'fx-chip-rows' },
       el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'fields'), ...fieldChips),
       ...fnRows),
-    card);
+    card,
+    agent);
 }
 
 /* The number costume controls (Kyle, 2026-08-23): Format → number shows a
@@ -4996,6 +5008,8 @@ function fieldDialog(db, existing, after) {
   descInput.value = fieldDescription(existing) || '';
   const gridWrap = el('div', { class: 'full' });
   const cfgWrap = el('div', { class: 'full' });
+  // The agent panel under a script names the field: it follows the name box.
+  nameInput.addEventListener('input', () => cfgWrap.querySelector('.fx-agent')?.dispatchEvent(new Event('refresh')));
   const changed = () => {};
 
   // An existing field sees its own type plus the compatible migrations —
@@ -5057,7 +5071,7 @@ function fieldDialog(db, existing, after) {
     const kids = [];
     if (state.computed === 'formula') {
       // The script editor lives in the tray (Kyle, 2026-08-23), not a window.
-      kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null })));
+      kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null, fieldName: () => nameInput.value })));
       // A numeric result wears the same costume a number field does.
       kids.push(...numberCostumeControls(state, drawCfg, changed, { label: 'Result format' }));
     } else {

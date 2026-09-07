@@ -686,3 +686,36 @@ test('formulaFieldChoices greys out what a formula cannot read, and drops the fi
   assert.match(choices[2].excluded, /attachment/);
   assert.equal(choices[0].token, 'Amount');
 });
+
+/* ---------- the agent panel (formula builder direction C, 2026-09-07) ----------
+   The dialog prints the calls an agent would make for what was just built:
+   check, save, read a cell back — CLI lines and the MCP tool sequence —
+   from what it already knows (table, field, expression). A pure string
+   builder; the browser test only checks it is on the page. */
+test('agentRecipe for a new field: check, field add, get, and the MCP sequence', () => {
+  const r = core.agentRecipe({ table: 'Deals', field: 'Health', expression: 'if([Amount] > 10000, "major", "minor")' });
+  assert.deepEqual(r.mcp, ['weave_check_formula', 'weave_add_field', 'weave_get_entity']);
+  assert.equal(r.cli[0].cmd, `weave formula check Deals 'if([Amount] > 10000, "major", "minor")'`);
+  assert.match(r.cli[0].note, /ok:\s*true/);
+  assert.equal(r.cli[1].cmd, `weave field add Deals Health formula --config '{"expression":"if([Amount] > 10000, \\"major\\", \\"minor\\")"}'`);
+  assert.equal(r.cli[2].cmd, 'weave get Deals#1');
+  assert.match(r.text, /^# 1 · /m);
+  assert.match(r.text, /weave_check_formula → weave_add_field → weave_get_entity/);
+});
+
+test('agentRecipe for an existing field updates instead of adding, and excludes the field from the check', () => {
+  const r = core.agentRecipe({ table: 'Sales/Deals', field: 'Health', expression: 'Amount * 2', edit: true });
+  assert.equal(r.cli[0].cmd, `weave formula check Sales/Deals 'Amount * 2' --exclude-field Health`);
+  assert.equal(r.cli[1].cmd, `weave field update Sales/Deals Health --config '{"expression":"Amount * 2"}'`);
+  assert.deepEqual(r.mcp, ['weave_check_formula', 'weave_update_field', 'weave_get_entity']);
+});
+
+test('agentRecipe quotes for the shell and stands in for what is not typed yet', () => {
+  const r = core.agentRecipe({ table: 'Deals', field: '', expression: `concat(Name, "'s deal")` });
+  assert.equal(r.cli[0].cmd, `weave formula check Deals 'concat(Name, "'\\''s deal")'`, 'a single quote inside single quotes');
+  assert.match(r.cli[1].cmd, /weave field add Deals <name> formula/);
+  const blank = core.agentRecipe({ table: 'Deals', field: 'X', expression: '' });
+  assert.equal(blank.cli[0].cmd, `weave formula check Deals '<expression>'`);
+  const spaced = core.agentRecipe({ table: 'Deals', field: 'Deal Health', expression: '1' });
+  assert.equal(spaced.cli[1].cmd, `weave field add Deals 'Deal Health' formula --config '{"expression":"1"}'`, 'a name with a space is quoted');
+});
