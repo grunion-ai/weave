@@ -42,6 +42,46 @@ if (s) {
     await page.close();
   });
 
+  /* The dock is presentation, never a history entry (Issue #198) — but a
+     refresh, a new tab and a shared link must still find it. The docked
+     entity rides the table hash as ?e=<id>, written with replaceState so
+     Back never sees it (Issue #226). */
+  test('docking writes ?e=<id> onto the table hash and a reload brings the dock back', async () => {
+    const page = await freshTablePage();
+    await page.click(`tr[data-eid="${a.id}"] .open-link`);
+    await page.waitForSelector('#dock:not([hidden]) .name-edit');
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${a.id}`);
+    assert.equal(await page.evaluate(() => history.length), 2, 'the dock added no history entry');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForSelector('#dock:not([hidden]) .name-edit');
+    assert.equal(await page.inputValue('#dock .name-edit'), 'Acme Working Capital');
+    assert.equal(await page.locator(`tr[data-eid="${a.id}"].row-docked`).count(), 1, 'the row keeps its light after the reload');
+    await page.close();
+  });
+
+  test('closing the dock strips ?e= so a reload stays on the bare table', async () => {
+    const page = await freshTablePage();
+    await page.click(`tr[data-eid="${a.id}"] .open-link`);
+    await page.waitForSelector('#dock:not([hidden])');
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#dock', { state: 'hidden' });
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}`);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForSelector('.wv-grid tbody tr.entity-row');
+    assert.ok(await page.locator('#dock').isHidden(), 'no dock after the reload');
+    await page.close();
+  });
+
+  test('a ?e= for a row that no longer exists renders the bare table', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/table/${deals.id}?e=not-a-row`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.wv-grid tbody tr.entity-row');
+    assert.ok(await page.locator('#dock').isHidden(), 'the dock stays closed');
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}`, 'the dead ?e= is dropped');
+    await page.close();
+  });
+
   test('the docked row keeps its light; opening another row swaps the pane', async () => {
     const page = await freshTablePage();
     await page.click(`tr[data-eid="${a.id}"] .open-link`);

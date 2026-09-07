@@ -47,7 +47,7 @@ if (s) {
     await page.waitForSelector('#main .pose-btn');
     await page.click('#main .pose-btn');
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
-    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}`);
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${a.id}`, 'the docked row rides the table hash (Issue #226)');
     assert.equal(await page.inputValue('#dock .name-edit'), 'Acme Working Capital');
     await page.waitForSelector(`tr[data-eid="${a.id}"].row-docked`);
     await page.close();
@@ -59,7 +59,7 @@ if (s) {
     await page.waitForSelector('#main .crumb-path');
     await page.click(`#main .crumb-path a[href="#/table/${deals.id}"]`);
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
-    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}`);
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${a.id}`, 'the docked row rides the table hash (Issue #226)');
     assert.equal(await page.inputValue('#dock .name-edit'), 'Acme Working Capital', 'the entity stays in hand');
     await page.close();
   });

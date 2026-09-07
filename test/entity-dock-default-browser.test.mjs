@@ -49,8 +49,8 @@ if (s) {
       await page.click(`tr[data-eid="${acme.id}"] td[data-ftype="relation"] a[href="#/entity/${jane.id}"]`);
       await docked(page, 'Jane Rivera');
       assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme);
-      assert.equal(await page.evaluate(() => location.hash), `#/table/${contacts.id}`,
-        'the reader travelled to the chip\'s table; the dock is not a navigation');
+      assert.equal(await page.evaluate(() => location.hash), `#/table/${contacts.id}?e=${jane.id}`,
+        'the reader travelled to the chip\'s table; the dock rides its hash, not the history');
       await page.waitForSelector(`tr[data-eid="${jane.id}"].row-docked`);
       await page.close();
     });
@@ -65,7 +65,7 @@ if (s) {
     await page.waitForSelector('#cmdk-results .result.active');
     await page.keyboard.press('Enter');
     await docked(page, 'Bluefin Renewal');
-    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}`);
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${bluefin.id}`);
     await page.close();
   });
 
@@ -94,7 +94,7 @@ if (s) {
     await docked(page, 'Acme Working Capital');
     await page.click(`#dock a[href="#/entity/${jane.id}"]`);
     await docked(page, 'Jane Rivera');
-    assert.equal(await page.evaluate(() => location.hash), `#/table/${contacts.id}`);
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${contacts.id}?e=${jane.id}`);
     await page.close();
   });
 
