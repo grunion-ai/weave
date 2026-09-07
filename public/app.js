@@ -1731,6 +1731,13 @@ const computedMarkNode = (type) => { const m = computedMark(type); return iconEl
    that fact belongs on its heading rather than being discovered by clicking a
    cell that does not respond. Returns children for el(), which flattens. */
 const COMPUTED_NAME_MARKS = { formula: 'formula', rollup: 'rollup', lookup: 'lookup' };
+/* A field's own description (Issue #209): what the value means and how it is
+   written. A view's `description` is its description SIZE (none/small/…), so
+   the views are left out here. */
+function fieldDescription(f) {
+  return f && f.type !== 'view' && typeof f.description === 'string' ? f.description : '';
+}
+
 function fieldNameLabel(f, text = f?.name) {
   const kind = COMPUTED_NAME_MARKS[f?.type];
   if (!kind) return [text];
@@ -3368,6 +3375,8 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
         ...cols.map((c, i) => el('th', {
           class: 'col-head',
           draggable: 'true',
+          // The field's description is the header's tooltip (Issue #209).
+          title: fieldDescription(colField(db, c)) || null,
           style: colField(db, c).width ? columnWidthStyle(colField(db, c).width) : null,
           // Click opens the field in the tray (Kyle, 2026-08-23: editing is
           // what a header click should mean); sorting lives in the ⋮ menu.
@@ -4684,6 +4693,16 @@ function fieldDialog(db, existing, after) {
     value: existing?.name ?? '',
   });
 
+  /* The field's description (Issue #209): what it represents and how it is
+     written, for whoever — or whatever — fills the column. Plain text; it
+     rides the schema, the column tooltip and the entity page. A view's
+     `description` is its description size, so the views have no box. */
+  const describable = !(isEdit && existing.type === 'view');
+  const descInput = el('textarea', {
+    name: 'description', class: 'form-control field-desc', rows: '2',
+    placeholder: 'What this field holds and how it is written — shown under the label and to agents in the schema',
+  });
+  descInput.value = fieldDescription(existing) || '';
   const gridWrap = el('div', { class: 'full' });
   const cfgWrap = el('div', { class: 'full' });
   const changed = () => {};
@@ -4916,14 +4935,19 @@ function fieldDialog(db, existing, after) {
 
   tray(isEdit ? `Edit ${existing.name}` : 'Add field', [
     dsection('Name', nameInput),
+    describable ? dsection('Description', descInput) : '',
     gridWrap, cfgWrap,
   ], async () => {
     const def = fdc.definitionFromState(state);
     const name = nameInput.value.trim();
+    const description = descInput.value.trim();
     if (!isEdit && def.type === 'relation') {
-      await api('POST', `/tables/${db.id}/relations`, { name, ...def.config });
+      const made = await api('POST', `/tables/${db.id}/relations`, { name, ...def.config });
+      // A relation is made by its own verb, so its description follows as
+      // an update on the field it made.
+      if (description && made?.field?.id) await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(made.field.id)}`, { config: { description } });
     } else if (!isEdit) {
-      await api('POST', `/tables/${db.id}/fields`, { name, type: def.type, config: def.config });
+      await api('POST', `/tables/${db.id}/fields`, { name, type: def.type, config: { ...def.config, ...(description ? { description } : {}) } });
     } else {
       const patch = {};
       if (name && name !== existing.name) patch.name = name;
@@ -4935,6 +4959,8 @@ function fieldDialog(db, existing, after) {
       } else {
         patch.config = fdc.editPatchConfig(existing, def, state);
       }
+      // null clears it, like width; unchanged is not sent at all.
+      if (describable && description !== (fieldDescription(existing) || '')) patch.config = { ...(patch.config ?? {}), description: description || null };
       await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(existing.id)}`, patch);
     }
     await loadSchema();
@@ -6744,9 +6770,13 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       wireBlock(f.name, section, [section.querySelector('.opt-grip'), section.querySelector('.doc-section-head')]);
       continue;
     }
+    /* The field's description sits under its label (Issue #209): what the
+       value means and how it is written, where whoever fills the row reads
+       it. A field without one wears no empty line. */
     const node = el('div', { class: 'fieldrow' },
       f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
-      el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) }, fieldNameLabel(f)),
+      el('label', { class: 'fieldrow-label', title: fieldDescription(f) ? `${fieldDescription(f)}\n\nEdit field` : 'Edit field', onclick: () => editFieldDialog(db, f) },
+        fieldNameLabel(f), fieldDescription(f) ? el('span', { class: 'fieldrow-desc' }, fieldDescription(f)) : null),
       editorFor(f, entity, db, () => refresh()));
     if (f.type === 'attachments') {
       // An attachment row is a block: it is as wide as its chips, and it

@@ -792,6 +792,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-fields .fieldrow label { font-size: 13px; }
 .entity-fields .fieldrow-label { cursor: pointer; border-radius: 4px; padding: 2px 6px; margin-left: -6px; width: fit-content; }
 .entity-fields .fieldrow-label:hover { background: var(--wv-pill-active); color: var(--tblr-body-color); }
+/* The field's description under its label (Issue #209): quiet, wrapping,
+   never an empty line when there is none. */
+.entity-fields .fieldrow-desc { display: block; font-size: 11.5px; line-height: 1.3; color: var(--tblr-secondary); margin-top: 1px; white-space: normal; }
 /* Values sit at their own width on the left of the column — a chip is a chip,
    not a bar; text inputs stay quiet until hovered, like the grid's. */
 .entity-fields .fieldrow { min-height: 32px; }

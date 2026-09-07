@@ -111,6 +111,12 @@ export const VOCABULARY = {
     unsetCap: 260,
     note: 'An unset column caps at 260px and ellipsises. A set width is a floor as well as a ceiling, so the column holds that width in a grid wider than its card.',
   },
+  // Every field (the two views aside) may carry a description: what the
+  // value represents and how it is written. Read it before filling a row.
+  fieldDescription: {
+    key: 'description',
+    note: 'config.description on any field type except view: plain text saying what the value represents and how it is written. Emitted by the schema as the field\'s `description`, drawn under the label on the entity page and as the column tooltip. null clears it. On a view field, `description` is the description SIZE (none, small, medium, large) instead.',
+  },
   // Writing a registry row runs the same validation as the schema verb,
   // because it is the schema verb.
   registries: {

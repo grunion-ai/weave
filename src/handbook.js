@@ -861,6 +861,17 @@ The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`M
 
 Hide rather than delete when a column matters to a machine and not to a reader. Hiding keeps the data and the API surface; a delete needs \`hard\` and does not come back.
 
+## What a field means
+
+Every field can carry a **description**: what the value represents and how it is written — \`Who we bought from — the legal name on the invoice\`, \`ISO date of the first event in the transcript\`. It sits under the label on the entity page and in the folded chips, is the column header's tooltip in the grid, and rides the schema (\`weave_schema\`, \`weave schema\`, \`GET /api/schema\`) as the field's \`description\`, so an agent filling the row reads the same note a person does. Set it in the field tray (click a header, or a label on the entity page), or from the schema verbs:
+
+\`\`\`bash
+weave field update Order Vendor --description "Who we bought from — the legal name on the invoice"
+weave field add Order "Due" date --description "When the invoice falls due; ISO date"
+\`\`\`
+
+\`{description: null}\` clears it. The two view fields are the exception: on Chip and Card, \`description\` is the description **size** (none, small, medium, large), not a note.
+
 ## Costumes
 
 A costume is display only. The stored value never changes, and neither does anything computed from it.

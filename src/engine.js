@@ -637,6 +637,14 @@ const parseSort = (text) => String(text ?? '').split(',').map((x) => x.trim()).f
 // Narrower than this and a column can hold neither a chip nor a resize grip.
 const MIN_COLUMN_WIDTH = 60;
 
+/* A field's description (Issue #209) is plain text, trimmed; blank means
+   none. Anything but a string is refused rather than stringified. */
+function fieldDescriptionValue(raw) {
+  if (raw == null) return '';
+  if (typeof raw !== 'string') throw new WeaveError('A field description is plain text', 'invalid');
+  return raw.trim();
+}
+
 // The documented keys of a createEntity input. Everything else in the object
 // is treated as a field value, so a flat create behaves like a flat update.
 const CREATE_INPUT_KEYS = new Set(['values', 'name', 'doc', 'docs']);
@@ -1604,6 +1612,7 @@ export class Weave {
       if (f.types) config.types = f.types;
       if (f.depth != null) config.depth = f.depth;
       if (f.width != null) config.width = f.width;
+      if (f.type !== 'view' && f.description != null) config.description = f.description;
       for (const k of NUMBER_COSTUME_KEYS) if (f[k] != null) config[k] = f[k];
       for (const k of DATE_COSTUME_KEYS) if (k !== 'format' && f[k] != null) config[k] = f[k];
       if (f.kind != null) config.kind = f.kind;
@@ -2816,6 +2825,12 @@ export class Weave {
       }
       field.config.width = Math.round(width);
     }
+    // The description belongs to every field too (Issue #209): what the
+    // column holds and how it is written, for a reader or an agent.
+    if (config.description != null) {
+      const description = fieldDescriptionValue(config.description);
+      if (description) field.config.description = description;
+    }
 
     db.fields[field.id] = field;
     placeField(db, field.id);
@@ -2944,6 +2959,13 @@ export class Weave {
         else if (typeof width !== 'number' || !Number.isFinite(width) || width < MIN_COLUMN_WIDTH) {
           throw new WeaveError(`Column width must be a number of at least ${MIN_COLUMN_WIDTH}px`, 'invalid');
         } else field.config.width = Math.round(width);
+      }
+      // The description rides its own lane like width (Issue #209): null or
+      // blank clears it, and no other key can clobber it. A view's
+      // `description` is its description size and takes the view lane below.
+      if ('description' in patch.config && field.type !== 'view') {
+        const description = fieldDescriptionValue(patch.config.description);
+        if (description) field.config.description = description; else delete field.config.description;
       }
       // The default rides alongside the type config for the same reason width
       // does: editing one must not clobber the other. null clears it.
@@ -3103,8 +3125,10 @@ export class Weave {
     field.type = toType;
     const width = field.config.width;
     const term = field.id === db.nameFieldId ? field.config.term : undefined;
+    const description = field.config.description;
     field.config = nextConfig;
     if (width) field.config.width = width;
+    if (description) field.config.description = description; // what the column means survives its shape (Issue #209)
     if (term) field.config.term = term; // the row term rides the Name field through every shape
     // A computed name is materialised per row (see #mark) so search and sort
     // have a string; migrating to a formula fills the cache for every row.
@@ -4800,6 +4824,10 @@ export class Weave {
           const f = db.fields[fid];
           const out = { id: f.id, name: f.name, type: f.type };
           if (f.config.width) out.width = f.config.width;
+          // What the field holds and how it is written (Issue #209) — the
+          // agent's context for the column. A view's `description` is its
+          // description size and is emitted with the view keys below.
+          if (f.type !== 'view' && f.config.description) out.description = f.config.description;
           if (f.id === db.nameFieldId && f.config.term) out.term = { ...f.config.term };
           if (f.type === 'select' || f.type === 'multiselect') {
             out.options = f.config.options.map((o) => o.name);
