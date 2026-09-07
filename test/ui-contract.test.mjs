@@ -1227,8 +1227,10 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
   // The label is the field: clicking it opens the same tray the table's
   // header click opens (Feature #109), so a field is editable from the one
   // place a reader already is.
-  assert.match(body, /class: 'fieldrow-label', title: 'Edit field', onclick: \(\) => editFieldDialog\(db, f\)/,
-    'the label click opens the field tray');
+  assert.match(body, /class: 'fieldrow-label', title: fieldDescription\(f\) \? `\$\{fieldDescription\(f\)\}\\n\\nEdit field` : 'Edit field', onclick: \(\) => editFieldDialog\(db, f\)/,
+    'the label click opens the field tray; the description rides its tooltip (Issue #209)');
+  assert.match(body, /fieldDescription\(f\) \? el\('span', \{ class: 'fieldrow-desc' \}, fieldDescription\(f\)\) : null/,
+    'and the description is drawn under the label, never an empty line');
   assert.match(CSS, /\.entity-fields \.fieldrow-label:hover/, 'and reads as clickable on hover');
 });
 
@@ -1637,7 +1639,7 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
 
 test('relation is a tile in the add tray and posts to /relations; files and documents carry their options', () => {
   const dlg = fnBody('fieldDialog');
-  assert.match(dlg, /def\.type === 'relation'\) \{\s*await api\('POST', `\/tables\/\$\{db\.id\}\/relations`/, 'a relation tile creates through addRelation');
+  assert.match(dlg, /def\.type === 'relation'\) \{\s*const made = await api\('POST', `\/tables\/\$\{db\.id\}\/relations`/, 'a relation tile creates through addRelation');
   assert.match(dlg, /'Target tables \(target set\)' : 'Target table', targetsBox\)/,
     'one select is the classic pair; adding more makes a target set');
   assert.match(dlg, /\+ another target table/, 'the set grows one select at a time');

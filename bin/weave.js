@@ -107,9 +107,10 @@ Schema
   table list | delete <ref>
   table update <ref> [--name] [--description] [--icon lucide:wallet] [--noun invoice]
               [--hidden A,B] [--system 'Created At'] [--order Name,A,B]
-  field add <table> <name> <type> [--config '{json}']
+  field add <table> <name> <type> [--config '{json}'] [--description "what it holds"]
   field list <table> | delete <table> <field>
   field update <table> <field> [--name] [--type] [--config '{json}'] [--width 240|null]
+               [--description "what it holds"|null]
   relation add <table> <name> <targetTable> [--cardinality many-to-one] [--inverse Name] [--target-dbs 'A,B,C']
   registry [report|rebuild]           The meta-model rows that mirror the schema
   map                                 Relation map as mermaid
@@ -489,16 +490,22 @@ async function main() {
     }
     case 'field': {
       const [sub, db, name, type] = args;
-      if (sub === 'add') return out(w.addField(db, { name, type, config: parseJsonFlag('config') ?? {} }));
+      if (sub === 'add') {
+        const config = parseJsonFlag('config') ?? {};
+        if (flags.description != null) config.description = String(flags.description);
+        return out(w.addField(db, { name, type, config }));
+      }
       if (sub === 'update') {
         const patch = {};
         if (flags.name != null) patch.name = flags.name;
         if (flags.type != null) patch.type = flags.type;
         const config = parseJsonFlag('config') ?? {};
-        // Width and default ride their own lanes in the engine, so they are
-        // flags rather than JSON: `--width 240`, `--width null` to reset.
+        // Width, default and description ride their own lanes in the engine,
+        // so they are flags rather than JSON: `--width 240`, `--width null`
+        // to reset, `--description "…"`, `--description null` to clear.
         if (flags.width != null) config.width = flags.width === 'null' ? null : Number(flags.width);
         if (flags.default != null) config.default = flags.default === 'null' ? null : flags.default;
+        if (flags.description != null) config.description = flags.description === 'null' ? null : String(flags.description);
         if (Object.keys(config).length) patch.config = config;
         return out(w.updateField(db, name, patch));
       }

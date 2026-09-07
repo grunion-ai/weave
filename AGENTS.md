@@ -94,6 +94,15 @@ A space and a table are born with everything they need: `weave_create_space`
 and `weave_create_table` take `description` and `icon` alongside the name, so
 standing one up is one call rather than a create followed by an update.
 
+**Every field can say what it means.** `config.description` on `weave_add_field`
+and `weave_update_field` (`weave field add … --description`, `--description null`
+to clear) is plain text: what the value represents and how it is written —
+`Who we bought from — the legal name on the invoice`. `weave_schema` emits it as
+the field's `description`; read it before filling a row, and write one on every
+column you create so the next agent has the same context a person gets under
+the label on the entity page. The two view fields are the exception: on Chip and
+Card, `description` is the description size (`none`, `small`, `medium`, `large`).
+
 **Read `weave_vocabulary` before configuring anything.** It returns every
 closed set a config value can come from *and what the choice looks like on
 screen*: the eighteen field types with how each renders in the grid and which
