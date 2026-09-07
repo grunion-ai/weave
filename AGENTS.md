@@ -173,6 +173,10 @@ Notes that save round trips:
   with the same error the check returns, so checking first costs nothing.
   Field references: bare name (`Amount`) or bracketed (`[Close Date]` — any
   name that is not a plain identifier). A formula may not reference itself.
+  `weave_vocabulary` → `formulaFunctions` is the function catalog — name,
+  signature, group (logic, text, number, date), a one-line doc and an example
+  that parses — the same card the dialog shows on a chip. A formula cannot
+  read a document or an attachments field.
 - **Read the schema first.** `weave_schema` returns spaces, tables, fields, and
   types, including each table's own description — the workspace documents itself.
 - **Documents are addressable.** Over HTTP, `/e/Task#12/doc.md`, `.html`, and

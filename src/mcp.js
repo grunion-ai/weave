@@ -225,7 +225,7 @@ export const TOOLS = [
      curl for it, which is a human gate wearing a shell prompt. */
   {
     name: 'weave_vocabulary',
-    description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, and the column-width rules. Read this before configuring a table.',
+    description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table.',
     inputSchema: { type: 'object', properties: {} },
   },
   {

@@ -65,6 +65,13 @@ export const ICON_FORM = 'lucide:<name>';
    through the mark, not offered twice. */
 export const ICONS = globalThis.fieldDialogCore.ICON_INVENTORY;
 
+/* The formula functions, verbatim from the dialog's catalog: name, signature,
+   grammar group, one sentence of doc and an example that parses. The chip a
+   person hovers and the entry an agent reads are one list (direction A,
+   2026-09-07); test/vocabulary.test.mjs pins the names to FUNCS. */
+export const FORMULA_FUNCTIONS = globalThis.fieldDialogCore.FORMULA_FUNCTIONS;
+export const FORMULA_GROUPS = globalThis.fieldDialogCore.FORMULA_GROUPS;
+
 /* The marks an author may pick, read from the drawn set so this list and the
    shapes cannot drift apart. */
 await import('../public/mark-icons.js');
@@ -120,6 +127,12 @@ export const VOCABULARY = {
   },
   // Writing a registry row runs the same validation as the schema verb,
   // because it is the schema verb.
+  // Every function a formula may call, with the card the builder shows —
+  // sig, group (logic, text, number, date), doc, example. Field references
+  // are bare names or [bracketed]; a formula may not read a document, an
+  // attachments field, or itself.
+  formulaFunctions: FORMULA_FUNCTIONS,
+  formulaGroups: FORMULA_GROUPS,
   registries: {
     'Workspace/Spaces': ['Name', 'Description'],
     'Workspace/Tables': ['Name', 'Description', 'Field Order', 'Hidden Fields', 'Filter', 'Sort', 'Hide Rollups'],

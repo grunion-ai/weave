@@ -34,32 +34,56 @@
     { id: 'view', label: 'view', icon: 'lucide:layout-grid', computed: true, minted: true },
   ];
 
-  // Signatures shown as insertable chips in the formula builder. The name
-  // list is contract-tested against FUNCS in src/formula.js.
+  /* The function catalog the formula builder draws its chips from — and the
+     card a chip shows on hover, focus or tap (design review 2026-09-01,
+     direction A). The name list is contract-tested against FUNCS in
+     src/formula.js; every entry carries its grammar group, a one-sentence
+     doc and an example that parses (test/field-dialog-core.test.mjs). The
+     vocabulary serves the same list verbatim, so an agent reads the card a
+     person hovers. */
+  const FORMULA_GROUPS = ['logic', 'text', 'number', 'date'];
   const FORMULA_FUNCTIONS = [
-    { name: 'if', sig: 'if(cond, then, else)' },
-    { name: 'concat', sig: 'concat(a, b, …)' },
-    { name: 'round', sig: 'round(x, places)' },
-    { name: 'abs', sig: 'abs(x)' },
-    { name: 'min', sig: 'min(a, b, …)' },
-    { name: 'max', sig: 'max(a, b, …)' },
-    { name: 'len', sig: 'len(x)' },
-    { name: 'lower', sig: 'lower(text)' },
-    { name: 'upper', sig: 'upper(text)' },
-    { name: 'trim', sig: 'trim(text)' },
-    { name: 'contains', sig: 'contains(hay, needle)' },
-    { name: 'empty', sig: 'empty(x)' },
-    { name: 'today', sig: 'today()' },
-    { name: 'now', sig: 'now()' },
-    { name: 'days', sig: 'days(from, to)' },
-    { name: 'dateadd', sig: 'dateadd(date, n, unit)' },
-    { name: 'datediff', sig: 'datediff(a, b, unit)' },
-    { name: 'year', sig: 'year(date)' },
-    { name: 'month', sig: 'month(date)' },
-    { name: 'day', sig: 'day(date)' },
-    { name: 'number', sig: 'number(x)' },
-    { name: 'text', sig: 'text(x)' },
+    { name: 'if', group: 'logic', sig: 'if(cond, then, else)', doc: 'Pick then when cond is truthy, else otherwise. Empty, 0, false and "" are falsy.', example: 'if([Amount] > 10000, "major", "minor")' },
+    { name: 'empty', group: 'logic', sig: 'empty(x)', doc: 'True when x is null, an empty string or an empty list.', example: 'empty([Close Date])' },
+    { name: 'contains', group: 'logic', sig: 'contains(hay, needle)', doc: 'True when the text holds needle (case-insensitive), or the list holds the item.', example: 'contains([Tags], "urgent")' },
+    { name: 'concat', group: 'text', sig: 'concat(a, b, …)', doc: 'Join every argument into one string; nulls read as empty.', example: 'concat([Name], " — ", [Stage])' },
+    { name: 'upper', group: 'text', sig: 'upper(text)', doc: 'The text in upper case.', example: 'upper([Stage])' },
+    { name: 'lower', group: 'text', sig: 'lower(text)', doc: 'The text in lower case.', example: 'lower([Name])' },
+    { name: 'trim', group: 'text', sig: 'trim(text)', doc: 'The text without leading or trailing whitespace.', example: 'trim([Name])' },
+    { name: 'len', group: 'text', sig: 'len(x)', doc: 'How many characters the text has, or how many items the list has.', example: 'len([Name])' },
+    { name: 'text', group: 'text', sig: 'text(x)', doc: 'Any value as a string; null becomes "".', example: 'text([Amount])' },
+    { name: 'round', group: 'number', sig: 'round(x, places)', doc: 'Round x to places decimals (0 when omitted).', example: 'round([Amount] / 3, 2)' },
+    { name: 'abs', group: 'number', sig: 'abs(x)', doc: 'The distance of x from zero.', example: 'abs([Amount] - 5000)' },
+    { name: 'min', group: 'number', sig: 'min(a, b, …)', doc: 'The smallest of the numbers given.', example: 'min([Amount], 1000)' },
+    { name: 'max', group: 'number', sig: 'max(a, b, …)', doc: 'The largest of the numbers given.', example: 'max([Amount], 0)' },
+    { name: 'number', group: 'number', sig: 'number(x)', doc: 'Any value as a number; text that is not numeric becomes NaN.', example: 'number([Stage])' },
+    { name: 'today', group: 'date', sig: 'today()', doc: "Today's date as YYYY-MM-DD, read from the engine clock.", example: 'today()' },
+    { name: 'now', group: 'date', sig: 'now()', doc: 'The current instant as an ISO timestamp.', example: 'now()' },
+    { name: 'days', group: 'date', sig: 'days(from, to)', doc: 'Whole days from one date to the other; negative when to is earlier.', example: 'days([Start], [End])' },
+    { name: 'dateadd', group: 'date', sig: 'dateadd(date, n, unit)', doc: 'Shift a date by n days, weeks, months or years. A date in, a date out.', example: 'dateadd([Close Date], 2, "weeks")' },
+    { name: 'datediff', group: 'date', sig: 'datediff(a, b, unit)', doc: 'Whole units from a to b: days, weeks, hours or minutes.', example: 'datediff([Close Date], today(), "days")' },
+    { name: 'year', group: 'date', sig: 'year(date)', doc: 'The year of a date, or of a partial date that holds one.', example: 'year([Close Date])' },
+    { name: 'month', group: 'date', sig: 'month(date)', doc: 'The month of a date, 1 to 12.', example: 'month([Close Date])' },
+    { name: 'day', group: 'date', sig: 'day(date)', doc: 'The day of the month, 1 to 31.', example: 'day([Close Date])' },
   ];
+  // The chips in grammar order: one row per group, if leading logic.
+  function formulaFunctionGroups() {
+    return FORMULA_GROUPS.map((group) => ({ group, fns: FORMULA_FUNCTIONS.filter((f) => f.group === group) }));
+  }
+
+  /* The field chips: every field but the one being edited (a formula that
+     reads itself never converges, and the engine refuses it). A field a
+     formula cannot read stays listed with the reason, greyed — a silent
+     absence reads as a bug. */
+  const FORMULA_UNREADABLE = {
+    document: "document fields don't compute — a formula reads values, not prose",
+    attachments: "attachment fields don't compute — a formula reads values, not files",
+  };
+  function formulaFieldChoices(fields, selfName = null) {
+    return fields
+      .filter((f) => f.name !== selfName)
+      .map((f) => ({ name: f.name, type: f.type, token: formulaFieldToken(f.name), excluded: FORMULA_UNREADABLE[f.type] ?? null }));
+  }
 
   // Mirror of the engine's TYPE_MIGRATIONS (contract-tested): what an
   // existing field may become. The tray shows the field's own type plus
@@ -619,7 +643,7 @@
   }
 
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
+    FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,

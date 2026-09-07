@@ -107,3 +107,23 @@ test('the vocabulary is served, so a remote agent has it too', async () => {
     assert.equal(got.columnWidth.min, VOCABULARY.columnWidth.min);
   } finally { server.close(); }
 });
+
+/* Direction A (2026-09-07): the function catalog the dialog draws its chips
+   from is the one the vocabulary serves — signature, group, doc and example
+   verbatim — so an agent reads the same card a person hovers. */
+test('the formula functions are served with signature, group, doc and example', async () => {
+  await import('../public/field-dialog-core.js');
+  const FORMULA = readFileSync(join(ROOT, 'src/formula.js'), 'utf8');
+  const funcs = [...FORMULA.match(/const FUNCS = \{([\s\S]*?)\n\};/)[1].matchAll(/^  ([a-z]+):/gm)].map((m) => m[1]);
+  assert.deepEqual(VOCABULARY.formulaFunctions.map((f) => f.name).sort(), funcs.sort(), 'the catalog is FUNCS');
+  assert.deepEqual(VOCABULARY.formulaFunctions, globalThis.fieldDialogCore.FORMULA_FUNCTIONS, 'served verbatim');
+  for (const f of VOCABULARY.formulaFunctions) {
+    for (const k of ['sig', 'group', 'doc', 'example']) assert.ok(f[k], `${f.name} is missing ${k}`);
+  }
+  assert.deepEqual(VOCABULARY.formulaGroups, ['logic', 'text', 'number', 'date']);
+  const { server } = await startServer(new Weave(), { port: 0 });
+  try {
+    const got = await (await fetch(`http://127.0.0.1:${server.address().port}/api/vocabulary`)).json();
+    assert.deepEqual(got.formulaFunctions, VOCABULARY.formulaFunctions);
+  } finally { server.close(); }
+});

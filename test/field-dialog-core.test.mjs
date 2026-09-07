@@ -646,3 +646,43 @@ test('editPatchConfig builds each type\'s patch body', () => {
   const dflt = core.editPatchConfig({ type: 'text' }, { type: 'text', config: {} }, {});
   assert.equal(dflt.default, null, 'an emptied input clears the default');
 });
+
+/* ---------- chips that teach (formula builder direction A, 2026-09-07) ----------
+   Every function chip carries its group, a one-line doc and an example that
+   parses; the builder groups the chips the way the grammar groups them, and
+   the fields a formula cannot read are listed with the reason, not hidden. */
+test('every formula function names its group, a doc and an example that parses', async () => {
+  const { check } = await import('../src/formula.js');
+  assert.deepEqual(core.FORMULA_GROUPS, ['logic', 'text', 'number', 'date']);
+  const names = ['Amount', 'Close Date', 'Stage', 'Name', 'Tags', 'Start', 'End'];
+  for (const fn of core.FORMULA_FUNCTIONS) {
+    assert.ok(core.FORMULA_GROUPS.includes(fn.group), `${fn.name} needs a group`);
+    assert.ok(typeof fn.doc === 'string' && fn.doc.length >= 20, `${fn.name} needs a doc sentence`);
+    assert.ok(fn.example && fn.example.startsWith(`${fn.name}(`), `${fn.name}'s example must call it`);
+    assert.deepEqual(check(fn.example, names), { ok: true }, `${fn.name}'s example must parse: ${fn.example}`);
+  }
+});
+
+test('formulaFunctionGroups lists every function exactly once, in grammar order', () => {
+  const groups = core.formulaFunctionGroups();
+  assert.deepEqual(groups.map((g) => g.group), core.FORMULA_GROUPS);
+  const all = groups.flatMap((g) => g.fns.map((f) => f.name));
+  assert.deepEqual(all.slice().sort(), core.FORMULA_FUNCTIONS.map((f) => f.name).sort());
+  assert.equal(new Set(all).size, all.length);
+  assert.deepEqual(groups[0].fns.map((f) => f.name), ['if', 'empty', 'contains'], 'logic leads with if');
+});
+
+test('formulaFieldChoices greys out what a formula cannot read, and drops the field itself', () => {
+  const fields = [
+    { name: 'Amount', type: 'number' },
+    { name: 'Notes', type: 'document' },
+    { name: 'Files', type: 'attachments' },
+    { name: 'Health', type: 'formula' },
+  ];
+  const choices = core.formulaFieldChoices(fields, 'Health');
+  assert.deepEqual(choices.map((c) => c.name), ['Amount', 'Notes', 'Files'], 'the edited field never offers itself');
+  assert.equal(choices[0].excluded, null);
+  assert.match(choices[1].excluded, /document/);
+  assert.match(choices[2].excluded, /attachment/);
+  assert.equal(choices[0].token, 'Amount');
+});

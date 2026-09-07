@@ -1,6 +1,6 @@
 {
  "version": "0.4.8",
- "generatedAt": "2026-09-07T23:08:57.518Z",
+ "generatedAt": "2026-09-07T23:19:25.350Z",
  "issues": [
   {
    "name": "Single-writer: CLI and server must not write one workspace file concurrently",
@@ -1659,6 +1659,12 @@
     "Looks broken"
    ],
    "description": "**Symptom.** Open `/e/<unknown-id>` or `/w/<ws>/e/<unknown-id>` in a browser: the page is a raw JSON body, `{\"error\":\"Entity '…' not found\",\"code\":\"not-found\"}` (404, application/json). Same for `/e/<id>/doc.html` on a missing entity. Unknown plain paths (`/nope`, `/w/nope`) already serve `public/404.html` (Feature #148).\n\n**Expected.** Every browser GET on a non-API path that ends in not-found renders the branded 404 page. JSON stays for `/api/` callers and non-GET methods.\n\n**Where.** `src/routes.js`: the `notFound()` helper only covers the workspace-prefix miss and the fallthrough; the catch block at the end of the dispatcher and the applet catch (~line 130) build `out(404, …)` directly for `WeaveError('not-found')`. Route both through `notFound()` (page when `GET` + statics + path has no `/api/`).\n\n**Verify.** `curl -s -o /dev/null -w '%{content_type}' :4400/e/bad` → text/html; `/e/bad/doc.html` → text/html; `/api/tables/Issue/entities/bad` → application/json unchanged; `POST /e/bad` → JSON. Add a routes test for the three cases.\n\n**Reported** 2026-09-07 by Kyle (\"weave needs a custom 404 page\")."
+  },
+  {
+   "name": "Browser suites flake under the full parallel gate: relation-map ⌘-click, stale chip dark theme, Roll up… parent",
+   "status": "Open",
+   "severity": "Low",
+   "description": "**Pain point.** While landing Feature #202 (Gerrit change 281, 2026-09-07) the full `node --test 'test/**/*.test.mjs'` run with Playwright linked failed one to two browser cases per run, a different case each time, and every one of them passed when its file ran alone (8/8 stable):\n\n- `row-selection-browser`: *Roll up… creates one parent in the relation's table and links the selection to it*\n- `slash-commands`: *a wheel over the slash menu never scrolls the page out from under it* (already Issue #44) — `.vditor-hint` button resolved but never visible within 30s\n- `relation-map`: *a relation-map node: ⌘-click opens the table in a tab*\n- `stale-build-browser`: *the stale instance chip is tinted and legible in the dark theme*\n\nThe gate voted Verified −1 on patchset 2 for the slash-menu case and +1 on patchset 3; the persisted gate log for patchset 3 still ends `# pass 1910 / # fail 2` (the two cases above), so a later append to the same log or a race in the verdict is also worth a look.\n\n**Problem.** Sixty-odd browser suites launch their own Chromium in parallel; visibility waits time out under load, so a green change can be voted red and a red one can look like a flake. Related: #44, #199, #216.\n\n**Solution shape.** Either cap `node --test` concurrency for the `*-browser` suites in the gate (a `--test-concurrency` for that glob), or give the gate one automatic retry of only the files that failed and vote on the retry — with the first run's failures still posted as a breadcrumb so a real regression is never hidden."
   }
  ],
  "features": [
@@ -2760,7 +2766,7 @@
   },
   {
    "name": "Toggle field type: two named states, renameable in config, default on or off",
-   "status": "Planned",
+   "status": "Shipped",
    "milestone": "v0.5",
    "description": "## Ask (Kyle, 2026-09-07)\n\nA `toggle` field type: a weave-language switch with two named states, rendered as a proper toggle (not the checkbox's box), configurable and defaultable.\n\n## Shape\n\n- **Type** `toggle`, value `true`/`false` (same storage as `checkbox`; `checkbox ⇄ toggle` migration in both directions, lossless).\n- **Config** `{ on: \"On\", off: \"Off\", default: false }` — both labels renameable (e.g. `Active/Paused`, `Enabled/Disabled`, `Public/Private`), `default` picks the state a new row starts in. Labels are shown next to the switch; the value stays boolean so formulas, filters, CSV, MCP and the API read `true`/`false`.\n- **Render** everywhere a value draws: grid cell, entity page, chip/card (renderView), filter bar, field dialog config editor (two label inputs + default switch), Handbook page. Tabler tokens, both themes, soft-squared like the chip system (`--tblr-*`; wv- prefixed classes). Keyboard: Space flips it in the grid (grid rests on values).\n- **Vocabulary** `fieldTypes` gains `toggle` with the config example; `weave_add_field` / `field add` accept it; `TYPE_MIGRATIONS`, `DEFAULTABLE_TYPES`, quality mirror, agent-surface gate all updated.\n\n## Verify\n\n- engine tests: create, default on/off, rename labels, migrate checkbox→toggle→checkbox, formula reads boolean, filter `=` true.\n- browser suite: cell renders the switch with the on/off label, click + Space flip it, dialog config round-trips, dark theme screenshot.\n- Handbook page exists (suite gate).\n"
   },

@@ -473,6 +473,8 @@ Renders on a tinted background marked \`ƒ\`. In the field dialog, formula is a 
 
 The script editor validates as you type: a parse error, an unknown function or an unknown field shows under the box in red, and a valid expression shows its computed value on a real row. The same check stands alone as \`weave formula check <table> '<expression>'\`, \`POST /api/tables/:id/formula-check\` and the \`weave_check_formula\` MCP tool — validate until \`ok: true\`, save, then read a cell back. Saving an invalid expression is refused with the same error the check gives.
 
+The chips under the script are the whole vocabulary: this table's fields first, then the functions in the four groups the grammar has — **logic** (\`if\`, \`empty\`, \`contains\`), **text**, **number**, **date**. Hover, focus or tap a chip and a card shows its signature, one sentence of what it does and an example; click it and the call lands with the caret between the parens. A document or an attachments field is listed greyed with the reason — a formula reads values, not prose or files — rather than left out. \`weave vocabulary formulaFunctions\` (and \`weave_vocabulary\`, \`GET /api/vocabulary\`) serves the same cards verbatim.
+
 ## Gotchas
 
 A formula reads **raw** values. A number's currency and unit are display costumes and never reach the expression, which is what keeps \`Price * Count\` from breaking when someone turns on thousands separators.

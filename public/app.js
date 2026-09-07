@@ -4813,21 +4813,51 @@ function formulaBuilder(db, state, onChange, { selfName = null } = {}) {
     onChange();
     queueCheck();
   };
+  /* The signature card (direction A, 2026-09-07): one element under the
+     chips, filled from whichever chip is hovered, focused or tapped — the
+     signature, one sentence of doc, an example. A title attribute was
+     invisible on touch and to an agent reading the DOM; this is in the DOM. */
+  const card = el('div', { class: 'fx-sigcard', hidden: '' },
+    el('div', { class: 'sig' }), el('div', { class: 'doc' }), el('div', { class: 'eg' }));
+  const showCard = ({ sig, doc, eg }) => {
+    card.querySelector('.sig').textContent = sig;
+    card.querySelector('.doc').textContent = doc;
+    card.querySelector('.eg').textContent = eg ?? '';
+    card.querySelector('.eg').hidden = !eg;
+    card.hidden = false;
+  };
+  const hideCard = () => { card.hidden = true; };
+  const teach = (btn, info) => {
+    btn.addEventListener('mouseenter', () => showCard(info));
+    btn.addEventListener('focus', () => showCard(info));
+    btn.addEventListener('mouseleave', () => { if (document.activeElement !== btn) hideCard(); });
+    btn.addEventListener('blur', hideCard);
+    return btn;
+  };
   // The field being edited never offers itself — a formula that reads
-  // itself never converges, and the engine rejects it anyway.
-  const fieldChips = db.fields
-    .filter((x) => !['document', 'attachments'].includes(x.type) && x.name !== selfName)
-    .map((x) => el('button', { type: 'button', class: 'fx-chip', title: x.type, onclick: () => insert(fieldDialogCore.formulaFieldToken(x.name)) }, x.name));
-  // Function chips land the caret between the parens, not after a dangling '('.
-  const fnChips = fieldDialogCore.FORMULA_FUNCTIONS
-    .map((fn) => el('button', { type: 'button', class: 'fx-chip fn', title: fn.sig, onclick: () => insert(`${fn.name}()`, 1) }, `${fn.name}()`));
+  // itself never converges, and the engine rejects it anyway. A field a
+  // formula cannot read stays listed, greyed, with the reason.
+  const fieldChips = fieldDialogCore.formulaFieldChoices(db.fields, selfName)
+    .map((x) => teach(el('button', {
+      type: 'button', class: 'fx-chip' + (x.excluded ? ' excluded' : ''),
+      disabled: x.excluded ? '' : undefined,
+      'aria-label': x.excluded ? `${x.name}: ${x.excluded}` : undefined,
+      onclick: () => { if (!x.excluded) insert(x.token); },
+    }, x.name), { sig: `${x.token} · ${x.type}`, doc: x.excluded ?? `The ${x.type} value of this row's ${x.name}.`, eg: x.excluded ? null : x.token }));
+  // Function chips land the caret between the parens, not after a dangling
+  // '(' — one row per grammar group.
+  const fnRows = fieldDialogCore.formulaFunctionGroups().map(({ group, fns }) =>
+    el('div', { class: 'fx-chip-row fn-group' }, el('span', { class: 'fx-chip-lbl' }, group),
+      ...fns.map((fn) => teach(el('button', { type: 'button', class: 'fx-chip fn', onclick: () => insert(`${fn.name}()`, 1) }, `${fn.name}()`),
+        { sig: fn.sig, doc: fn.doc, eg: fn.example }))));
   if ((state.expression ?? '').trim()) runCheck();
   return el('div', {},
     ta,
     status,
     el('div', { class: 'fx-chip-rows' },
       el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'fields'), ...fieldChips),
-      el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'functions'), ...fnChips)));
+      ...fnRows),
+    card);
 }
 
 /* The number costume controls (Kyle, 2026-08-23): Format → number shows a
