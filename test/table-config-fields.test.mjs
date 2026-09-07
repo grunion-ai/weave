@@ -107,3 +107,42 @@ test('a sort without a direction defaults asc when parsed from the row', () => {
   w.updateEntity(row.id, { Sort: 'Due' });
   assert.deepEqual(w.getTable('Task').sort, [{ field: 'Due', dir: 'asc' }]);
 });
+
+/* Issue #233: the Σ row (space rollups pinned under the field headers) has a
+   visibility switch that is table truth like the filter and the sort —
+   `hideRollups` on the table, mirrored as the Hide Rollups checkbox on the
+   Tables row, absent while the row is shown. */
+test('updateTable stores hideRollups; false clears; anything else is refused', () => {
+  const w = fresh();
+  assert.equal(w.getTable('Task').hideRollups, undefined, 'shown by default, nothing stored');
+  w.updateTable('Task', { hideRollups: true });
+  assert.equal(w.getTable('Task').hideRollups, true);
+  w.updateTable('Task', { hideRollups: false });
+  assert.equal(w.getTable('Task').hideRollups, undefined, 'false is the absence, like an empty sort');
+  assert.throws(() => w.updateTable('Task', { hideRollups: 'yes' }), WeaveError);
+});
+
+test('the table row mirrors Hide Rollups as a checkbox and writes it back through the verb', () => {
+  const w = fresh();
+  const row = () => tableRowOf(w, 'Task');
+  assert.equal(!!tval(w, row(), 'Hide Rollups'), false);
+  w.updateTable('Task', { hideRollups: true });
+  assert.equal(tval(w, row(), 'Hide Rollups'), true);
+  w.updateEntity(row().id, { 'Hide Rollups': false });
+  assert.equal(w.getTable('Task').hideRollups, undefined);
+  w.updateEntity(row().id, { 'Hide Rollups': true });
+  assert.equal(w.getTable('Task').hideRollups, true);
+});
+
+test('describeSchema, export/import and duplicate carry hideRollups only when set', () => {
+  const w = fresh();
+  const find = (ww, name) => ww.describeSchema().flatMap((s) => s.tables).find((t) => t.name === name);
+  assert.ok(!('hideRollups' in find(w, 'Task')), 'unset stays absent');
+  w.updateTable('Task', { hideRollups: true });
+  assert.equal(find(w, 'Task').hideRollups, true);
+  const w2 = new Weave();
+  w2.importJSON(w.exportJSON());
+  assert.equal(w2.getTable('Task').hideRollups, true, 'survives the interchange layer');
+  const copy = w.duplicateTable('Task');
+  assert.equal(w.getTable(copy.id).hideRollups, true, 'a duplicate reads the same way');
+});

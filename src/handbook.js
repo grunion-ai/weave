@@ -403,7 +403,7 @@ The Σ under a grid column is a rollup on the **Workspace/Spaces** row of the sp
               "where": [["Kind", "=", "scheduled"]] } }
 \`\`\`
 
-The grid footer draws every space rollup under its column and offers the aggregates on click; the space page draws them as tiles; \`weave stats <table>\` / \`weave_stats\` / \`GET /api/tables/:ref/stats\` summarise every column on demand without storing anything. A space rollup answers on its own space's row and reads \`null\` on every other; \`via\` is refused anywhere but the Spaces registry and on registry tables.
+The grid draws every space rollup in a **Σ row** pinned under the field headers — it stays while the body scrolls — and offers the aggregates on a click in that row; the eye's Rows section switches the row off, which is the table's \`hideRollups\` (mirrored as **Hide Rollups** on its Tables row, like the filter and the sort — never a browser setting). The space page draws the same rollups as tiles; \`weave stats <table>\` / \`weave_stats\` / \`GET /api/tables/:ref/stats\` summarise every column on demand without storing anything. A space rollup answers on its own space's row and reads \`null\` on every other; \`via\` is refused anywhere but the Spaces registry and on registry tables.
 
 ## Usage
 

@@ -3,7 +3,7 @@
    On a table of hundreds of rows the add row sat below the fold: adding a
    row meant scrolling to the end first. Now the row is position:sticky at
    the bottom of the page — visible from the top of the table, resting in its
-   natural place (above the Σ footer) once the reader reaches the end.
+   natural place (the last row) once the reader reaches the end.
 
    Why the header was never sticky on the table page either: `.table-wrap`
    scrolled horizontally (`overflow-x: auto`), which makes it a scroll
@@ -69,18 +69,19 @@ if (s) {
     await page.close();
   });
 
-  test('at the end of the table the foot rests in its natural place, above the Σ footer', async () => {
+  test('at the end of the table the foot rests in its natural place, the last row of the grid', async () => {
     const page = await browser.newPage();
     await openTasks(page);
     await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
     await page.waitForTimeout(150);
     assert.equal(await page.locator('.wv-grid .add-entity-btn').count(), 1, 'still exactly one');
     const btn = await rect(page, '.wv-grid .add-entity-btn');
-    const foot = await rect(page, '.wv-grid tfoot td');
     const last = await rect(page, `tr[data-eid="${seeded[199]}"]`);
     assert.ok(inView(btn), 'visible at the end');
     assert.ok(btn.top >= last.bottom - 1, 'below the last row');
-    assert.ok(btn.bottom <= foot.top + 1, 'above the Σ footer');
+    // The Σ row moved under the field headers (Issue #233): nothing sits below the foot.
+    assert.equal(await page.locator('.wv-grid tfoot').count(), 0, 'no footer under it');
+    assert.ok(await page.$eval('.wv-grid tr.add-entity-row', (tr) => tr.nextElementSibling === null && tr.closest('table').tFoot === null), 'the foot is the last row');
     await page.close();
   });
 

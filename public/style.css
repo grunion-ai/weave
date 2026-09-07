@@ -276,7 +276,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    relation grids) — keeps its sideways scroll. */
 .table-wrap { overflow-x: auto; position: relative; }
 .table-wrap.wv-fit { overflow-x: clip; }
-.wv-grid thead th { position: sticky; top: 0; z-index: 1; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
+.wv-grid thead th { position: sticky; top: 0; z-index: 2; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* The id column carries a short "#12 ↗" link — collapse it to its content
@@ -1876,14 +1876,19 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .wv-muted { color: var(--tblr-secondary); font-size: 12px; }
 
 /* ---------- statistics: the Σ footer, space tiles, column stats ---------- */
-.wv-grid tfoot td { border-top: 2px solid var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); font-size: 12px; color: var(--tblr-secondary); vertical-align: top; white-space: nowrap; padding-top: 4px; padding-bottom: 4px; }
-.wv-grid tfoot td.foot-mark { font-weight: 600; opacity: .55; }
-.wv-grid tfoot td.foot-open { cursor: pointer; min-height: 22px; }
-.wv-grid tfoot td.foot-open:hover, .wv-grid tfoot td.foot-open:focus-visible { background: var(--tblr-bg-surface); color: var(--tblr-body-color); outline: none; }
-.wv-grid tfoot td.foot-open:not(.has-stats)::after { content: '+ Σ'; opacity: 0; font-size: 11px; }
-.wv-grid tfoot td.foot-open:not(.has-stats):hover::after, .wv-grid tfoot td.foot-open:not(.has-stats):focus-visible::after { opacity: .6; }
+/* The Σ row (Issue #233): a second header row, stuck under the first at the
+   height the grid measured into --wv-head-h. Above the body, under the header
+   cells (whose menus drop over it); opaque, so the rows slide under it, not
+   through it. The rule beneath it is an inset shadow, not a thicker border: a
+   collapsed 2px border lent the first body row a pixel. */
+.wv-grid thead tr.wv-foot td { position: sticky; top: var(--wv-head-h, 0px); z-index: 1; box-shadow: inset 0 -1px 0 var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); font-size: 12px; color: var(--tblr-secondary); vertical-align: top; white-space: nowrap; padding-top: 4px; padding-bottom: 4px; }
+.wv-grid tr.wv-foot td.foot-mark { font-weight: 600; }
+.wv-grid tr.wv-foot td.foot-open { cursor: pointer; min-height: 22px; }
+.wv-grid tr.wv-foot td.foot-open:hover, .wv-grid tr.wv-foot td.foot-open:focus-visible { background: var(--tblr-bg-surface); color: var(--tblr-body-color); outline: none; }
+.wv-grid tr.wv-foot td.foot-open:not(.has-stats)::after { content: '+ Σ'; opacity: 0; font-size: 11px; }
+.wv-grid tr.wv-foot td.foot-open:not(.has-stats):hover::after, .wv-grid tr.wv-foot td.foot-open:not(.has-stats):focus-visible::after { opacity: .6; }
 .foot-stat { display: flex; gap: 6px; align-items: baseline; justify-content: flex-end; line-height: 1.5; }
-.wv-grid tfoot td:not(.num) .foot-stat { justify-content: flex-start; }
+.wv-grid tr.wv-foot td:not(.num) .foot-stat { justify-content: flex-start; }
 .foot-agg { font-size: 10.5px; opacity: .65; min-width: 2.2em; text-align: right; }
 .foot-val { font-variant-numeric: tabular-nums; color: var(--tblr-body-color); font-weight: 500; }
 .chip-pop-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--tblr-secondary); padding: 4px 6px 2px; }

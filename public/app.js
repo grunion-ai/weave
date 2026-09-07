@@ -3132,6 +3132,9 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
           document.querySelector('.chip-pop')?.remove();
           keepScroll(() => showDatabase(cur.id, state.route.view));
         }),
+        // The Σ row (Issue #233): table truth, like the filter and the sort —
+        // the next reader inherits it. Registry grids have no rollups.
+        ...(cur.system ? [] : [row(!cur.hideRollups, 'Σ rollup row', () => save({ hideRollups: !cur.hideRollups }))]),
       ] : []),
     ];
   };
@@ -3565,11 +3568,13 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
         ...(db.systemFields ?? []).map((n) => el('th', { class: 'sys-head', title: `${n} — system field, read-only` },
           el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·')))),
         // Adding a field lives where the fields are: the end of the header bar.
-        el('th', { class: 'add-field-head' }, addFieldMenuButton(db)))),
-      tbody,
-      // The Σ row: this table's space rollups, one cell per column, painted
-      // once the stats arrive (registry grids have no space to roll up to).
-      db.system ? null : renderFooter(db, cols));
+        el('th', { class: 'add-field-head' }, addFieldMenuButton(db))),
+      // The Σ row (Issue #233): this table's space rollups, one cell per
+      // column, pinned under the field headers so it stays while the body
+      // scrolls; painted once the stats arrive (registry grids have no space
+      // to roll up to). The eye's Rows section switches it off.
+      db.system || db.hideRollups ? null : renderFooter(db, cols)),
+      tbody);
     /* Cells rest as values (Feature #134): the CELL is the focus stop and
        nothing inside it is. Tab lands on every field cell — select, multi-
        select, checkbox and date included, which the browser's own order
@@ -3581,8 +3586,14 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     for (const n of table.querySelectorAll('tbody tr.entity-row td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     wrap.replaceChildren(table, puck);
     fitWatch.disconnect(); fitWatch.observe(wrap); fitWatch.observe(table);
-    const foot = table.querySelector('tfoot');
-    if (foot) fillFooter(db, foot);
+    const foot = table.querySelector('tr.wv-foot');
+    if (foot) {
+      fillFooter(db, foot);
+      // Pinned under the header row: its cells stick at the header's height,
+      // which the density and a wrapped label can change, so it is measured
+      // rather than assumed.
+      new ResizeObserver(() => table.style.setProperty('--wv-head-h', `${table.tHead.rows[0].offsetHeight}px`)).observe(table.tHead.rows[0]);
+    }
     // A row that left the page — trashed, filtered out, sorted away — is no
     // longer selected. Done after the draw so it reads the rows that exist.
     if (chosen().size) setChosen(SEL().prune(chosen(), drawnIds()));
@@ -5321,9 +5332,10 @@ function footAggregatesFor(db, f) {
 
 const spaceRollupName = (db, col, agg) => (agg === 'count' ? `${db.name} · count` : `${db.name} · ${col} · ${agg}`);
 
-/* The footer row: one cell per column, painted from the table's stats once
-   they arrive. Empty cells still take a click, which is how the first Σ is
-   added. */
+/* The Σ row: one cell per column, painted from the table's stats once they
+   arrive. Empty cells still take a click, which is how the first Σ is added.
+   A row of the header (Issue #233), not a footer: it sits under the field
+   labels and stays put while the body scrolls. */
 function renderFooter(db, cols) {
   const spacesT = registryTable('spaces');
   if (!spacesT) return null;
@@ -5339,26 +5351,26 @@ function renderFooter(db, cols) {
       onkeydown: (e) => { if (aggs.length && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); footerPicker(e.currentTarget, db, c); } },
     });
   };
-  return el('tfoot', {}, el('tr', { class: 'wv-foot' },
+  return el('tr', { class: 'wv-foot' },
     el('td', { class: 'sel-cell' }),
-    el('td', { class: 'pid-cell foot-mark' }, 'Σ'),
+    el('td', { class: 'pid-cell foot-mark', title: 'Space rollups — switch the row off from the eye' }, 'Σ'),
     ...cols.map(cell),
     ...(db.systemFields ?? []).map(() => el('td')),
-    el('td')));
+    el('td'));
 }
 
-/* Paint the footer from the live rollups. `rollups` may be handed in by a
+/* Paint the Σ row from the live rollups. `rollups` may be handed in by a
    caller that already fetched them; otherwise one read. */
-async function fillFooter(db, tfoot, rollups = null) {
-  if (!tfoot) return;
+async function fillFooter(db, foot, rollups = null) {
+  if (!foot) return;
   try {
     rollups ??= (await api('GET', `/tables/${db.id}/stats`)).rollups;
   } catch { return; }
   // The grid is drawn before it is attached, so connection is checked after
-  // the read, not before; a footer a redraw replaced meanwhile is left alone.
-  if (!tfoot.isConnected) return;
+  // the read, not before; a row a redraw replaced meanwhile is left alone.
+  if (!foot.isConnected) return;
   const nameCol = db.fields.find((f) => f.role === 'name')?.name ?? 'Name';
-  for (const td of tfoot.querySelectorAll('td.foot-cell')) {
+  for (const td of foot.querySelectorAll('td.foot-cell')) {
     const col = td.dataset.col;
     const mine = rollups.filter((r) => (r.targetField ?? nameCol) === col && FOOT_LABELS[r.aggregate]);
     td.replaceChildren(...mine.map((r) => el('span', { class: 'foot-stat', title: r.name + (r.where ? ' (filtered)' : '') },
@@ -5366,7 +5378,7 @@ async function fillFooter(db, tfoot, rollups = null) {
       el('span', { class: 'foot-val' }, r.display ?? '—'))));
     td.classList.toggle('has-stats', mine.length > 0);
   }
-  tfoot.dataset.rollups = String(rollups.length);
+  foot.dataset.rollups = String(rollups.length);
 }
 
 /* The picker: one switch per aggregate the column can wear. On creates the
@@ -5400,7 +5412,7 @@ async function footerPicker(anchor, db, col) {
             // Escape still closes and the arrows still move.
             pop.querySelector(`[data-agg="${agg}"]`)?.focus();
           }
-          fillFooter(db, anchor.closest('tfoot'), rollups);
+          fillFooter(db, anchor.closest('tr.wv-foot'), rollups);
           loadSchema();
         } catch (err) { toast(err.message, true); }
       },
