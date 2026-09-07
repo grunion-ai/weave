@@ -183,3 +183,70 @@ if (s) {
     await page.close();
   });
 }
+
+/* Direction D: autocomplete in the expression itself — `[` offers fields,
+   two letters offer functions, in a popover positioned at the caret; up,
+   down, Enter and Escape from the keyboard, no editor dependency. */
+if (s) {
+  const { browser, base } = s;
+  const openBuilder = async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+    await page.click('.wv-grid .add-field-btn');
+    await page.waitForSelector('#tray');
+    await page.locator('#tray .fx-toggle input').check();
+    await page.waitForSelector('#tray .fx-expr');
+    await page.focus('#tray .fx-expr');
+    return page;
+  };
+  const caret = (page) => page.evaluate(() => document.querySelector('#tray .fx-expr').selectionStart);
+
+  test('an open bracket offers the fields; down and Enter pick one and close the popover', async () => {
+    const page = await openBuilder();
+    await page.keyboard.type('concat([');
+    const pop = page.locator('#tray .fx-ac');
+    await pop.waitFor({ state: 'visible' });
+    const offered = await pop.locator('.fx-ac-item .k').allTextContents();
+    assert.ok(offered.includes('[Amount]') && offered.includes('[Close Date]'), offered.join(' '));
+    assert.ok(!offered.includes('[Notes]') && !offered.includes('[Files]'), 'readable fields only — no Notes, no Files');
+    await page.keyboard.type('Cl');
+    await page.waitForFunction(() => document.querySelectorAll('#tray .fx-ac-item').length === 1);
+    assert.equal(await pop.locator('.fx-ac-item.sel .k').textContent(), '[Close Date]');
+    await page.keyboard.press('Enter');
+    await pop.waitFor({ state: 'hidden' });
+    assert.equal(await page.inputValue('#tray .fx-expr'), 'concat([Close Date]');
+    assert.equal(await caret(page), 19);
+    // The popover sat at the caret, inside the textarea's box, not at 0,0.
+    await page.keyboard.type(', [');
+    await pop.waitFor({ state: 'visible' });
+    const left = await pop.evaluate((n) => parseFloat(n.style.left));
+    assert.ok(left > 40, `positioned by the caret (left=${left})`);
+    await page.close();
+  });
+
+  test('two letters offer functions; Escape closes; one letter offers nothing', async () => {
+    const page = await openBuilder();
+    await page.keyboard.type('1 + d');
+    const pop = page.locator('#tray .fx-ac');
+    await page.waitForTimeout(100);
+    assert.equal(await pop.isVisible(), false, 'one letter is too little');
+    await page.keyboard.type('a');
+    await pop.waitFor({ state: 'visible' });
+    assert.deepEqual(await pop.locator('.fx-ac-item .k').allTextContents(), ['dateadd()', 'datediff()', 'day()', 'days()']);
+    assert.match(await pop.locator('.fx-ac-item.sel .t').textContent(), /dateadd\(date, n, unit\)/);
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await pop.locator('.fx-ac-item.sel .k').textContent(), 'datediff()');
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await pop.locator('.fx-ac-item.sel .k').textContent(), 'dateadd()');
+    await page.keyboard.press('Escape');
+    await pop.waitFor({ state: 'hidden' });
+    assert.equal(await page.inputValue('#tray .fx-expr'), '1 + da', 'Escape keeps the text');
+    assert.ok(await page.locator('#tray').isVisible(), 'Escape closed the popover, not the tray');
+    await page.keyboard.type('t');
+    await pop.waitFor({ state: 'visible' });
+    await page.keyboard.press('Enter');
+    assert.equal(await page.inputValue('#tray .fx-expr'), '1 + dateadd()');
+    assert.equal(await caret(page), 12, 'the caret lands inside the parens');
+    await page.close();
+  });
+}

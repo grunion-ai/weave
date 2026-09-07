@@ -479,6 +479,8 @@ Under the chips, **As an agent would do it** (closed by default) prints the thre
 
 The verdict line names the result's **type** (number, text, boolean, list) and the dialog scans the table behind it — up to 200 rows — so the line under it reads \`row 1 of 51 — "Acme"\` with ‹ › to step through rows and pick the pathological one, and \`⚠ 2 rows → null · 1 → #ERR\` when any row did not compute. A formula valid on row 1 and null on a third of the table is exactly the bug one preview cannot show. The **Result format** section (currency, unit, decimals) only appears when the result is a number. The same figures come back from \`weave formula check <table> '<expression>' --scan\` and \`weave_check_formula {scan: true}\` as \`{type, scan: {rows, capped, nulls, errors, sampleByOutcome}}\`.
 
+Chips are discovery; typing is speed. In the script box, \`[\` opens a list of this table's readable fields at the caret and two letters open the functions that start with them — the same two lists the chips draw from, ranked by prefix. ↑ ↓ move, Return picks (a call lands with the caret between its parens), Escape closes the list and nothing else. A misspelled field name dies at the keystroke instead of at the check; the verdict line stays live underneath.
+
 ## Gotchas
 
 A formula reads **raw** values. A number's currency and unit are display costumes and never reach the expression, which is what keeps \`Price * Count\` from breaking when someone turns on thousands separators.

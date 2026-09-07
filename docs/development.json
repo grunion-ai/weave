@@ -1,6 +1,6 @@
 {
  "version": "0.4.8",
- "generatedAt": "2026-09-07T23:19:26.081Z",
+ "generatedAt": "2026-09-07T23:19:26.433Z",
  "issues": [
   {
    "name": "Single-writer: CLI and server must not write one workspace file concurrently",

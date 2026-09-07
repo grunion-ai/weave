@@ -4825,6 +4825,56 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     }
   };
   const step = (d) => { if (rows.length < 2) return; idx = (idx + d + rows.length) % rows.length; drawPick(); runCheck({ scan: false }); };
+  /* Autocomplete (direction D, 2026-09-07): a popover at the caret — `[`
+     offers fields, two letters offer functions — drawn from the same lists
+     the chips use (fieldDialogCore.formulaSuggest). Up/down move, Enter
+     picks, Escape closes the popover and nothing else. The caret's box
+     comes from a mirror div wearing the textarea's metrics, no editor. */
+  const ac = el('div', { class: 'fx-ac', hidden: '' });
+  const mirror = el('div', { class: 'fx-ac-mirror', 'aria-hidden': 'true' });
+  let sugg = null, sel = 0;
+  const hideAc = () => { ac.hidden = true; sugg = null; };
+  const caretBox = () => {
+    const cs = getComputedStyle(ta);
+    for (const k of ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'padding', 'border', 'boxSizing', 'whiteSpace', 'wordWrap']) mirror.style[k] = cs[k];
+    mirror.style.width = ta.clientWidth + 'px';
+    mirror.textContent = ta.value.slice(0, ta.selectionStart ?? 0);
+    const mark = el('span', {}, '\u200b');
+    mirror.append(mark);
+    return { left: mark.offsetLeft, top: mark.offsetTop - ta.scrollTop + parseFloat(cs.lineHeight || cs.fontSize) * 1.2 };
+  };
+  const applyAc = () => {
+    const item = sugg?.items[sel];
+    if (!item) return;
+    const r = fieldDialogCore.formulaApply(ta.value, sugg, item);
+    ta.value = r.text;
+    ta.setSelectionRange(r.caret, r.caret);
+    hideAc();
+    state.expression = ta.value; onChange(); queueCheck(); drawAgent();
+  };
+  const drawAc = () => {
+    sugg = fieldDialogCore.formulaSuggest(ta.value, ta.selectionStart ?? ta.value.length, db.fields, selfName);
+    if (!sugg.kind) return hideAc();
+    sel = Math.min(sel, sugg.items.length - 1);
+    ac.replaceChildren(...sugg.items.map((it, i) => el('div', {
+      class: 'fx-ac-item' + (i === sel ? ' sel' : ''), role: 'option',
+      // mousedown, not click: the textarea must keep focus and its caret.
+      onmousedown: (e) => { e.preventDefault(); sel = i; applyAc(); },
+    }, el('span', { class: 'k' }, it.label), el('span', { class: 't' }, it.detail))));
+    const box = caretBox();
+    ac.style.left = Math.min(box.left, Math.max(0, ta.clientWidth - 240)) + 'px';
+    ac.style.top = box.top + 'px';
+    ac.hidden = false;
+  };
+  ta.addEventListener('input', () => { sel = 0; drawAc(); });
+  ta.addEventListener('blur', hideAc);
+  ta.addEventListener('keydown', (e) => {
+    if (ac.hidden || !sugg) return;
+    if (e.key === 'ArrowDown') { sel = (sel + 1) % sugg.items.length; drawAc(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { sel = (sel - 1 + sugg.items.length) % sugg.items.length; drawAc(); e.preventDefault(); }
+    else if (e.key === 'Enter' || e.key === 'Tab') { applyAc(); e.preventDefault(); }
+    else if (e.key === 'Escape') { hideAc(); e.preventDefault(); e.stopPropagation(); }
+  });
   // The rows the cycler walks: the same first 200 the scan reads.
   api('GET', `/tables/${db.id}/entities?limit=200`).then((r) => { rows = (r.items ?? []).map((e) => ({ id: e.id, name: e.name })); drawPick(); }).catch(() => {});
   const queueCheck = () => { clearTimeout(timer); timer = setTimeout(runCheck, 250); };
@@ -4891,7 +4941,7 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
   if ((state.expression ?? '').trim()) runCheck();
   drawAgent();
   return el('div', {},
-    ta,
+    el('div', { class: 'fx-ac-wrap' }, ta, mirror, ac),
     status,
     rowpick,
     el('div', { class: 'fx-chip-rows' },

@@ -585,6 +585,38 @@
     return bareSafe ? name : `[${name}]`;
   }
 
+  /* Autocomplete (design review 2026-09-01, direction D): chips are
+     discovery, typing is speed. Given the text and the caret: an open
+     bracket offers this table's readable fields, two or more letters offer
+     functions — both from the lists the chips draw from, prefix-ranked.
+     formulaApply rewrites the word under the caret with the pick and says
+     where the caret lands (inside a call's parens). Pure; the popover in
+     app.js only draws what this returns. */
+  function formulaSuggest(text, caret, fields, selfName = null) {
+    const before = String(text ?? '').slice(0, caret);
+    const none = { kind: null, start: caret, end: caret, items: [] };
+    const lb = before.lastIndexOf('[');
+    if (lb >= 0 && before.indexOf(']', lb) < 0) {
+      const prefix = before.slice(lb + 1).toLowerCase();
+      const items = formulaFieldChoices(fields, selfName)
+        .filter((f) => !f.excluded && f.name.toLowerCase().startsWith(prefix))
+        .map((f) => ({ label: `[${f.name}]`, insert: `[${f.name}]`, detail: f.type, caretBack: 0 }));
+      return items.length ? { kind: 'field', start: lb, end: caret, items } : none;
+    }
+    const word = before.match(/[A-Za-z_][A-Za-z0-9_]*$/)?.[0];
+    if (!word || word.length < 2) return none;
+    const prefix = word.toLowerCase();
+    const items = FORMULA_FUNCTIONS
+      .filter((fn) => fn.name.startsWith(prefix))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((fn) => ({ label: `${fn.name}()`, insert: `${fn.name}()`, detail: fn.sig, caretBack: 1 }));
+    return items.length ? { kind: 'function', start: caret - word.length, end: caret, items } : none;
+  }
+  function formulaApply(text, suggestion, item) {
+    const next = String(text ?? '').slice(0, suggestion.start) + item.insert + String(text ?? '').slice(suggestion.end);
+    return { text: next, caret: suggestion.start + item.insert.length - (item.caretBack ?? 0) };
+  }
+
   /* The agent panel (design review 2026-09-01, direction C): the calls an
      agent would make for what the dialog just built — check until ok:true,
      save, read a cell back — as CLI lines and the MCP tool sequence, from
@@ -668,7 +700,7 @@
   }
 
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
+    FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,

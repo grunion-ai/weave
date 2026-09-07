@@ -719,3 +719,46 @@ test('agentRecipe quotes for the shell and stands in for what is not typed yet',
   const spaced = core.agentRecipe({ table: 'Deals', field: 'Deal Health', expression: '1' });
   assert.equal(spaced.cli[1].cmd, `weave field add Deals 'Deal Health' formula --config '{"expression":"1"}'`, 'a name with a space is quoted');
 });
+
+/* ---------- autocomplete (formula builder direction D, 2026-09-07) ----------
+   `[` offers fields and two letters offer functions, from the same two
+   lists the chips draw from, ranked by prefix. The pure half: given the
+   text and the caret, what is being typed and what to offer; and how a
+   pick rewrites the text. */
+const FIELDS = [
+  { name: 'Stage', type: 'select' }, { name: 'Start Date', type: 'date' }, { name: 'Amount', type: 'number' },
+  { name: 'Notes', type: 'document' }, { name: 'Health', type: 'formula' },
+];
+
+test('formulaSuggest: an open bracket offers fields, ranked by prefix, excluded and self left out', () => {
+  const r = core.formulaSuggest('concat([St', 10, FIELDS, 'Health');
+  assert.equal(r.kind, 'field');
+  assert.equal(r.start, 7, 'the replacement starts at the bracket');
+  assert.deepEqual(r.items.map((i) => i.label), ['[Stage]', '[Start Date]']);
+  assert.deepEqual(r.items.map((i) => i.detail), ['select', 'date']);
+  const all = core.formulaSuggest('[', 1, FIELDS, 'Health');
+  assert.deepEqual(all.items.map((i) => i.label), ['[Stage]', '[Start Date]', '[Amount]'], 'a bare bracket lists every readable field but the one being edited');
+  assert.equal(core.formulaSuggest('[Stage] + 1', 11, FIELDS).kind, null, 'a closed bracket offers nothing');
+});
+
+test('formulaSuggest: two letters offer functions by prefix; one letter and a closed word offer nothing', () => {
+  const r = core.formulaSuggest('1 + da', 6, FIELDS);
+  assert.equal(r.kind, 'function');
+  assert.equal(r.start, 4);
+  assert.deepEqual(r.items.map((i) => i.label), ['dateadd()', 'datediff()', 'day()', 'days()']);
+  assert.equal(r.items[0].detail, 'dateadd(date, n, unit)');
+  assert.equal(core.formulaSuggest('1 + d', 5, FIELDS).kind, null, 'one letter is too little');
+  assert.equal(core.formulaSuggest('upper(', 6, FIELDS).kind, null, 'a call already opened offers nothing');
+  assert.equal(core.formulaSuggest('zz', 2, FIELDS).kind, null, 'no match, no popover');
+  const mid = core.formulaSuggest('ro + 1', 2, FIELDS);
+  assert.deepEqual(mid.items.map((i) => i.label), ['round()'], 'the word under the caret, not the whole text');
+});
+
+test('formulaApply rewrites the word under the caret and lands the caret inside a call', () => {
+  const s = core.formulaSuggest('concat([St', 10, FIELDS);
+  assert.deepEqual(core.formulaApply('concat([St', s, s.items[0]), { text: 'concat([Stage]', caret: 14 });
+  const f = core.formulaSuggest('1 + da', 6, FIELDS);
+  assert.deepEqual(core.formulaApply('1 + da', f, f.items[0]), { text: '1 + dateadd()', caret: 12 });
+  const mid = core.formulaSuggest('ro + 1', 2, FIELDS);
+  assert.deepEqual(core.formulaApply('ro + 1', mid, mid.items[0]), { text: 'round() + 1', caret: 6 });
+});
