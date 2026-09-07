@@ -39,11 +39,41 @@ if (s) {
     return { eid: cell.parentElement.dataset.eid, field: cell.dataset.field ?? null, tag: document.activeElement.tagName };
   });
 
-  const settledOn = (page, eid, field) => page.waitForFunction(([e, f]) => {
+  /* Where the cursor is once it is in a grid cell at all.
+
+     Tab's own claim must not wait on the redraw: whether the keystroke or the
+     rebuild wins the frame is not the contract, landing on the right cell is.
+     This returns as soon as focus is inside a row, from whichever side of the
+     redraw it catches, and names the cell so a failure still reads as a diff. */
+  const cursorInGrid = (page) => page.waitForFunction(() => {
+    const td = document.activeElement?.closest?.('tr[data-eid] > td');
+    if (!td) return false;
+    return { eid: td.parentElement.dataset.eid, field: td.dataset.field ?? null, tag: document.activeElement.tagName };
+  }).then((h) => h.jsonValue());
+
+  /* The cursor after the round trip, read in the SAME evaluate that waited
+     for it (Issue #199).
+
+     A wait and a separate read are two round trips with a frame between them,
+     and that is the frame the redraw lands in: replacing the <tbody> drops
+     focus on <body> until `restoreGridFocus` puts it back, so a read arriving
+     there sees BODY on a grid that is behaving correctly. Waiting for the
+     LAST step — the rebuild has landed AND the cursor is back in a cell — and
+     reporting that cell from inside the wait closes the window. Which cell it
+     is stays the assertion, so this is still a test and not a tautology.
+
+     No cap of its own, so it falls back on Playwright's 30 s default: under
+     the full gate this suite has taken 52 s (review-logs/227-1) and 27 s
+     (282-1) while every wait in it was capped at 5 s. A hand-written budget
+     on a client round trip is how a green change gets voted Verified −1 —
+     wait on the signal, and let the default catch a grid that never puts the
+     cursor back at all (Issue #216). */
+  const settledFocus = (page) => page.waitForFunction(() => {
     if (document.querySelector('#main tbody[data-mark]')) return false; // the redraw has not landed yet
     const td = document.activeElement?.closest?.('tr[data-eid] > td');
-    return document.activeElement === td && td?.parentElement.dataset.eid === e && td?.dataset.field === f;
-  }, [eid, field], { timeout: 5000 });
+    if (!td) return false; // ...and the grid has not put the cursor back yet
+    return { eid: td.parentElement.dataset.eid, field: td.dataset.field ?? null, tag: document.activeElement.tagName };
+  }).then((h) => h.jsonValue());
 
   test('a redraw triggered by an edit leaves focus on the row the reader tabbed into', async () => {
     const page = await browser.newPage();
@@ -59,21 +89,20 @@ if (s) {
     await page.keyboard.type('!');
     await page.keyboard.press('Tab');
 
-    // The cursor rests on Tail of the same row once the redraw has landed
-    // and put it back; where it is in the frame between is not the contract.
-    await settledOn(page, second.id, 'Tail');
-    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Tail', tag: 'TD' },
+    // Tab lands the resting cursor on Tail of the same row.
+    assert.deepEqual(await cursorInGrid(page), { eid: second.id, field: 'Tail', tag: 'TD' },
       'Tab moves along the row');
 
-    await page.waitForFunction(() => !document.querySelector('#main tbody[data-mark]'), null, { timeout: 5000 });
-    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-
     // ...and it is still there after the grid rebuilds itself underneath.
-    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Tail', tag: 'TD' },
+    assert.deepEqual(await settledFocus(page), { eid: second.id, field: 'Tail', tag: 'TD' },
       'the redraw puts focus back on the cell Tab had reached');
 
-    // Which is what makes the NEXT Tab continue along the row instead of
-    // restarting at the top of the page.
+    /* Which is what makes the NEXT Tab continue along the row instead of
+       restarting at the top of the page. Read, not waited for, and that is the
+       point: Tab out of a RESTING cell writes nothing, so no redraw is in
+       flight and focus has already moved when the key returns. Waiting here
+       would hide a cursor that never moved behind a wait that never ends —
+       wait where there is a round trip, read where there is none. */
     await page.keyboard.press('Tab');
     assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Extra', tag: 'TD' },
       'the next Tab carries on along the same row');
@@ -99,14 +128,42 @@ if (s) {
     await page.click(`tr[data-eid="${second.id}"] td[data-field="Name"] input`);
     await page.keyboard.type('!');
     await page.keyboard.press('Tab');
-    await settledOn(page, second.id, 'Description');
-    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Description', tag: 'TD' },
+    assert.deepEqual(await cursorInGrid(page), { eid: second.id, field: 'Description', tag: 'TD' },
       'Tab reaches the description cell');
 
-    await page.waitForFunction(() => !document.querySelector('#main tbody[data-mark]'), null, { timeout: 5000 });
-    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-    assert.deepEqual(await focusedCell(page), { eid: second.id, field: 'Description', tag: 'TD' },
+    assert.deepEqual(await settledFocus(page), { eid: second.id, field: 'Description', tag: 'TD' },
       'the redraw puts focus back on the cell the reader tabbed into');
+
+    await page.close();
+  });
+
+  /* The round trip is a signal, not a budget (Issue #199). Under the full
+     gate this suite has taken 52 s (review-logs/227-1) and 27 s (282-1) while
+     every wait inside it was capped at 5 s — close enough that the clock
+     alone could vote a green change Verified −1. Hold the redraw's own query
+     open past that old cap: the cursor still has to come back to the cell Tab
+     reached, however long the grid took to rebuild. */
+  test('the cursor comes back however long the redraw takes', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
+
+    // Only the redraw's query is held. The PATCH lands at once, so the gesture
+    // is the reader's ordinary one and the wait is what is under test.
+    await page.route('**/api/tables/*/query', async (route) => {
+      await new Promise((r) => { setTimeout(r, 5500); });
+      await route.continue();
+    });
+    await page.evaluate(() => { document.querySelector('#main tbody').dataset.mark = '1'; });
+
+    await page.click(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
+    await page.keyboard.type('!');
+    await page.keyboard.press('Tab');
+
+    // 5.5 s: longer than the 5 s cap these waits used to carry, so this case
+    // is red on the budget and green on the signal.
+    assert.deepEqual(await settledFocus(page), { eid: second.id, field: 'Tail', tag: 'TD' },
+      'the cursor is back on the cell Tab reached, 5.5 s after the edit');
 
     await page.close();
   });
