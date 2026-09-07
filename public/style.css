@@ -1094,12 +1094,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   max-height: calc(100vh - 120px); overflow-y: auto; scrollbar-width: none; }
 .doc-rail-track::-webkit-scrollbar { display: none; }
 .doc-rail:hover .doc-rail-track { background: var(--tblr-bg-surface); border-color: var(--tblr-border-color); }
-/* Open: the track leaves the sticky gutter for a fixed panel centred on the
-   viewport's middle. Its x stays the rail's own (set inline on open) — only
-   the y is the viewport's. */
-.doc-rail.open .doc-rail-track { position: fixed; top: 50%; transform: translateY(-50%); margin: 0;
-  background: var(--tblr-bg-surface); border-color: var(--tblr-border-color);
-  box-shadow: var(--tblr-box-shadow); z-index: 6; max-width: 260px; max-height: min(70vh, calc(100vh - 40px)); }
+/* Open: the minimap widens in place into a panel — same sticky anchor, same
+   left edge, so the headings land on the dashes the reader just clicked. A
+   fixed panel at the viewport's middle read as the outline snapping away
+   (Issues #131, #144). */
+.doc-rail.open .doc-rail-track { background: var(--tblr-bg-surface); border-color: var(--tblr-border-color);
+  box-shadow: var(--tblr-box-shadow); z-index: 6; width: 260px; }
 .doc-rail-dash { border: 0; padding: 3px 0; background: none; cursor: pointer; display: flex;
   align-items: center; gap: 9px; color: var(--tblr-secondary); font-size: 12px; line-height: 15px; text-align: left; }
 .doc-rail-tick { height: 4px; border-radius: 2px; flex: none; background: var(--tblr-border-color);
@@ -1243,12 +1243,16 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    row — the syntax it writes. Groups are headers INSIDE the first row of each
    group (a hint item is always a button), so the highlight is painted on the
    row rather than the button: a group label never lights up. */
-.vditor-hint { max-width: 380px; min-width: 320px; padding: 6px; max-height: 68vh; overflow-y: auto; }
+/* A list to scroll, never a sheet over the document (Issue #137): capped
+   short (attachHintClamp keeps the inline clamp to the same 400px), tight
+   rows, and a wheel that stops at the menu's edge instead of scrolling the
+   page — which is what closes the menu. */
+.vditor-hint { max-width: 340px; min-width: 280px; padding: 4px; max-height: 400px; overflow-y: auto; overscroll-behavior: contain; }
 .vditor-hint button { padding: 0; }
 .vditor-hint button:hover, .vditor-hint button.vditor-hint--current { background-color: transparent; }
-.slash-group { display: block; padding: 12px 8px 4px; font-size: 10px; font-weight: 600; letter-spacing: .09em; color: var(--tblr-secondary); opacity: .75; }
+.slash-group { display: block; padding: 8px 8px 3px; font-size: 10px; font-weight: 600; letter-spacing: .09em; color: var(--tblr-secondary); opacity: .75; }
 .vditor-hint button:first-child .slash-group { padding-top: 2px; }
-.slash-item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; }
+.slash-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px; }
 .vditor-hint button:hover .slash-item, .vditor-hint button.vditor-hint--current .slash-item { background: var(--tblr-bg-surface-secondary); }
 .slash-icon { flex: 0 0 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--tblr-secondary); }
 /* Flat icons, not emoji: one monochrome vocabulary that inherits text colour
@@ -1435,6 +1439,11 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .fsv-body { flex: 1; }
 .doc-app { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #fff; }
 .doc-app.hidden { display: none; }
+/* A sniffed mermaid document, drawn in place of an editor (Issue #188). */
+.doc-diagram { padding: 8px 0 4px; }
+.doc-diagram.hidden { display: none; }
+.doc-diagram pre.mermaid { margin: 0; background: none; border: 0; text-align: center; }
+.doc-diagram pre.mermaid svg { max-width: 100%; height: auto; }
 .doc-anchor.active { color: var(--tblr-primary); }
 .doc-source { display: block; width: 100%; min-height: 420px; font-family: var(--tblr-font-monospace); font-size: 12px; line-height: 1.5; tab-size: 2; border: 1px solid var(--tblr-border-color); border-radius: 8px; padding: 10px 12px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); resize: vertical; }
 .doc-expand { display: flex; flex-direction: column; height: calc(100vh - 150px); min-height: 420px; }

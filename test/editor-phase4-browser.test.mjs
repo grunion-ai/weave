@@ -285,7 +285,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the outline opens on click, floats at mid-viewport, and Escape closes it', async () => {
+  test('the outline opens on click, in place, and Escape closes it', async () => {
     const id = entityWithDoc('RailOpen', RAIL_DOC);
     const page = await openEntity(id);
     try {
@@ -301,13 +301,15 @@ if (s) {
         const l = document.querySelector('.doc-rail-label');
         const t = document.querySelector('.doc-rail-track').getBoundingClientRect();
         return { display: getComputedStyle(l).display, text: l.textContent,
-          width: l.getBoundingClientRect().width, mid: t.top + t.height / 2, vh: innerHeight };
+          width: l.getBoundingClientRect().width, top: t.top, vh: innerHeight };
       });
       assert.notEqual(after.display, 'none', 'clicking shows the headings');
       assert.equal(after.text, 'One', 'the label is the heading');
       assert.ok(after.width > 0, 'and it takes real space');
-      assert.ok(Math.abs(after.mid - after.vh / 2) < 40,
-        `the open outline floats at the viewport midpoint (centre ${after.mid} vs ${after.vh / 2})`);
+      // Issues #131, #144: the panel opens where the minimap is, never at the
+      // viewport's middle (doc-rail-browser.test.mjs measures the exact spot).
+      assert.ok(after.top < after.vh / 3,
+        `the open outline stays at the minimap's anchor near the top (top ${after.top} of ${after.vh})`);
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => !document.querySelector('.doc-rail.open'), null, { timeout: 20000 });
       assert.equal(await labelDisplay(), 'none', 'Escape folds it back to a minimap');

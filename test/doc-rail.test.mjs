@@ -102,12 +102,19 @@ test('each dash carries its heading, hidden until the rail is clicked open', () 
     'hover reveals nothing — the outline is click-to-open');
 });
 
-test('the open outline floats at the viewport midpoint', () => {
+test('the open outline widens in place — it never leaves the gutter for the viewport middle', () => {
+  /* Issues #131 and #144: the open panel used to be position:fixed at 50%
+     of the viewport, so a click on the minimap made the headings jump away
+     from the dashes the reader had just clicked. The panel now opens where
+     the minimap is: same sticky anchor, wider. */
   const rule = CSS.match(/\.doc-rail\.open\s+\.doc-rail-track\s*\{[^}]*\}/)?.[0];
   assert.ok(rule, 'an .open state restyles the track');
-  assert.match(rule, /position:\s*fixed/, 'the open track leaves the gutter flow');
-  assert.match(rule, /top:\s*50%/, 'anchored to the viewport middle');
-  assert.match(rule, /translateY\(-50%\)/, 'centred on it, not hanging from it');
+  assert.doesNotMatch(rule, /position:\s*fixed/, 'the open track stays in the gutter flow');
+  assert.doesNotMatch(rule, /top:\s*50%/, 'nothing anchors it to the viewport middle');
+  assert.doesNotMatch(rule, /translateY\(/, 'and nothing centres it there');
+  const from = APP.indexOf('function attachDashRail');
+  const rail = APP.slice(from, APP.indexOf('function attachHeadingFolds', from));
+  assert.doesNotMatch(rail, /track\.style\.left/, 'no inline x pin — sticky keeps the rail\'s own x');
 });
 
 test('the outline opens on click and closes on Escape or a click away', () => {

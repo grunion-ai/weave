@@ -98,7 +98,12 @@ globalThis.WeaveEditorLib = {
     if (/^[{[]/.test(src)) {
       try { JSON.parse(src); return 'json'; } catch { /* prose that opens with a brace */ }
     }
-    if (/^(?:graph|flowchart|sequenceDiagram|classDiagram|erDiagram|stateDiagram|gantt|pie|mindmap)\b/.test(src)) return 'mmd';
+    /* A diagram HEADER, not a word that can open prose: "graph theory, a
+       primer" is markdown. graph/flowchart want a direction; the one-word
+       kinds (gantt, pie, mindmap, timeline…) want their own line. The sniff
+       now picks a viewer (docViewMode), so a false positive would hide prose
+       behind a broken drawing. */
+    if (/^(?:graph|flowchart)\s+(?:TB|TD|BT|RL|LR)\b|^(?:sequenceDiagram|classDiagram|erDiagram|stateDiagram(?:-v2)?)\b|^(?:gantt|pie|mindmap|timeline|journey|gitGraph)(?=\s+(?:title|showData)\b|\s*\n)/.test(src)) return 'mmd';
     return 'md';
   },
 
@@ -113,7 +118,10 @@ globalThis.WeaveEditorLib = {
   docViewMode(declared, text) {
     if (declared === 'html') return 'app';
     if (declared === 'code') return 'code';
-    return this.docKind(text) === 'html' ? 'app' : 'markdown';
+    // Undeclared: a page runs, a diagram draws, a model edits as code
+    // (Issues #188, #189), and everything else is the markdown editor.
+    const kind = this.docKind(text);
+    return kind === 'html' ? 'app' : kind === 'mmd' ? 'diagram' : kind === 'json' ? 'code' : 'markdown';
   },
 
   /* The badge a grid chip wears: the declared kind when there is one, the

@@ -37,6 +37,34 @@ test('no declared kind falls back to the sniff every existing field relies on', 
     'markdown is the unmarked default — the engine never stores it, so it cannot outvote the sniff');
 });
 
+test('a sniffed diagram or model gets a viewer of its own (Issues #188, #189)', () => {
+  /* Kyle, 2026-09-05: "diagram doc type doesn\'t render" and "data and code
+     formatting looks wrong" — an undeclared field holding mermaid source or a
+     JSON model went to the markdown editor, which drew the source as prose. */
+  assert.equal(LIB.docViewMode(undefined, 'graph LR\n A-->B'), 'diagram', 'mermaid source draws as a diagram');
+  assert.equal(LIB.docViewMode(undefined, 'flowchart TD\n F[a] --> D{b}'), 'diagram');
+  assert.equal(LIB.docViewMode(undefined, '{"slides": []}'), 'code', 'a JSON model edits in the code box');
+  assert.equal(LIB.docViewMode('code', 'graph LR\n A-->B'), 'code', 'a declared code field still rules');
+  assert.equal(LIB.docViewMode('html', 'graph LR\n A-->B'), 'app', 'so does a declared html field');
+});
+
+test('the diagram sniff wants a diagram header, not a word that opens prose', () => {
+  assert.equal(LIB.docKind('graph theory, a primer\n\nwords'), 'md');
+  assert.equal(LIB.docKind('pie is a dessert'), 'md');
+  assert.equal(LIB.docKind('timeline of the project'), 'md');
+  assert.equal(LIB.docKind('graph LR\n A-->B'), 'mmd');
+  assert.equal(LIB.docKind('pie title Pets\n "Dogs": 3'), 'mmd');
+  assert.equal(LIB.docKind('stateDiagram-v2\n [*] --> A'), 'mmd');
+});
+
+test('the document section mounts a diagram viewer for the diagram mode', () => {
+  const from = APP.indexOf('const mode = globalThis.WeaveEditorLib.docViewMode(');
+  const section = APP.slice(from, APP.indexOf('/* Comments panel */', from));
+  assert.match(section, /mode === 'diagram'/, 'the section knows the mode');
+  assert.match(section, /renderMermaidIn\(/, 'and draws it with the one mermaid renderer');
+  assert.match(section, /class: 'doc-diagram'/, 'inside its own box');
+});
+
 /* ---------- the chip badge ---------- */
 
 test('the chip wears the declared kind; sniffing is for the undeclared', () => {
