@@ -127,8 +127,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       } catch (err) {
         // The applet sits ahead of the dispatcher's own try/catch; without
         // this a throw here would leave the phone waiting forever.
-        return out(err instanceof WeaveError && err.code === 'not-found' ? 404 : 500,
-          { error: err.message, code: err.code ?? 'error' });
+        const json = { error: err.message, code: err.code ?? 'error' };
+        return err instanceof WeaveError && err.code === 'not-found' ? notFound(json) : out(500, json);
       }
     }
 
@@ -785,7 +785,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     } catch (err) {
       const status = statusFor(err);
       if (status === 500 && typeof console !== 'undefined') console.error(err);
-      return out(status, { error: err.message, code: err.code ?? 'internal' });
+      const json = { error: err.message, code: err.code ?? 'internal' };
+      // A not-found from the engine (unknown entity id on /e/<id>, Issue #238)
+      // is a navigation miss like any other: the page rule decides.
+      return status === 404 ? notFound(json) : out(status, json);
     }
   };
 }
