@@ -2202,7 +2202,10 @@ function dressedUrl(value, input) {
     input.focus();
   };
   const link = el('a', {
-    class: 'url-link', href: parts.href, target: '_blank', rel: 'noopener',
+    class: 'url-link', href: parts.href,
+    // http(s) leaves weave and takes a new tab; a custom scheme (claude://,
+    // mailto:) launches its handler and the page stays, so no target.
+    target: parts.external ? '_blank' : null, rel: parts.external ? 'noopener' : null,
     // The click is the browser's: no docking, no row navigation underneath.
     onclick: (e) => e.stopPropagation(),
   }, el('span', { class: 'url-host' }, parts.host), el('span', { class: 'url-rest' }, parts.rest));

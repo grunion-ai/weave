@@ -210,7 +210,7 @@ A string the grid renders as a link, opening in a new tab. Click the link to ope
 
 ## Usage
 
-\`{"Repo": "https://github.com/grunion-ai/weave"}\` — no scheme validation is enforced on write. Only an \`http(s)://\` value draws as a link; anything else rests as a text box, so a stored string can never run in the reader's tab.
+\`{"Repo": "https://github.com/grunion-ai/weave"}\` — no scheme validation is enforced on write. Any scheme draws as a link — \`claude://resume?…\` and \`mailto:\` open in place through their handler, \`http(s)://\` opens a new tab — except \`javascript:\`, \`data:\`, \`vbscript:\`, \`blob:\` and \`file:\`, which rest as a text box so a stored string can never run in the reader's tab.
 
 ## Gotchas
 

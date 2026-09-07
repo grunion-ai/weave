@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
 const DOCS = 'https://docs.example.test/api/v2#entities';
-let vendors, website, fibery, blank, junk;
+let vendors, website, fibery, blank, junk, session;
 const s = await launch('url cell', (weave) => {
   weave.createSpace({ name: 'Ops' });
   vendors = weave.createTable({ space: 'Ops', name: 'Vendor' });
@@ -16,6 +16,7 @@ const s = await launch('url cell', (weave) => {
   fibery = weave.createEntity(vendors, { name: 'Fibery', values: { Website: DOCS } });
   blank = weave.createEntity(vendors, { name: 'Nobody' });
   junk = weave.createEntity(vendors, { name: 'Scribble', values: { Website: 'not a url' } });
+  session = weave.createEntity(vendors, { name: 'Resume', values: { Website: 'claude://resume?session=25ba039f' } });
 });
 
 if (s) {
@@ -40,6 +41,22 @@ if (s) {
     assert.equal(await page.locator(`${cell(blank.id)} input`).count(), 1, 'empty: the text box');
     assert.equal(await page.locator(`${cell(junk.id)} input`).inputValue(), 'not a url', 'not a url: the text box, value intact');
     assert.equal(await page.locator(`${cell(junk.id)} a`).count(), 0);
+    await page.close();
+  });
+
+  test('a claude:// value is a link that opens in place — no new tab, the grid stays', async () => {
+    const page = await open(`#/table/${vendors.id}`);
+    const a = page.locator(`${cell(session.id)} a.url-link`);
+    await a.waitFor();
+    assert.equal(await a.getAttribute('href'), 'claude://resume?session=25ba039f');
+    assert.equal(await a.getAttribute('target'), null, 'a handler link takes no target');
+    assert.equal(await a.locator('.url-host').textContent(), 'claude://resume');
+    assert.equal(await a.locator('.url-rest').textContent(), '?session=25ba039f');
+    let popups = 0; page.context().on('page', () => { popups += 1; });
+    await a.click();
+    await page.waitForTimeout(300);
+    assert.equal(popups, 0, 'no tab opened');
+    assert.ok(page.url().includes(`#/table/${vendors.id}`), 'the grid is still here');
     await page.close();
   });
 

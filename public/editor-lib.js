@@ -59,17 +59,29 @@ globalThis.WeaveEditorLib = {
   /* ---------- a url value as a link (Issue: url cells opened nothing) ----------
      The Handbook promised "a string the grid renders as a link, opening in a
      new tab"; the cell drew a text box. The pure half: what the anchor
-     carries. Only http(s) draws as a link — anything else (a bare word, a
-     javascript: string, an empty value) stays the text box, so a stored
-     value can never run in the reader's tab. host and rest are the two
-     weights the cell sets: a column of links scans by site. */
+     carries. Any scheme draws as a link except the ones a browser would
+     RUN (javascript:, data:, vbscript:, blob:, file:) — a bare word, an
+     empty value or one of those stays the text box, so a stored value can
+     never execute in the reader's tab. `external` is true for http(s): that
+     is the click that leaves weave and takes a new tab. A claude://resume
+     or mailto: link hands off to its handler without leaving the page, so
+     it opens in place (Kyle, 2026-09-07: the Sessions column). host and
+     rest are the two weights the cell sets: a column of links scans by
+     site — for a custom scheme the "host" is everything up to the query. */
   urlParts(value) {
     if (typeof value !== 'string' || !value.trim()) return null;
     let u;
     try { u = new URL(value.trim()); } catch { return null; }
-    if (u.protocol !== 'http:' && u.protocol !== 'https:' || !u.host) return null;
-    const rest = (u.pathname === '/' ? '' : u.pathname) + u.search + u.hash;
-    return { href: u.href, host: u.host, rest };
+    if (/^(javascript|data|vbscript|blob|file):$/i.test(u.protocol)) return null;
+    const external = u.protocol === 'http:' || u.protocol === 'https:';
+    if (external && !u.host) return null;
+    if (external) {
+      const rest = (u.pathname === '/' ? '' : u.pathname) + u.search + u.hash;
+      return { href: u.href, host: u.host, rest, external };
+    }
+    const raw = value.trim();
+    const cut = raw.search(/[?#]/);
+    return { href: u.href, host: cut < 0 ? raw : raw.slice(0, cut), rest: cut < 0 ? '' : raw.slice(cut), external };
   },
 
   /* ---------- what kind of thing a document is ----------
