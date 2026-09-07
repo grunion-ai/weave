@@ -889,8 +889,20 @@ function renderNav() {
       status.textContent = `v${h.version}${up}`;
       if (h.startedAt) status.title = `This weave instance — started ${h.startedAt}`;
       /* The instance must run the latest main; when it does not, say so out
-         loud, once per load (Kyle, 2026-09-02). */
-      if (h.behind) {
+         loud, once per load (Kyle, 2026-09-02).
+
+         A stale PROCESS is decided first (Issue #114). This page's app.js came
+         off the disk the server is sitting on; the engine answering it was
+         loaded at boot. When those disagree, the app is not merely old, it is
+         mismatched — on 2026-08-28 + New and Shift+Enter failed silently for
+         three minutes because nothing said so. A restart is the answer, and it
+         is also the answer to being behind, so this branch wins. */
+      if (h.stale) {
+        status.classList.add('is-stale');
+        status.textContent += ` · ${h.sha} ≠ ${h.diskSha}`;
+        status.title = `This server booted at ${h.sha}; the checkout it serves is at ${h.diskSha} — restart weave`;
+        toast(`This page was served by ${h.diskSha} but the server is still running ${h.sha} — restart weave; until then saving can fail silently`, true);
+      } else if (h.behind) {
         status.classList.add('is-behind');
         status.textContent += ` · ${h.sha} ≠ ${h.latestSha}`;
         status.title = `This instance runs ${h.sha}; main is at ${h.latestSha} — weave service promote`;

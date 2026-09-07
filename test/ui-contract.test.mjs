@@ -2158,6 +2158,26 @@ test('a behind instance raises the toast and tints its chip', () => {
   assert.ok(chip.color, 'the stale chip changes color');
 });
 
+/* ---------- stale process (Issue #114) ----------
+   The dangerous mismatch is not "old checkout" but "old process": app.js
+   comes off the disk per request, the engine was loaded once at boot, so a
+   checkout that moved under the process serves new client code against an old
+   engine and creates fail silently. It outranks `behind` on the chip — one is
+   a pull owed, the other is a broken app. */
+test('a stale process raises the toast and tints its chip louder than behind', () => {
+  const nav = fnBody('renderNav');
+  assert.match(nav, /h\.stale/, 'the chip reads the disk-vs-process verdict');
+  assert.match(nav, /is-stale/, 'and wears it');
+  assert.match(nav, /toast\([^)]*restart/i, 'the toast names the way out — a restart, not a pull');
+  assert.match(nav, /h\.diskSha/, 'and names the commit that served the page');
+  assert.ok(nav.indexOf('h.stale') < nav.indexOf('h.behind'),
+    'stale is decided first: a stale process is also usually behind, and the restart is the answer to both');
+  const chip = rulesFor('.nav-health.is-stale');
+  assert.ok(chip.color, 'the stale-process chip changes color');
+  assert.notEqual(chip.color, rulesFor('.nav-health.is-behind').color,
+    'and reads apart from the merely-behind chip');
+});
+
 test('the entity page draws the System toggles — one read-only row per systemFields name, Activity excepted (Issue #174)', () => {
   const body = fnBody('renderEntityView');
   assert.match(body, /for \(const n of \(db\.systemFields \?\? \[\]\)\) \{\s*\n\s*if \(n === 'Activity' \|\| !SYSTEM_COLS\[n\]\) continue;/,

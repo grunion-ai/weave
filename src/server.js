@@ -15,26 +15,51 @@ const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.u
    is not." The node adapter reads its own checkout: HEAD at boot, the first
    remote's main lazily (never blocking a request, at most every 5 minutes,
    4s timeout so an offline instance stays silent). /api/health carries
-   {sha, latestSha, behind} and the UI raises the toast. */
+   {sha, latestSha, behind} and the UI raises the toast.
+
+   The disk head rides along too (Issue #114). Static assets are read from
+   disk per request; src/* is loaded once at boot — so a checkout that moves
+   under a running process serves NEW app.js against an OLD engine, and row
+   creation fails silently until someone restarts it. `behind` cannot carry
+   that: it compares the boot HEAD to the REMOTE, it is lazy (the first health
+   call after a boot has no verdict at all), it is absent whenever ls-remote
+   fails, and its remedy is a pull. This one is local, synchronous, and fixed
+   by a restart. */
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const gitOut = (...a) => {
   const r = spawnSync('git', ['-C', ROOT, ...a], { encoding: 'utf8', timeout: 4000 });
   return r.status === 0 ? r.stdout.trim() : null;
 };
-const BUILD = { head: gitOut('rev-parse', 'HEAD'), remote: gitOut('remote')?.split('\n')[0] || null, latest: null, checkedAt: 0 };
+const BUILD = { head: gitOut('rev-parse', 'HEAD'), remote: gitOut('remote')?.split('\n')[0] || null, latest: null, checkedAt: 0, disk: null, diskCheckedAt: 0 };
 function refreshLatest() {
   BUILD.checkedAt = Date.now();
   if (!BUILD.remote) return;
   execFile('git', ['-C', ROOT, 'ls-remote', BUILD.remote, 'main'], { encoding: 'utf8', timeout: 4000 },
     (err, out) => { if (!err) BUILD.latest = (out ?? '').split(/\s/)[0] || null; });
 }
+/* The HEAD the next static asset will be served from. Read for real, at most
+   every 5s: the whole point is that it can differ from the one in memory. */
+function diskHead() {
+  if (Date.now() - BUILD.diskCheckedAt > 5000) {
+    BUILD.diskCheckedAt = Date.now();
+    BUILD.disk = gitOut('rev-parse', 'HEAD');
+  }
+  return BUILD.disk;
+}
+/* The verdicts, apart from the reading: stale = the process is older than the
+   checkout it serves; behind = the checkout is older than main. */
+export function describeBuild({ head, disk = null, latest = null }) {
+  if (!head) return null;
+  return {
+    sha: head.slice(0, 7),
+    ...(disk ? { diskSha: disk.slice(0, 7), stale: disk !== head } : {}),
+    ...(latest ? { latestSha: latest.slice(0, 7), behind: latest !== head } : {}),
+  };
+}
 export function buildInfo() {
   if (!BUILD.head) return null;
   if (Date.now() - BUILD.checkedAt > 5 * 60 * 1000) refreshLatest();
-  return {
-    sha: BUILD.head.slice(0, 7),
-    ...(BUILD.latest ? { latestSha: BUILD.latest.slice(0, 7), behind: BUILD.latest !== BUILD.head } : {}),
-  };
+  return describeBuild({ head: BUILD.head, disk: diskHead(), latest: BUILD.latest });
 }
 const MIME = {
   '.html': 'text/html; charset=utf-8',

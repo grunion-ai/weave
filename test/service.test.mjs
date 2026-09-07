@@ -102,6 +102,25 @@ test('buildStatus: version mismatch flags a stale server', () => {
   assert.match(s.summary, /stale/);
 });
 
+test('buildStatus: a commit mismatch flags a stale server the version cannot see (Issue #114)', () => {
+  // The 2026-08-28 process served a checkout three minutes newer than itself
+  // under the SAME package version — a version comparison is blind to it, so
+  // the CLI said 'running' while the browser's saves were failing.
+  const s = buildStatus({
+    label: 'l', port: 4400, plistPath: '/p', plistInstalled: true,
+    launchctl: { loaded: true, state: 'running', pid: 7, lastExitCode: 0 },
+    health: { reachable: true, ok: true, version: '0.4.7', workspace: 'weave', sha: '3f3075d', diskSha: 'abc1234', stale: true },
+    localVersion: '0.4.7',
+  });
+  assert.equal(s.server.stale, true, 'the commit-level verdict counts as stale');
+  assert.match(s.summary, /stale/);
+  assert.match(s.summary, /3f3075d/, 'and names the commit the process booted from');
+  assert.match(s.summary, /abc1234/, 'and the one on disk');
+  assert.match(s.summary, /restart/, 'and the way out');
+  assert.equal(s.server.sha, '3f3075d');
+  assert.equal(s.server.diskSha, 'abc1234');
+});
+
 test('buildStatus: reachable but unmanaged', () => {
   const s = buildStatus({
     label: 'l', port: 4400, plistPath: '/p', plistInstalled: false,

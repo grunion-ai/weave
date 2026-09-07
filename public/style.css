@@ -1299,6 +1299,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* A stale instance wears the warning: the chip is how you notice without
    the toast (Kyle, 2026-09-02). */
 .nav-health.is-behind { color: var(--tblr-warning); border-color: var(--tblr-warning); }
+/* A stale PROCESS is worse than a stale checkout — the page and the engine
+   disagree and saving can fail silently (Issue #114) — so it wears the danger
+   tint and full opacity, a step louder than merely behind. Both tokens flip
+   with data-bs-theme, so the chip stays legible in either. */
+.nav-health.is-stale { color: var(--tblr-danger); border-color: var(--tblr-danger); opacity: 1; }
 .wv-grid td.sys-cell { color: var(--tblr-secondary); font-size: 12.5px; white-space: nowrap; }
 /* ---------- filter strip (Feature #38) ---------- */
 .filter-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }

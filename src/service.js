@@ -89,10 +89,17 @@ export async function probeHealth(port, { fetchImpl = fetch, timeoutMs = 2000 } 
 // the live health probe — into one report with a one-line verdict.
 export function buildStatus({ label, port, plistPath, plistInstalled, launchctl, health, localVersion }) {
   const reachable = health?.reachable === true && health?.ok !== false;
-  const stale = reachable && localVersion != null && health.version != null && health.version !== localVersion;
+  const versionStale = reachable && localVersion != null && health.version != null && health.version !== localVersion;
+  /* The commit-level verdict /api/health carries (Issue #114). Most commits
+     do not bump the version, so a process serving a checkout newer than
+     itself reads as current to the comparison above — which is how the CLI
+     said 'running' on 2026-08-28 while the browser's saves failed silently. */
+  const buildStale = reachable && health.stale === true;
+  const stale = versionStale || buildStale;
   let summary;
   if (reachable) {
-    if (stale) summary = `running (stale: server v${health.version}, local v${localVersion} — restart to update)`;
+    if (versionStale) summary = `running (stale: server v${health.version}, local v${localVersion} — restart to update)`;
+    else if (buildStale) summary = `running (stale: server booted at ${health.sha}, the checkout it serves is at ${health.diskSha} — restart to update)`;
     else if (!plistInstalled) summary = 'running (unmanaged — run `weave service install` to auto-start on login)';
     else summary = 'running';
   } else if (plistInstalled && launchctl?.loaded) {
@@ -115,6 +122,8 @@ export function buildStatus({ label, port, plistPath, plistInstalled, launchctl,
       workspace: health?.workspace ?? null,
       startedAt: health?.startedAt ?? null,
       uptime: health?.uptime ?? null,
+      sha: health?.sha ?? null,
+      diskSha: health?.diskSha ?? null,
       stale,
     },
   };
