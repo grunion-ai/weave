@@ -5656,10 +5656,15 @@ function replayChord(host, key, shift = false) {
 /* The slash menu opens upward when the caret sits low — and a 20-row menu
    can overflow the top of the window, hiding exactly the row the query
    promoted (the writer then reads the wrong first row). Clamp it into the
-   viewport and let it scroll instead. */
+   viewport and let it scroll instead.
+   The clamp is a short one (Issue #137, Kyle: "too many and too big of a
+   slash command menu"): the full catalogue stays, but the menu is a list to
+   scroll, never a sheet over the document. The selection bubble carries the
+   everyday formatting with icons; the menu is for everything else. */
+const HINT_MAX_PX = 400;
 function attachHintClamp(host) {
   const clamp = (hint) => {
-    hint.style.maxHeight = `${Math.max(200, innerHeight - 24)}px`;
+    hint.style.maxHeight = `${Math.max(200, Math.min(HINT_MAX_PX, innerHeight - 24))}px`;
     hint.style.overflowY = 'auto';
     const top = hint.getBoundingClientRect().top;
     if (top < 8) hint.style.top = `${parseFloat(hint.style.top || '0') + (8 - top)}px`;
@@ -5670,6 +5675,18 @@ function attachHintClamp(host) {
       if (hint && hint.style.display !== 'none') clamp(hint);
     }
   }).observe(host, { subtree: true, attributes: true, attributeFilter: ['style'] });
+  /* Vditor closes the menu on any window scroll. A wheel over a menu that
+     cannot absorb it — shorter than its box, or already at an end — chained
+     to the page, which scrolled, which closed the menu under the pointer
+     ("it disappears when trying to scroll", Issue #137). The wheel stops at
+     the menu's edge; overscroll-behavior in the CSS says the same thing to
+     browsers that honour it, this is for the ones that do not. */
+  host.addEventListener('wheel', (e) => {
+    const hint = e.target.closest?.('.vditor-hint');
+    if (!hint || hint.style.display === 'none') return;
+    const room = e.deltaY > 0 ? hint.scrollHeight - hint.clientHeight - hint.scrollTop : hint.scrollTop;
+    if (room <= 0) e.preventDefault();
+  }, { passive: false });
 }
 
 function attachTableKeys(host) {
@@ -6140,25 +6157,23 @@ function attachDashRail(section, host) {
     rail: el('nav', { class: 'doc-rail', title: 'Document outline' }, track),
   };
   /* The outline opens on click, never on hover: the resting rail stays a
-     minimap, and the first click anywhere on it floats the headings at the
-     viewport midpoint. Capture phase, so a dash click while closed opens
+     minimap, and the first click anywhere on it widens the minimap IN PLACE
+     into a panel of headings — same sticky anchor, same left edge, so the
+     panel lands on the dashes the reader just clicked. It used to float
+     fixed at the viewport's middle, which read as the outline snapping away
+     (Issues #131, #144). Capture phase, so a dash click while closed opens
      the panel instead of jumping blind. */
   const onAway = (e) => { if (!st.rail.contains(e.target)) st.close(); };
   const onKey = (e) => { if (e.key === 'Escape') st.close(); };
   st.close = () => {
     st.rail.classList.remove('open');
-    st.track.style.left = '';
     document.removeEventListener('click', onAway, true);
     document.removeEventListener('keydown', onKey);
   };
   st.rail.addEventListener('click', (e) => {
     if (st.rail.classList.contains('open')) return; // open: dash clicks jump
     e.stopPropagation();
-    // Fixed positioning drops the gutter context, so the panel keeps the
-    // rail's own x and only its y is the viewport's middle (see the CSS).
-    st.track.style.left = `${st.rail.getBoundingClientRect().left}px`;
     st.rail.classList.add('open');
-    st.schedule(); // refresh re-measures the x — a click can beat layout
     document.addEventListener('click', onAway, true);
     document.addEventListener('keydown', onKey);
   }, { capture: true });
@@ -6192,9 +6207,6 @@ function refreshDashRail(st) {
   const spec = lib.railSpec(heads.map((h) => ({ level: +h.tagName[1], text: headText(h) })));
   if (!spec.length) { st.close(); st.rail.remove(); return; } // < 3 headings: no rail
   if (!st.rail.isConnected) st.section.append(st.rail);
-  // While open the track is fixed and carries the rail's x inline; the rail
-  // itself keeps moving with layout, so every refresh re-pins the panel.
-  if (st.rail.classList.contains('open')) st.track.style.left = `${st.rail.getBoundingClientRect().left}px`;
   const current = lib.currentSection(heads.map((h) => h.getBoundingClientRect().top), DASH_READING_LINE);
   // A dash is a tick plus its heading's words. The words are display:none
   // until the rail is hovered, so the resting rail stays a minimap and the
@@ -6654,10 +6666,23 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
        hidden box measures nothing and stays blank. */
     const mode = globalThis.WeaveEditorLib.docViewMode(f.kind, entity.docs?.[f.name] ?? '');
     const isApp = mode === 'app';
-    const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, allowfullscreen: '', allow: 'fullscreen', title: f.name }) : null;
+    /* A sniffed mermaid source is a diagram, drawn by the one mermaid
+       renderer every fenced block uses; a sniffed JSON model is code. Both
+       used to fall into the markdown editor, which drew the source as
+       paragraphs (Issues #188, #189). The diagram keeps the app's </>
+       toggle: the drawing steps aside, the code box shows the source, and
+       closing the box redraws from what was typed. */
+    const isDiagram = mode === 'diagram';
+    const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, allowfullscreen: '', allow: 'fullscreen', title: f.name })
+      : isDiagram ? el('div', { class: 'doc-diagram' }) : null;
+    let sourceBox = null;
+    const drawDiagram = () => {
+      appFrame.replaceChildren(el('pre', { class: 'mermaid' }, sourceBox?.value ?? entity.docs?.[f.name] ?? ''));
+      renderMermaidIn(appFrame);
+    };
     let showingSource = false;
     let mounted = false;
-    const sourceToggle = isApp ? el('span', {
+    const sourceToggle = appFrame ? el('span', {
       class: 'doc-anchor', title: 'Edit source',
       onclick: () => {
         showingSource = !showingSource;
@@ -6665,10 +6690,11 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         appFrame.classList.toggle('hidden', showingSource);
         sourceToggle.classList.toggle('active', showingSource);
         if (showingSource && !mounted) { mounted = true; mountSourceEditor(); }
-        if (!showingSource) appFrame.src = appFrame.src; // pick up what was typed
+        if (!showingSource) { if (isApp) appFrame.src = appFrame.src; else drawDiagram(); } // pick up what was typed
       },
     }, iconEl('lucide:code-xml', 'wv-icon')) : null;
-    if (isApp) { host.classList.add('hidden'); body.prepend(appFrame); }
+    if (appFrame) { host.classList.add('hidden'); body.prepend(appFrame); }
+    if (isDiagram) drawDiagram();
     const caret = el('button', {
       class: 'doc-caret', type: 'button', title: 'Collapse section',
       onclick: () => {
@@ -6717,6 +6743,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
       ta.value = entity.docs?.[f.name] ?? '';
       ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, status));
+      sourceBox = ta;
       host.append(ta);
     };
     if (mode === 'code') mountSourceEditor();

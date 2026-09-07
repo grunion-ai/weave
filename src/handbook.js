@@ -709,7 +709,7 @@ The fold lives in an overlay layer, never inside the document itself, so **the s
 
 ## The dash rail
 
-A document with three or more headings grows a minimap down its edge: one dash per heading, longer for higher levels, a tracker that follows the scroll. Click the rail and the headings open in a panel floated at the middle of the viewport; click a heading to jump, press Escape or click away to close. Below three headings a map explains nothing, so no rail appears.
+A document with three or more headings grows a minimap down its edge: one dash per heading, longer for higher levels, a tracker that follows the scroll. Click the rail and the minimap widens in place into a panel of headings — same spot, same left edge; click a heading to jump, press Escape or click away to close. Below three headings a map explains nothing, so no rail appears.
 
 ## Full screen
 
@@ -717,7 +717,7 @@ Any document opens full screen from its frame, and markdown editing works there 
 
 ## Kinds
 
-A document field carries a \`kind\`: \`markdown\` (the default), \`html\`, or \`code\`. The declared kind rules how the entity page renders the document — an \`html\` field runs in its frame with the \`</>\` source toggle, a \`code\` field edits directly in the monospace code box — and a field that declares nothing falls back to sniffing its content. A \`code\` document is what the \`Workflows\` registry's \`Script\` column uses — a document that is a program rather than prose.
+A document field carries a \`kind\`: \`markdown\` (the default), \`html\`, or \`code\`. The declared kind rules how the entity page renders the document — an \`html\` field runs in its frame with the \`</>\` source toggle, a \`code\` field edits directly in the monospace code box — and a field that declares nothing falls back to sniffing its content: a complete HTML file runs as an app, a mermaid source draws as a diagram with the same \`</>\` source toggle, a JSON model edits in the code box, and anything else is markdown. A \`code\` document is what the \`Workflows\` registry's \`Script\` column uses — a document that is a program rather than prose.
 
 ## Getting it back out
 

@@ -410,4 +410,41 @@ if (s) {
     assert.equal(blocks[1].spans, 0, 'a mermaid source in a plain fence stays plain text');
     await page.close();
   });
+  /* Issue #137 (Kyle, 2026-09-01): "too big of a slash command menu; also it
+     disappears when trying to scroll". Vditor closes the menu on any window
+     scroll, and a wheel over a menu that cannot absorb it chained to the
+     page — so scrolling the menu closed the menu. The menu is capped short
+     and the wheel stops at its edge. */
+  test('a wheel over the slash menu never scrolls the page out from under it', async () => {
+    const id = freshEntity('Wheel case');
+    weave.setDoc(id, '# Top\n\n' + 'filler line\n\n'.repeat(80) + 'end\n', 'Description');
+    const page = await browser.newPage();
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    // The menu opens on an empty line: a "/" glued to a word is that word.
+    await page.click('.vditor-ir [contenteditable="true"] p');
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('/');
+    await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
+    await hintSettled(page);
+    const before = await page.evaluate(() => {
+      const h = document.querySelector('.vditor-hint:not(.vditor-panel--arrow)');
+      const r = h.getBoundingClientRect();
+      return { y: Math.round(scrollY), h: Math.round(r.height), scrolls: h.scrollHeight > h.clientHeight, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+    });
+    assert.ok(before.h <= 400, `the menu is capped short (${before.h}px)`);
+    await page.mouse.move(before.cx, before.cy);
+    // Far past the menu's own travel: what it cannot absorb must stop here.
+    for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 600);
+    await page.waitForTimeout(400);
+    const after = await page.evaluate(() => ({
+      y: Math.round(scrollY),
+      shown: document.querySelector('.vditor-hint:not(.vditor-panel--arrow)').style.display !== 'none',
+    }));
+    assert.equal(after.y, before.y, 'the page did not move');
+    assert.ok(after.shown, 'and the menu is still open');
+    await page.close();
+  });
 }
