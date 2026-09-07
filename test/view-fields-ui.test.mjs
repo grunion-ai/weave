@@ -119,7 +119,7 @@ test('the open caret turns a half circle to face the label, in both stylesheets'
   }
 });
 
-test('the entity page shows each view the eye leaves on, with a way to configure each', () => {
+test('the entity page shows each view the eye leaves on, with a way to configure each (Issues #212, #208)', () => {
   assert.match(APP, /function appearsAsPanel\(/);
   assert.match(APP, /appearsAsPanel\(db, entity/, 'the panel is built from the entity read');
   assert.match(APP, /const hidden = new Set\(db\.hiddenFields \?\? \[\]\);\s+const shownView = /, 'the strip reads the same hidden set as the grid');

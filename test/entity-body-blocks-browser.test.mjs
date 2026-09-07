@@ -145,7 +145,7 @@ if (s) {
     assert.ok(await page.$(`${head} .doc-caret`), 'the field block head carries the document caret');
     const order = await page.$$eval(`${head} > *`, (ns) => ns.map((n) => n.className.split(' ')[0]));
     assert.deepEqual(order.slice(0, 3), ['opt-grip', 'doc-caret', 'block-name'], 'grip, caret, name — the order a document head uses');
-    assert.equal(await page.$eval(`${head} .opt-grip`, (n) => n.textContent), '⠿', 'and the grip draws its glyph — an empty span is not a handle');
+    assert.ok(await page.$(`${head} .opt-grip .wv-icon`), 'and the grip draws the row grip icon — an empty span is not a handle (Issue #210: no ⠿ text glyph)');
     await page.click(`${head} .doc-caret`);
     await page.waitForFunction(() => document.querySelector('.entity-values').classList.contains('hidden'), null, { timeout: 4000 });
     assert.ok(await page.$eval(`${head} .doc-caret`, (n) => n.classList.contains('closed')), 'the caret turns to say it is closed');

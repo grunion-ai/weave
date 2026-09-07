@@ -6381,11 +6381,13 @@ function docSectionCollapse(entityId, field, next) {
 
 /* ---------- entity page ---------- */
 
+/* How this row appears elsewhere: its chip and its card, drawn from the same
+   objects every other surface draws from. */
 function appearsAsPanel(db, entity, refresh) {
-  // The eye rules here too (Kyle, 2026-09-07): a Chip or Card switched off
-  // in the table's hidden set leaves the strip, and with both off the
-  // strip itself goes — the same hidden set the grid and the field rows
-  // already honour, so one toggle means one thing everywhere.
+  // The eye rules here too (Kyle, 2026-09-07, Issues #212 and #208): a Chip
+  // or Card switched off in the table's hidden set leaves the strip, and
+  // with both off the strip itself goes — the same hidden set the grid and
+  // the field rows already honour, so one toggle means one thing everywhere.
   const hidden = new Set(db.hiddenFields ?? []);
   const shownView = (role) => { const f = viewFieldOf(db, role); return f && !hidden.has(f.name) ? f : null; };
   const chipF = shownView('chip');
@@ -6711,9 +6713,11 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   const shown = db.fields.filter((f) => f.role !== 'name' && f.type !== 'view' && !hidden.has(f.name));
   const blocks = new Map();
 
-  /* Every block wears the same anchor — a ⠿ that is itself draggable, so the
-     thing you grab is the thing that moves. */
-  const anchor = (what) => el('span', { class: 'opt-grip', draggable: 'true', title: `Drag to move ${what}` }, '⠿');
+  /* Every block wears the same anchor — a grip that is itself draggable, so
+     the thing you grab is the thing that moves. The grip is the Lucide one
+     every row wears: the ⠿ character it used to be sat beside those icons at
+     a different weight and read as stray dots (Issue #210). */
+  const anchor = (what) => el('span', { class: 'opt-grip', draggable: 'true', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
   const wireBlock = (key, node, handles) => {
     node.dataset.block = key;
     for (const h of handles.filter(Boolean)) {
@@ -6794,29 +6798,50 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
      Activity is the side column, not a row. */
   for (const n of (db.systemFields ?? [])) {
     if (n === 'Activity' || !SYSTEM_COLS[n]) continue;
-    values.append(el('div', { class: 'fieldrow fieldrow-system' },
+    values.append(el('div', { class: 'fieldrow fieldrow-system', dataset: { field: n } },
       el('span', { class: 'opt-grip', 'aria-hidden': 'true' }),
       el('label', { class: 'fieldrow-label' }, n),
       el('span', { class: 'fieldrow-value' }, SYSTEM_COLS[n](entity))));
   }
 
   if (values.childElementCount) {
+    /* Folded, the block still says what the row is (Kyle, Issue #89: "still
+       see the same information but compactly organized at the top"): one
+       label · value chip per row, wrapping on one line above the documents,
+       the value drawn by the same editor the row uses so it edits in place
+       like a grid cell. It is built from the rows already drawn, so a field
+       the eye turns on lands here too (Issue #129): checked means drawn,
+       folded or not. */
+    const summary = el('div', { class: 'entity-values-summary hidden' },
+      ...[...values.children].map((row) => {
+        const f = shown.find((x) => x.name === row.dataset.field);
+        const system = row.classList.contains('fieldrow-system');
+        const label = row.querySelector('.fieldrow-label');
+        return el('span', { class: 'wv-sum' + (system ? ' wv-sum-system' : ''), dataset: { field: row.dataset.field }, title: fieldDescription(f) || null },
+          el('span', { class: 'wv-sum-label', onclick: f ? () => editFieldDialog(db, f) : null }, system ? label.textContent : fieldNameLabel(f)),
+          system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : editorFor(f, entity, db, () => refresh(), { compact: true }));
+      }));
     /* The field block folds like a document section (Kyle, 2026-09-03): the
        same caret, in the same place in the head, remembered per entity the
        same way — so a page opens the way it was left. */
+    const setFolded = (closed) => {
+      values.classList.toggle('hidden', closed);
+      summary.classList.toggle('hidden', !closed);
+      fieldsCaret.classList.toggle('closed', closed);
+    };
     const fieldsCaret = el('button', {
       class: 'doc-caret', type: 'button', title: 'Collapse fields',
       onclick: (e) => {
         e.stopPropagation();
-        const closed = values.classList.toggle('hidden');
-        fieldsCaret.classList.toggle('closed', closed);
+        const closed = !values.classList.contains('hidden');
+        setFolded(closed);
         docSectionCollapse(id, VALUES_BLOCK, closed);
       },
     });
     const valuesHead = el('div', { class: 'block-head' },
       anchor('the fields'), fieldsCaret, el('span', { class: 'block-name' }, 'Fields'));
-    if (docSectionCollapse(id, VALUES_BLOCK)) { values.classList.add('hidden'); fieldsCaret.classList.add('closed'); }
-    fields.append(valuesHead, values);
+    if (docSectionCollapse(id, VALUES_BLOCK)) setFolded(true);
+    fields.append(valuesHead, values, summary);
     wireBlock(VALUES_BLOCK, fields, [valuesHead.querySelector('.opt-grip'), valuesHead]);
   }
   // A table with no fields beyond its name shows nothing here — the banner
@@ -6847,10 +6872,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     if (node && !node.isConnected) left.append(node);
   }
   /* How this row appears elsewhere (Kyle, 2026-09-04): its chip and its
-     card, drawn from the same objects every other surface draws from, so
-     what the reader sees here is what a relation cell, a doc mention or a
-     board will show. Hidden in the grid or not, the page always shows both;
-     the gear opens the field dialog on the table's config. */
+     card, so what the reader sees here is what a relation cell, a doc
+     mention or a board will show — for the views the eye shows (Issue #208). */
   const appears = appearsAsPanel(db, entity, refresh);
   if (appears) left.prepend(appears);
 

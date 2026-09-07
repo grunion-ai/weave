@@ -780,6 +780,16 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   .entity-values { column-count: 3; column-gap: 20px; }
   .entity-values .fieldrow { grid-template-columns: 16px 118px minmax(0, 1fr); }
 }
+/* The folded field block (Issue #89): label · value chips on one wrapping
+   line, the value drawn by the row's own compact editor, so a folded page
+   still reads and still edits. Hidden while the rows are open. */
+.entity-values-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 16px; padding: 0 0 6px; max-width: 100%; }
+.wv-sum { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; max-width: 100%; min-width: 0; }
+.wv-sum-label { font-size: 12px; color: var(--tblr-secondary); white-space: nowrap; cursor: pointer; border-radius: 4px; padding: 1px 4px; margin-left: -4px; }
+.wv-sum-label:hover { background: var(--wv-pill-active); color: var(--tblr-body-color); }
+.wv-sum-value { font-size: 13px; color: var(--tblr-secondary); }
+.wv-sum > input.inline-edit, .wv-sum > select.inline-edit { width: auto; min-width: 5ch; max-width: 260px; field-sizing: content; min-height: 24px; padding: 1px 6px; }
+.wv-sum > .picker-wrap { width: auto; max-width: 260px; }
 .entity-fields .fieldrow { max-width: 720px; }
 .entity-body > .doc-section { margin: 10px 0 18px; }
 .entity-body > .doc-section .opt-grip { opacity: 0; transition: opacity .12s; cursor: grab; }
@@ -809,7 +819,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .block-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; cursor: grab; }
 .block-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
 .block-head .opt-grip, .related-head .opt-grip, .attach-block .opt-grip { opacity: 0; cursor: grab; transition: opacity .12s; }
-.entity-body > [data-block]:hover .opt-grip, .entity-body > [data-block]:focus-within .opt-grip { opacity: 1; }
+/* Lit for a hover or a KEYBOARD focus. :focus-within lit it for a mouse click
+   too — the fold caret kept focus after the click, so the grip stayed on as
+   a stray ⠿ beside FIELDS after the pointer had gone (Issue #210). */
+.entity-body > [data-block]:hover .opt-grip, .entity-body > [data-block]:has(:focus-visible) .opt-grip { opacity: 1; }
 .related-block { margin: 0 0 18px; }
 .entity-body > .attach-block { grid-template-columns: 16px 150px minmax(0, 1fr); gap: 0 10px; align-items: center;
   min-height: 32px; padding: 3px 6px 3px 0; margin: 4px 0 14px -6px; border-radius: var(--tblr-border-radius); }
@@ -1091,7 +1104,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-caret.closed::before { transform: rotate(-90deg); }
 .doc-anchor, .doc-section .doc-dl { opacity: 0; transition: opacity .12s ease; }
 .doc-section:hover .doc-anchor, .doc-section:hover .doc-dl,
-.doc-section:focus-within .doc-anchor, .doc-section:focus-within .doc-dl { opacity: .7; }
+.doc-section:has(:focus-visible) .doc-anchor, .doc-section:has(:focus-visible) .doc-dl { opacity: .7; }
 .doc-anchor { cursor: pointer; font-size: 11px; }
 .doc-anchor:hover { opacity: 1; }
 /* Save state is a single glyph, because "saved" is the normal case and should

@@ -853,7 +853,8 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 | Double-click that edge | table view | fits the column to its content, no cutoff |
 | Click a header | table view | opens the field tray — rename, retype, reconfigure |
 | 👁 | view toolbar | show or hide any field, the system columns, and deleted rows |
-| Drag ⠿ | entity page | reorders fields; the table's columns follow |
+| Drag the grip | entity page | reorders fields; the table's columns follow |
+| Fold FIELDS | entity page | the caret beside FIELDS folds the value rows into one line of label · value chips, so a long field list stops pushing the documents down; the chips still edit in place, and the fold is remembered per row in this browser |
 
 Two facts about width decide how a table reads: **an unset column caps at 260px and ellipsises**, and **a set width is a floor as well as a ceiling** (60px minimum, and never narrower than the header's label), so the column holds its width in a grid wider than its card. Set one only where the default clips something a reader needs.
 
@@ -1117,7 +1118,7 @@ The Notes case is the walkthrough in [[Article#5]]. The set was built for Featur
     order: 11,
     doc: `# Chip and card anatomy
 
-A row appears in two shapes outside its own page: the **chip**, inline — a relation cell, a \`[[…]]\` mention in a document, a reference card, a picker — and the **card**, a tile. Both are drawn from the table's two \`view\` fields (the **view** page in [[table:Handbook/Fields|Fields]] says what they can contain; the entity page's **Appears as** strip shows the live pair). This page is the face: every element, what it does, how you use it, and its **hitbox** — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.
+A row appears in two shapes outside its own page: the **chip**, inline — a relation cell, a \`[[…]]\` mention in a document, a reference card, a picker — and the **card**, a tile. Both are drawn from the table's two \`view\` fields (the **view** page in [[table:Handbook/Fields|Fields]] says what they can contain; the entity page's **Appears as** strip shows the live pair once the eye unhides them — a hidden view is not drawn there either, Issue #208). This page is the face: every element, what it does, how you use it, and its **hitbox** — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.
 
 ## The chip
 
@@ -1164,7 +1165,7 @@ Only the title is a link. The rest of the tile is inert — in a grid cell the c
 | a \`[[…]]\` mention in a document | the same chip, from the same config | no ×, no avatar — a reference is text, there is nothing to unlink |
 | a reference panel on the entity page | the same chip | home badge on, no × |
 | the relation picker | the same chip | the × means "take it out of the selection" |
-| the entity page's Appears as strip | this table's own chip and card | a gear beside each opens the table's config; the strip shows what every other surface will draw |
+| the entity page's Appears as strip | this table's own chip and card, for the views the eye shows — both are minted hidden, so unhide one to see it | a gear beside each opens the table's config; the strip shows what every other surface will draw |
 
 To change what a chip or card contains — the id, the state, the description size, which fields ride along — open the gear on the Appears as strip or \`weave field update Task Chip --config '{"fields":["Due"]}'\`. It changes every row of the table at once.`,
   },
