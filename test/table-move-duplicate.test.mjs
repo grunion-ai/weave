@@ -337,6 +337,18 @@ test('move and duplicate are schema writes: a writer token is refused, an admin 
   });
 });
 
+test('restore is a schema write too: a writer cannot un-trash a table (Issue #149)', async () => {
+  await withServer(async ({ w, tasks, call }) => {
+    const { token: writer } = w.createAccount({ name: 'bot', role: 'writer' });
+    const { token: admin } = w.createAccount({ name: 'root', role: 'admin' });
+    assert.equal((await call('DELETE', `/api/tables/${tasks.id}`, undefined, writer)).status, 403, 'trashing is gated already');
+    assert.equal((await call('DELETE', `/api/tables/${tasks.id}`, undefined, admin)).status, 200);
+    assert.equal((await call('POST', `/api/tables/${tasks.id}/restore`, undefined, writer)).status, 403, 'so is un-trashing');
+    assert.ok(w.getTable(tasks.id, { includeDeleted: true })?.deletedAt ?? true, 'and the table stays in the trash');
+    assert.equal((await call('POST', `/api/tables/${tasks.id}/restore`, undefined, admin)).status, 200);
+  });
+});
+
 /* ---------------- parity: MCP ---------------- */
 
 test('MCP lists weave_move_table and weave_duplicate_table, and dispatches them to the engine', () => {

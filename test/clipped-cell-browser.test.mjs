@@ -70,10 +70,11 @@ if (s) {
     test(`the expansion shows the whole name, not another clipped box (${theme})`, async () => {
       const page = await grid(theme);
       try {
-        const shown = await page.evaluate(() => {
+        const shown = await page.evaluate(async () => {
           const td = [...document.querySelectorAll('.wv-grid tbody td.name-cell.clipped')][0];
           if (!td) return null;
           td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 400)); // the expansion waits out its hover delay (Issue #67)
           const pop = document.querySelector('.cell-pop');
           if (!pop) return { pop: false };
           return {

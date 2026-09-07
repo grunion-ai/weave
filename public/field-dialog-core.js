@@ -368,6 +368,8 @@
       Object.assign(config, dateCostume(state.date, t));
     } else if (t === 'field') {
       config.depth = state.depth ?? 1;
+    } else if (t === 'text') {
+      if (state.literal) config.literal = true;
     } else if (t === 'attachments') {
       if (state.multiple === false) config.multiple = false;
     } else if (t === 'document') {
@@ -441,6 +443,8 @@
       };
     } else if (def.type === 'field') {
       state.depth = c.depth ?? 1;
+    } else if (def.type === 'text') {
+      state.literal = !!c.literal;
     } else if (def.type === 'attachments') {
       state.multiple = c.multiple !== false;
     } else if (def.type === 'document') {
@@ -561,6 +565,7 @@
     if (f.type === 'date' || f.type === 'daterange') for (const k of ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) { if (f[k] != null) c[k] = f[k]; }
     if (f.type === 'formula') c.expression = f.expression ?? '';
     if (f.type === 'field') c.depth = f.depth ?? 1;
+    if (f.type === 'text' && f.literal) c.literal = true;
     if (f.type === 'attachments') c.multiple = f.multiple !== false;
     if (f.type === 'document' && f.kind) c.kind = f.kind;
     if (f.type === 'key') { c.kind = f.kind ?? 'apikey'; c.keystore = f.keystore ?? 'local'; }
@@ -591,6 +596,7 @@
       patch.states = (c.states ?? []).filter((s) => s.name && s.name.trim());
     }
     if (existing.type === 'formula' && state.expression) patch.expression = state.expression;
+    if (existing.type === 'text') patch.literal = !!state.literal;
     if (existing.type === 'attachments') patch.multiple = state.multiple !== false;
     // The shape is the field's identity; everything else is the patch.
     if (existing.type === 'view') { const { shape, ...rest } = c; void shape; Object.assign(patch, rest); }

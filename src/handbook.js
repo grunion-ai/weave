@@ -25,6 +25,8 @@ Free-form single-line string. Every table is born with one: \`Name\`, the entity
 
 \`default\` — the value a new row starts with. \`{ "name": "Title", "type": "text", "config": { "default": "Untitled" } }\`
 
+\`literal\` — \`true\` paints the characters as typed. A text cell normally dresses inline markdown (\`**bold**\` reads bold, \`\\\`code\\\`\` reads as code); a column that HOLDS syntax — a regex, a glob, a format string, the Showcase's Syntax column — opts out with \`{ "literal": true }\`, from the field dialog's **Literal** box or \`--config '{"literal":true}'\`.
+
 ## Usage
 
 \`\`\`bash
