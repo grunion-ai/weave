@@ -137,6 +137,30 @@ test('default value is typed per field type, empty means absent', () => {
   assert.deepEqual(core.definitionFromState({ type: 'multiselect', options: [], default: 'a, b' }).config.default, ['a', 'b']);
 });
 
+/* ---------- toggle: two labels and a default (Feature #202) ---------- */
+test('a toggle definition carries its two labels; blank labels fall back; the default is typed', () => {
+  const def = core.definitionFromState({ type: 'toggle', toggle: { on: ' Live ', off: 'Paused' }, default: 'true' });
+  assert.deepEqual(def, { type: 'toggle', config: { on: 'Live', off: 'Paused', default: true } });
+  assert.deepEqual(core.definitionFromState({ type: 'toggle', toggle: { on: '', off: '' }, default: '' }).config, { on: 'On', off: 'Off' });
+  assert.deepEqual(core.blankState('toggle').toggle, { on: 'On', off: 'Off' });
+  const back = core.stateFromDefinition(def);
+  assert.deepEqual(back.toggle, { on: 'Live', off: 'Paused' });
+  assert.equal(back.default, 'true');
+  assert.deepEqual(core.definitionFromState(back), def, 'state → definition → state → definition is a fixed point');
+});
+
+test('a toggle column reopens on its stored labels and patches both lanes', () => {
+  const view = { id: 'f1', name: 'Active', type: 'toggle', on: 'Live', off: 'Paused', default: false };
+  const def = core.definitionFromFieldView(view);
+  assert.deepEqual(def, { type: 'toggle', config: { on: 'Live', off: 'Paused', default: false } });
+  const state = core.stateFromDefinition(def);
+  state.toggle.on = 'Enabled';
+  const patch = core.editPatchConfig(view, core.definitionFromState(state), state);
+  assert.deepEqual(patch, { on: 'Enabled', off: 'Paused', default: false });
+  assert.deepEqual(core.typeChoices('checkbox').map((t) => t.id), ['checkbox', 'toggle', 'text']);
+  assert.deepEqual(core.typeChoices('toggle').map((t) => t.id), ['toggle', 'checkbox', 'text']);
+});
+
 /* ---------- stateFromDefinition round trip ---------- */
 
 test('definition -> state -> definition round-trips for every shape', () => {

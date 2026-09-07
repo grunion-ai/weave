@@ -149,8 +149,8 @@ are part of the engine, not user data.
 
 ## The other axis: field types
 
-Nineteen, and not one of them is a kind of entity. Fourteen store a value —
-`text`, `number`, `date`, `daterange`, `checkbox`, `url`, `email`, `select`,
+Twenty, and not one of them is a kind of entity. Fifteen store a value —
+`text`, `number`, `date`, `daterange`, `checkbox`, `toggle`, `url`, `email`, `select`,
 `multiselect`, `workflow`, `relation`, `field`, `key`, `attachments`. Four
 compute one from other fields — `lookup`, `rollup`, `formula`, and `view`,
 which computes the row's own chip or card. One holds a body — `document`.
@@ -311,6 +311,9 @@ A start and an end.
 
 ### `checkbox`
 True or false.
+### `toggle`
+True or false wearing two named states — `on` and `off` labels the config
+names, and a default state; a switch, not a box.
 
 ### `url`
 A link.

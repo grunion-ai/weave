@@ -16,6 +16,7 @@
     { id: 'date', label: 'date', icon: 'lucide:calendar' },
     { id: 'daterange', label: 'range', icon: 'lucide:calendar-range' },
     { id: 'checkbox', label: 'checkbox', icon: 'lucide:square-check' },
+    { id: 'toggle', label: 'toggle', icon: '⏻' },
     { id: 'url', label: 'url', icon: 'lucide:link' },
     { id: 'email', label: 'email', icon: '@' },
     { id: 'select', label: 'select', icon: 'lucide:chevron-down' },
@@ -71,7 +72,8 @@
     email: ['text'],
     key: ['text'],
     date: ['text'],
-    checkbox: ['text'],
+    checkbox: ['toggle', 'text'],
+    toggle: ['checkbox', 'text'],
     select: ['multiselect', 'workflow', 'text'],
     multiselect: ['select', 'text'],
     workflow: ['select'],
@@ -261,7 +263,7 @@
   const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
   const CARDINALITIES = ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'];
   const MAX_DEPTH = 4;
-  const DEFAULTABLE = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
+  const DEFAULTABLE = ['text', 'number', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect'];
   // Mirrors the engine's VIEW_SHAPES / DESCRIPTION_SIZES (source-gated).
   const VIEW_SHAPES = ['chip', 'card'];
   const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
@@ -282,6 +284,7 @@
     depth: 1,
     multiple: true,           // attachments: one file or many
     kind: 'markdown',         // document: markdown | html | code
+    toggle: { on: 'On', off: 'Off' }, // toggle: the two state labels
     relation: { targetDb: '', cardinality: 'many-to-one', inverseName: '' },
     relationField: '',
     targetField: '',
@@ -305,7 +308,7 @@
     const s = String(raw ?? '').trim();
     if (!s || !DEFAULTABLE.includes(type)) return undefined;
     if (type === 'daterange') return rangeDefault(s) ?? undefined;
-    if (type === 'checkbox') return ['true', 'yes', '1'].includes(s.toLowerCase());
+    if (type === 'checkbox' || type === 'toggle') return ['true', 'yes', '1'].includes(s.toLowerCase());
     if (type === 'number') return Number(s);
     if (type === 'multiselect') return s.split(',').map((x) => x.trim()).filter(Boolean);
     return s;
@@ -398,6 +401,10 @@
     } else if (t === 'view') {
       const v = state.view ?? blankView();
       Object.assign(config, { shape: v.shape, link: !!v.link, state: !!v.state, description: v.description ?? 'none', fields: Array.isArray(v.fields) ? v.fields.slice() : null });
+    } else if (t === 'toggle') {
+      const tg = state.toggle ?? {};
+      config.on = String(tg.on ?? '').trim() || 'On';
+      config.off = String(tg.off ?? '').trim() || 'Off';
     } else if (t === 'rollup') {
       config.relationField = state.relationField;
       config.aggregate = state.aggregate ?? 'count';
@@ -445,6 +452,8 @@
       state.depth = c.depth ?? 1;
     } else if (def.type === 'text') {
       state.literal = !!c.literal;
+    } else if (def.type === 'toggle') {
+      state.toggle = { on: c.on ?? 'On', off: c.off ?? 'Off' };
     } else if (def.type === 'attachments') {
       state.multiple = c.multiple !== false;
     } else if (def.type === 'document') {
@@ -567,6 +576,7 @@
     if (f.type === 'field') c.depth = f.depth ?? 1;
     if (f.type === 'text' && f.literal) c.literal = true;
     if (f.type === 'attachments') c.multiple = f.multiple !== false;
+    if (f.type === 'toggle') { c.on = f.on ?? 'On'; c.off = f.off ?? 'Off'; }
     if (f.type === 'document' && f.kind) c.kind = f.kind;
     if (f.type === 'key') { c.kind = f.kind ?? 'apikey'; c.keystore = f.keystore ?? 'local'; }
     if (f.type === 'lookup' || f.type === 'rollup') { c.relationField = f.via ?? ''; c.targetField = f.targetField ?? ''; c.aggregate = f.aggregate; }
@@ -598,6 +608,7 @@
     if (existing.type === 'formula' && state.expression) patch.expression = state.expression;
     if (existing.type === 'text') patch.literal = !!state.literal;
     if (existing.type === 'attachments') patch.multiple = state.multiple !== false;
+    if (existing.type === 'toggle') { patch.on = c.on; patch.off = c.off; }
     // The shape is the field's identity; everything else is the patch.
     if (existing.type === 'view') { const { shape, ...rest } = c; void shape; Object.assign(patch, rest); }
     if (existing.type === 'document') patch.kind = state.kind ?? 'markdown';

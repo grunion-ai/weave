@@ -55,6 +55,13 @@ test('the resting state hands over row selection for free', () => {
   assert.equal(act('Escape'), 'none', 'Escape with nothing chosen is the browser’s');
 });
 
+test('on a toggle cell Space flips the switch — the one cell where Space is the value\'s key (Feature #202)', () => {
+  assert.deepEqual(at(' ', {}, { flip: true }), { type: 'edit', select: 'all' });
+  assert.equal(act(' ', {}, { flip: true, readonly: true }), 'toggleSelect', 'a read-only toggle hands Space back to selection');
+  assert.equal(act(' ', {}, { flip: false }), 'toggleSelect');
+  assert.equal(act(' ', {}, { mode: 'edit', flip: true }), 'none', 'open, Space is a space');
+});
+
 test('⇧Return makes the next row; ⌘Return opens the record', () => {
   assert.deepEqual(at('Enter', { shift: true }), { type: 'newRow', at: 'below', focus: 'first' });
   assert.equal(act('Enter', { meta: true }), 'open');

@@ -1788,6 +1788,25 @@ input[type="checkbox"].form-check-input:checked { background: var(--tblr-primary
 input[type="checkbox"].form-check-input:checked::after { content: ''; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 input[type="checkbox"].form-check-input:focus-visible { outline: 2px solid rgba(var(--tblr-primary-rgb), .35); outline-offset: 1px; }
 input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default; }
+
+/* The toggle field (Feature #202): a soft-squared switch on Tabler tokens,
+   its state's word beside it. The input is a real checkbox kept in the
+   label so keyboard and row-click rules for booleans hold; the track and
+   knob draw the state. */
+.wv-toggle { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; margin: 0; max-width: 100%; user-select: none; font: inherit; color: inherit; line-height: var(--wv-chip-line); }
+.wv-toggle-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.wv-toggle-track { position: relative; flex: none; width: 28px; height: 16px; border-radius: 5px; background: var(--tblr-border-color); border: 1px solid transparent; transition: background .12s; box-sizing: border-box; }
+.wv-toggle-knob { position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 3px; background: var(--tblr-bg-surface); box-shadow: 0 1px 2px rgba(12, 27, 51, .25); transition: transform .12s; }
+.wv-toggle:hover .wv-toggle-track { background: var(--tblr-secondary); }
+.wv-toggle.on .wv-toggle-track { background: var(--tblr-primary); }
+.wv-toggle.on .wv-toggle-knob { transform: translateX(12px); }
+.wv-toggle-input:focus-visible + .wv-toggle-track { outline: 2px solid rgba(var(--tblr-primary-rgb), .35); outline-offset: 1px; }
+.wv-toggle-word { font-size: var(--wv-chip-font); color: var(--tblr-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wv-toggle.on .wv-toggle-word { color: var(--tblr-body-color); }
+[data-bs-theme="dark"] .wv-toggle-knob { background: #e0dcd4; box-shadow: 0 1px 2px rgba(0, 0, 0, .45); }
+/* The field dialog's two label inputs. */
+.wv-toggle-labels { display: grid; gap: 6px; }
+.wv-toggle-label-row { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; margin: 0; }
 /* long popovers (the eyeball lists every field) scroll instead of flipping off-screen */
 .chip-pop { max-height: min(70vh, 560px); overflow-y: auto; }
 

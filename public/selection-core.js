@@ -80,7 +80,7 @@ globalThis.WeaveSelection = {
   /* Set a field… offers the fields a single value fits: chips, options, a
      checkbox, a typed value. A relation is Link to…'s, a document is prose,
      a computed field is a read, and files and credentials are per-row. */
-  SETTABLE: ['text', 'number', 'date', 'workflow', 'select', 'multiselect', 'checkbox', 'url', 'email'],
+  SETTABLE: ['text', 'number', 'date', 'workflow', 'select', 'multiselect', 'checkbox', 'toggle', 'url', 'email'],
   settableFields(fields) {
     return fields.filter((f) => this.SETTABLE.includes(f.type));
   },

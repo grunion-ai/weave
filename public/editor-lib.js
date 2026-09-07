@@ -50,7 +50,7 @@ globalThis.WeaveEditorLib = {
       date: 'focus-input',
       select: 'open-picker', multiselect: 'open-picker', workflow: 'open-picker',
       relation: 'open-button', attachments: 'open-button', files: 'open-button',
-      checkbox: 'toggle',
+      checkbox: 'toggle', toggle: 'toggle',
       formula: 'none', rollup: 'none', lookup: 'none', count: 'none',
       document: 'none', field: 'none',
     }[type] ?? (type ? 'focus-input' : 'none');
