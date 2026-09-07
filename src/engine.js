@@ -697,6 +697,13 @@ export class Weave {
     s.tables = s.tables ?? {};
     let changed = false;
     for (const db of Object.values(s.tables)) {
+      // Every surface that lists columns — the grid, describeSchema() and so
+      // GET /api/schema, the CSV export, the phone applet — walks fieldOrder,
+      // never db.fields. A field the order forgets is present and invisible,
+      // which is how a plain number column went missing across
+      // export → import (Issue #110). Reconcile on every open and every
+      // import, registry tables included: they list columns too.
+      if (this.#reconcileFieldOrder(db)) changed = true;
       // System registry tables (Feature #12) carry a TEXT Description that
       // syncs with the real space/table description — backfilling a document
       // field here would give them a second, colliding 'Description'.
@@ -746,6 +753,27 @@ export class Weave {
       this.#dirtyAll = true;
       this.save();
     }
+  }
+
+  /* The field order names every field exactly once — updateTable refuses
+     anything else, so this only ever repairs state that arrived from outside:
+     an import, a legacy file, a hand-edited dump. Forgotten fields come back
+     on the end (visible beats lost); an id naming no field goes. Returns
+     whether the table changed. */
+  #reconcileFieldOrder(db) {
+    const fields = db.fields ?? {};
+    const seen = new Set();
+    const order = [];
+    for (const id of db.fieldOrder ?? []) {
+      if (!fields[id] || seen.has(id)) continue;
+      seen.add(id);
+      order.push(id);
+    }
+    for (const id of Object.keys(fields)) if (!seen.has(id)) order.push(id);
+    const was = db.fieldOrder ?? [];
+    if (order.length === was.length && order.every((id, i) => id === was[i])) return false;
+    db.fieldOrder = order;
+    return true;
   }
 
   /* The one place a table's description role is settled, so the three states
