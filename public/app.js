@@ -421,7 +421,26 @@ async function dockEntity(db, id) {
     ? S.open(dock.state, frame)
     : S.open(S.init({ tableId: db.id, tableName: db.name }), frame);
   dock = { db, state, editors: dock?.editors ?? [] };
+  dockSyncUrl();
   await drawDock();
+}
+
+/* The dock is presentation, never a history entry — yet a refresh, a new
+   tab and a shared link must still find it (Issue #226). The docked entity
+   rides the table hash as ?e=<id>, rewritten in place so Back never walks
+   a trail of it. Only the user's own close strips it: the route change's
+   dockClose runs before the router reads the hash it is leaving for, so
+   that path must leave the URL alone. */
+function dockSyncUrl() {
+  const m = location.hash.match(/^#\/(?:table|db)\/[^/?]+/);
+  if (!m) return;
+  const top = dock?.state.chain[dock.state.chain.length - 1];
+  history.replaceState(null, '', top ? `${m[0]}?e=${top.id}` : m[0]);
+}
+
+function dockDismiss() {
+  dockClose();
+  dockSyncUrl();
 }
 
 async function drawDock() {
@@ -446,11 +465,11 @@ async function drawDock() {
       el('button', {
         class: 'btn btn-sm btn-ghost-secondary', type: 'button',
         title: 'Close (Esc)', 'aria-label': 'Close',
-        onclick: () => dockClose(),
+        onclick: () => dockDismiss(),
       }, iconEl('✕'))),
     host);
   // The full entity view — the dock is the entity, not a preview of it.
-  await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockClose, editors: dock.editors });
+  await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockDismiss, editors: dock.editors });
   markDockedRow();
 }
 
@@ -513,8 +532,10 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Esc pops the dock one level (core.escape). Cell editors, overlays and
-// pickers keep their own Escape; the dock only hears it bare. Every
+// Esc pops the dock one level (core.escape) and re-syncs the hash to the
+// new top (Issue #227: this handler once called two functions that did not
+// exist). Cell editors, overlays and pickers keep their own Escape; the
+// dock only hears it bare. Every
 // overlay app.js raises (a *-back backdrop, a *-pop popover, an open doc
 // rail) owns the key while it is up — test/ui-contract.test.mjs derives
 // that list from the source and checks this selector covers it.
@@ -524,9 +545,8 @@ document.addEventListener('keydown', (e) => {
   if (document.querySelector(DOCK_ESC_OWNERS)) return;
   if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
   const next = weaveEntitySurface.escape(dock.state);
-  if (next.pose === 'closed') return dockClose();
+  if (next.pose === 'closed') return dockDismiss();
   dock.state = next;
-  dockApplyPose();
   dockSyncUrl();
   drawDock();
 });
@@ -8003,7 +8023,7 @@ function renderRoute() {
     dbM ? allTables().find((d) => d.id === dbM[1]) : null);
   let m;
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
-  if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)/))) return showDatabase(m[1]);
+  if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)(?:\?e=([^&]+))?/))) return showDatabase(m[1]).then(() => redock(m[1], m[2]));
   if ((m = hash.match(/^#\/space\/([^/?]+)/))) return showSpace(m[1]);
   if ((m = hash.match(/^#\/activity(?:\/([^/?]+))?/))) return showActivity(m[1] ?? null);
   if (hash.startsWith('#/map')) return showMap();
@@ -8019,6 +8039,18 @@ function renderRoute() {
 // of that.
 function route() {
   return withPageLoader(renderRoute);
+}
+
+/* A table hash carrying ?e=<id> re-docks that row after the table renders
+   (Issue #226). A row that is gone, or a stale id, drops the query rather
+   than toasting on every reload. ponytail: the dock chain reopens one deep;
+   nested drills are not encoded. */
+async function redock(dbId, id) {
+  if (!id) return;
+  const db = allTables().find((d) => d.id === dbId);
+  if (!db) return;
+  try { await api('GET', `/entities/${id}`); } catch { dockSyncUrl(); return; }
+  await dockEntity(db, id);
 }
 
 // Registered ahead of route, so the edit commits before the page rebuilds.
