@@ -55,6 +55,10 @@ const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions()
 function commitActiveEdit() {
   const a = document.activeElement;
   if (a && a.matches?.('input, textarea, select')) a.blur();
+  /* A multi picker stages its picks in the popover and writes them when it
+     closes — a blur reaches none of that (Issue #224). The open picker
+     carries its own commit; every leaving path takes it. */
+  document.querySelector('.picker-pop')?.commit?.();
 }
 // Set while the page unloads: a write started then rides `keepalive` so the
 // browser finishes it after the page is gone (bodies stay under its 64KB cap).
@@ -1413,7 +1417,12 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     title ? el('div', { class: 'picker-title' }, title) : null,
     box, list);
   const commit = async () => { pop.remove(); await multi.onCommit(core.ids(st)); };
-  const dismiss = () => { pop.remove(); anchor?.focus?.(); };
+  /* Escape on a multi picker commits what is staged, the same as a click
+     elsewhere (Issue #224): the picks in the box are the edit, and closing
+     the box is leaving the field. The popover also carries its commit for
+     commitActiveEdit(), which reaches it on nav-away and unload. */
+  const dismiss = () => { if (multi) commit(); else pop.remove(); anchor?.focus?.(); };
+  if (multi) pop.commit = commit;
   const pick = async (o) => { pop.remove(); await onPick(o); };
   const apply = (next) => { st = next; input.value = st.query; drawChips(); draw(); input.focus(); };
 
@@ -2341,11 +2350,17 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     const fresh = await api('GET', `/entities/${id}`);
     onSaved(fresh);
   };
-  const patch = async (value) => {
+  /* The committed value shows the moment it is committed (Issue #225): the
+     editor already holds it, and waiting on PATCH → GET → re-render left the
+     old chip up long enough to read as a lost edit. `paint` draws the value
+     on the control now; the round trip reconciles, and a refused write
+     paints the stored value back before it toasts. */
+  const patch = async (value, paint = null) => {
+    paint?.(value);
     try {
       await api('PATCH', `/entities/${id}`, { values: { [f.name]: value } });
       await saved();
-    } catch (err) { toast(err.message, true); }
+    } catch (err) { paint?.(val); toast(err.message, true); }
   };
 
   // An option's colour is a name from the ten-hue ramp, not a loose hex —
@@ -2371,43 +2386,53 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     return box;
   }
   if (f.type === 'workflow') {
+    const trigger = el('button', { class: stateChipClass(f, val), type: 'button', title: f.name }, ...stateNodes(f, val));
+    const paint = (name) => { trigger.className = `${stateChipClass(f, name)} chip-trigger`; trigger.replaceChildren(...stateNodes(f, name)); };
     return chipPicker({
-      trigger: el('button', { class: stateChipClass(f, val), type: 'button', title: f.name }, ...stateNodes(f, val)),
+      trigger,
       /* The picker paints a row or a staged chip with the class it is handed,
          whole: a `bare` class without the `k` base drew tinted text with no
          padding and no corners in the box and in every row (Kyle, 2026-09-02). */
       options: f.states.map((s) => ({ name: s.name, cls: stateChipClass(f, s.name), label: stateLabel(f, s.name) })),
       current: val,
       onPick: async (name) => {
+        paint(name);
         try {
           await api('POST', `/entities/${id}/state`, { field: f.name, state: name });
           await saved();
-        } catch (err) { toast(err.message, true); }
+        } catch (err) { paint(val); toast(err.message, true); }
       },
     });
   }
   if (f.type === 'select') {
+    const trigger = el('button', { class: `k k-select ${optionHue(f, val)}`, type: 'button', title: f.name },
+      optionIcon(f, val), val ?? '—');
+    const paint = (v) => { trigger.className = `k k-select ${optionHue(f, v)} chip-trigger`; trigger.replaceChildren(...[optionIcon(f, v), v ?? '—'].filter(Boolean)); };
     return chipPicker({
-      trigger: el('button', { class: `k k-select ${optionHue(f, val)}`, type: 'button', title: f.name },
-        optionIcon(f, val), val ?? '—'),
+      trigger,
       // Each option is its own chip in the list, in the hue it wears in the
       // cell; the clear row is the same — chip the empty cell shows.
       options: [{ name: '—' }, ...f.options.map((o) => ({ name: o, cls: `k k-select ${optionHue(f, o)}` }))],
       current: val ?? null,
       clearId: '—',
-      onPick: (name) => patch(name === '—' ? null : name),
+      onPick: (name) => patch(name === '—' ? null : name, paint),
     });
   }
   if (f.type === 'multiselect') {
     const current = Array.isArray(val) ? val : [];
     const box = el('span', { class: 'ms-box', title: 'Edit selections' });
-    for (const v of current) box.append(el('span', { class: `k k-multi ${optionHue(f, v)}` }, optionIcon(f, v), v), ' ');
-    if (!current.length) box.append(el('span', { class: 'k k-add' }, iconEl('+', 'wv-icon wv-icon-xs')));
+    const paint = (ids) => {
+      box.replaceChildren();
+      for (const v of ids ?? []) box.append(el('span', { class: `k k-multi ${optionHue(f, v)}` }, optionIcon(f, v), v), ' ');
+      if (!ids?.length) box.append(el('span', { class: 'k k-add' }, iconEl('+', 'wv-icon wv-icon-xs')));
+    };
+    paint(current);
     chipPickerMulti({
       trigger: box,
       options: f.options.map((o) => ({ id: o, label: o, chip: true, cls: `k k-multi ${optionHue(f, o)}` })),
       selected: current.map((v) => ({ id: v, label: v, cls: `k k-multi ${optionHue(f, v)}` })),
-      onCommit: (ids) => patch(ids),
+      // A picker closed with nothing changed is not an edit: no write, no redraw.
+      onCommit: (ids) => (ids.join('\u0000') === current.join('\u0000') ? null : patch(ids, paint)),
     });
     return box;
   }
