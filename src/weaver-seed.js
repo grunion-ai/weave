@@ -44,6 +44,7 @@ export function seedFieldShowcase(w) {
   w.addField(ft, { name: 'Window', type: 'daterange' });
   // --- booleans
   w.addField(ft, { name: 'Done', type: 'checkbox', config: { default: false } });
+  w.addField(ft, { name: 'Feed', type: 'toggle', config: { on: 'Live', off: 'Paused', default: false } });
   // --- choices: colored select, plain select, multiselect
   w.addField(ft, { name: 'Priority', type: 'select', config: { options: [
     { name: 'Low', color: '#2ea043' }, { name: 'Medium', color: '#f59f00' }, { name: 'High', color: '#e5484d' }] } });
@@ -88,7 +89,7 @@ export function seedFieldShowcase(w) {
       Notes: 'Rev C, lead-free', Site: 'https://example.com/sensor', Contact: 'sales@example.com',
       Count: 12, Price: 149.5, Share: 0.325, Weight: 2,
       Due: '2026-09-15', Start: '2026-08-01', Published: '2026-08-20T14:30:00Z', Window: { start: '2026-08-01', end: '2026-09-15' },
-      Done: false, Priority: 'High', Category: 'Hardware', Tags: ['alpha', 'stable'],
+      Done: false, Feed: true, Priority: 'High', Category: 'Hardware', Tags: ['alpha', 'stable'],
       Definition: { type: 'number', config: { format: 'currency', unit: 'EUR', decimals: 2 } },
       'Nested definition': { type: 'field', config: { depth: 1 } },
       'API key': 'vendor-portal', Owner: ada.id, Peers: [leo.id, mia.id],
@@ -145,7 +146,7 @@ Workspaces live side by side: this docs workspace is at \`/w/weaver/\`, your dat
 
 Spaces group **tables**; tables hold **entities** with auto public ids (\`Task#3\`).
 
-Field types: text, number, date, daterange, checkbox, url, email, select, multiselect, **workflow** (multistate with categories), **relation** (always a bidirectional pair), **lookup**, **rollup** (count/sum/avg/min/max/join), **formula**, and **document** (markdown, several per table).
+Field types: text, number, date, daterange, checkbox, toggle (a switch with two named states), url, email, select, multiselect, **workflow** (multistate with categories), **relation** (always a bidirectional pair), **lookup**, **rollup** (count/sum/avg/min/max/join), **formula**, and **document** (markdown, several per table).
 
 Every entity's document fields render natively as MD, HTML, and PDF at \`/e/<id>/doc/<Field>.<fmt>\`.`,
   });

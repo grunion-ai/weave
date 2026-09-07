@@ -69,7 +69,9 @@ const VALUES_BLOCK = '@values';
 const isBodyBlock = (f) => f.type === 'document' || f.type === 'attachments'
   || (f.type === 'relation' && !!(f.many ?? f.config?.many));
 
-const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments'];
+const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments'];
+/* checkbox and toggle store the same boolean; the toggle names its two states (Feature #202). */
+const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
 /* Chip and Card (Kyle, 2026-09-04): every table carries two `view` fields
    that say how one of its rows appears elsewhere — the chip inline (a
@@ -136,7 +138,7 @@ const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separato
 /* Grain and costume keys of a date (Feature #164) — the rules live in public/date-grain.js. */
 const DATE_COSTUME_KEYS = ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed'];
 const DG = globalThis.weaveDateGrain;
-const DEFAULTABLE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email', 'select', 'multiselect'];
+const DEFAULTABLE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 /* What a document edit actually did, in the terms a reader of the feed needs:
    where it landed, how much text came and went, and the first line that
@@ -209,7 +211,7 @@ const MAX_COMPUTE_DEPTH = 8;
    alternative is a definition that only fails when something tries to
    materialise it. */
 export const DEFINABLE_TYPES = [
-  'text', 'number', 'date', 'daterange', 'checkbox', 'url', 'email',
+  'text', 'number', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email',
   'select', 'multiselect', 'workflow', 'document', 'field', 'key', 'attachments',
 ];
 const MAX_DEFINITION_DEPTH = 4;
@@ -226,7 +228,8 @@ export const TYPE_MIGRATIONS = {
   email: ['text'],
   key: ['text'],
   date: ['text'],
-  checkbox: ['text'],
+  checkbox: ['toggle', 'text'],
+  toggle: ['checkbox', 'text'],
   select: ['multiselect', 'workflow', 'text'],
   multiselect: ['select', 'text'],
   workflow: ['select'],
@@ -577,6 +580,21 @@ function normalizeSelfContainedConfig(type, config = {}) {
       throw new WeaveError(`Only a 'pair' credential names parts; '${kind}' holds one value`, 'invalid');
     }
     return out;
+  }
+  /* A toggle names its two states (Feature #202). Both labels are kept
+     even at their defaults so a reader of the config sees the words the
+     switch wears; two identical labels would be a switch with no meaning. */
+  if (type === 'toggle') {
+    const label = (key, fallback) => {
+      if (config[key] == null) return fallback;
+      const v = String(config[key]).trim();
+      if (!v) throw new WeaveError(`A toggle's ${key} label cannot be blank`, 'invalid');
+      return v;
+    };
+    const on = label('on', 'On');
+    const off = label('off', 'Off');
+    if (on.toLowerCase() === off.toLowerCase()) throw new WeaveError(`A toggle needs two different labels, got '${on}' for both`, 'invalid');
+    return { on, off };
   }
   // Files: one or many (Kyle, 2026-08-23 — files are not documents).
   if (type === 'attachments') return { multiple: config.multiple == null ? true : !!config.multiple };
@@ -940,7 +958,9 @@ export class Weave {
     const budget = (limit ?? VIEW_AUTO_SEGMENTS[shape]) - (out.state ? 1 : 0);
     for (const f of this.#viewSegmentFields(e, db, cfg, Math.max(budget, 0))) {
       const v = this.#displayValue(db, f, this.#resolve(e, db, f, 0), e);
-      out.fields.push({ label: f.name, value: v == null ? '' : Array.isArray(v) ? v.map((x) => x?.name ?? x).join(', ') : String(v?.name ?? v) });
+      // A toggle's chip says the state's word, never `true` (Feature #202).
+      const shown = f.type === 'toggle' ? (v ? f.config.on : f.config.off) : v;
+      out.fields.push({ label: f.name, value: shown == null ? '' : Array.isArray(shown) ? shown.map((x) => x?.name ?? x).join(', ') : String(shown?.name ?? shown) });
     }
     return out;
   }
@@ -1213,10 +1233,12 @@ export class Weave {
       const out = {};
       for (const [fname, states] of Object.entries(patch.filters)) {
         const f = this.findField(db, fname);
-        if (!f || f.type !== 'workflow') throw new WeaveError(`'${fname}' is not a workflow field of ${db.name}`, 'invalid');
+        // A toggle's two labels are its states (Feature #202).
+        if (!f || !(f.type === 'workflow' || f.type === 'toggle')) throw new WeaveError(`'${fname}' is not a workflow or toggle field of ${db.name}`, 'invalid');
         if (!Array.isArray(states)) throw new WeaveError(`The filter on '${fname}' is a list of state names`, 'invalid');
+        const names = f.type === 'toggle' ? [f.config.on, f.config.off] : f.config.states.map((st) => st.name);
         for (const s of states) {
-          if (!f.config.states.some((st) => st.name === s)) {
+          if (!names.includes(s)) {
             throw new WeaveError(`'${s}' is not a state of ${db.name}.${f.name}`, 'invalid');
           }
         }
@@ -2816,7 +2838,7 @@ export class Weave {
     if (type === 'view') throw new WeaveError('The chip and the card are minted on every table; configure those instead', 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
-    if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'daterange', 'attachments', 'document', 'key', 'text'].includes(type)) {
+    if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'daterange', 'attachments', 'document', 'key', 'text', 'toggle'].includes(type)) {
       // One normaliser, shared with `field` value validation — see the note on
       // normalizeSelfContainedConfig. If these drift, a definition can describe
       // a field addField would reject.
@@ -3043,6 +3065,12 @@ export class Weave {
       if (field.type === 'text' && 'literal' in patch.config) {
         if (normalizeSelfContainedConfig('text', patch.config).literal) field.config.literal = true; else delete field.config.literal;
       }
+      if (field.type === 'toggle' && ('on' in patch.config || 'off' in patch.config)) {
+        // One label at a time: the other keeps its word.
+        const { on, off } = normalizeSelfContainedConfig('toggle', { ...field.config, ...patch.config });
+        field.config.on = on;
+        field.config.off = off;
+      }
       if (field.type === 'attachments' && 'multiple' in patch.config) {
         field.config.multiple = normalizeSelfContainedConfig('attachments', patch.config).multiple;
       }
@@ -3153,10 +3181,13 @@ export class Weave {
     const coerce = (raw, e) => {
       if (frozen) return toType === 'text' ? frozen.get(e.id) : null;
       if (toType === 'formula') return null;
-      if (raw == null || raw === '') return toType === 'workflow' ? nextConfig.states.find((s) => s.default).id : null;
+      if (raw == null || raw === '') return toType === 'workflow' ? nextConfig.states.find((s) => s.default).id : isBoolType(toType) ? false : null;
       switch (toType) {
+        case 'checkbox':
+        case 'toggle': return Boolean(raw);
         case 'text': {
           if (from === 'select') return optName(field.config.options, raw);
+          if (from === 'toggle') return raw ? field.config.on : field.config.off;
           if (from === 'multiselect') return (Array.isArray(raw) ? raw : [raw]).map((id) => optName(field.config.options, id)).filter(Boolean).join(', ');
           if (from === 'workflow') return field.config.states.find((s) => s.id === raw)?.name ?? null;
           return String(raw);
@@ -3184,7 +3215,10 @@ export class Weave {
     const width = field.config.width;
     const term = field.id === db.nameFieldId ? field.config.term : undefined;
     const description = field.config.description;
+    // checkbox ⇄ toggle is the same boolean in a new coat: the default rides.
+    const dflt = isBoolType(from) && isBoolType(toType) ? field.config.default : undefined;
     field.config = nextConfig;
+    if (dflt !== undefined) field.config.default = dflt;
     if (width) field.config.width = width;
     if (description) field.config.description = description; // what the column means survives its shape (Issue #209)
     if (term) field.config.term = term; // the row term rides the Name field through every shape
@@ -3556,8 +3590,19 @@ export class Weave {
     try { return DG.coerce(config, raw); } catch (e) { throw new WeaveError(e.message, 'invalid'); }
   }
   #validateValue(field, raw) {
-    if (raw == null || raw === '') return field.type === 'checkbox' ? false : null;
+    if (raw == null || raw === '') return isBoolType(field.type) ? false : null;
     switch (field.type) {
+      case 'toggle': {
+        // A label is a way to write the state — the word the switch wears,
+        // or the boolean it stores; anything else is refused by name.
+        if (typeof raw === 'string') {
+          const s = raw.trim().toLowerCase();
+          if (s === field.config.on.toLowerCase() || ['true', '1', 'yes'].includes(s)) return true;
+          if (s === field.config.off.toLowerCase() || ['false', '0', 'no'].includes(s)) return false;
+          throw new WeaveError(`'${raw}' is not a state of '${field.name}' (${field.config.on}, ${field.config.off})`, 'invalid');
+        }
+        return Boolean(raw);
+      }
       case 'text':
         return String(raw);
       case 'url':
@@ -4004,7 +4049,7 @@ export class Weave {
       case 'document':
         return e.docs?.[field.id] ?? '';
       default:
-        return e.values[field.id] ?? (field.type === 'checkbox' ? false : null);
+        return e.values[field.id] ?? (isBoolType(field.type) ? false : null);
     }
   }
 
@@ -4201,7 +4246,7 @@ export class Weave {
       if (f.type === 'formula' || f.type === 'rollup' || f.type === 'lookup') {
         return vals.some((v) => typeof v === 'number') ? 'number' : vals.some((v) => Array.isArray(v)) ? 'category' : 'text';
       }
-      if (['select', 'multiselect', 'workflow', 'checkbox', 'relation'].includes(f.type)) return 'category';
+      if (['select', 'multiselect', 'workflow', 'checkbox', 'toggle', 'relation'].includes(f.type)) return 'category';
       if (f.type === 'date') return 'date';
       return 'text';
     };
@@ -5021,6 +5066,9 @@ export class Weave {
           v = v.split(';').map((s) => s.trim()).filter(Boolean);
         } else if (f.type === 'checkbox') {
           v = ['true', '1', 'yes', '✓', 'x'].includes(v.toLowerCase());
+        } else if (f.type === 'toggle') {
+          const s = v.trim().toLowerCase();
+          v = s === f.config.on.toLowerCase() ? true : s === f.config.off.toLowerCase() ? false : ['true', '1', 'yes', '✓', 'x'].includes(s);
         }
         values[f.name] = v;
       });
@@ -5117,6 +5165,7 @@ export class Weave {
             }
           }
           if (f.type === 'attachments') out.multiple = f.config.multiple !== false;
+          if (f.type === 'toggle') { out.on = f.config.on; out.off = f.config.off; }
           if (f.type === 'document' && f.config.kind) out.kind = f.config.kind;
           // Which document is the description, said out loud, so applying a
           // schema onto a fresh workspace reproduces the role rather than

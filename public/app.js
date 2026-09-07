@@ -2370,6 +2370,34 @@ document.addEventListener('click', (ev) => {
   toggleMentionCaret(caret);
 });
 
+/* A toggle is a switch wearing the word of its state (Feature #202). The
+   input underneath is a real checkbox, so everything the grid already knows
+   about a boolean cell — Return and Space flip it through activateCell, the
+   row click leaves a label alone, the clip and focus rules skip it — holds
+   without a second path. The word is the config's `on` / `off`; the track
+   and knob are CSS on Tabler tokens (.wv-toggle in style.css). */
+function toggleSwitch(f, val, patch) {
+  const input = el('input', { type: 'checkbox', role: 'switch', class: 'wv-toggle-input', 'aria-label': f.name });
+  const word = el('span', { class: 'wv-toggle-word' });
+  const wrap = el('label', { class: 'wv-toggle', title: f.name }, input,
+    el('span', { class: 'wv-toggle-track', 'aria-hidden': 'true' }, el('span', { class: 'wv-toggle-knob' })), word);
+  const paint = (on) => {
+    input.checked = !!on;
+    wrap.classList.toggle('on', !!on);
+    word.textContent = on ? (f.on ?? 'On') : (f.off ?? 'Off');
+  };
+  input.addEventListener('change', () => patch(input.checked, paint));
+  /* In the grid the CELL is the focus stop, never the control inside it: a
+     click on the label would leave the box focused, and a checkbox flips on
+     the keyup of Space no matter what the keydown decided — so the next
+     Space would flip it twice (once by the keymap, once natively). Hand the
+     focus to the cell; on the entity page there is no cell and the native
+     key is the right one. */
+  input.addEventListener('focus', () => { const td = input.closest('td.wv-cell, td'); if (td) td.focus(); });
+  paint(val);
+  return wrap;
+}
+
 function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
@@ -2503,6 +2531,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     cb.checked = !!val;
     return cb;
   }
+  if (f.type === 'toggle') return toggleSwitch(f, val, patch);
   if (f.type === 'relation') {
     const box = el('span', { class: 'ms-box' });
     const all = val == null ? [] : Array.isArray(val) ? val : [val];
@@ -2874,22 +2903,31 @@ async function setTableFilters(db, filters) {
   await api('PATCH', `/tables/${db.id}`, { filters });
   await loadSchema();
 }
+/* A toggle's two labels are its states (Feature #202): the strip offers
+   them like a workflow's, and the where-clause carries the booleans. */
+const isFilterField = (f) => f.type === 'workflow' || f.type === 'toggle';
+const filterStates = (f) => (f.type === 'toggle'
+  ? [{ name: f.on, category: 'done', on: true }, { name: f.off, category: 'not-started', on: false }]
+  : f.states);
 function filterWhere(db) {
   const active = tableFilters(db);
   const conds = Object.entries(active)
-    .filter(([field, states]) => states?.length && db.fields.some((f) => f.name === field && f.type === 'workflow'))
-    .map(([field, states]) => [field, 'in', states]);
+    .map(([field, states]) => [db.fields.find((f) => f.name === field), states])
+    .filter(([f, states]) => f && isFilterField(f) && states?.length)
+    .map(([f, states]) => (f.type === 'toggle'
+      ? [f.name, 'in', filterStates(f).filter((st) => states.includes(st.name)).map((st) => st.on)]
+      : [f.name, 'in', states]));
   return conds.length ? conds : undefined;
 }
 function filterStrip(db, onChange) {
-  const wfFields = db.fields.filter((f) => f.type === 'workflow');
+  const wfFields = db.fields.filter(isFilterField);
   if (!wfFields.length) return null;
   const active = tableFilters(db);
   const strip = el('div', { class: 'filter-strip' });
   for (const f of wfFields) {
     const row = el('span', { class: 'filter-group' },
       el('span', { class: 'filter-label' }, f.name));
-    for (const st of f.states) {
+    for (const st of filterStates(f)) {
       const on = (active[f.name] ?? []).includes(st.name);
       row.append(el('button', {
         class: `filter-chip cat-${st.category}${on ? ' on' : ''}`,
@@ -3310,6 +3348,11 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
         options: [{ id: 'on', label: 'Checked' }, { id: 'off', label: 'Unchecked' }],
         onPick: (o) => write(o.id === 'on') });
     }
+    if (f.type === 'toggle') {
+      return picker(anchor, { title, placeholder: `${f.on} or ${f.off}…`,
+        options: [{ id: 'on', label: f.on }, { id: 'off', label: f.off }],
+        onPick: (o) => write(o.id === 'on') });
+    }
     valuePop({ anchor, title, apply: `Set on ${nRows()}`,
       type: f.type === 'number' ? 'number' : f.type === 'date' ? (f.time ? 'datetime-local' : 'date') : f.type === 'url' ? 'url' : f.type === 'email' ? 'email' : 'text',
       onApply: (v) => write(v === '' ? null : v) });
@@ -3675,7 +3718,7 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     const td = at?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
     if (!td) return;
     const open = at !== td && at.matches(OPEN_CONTROLS);
-    const verb = KM().keymap(KM().keyOf(e), { mode: open ? 'edit' : 'rest', readonly: !openerOf(td), sel: chosen() });
+    const verb = KM().keymap(KM().keyOf(e), { mode: open ? 'edit' : 'rest', readonly: !openerOf(td), sel: chosen(), flip: td.dataset.ftype === 'toggle' });
     if (apply(verb, td, at)) { e.preventDefault(); e.stopPropagation(); }
   });
 
@@ -5100,6 +5143,22 @@ function fieldDialog(db, existing, after) {
           placeholder: 'No default — pick a range',
           onChange: (r) => { state.default = r ? JSON.stringify(r) : ''; changed(); },
         })));
+      } else if (t === 'toggle') {
+        /* Two words and a starting state (Feature #202): the labels the
+           switch wears, and which of them a new row begins on. The default
+           control names the states with the words just typed. */
+        const tg = state.toggle ?? (state.toggle = { on: 'On', off: 'Off' });
+        const labelInput = (key, ph) => el('input', {
+          class: 'form-control', value: tg[key] ?? '', placeholder: ph, 'data-toggle-label': key,
+          oninput: (e) => { tg[key] = e.target.value; changed(); },
+          onchange: () => drawCfg(),
+        });
+        kids.push(dsection('Labels', el('div', { class: 'wv-toggle-labels' },
+          el('label', { class: 'wv-toggle-label-row' }, el('span', { class: 'wv-tag' }, 'on'), labelInput('on', 'On')),
+          el('label', { class: 'wv-toggle-label-row' }, el('span', { class: 'wv-tag' }, 'off'), labelInput('off', 'Off')))));
+        const cur = ['true', 'yes', '1'].includes(String(state.default).toLowerCase()) ? 'on' : 'off';
+        kids.push(dsection('Default', segCtl([{ id: 'off', label: tg.off?.trim() || 'Off' }, { id: 'on', label: tg.on?.trim() || 'On' }], cur,
+          (v) => { state.default = v === 'on' ? 'true' : 'false'; changed(); })));
       } else if (t === 'checkbox') {
         // A checkbox default is one of two states, not typed text.
         const cur = state.default === '' ? 'none' : ['true', 'yes', '1'].includes(String(state.default).toLowerCase()) ? 'checked' : 'unchecked';

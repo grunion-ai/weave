@@ -687,7 +687,7 @@ const CLIENT = `
   /* A row has space for four chips, so the ones that answer "what is this and
      when" go first. Still no field names — the order is by type, and the
      table's own order breaks ties. */
-  const CHIP_WEIGHT = { select: 0, multiselect: 1, date: 2, relation: 3, number: 4, checkbox: 5 };
+  const CHIP_WEIGHT = { select: 0, multiselect: 1, date: 2, relation: 3, number: 4, checkbox: 5, toggle: 5 };
   const rowFields = () => chipFields()
     .map((f, i) => ({ f, i, w: CHIP_WEIGHT[f.type] ?? 6 }))
     .sort((a, b) => a.w - b.w || a.i - b.i)
@@ -887,6 +887,7 @@ const CLIENT = `
       case 'multiselect': return [].concat(v).map((x) => one(hueForValue(f, x), x)).join('');
       case 'date': return one('ghost', day(v));
       case 'checkbox': return v ? one('slate', f.name) : '';
+      case 'toggle': return one(v ? 'slate' : 'ghost', f.name + ' ' + (v ? f.on : f.off));
       case 'number': return one('ghost', f.name + ' ' + v);
       case 'relation': return [].concat(v).map((x) => '<span class="k pointer">' + esc(x) + '</span>').join('');
       case 'formula': case 'lookup': case 'rollup':
@@ -941,7 +942,7 @@ const CLIENT = `
         });
       return;
     }
-    if (f.type === 'checkbox') { done(!cur); return; }
+    if (f.type === 'checkbox' || f.type === 'toggle') { done(!cur); return; }
     if (f.type === 'date') { editDate(name, cur, done); return; }
     const kind = f.type === 'number' ? 'number'
       : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text';

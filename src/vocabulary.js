@@ -17,6 +17,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'date', renders: 'inline date input with a picker button — a calendar, or a month/year, month/day, year or day-of-month picker when the grain stores less', config: ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'default'] },
   { type: 'daterange', renders: 'a pair of date inputs, both wearing the grain and costume; an elapsed span when asked', config: ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'default'] },
   { type: 'checkbox', renders: 'a checkbox', config: ['default'] },
+  { type: 'toggle', renders: 'a switch wearing the label of its state — `on` or `off` as the config names them; click or Space flips it; the value stays true/false', config: ['on', 'off', 'default'] },
   { type: 'url', renders: 'inline input, opens in a new tab', config: ['default'] },
   { type: 'email', renders: 'inline input, opens a mail client', config: ['default'] },
   { type: 'select', renders: 'one soft chip; click picks from the options', config: ['options', 'default'] },

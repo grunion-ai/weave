@@ -10,7 +10,7 @@
    (test/grid-patterns.test.mjs presses that one). No DOM here: a keystroke
    plus a grid state resolves to a verb, and public/app.js carries it out.
 
-   state  { mode: 'rest' | 'edit', readonly, sel: Set }
+   state  { mode: 'rest' | 'edit', readonly, sel: Set, flip? }  · flip: the cell is a toggle
    verb   { type, ... }
      move / commitMove {dr,dc,wrap?}  · move, saving first if it must
      edit {select}  · revert          · open the cell · back out of it
@@ -32,7 +32,9 @@
     if (k.key === 'a' && k.meta) return { type: 'selectAll' };
     if (k.shift && (k.key === 'ArrowUp' || k.key === 'ArrowDown')) return { type: 'extendSelect', dir: k.key === 'ArrowUp' ? -1 : 1 };
     if (MOVE[k.key]) return { type: 'move', dr: MOVE[k.key][0], dc: MOVE[k.key][1] };
-    if (k.key === ' ') return { type: 'toggleSelect' };
+    // A toggle cell is the one place Space is the value's own key: it
+    // flips the switch (Feature #202); everywhere else it picks the row up.
+    if (k.key === ' ') return s.flip && !s.readonly ? { type: 'edit', select: 'all' } : { type: 'toggleSelect' };
     if (k.key === 'Escape') return s.sel.size ? { type: 'clearSelect' } : { type: 'none' };
     if (printable(k.key) && !k.meta) return s.readonly ? { type: 'none' } : { type: 'edit', select: 'replace' };
     return { type: 'none' };
