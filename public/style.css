@@ -19,6 +19,18 @@
      the 24px hit target. Change these two, not a surface. */
   --wv-chip-font: 13px;
   --wv-chip-line: 22px;
+  /* The grid's one size (Kyle, 2026-09-07). A row carried five: a text box
+     at rest was Tabler's 12px form-control-sm, a number's costume the 14px
+     body, a chip 13px, a system column 12.5px, the name 15px. Every value
+     surface in .wv-grid reads this, and it is the chip's size so a value and
+     the chip beside it agree by construction. */
+  --wv-grid-font: var(--wv-chip-font);
+  /* And one line. Whole pixels, because a row's height is the sum of these
+     and a scroll lands on an integer: at 13px × Tabler's 1.4286 a row came
+     to 45.56px and "scroll the new row into view" left it 0.08px under the
+     fold. 20px keeps the description's 28px box, so comfortable stays 46
+     and compact 32 — under the 48/34 caps grid-chrome gates. */
+  --wv-grid-line: 20px;
 }
 :root, [data-bs-theme="light"] {
   --wv-canvas: #f3f1ec;                      /* Kami Paper Tint */
@@ -355,16 +367,23 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    clipped-cell marker's job now, not the row's. */
 .wv-grid tbody .ms-box { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-wrap: nowrap; }
 .wv-grid tbody .ms-box .chip, .wv-grid tbody .ms-box .k { margin: 0; }
-.wv-grid tbody td { padding-top: var(--wv-row-pad); padding-bottom: var(--wv-row-pad); }
+.wv-grid tbody td { padding-top: var(--wv-row-pad); padding-bottom: var(--wv-row-pad);
+  font-size: var(--wv-grid-font); line-height: var(--wv-grid-line); }
 /* Every cell edits, so every cell is a target. */
 .wv-grid tbody td { cursor: text; }
 /* At rest an input is text, so it is sized like text. Tabler's form-control
    min-height reserved a control's worth of room in every cell, which is what
    made a comfortable row 70px tall instead of 43. The border is already
    transparent until focus, so the box never changes size on the way in. */
-.wv-grid tbody .inline-edit { min-height: 0; height: auto; padding: 1px 4px; line-height: 1.45; }
-/* The leading column carries the row's identity; the rest qualify it. */
-.wv-grid td.name-cell .inline-edit { font-weight: 600; font-size: 15px; }
+.wv-grid tbody .inline-edit { min-height: 0; height: auto; padding: 1px 4px;
+  font-size: var(--wv-grid-font); line-height: var(--wv-grid-line); font-family: inherit; }
+/* A number's costume ('13 min') and a text value's marks stand in for the
+   box above, so they are set exactly like it — the swap on click reflows
+   nothing. */
+.wv-grid .num-dressed, .wv-grid .text-dressed { font-size: var(--wv-grid-font); }
+/* The leading column carries the row's identity; the rest qualify it. It is
+   heavier, never larger — one size in the row. */
+.wv-grid td.name-cell .inline-edit { font-weight: 600; }
 /* A chip is still a chip — the value comes from a set of options — it just
    stops wearing a box inside the grid. */
 .wv-grid .chip { border-color: transparent; }
@@ -1323,7 +1342,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    tint and full opacity, a step louder than merely behind. Both tokens flip
    with data-bs-theme, so the chip stays legible in either. */
 .nav-health.is-stale { color: var(--tblr-danger); border-color: var(--tblr-danger); opacity: 1; }
-.wv-grid td.sys-cell { color: var(--tblr-secondary); font-size: 12.5px; white-space: nowrap; }
+.wv-grid td.sys-cell { color: var(--tblr-secondary); font-size: var(--wv-grid-font); white-space: nowrap; }
 /* ---------- filter strip (Feature #38) ---------- */
 .filter-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
 .filter-group { display: inline-flex; align-items: center; gap: 4px; }
