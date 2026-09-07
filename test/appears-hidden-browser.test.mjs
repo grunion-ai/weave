@@ -35,17 +35,35 @@ if (s) {
     chip: !!document.querySelector('.wv-appears-chip'),
     card: !!document.querySelector('.wv-appears-card'),
   }));
-  /* Flip one row of the page's own eye and wait for the redraw it triggers. */
+  /* Flip one row of the page's own eye and wait for the round trip it starts.
+
+     A flip is three steps, in this order: the switch PATCHes the table, the
+     page redraws from the fresh schema, and only then does the popover teach
+     its own rows the new truth (app.js, `save`). The switch reading the new
+     state is therefore the signal that ALL THREE have landed — so that is
+     what this waits on, before the Escape and before handing the page to the
+     next flip.
+
+     It used to wait on the popover's absence and then sleep 400ms, which let
+     that last step land inside the NEXT flip's click: the popover rebuild
+     replaces its rows, so a mousedown that focused a row is orphaned, the
+     mouseup lands on the replacement, no `click` fires at all, and focus is
+     left on <body> — where the Escape below cannot reach the popover, whose
+     keydown listener is its own. The popover then stayed open and the wait
+     burned its full 30s (Issue #216: two of four full-gate runs). */
   const hiddenNow = () => weave.getTable(tasks.id).hiddenFields ?? [];
+  const switchReads = ([name, want]) => [...document.querySelectorAll('.eye-row')]
+    .find((r) => r.querySelector('.eye-label')?.textContent === name)
+    ?.getAttribute('aria-checked') === want;
   const flip = async (page, name) => {
     const was = hiddenNow().includes(name);
     await page.click('.eye-btn');
     await page.locator('.eye-row', { hasText: name }).first().click();
+    // Hidden means the switch is off, so a flip lands on the opposite state.
+    await page.waitForFunction(switchReads, [name, was ? 'true' : 'false']);
+    assert.equal(hiddenNow().includes(name), !was, `the ${name} flip reached the table`);
     await page.keyboard.press('Escape');
-    // The switch writes the table, then the page redraws from it.
     await page.waitForFunction(() => !document.querySelector('.chip-pop'));
-    for (let i = 0; i < 40 && hiddenNow().includes(name) === was; i++) await page.waitForTimeout(50);
-    await page.waitForTimeout(400);
   };
 
   test('both views shown: the strip carries a chip and a card', async () => {

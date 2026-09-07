@@ -31,12 +31,15 @@ if (s) {
     });
     // Both surfaces redraw asynchronously (PATCH, schema reload, two
     // renders); the popover's fresh rows carry the flipped switch, which is
-    // the signal that the round trip has landed.
+    // the signal that the round trip has landed. The signal is the whole
+    // point, so it waits on the default budget: the 5s cap that used to sit
+    // here is the same guess that flaked next door, and this round trip took
+    // 8.7s on the gate that voted it −1 (Issue #216).
     await page.waitForFunction((was) => {
       const row = [...document.querySelectorAll('.chip-pop .eye-row')]
         .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount');
       return row && row.getAttribute('aria-checked') !== was;
-    }, before, { timeout: 5000 });
+    }, before);
   };
   const toggleAmount = async (page, scope) => {
     await page.click(`${scope} .eye-btn`);
