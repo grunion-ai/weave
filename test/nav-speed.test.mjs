@@ -75,6 +75,32 @@ test('unknown API routes still answer JSON, not the 404 page', async () => {
   });
 });
 
+/* Issue #238: an entity permalink with an unknown id is a navigation too —
+   the not-found the engine throws must reach the same page rule. */
+test('an entity permalink with an unknown id gets the 404 page, not JSON', async () => {
+  await withServer(async (get) => {
+    for (const path of ['/e/bad', '/e/bad/doc.html', '/w/nope/e/bad']) {
+      const res = await get(path);
+      assert.equal(res.status, 404, path);
+      assert.match(res.headers.get('content-type'), /text\/html/, path);
+      assert.match(await res.text(), /href="\/"/, `${path} must offer a way home`);
+    }
+  });
+});
+
+test('an unknown entity stays JSON for API paths and non-GET methods', async () => {
+  await withServer(async (get) => {
+    const api = await get('/api/entities/bad');
+    assert.equal(api.status, 404);
+    assert.match(api.headers.get('content-type'), /application\/json/);
+    assert.equal((await api.json()).code, 'not-found');
+
+    const post = await get('/e/bad', { method: 'POST' });
+    assert.equal(post.status, 404);
+    assert.match(post.headers.get('content-type'), /application\/json/);
+  });
+});
+
 test('the 404 page is self-contained and theme-aware', () => {
   const page = readFileSync(join(ROOT, 'public/404.html'), 'utf8');
   assert.doesNotMatch(page, /https?:\/\//, 'no external hosts — the page must render offline');
