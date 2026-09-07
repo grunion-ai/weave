@@ -719,7 +719,10 @@ test('a column header is a drag handle for reorder', () => {
 
 test('the field menu affordance does not squeeze the column label', () => {
   const head = rulesFor('.wv-grid th.col-head');
-  assert.equal(head.position, 'relative', 'the ⋮ is positioned against its own header cell');
+  // Sticky, not relative (Feature #196): relative out-specified the thead
+  // rule and the field headers scrolled away while # and the select box
+  // held; sticky is positioned too, so the ⋮ still anchors to its cell.
+  assert.equal(head.position, 'sticky', 'the ⋮ is positioned against its own header cell, which stays sticky');
   const btn = rulesFor('.field-menu');
   assert.equal(btn.position, 'absolute', 'the ⋮ floats — it must not take label width');
   assert.equal(btn.opacity, '0', 'quiet until the header is hovered or focused');

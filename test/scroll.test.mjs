@@ -85,6 +85,15 @@ test('nearest respects padding at the top edge', () => {
   assert.equal(LIB.scrollTopFor(G({ block: 'nearest', targetTop: 150, padding: 80 })), 470);
 });
 
+test('nearest respects a cover at the bottom edge (the sticky + New foot, Feature #196)', () => {
+  // The target's bottom (940) must clear the box's bottom (700) minus the 34px foot: 274 more.
+  assert.equal(LIB.scrollTopFor(G({ block: 'nearest', bottom: 34 })), 774);
+  // Already clear of the foot: nothing moves.
+  assert.equal(LIB.scrollTopFor(G({ block: 'nearest', targetTop: 600, bottom: 34 })), 500);
+  // Inside the box but under the foot: moves just enough.
+  assert.equal(LIB.scrollTopFor(G({ block: 'nearest', targetTop: 650, bottom: 34 })), 524);
+});
+
 /* ---------- wiring: every site goes through the one helper ---------- */
 
 test('nothing in the app calls scrollIntoView any more', () => {

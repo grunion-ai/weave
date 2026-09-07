@@ -345,16 +345,18 @@ globalThis.WeaveEditorLib = {
      that brings the target inside, and nothing at all when it already is. */
   scrollTopFor({
     scrollTop = 0, scrollHeight = 0, viewTop = 0, viewHeight = 0,
-    targetTop = 0, targetHeight = 0, block = 'start', padding = 0,
+    targetTop = 0, targetHeight = 0, block = 'start', padding = 0, bottom = 0,
   } = {}) {
+    // `padding` is what covers the top edge (a sticky header); `bottom` is
+    // what covers the bottom edge (the sticky + New foot, Feature #196).
     const toTop = scrollTop + (targetTop - viewTop) - padding;
     if (block === 'nearest') {
       const above = targetTop < viewTop + padding;
-      const below = targetTop + targetHeight > viewTop + viewHeight;
+      const below = targetTop + targetHeight > viewTop + viewHeight - bottom;
       if (!above && !below) return scrollTop;
       if (below && !above) {
         return Math.min(Math.max(
-          scrollTop + (targetTop + targetHeight) - (viewTop + viewHeight), 0),
+          scrollTop + (targetTop + targetHeight) - (viewTop + viewHeight - bottom), 0),
         Math.max(0, scrollHeight - viewHeight));
       }
     }

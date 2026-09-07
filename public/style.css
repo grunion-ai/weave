@@ -269,7 +269,13 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid thead th:last-child { border-top-right-radius: var(--tblr-border-radius); }
 /* position:relative so the clipped-cell overlay can hang off the wrapper —
    a cell clips its own overflow, and the expansion must not be clipped. */
+/* An overflow that scrolls makes the wrap a scroll container, and a sticky
+   header or foot sticks to IT (a box as tall as the table) instead of the
+   page. buildGrid measures its wrap and marks one whose grid fits `.wv-fit`,
+   which clips instead; a wider grid — and every wrap nobody measures (stats,
+   relation grids) — keeps its sideways scroll. */
 .table-wrap { overflow-x: auto; position: relative; }
+.table-wrap.wv-fit { overflow-x: clip; }
 .wv-grid thead th { position: sticky; top: 0; z-index: 1; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -440,7 +446,10 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    not jump when the affordance appears. It stays invisible until the header is
    hovered or the button itself takes keyboard focus — quiet chrome, but a real
    control, so focus-visible has to reveal it as loudly as hover does. */
-.wv-grid th.col-head { position: relative; padding-right: 24px; }
+/* Sticky, not relative: relative would win over the thead rule above and the
+   field headers alone scrolled away while # and the select box held. Sticky
+   is positioned too, so the menu and the resize grip still anchor to it. */
+.wv-grid th.col-head { position: sticky; padding-right: 24px; }
 .wv-grid th.col-head .col-label { pointer-events: none; }
 .field-menu { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 18px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; transition: opacity .12s ease; }
 /* The ⋮ sits at its column's right edge — hard against the next column's
@@ -469,9 +478,14 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .add-field-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; }
 .add-field-btn:hover { color: var(--tblr-primary); border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
 /* Creating an entity is the grid's last row, so the table reads as one
-   surface that grows from the bottom rather than a table plus a button. */
-.wv-grid tr.add-entity-row td { padding: 0; border-bottom: 0; }
-.wv-grid tr.add-entity-row:hover td { background: none; }
+   surface that grows from the bottom rather than a table plus a button.
+   On a long table it floats at the bottom edge of the page (Feature #196),
+   the header's twin: same surface tint so rows do not bleed through, same
+   z-index so it paints over them, resting in its place once the reader
+   reaches the end. The selection puck floats centred over it; the label
+   sits at the left edge and stays readable, so the foot does not lift. */
+.wv-grid tr.add-entity-row td { padding: 0; border-bottom: 0; position: sticky; bottom: 0; z-index: 1; background: var(--tblr-bg-surface); }
+.wv-grid tr.add-entity-row:hover td { background: var(--tblr-bg-surface); }
 .add-entity-btn { width: 100%; display: block; padding: 7px 12px; background: none; border: 0; color: var(--tblr-secondary); font: inherit; text-align: left; cursor: pointer; }
 .add-entity-btn:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-primary); }
 .entity-row { cursor: pointer; }
@@ -1060,6 +1074,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* Two ways to add a row belong on one line: "new" and "link existing" are the
    same decision, not two rows of chrome. */
 .related-section .add-entity-row td { display: flex; }
+.related-section .wv-grid tr.add-entity-row td { position: static; }
 .related-section .add-entity-btn { width: auto; }
 /* The slack goes to the name, not to the id column — an embedded grid has
    fewer columns than a table view, so there is slack to place. */

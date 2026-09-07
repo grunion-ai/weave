@@ -1885,7 +1885,7 @@ function scrollBoxOf(target) {
   return i < 0 ? null : chain[i].el;
 }
 
-function scrollTargetIntoView(target, { block = 'start', padding = 0, instant = false } = {}) {
+function scrollTargetIntoView(target, { block = 'start', padding = 0, bottom = 0, instant = false } = {}) {
   if (!target?.isConnected) return;
   const box = scrollBoxOf(target);
   const t = target.getBoundingClientRect();
@@ -1895,7 +1895,7 @@ function scrollTargetIntoView(target, { block = 'start', padding = 0, instant = 
     scrollHeight: box ? box.scrollHeight : document.documentElement.scrollHeight,
     viewTop: view ? view.top : 0,
     viewHeight: box ? box.clientHeight : window.innerHeight,
-    targetTop: t.top, targetHeight: t.height, block, padding,
+    targetTop: t.top, targetHeight: t.height, block, padding, bottom,
   });
   const behavior = !instant && smoothScrollOk() ? 'smooth' : 'instant';
   (box ?? window).scrollTo({ top, behavior });
@@ -1917,6 +1917,12 @@ function scrollTargetIntoView(target, { block = 'start', padding = 0, instant = 
    watch from one Shift+Enter re-grabbed the input the next Shift+Enter had
    just blurred, and the commit's redraw restored focus to the old row. */
 let newRowTurn = 0;
+// How much of the bottom edge the grid's sticky foot covers — 0 where the
+// foot sits in the flow (the entity page's related sections).
+function stickyFootHeight(row) {
+  const foot = row.closest('table')?.querySelector('tr.add-entity-row td');
+  return foot && getComputedStyle(foot).position === 'sticky' ? foot.offsetHeight : 0;
+}
 function focusNewRow(eid, { field = null, scope = '#main', select = false, frames = 120, grace = 30 } = {}) {
   const turn = ++newRowTurn;
   let placed = false;
@@ -1929,7 +1935,9 @@ function focusNewRow(eid, { field = null, scope = '#main', select = false, frame
     if (input && (!placed || document.activeElement === document.body)) {
       // Instant, not the page's smooth animation: the reader is about to type,
       // and this poll re-asserts every frame until the caret is placed.
-      scrollTargetIntoView(row, { block: 'nearest', instant: true });
+      // The + New foot floats at the bottom edge (Feature #196): the new
+      // row lands above it, not behind it.
+      scrollTargetIntoView(row, { block: 'nearest', instant: true, bottom: stickyFootHeight(row) });
       activateCell(input.closest('td'));
       if (select) input.select();
       if (!placed) {
@@ -3158,6 +3166,14 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
   // sorts locally for the instant redraw; the PATCH makes it survive.
   let sortKey = db.sort?.[0]?.field ?? null, sortDir = db.sort?.[0]?.dir === 'desc' ? -1 : 1;
   const wrap = el('div', { class: 'card table-wrap' });
+  /* A wrap whose grid fits clips instead of scrolling (Feature #196).
+     `overflow-x: auto` made the wrap a scroll container, and a sticky cell
+     sticks to the NEAREST one — a box exactly as tall as the table, so
+     neither the header nor the + New foot ever held against the page.
+     Measured, not assumed: a grid wider than its card keeps its sideways
+     scroll, and so does every wrap this observer does not watch. */
+  const fitWatch = new ResizeObserver(() =>
+    wrap.classList.toggle('wv-fit', wrap.scrollWidth <= wrap.clientWidth + 1));
 
   /* ---------- Feature #132: row selection ----------
      The Puck won the five-bars study (Kyle, 2026-08-24). This is the layer
@@ -3564,6 +3580,7 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     for (const td of table.querySelectorAll('tbody tr.entity-row > td[data-field]:not(.cell-nostop)')) td.tabIndex = 0;
     for (const n of table.querySelectorAll('tbody tr.entity-row td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     wrap.replaceChildren(table, puck);
+    fitWatch.disconnect(); fitWatch.observe(wrap); fitWatch.observe(table);
     const foot = table.querySelector('tfoot');
     if (foot) fillFooter(db, foot);
     // A row that left the page — trashed, filtered out, sorted away — is no
