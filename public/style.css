@@ -192,6 +192,9 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .view-title:not([readonly]):hover, .view-title:focus { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); outline: none; }
 .view-desc { margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--tblr-secondary); max-width: 720px; cursor: text; }
 .view-desc p { margin: 2px 0; }
+.view-desc-body.clamped { max-height: calc(5 * 1.45em); overflow: hidden; }
+.view-desc-more { display: inline-block; margin-top: 2px; padding: 0; border: 0; background: none; font: inherit; font-size: 12px; color: var(--tblr-primary); cursor: pointer; }
+.view-desc-more:hover { text-decoration: underline; }
 .view-desc-empty { font-style: italic; opacity: .6; }
 .view-desc-edit { width: 100%; min-height: 38px; font: inherit; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); padding: 4px 6px; }
 

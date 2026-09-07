@@ -747,11 +747,28 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         descBox.replaceChildren(el('span', { class: 'view-desc-empty' }, 'Add description…'));
         return;
       }
+      // The rendered markdown sits in its own body so the clamp (Feature
+      // #186: five lines, then Show more) never touches the editor or the
+      // empty placeholder.
+      const body = el('div', { class: 'view-desc-body clamped' });
       try {
         const { html } = await api('POST', '/markdown', { md });
-        descBox.innerHTML = html;
+        body.innerHTML = html;
       } catch {
-        descBox.textContent = md;
+        body.textContent = md;
+      }
+      descBox.replaceChildren(body);
+      // Only text that is actually hidden earns the control; a description
+      // that fits in five lines reads as plain prose.
+      if (body.scrollHeight > body.clientHeight + 1) {
+        const more = el('button', { class: 'view-desc-more', type: 'button' }, 'Show more');
+        more.addEventListener('click', () => {
+          const folded = body.classList.toggle('clamped');
+          more.textContent = folded ? 'Show more' : 'Show less';
+        });
+        descBox.append(more);
+      } else {
+        body.classList.remove('clamped');
       }
     };
     let current = description ?? '';
@@ -775,7 +792,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
       descBox.replaceChildren(ta);
       requestAnimationFrame(() => { ta.focus(); ta.style.height = Math.max(38, ta.scrollHeight) + 'px'; });
     };
-    descBox.addEventListener('click', (e) => { if (!e.target.closest('a,textarea')) startEdit(); });
+    descBox.addEventListener('click', (e) => { if (!e.target.closest('a,textarea,button')) startEdit(); });
     showRendered(current);
     box.append(descBox);
   }
