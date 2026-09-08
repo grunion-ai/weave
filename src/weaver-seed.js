@@ -383,12 +383,25 @@ export function syncDevelopment(w, manifest) {
     apply(relT, releases, ['Date', 'Commit']);
     const byName = (db) => new Map(w.listEntities(db.id).map((e) => [w.entityName(e), e.id]));
     const issueIds = byName(issuesT), featureIds = byName(featuresT), relIds = byName(relT);
+    /* Reconciled, not added to (Issue #244). Rows are additive so a locally
+       filed Issue or Feature survives an update, but a release row is
+       manifest-owned — no instance links its own rows into an upstream
+       release — and additive linking made a wrong claim permanent on every
+       instance that synced before the correction: the corrected manifest
+       names fewer targets, and `link` only ever adds. The exporter omits an
+       empty relation, so a missing `fixes`/`ships` key means empty here. */
+    const reconcile = (id, field, wantIds) => {
+      const cur = w.readEntity(id).raw[field] ?? [];
+      const stale = cur.filter((x) => !wantIds.includes(x));
+      const add = wantIds.filter((x) => !cur.includes(x));
+      if (add.length) w.link(id, field, add);
+      if (stale.length) w.unlink(id, field, stale);
+    };
     for (const r of releases) {
       const id = relIds.get(r.name);
-      const fixes = (r.fixes ?? []).map((n) => issueIds.get(n)).filter(Boolean);
-      const ships = (r.ships ?? []).map((n) => featureIds.get(n)).filter(Boolean);
-      if (fixes.length) w.link(id, 'Fixes', fixes);
-      if (ships.length) w.link(id, 'Ships', ships);
+      if (!id) continue;
+      reconcile(id, 'Fixes', (r.fixes ?? []).map((n) => issueIds.get(n)).filter(Boolean));
+      reconcile(id, 'Ships', (r.ships ?? []).map((n) => featureIds.get(n)).filter(Boolean));
     }
   }
   w.state.meta.developmentSync = stamp;

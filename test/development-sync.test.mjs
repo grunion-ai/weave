@@ -156,3 +156,53 @@ test('no release claims a watcher incident row as one of its fixes', () => {
     .map((name) => `${r.name} → ${name}`));
   assert.deepEqual(claimed, [], 'watcher mirror/deploy incidents are not release contents');
 });
+
+/* Issue #244: correcting the manifest fixed the canonical workspace and every
+   instance that had yet to sync, and left the one that synced the wrong
+   manifest holding the false claim forever — `link` adds, nothing unlinks. A
+   release row is manifest-owned, so its Fixes and Ships are reconciled to
+   exactly what the manifest names. Issue and Feature rows stay additive:
+   that is what protects locally filed rows, and a release carries none. */
+const relNames = (w, name, field) => (findRelease(w, name).fields[field] ?? []).map((x) => x.name ?? x).sort();
+
+test('a corrected manifest takes back a release claim the wrong one made', () => {
+  const w = seedWeaver(new Weave());
+  const [a, b] = ['Upstream issue A', 'Upstream issue B'];
+  const issues = [{ name: a, status: 'Fixed' }, { name: b, status: 'Fixed' }];
+  const release = (fixes) => ({ name: 'v9.9.9', date: '2026-09-05', commit: 'abc1234', description: '## v9.9.9\n\n- the notes', fixes });
+  syncDevelopment(w, manifest({ issues, releases: [release([a, b])] }));
+  assert.deepEqual(relNames(w, 'v9.9.9', 'Fixes'), [a, b]);
+
+  syncDevelopment(w, manifest({ generatedAt: '2026-09-08T00:00:00.000Z', issues, releases: [release([a])] }));
+  assert.deepEqual(relNames(w, 'v9.9.9', 'Fixes'), [a], 'the release ends with the one fix the corrected manifest names');
+  assert.deepEqual(findIssue(w, b).fields['Fixed in'].map((x) => x.name ?? x), [], 'the inverse goes with it');
+});
+
+test('a release the corrected manifest empties keeps no fixes and no ships', () => {
+  const w = seedWeaver(new Weave());
+  const issue = 'Upstream issue A', feature = 'Upstream feature A';
+  const base = { name: 'v9.9.9', date: '2026-09-05', commit: 'abc1234', description: '## v9.9.9\n\n- the notes' };
+  const issues = [{ name: issue, status: 'Fixed' }], features = [{ name: feature, status: 'Shipped' }];
+  syncDevelopment(w, manifest({ issues, features, releases: [{ ...base, fixes: [issue], ships: [feature] }] }));
+  assert.deepEqual(relNames(w, 'v9.9.9', 'Ships'), [feature]);
+
+  // The exporter omits an empty relation entirely, so an absent key IS empty.
+  syncDevelopment(w, manifest({ generatedAt: '2026-09-08T00:00:00.000Z', issues, features, releases: [base] }));
+  assert.deepEqual(relNames(w, 'v9.9.9', 'Fixes'), []);
+  assert.deepEqual(relNames(w, 'v9.9.9', 'Ships'), []);
+});
+
+test('reconciling a release leaves locally filed Issue and Feature rows alone', () => {
+  const w = seedWeaver(new Weave());
+  const issuesT = w.listTables().find((t) => t.name === 'Issue');
+  const local = w.createEntity(issuesT.id, { name: 'A locally filed bug', values: { Severity: 'High' } });
+  const upstream = 'Upstream issue A';
+  syncDevelopment(w, manifest({
+    issues: [{ name: upstream, status: 'Fixed' }],
+    releases: [{ name: 'v9.9.9', date: '2026-09-05', commit: 'abc1234', description: '## v9.9.9\n\n- the notes', fixes: [upstream] }],
+  }));
+  const still = w.readEntity(local.id);
+  assert.equal(still.fields.Severity, 'High');
+  assert.equal(still.fields.Status, 'Open');
+  assert.deepEqual(still.fields['Fixed in'] ?? [], []);
+});
