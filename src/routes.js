@@ -79,6 +79,26 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     // serving anything from this workspace.
     weave.maybeRefresh();
 
+    /* The registry lives at the root (Feature #219), but a member page reads
+       and edits the rows that describe it through its own prefix: an entity
+       id or a registry table the member does not hold falls through to the
+       root engine. A Spaces row created from a member lands in that member.
+       ponytail: a member's own Bearer tokens do not verify on the root; a
+       member with requireAuth on reads its registry rows at the root URL. */
+    const member = weave;
+    {
+      const root = weave.registryHost;
+      const eM = root && path.match(/^\/(?:api\/entities|e)\/([^/]+)/);
+      const tM = root && !eM && path.match(/^\/api\/tables\/([^/]+)/);
+      if (eM && !weave.state.entities[eM[1]] && root.state.entities[eM[1]]) weave = root;
+      else if (tM) {
+        let ref = tM[1];
+        try { ref = decodeURIComponent(ref); } catch { /* keep as is */ }
+        const has = (w) => { try { return w.findTable(ref); } catch { return null; } }; // an ambiguous name is the route's to refuse
+        if (!has(weave) && has(root)?.system) weave = root;
+      }
+    }
+
     // Who is calling (Feature #65): callers name themselves per request;
     // without a header every mutation is 'web'. Set each request — a sticky
     // actor from the last request would misattribute this one.
@@ -596,6 +616,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
           if (rx.method === 'POST') {
+            // A Spaces row born on a member page belongs to that member
+            // (Feature #219); the engine accepts the workspace id as the ref.
+            if (weave !== member && weave.findTable(m[1])?.system === 'spaces') {
+              const values = body.values ?? body;
+              if (values.Workspace == null) values.Workspace = member.state.meta.id;
+            }
             const e = weave.createEntity(m[1], body);
             return out(201, weave.readEntity(e.id, { viewerZone }));
           }

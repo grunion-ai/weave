@@ -1008,7 +1008,7 @@ Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard dele
 
 ## The structure is data too
 
-\`Workspace/Spaces\`, \`Workspace/Tables\`, \`Workspace/Fields\` and \`Workspace/Workflows\` are ordinary tables whose rows **are** the structure. Editing a row runs the same validation as the schema verb, because it is the schema verb. So does the grid foot: \`+ New space\` births a space named "New space" with the name selected for the caret to replace; \`+ New table\` and \`+ New field\` ask for the space or the table the row needs before creating it; a Workflows row starts blank like any other row; and a create the engine refuses lands in a toast rather than in silence. That is the subject of the **Configuring a space, first time right** guide.`,
+\`Workspace/Spaces\`, \`Workspace/Tables\`, \`Workspace/Fields\` and \`Workspace/Workflows\` are ordinary tables whose rows **are** the structure. They live once, at the weave root — the default workspace — with a \`Workspace\` column saying which workspace each row describes (the **Registry at the root** guide). Editing a row runs the same validation as the schema verb, because it is the schema verb. So does the grid foot: \`+ New space\` births a space named "New space" with the name selected for the caret to replace; \`+ New table\` and \`+ New field\` ask for the space or the table the row needs before creating it; a Workflows row starts blank like any other row; and a create the engine refuses lands in a toast rather than in silence. That is the subject of the **Configuring a space, first time right** guide.`,
   },
   {
     name: 'Polymorphic relations',
@@ -1173,9 +1173,41 @@ Six tables in the **Showcase** space, one per use case, each with realistic rows
 The Notes case is the walkthrough in [[Article#5]]. The set was built for Feature #182.`,
   },
   {
-    name: 'Chip and card anatomy',
+    name: 'Registry at the root',
     audience: 'Both',
     order: 11,
+    doc: `# Registry at the root
+
+The system registry — **Spaces**, **Tables**, **Fields** and **Workflows** as rows — exists once per weave, in the **Workspace** space of the root: the default workspace, the one served at \`/\`. It used to be minted inside every workspace file; since Feature #219 a member workspace (uno, test, anything the hub adopts or creates) shows only its own spaces in the sidebar, and its structure appears as rows at the root instead.
+
+## The Workspaces table
+
+The root's Workspace space carries one more table, **Workspaces**: one row per workspace the hub serves, the root included. It is the level-1 row — every other registry table relates back to it through a system **Workspace** column, so uno's tables and test's sit side by side in one grid, and a filter on Workspace is the slice you want.
+
+Workspaces are created and deleted from the hub (the rail, \`POST /api/workspaces\`, \`DELETE /api/workspaces/:id\`), never as rows. A Workspaces row's Description edits the workspace's description; its Name is edited from the workspace's own page, because the hub's name index moves with it.
+
+## Rows are a projection, the structure is the truth
+
+Every workspace's \`state\` — its spaces, tables and fields — stays the source of truth. The root rows are a projection each workspace's own structural verbs keep true: rename a table in uno and its Tables row at the root follows; add a field and a Fields row appears. Edit a row at the root and the write routes to the workspace that owns it — the Workspace column says which — through the same verb, with the same validation. \`weave registry report\` names any drift; \`weave registry rebuild\` re-asserts every row from structure.
+
+Opening a row opens the structure: a row that describes another workspace deep-links into it (\`/w/<id>/#/table/…\`).
+
+## What still works, and where
+
+- **Configuration as fields** (#126): Field Order, Hidden Fields, Filter, Sort and Hide Rollups on a Tables row — same columns, same verbs, now one grid for every workspace.
+- **Space rollups and the Σ row** (#233): a \`via\` rollup lives on the root **Spaces** table and may name a table in any workspace; a member's grid still draws its Σ row and its picker still adds the rollup. Ids are uuids, so one \`via\` names one table wherever it lives.
+- **Chip and Card view fields** (#175, #212) sit on the user tables themselves; unchanged.
+- **Polymorphic relations** into \`Workspace/Spaces\` and \`Workspace/Tables\`: legal at the root, where those tables are.
+- A member's own API answers for its registry rows through its prefix: \`/w/<id>/api/entities/<row>\` and \`/w/<id>/api/tables/Tables/…\` fall through to the root when the member does not hold them.
+
+## Migration
+
+A workspace that minted its own Workspace space keeps it as a **tombstone**: the space and its four tables are marked deleted, their rows kept, nothing purged. Its space rollups are re-created on the root Spaces table (a name clash gets \` (<workspace>)\` appended). \`weave serve\` on that file alone hosts the registry again; joining a hub tombstones it again. The Cloudflare Worker serves one workspace per deployment, so there the root is that workspace and nothing moves.`,
+  },
+  {
+    name: 'Chip and card anatomy',
+    audience: 'Both',
+    order: 12,
     doc: `# Chip and card anatomy
 
 A row appears in two shapes outside its own page: the **chip**, inline — a relation cell, a \`[[…]]\` mention in a document, a reference card, a picker — and the **card**, a tile. Both are drawn from the table's two \`view\` fields (the **view** page in [[table:Handbook/Fields|Fields]] says what they can contain; the entity page's **Appears as** strip shows the live pair once the eye unhides them — a hidden view is not drawn there either, Issue #208). This page is the face: every element, what it does, how you use it, and its **hitbox** — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.

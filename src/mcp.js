@@ -383,7 +383,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_registry',
-    description: 'The meta-model registries (Workspace/Spaces, Tables, Fields) whose rows ARE the schema: action report (drift between the registry and the structures it mirrors) | rebuild.',
+    description: 'The meta-model registries (Workspace/Workspaces, Spaces, Tables, Fields) whose rows ARE the schema. The registry lives once, at the weave root — the default workspace — and every row carries a Workspace relation naming the workspace it describes; a member workspace reports and rebuilds its own slice. action report (drift between the registry and the structures it mirrors) | rebuild.',
     inputSchema: { type: 'object', properties: { action: { type: 'string' } } },
   },
   {

@@ -561,6 +561,18 @@ function allTables() {
 
 async function loadSchema() {
   state.schema = await api('GET', '/schema');
+  /* The registry lives once, at the weave root (Feature #219). A member
+     workspace's schema has no Workspace space, so the Σ row, the space tiles
+     and the registry grids read the root's — its API answers for those rows
+     through this workspace's own prefix. The workspace id tells a registry
+     row whether it is ours or another workspace's (deep link). */
+  if (WS_PREFIX && !state.schema.some((sp) => sp.system === 'workspace')) {
+    try {
+      const rootSchema = await (await fetch('/api/schema', { headers: { 'X-Weave-Zone': LOCAL_ZONE } })).json();
+      state.registry = Array.isArray(rootSchema) ? rootSchema.filter((sp) => sp.system === 'workspace') : [];
+    } catch { state.registry = []; }
+  } else state.registry = null;
+  if (!state.wsId) { try { state.wsId = (await api('GET', '/workspace')).id; } catch { /* older server */ } }
   renderNav();
 }
 
@@ -2154,7 +2166,7 @@ function gridDensity(dbId, next) {
 /* The Workspace registries, as the schema describes them. kind is the
    engine's system marker: 'spaces' | 'tables' | 'fields'. */
 function registryTable(kind) {
-  for (const sp of state.schema) {
+  for (const sp of [...state.schema, ...(state.registry ?? [])]) {
     if (sp.system !== 'workspace') continue;
     const db = sp.tables.find((t) => t.system === kind);
     if (db) return db;
@@ -2164,12 +2176,18 @@ function registryTable(kind) {
 
 /* A registry row stands for a piece of structure; opening it opens the
    structure — the space or the table, which IS the entity of the workspace
-   (Kyle, 2026-08-24). Ordinary rows open their entity page as ever. */
+   (Kyle, 2026-08-24). Ordinary rows open their entity page as ever. A row
+   describing another workspace deep-links into it (Feature #219). */
 function registryHref(db, item) {
-  if (db.system === 'tables' && item.sysId) return `#/table/${item.sysId}`;
-  if (db.system === 'spaces' && item.sysId) return `#/space/${item.sysId}`;
+  if (db.system === 'workspaces' && item.sysId) return item.sysId === state.wsId ? '#/' : `/w/${item.sysId}/`;
+  const here = !item.sysWorkspaceId || !state.wsId || item.sysWorkspaceId === state.wsId;
+  const at = (hash) => (here ? hash : `/w/${item.sysWorkspaceId}/${hash}`);
+  if (db.system === 'tables' && item.sysId) return at(`#/table/${item.sysId}`);
+  if (db.system === 'spaces' && item.sysId) return at(`#/space/${item.sysId}`);
   return null;
 }
+/* This workspace's slice of a registry grid. */
+const mineOnly = (items) => items.filter((i) => !i.sysWorkspaceId || !state.wsId || i.sysWorkspaceId === state.wsId);
 
 function rowClickTarget(e) {
   if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return 'ignore';
@@ -5734,7 +5752,7 @@ async function spaceStatTiles(space) {
   let row = null;
   try {
     const res = await api('POST', `/tables/${spacesT.id}/query`, { where: [['Name', '=', space.space]] });
-    row = res.items[0] ?? null;
+    row = res.items.find((i) => i.sysId === space.spaceId) ?? null;
   } catch { return null; }
   if (!row) return null;
   return el('div', { class: 'wv-stat-tiles' }, ...mine.map((f) => {
@@ -8153,6 +8171,7 @@ async function showHome() {
   const reg = registryTable('spaces');
   if (reg && dbs.length) {
     const res = await api('POST', `/tables/${reg.id}/query`, {});
+    res.items = mineOnly(res.items);
     const onSaved = async () => {
       rememberGridFocus();
       await loadSchema();

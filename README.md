@@ -201,6 +201,10 @@ schema is data: the rows of `Workspace/Spaces`, `Workspace/Tables` and
 `Workspace/Fields` *are* the spaces, tables and fields, so an entity write on a
 registry row runs the same validation as the schema verb — a field's whole shape
 edits through its `Definition`, a table's column order through `Field Order`.
+The registry lives once, at the weave root (the default workspace): a
+`Workspaces` table holds one row per workspace the hub serves, every registry
+row carries a `Workspace` relation, and a row edit routes to the workspace that
+owns it.
 
 **REST** and **CLI** cover the same ground:
 

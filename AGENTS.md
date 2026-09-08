@@ -116,7 +116,10 @@ well as a ceiling). Guessing a color that validates still reads wrong.
 **The registry rows are the schema verbs.** `Workspace/Spaces`,
 `Workspace/Tables` and `Workspace/Fields` are ordinary tables whose rows *are*
 the spaces, tables and fields, so entity CRUD on them runs the same validation
-as the schema verb — useful when you are already holding an entity tool:
+as the schema verb — useful when you are already holding an entity tool. They
+live once, at the weave root (the default workspace, served at `/`); a
+`Workspace` column on every row names the workspace it describes, and a member
+workspace's own `/w/<id>/api` answers for its rows:
 
 | Change | Write |
 | --- | --- |

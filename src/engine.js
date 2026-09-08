@@ -2881,7 +2881,8 @@ export class Weave {
     if (db.system === 'spaces') {
       let owner = this;
       if (wsRef != null) {
-        const wsRow = this.findEntity(this.#sysTable('workspaces').id, wsRef);
+        // The row, or the workspace's own id (what a member page knows).
+        const wsRow = this.findEntity(this.#sysTable('workspaces').id, wsRef) ?? this.#sysRow('workspaces', wsRef);
         if (!wsRow) throw new WeaveError(`Workspace row '${wsRef}' not found`, 'not-found');
         owner = this.#engineOf(wsRow.sysId);
       }

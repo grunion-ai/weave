@@ -92,7 +92,7 @@ test('the column width rules are the ones the grid enforces', () => {
 
 test('the registries name the columns that are schema writes', () => {
   // Writing these runs the schema verb (engine #interceptUpdate).
-  assert.deepEqual(Object.keys(VOCABULARY.registries), ['Workspace/Spaces', 'Workspace/Tables', 'Workspace/Fields']);
+  assert.deepEqual(Object.keys(VOCABULARY.registries), ['Workspace/Workspaces', 'Workspace/Spaces', 'Workspace/Tables', 'Workspace/Fields']);
   assert.ok(VOCABULARY.registries['Workspace/Tables'].includes('Field Order'));
   assert.ok(VOCABULARY.registries['Workspace/Fields'].includes('Definition'));
 });

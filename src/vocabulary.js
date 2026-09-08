@@ -134,6 +134,7 @@ export const VOCABULARY = {
   formulaFunctions: FORMULA_FUNCTIONS,
   formulaGroups: FORMULA_GROUPS,
   registries: {
+    'Workspace/Workspaces': ['Description'],
     'Workspace/Spaces': ['Name', 'Description'],
     'Workspace/Tables': ['Name', 'Description', 'Field Order', 'Hidden Fields', 'Filter', 'Sort', 'Hide Rollups'],
     'Workspace/Fields': ['Name', 'Definition'],
