@@ -1106,7 +1106,9 @@ export class Weave {
      the parent. `hard` is the old cascading purge. */
   deleteSpace(ref, { hard = false } = {}) {
     const s = this.getSpace(ref);
-    if (s.system) throw new WeaveError(`Space '${s.name}' is part of the system registry`, 'invalid');
+    // Issue #248: say what the space is, not "registry" — that read as a
+    // name clash with the Spaces table. The refusal itself is by design (#126).
+    if (s.system) throw new WeaveError(`Space '${s.name}' is the workspace's own system space and cannot be deleted`, 'invalid');
     if (!hard) {
       if (s.deletedAt) return s;
       s.deletedAt = nowISO();
@@ -1323,7 +1325,7 @@ export class Weave {
     // move from or into — restore first, then move.
     if (db.deletedAt) throw new WeaveError(`Table '${db.name}' is in the trash — restore it first`, 'conflict');
     const sp = this.getSpace(spaceRef);
-    if (sp.system) throw new WeaveError(`Space '${sp.name}' is part of the system registry`, 'invalid');
+    if (sp.system) throw new WeaveError(`Space '${sp.name}' is the workspace's own system space and cannot hold your tables`, 'invalid');
     if (sp.deletedAt) throw new WeaveError(`Space '${sp.name}' is in the trash — restore it first`, 'conflict');
     if (sp.id === db.spaceId) return db;
     const clash = Object.values(this.state.tables).find((d) => d.id !== db.id

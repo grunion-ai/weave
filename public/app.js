@@ -5898,8 +5898,12 @@ async function showSpace(spaceId) {
             href: `${WS_PREFIX}/api/tables/${d.id}/export.csv`,
             download: `${d.name}.csv`,
           })),
-          space.tables.length ? 'divider' : null,
-          {
+          // The system Workspace space is never deletable (Issue #126), so
+          // the item that could only ever produce a refusal toast is not
+          // rendered there (Issue #248) — the sidebar does the same for
+          // system tables.
+          space.tables.length && !space.system ? 'divider' : null,
+          space.system ? null : {
             hold: space.tables.length
               ? `Delete space + ${space.tables.length} table${space.tables.length > 1 ? 's' : ''}`
               : 'Delete space',
