@@ -1273,11 +1273,19 @@ export class Weave {
       });
       if (out.length) db.sort = out; else delete db.sort;
     }
-    /* The Σ row's switch (Issue #233): shown unless hidden, so only `true`
-       is stored — false is the absence, the way an empty sort is. */
+    /* The Σ row's switch (Issue #233), inverted by Issue #249 (Kyle,
+       2026-09-08: "hide summation row by default"). A table has no Σ row
+       until someone asks for one, so the flag is stored in BOTH directions:
+       `false` means this table opted in, `true` means it was switched back
+       off, and the absence means nobody has asked. Storing only `true` — the
+       old shape, where the absence meant shown — would have made a table
+       Kyle switched on read exactly like one he never touched, and the new
+       default would then have silently hidden his own row. Nothing stored
+       needs rewriting: `true` was off then and is off now, and the absence
+       was on then and is the new default off. */
     if (patch.hideRollups != null) {
       if (typeof patch.hideRollups !== 'boolean') throw new WeaveError('hideRollups is true or false', 'invalid');
-      if (patch.hideRollups) db.hideRollups = true; else delete db.hideRollups;
+      db.hideRollups = patch.hideRollups;
     }
     if (patch.hiddenFields != null) {
       if (!Array.isArray(patch.hiddenFields)) throw new WeaveError('hiddenFields is a list of field names', 'invalid');
@@ -1781,7 +1789,9 @@ export class Weave {
         if ('sort' in tDoc && JSON.stringify(tDoc.sort ?? []) !== JSON.stringify(db.sort ?? [])) {
           tPatch.sort = tDoc.sort ?? [];
         }
-        if ('hideRollups' in tDoc && !!tDoc.hideRollups !== !!db.hideRollups) tPatch.hideRollups = !!tDoc.hideRollups;
+        // Absent is hidden on both sides (Issue #249), so compare what each
+        // one shows, not what each one stores.
+        if ('hideRollups' in tDoc && (tDoc.hideRollups !== false) !== (db.hideRollups !== false)) tPatch.hideRollups = !!tDoc.hideRollups;
         if (Object.keys(tPatch).length) act('update-table', qualified, () => this.updateTable(db.id, tPatch));
         for (const fDoc of tDoc.fields ?? []) {
           let existing = Object.values(db.fields).find((x) => x.name === fDoc.name);
@@ -1912,7 +1922,7 @@ export class Weave {
     if (tDoc.systemFields?.length) patch.systemFields = [...tDoc.systemFields];
     if (tDoc.filters && Object.keys(tDoc.filters).length) patch.filters = tDoc.filters;
     if (tDoc.sort?.length) patch.sort = tDoc.sort;
-    if (tDoc.hideRollups) patch.hideRollups = true;
+    if (tDoc.hideRollups != null) patch.hideRollups = !!tDoc.hideRollups;
     const wanted = [];
     for (const fDoc of tDoc.fields ?? []) {
       const f = Object.values(db.fields).find((x) => x.name === fDoc.name);
@@ -2785,7 +2795,8 @@ export class Weave {
       if ((row.values[sortF.id] ?? '') !== txt) patch.Sort = txt;
     }
     const hideF = this.#sysField(t, 'Hide Rollups');
-    if (hideF && !!row.values[hideF.id] !== !!db.hideRollups) patch['Hide Rollups'] = !!db.hideRollups;
+    // Checked is hidden, and a table nobody opted in is hidden (Issue #249).
+    if (hideF && !!row.values[hideF.id] !== (db.hideRollups !== false)) patch['Hide Rollups'] = db.hideRollups !== false;
     if (Object.keys(patch).length) reg.#metaSync(() => reg.updateEntity(row.id, patch));
     return row;
   }
@@ -5398,7 +5409,7 @@ export class Weave {
         ...(db.hiddenFields?.length ? { hiddenFields: [...db.hiddenFields] } : {}),
         ...(db.filters ? { filters: Object.fromEntries(Object.entries(db.filters).map(([k, v]) => [k, [...v]])) } : {}),
         ...(db.sort?.length ? { sort: db.sort.map((s) => ({ ...s })) } : {}),
-        ...(db.hideRollups ? { hideRollups: true } : {}),
+        ...(typeof db.hideRollups === 'boolean' ? { hideRollups: db.hideRollups } : {}),
         bodyBlocks: this.bodyBlocks(db),
         term: this.termOf(db),
         // `noun` is the term's singular under its pre-2026-09 name, emitted

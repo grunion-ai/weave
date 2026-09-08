@@ -48,6 +48,17 @@ test('a table takes its icon, noun, hidden columns and order from the terminal',
   assert.deepEqual(t.fields.map((f) => f.name), ['Stage', 'Name', 'Description', 'Chip', 'Card'], 'the views close the order; a caller may leave them out');
 });
 
+/* Issue #249: the Σ row is off unless a table asks for it, so asking has to
+   be sayable from the terminal — it was browser-only while the default was
+   on and nobody had to ask. */
+test('the terminal switches the Σ rollup row on and off', () => {
+  assert.ok(!('hideRollups' in table()), 'nothing stored until someone asks');
+  cli('table', 'update', 'Ops/Invoice', '--rollup-row', 'on');
+  assert.equal(table().hideRollups, false, 'on is the stored opt-in, not the absence');
+  cli('table', 'update', 'Ops/Invoice', '--rollup-row', 'off');
+  assert.equal(table().hideRollups, true);
+});
+
 test('a field is renamed, recolored and widened from the terminal', () => {
   cli('field', 'update', 'Invoice', 'Stage', '--name', 'Phase', '--width', '240',
     '--config', '{"options":[{"name":"Draft","color":"#f59f00"},{"name":"Sent","color":"#2ea043"}]}');

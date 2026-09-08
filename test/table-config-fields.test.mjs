@@ -111,38 +111,68 @@ test('a sort without a direction defaults asc when parsed from the row', () => {
 /* Issue #233: the Σ row (space rollups pinned under the field headers) has a
    visibility switch that is table truth like the filter and the sort —
    `hideRollups` on the table, mirrored as the Hide Rollups checkbox on the
-   Tables row, absent while the row is shown. */
-test('updateTable stores hideRollups; false clears; anything else is refused', () => {
+   Tables row.
+
+   Issue #249 (Kyle, 2026-09-08) inverts the default: a table has no Σ row
+   until someone asks for one. That forced the flag to be honest in both
+   directions — `hideRollups: false` is now STORED, and means "this table opts
+   in", so a table Kyle switched on is no longer indistinguishable from one he
+   never touched. Absent reads as hidden, which is what every table that
+   predates this change already was under the old default. */
+test('a table hides the Σ row until it opts in, and the opt-in is stored', () => {
   const w = fresh();
-  assert.equal(w.getTable('Task').hideRollups, undefined, 'shown by default, nothing stored');
+  assert.equal(w.getTable('Task').hideRollups, undefined, 'nothing stored on a new table');
+  w.updateTable('Task', { hideRollups: false });
+  assert.equal(w.getTable('Task').hideRollups, false, 'shown is stored, not the absence (Issue #249)');
   w.updateTable('Task', { hideRollups: true });
   assert.equal(w.getTable('Task').hideRollups, true);
-  w.updateTable('Task', { hideRollups: false });
-  assert.equal(w.getTable('Task').hideRollups, undefined, 'false is the absence, like an empty sort');
   assert.throws(() => w.updateTable('Task', { hideRollups: 'yes' }), WeaveError);
 });
 
 test('the table row mirrors Hide Rollups as a checkbox and writes it back through the verb', () => {
   const w = fresh();
   const row = () => tableRowOf(w, 'Task');
-  assert.equal(!!tval(w, row(), 'Hide Rollups'), false);
-  w.updateTable('Task', { hideRollups: true });
-  assert.equal(tval(w, row(), 'Hide Rollups'), true);
-  w.updateEntity(row().id, { 'Hide Rollups': false });
-  assert.equal(w.getTable('Task').hideRollups, undefined);
+  assert.equal(tval(w, row(), 'Hide Rollups'), true, 'a table nobody opted in reads as hidden (Issue #249)');
+  w.updateTable('Task', { hideRollups: false });
+  assert.equal(tval(w, row(), 'Hide Rollups'), false);
   w.updateEntity(row().id, { 'Hide Rollups': true });
   assert.equal(w.getTable('Task').hideRollups, true);
+  w.updateEntity(row().id, { 'Hide Rollups': false });
+  assert.equal(w.getTable('Task').hideRollups, false, 'unchecking opts the table in, and says so');
 });
 
-test('describeSchema, export/import and duplicate carry hideRollups only when set', () => {
+test('describeSchema, export/import and duplicate carry hideRollups in both directions', () => {
   const w = fresh();
   const find = (ww, name) => ww.describeSchema().flatMap((s) => s.tables).find((t) => t.name === name);
-  assert.ok(!('hideRollups' in find(w, 'Task')), 'unset stays absent');
-  w.updateTable('Task', { hideRollups: true });
-  assert.equal(find(w, 'Task').hideRollups, true);
+  assert.ok(!('hideRollups' in find(w, 'Task')), 'untouched stays absent');
+  w.updateTable('Task', { hideRollups: false });
+  assert.equal(find(w, 'Task').hideRollups, false, 'the opt-in travels (Issue #249)');
   const w2 = new Weave();
   w2.importJSON(w.exportJSON());
-  assert.equal(w2.getTable('Task').hideRollups, true, 'survives the interchange layer');
+  assert.equal(w2.getTable('Task').hideRollups, false, 'survives the interchange layer');
   const copy = w.duplicateTable('Task');
-  assert.equal(w.getTable(copy.id).hideRollups, true, 'a duplicate reads the same way');
+  assert.equal(w.getTable(copy.id).hideRollups, false, 'a duplicate reads the same way');
+  w.updateTable('Task', { hideRollups: true });
+  assert.equal(find(w, 'Task').hideRollups, true);
+});
+
+/* No migration, by construction (Issue #249): every table stored before this
+   change is either `hideRollups: true` (hidden then, hidden now) or absent
+   (shown then — and now hidden, which IS the ask). Nothing stored has to be
+   rewritten for the new default to read correctly. */
+test('a workspace written under the old default reads without a rewrite', () => {
+  // Old "off" — the only thing the old shape ever stored — still reads off,
+  // and the Tables row still says so, with nothing rewritten.
+  const w = fresh();
+  w.updateTable('Task', { hideRollups: true });
+  const w2 = new Weave();
+  w2.importJSON(JSON.parse(JSON.stringify(w.exportJSON())));
+  assert.equal(w2.getTable('Task').hideRollups, true, 'the stored value is untouched');
+  assert.equal(tval(w2, tableRowOf(w2, 'Task'), 'Hide Rollups'), true);
+  // Old "on" was the absence, and the absence is now off — Kyle's ask.
+  const w3 = fresh();
+  const w4 = new Weave();
+  w4.importJSON(JSON.parse(JSON.stringify(w3.exportJSON())));
+  assert.equal(w4.getTable('Task').hideRollups, undefined, 'nothing to rewrite');
+  assert.equal(tval(w4, tableRowOf(w4, 'Task'), 'Hide Rollups'), true, 'and it reads hidden');
 });

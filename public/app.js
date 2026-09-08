@@ -3284,8 +3284,10 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
           keepScroll(() => showDatabase(cur.id, state.route.view));
         }),
         // The Σ row (Issue #233): table truth, like the filter and the sort —
-        // the next reader inherits it. Registry grids have no rollups.
-        ...(cur.system ? [] : [row(!cur.hideRollups, 'Σ rollup row', () => save({ hideRollups: !liveTable().hideRollups }))]),
+        // the next reader inherits it. Registry grids have no rollups. Off
+        // until this table opts in (Issue #249), so the switch reads and
+        // writes `hideRollups === false` rather than its absence.
+        ...(cur.system ? [] : [row(cur.hideRollups === false, 'Σ rollup row', () => save({ hideRollups: liveTable().hideRollups === false }))]),
       ] : []),
     ];
   };
@@ -3738,8 +3740,10 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
       // The Σ row (Issue #233): this table's space rollups, one cell per
       // column, pinned under the field headers so it stays while the body
       // scrolls; painted once the stats arrive (registry grids have no space
-      // to roll up to). The eye's Rows section switches it off.
-      db.system || db.hideRollups ? null : renderFooter(db, cols)),
+      // to roll up to). The eye's Rows section switches it on — a table has
+      // no Σ row until it opts in, which is `hideRollups: false` on the
+      // table, so the absence reads as hidden (Issue #249).
+      db.system || db.hideRollups !== false ? null : renderFooter(db, cols)),
       tbody);
     /* Cells rest as values (Feature #134): the CELL is the focus stop and
        nothing inside it is. Tab lands on every field cell — select, multi-

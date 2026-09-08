@@ -19,6 +19,9 @@ const s = await launch('root registry', (root) => {
   sessions = uno.createTable({ space: 'Agent', name: 'Sessions' });
   uno.addField(sessions, { name: 'Cost', type: 'number' });
   for (const [n, c] of [['a', 1.5], ['b', 2.5]]) uno.createEntity('Sessions', { name: n, values: { Cost: c } });
+  // The Σ row is off until a table asks for it (Issue #249); this one asks,
+  // because the case below is about where its rollup lands, not the default.
+  uno.updateTable(sessions.id, { hideRollups: false });
 }, { server: () => ({ workspaces: { uno } }) });
 
 if (s) {

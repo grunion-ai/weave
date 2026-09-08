@@ -1664,7 +1664,11 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
   assert.match(eye, /hiddenFields: \[\.\.\.next\]/, 'hidden fields persist on the table');
   assert.match(eye, /systemFields: \[\.\.\.next\]/, 'system columns toggle from the same list');
   assert.match(eye, /state\.showDeleted/, 'deleted rows are a session switch');
-  assert.match(eye, /hideRollups: !liveTable\(\)\.hideRollups/, 'the Σ row switch is table truth (Issue #233), read live (Issue #240)');
+  assert.match(eye, /hideRollups: liveTable\(\)\.hideRollups === false/, 'the Σ row switch is table truth (Issue #233), read live (Issue #240)');
+  // Issue #249: hidden is the default, so both the switch and the grid read
+  // the opt-in explicitly — the absence is off, never on.
+  assert.match(eye, /row\(cur\.hideRollups === false, 'Σ rollup row'/, 'the switch reads on only when the table opted in');
+  assert.match(fnBody('renderTable'), /db\.system \|\| db\.hideRollups !== false \? null : renderFooter/, 'no Σ row until the table opts in (Issue #249)');
   // A taught row keeps the handler it was built with, so every handler reads
   // the table at click time instead of a set captured at build time.
   assert.match(eye, /new Set\(liveTable\(\)\.hiddenFields \?\? \[\]\)/, 'the hidden set is read at click time');

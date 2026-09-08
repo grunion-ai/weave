@@ -249,7 +249,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_table',
-    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one row is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), hiddenFields (names kept out of the grid, data untouched), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the column order — every field exactly once).',
+    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one row is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), hiddenFields (names kept out of the grid, data untouched), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the column order — every field exactly once), hideRollups (the Σ row of space rollups pinned under the field headers: off unless a table asks for it, so pass `false` to show it and `true` to put it away again).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -258,6 +258,7 @@ export const TOOLS = [
         hiddenFields: { type: 'array', items: { type: 'string' } },
         systemFields: { type: 'array', items: { type: 'string' } },
         fieldOrder: { type: 'array', items: { type: 'string' } },
+        hideRollups: { type: 'boolean' },
       },
       required: ['db'],
     },
@@ -488,7 +489,7 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_restore_space':
       return weave.restoreSpace(args.space);
     case 'weave_update_table':
-      return weave.updateTable(args.db, pick(args, ['name', 'description', 'icon', 'noun', 'hiddenFields', 'systemFields', 'fieldOrder']));
+      return weave.updateTable(args.db, pick(args, ['name', 'description', 'icon', 'noun', 'hiddenFields', 'systemFields', 'fieldOrder', 'hideRollups']));
     case 'weave_move_table':
       return weave.moveTable(args.db, args.space);
     case 'weave_duplicate_table':

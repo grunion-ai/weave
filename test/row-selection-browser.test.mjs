@@ -415,10 +415,13 @@ if (s) {
 
   /* ── Issue #161 · the bar is fixed to the viewport, not the table ───── */
   test('the bar sits at the bottom centre of the viewport even when the table runs off it', async () => {
-    const page = await browser.newPage({ viewport: { width: 1100, height: 260 } });
+    // Short enough that five rows overrun it with room to spare: the Σ row
+    // that used to add its own height is off unless a table asks for it
+    // (Issue #249), so the premise cannot rest on that row being there.
+    const page = await browser.newPage({ viewport: { width: 1100, height: 200 } });
     try {
       await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 5);
       await boxes(page).nth(0).check();
       await page.waitForSelector('.sel-puck');
       // Let the 14px rise land before measuring where the bar rests.

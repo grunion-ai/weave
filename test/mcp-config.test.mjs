@@ -31,6 +31,18 @@ test('a table takes its whole costume from one tool call', () => {
   assert.deepEqual(t.fields.map((f) => f.name), ['Stage', 'Name', 'Description', 'Chip', 'Card']);
 });
 
+/* Issue #249: the Σ row is off unless a table asks for it, and an agent asks
+   here — the eye is not a door the agent has. */
+test('the Σ rollup row is switched on and off from the same tool call', () => {
+  const w = workspace();
+  const t = () => call(w, 'weave_schema').find((s) => s.space === 'Ops').tables[0];
+  assert.ok(!('hideRollups' in t()), 'off, with nothing stored');
+  call(w, 'weave_update_table', { db: 'Invoice', hideRollups: false });
+  assert.equal(t().hideRollups, false, 'the opt-in is stored, so it is not the untouched table');
+  call(w, 'weave_update_table', { db: 'Invoice', hideRollups: true });
+  assert.equal(t().hideRollups, true);
+});
+
 test('a field is renamed, recolored, widened and dropped without a browser', () => {
   const w = workspace();
   call(w, 'weave_update_field', {

@@ -9,12 +9,15 @@
    Issue #233: the row is pinned under the field headers (thead, not tfoot)
    so it stays put while the body scrolls, and the eye's Rows section
    switches it off — `hideRollups` on the table, remembered on the Tables
-   row like the filter and the sort, never in the browser. */
+   row like the filter and the sort, never in the browser.
+   Issue #249: off is now the default, so the tables below opt in the way a
+   reader would — through the eye's switch, `hideRollups: false` — and the
+   last case proves a table nobody switched on draws no Σ row at all. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let sessions, wide, spacesT;
+let sessions, wide, spacesT, quiet;
 const s = await launch('grid footer reads space rollups', (weave) => {
   weave.createSpace({ name: 'Agent' });
   sessions = weave.createTable({ space: 'Agent', name: 'Sessions' });
@@ -32,6 +35,14 @@ const s = await launch('grid footer reads space rollups', (weave) => {
   spacesT = Object.values(weave.state.tables).find((t) => t.system === 'spaces');
   weave.addField(spacesT.id, { name: 'Wide · sum', type: 'rollup', config: { via: 'Agent/Wide', targetField: 'A long column name 0', aggregate: 'sum' } });
   weave.addField(spacesT.id, { name: 'Sessions · Cost · sum', type: 'rollup', config: { via: 'Agent/Sessions', targetField: 'Cost', aggregate: 'sum' } });
+  // Issue #249: both of these tables want the row, so both say so.
+  weave.updateTable(sessions.id, { hideRollups: false });
+  weave.updateTable(wide.id, { hideRollups: false });
+  // One table that never asked, to prove the default.
+  quiet = weave.createTable({ space: 'Agent', name: 'Quiet' });
+  weave.addField(quiet, { name: 'Cost', type: 'number' });
+  weave.createEntity('Quiet', { name: 'q', values: { Cost: 3 } });
+  weave.addField(spacesT.id, { name: 'Quiet · Cost · sum', type: 'rollup', config: { via: 'Agent/Quiet', targetField: 'Cost', aggregate: 'sum' } });
 });
 
 if (s) {
@@ -205,7 +216,31 @@ if (s) {
     assert.equal(await sw().getAttribute('aria-checked'), 'false');
     await sw().click();
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
-    assert.equal(weave.getTable(sessions.id).hideRollups, undefined, 'shown again is the absence');
+    assert.equal(weave.getTable(sessions.id).hideRollups, false, 'shown is stored too (Issue #249)');
+    await page.close();
+  });
+
+  /* Issue #249 (Kyle: "hide summation row by default"). A table nobody
+     switched on draws no Σ row, even with a space rollup pointed straight at
+     it — and switching it on from the eye is what brings the row and its
+     figure. Storing the opt-in explicitly is what keeps THIS switch-on from
+     reading like the untouched table above it. */
+  test('a table nobody opted in has no Σ row, and the eye brings it (Issue #249)', async () => {
+    const page = await open(`/table/${quiet.id}`);
+    await page.waitForSelector('.wv-grid tbody tr.entity-row');
+    assert.equal(await page.locator('tr.wv-foot, tfoot').count(), 0, 'no Σ row by default');
+    assert.equal(weave.getTable(quiet.id).hideRollups, undefined, 'and nothing stored to say so');
+    await page.click('.crumb-actions .eye-btn');
+    const sw = () => page.locator('.chip-pop .eye-row', { hasText: 'Σ rollup row' });
+    await sw().waitFor();
+    assert.equal(await sw().getAttribute('aria-checked'), 'false', 'the switch reads off');
+    await sw().click();
+    await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
+    assert.equal(await footCell(page, 'Cost').locator('.foot-val').innerText(), '3');
+    assert.equal(weave.getTable(quiet.id).hideRollups, false, 'the opt-in is stored, not the absence');
+    await page.keyboard.press('Escape');
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats', { timeout: 10000 });
     await page.close();
   });
 }

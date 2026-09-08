@@ -29,6 +29,9 @@ const s = await launch('eye rows are taught, not swapped', (weave) => {
   weave.addField(deals, { name: 'Stage', type: 'text' });
   weave.createEntity(deals, { name: 'Acme', values: { Amount: 12 } });
   weave.createEntity(deals, { name: 'Globex', values: { Amount: 30 } });
+  // The Σ row is off until a table opts in (Issue #249); this one wants it,
+  // because the last case drives its picker.
+  weave.updateTable(deals, { hideRollups: false });
 });
 
 if (s) {

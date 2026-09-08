@@ -107,6 +107,7 @@ Schema
   table list | delete <ref>
   table update <ref> [--name] [--description] [--icon lucide:wallet] [--noun invoice]
               [--hidden A,B] [--system 'Created At'] [--order Name,A,B]
+              [--rollup-row on|off]
   field add <table> <name> <type> [--config '{json}'] [--description "what it holds"]
   field list <table> | delete <table> <field>
   field update <table> <field> [--name] [--type] [--config '{json}'] [--width 240|null]
@@ -486,6 +487,9 @@ async function main() {
         if (flags.hidden != null) patch.hiddenFields = splitList(flags.hidden);
         if (flags.system != null) patch.systemFields = splitList(flags.system);
         if (flags.order != null) patch.fieldOrder = splitList(flags.order);
+        // The Σ row is off until a table asks for it (Issue #249), so asking
+        // has to be sayable here: `--rollup-row on` / `off`.
+        if (flags['rollup-row'] != null) patch.hideRollups = !['on', 'true', 'yes', '1', true].includes(flags['rollup-row']);
         return out(w.updateTable(space, patch));
       }
       // `table move Ops/Invoice Archive` — the second arg is the destination.
