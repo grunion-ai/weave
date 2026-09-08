@@ -140,3 +140,19 @@ test('the shipped manifest carries release notes for the package version', () =>
     assert.ok((r.description ?? '').trim(), `${r.name} has notes`);
   }
 });
+
+/* Issue #229: nine watcher rows were linked `Fixed in → v0.4.5` in a closing
+   sweep, and the manifest shipped that claim to every instance. The main
+   watcher files `gerrit/main @ <sha> did not reach …` rows about its own
+   mirror and deploy loop; those are incidents, resolved operationally (the
+   gh account switch), never carried by a release. A release that lists one
+   is the exact error the Release table exists to prevent. */
+const WATCHER_INCIDENT = /^gerrit\/main @ [0-9a-f]+ did not reach\b/;
+
+test('no release claims a watcher incident row as one of its fixes', () => {
+  const m = JSON.parse(readFileSync(join(ROOT, 'docs', 'development.json'), 'utf8'));
+  const claimed = m.releases.flatMap((r) => (r.fixes ?? [])
+    .filter((name) => WATCHER_INCIDENT.test(name))
+    .map((name) => `${r.name} → ${name}`));
+  assert.deepEqual(claimed, [], 'watcher mirror/deploy incidents are not release contents');
+});
