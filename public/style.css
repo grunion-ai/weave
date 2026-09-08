@@ -1456,6 +1456,11 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .share-url { font-size: 11.5px; word-break: break-all; color: var(--tblr-secondary); }
 .share-hint { font-size: 12.5px; color: var(--tblr-secondary); text-align: center; }
 .attach-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; } .attach-item { display: inline-flex; align-items: center; gap: 1px; font-size: 12.5px; background: var(--tblr-bg-surface-secondary); border-radius: 5px; padding: 1px 3px 1px 7px; }
+/* An attachment whose bytes are gone (Issue #121): the app's own dim colour,
+   a dashed edge that says "nothing behind this", and the word in plain text.
+   No new hue — a lost file is a state, not a category. */
+.attach-item.is-missing { color: var(--tblr-secondary); background: none; border: 1px dashed var(--tblr-border-color); padding: 0 3px 0 6px; }
+.attach-gone { margin-left: 4px; font-variant: small-caps; letter-spacing: .03em; opacity: .85; }
 /* ---------- fullscreen viewer + whiteboard (Features #47, #46) ---------- */
 #fsv-back { position: fixed; inset: 0; z-index: 90; background: var(--tblr-bg-surface); display: flex; flex-direction: column; }
 .fsv-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--tblr-border-color); }

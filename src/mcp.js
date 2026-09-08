@@ -393,8 +393,8 @@ export const TOOLS = [
   },
   {
     name: 'weave_export_json',
-    description: 'The whole workspace as JSON — the human-readable interchange format, and the backup to take before a destructive apply.',
-    inputSchema: { type: 'object', properties: {} },
+    description: 'The whole workspace as JSON — the human-readable interchange format, and the backup to take before a destructive apply. Attachment bytes are left out unless blobs is true; `weave export` always carries them.',
+    inputSchema: { type: 'object', properties: { blobs: { type: 'boolean' } } },
   },
   {
     name: 'weave_import_json',
@@ -574,7 +574,11 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_relation_map':
       return { mermaid: weave.relationMapMmd() };
     case 'weave_export_json':
-      return weave.exportJSON();
+      // Structure, not bytes. An agent reads this dump; a file-backed
+      // workspace can hold tens of megabytes of attachments, and base64 in
+      // a tool result buys the reader nothing (Issue #121). `weave export`
+      // and GET /api/export are the backup surfaces and carry the blobs.
+      return weave.exportJSON({ blobs: args.blobs === true });
     case 'weave_import_json':
       weave.importJSON(args.state);
       return { ok: true };

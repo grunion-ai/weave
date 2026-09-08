@@ -668,7 +668,9 @@ Renders as file chips; images preview in the fullscreen viewer.
 
 ## Gotchas
 
-Files are not documents. A document is written and rendered; an attachment is stored and handed back. Back up \`files/\` alongside the \`.db\` — a single-file backup drops every attachment.
+Files are not documents. A document is written and rendered; an attachment is stored and handed back. Copying the \`.db\` on its own drops every attachment — back up \`files/\` beside it, or take a \`weave export\`, whose JSON carries the bytes inline and lands them in \`files/\` again on import.
+
+A file whose bytes are gone keeps its name and is marked \`(missing)\` in the cell and on the record. Metadata outlives the blob, so weave says which file was lost rather than offering a link that cannot open.
 
 A file delete is not undoable.` },
 ];

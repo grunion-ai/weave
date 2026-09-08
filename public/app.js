@@ -2737,8 +2737,15 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     const box = el('span', { class: 'attach-box' });
     const files = (item.files ?? []).filter((x) => ids.includes(x.id));
     for (const file of files) {
-      box.append(el('span', { class: 'attach-item' },
-        el('a', { href: `${WS_PREFIX}/api/files/${file.id}`, target: '_blank' }, file.name),
+      /* A file whose bytes are gone keeps its name and loses its link. The
+         anchor was the whole of Issue #121: it looked live, it opened raw
+         404 JSON, and the reporter could only file "file missing?". The row
+         still offers the × so a dead pointer can be cleared. */
+      box.append(el('span', { class: 'attach-item' + (file.missing ? ' is-missing' : '') },
+        file.missing
+          ? el('span', { title: 'The stored file is gone — only its name is left' },
+            file.name, el('span', { class: 'attach-gone' }, '(missing)'))
+          : el('a', { href: `${WS_PREFIX}/api/files/${file.id}`, target: '_blank' }, file.name),
         el('button', {
           class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
           onclick: () => patch(ids.filter((x) => x !== file.id)),

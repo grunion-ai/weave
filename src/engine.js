@@ -715,6 +715,10 @@ export class Weave {
     };
     this.#migrate();
     this.#ensureMetaTables();
+    // Opening a JSON dump as a workspace is an import by another name: the
+    // .json migration writes state straight through the store, blobs and
+    // all. Land them the same way importJSON does (Issue #121).
+    if (this.#landBlobs()) this.save();
   }
 
   // Upgrade v1 workspaces in place: `databases` state key → `tables`, and the
@@ -4136,7 +4140,13 @@ export class Weave {
       }
       case 'attachments': {
         if (!Array.isArray(resolved) || !resolved.length) return null;
-        const names = resolved.map((id) => e?.files?.find((x) => x.id === id)?.name ?? '(missing)');
+        // A name whose bytes are gone still names itself — the reader has to
+        // know WHICH file was lost, not just that one was (Issue #121).
+        const names = resolved.map((id) => {
+          const f = e?.files?.find((x) => x.id === id);
+          if (!f) return '(missing)';
+          return this.#hasBlob(id) ? f.name : `${f.name} (missing)`;
+        });
         return names.join(', ');
       }
       case 'date': {
@@ -4392,7 +4402,11 @@ export class Weave {
       docs,
       comments: e.comments,
       activity: e.activity,
-      files: e.files,
+      /* Metadata outlives bytes: a dump that carried no blobs, a backup that
+         took the .db and left files/ behind. A surface must be able to tell
+         the two apart, or it draws a live-looking link into a 404 and the
+         reader is left guessing (Issue #121). */
+      files: e.files.map((f) => (this.#hasBlob(f.id) ? f : { ...f, missing: true })),
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
       createdBy: e.createdBy ?? null,
@@ -4976,20 +4990,45 @@ export class Weave {
 
   // ---------------- files ----------------
 
+  /* Where the bytes are. A file-backed workspace keeps them in a sibling
+     files/ directory — outside state, and so outside every copy of state; an
+     in-memory one has nowhere else to put them and holds base64 inline.
+     Three verbs over that split, so no caller has to know which it is, and
+     so a surface can ASK whether a file is still there (Issue #121). */
+  #blobPath(id) {
+    return this.store.path ? join(dirname(this.store.path), 'files', id) : null;
+  }
+
+  #hasBlob(id) {
+    const p = this.#blobPath(id);
+    return p ? existsSync(p) : this.state.fileBlobs?.[id] != null;
+  }
+
+  #readBlob(id) {
+    const p = this.#blobPath(id);
+    if (p) return existsSync(p) ? readFileSync(p) : null;
+    const b64 = this.state.fileBlobs?.[id];
+    return b64 == null ? null : Buffer.from(b64, 'base64');
+  }
+
+  #writeBlob(id, buf) {
+    const p = this.#blobPath(id);
+    if (p) {
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, buf);
+      return;
+    }
+    this.state.fileBlobs = this.state.fileBlobs ?? {};
+    this.state.fileBlobs[id] = buf.toString('base64');
+  }
+
   // Attach a file to an entity. bytes is a Buffer (or base64 string). Blobs are
   // stored on disk next to the workspace file, or inline when in-memory.
   attachFile(entityId, { name, mime = 'application/octet-stream', bytes }) {
     const e = this.getEntity(entityId);
     const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), 'base64');
     const file = { id: uuid(), name: String(name), size: buf.length, mime, createdAt: nowISO() };
-    if (this.store.path) {
-      const dir = join(dirname(this.store.path), 'files');
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, file.id), buf);
-    } else {
-      this.state.fileBlobs = this.state.fileBlobs ?? {};
-      this.state.fileBlobs[file.id] = buf.toString('base64');
-    }
+    this.#writeBlob(file.id, buf);
     e.files.push(file);
     this.#logActivity(e, 'file-attached', { name: file.name });
     this.#recordUndo('file-attach', e, { fileId: file.id });
@@ -5014,14 +5053,9 @@ export class Weave {
     for (const e of Object.values(this.state.entities)) {
       const meta = e.files.find((f) => f.id === fileId);
       if (!meta) continue;
-      if (this.store.path) {
-        const p = join(dirname(this.store.path), 'files', fileId);
-        if (!existsSync(p)) throw new WeaveError('File blob missing', 'not-found');
-        return { meta, bytes: readFileSync(p) };
-      }
-      const b64 = this.state.fileBlobs?.[fileId];
-      if (b64 == null) throw new WeaveError('File blob missing', 'not-found');
-      return { meta, bytes: Buffer.from(b64, 'base64') };
+      const bytes = this.#readBlob(fileId);
+      if (bytes == null) throw new WeaveError('File blob missing', 'not-found');
+      return { meta, bytes };
     }
     throw new WeaveError(`File '${fileId}' not found`, 'not-found');
   }
@@ -5033,14 +5067,7 @@ export class Weave {
     const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), 'base64');
     if (this.state.meta.logo) this.deleteWorkspaceLogo();
     const logo = { id: uuid(), name: String(name), size: buf.length, mime, createdAt: nowISO() };
-    if (this.store.path) {
-      const dir = join(dirname(this.store.path), 'files');
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, logo.id), buf);
-    } else {
-      this.state.fileBlobs = this.state.fileBlobs ?? {};
-      this.state.fileBlobs[logo.id] = buf.toString('base64');
-    }
+    this.#writeBlob(logo.id, buf);
     this.state.meta.logo = logo;
     this.save();
     return logo;
@@ -5049,14 +5076,9 @@ export class Weave {
   getWorkspaceLogo() {
     const logo = this.state.meta.logo;
     if (!logo) throw new WeaveError('Workspace has no logo', 'not-found');
-    if (this.store.path) {
-      const p = join(dirname(this.store.path), 'files', logo.id);
-      if (!existsSync(p)) throw new WeaveError('Logo blob missing', 'not-found');
-      return { meta: logo, bytes: readFileSync(p) };
-    }
-    const b64 = this.state.fileBlobs?.[logo.id];
-    if (b64 == null) throw new WeaveError('Logo blob missing', 'not-found');
-    return { meta: logo, bytes: Buffer.from(b64, 'base64') };
+    const bytes = this.#readBlob(logo.id);
+    if (bytes == null) throw new WeaveError('Logo blob missing', 'not-found');
+    return { meta: logo, bytes };
   }
 
   deleteWorkspaceLogo() {
@@ -5244,8 +5266,41 @@ export class Weave {
     }));
   }
 
-  exportJSON() {
-    return JSON.parse(JSON.stringify(this.state));
+  /* A dump is the whole workspace, attachments included. Blobs live beside
+     the .db and not in state, so a plain clone of state handed back a dump
+     that NAMED every file and carried none of them: import it into another
+     data directory and every attachment is a link that 404s (Issue #121).
+     The file ledger and the logo say which blobs are real, so orphans left
+     behind by a delete stay behind. A blob already gone is simply absent —
+     an export must not fail on damage it did not do.
+     `blobs: false` is for a reader rather than a backup: an agent asking for
+     the shape of the workspace should not be handed 30MB of base64. */
+  exportJSON({ blobs: withBlobs = true } = {}) {
+    const out = JSON.parse(JSON.stringify(this.state));
+    delete out.fileBlobs;
+    if (!withBlobs) return out;
+    const blobs = {};
+    const carry = (id) => {
+      const bytes = this.#readBlob(id);
+      if (bytes) blobs[id] = bytes.toString('base64');
+    };
+    for (const e of Object.values(this.state.entities)) for (const f of e.files ?? []) carry(f.id);
+    if (this.state.meta.logo) carry(this.state.meta.logo.id);
+    if (Object.keys(blobs).length) out.fileBlobs = blobs;
+    return out;
+  }
+
+  /* The other half of the round trip: a dump's blobs belong in files/, not
+     in the workspace row. Left in state they would ride every save into
+     weave_meta and grow it without bound. An in-memory workspace has nowhere
+     else to keep them, so there they stay. Says whether it landed anything,
+     because the caller may still owe a save. */
+  #landBlobs() {
+    const blobs = this.state.fileBlobs;
+    if (!blobs || !this.store.path) return false;
+    for (const [id, b64] of Object.entries(blobs)) this.#writeBlob(id, Buffer.from(b64, 'base64'));
+    delete this.state.fileBlobs;
+    return true;
   }
 
   importJSON(state) {
@@ -5253,6 +5308,7 @@ export class Weave {
     this.state = JSON.parse(JSON.stringify(state));
     this.#migrate();
     this.#ensureMetaTables();
+    this.#landBlobs();
     this.#dirtyAll = true;
     this.save();
   }
