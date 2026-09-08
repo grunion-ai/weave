@@ -1896,12 +1896,29 @@ function activateCell(cell) {
    The wrap of a grid wider than its card is a scroll container (sideways),
    and a sticky cell sticks to the nearest one — so on the table page that
    wrap is made the vertical scroller too, cut to the viewport from its own
-   top. At least half a screen when the chrome above it is tall; the page
-   scrolls the rest. A wrap that lost the class gets its height back. */
-function fitGridScroller(wrap) {
+   top. A wrap that lost the class gets its height back.
+
+   The box ends where the window ends (Issue #136). It used to claim half a
+   screen whatever was above it, and a short window then had chrome, half a
+   screen of grid and the gutter adding up past the viewport: the page
+   scrolled around a box that scrolled, and Kyle got the two nested bars he
+   filed — the inner one runs out, the outer one takes over. Where the room
+   left is too small to read anyway, the page takes the whole scroll back.
+   Either way one box moves, never two. */
+const GRID_BOX_GUTTER = 40;      // breathing room under the box
+const GRID_BOX_MIN = 120;        // below this the box is not worth the split
+function fitGridScroller(wrap, was = null) {
   if (!wrap.isConnected || !wrap.classList.contains('wv-grid-scroll')) { wrap.style.maxHeight = ''; return; }
-  const top = wrap.getBoundingClientRect().top + window.scrollY;
-  wrap.style.maxHeight = `max(50vh, calc(100vh - ${Math.round(top)}px - 40px))`;
+  const top = Math.round(wrap.getBoundingClientRect().top + window.scrollY);
+  // vh, not the measured pixels: a window resized shorter re-cuts itself.
+  wrap.style.maxHeight = window.innerHeight - top - GRID_BOX_GUTTER < GRID_BOX_MIN
+    ? '' : `calc(100vh - ${top}px - ${GRID_BOX_GUTTER}px)`;
+  // The chrome above renders on its own schedule — a description that lands
+  // after the grid pushes the box down, and a cut measured before that is a
+  // box too tall for the room left, which is the whole of this Issue. The
+  // observer above catches it eventually; following the top for as long as
+  // it keeps moving means the reader never sees the wrong cut painted.
+  if (top !== was) requestAnimationFrame(() => fitGridScroller(wrap, top));
 }
 
 /* ---------- one scroll moves one box (Issue #69) ----------
