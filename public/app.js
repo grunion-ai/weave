@@ -2186,8 +2186,9 @@ function registryHref(db, item) {
   if (db.system === 'spaces' && item.sysId) return at(`#/space/${item.sysId}`);
   return null;
 }
-/* This workspace's slice of a registry grid. */
-const mineOnly = (items) => items.filter((i) => !i.sysWorkspaceId || !state.wsId || i.sysWorkspaceId === state.wsId);
+/* This workspace's slice of a registry grid. The root IS the hub: its home
+   shows every workspace's spaces side by side; a member shows its own. */
+const mineOnly = (items) => (WS_PREFIX ? items.filter((i) => !i.sysWorkspaceId || !state.wsId || i.sysWorkspaceId === state.wsId) : items);
 
 function rowClickTarget(e) {
   if (e.target.closest('input,select,textarea,button,a,label,.ms-box,.chip')) return 'ignore';

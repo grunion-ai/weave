@@ -78,6 +78,13 @@ test('hub: adopted and created workspaces join; a hard delete drops the rows', a
       const meta = await json(await fetch(`${base}/w/scratch/api/workspace`));
       assert.doesNotMatch(meta.description, /Workspace\* space below/, 'the fresh description no longer promises a local Workspace space');
       const scratch = list.concat(await json(await fetch(`${base}/api/workspaces`))).find((w) => w.name === 'scratch');
+      // A soft delete trashes the Workspaces row; a restore brings it back.
+      const wsRow = () => main.listEntities(wsT.id, { includeDeleted: true }).find((e) => main.entityName(e) === 'scratch');
+      await fetch(`${base}/api/workspaces/${scratch.id}`, { method: 'DELETE' });
+      assert.ok(wsRow().deletedAt, 'soft delete trashes the row');
+      assert.deepEqual(names(), ['legacy', 'main']);
+      await post(`${base}/api/workspaces/${scratch.id}/restore`, {});
+      assert.equal(wsRow().deletedAt, null);
       await fetch(`${base}/api/workspaces/${scratch.id}?hard=1`, { method: 'DELETE' });
       assert.deepEqual(names(), ['legacy', 'main']);
       assert.ok(readdirSync(join(dir, 'trash')).some((f) => f.startsWith('scratch-')));

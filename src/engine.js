@@ -2361,6 +2361,7 @@ export class Weave {
       row = reg.#metaSync(() => reg.createEntity(t.id, { name: meta.name, values: { Description: desc } }));
       row.sysId = meta.id;
       reg.#mark(row);
+      if (meta.deletedAt) reg.#metaSync(() => reg.deleteEntity(row.id));
       reg.save();
       return row;
     }
@@ -2369,8 +2370,14 @@ export class Weave {
     const descF = this.#sysField(t, 'Description');
     if ((row.values[descF.id] ?? '') !== desc) patch.Description = desc;
     if (Object.keys(patch).length) reg.#metaSync(() => reg.updateEntity(row.id, patch));
+    // A trashed workspace (hub soft delete) is a trashed row, and back.
+    if (!!meta.deletedAt !== !!row.deletedAt) reg.#metaSync(() => (meta.deletedAt ? reg.deleteEntity(row.id) : reg.restoreEntity(row.id)));
     return row;
   }
+
+  /* Re-assert this workspace's rows at the root — the hub calls it after a
+     soft delete or a restore, which touch meta without a structural verb. */
+  syncRegistry() { this.#syncAll(); return this; }
 
   #metaSync(fn) {
     const was = this.#inMetaSync;

@@ -190,6 +190,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
         if (w.state.meta.deletedAt) return w;
         w.state.meta.deletedAt = new Date().toISOString();
         w.save();
+        w.syncRegistry();
         return w;
       }
       const path = w.store.path;
@@ -213,6 +214,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       if (!w.state.meta.deletedAt) return w;
       w.state.meta.deletedAt = null;
       w.save();
+      w.syncRegistry();
       return w;
     },
     create(name) {
