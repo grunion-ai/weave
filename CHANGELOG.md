@@ -2,7 +2,7 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
-## Unreleased
+## v0.4.11 — 2026-09-08
 
 - **A corrected manifest can take back what a wrong one claimed** (Issue #244): fixing v0.4.5's `Fixes` in the canonical workspace and re-exporting `docs/development.json` repaired the canonical record and every instance that had yet to sync. The one instance that synced between the mistake and the correction kept the false claim, and would have kept it forever — `syncDevelopment` applied the manifest additively, so `w.link(id, 'Fixes', …)` added the nine watcher rows and nothing ever removed them, however few targets the next manifest named. A release row is manifest-owned in a way an Issue row is not: no instance links its own rows into an upstream release, so its `Fixes` and `Ships` are reconciled to exactly what the manifest names, added and unlinked both. Issue and Feature rows stay additive, which is what protects a locally filed row through an update. Reproduced on a fresh workspace fed the 2026-09-05 manifest and then the corrected one: the old code held 13 fixes with 9 watcher rows among them, this one lands on the 4 the manifest names. Gate: `test/development-sync.test.mjs`.
 
