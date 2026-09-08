@@ -933,10 +933,18 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   const eyeFn = fnBody('fieldVisibilityPopover');
   assert.match(eyeFn, /redraw \? await redraw\(\) : await keepScroll/, 'the popover redraws whatever view opened it');
   assert.match(eyeFn, /rowsSection \? \[/, 'the Rows section is optional');
-  // No reopen since 2026-09-02: a flip rebuilds the rows inside the SAME
-  // popover node, so the dialog never jumps or re-measures mid-relayout.
-  assert.match(eyeFn, /pop\.replaceChildren\(\.\.\.buildRows\(fresh\)\)/, 'a flip rebuilds the rows in place');
+  /* No reopen since 2026-09-02: a flip updates the rows inside the SAME
+     popover node, so the dialog never jumps or re-measures mid-relayout. And
+     since Issue #240 the rows are taught rather than swapped, so this tail
+     landing mid-gesture cannot orphan the row under the cursor —
+     test/eye-live-rows-browser.test.mjs is the behavioural gate. */
+  assert.match(eyeFn, /relearnRows\(pop, buildRows\(fresh\)/, 'a flip teaches the rows in place');
+  assert.doesNotMatch(eyeFn, /replaceChildren/, 'and never swaps them wholesale');
   assert.doesNotMatch(eyeFn, /fieldVisibilityPopover\(again/, 'the close-and-reopen dance is gone');
+  const relearn = fnBody('relearnRows');
+  assert.match(relearn, /classList\.toggle\('on', on\)/, 'a taught row wears the new switch state');
+  assert.match(relearn, /pop\.replaceChildren\(\.\.\.next\)/, 'a row set that changed is still rebuilt');
+  assert.match(fnBody('footerPicker'), /relearnRows\(pop, build\(\)/, 'the Σ picker shares the one tail');
   assert.equal(rulesFor('.entity-head')['margin-bottom'], '0',
     '.view-header owns the gap below the header, exactly as on .view-title-row');
 
@@ -1656,7 +1664,11 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
   assert.match(eye, /hiddenFields: \[\.\.\.next\]/, 'hidden fields persist on the table');
   assert.match(eye, /systemFields: \[\.\.\.next\]/, 'system columns toggle from the same list');
   assert.match(eye, /state\.showDeleted/, 'deleted rows are a session switch');
-  assert.match(eye, /hideRollups: !cur\.hideRollups/, 'the Σ row switch is table truth (Issue #233)');
+  assert.match(eye, /hideRollups: !liveTable\(\)\.hideRollups/, 'the Σ row switch is table truth (Issue #233), read live (Issue #240)');
+  // A taught row keeps the handler it was built with, so every handler reads
+  // the table at click time instead of a set captured at build time.
+  assert.match(eye, /new Set\(liveTable\(\)\.hiddenFields \?\? \[\]\)/, 'the hidden set is read at click time');
+  assert.match(eye, /new Set\(liveTable\(\)\.systemFields \?\? \[\]\)/, 'so is the system set');
   assert.match(fnBody('renderTable'), /const cols = visibleCols\(db\)/, 'the grid honours the hidden set');
   assert.match(fnBody('reorderField'), /const cols = visibleCols\(db\)/, 'reorder mirrors the same columns');
   assert.doesNotMatch(APP, /row\('⚙ Manage fields'/, 'the Manage fields row is gone');

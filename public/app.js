@@ -1274,6 +1274,42 @@ function showPopover(trigger, rows) {
   return pop;
 }
 
+/* Relearn an open switch popover's rows after the flip they started lands.
+
+   Teaching beats swapping because this runs asynchronously — a PATCH, a
+   schema reload and a redraw after the click — so it can land between a
+   reader's mousedown and mouseup. `replaceChildren` then detached the row the
+   mousedown had focused, the mouseup landed on the replacement, and a down
+   and an up on different nodes fire no `click` at all: the next flip was
+   silently lost, focus fell to <body> where the popover's own keydown
+   listener could not hear Escape, and the arrow walk `opts` captured above
+   was left pointing at detached nodes (Issue #240). A switch flip never adds
+   or removes a row, so teaching covers it; the rebuild stays for the row set
+   that genuinely changed under an open popover, and `refocus` is what puts
+   the pressed row's focus back on its replacement (Issue #223).
+
+   Rows are matched by position on a shape string — class plus label — so a
+   changed row set falls back rather than teaching the wrong switch. */
+function relearnRows(pop, next, refocus = null) {
+  const shape = (nodes) => nodes
+    .map((n) => `${n.className} ${n.querySelector?.('.eye-label')?.textContent ?? n.textContent}`)
+    .join('');
+  const live = [...pop.children];
+  if (shape(live) === shape(next)) {
+    live.forEach((node, i) => {
+      if (!node.classList.contains('eye-row')) return;
+      const on = next[i].getAttribute('aria-checked') === 'true';
+      node.setAttribute('aria-checked', on ? 'true' : 'false');
+      node.querySelector('.switch')?.classList.toggle('on', on);
+    });
+    return;
+  }
+  const scroll = pop.scrollTop;
+  pop.replaceChildren(...next);
+  pop.scrollTop = scroll;
+  refocus?.(pop);
+}
+
 /* Press-and-hold destructive action: the button fills over ~900ms and fires
    only when the fill completes; letting go early cancels. The confirmation is
    the gesture, so there is no window.confirm() dialog to break the page's
@@ -3146,32 +3182,38 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       /* The popover stays put: same node, same position, same scroll — only
          its rows learn the new truth. The old close-and-reopen re-measured
          against an anchor mid-relayout, so every flip made the dialog jump
-         (Kyle, 2026-09-02). */
+         (Kyle, 2026-09-02). Read literally, since a swap landing mid-gesture
+         swallowed the next flip outright (Issue #240; relearnRows carries the
+         mechanism). */
       const pop = document.querySelector('.chip-pop');
       if (pop) {
-        const scroll = pop.scrollTop;
         const wasFocused = document.activeElement?.closest?.('.eye-row')?.querySelector('.eye-label')?.textContent ?? null;
-        pop.replaceChildren(...buildRows(fresh));
-        pop.scrollTop = scroll;
-        // The pressed row is a new node now; focus follows it so Escape still
-        // closes and the arrows still move (a late Escape used to go to body).
-        if (wasFocused != null) [...pop.querySelectorAll('.eye-row')].find((r) => r.querySelector('.eye-label')?.textContent === wasFocused)?.focus();
+        // On a rebuild the pressed row is a new node; focus follows it so
+        // Escape still closes and the arrows still move (Issue #223).
+        relearnRows(pop, buildRows(fresh), (p) => {
+          if (wasFocused != null) [...p.querySelectorAll('.eye-row')].find((r) => r.querySelector('.eye-label')?.textContent === wasFocused)?.focus();
+        });
       }
     } catch (err) { toast(err.message, true); }
   };
+  /* A taught row keeps the handler it was built with, so the handler reads
+     the table at click time. A set captured when the row was built would be
+     one flip out of date, and the second flip would drop the first one back
+     out of the hidden set (Issue #240). */
+  const liveTable = () => allTables().find((d) => d.id === db.id) ?? db;
   const buildRows = (cur) => {
     const hidden = new Set(cur.hiddenFields ?? []);
     const sysOn = new Set(cur.systemFields ?? []);
     return [
       el('div', { class: 'eye-head' }, 'Fields'),
       ...cur.fields.map((f) => row(!hidden.has(f.name), f.name, () => {
-        const next = new Set(hidden);
+        const next = new Set(liveTable().hiddenFields ?? []);
         if (next.has(f.name)) next.delete(f.name); else next.add(f.name);
         save({ hiddenFields: [...next] });
       })),
       el('div', { class: 'eye-head' }, 'System'),
       ...Object.keys(SYSTEM_COLS).map((n) => row(sysOn.has(n), n, () => {
-        const next = new Set(sysOn);
+        const next = new Set(liveTable().systemFields ?? []);
         if (next.has(n)) next.delete(n); else next.add(n);
         save({ systemFields: [...next] });
       })),
@@ -3184,7 +3226,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
         }),
         // The Σ row (Issue #233): table truth, like the filter and the sort —
         // the next reader inherits it. Registry grids have no rollups.
-        ...(cur.system ? [] : [row(!cur.hideRollups, 'Σ rollup row', () => save({ hideRollups: !cur.hideRollups }))]),
+        ...(cur.system ? [] : [row(!cur.hideRollups, 'Σ rollup row', () => save({ hideRollups: !liveTable().hideRollups }))]),
       ] : []),
     ];
   };
@@ -5621,13 +5663,11 @@ async function footerPicker(anchor, db, col) {
           if (cur) await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
           else await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
           await load();
+          // Same tail, same hazard as the eye's (Issue #240): teach the rows.
           const pop = document.querySelector('.chip-pop');
-          if (pop) {
-            pop.replaceChildren(...build());
-            // The row that was pressed is a new node now; focus follows it so
-            // Escape still closes and the arrows still move.
-            pop.querySelector(`[data-agg="${agg}"]`)?.focus();
-          }
+          // On a rebuild the pressed row is a new node; focus follows it so
+          // Escape still closes and the arrows still move.
+          if (pop) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"]`)?.focus());
           fillFooter(db, anchor.closest('tr.wv-foot'), rollups);
           loadSchema();
         } catch (err) { toast(err.message, true); }
