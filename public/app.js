@@ -3122,19 +3122,35 @@ function drawDatabase(db, items, trashCount = 0) {
 
   const onSaved = async () => {
     rememberGridFocus();
+    // A registry row IS the structure: renaming a Spaces row renames the
+    // space, and the sidebar must say so (Issue #241).
+    if (db.system) await loadSchema();
     const w2 = filterWhere(db);
     const fresh = await api('POST', `/tables/${db.id}/query`, w2 ? { where: w2 } : {});
     drawDatabase(db, fresh.items);
     restoreGridFocus();
   };
 
-  // Inline add: create an empty entity, redraw, focus its Name cell.
-  state.inlineAdd = async () => {
-    const created = await api('POST', `/tables/${db.id}/entities`, { name: '' });
-    await loadSchema();
+  // Inline add: create the row, redraw, focus its Name cell. A registry row
+  // IS the structure (Issue #241): a Spaces row is born as "New space" with
+  // the name selected for the caret to replace, as on the home page; a
+  // Tables or Fields row needs more than a name and opens the dialog that
+  // asks for it; a Workflows row is ordinary data. A refused create is said
+  // out loud — the button never reads as dead.
+  const redraw = async () => {
     const fresh = await api('POST', `/tables/${db.id}/query`, {});
     drawDatabase(db, fresh.items);
-    focusNewRow(created.id, { field: nameFieldOf(db)?.name });
+  };
+  state.inlineAdd = async () => {
+    try {
+      if (db.system === 'tables') return newTableDialog(db, redraw);
+      if (db.system === 'fields') return newFieldDialog(redraw);
+      const seed = { name: db.system === 'spaces' ? 'New space' : '' };
+      const created = await api('POST', `/tables/${db.id}/entities`, seed);
+      await loadSchema();
+      await redraw();
+      focusNewRow(created.id, { field: nameFieldOf(db)?.name, select: !!seed.name });
+    } catch (err) { toast(err.message, true); }
   };
 
   renderTable(main, db, items, onSaved, state.inlineAdd);
@@ -7717,6 +7733,38 @@ function quickCreate(db) {
     await loadSchema();
     openEntity(e.id);
   });
+}
+
+/* + New table on the Workspace/Tables page (Issue #241): a table lives in a
+   space, which the grid foot cannot guess from here — the space page knows
+   its own. Name and space, then the same registry POST the space page
+   makes, and the reader lands on the new row. */
+function newTableDialog(reg, after) {
+  const spaces = state.schema.filter((s) => !s.system);
+  if (!spaces.length) return toast('Create a space first — a table lives in one', true);
+  modal('New table', [
+    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control full', style: 'width:100%', required: '' }),
+    pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space }),
+  ], async (fd) => {
+    const made = await api('POST', `/tables/${reg.id}/entities`, { name: fd.get('name'), values: { Space: fd.get('space') } });
+    await loadSchema();
+    await after();
+    focusNewRow(made.id, { field: 'Name' });
+  });
+}
+
+/* + New field on the Workspace/Fields page (Issue #241): a field lands on a
+   table and carries a definition, so the foot asks which table and hands
+   over to that table's own field dialog. */
+function newFieldDialog(after) {
+  const tables = allTables().filter((t) => !t.system);
+  if (!tables.length) return toast('Create a table first — a field lands on one', true);
+  modal('New field', [
+    pickerSelect({ name: 'table', title: 'Table', options: tables.map((t) => ({ id: t.id, label: `${t.space}/${t.name}` })), value: tables[0].id }),
+  ], async (fd) => {
+    const target = tables.find((t) => t.id === fd.get('table'));
+    fieldDialog(target, null, () => keepScroll(after));
+  }, 'Next');
 }
 
 function addFieldDialog(db) {

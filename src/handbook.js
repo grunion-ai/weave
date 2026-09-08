@@ -1006,7 +1006,7 @@ Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard dele
 
 ## The structure is data too
 
-\`Workspace/Spaces\`, \`Workspace/Tables\`, \`Workspace/Fields\` and \`Workspace/Workflows\` are ordinary tables whose rows **are** the structure. Editing a row runs the same validation as the schema verb, because it is the schema verb. That is the subject of the **Configuring a space, first time right** guide.`,
+\`Workspace/Spaces\`, \`Workspace/Tables\`, \`Workspace/Fields\` and \`Workspace/Workflows\` are ordinary tables whose rows **are** the structure. Editing a row runs the same validation as the schema verb, because it is the schema verb. So does the grid foot: \`+ New space\` births a space named "New space" with the name selected for the caret to replace; \`+ New table\` and \`+ New field\` ask for the space or the table the row needs before creating it; a Workflows row starts blank like any other row; and a create the engine refuses lands in a toast rather than in silence. That is the subject of the **Configuring a space, first time right** guide.`,
   },
   {
     name: 'Polymorphic relations',

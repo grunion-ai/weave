@@ -2678,6 +2678,10 @@ export class Weave {
      path. Returns undefined when the call should proceed as a plain row op. */
   #interceptCreate(db, input) {
     if (!db.system || this.#inMetaSync) return undefined;
+    // Only the registries mirror structure; rows of other system tables
+    // (Workflows) are ordinary data and take the ordinary path — a blank
+    // row from the grid foot included (Issue #241).
+    if (!['spaces', 'tables', 'fields'].includes(db.system)) return undefined;
     const flat = Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !['name', 'values', 'doc', 'docs'].includes(k)));
     const values = { ...flat, ...(input?.values ?? {}) };
     const name = input?.name ?? values.Name;

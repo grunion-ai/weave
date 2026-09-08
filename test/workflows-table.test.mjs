@@ -147,3 +147,11 @@ test('a legacy workspace grows the Workflows table on load', () => {
   assert.equal(wfTable(w2).system, 'workflows');
   assert.equal(f(wfTable(w2), 'Type').type, 'select');
 });
+
+test('a Workflows row is ordinary data: a blank name is accepted, as on any table (Issue #241)', () => {
+  const w = fresh();
+  const row = w.createEntity(wfTable(w).id, { name: '' });
+  assert.equal(w.entityName(w.getEntity(row.id)), '');
+  // The registries still refuse a nameless row: the row IS the space.
+  assert.throws(() => w.createEntity(w.getTable('Workspace/Spaces').id, { name: '' }), /Name is required/);
+});
