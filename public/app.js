@@ -8444,13 +8444,36 @@ function renderRoute() {
   return showHome();
 }
 
+/* A route render that rejects used to leave #main holding the skeleton
+   paintSkeleton had just put there, because nothing above it caught: the
+   page waited forever for a render that was never coming (Issue #118 — uno's
+   Project grid asked for its rows, the query answered 500, and the table
+   never appeared). showEntity was the only route that caught at all, and it
+   caught by falling home, which says nothing about what broke.
+   So every route ends here instead. The failure names itself, in the words
+   the server used, and carries the retry: a load that breaks reads as an
+   error rather than as an endless wait. */
+function paintRouteError(err) {
+  console.error(err);
+  const main = $('#main');
+  if (!main) return;
+  main.replaceChildren(el('div', { class: 'card panel wv-route-error' },
+    el('div', { class: 'card-body' },
+      el('h2', { class: 'wv-route-error-title' }, 'This page did not load'),
+      el('p', { class: 'wv-route-error-msg' }, String(err?.message || err || 'Unknown error')),
+      el('button', { class: 'btn btn-primary', type: 'button', onclick: () => route() }, 'Try again'))));
+}
+/* Promise.resolve().then, not work().catch: renderRoute is a plain function
+   whose branches return a promise, a value or nothing, and it can throw
+   before it ever returns — all three have to land in the same catch. */
+const renderRouteSafely = () => Promise.resolve().then(renderRoute).catch(paintRouteError);
 // Every route change may earn the rope, but only past LOADER_SHOW_AFTER_MS
 // (500ms): the skeleton covers the wait until a load proves it is genuinely
 // long (Feature #148). At the old 200ms threshold the full-cycle rule WAS
 // the wait — routine navs paid up to ~2.2s for fetches that took a quarter
 // of that.
 function route() {
-  return withPageLoader(renderRoute);
+  return withPageLoader(renderRouteSafely);
 }
 
 /* A table hash carrying ?e=<id> re-docks that row after the table renders
@@ -9022,7 +9045,7 @@ installBugReporter();
    document editors, and the mermaid diagrams they render once — would
    otherwise be born light and stay light under a dark page. */
 wireThemeToggle();
-withPageLoader(() => loadSchema().then(renderRoute));
+withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError));
 wireSearchButton();
 buildWsRail();
 wireWsNew();

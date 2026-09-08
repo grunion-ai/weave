@@ -53,9 +53,11 @@ test('the rope waits 500ms; the skeleton covers everything shorter', () => {
   // in milliseconds, so routine navs finish on the skeleton alone. At the
   // old 200ms threshold the full-cycle rule WAS the wait: navs paid up to
   // ~2.2s for fetches a tenth that long.
-  assert.match(APP, /function route\(\) \{\s*return withPageLoader\(renderRoute\);/);
+  // renderRouteSafely is renderRoute with the Issue #118 catch around it: still
+  // one call, still inside the loader, so the threshold below still governs it.
+  assert.match(APP, /function route\(\) \{\s*return withPageLoader\(renderRouteSafely\);/);
   assert.match(APP, /window\.addEventListener\('hashchange', route\)/);
-  assert.match(APP, /withPageLoader\(\(\) => loadSchema\(\)\.then\(renderRoute\)\)/);
+  assert.match(APP, /withPageLoader\(\(\) => loadSchema\(\)\.then\(renderRoute\)\.catch\(paintRouteError\)\)/);
   const after = Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]);
   assert.equal(after, 500, 'the rope belongs to loads longer than 500ms');
   // Overlapping routes must not let the first one to finish hide the loader.

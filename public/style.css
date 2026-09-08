@@ -991,6 +991,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 #modal input, #modal select { margin-bottom: 6px; }
 
 .wv-empty { color: var(--tblr-secondary); text-align: center; padding: 60px 0; }
+/* The route that could not load (Issue #118). It sits where the skeleton used
+   to wait forever, says what the server said, and carries the retry. Tokens
+   only, so it reads under both data-bs-theme values. */
+.wv-route-error { max-width: 560px; margin: 48px auto; background: var(--tblr-bg-surface); }
+.wv-route-error-title { margin: 0 0 8px; font-size: 16px; }
+.wv-route-error-msg { color: var(--tblr-secondary); margin: 0 0 16px; overflow-wrap: anywhere; }
 /* Toasts stack to the LEFT of the report button, never over it: a filed
    report's own receipt used to cover the button the next report needs
    (Issue #119). 48px clears the 26px button at right:12px with room. */
