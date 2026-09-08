@@ -56,8 +56,21 @@ export function syncQualityMirror(w, scanned, { dryRun = false } = {}) {
   const fileField = Object.values(suiteTable.fields).find((f) => f.name === 'File');
   const summary = { suites: scanned.length, createdSuites: 0, createdCases: 0, removedSuites: 0, removedCases: 0, renamedSuites: 0 };
 
-  const rows = w.listEntities(suiteTable.id);
-  const byFile = new Map(rows.map((r) => [r.values[fileField.id], r]));
+  // File is the identity, so group by it rather than keying a Map straight
+  // from the rows: two rows can carry the same File (a raced sync, a row
+  // seeded before the mirror was generated), and an overwriting Map hid the
+  // loser from BOTH passes below — it was never updated and never pruned, so
+  // it outlived every reconcile. The oldest row wins, keeping the id anything
+  // already linking to that suite points at; the twins join the doomed list.
+  const byFile = new Map();
+  const doomed = [];
+  for (const r of w.listEntities(suiteTable.id)) {
+    const file = r.values[fileField.id];
+    const seen = byFile.get(file);
+    if (!seen) byFile.set(file, r);
+    else if (r.publicId < seen.publicId) { byFile.set(file, r); doomed.push(seen); }
+    else doomed.push(r);
+  }
 
   for (const s of scanned) {
     let row = byFile.get(s.file);
@@ -85,14 +98,15 @@ export function syncQualityMirror(w, scanned, { dryRun = false } = {}) {
       }
     }
   }
-  for (const [file, row] of byFile) {
-    if (!scanned.some((s) => s.file === file)) {
-      summary.removedSuites += 1;
-      summary.removedCases += w.readEntity(row.id).fields.Cases.length;
-      if (dryRun) continue;
-      for (const c of w.readEntity(row.id).fields.Cases) w.deleteEntity(c.id, { hard: true });
-      w.deleteEntity(row.id, { hard: true });
-    }
+  const scannedFiles = new Set(scanned.map((s) => s.file));
+  for (const [file, row] of byFile) if (!scannedFiles.has(file)) doomed.push(row);
+  for (const row of doomed) {
+    const rowCases = w.readEntity(row.id).fields.Cases;
+    summary.removedSuites += 1;
+    summary.removedCases += rowCases.length;
+    if (dryRun) continue;
+    for (const c of rowCases) w.deleteEntity(c.id, { hard: true });
+    w.deleteEntity(row.id, { hard: true });
   }
   return summary;
 }

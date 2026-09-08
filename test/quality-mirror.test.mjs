@@ -60,15 +60,42 @@ test('syncQualityMirror reconciles an existing drifted mirror without duplicatin
   const suite = w.getTable('Quality/Suite');
   const cases = w.getTable('Quality/Case');
 
-  // Drift it three ways: a stale suite, a stale case, a renamed case.
+  // Drift it four ways: a stale suite, a stale case, a renamed case, and a
+  // SECOND row for a file that already has one. The live mirror grew two of
+  // those twins (test/applet.test.mjs, test/structure-trash.test.mjs) and no
+  // reconcile ever cleared them: keying the existing rows by File into a Map
+  // let the later row overwrite the earlier, so the loser was invisible to
+  // both the update pass and the prune pass and survived every sync.
   w.createEntity(suite, { name: 'Ghost suite', values: { File: 'test/ghost.test.mjs' } });
   const someRow = w.listEntities(suite.id)[0];
   w.createEntity(cases, { name: 'a case that no longer exists', values: { Suite: someRow.id } });
+
+  const twinned = scanned.find((s) => s.file === 'test/quality-mirror.test.mjs');
+  const twin = w.createEntity(suite, { name: 'quality mirror', values: { File: twinned.file } });
+  w.createEntity(cases, { name: 'a case only the twin has', values: { Suite: twin.id } });
 
   const summary = syncQualityMirror(w, scanned);
   assert.ok(summary.removedSuites >= 1 && summary.removedCases >= 1, JSON.stringify(summary));
 
   assert.equal(w.listEntities(suite.id).length, scanned.length, 'ghost suite purged');
+
+  // One row per File, and the survivor carries the current name and cases.
+  const fileField = Object.values(suite.fields).find((f) => f.name === 'File');
+  const files = w.listEntities(suite.id).map((r) => r.values[fileField.id]);
+  assert.equal(new Set(files).size, files.length, 'no test file is mirrored by two Suite rows');
+  const kept = w.listEntities(suite.id).filter((r) => r.values[fileField.id] === twinned.file);
+  assert.equal(kept.length, 1, 'the twin collapsed into one row');
+  assert.notEqual(kept[0].id, twin.id, 'the older row survives — anything linking to it still resolves');
+  assert.equal(w.entityName(kept[0]), twinned.name, 'the survivor carries the scanned name');
+  assert.deepEqual(
+    w.readEntity(kept[0].id).fields.Cases.map((c) => c.name).sort(),
+    [...twinned.cases].sort(),
+    'the survivor carries the scanned cases — the Case Count rollup matches disk',
+  );
+  assert.ok(
+    !w.listEntities(cases.id).some((c) => w.entityName(c) === 'a case only the twin has'),
+    "the twin's cases went with it",
+  );
   const again = syncQualityMirror(w, scanned);
   assert.deepEqual(
     { createdSuites: again.createdSuites, createdCases: again.createdCases, removedSuites: again.removedSuites, removedCases: again.removedCases },
