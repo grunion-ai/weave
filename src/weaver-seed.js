@@ -336,6 +336,32 @@ export function ensureReleaseTable(w) {
   return w.getTable(rel.id ?? rel);
 }
 
+/* ---------- the manifest is upstream of the seed (Issue #245) ----------
+   A build's manifest names values this workspace's fields have never seen:
+   the seeded Milestone select stops at v0.3 while the shipped roadmap runs
+   to v0.5, and a select validates on write. The throw landed mid-pass, so a
+   fresh install got its Issues, its Features up to the first unknown
+   milestone, and no releases at all. Widen the select to the values the
+   manifest carries before applying it — options are engine-editable, and a
+   value the upstream build ships is by definition a legitimate option. */
+function widenSelects(w, db, entries, selects) {
+  const table = w.getTable(db.id);
+  for (const sel of selects) {
+    const field = Object.values(table.fields).find((f) => f.name === sel);
+    if (!field || (field.type !== 'select' && field.type !== 'multiselect')) continue;
+    const options = field.config.options ?? [];
+    const known = new Set(options.map((o) => o.name));
+    const add = [];
+    for (const entry of entries ?? []) {
+      for (const v of [entry[sel.toLowerCase()] ?? []].flat()) {
+        if (typeof v !== 'string' || known.has(v) || add.includes(v)) continue;
+        add.push(v);
+      }
+    }
+    if (add.length) w.updateField(table.id, field.id, { config: { options: [...options, ...add] } });
+  }
+}
+
 export function syncDevelopment(w, manifest) {
   if (!manifest || !Array.isArray(manifest.issues)) return { applied: false };
   const releases = Array.isArray(manifest.releases) ? manifest.releases : [];
@@ -349,7 +375,14 @@ export function syncDevelopment(w, manifest) {
   const featuresT = table('Development/Feature');
   if (!issuesT || !featuresT) return { applied: false };
   let created = 0, updated = 0;
+  /* One row the local workspace cannot take — a workflow state carries a
+     category the manifest cannot supply, so an unknown status is the value
+     widening cannot rescue — costs that row, not the rest of the pass and
+     not the release block behind it (Issue #245). Every skip is named in
+     the return so boot can print what it swallowed. */
+  const skipped = [];
   const apply = (db, entries, selects) => {
+    widenSelects(w, db, entries, selects);
     const byName = new Map(w.listEntities(db.id).map((e) => [w.entityName(e), e]));
     for (const entry of entries ?? []) {
       const existing = byName.get(entry.name);
@@ -358,22 +391,26 @@ export function syncDevelopment(w, manifest) {
         const v = entry[sel.toLowerCase()];
         if (v != null) values[sel] = v;
       }
-      if (!existing) {
-        const e = w.createEntity(db.id, { name: entry.name, values, ...(entry.description ? { doc: entry.description } : {}) });
-        if (entry.status) w.setState(e.id, 'Status', entry.status);
-        created++;
-        continue;
+      try {
+        if (!existing) {
+          const e = w.createEntity(db.id, { name: entry.name, values, ...(entry.description ? { doc: entry.description } : {}) });
+          if (entry.status) w.setState(e.id, 'Status', entry.status);
+          created++;
+          continue;
+        }
+        const read = w.readEntity(existing.id);
+        let touched = false;
+        if (entry.status && read.fields.Status !== entry.status) { w.setState(existing.id, 'Status', entry.status); touched = true; }
+        const patch = {};
+        for (const [k, v] of Object.entries(values)) {
+          const cur = read.fields[k];
+          if (JSON.stringify(cur ?? null) !== JSON.stringify(v ?? null)) patch[k] = v;
+        }
+        if (Object.keys(patch).length) { w.updateEntity(existing.id, patch); touched = true; }
+        if (touched) updated++;
+      } catch (err) {
+        skipped.push(`${db.name} '${entry.name}': ${err.message}`);
       }
-      const read = w.readEntity(existing.id);
-      let touched = false;
-      if (entry.status && read.fields.Status !== entry.status) { w.setState(existing.id, 'Status', entry.status); touched = true; }
-      const patch = {};
-      for (const [k, v] of Object.entries(values)) {
-        const cur = read.fields[k];
-        if (JSON.stringify(cur ?? null) !== JSON.stringify(v ?? null)) patch[k] = v;
-      }
-      if (Object.keys(patch).length) { w.updateEntity(existing.id, patch); touched = true; }
-      if (touched) updated++;
     }
   };
   apply(issuesT, manifest.issues, ['Severity', 'Symptom']);
@@ -404,7 +441,10 @@ export function syncDevelopment(w, manifest) {
       reconcile(id, 'Ships', (r.ships ?? []).map((n) => featureIds.get(n)).filter(Boolean));
     }
   }
-  w.state.meta.developmentSync = stamp;
+  /* The stamp says "this build is fully applied", so only a whole pass earns
+     it: a pass that skipped a row is retried on the next boot, where a
+     widened field or a fixed workspace may take it (Issue #245). */
+  if (!skipped.length) w.state.meta.developmentSync = stamp;
   w.save();
-  return { applied: true, created, updated };
+  return { applied: true, created, updated, skipped };
 }

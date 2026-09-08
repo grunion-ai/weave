@@ -218,8 +218,14 @@ async function main() {
         const r = syncDevelopment(docsW, manifest);
         if (docsW !== w) docsW.store.close?.();
         if (r.applied) console.log(`Development sync v${manifest.version}: ${r.created} created, ${r.updated} updated`);
+        for (const s of r.skipped ?? []) console.warn(`Development sync skipped ${s}`);
       }
-    } catch { /* no manifest in this build */ }
+    } catch (err) {
+      // Fail-open still, but never silent: this catch spent a release
+      // reporting "no manifest in this build" over a mid-pass throw that had
+      // left the install half-synced (Issue #245).
+      console.warn(`Development sync skipped: ${err.message}`);
+    }
     const port = Number(flags.port ?? process.env.PORT ?? 4400);
     // Loopback unless asked otherwise. --host 0.0.0.0 puts every workspace on
     // the local network with no authentication in front of /api/*; it exists

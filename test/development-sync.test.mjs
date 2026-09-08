@@ -206,3 +206,74 @@ test('reconciling a release leaves locally filed Issue and Feature rows alone', 
   assert.equal(still.fields.Status, 'Open');
   assert.deepEqual(still.fields['Fixed in'] ?? [], []);
 });
+
+/* Issue #245: the manifest is upstream of the seed. Its Feature rows carry
+   milestones (v0.4, v0.5) the seeded Milestone select never heard of, a
+   select validates on write, and the throw landed mid-pass: Issues applied,
+   Features applied up to the first unknown milestone, the release block
+   never reached, and the stamp — written last — never set, so every boot
+   repeated the same half-pass behind bin/weave.js's bare catch. */
+
+test('the shipped manifest applies whole to a freshly seeded workspace', () => {
+  const w = seedWeaver(new Weave());
+  const m = JSON.parse(readFileSync(join(ROOT, 'docs', 'development.json'), 'utf8'));
+  const r = syncDevelopment(w, m);
+  assert.equal(r.applied, true);
+  assert.deepEqual(r.skipped, [], 'every row applied');
+  const rel = w.listTables().find((t) => t.name === 'Release');
+  assert.equal(w.listEntities(rel.id).length, m.releases.length, 'the release block ran');
+  const current = findRelease(w, m.releases.at(-1).name);
+  assert.ok((current.docs.Description ?? '').trim(), 'release contents landed');
+  assert.ok(w.state.meta.developmentSync, 'a whole pass stamps itself done');
+  assert.equal(syncDevelopment(w, m).applied, false, 'and the next boot is free');
+});
+
+test('a milestone the seed never heard of widens the select instead of throwing', () => {
+  const w = seedWeaver(new Weave());
+  const featuresT = w.listTables().find((t) => t.name === 'Feature');
+  const milestone = () => Object.values(w.getTable(featuresT.id).fields).find((f) => f.name === 'Milestone');
+  assert.deepEqual(milestone().config.options.map((o) => o.name), ['v0.1', 'v0.2', 'v0.3']);
+  const r = syncDevelopment(w, manifest({
+    features: [{ name: 'A far-future feature', status: 'Planned', milestone: 'v9.9' }],
+    issues: [{ name: 'A far-future bug', status: 'Open', severity: 'Critical', symptom: ['Ate my homework'] }],
+  }));
+  assert.deepEqual(r.skipped, []);
+  assert.deepEqual(milestone().config.options.map((o) => o.name), ['v0.1', 'v0.2', 'v0.3', 'v9.9']);
+  const feature = w.listEntities(featuresT.id).map((e) => w.readEntity(e.id)).find((e) => e.name === 'A far-future feature');
+  assert.equal(feature.fields.Milestone, 'v9.9');
+  const issue = findIssue(w, 'A far-future bug');
+  assert.equal(issue.fields.Severity, 'Critical');
+  assert.deepEqual(issue.fields.Symptom, ['Ate my homework']);
+});
+
+test('a row that cannot be applied is skipped and named, and the pass does not stamp itself done', () => {
+  const w = seedWeaver(new Weave());
+  // A workflow state carries a category the manifest cannot supply, so an
+  // unknown status is the one value widening cannot rescue.
+  const r = syncDevelopment(w, manifest({
+    issues: [{ name: 'A bug with an unknown status', status: 'Wontfix', severity: 'Low' }],
+    features: [{ name: 'A feature that applies fine', status: 'Planned', milestone: 'v0.3' }],
+    releases: [{ name: 'v9.9.9', date: '2026-09-05', commit: 'abc1234', description: '## v9.9.9\n\n- the notes' }],
+  }));
+  assert.equal(r.applied, true);
+  assert.equal(r.skipped.length, 1);
+  assert.match(r.skipped[0], /A bug with an unknown status/);
+  assert.match(r.skipped[0], /not a state/);
+  const featuresT = w.listTables().find((t) => t.name === 'Feature');
+  assert.ok(w.listEntities(featuresT.id).map((e) => w.entityName(e)).includes('A feature that applies fine'), 'the pass carried on past it');
+  assert.ok(findRelease(w, 'v9.9.9'), 'and reached the release block');
+  assert.equal(w.state.meta.developmentSync, undefined, 'a half-applied pass leaves no stamp');
+});
+
+test('widening a select keeps the options already there, colours and all', () => {
+  const w = seedWeaver(new Weave());
+  const featuresT = w.listTables().find((t) => t.name === 'Feature');
+  const milestone = () => Object.values(w.getTable(featuresT.id).fields).find((f) => f.name === 'Milestone');
+  const before = milestone();
+  w.updateField(featuresT.id, before.id, { config: { options: before.config.options.map((o) => ({ ...o, hue: 'indigo' })) } });
+  const painted = milestone().config.options;
+  syncDevelopment(w, manifest({ features: [{ name: 'A far-future feature', status: 'Planned', milestone: 'v9.9' }] }));
+  const after = milestone().config.options;
+  assert.deepEqual(after.slice(0, painted.length), painted, 'the existing options are untouched');
+  assert.equal(after.at(-1).name, 'v9.9');
+});
