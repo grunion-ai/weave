@@ -39,7 +39,7 @@ Both lists are exported from the engine — `ONTOLOGY` and `FIELD_TYPES` in
 | Kind | Level of | Registry | Lives in | What it is |
 | --- | --- | --- | --- | --- |
 | **Entity** | — | — | `state.entities` | One addressable thing: id, public id (`Table#n`), fields, and an entity view. Everything below is one. |
-| **Workspace** | contains spaces | *(none yet)* | `state.meta` | One workspace file and everything in it. The top of the hierarchy — and the one level with no registry row yet, so it cannot be opened as an entity. |
+| **Workspace** | contains spaces | `Workspace/Workspaces` | `state.meta` | One workspace file and everything in it. The top of the hierarchy. The registry lives once, at the hub root (Feature #219): every workspace the hub serves is a row there, and the Spaces, Tables, Fields and Workflows rows relate back to it through a `Workspace` relation. |
 | **Space** | contains tables | `Workspace/Spaces` | `state.spaces` | A named container grouping the tables of one area of work; the left half of `Space/Table`. |
 | **Table** | contains rows | `Workspace/Tables` | `state.tables` | An entity that is also an **entity type**: the ordered set of fields every row in it follows. |
 | **Field** | describes a slot | `Workspace/Fields` | `table.fields` | One typed, named slot on a table. Not a row of data, but it has a registry row carrying its type and definition, which is how the schema stays editable as data. |
@@ -102,7 +102,7 @@ deleting, or reordering columns through the schema verbs updates the row.
 ## How it nests
 
 ```
-Workspace ......................... entity (level 1) — no registry row yet
+Workspace ......................... entity (level 1) — row in Workspace/Workspaces, at the hub root
 └── Space ......................... entity (level 2) — row in Workspace/Spaces
     └── Table ..................... entity (level 3) — row in Workspace/Tables
         │                             …and the ENTITY TYPE of everything in it
@@ -186,8 +186,10 @@ customer all have one, because all three are entities.
 
 ### Workspace
 One weave file — a SQLite `.db` — holding spaces, tables, rows and the
-machinery around them. The top level of the hierarchy, and the one level that
-has no registry row yet.
+machinery around them. The top level of the hierarchy. A row in
+`Workspace/Workspaces` at the hub root: the registry lives once, in the engine
+the hub stands on, and member workspaces project their structure into it
+(Feature #219) instead of minting a `Workspace` space of their own.
 
 ### Space
 A named container that groups tables and qualifies their names, so `Dev/Task`
@@ -274,9 +276,11 @@ survives every rename; mentions may use a bare uuid (`[[<uuid>]]`) for the
 same reason.
 
 ### Registry
-A system table whose rows are structure: `Workspace/Spaces`, `Workspace/Tables`,
-`Workspace/Fields`. Readable, queryable and editable like any table; not
-deletable, not redefinable.
+A system table whose rows are structure: `Workspace/Workspaces`,
+`Workspace/Spaces`, `Workspace/Tables`, `Workspace/Fields`. Readable, queryable
+and editable like any table; not deletable, not redefinable. There is one
+registry per hub, at the root; every row carries a `Workspace` relation naming
+the workspace it describes, and a row edit routes to that workspace's engine.
 
 Not every system table is a registry. `Workspace/Workflows` is a system table
 whose rows are ordinary data — one row per workflow: the tables and spaces it

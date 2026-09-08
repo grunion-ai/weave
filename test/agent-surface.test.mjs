@@ -95,6 +95,9 @@ const SURFACE = [
    persistence, and the two that must never leave the process. */
 const INTERNAL = {
   save: 'persistence', maybeRefresh: 'cross-process refresh',
+  joinRegistry: 'hub plumbing (Feature #219) — the hub joins every member to the root registry on adoption',
+  hostRegistry: 'hub plumbing (Feature #219) — the engine the hub stands on hosts the registry',
+  dropWorkspace: 'hub plumbing (Feature #219) — a hard workspace delete drops its rows; DELETE /api/workspaces/:id is the door',
   now: 'the engine clock — the short and relative date costumes and today()/now() defaults read it; a test pins it',
   findSpace: 'ref resolver', getSpace: 'ref resolver', findTable: 'ref resolver', getTable: 'ref resolver',
   findField: 'ref resolver', getField: 'ref resolver', findEntity: 'ref resolver', qualifiedName: 'ref formatter',

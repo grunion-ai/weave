@@ -29,7 +29,7 @@ test('every workspace carries the Workspace system space with Spaces and Tables'
   const names = w.listEntities(w.getTable('Spaces').id).map((e) => w.entityName(e));
   assert.deepEqual(names, ['Workspace']);
   const tNames = w.listEntities(w.getTable('Tables').id).map((e) => w.entityName(e)).sort();
-  assert.deepEqual(tNames, ['Fields', 'Spaces', 'Tables', 'Workflows']);
+  assert.deepEqual(tNames, ['Fields', 'Spaces', 'Tables', 'Workflows', 'Workspaces']);
 });
 
 test('creating structure creates its row; the row follows renames and deletes', () => {

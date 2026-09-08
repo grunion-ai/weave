@@ -271,10 +271,9 @@ export const ONTOLOGY = {
   /* The levels of the hierarchy. Every one of them is an entity. */
   levels: [
     {
-      key: 'workspace', name: 'Workspace', isEntity: true, registry: null, storedIn: 'state.meta',
+      key: 'workspace', name: 'Workspace', isEntity: true, registry: 'Workspace/Workspaces', storedIn: 'state.meta',
       contains: 'spaces', identity: 'the .db file; a name and an optional logo',
-      definition: 'One workspace file and everything in it. The top level of the hierarchy.',
-      note: 'The only level with no registry row yet: the workspace is state, not an entity you can open. Tracked as weave Feature #121.',
+      definition: 'One workspace file and everything in it. The top level of the hierarchy. The registry lives once, at the hub root (Feature #219): every workspace the hub serves is a row there, and its spaces, tables and fields relate back to it.',
       api: ['describeSchema', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
     },
     {
@@ -714,7 +713,9 @@ export class Weave {
       automations: {},
     };
     this.#migrate();
-    this.#ensureMetaTables();
+    // A hub member (Feature #219) keeps no registry of its own: the rows
+    // live at the root it joins, and the flag holds while it is opened alone.
+    if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
     // Opening a JSON dump as a workspace is an import by another name: the
     // .json migration writes state straight through the store, blobs and
     // all. Land them the same way importJSON does (Issue #121).
@@ -1048,7 +1049,12 @@ export class Weave {
   maybeRefresh() {
     if (!this.store.changedExternally?.()) return false;
     const loaded = this.store.reload();
-    if (loaded) this.state = loaded;
+    if (loaded) {
+      this.state = loaded;
+      // A CLI beside the hub may have changed this member's structure; the
+      // root rows are a projection, so re-assert them (Feature #219).
+      if (this.registryHost) this.#syncAll();
+    }
     return true;
   }
 
@@ -1131,6 +1137,8 @@ export class Weave {
       ?? Object.values(this.state.spaces).find((x) => x.name.toLowerCase() === String(ref).toLowerCase());
     if (!s) throw new WeaveError(`Space '${ref}' not found`, 'not-found');
     if (!s.deletedAt) return s;
+    // A member's legacy Workspace space is a tombstone, not trash (Feature #219).
+    if (s.system && this.state.meta.registry === 'hub') throw new WeaveError('The registry lives at the weave root now — this workspace\'s own Workspace space is a tombstone', 'invalid');
     const clash = Object.values(this.state.spaces).find((x) => !x.deletedAt && x.name.toLowerCase() === s.name.toLowerCase());
     if (clash) throw new WeaveError(`A live space already holds the name '${s.name}'`, 'conflict');
     s.deletedAt = null;
@@ -1479,9 +1487,11 @@ export class Weave {
     // A space rollup over this table has nothing left to read.
     const spacesT = this.#sysTable('spaces');
     if (spacesT) {
+      const reg = this.#reg;
       for (const f of Object.values(spacesT.fields)) {
-        if (f.type === 'rollup' && f.config.via === db.id) { this.#removeFieldRaw(spacesT, f.id); this.#dropFieldRow(f.id); }
+        if (f.type === 'rollup' && f.config.via === db.id) { reg.#removeFieldRaw(spacesT, f.id); reg.#dropFieldRow(f.id); }
       }
+      if (reg !== this) reg.save();
     }
     delete this.state.tables[db.id];
     this.#dropSysRow('tables', db.id);
@@ -1930,6 +1940,7 @@ export class Weave {
     }
     this.#audit('workspace-updated', { name: this.state.meta.name });
     this.save();
+    this.#syncWorkspaceRow();
     return this.getWorkspace();
   }
 
@@ -2226,6 +2237,140 @@ export class Weave {
      a row verb on a system table translates into the structural verb —
      #inMetaSync marks which side started it, so the loop terminates. */
   #inMetaSync = false;
+  /* Feature #219 — the registry lives once, at the hub root. A member engine
+     points at the root that holds its rows (registryHost); the root lists
+     its members so a row edit can find the engine whose structure the row
+     describes. Every registry helper reads through #reg. */
+  registryHost = null;
+  members = [];
+  get #reg() { return this.registryHost ?? this; }
+  #engines() { const r = this.#reg; return [r, ...r.members]; }
+  #engineOf(wsId) {
+    if (!wsId || wsId === this.state.meta.id) return this;
+    return this.#engines().find((w) => w.state.meta.id === wsId) ?? this;
+  }
+  /* The workspace a registry row belongs to: the Workspaces row itself, or
+     the one its Workspace relation names. */
+  #wsIdOfRow(row) {
+    const reg = this.#reg;
+    const db = reg.state.tables[row.dbId];
+    if (!db?.system) return null;
+    if (db.system === 'workspaces') return row.sysId ?? null;
+    const f = this.#sysField(db, 'Workspace');
+    const wsRow = f && row.values[f.id] ? reg.state.entities[row.values[f.id]] : null;
+    return wsRow?.sysId ?? null;
+  }
+  #ownerOf(row) { return this.#engineOf(this.#wsIdOfRow(row)); }
+  /* Table ids are uuids, so one id names a table across every engine. */
+  #tableAnywhere(id) {
+    for (const w of this.#engines()) { const table = w.state.tables[id]; if (table) return { owner: w, table }; }
+    return null;
+  }
+  #fieldAnywhere(fieldId) {
+    for (const w of this.#engines()) {
+      const table = Object.values(w.state.tables).find((t) => t.fields[fieldId]);
+      if (table) return { owner: w, table, field: table.fields[fieldId] };
+    }
+    return null;
+  }
+
+  /* Join the root's registry: mint nothing here, tombstone a legacy local
+     Workspace space (rows kept), carry its space rollups to the root Spaces
+     table, then project this workspace's structure as root rows. Idempotent. */
+  joinRegistry(root) {
+    if (root === this) throw new WeaveError('A workspace cannot join its own registry', 'invalid');
+    this.registryHost = root;
+    if (!root.members.includes(this)) root.members.push(this);
+    let dirty = false;
+    if (this.state.meta.registry !== 'hub') { this.state.meta.registry = 'hub'; dirty = true; }
+    const rollups = [];
+    for (const sp of Object.values(this.state.spaces)) {
+      if (sp.system !== 'workspace' || sp.deletedAt) continue;
+      sp.deletedAt = nowISO();
+      dirty = true;
+      for (const t of Object.values(this.state.tables)) {
+        if (t.spaceId !== sp.id || t.deletedAt) continue;
+        if (t.system === 'spaces') for (const f of Object.values(t.fields)) if (f.type === 'rollup' && f.config.via) rollups.push(f);
+        t.deletedAt = nowISO();
+      }
+    }
+    if (dirty) this.save();
+    this.#syncAll();
+    const spacesT = root.#sysTable('spaces');
+    for (const f of rollups) {
+      const via = this.state.tables[f.config.via];
+      if (!via || via.deletedAt) continue;
+      const name = root.findField(spacesT, f.name) ? `${f.name} (${this.state.meta.name})` : f.name;
+      if (root.findField(spacesT, name)) continue;
+      const config = { via: f.config.via, aggregate: f.config.aggregate, ...(f.config.targetField ? { targetField: f.config.targetField } : {}), ...(f.config.where ? { where: f.config.where } : {}) };
+      try { root.addField(spacesT.id, { name, type: 'rollup', config }); } catch { /* an unresolvable rollup stays in the tombstone */ }
+    }
+    return this;
+  }
+
+  /* The inverse: this engine is the hub root again (or served alone). The
+     tombstoned space comes back and the registry re-syncs into it. */
+  hostRegistry() {
+    if (this.state.meta.registry !== 'hub') return this;
+    delete this.state.meta.registry;
+    this.registryHost = null;
+    for (const sp of Object.values(this.state.spaces)) {
+      if (sp.system !== 'workspace') continue;
+      sp.deletedAt = null;
+      for (const t of Object.values(this.state.tables)) if (t.spaceId === sp.id) t.deletedAt = null;
+    }
+    this.#ensureMetaTables();
+    this.save();
+    return this;
+  }
+
+  /* A workspace leaves the hub: its rows leave the registry. */
+  dropWorkspace(wsId) {
+    this.members = this.members.filter((m) => m.state.meta.id !== wsId);
+    for (const kind of ['fields', 'tables', 'spaces']) {
+      const t = this.#sysTable(kind);
+      if (!t) continue;
+      for (const row of this.listEntities(t.id, { includeDeleted: true })) {
+        if (this.#wsIdOfRow(row) === wsId) this.#metaSync(() => this.deleteEntity(row.id, { hard: true }));
+      }
+    }
+    const wsRow = this.#sysRow('workspaces', wsId);
+    if (wsRow) this.#metaSync(() => this.deleteEntity(wsRow.id, { hard: true }));
+    this.save();
+  }
+
+  #syncAll() {
+    if (!this.#sysTable('spaces')) return;
+    this.#syncWorkspaceRow();
+    for (const sp of Object.values(this.state.spaces)) this.#syncSpaceRow(sp);
+    for (const t of Object.values(this.state.tables)) this.#syncTableRow(t);
+    for (const t of Object.values(this.state.tables)) {
+      if (t.system) continue;
+      for (const f of Object.values(t.fields)) this.#syncFieldRow(t, f);
+    }
+  }
+
+  #syncWorkspaceRow() {
+    const t = this.#sysTable('workspaces');
+    if (!t) return undefined;
+    const reg = this.#reg;
+    const meta = this.state.meta;
+    const desc = meta.description ?? '';
+    let row = this.#sysRow('workspaces', meta.id);
+    if (!row) {
+      row = reg.#metaSync(() => reg.createEntity(t.id, { name: meta.name, values: { Description: desc } }));
+      row.sysId = meta.id;
+      reg.#mark(row);
+      reg.save();
+      return row;
+    }
+    const patch = {};
+    if (reg.entityName(row) !== meta.name) patch.Name = meta.name;
+    const descF = this.#sysField(t, 'Description');
+    if ((row.values[descF.id] ?? '') !== desc) patch.Description = desc;
+    if (Object.keys(patch).length) reg.#metaSync(() => reg.updateEntity(row.id, patch));
+    return row;
+  }
 
   #metaSync(fn) {
     const was = this.#inMetaSync;
@@ -2351,7 +2496,10 @@ export class Weave {
   }
 
   #sysTable(kind) {
-    return Object.values(this.state.tables).find((t) => t.system === kind);
+    // A member opened alone (the flag set, no host attached) has no registry:
+    // its tombstoned tables must not be written to.
+    if (this.state.meta.registry === 'hub' && !this.registryHost) return undefined;
+    return Object.values(this.#reg.state.tables).find((t) => t.system === kind && !t.deletedAt);
   }
 
   #sysRow(kind, sysId) {
@@ -2359,7 +2507,7 @@ export class Weave {
     if (!t) return undefined;
     // Trashed rows count: a trashed table's row still IS its row, and a sync
     // that cannot see it would mint a duplicate.
-    return Object.values(this.state.entities).find((e) => e.dbId === t.id && e.sysId === sysId);
+    return Object.values(this.#reg.state.entities).find((e) => e.dbId === t.id && e.sysId === sysId);
   }
 
   /* The ids a registry row's relation points at, however it is stored. */
@@ -2460,12 +2608,19 @@ export class Weave {
     if (!this.#sysField(wfT, 'Last Run')) this.addField(wfT.id, { name: 'Last Run', type: 'date', config: { time: true } }).system = true;
     if (!this.#sysField(wfT, 'Diagram')) this.addField(wfT.id, { name: 'Diagram', type: 'document' }).system = true;
     if (!this.#sysField(wfT, 'Type')) this.addField(wfT.id, { name: 'Type', type: 'select', config: { options: [] } }).system = true;
-    for (const sp of Object.values(s.spaces)) this.#syncSpaceRow(sp);
-    for (const t of Object.values(s.tables)) this.#syncTableRow(t);
-    for (const t of Object.values(s.tables)) {
-      if (t.system) continue;
-      for (const f of Object.values(t.fields)) this.#syncFieldRow(t, f);
+    /* Workspaces (Feature #219): the level-1 row. One registry serves every
+       workspace the hub holds, so each registry table relates its rows back
+       to the workspace they describe — uno's tables and test's sit side by
+       side under one Workspace column. */
+    const wsT = this.#sysTable('workspaces')
+      ?? mkTable('Workspaces', 'workspaces', 'Every workspace this weave serves, as a row: the hub root and every member workspace. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted from the hub, not as rows.');
+    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows']]) {
+      if (this.#sysField(t, 'Workspace')) continue;
+      const { field, inverse } = this.addRelation(t.id, { name: 'Workspace', targetDb: wsT.id, cardinality: 'many-to-one', inverseName });
+      field.system = true;
+      inverse.system = true;
     }
+    this.#syncAll();
   }
 
   /* ---------------- registry integrity (Issue: drifted links) ----------------
@@ -2488,7 +2643,10 @@ export class Weave {
     if (!tablesT || !fieldsT) return { problems, rows: 0 };
 
     let rows = 0;
-    for (const db of this.listTables()) {
+    // The root reports on every workspace it serves; a member on itself.
+    const engines = this.registryHost ? [this] : [this, ...this.members];
+    const mine = new Set(engines.map((w) => w.state.meta.id));
+    for (const db of engines.flatMap((w) => w.listTables())) {
       if (db.system) continue;
       const tableRow = rowOf('tables', db.id);
       if (!tableRow) { problems.push({ kind: 'table', name: this.qualifiedName(db), problem: 'no registry row' }); continue; }
@@ -2507,11 +2665,13 @@ export class Weave {
       }
     }
     // Rows describing something the schema no longer has.
+    const reg = this.#reg;
     for (const [kind, sysTable, lookup] of [
-      ['table', tablesT, (id) => this.state.tables[id]],
+      ['table', tablesT, (id) => this.#tableAnywhere(id)],
       ['field', fieldsT, (id) => this.#fieldOwner(id)],
     ]) {
-      for (const row of this.listEntities(sysTable.id)) {
+      for (const row of reg.listEntities(sysTable.id)) {
+        if (!mine.has(this.#wsIdOfRow(row))) continue; // another workspace's slice
         if (row.sysId && !lookup(row.sysId)) {
           problems.push({ kind, name: this.entityName(row), problem: 'row describes nothing that exists', rowId: row.id });
         }
@@ -2524,19 +2684,16 @@ export class Weave {
      clean workspace reports zero repairs. */
   rebuildRegistry() {
     const before = this.registryReport().problems;
-    for (const space of this.listSpaces()) this.#syncSpaceRow(space);
-    for (const db of this.listTables()) {
-      if (db.system) continue;
-      this.#syncTableRow(db);
-      for (const f of Object.values(db.fields)) this.#syncFieldRow(db, f);
-    }
+    const engines = this.registryHost ? [this] : [this, ...this.members];
+    for (const w of engines) w.#syncAll();
+    const reg = this.#reg;
     for (const p of before) {
       if (p.problem === 'row describes nothing that exists' && p.rowId) {
-        const row = this.state.entities[p.rowId];
-        if (row) this.#metaSync(() => this.deleteEntity(row.id, { hard: true }));
+        const row = reg.state.entities[p.rowId];
+        if (row) reg.#metaSync(() => reg.deleteEntity(row.id, { hard: true }));
       }
     }
-    this.save();
+    reg.save();
     const after = this.registryReport().problems;
     return { repaired: before.length - after.length, remaining: after };
   }
@@ -2547,19 +2704,24 @@ export class Weave {
     // the row is refused downstream — deleteSpace guards system spaces.
     const t = this.#sysTable('spaces');
     if (!t) return undefined; // mid-bootstrap
+    if (space.system && this.registryHost) return undefined; // a member's tombstone
+    const reg = this.#reg;
+    const wsRow = this.#sysRow('workspaces', this.state.meta.id);
     let row = this.#sysRow('spaces', space.id);
     if (!row) {
-      row = this.#metaSync(() => this.createEntity(t.id, { name: space.name, values: { Description: space.description ?? '' } }));
+      row = reg.#metaSync(() => reg.createEntity(t.id, { name: space.name, values: { Description: space.description ?? '', ...(wsRow ? { Workspace: wsRow.id } : {}) } }));
       row.sysId = space.id;
-      this.#mark(row);
-      this.save();
+      reg.#mark(row);
+      if (space.deletedAt) reg.#metaSync(() => reg.deleteEntity(row.id));
+      reg.save();
       return row;
     }
     const patch = {};
-    if (this.entityName(row) !== space.name) patch.Name = space.name;
+    if (reg.entityName(row) !== space.name) patch.Name = space.name;
     const descF = this.#sysField(t, 'Description');
     if ((row.values[descF.id] ?? '') !== (space.description ?? '')) patch.Description = space.description ?? '';
-    if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
+    if (wsRow && !this.#relIds(row, t, 'Workspace').includes(wsRow.id)) patch.Workspace = wsRow.id;
+    if (Object.keys(patch).length) reg.#metaSync(() => reg.updateEntity(row.id, patch));
     return row;
   }
 
@@ -2569,25 +2731,31 @@ export class Weave {
     // deleteTable refuses system tables, so the row cannot take them down.
     const t = this.#sysTable('tables');
     if (!t) return undefined;
+    if (db.system && this.registryHost) return undefined; // a member's tombstone
+    const reg = this.#reg;
+    const wsRow = this.#sysRow('workspaces', this.state.meta.id);
     const spaceRow = this.#sysRow('spaces', db.spaceId);
     let row = this.#sysRow('tables', db.id);
     if (!row) {
-      row = this.#metaSync(() => this.createEntity(t.id, {
+      row = reg.#metaSync(() => reg.createEntity(t.id, {
         name: db.name,
-        values: { Description: db.description ?? '', ...(spaceRow ? { Space: spaceRow.id } : {}) },
+        values: { Description: db.description ?? '', ...(spaceRow ? { Space: spaceRow.id } : {}), ...(wsRow ? { Workspace: wsRow.id } : {}) },
       }));
       row.sysId = db.id;
-      this.#mark(row);
-      this.save();
-      return row;
+      reg.#mark(row);
+      if (db.deletedAt) reg.#metaSync(() => reg.deleteEntity(row.id));
+      reg.save();
+      // Fall through: the configuration columns are written by the patch
+      // below, so a row minted by a member's join carries them at once.
     }
     const patch = {};
-    if (this.entityName(row) !== db.name) patch.Name = db.name;
+    if (reg.entityName(row) !== db.name) patch.Name = db.name;
     const descF = this.#sysField(t, 'Description');
     if ((row.values[descF.id] ?? '') !== (db.description ?? '')) patch.Description = db.description ?? '';
     // The link, every time — not only at creation. A row created mid-bootstrap
     // has no space row to point at yet, and nothing ever went back for it.
     if (spaceRow && !this.#relIds(row, t, 'Space').includes(spaceRow.id)) patch.Space = spaceRow.id;
+    if (wsRow && !this.#relIds(row, t, 'Workspace').includes(wsRow.id)) patch.Workspace = wsRow.id;
     // Configuration as fields: the column order and the hidden columns.
     const orderF = this.#sysField(t, 'Field Order');
     if (orderF) {
@@ -2611,7 +2779,7 @@ export class Weave {
     }
     const hideF = this.#sysField(t, 'Hide Rollups');
     if (hideF && !!row.values[hideF.id] !== !!db.hideRollups) patch['Hide Rollups'] = !!db.hideRollups;
-    if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
+    if (Object.keys(patch).length) reg.#metaSync(() => reg.updateEntity(row.id, patch));
     return row;
   }
 
@@ -2625,45 +2793,51 @@ export class Weave {
     if (!t) return undefined;
     const tableRow = this.#sysRow('tables', db.id);
     if (!tableRow) return undefined;
+    const reg = this.#reg;
+    const wsRow = this.#sysRow('workspaces', this.state.meta.id);
     const definable = DEFINABLE_TYPES.includes(f.type) && !(f.type === 'field' && (f.config.depth ?? 1) >= 4);
     let row = this.#sysRow('fields', f.id);
     if (!row) {
-      row = this.#metaSync(() => this.createEntity(t.id, {
+      row = reg.#metaSync(() => reg.createEntity(t.id, {
         name: f.name,
         values: {
           Table: tableRow.id,
           Type: f.type,
+          ...(wsRow ? { Workspace: wsRow.id } : {}),
           ...(definable ? { Definition: { type: f.type, config: f.config } } : {}),
         },
       }));
       row.sysId = f.id;
-      this.#mark(row);
-      this.save();
+      reg.#mark(row);
+      reg.save();
       return row;
     }
     const patch = {};
-    if (this.entityName(row) !== f.name) patch.Name = f.name;
+    if (reg.entityName(row) !== f.name) patch.Name = f.name;
     if (definable) patch.Definition = { type: f.type, config: f.config };
     // Same repair as the table row's Space: the registry is only true if the
     // row belongs to the table whose column it describes.
     if (!this.#relIds(row, t, 'Table').includes(tableRow.id)) patch.Table = tableRow.id;
-    if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(row.id, patch));
+    if (wsRow && !this.#relIds(row, t, 'Workspace').includes(wsRow.id)) patch.Workspace = wsRow.id;
+    if (Object.keys(patch).length) reg.#metaSync(() => reg.updateEntity(row.id, patch));
     return row;
   }
 
   #dropFieldRow(fieldId) {
     const row = this.#sysRow('fields', fieldId);
-    if (row) this.#metaSync(() => this.deleteEntity(row.id, { hard: true }));
+    const reg = this.#reg;
+    if (row) reg.#metaSync(() => reg.deleteEntity(row.id, { hard: true }));
   }
 
   /* The table a field id belongs to — the registry's way back to the schema. */
   #fieldOwner(fieldId) {
-    return Object.values(this.state.tables).find((t) => t.fields[fieldId]);
+    return this.#fieldAnywhere(fieldId)?.table;
   }
 
   #dropSysRow(kind, sysId) {
     const row = this.#sysRow(kind, sysId);
-    if (row) this.#metaSync(() => this.deleteEntity(row.id, { hard: true }));
+    const reg = this.#reg;
+    if (row) reg.#metaSync(() => reg.deleteEntity(row.id, { hard: true }));
   }
 
   /* Structure trash mirrored onto the registry: the row is soft-deleted with
@@ -2671,12 +2845,14 @@ export class Weave {
      tables and spaces the way a table's trash lists its rows. */
   #trashSysRow(kind, sysId) {
     const row = this.#sysRow(kind, sysId);
-    if (row && !row.deletedAt) this.#metaSync(() => this.deleteEntity(row.id));
+    const reg = this.#reg;
+    if (row && !row.deletedAt) reg.#metaSync(() => reg.deleteEntity(row.id));
   }
 
   #restoreSysRow(kind, sysId) {
     const row = this.#sysRow(kind, sysId);
-    if (row?.deletedAt) this.#metaSync(() => this.restoreEntity(row.id));
+    const reg = this.#reg;
+    if (row?.deletedAt) reg.#metaSync(() => reg.restoreEntity(row.id));
   }
 
   /* Row-side verbs arriving at a system table translate into the structural
@@ -2687,6 +2863,7 @@ export class Weave {
     // Only the registries mirror structure; rows of other system tables
     // (Workflows) are ordinary data and take the ordinary path — a blank
     // row from the grid foot included (Issue #241).
+    if (db.system === 'workspaces') throw new WeaveError('A workspace is created from the hub (POST /api/workspaces), not as a row', 'invalid');
     if (!['spaces', 'tables', 'fields'].includes(db.system)) return undefined;
     const flat = Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !['name', 'values', 'doc', 'docs'].includes(k)));
     const values = { ...flat, ...(input?.values ?? {}) };
@@ -2696,20 +2873,32 @@ export class Weave {
     delete values.Name;
     delete values.Description;
     let made;
+    // The row's Workspace follows the structure it describes (Feature #219):
+    // a Spaces create names it (the root by default); a Tables or Fields
+    // create inherits the parent row's.
+    const wsRef = values.Workspace;
+    delete values.Workspace;
     if (db.system === 'spaces') {
-      made = this.#sysRow('spaces', this.createSpace({ name, description }).id);
+      let owner = this;
+      if (wsRef != null) {
+        const wsRow = this.findEntity(this.#sysTable('workspaces').id, wsRef);
+        if (!wsRow) throw new WeaveError(`Workspace row '${wsRef}' not found`, 'not-found');
+        owner = this.#engineOf(wsRow.sysId);
+      }
+      made = this.#sysRow('spaces', owner.createSpace({ name, description }).id);
     } else if (db.system === 'tables') {
       const spaceRef = values.Space;
       delete values.Space;
       if (spaceRef == null) throw new WeaveError(`A Tables row needs its 'Space' — which space the table lives in`, 'invalid');
       const spaceRow = this.findEntity(this.#sysTable('spaces').id, spaceRef);
       if (!spaceRow) throw new WeaveError(`Space row '${spaceRef}' not found`, 'not-found');
+      const owner = this.#ownerOf(spaceRow);
       // The Workspace space registers itself as a row (Issue #126); user
       // tables still belong in user spaces.
-      if (this.state.spaces[spaceRow.sysId]?.system) {
+      if (owner.state.spaces[spaceRow.sysId]?.system) {
         throw new WeaveError(`Space '${this.entityName(spaceRow)}' is part of the system registry — create tables in your own spaces`, 'invalid');
       }
-      made = this.#sysRow('tables', this.createTable({ space: spaceRow.sysId, name, description }).id);
+      made = this.#sysRow('tables', owner.createTable({ space: spaceRow.sysId, name, description }).id);
     } else if (db.system === 'fields') {
       const tableRef = values.Table;
       const def = values.Definition;
@@ -2720,13 +2909,14 @@ export class Weave {
       if (!def || typeof def !== 'object' || !def.type) throw new WeaveError(`A Fields row needs its 'Definition' — the column's shape`, 'invalid');
       const tableRow = this.findEntity(this.#sysTable('tables').id, tableRef);
       if (!tableRow) throw new WeaveError(`Table row '${tableRef}' not found`, 'not-found');
+      const owner = this.#ownerOf(tableRow);
       // System tables register rows too (Issue #126), so this door now sees
       // them — their columns are weave's own plumbing, not a place for user
       // fields, and a field row would never sync back (#syncFieldRow skips).
-      if (this.state.tables[tableRow.sysId]?.system) {
+      if (owner.state.tables[tableRow.sysId]?.system) {
         throw new WeaveError(`Table '${this.entityName(tableRow)}' is part of the system registry — its columns are fixed`, 'invalid');
       }
-      const f = this.addField(tableRow.sysId, { name, type: def.type, config: def.config ?? {} });
+      const f = owner.addField(tableRow.sysId, { name, type: def.type, config: def.config ?? {} });
       made = this.#sysRow('fields', f.id);
     } else {
       return undefined;
@@ -2739,11 +2929,26 @@ export class Weave {
     if (!db.system || this.#inMetaSync) return undefined;
     // Only the registries mirror structure; rows of other system tables
     // (Workflows) are ordinary data and take the ordinary path.
+    if (db.system === 'workspaces') {
+      // ponytail: Description routes to the workspace; a rename must move the
+      // hub's name index too, so it stays on the workspace page for now.
+      const patch = { ...valuesByName };
+      if ('Name' in patch) throw new WeaveError("Rename a workspace from its own page — the hub's name index moves with it", 'invalid');
+      if ('Description' in patch) { this.#engineOf(e.sysId).updateWorkspace({ description: patch.Description }); delete patch.Description; }
+      if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(e.id, patch));
+      return this.getEntity(e.id);
+    }
     if (!['spaces', 'tables', 'fields'].includes(db.system)) return undefined;
     const patch = { ...valuesByName };
+    if ('Workspace' in patch) {
+      const next = patch.Workspace == null ? null : this.findEntity(this.#sysTable('workspaces').id, patch.Workspace)?.id;
+      if (next !== (e.values[this.#sysField(db, 'Workspace').id] ?? null)) throw new WeaveError("A row's Workspace follows the structure it describes and cannot move", 'invalid');
+      delete patch.Workspace;
+    }
     if (db.system === 'fields') {
-      const owner = this.#fieldOwner(e.sysId);
-      const f = owner?.fields[e.sysId];
+      const hit = this.#fieldAnywhere(e.sysId);
+      const owner = hit?.table;
+      const f = hit?.field;
       if ('Type' in patch) throw new WeaveError(`'Type' follows the Definition — change the definition, not the label`, 'invalid');
       if ('Table' in patch) {
         const next = patch.Table == null ? null : this.findEntity(this.#sysTable('tables').id, patch.Table)?.id;
@@ -2752,7 +2957,7 @@ export class Weave {
         delete patch.Table;
       }
       if ('Name' in patch) {
-        this.updateField(owner.id, f.id, { name: patch.Name });
+        hit.owner.updateField(owner.id, f.id, { name: patch.Name });
         delete patch.Name;
       }
       if ('Definition' in patch) {
@@ -2770,7 +2975,7 @@ export class Weave {
         if (!def.config || typeof def.config !== 'object') {
           throw new WeaveError("A definition carries its shape under `config` — {type, config: {…}}", 'invalid');
         }
-        this.updateField(owner.id, f.id, { config: def.config ?? {} });
+        hit.owner.updateField(owner.id, f.id, { config: def.config ?? {} });
         delete patch.Definition;
       }
     } else {
@@ -2796,8 +3001,9 @@ export class Weave {
         if ('Hide Rollups' in patch) { structural.hideRollups = !!patch['Hide Rollups']; delete patch['Hide Rollups']; }
       }
       if (Object.keys(structural).length) {
-        if (db.system === 'spaces') this.updateSpace(e.sysId, structural);
-        else this.updateTable(e.sysId, structural);
+        const owner = this.#ownerOf(e);
+        if (db.system === 'spaces') owner.updateSpace(e.sysId, structural);
+        else owner.updateTable(e.sysId, structural);
       }
     }
     if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(e.id, patch));
@@ -2806,21 +3012,24 @@ export class Weave {
 
   #interceptDelete(e, db, hard) {
     if (!db.system || this.#inMetaSync) return undefined;
+    if (db.system === 'workspaces') throw new WeaveError('A workspace is deleted from the hub (DELETE /api/workspaces/:id), not as a row', 'invalid');
     if (!['spaces', 'tables', 'fields'].includes(db.system)) return undefined; // ordinary rows
 
     if (db.system === 'fields') {
       // A column has no trash — its values would dangle. Hard-only, said out loud.
       if (!hard) throw new WeaveError('Deleting a column is not recoverable — pass hard to confirm', 'invalid');
-      const owner = this.#fieldOwner(e.sysId);
+      const hit = this.#fieldAnywhere(e.sysId);
+      const owner = hit?.table;
       if (owner && owner.nameFieldId === e.sysId) {
         throw new WeaveError('Cannot delete the Name field', 'invalid');
       }
-      if (owner) this.deleteField(owner.id, e.sysId);
+      if (owner) hit.owner.deleteField(owner.id, e.sysId);
       else this.#metaSync(() => this.deleteEntity(e.id, { hard: true })); // orphaned row
       return { id: e.id, purged: true };
     }
-    if (db.system === 'spaces') this.deleteSpace(e.sysId, { hard });
-    else this.deleteTable(e.sysId, { hard });
+    const owner = this.#ownerOf(e);
+    if (db.system === 'spaces') owner.deleteSpace(e.sysId, { hard });
+    else owner.deleteTable(e.sysId, { hard });
     return hard ? { id: e.id, purged: true } : this.readEntity(e.id);
   }
 
@@ -2888,12 +3097,14 @@ export class Weave {
            table, where it is addressable, auditable and lookup-able like any
            field. `where` narrows the rows; the grid footer reads these. */
         if (db.system !== 'spaces') throw new WeaveError('A rollup over a whole table lives on the Spaces registry row that holds the table — add it there (config.via names the table)', 'invalid');
-        const viaT = this.getTable(config.via);
+        // The table may belong to any workspace the registry serves (Feature #219).
+        const hit = this.#tableAnywhere(config.via) ?? { owner: this, table: this.getTable(config.via) };
+        const viaT = hit.table;
         if (viaT.system) throw new WeaveError(`Table '${viaT.name}' is part of the system registry — roll up your own tables`, 'invalid');
         let targetFieldId = null;
-        if (aggregate !== 'count') targetFieldId = this.getField(viaT.id, config.targetField).id;
+        if (aggregate !== 'count') targetFieldId = hit.owner.getField(viaT.id, config.targetField).id;
         const where = config.where && (Array.isArray(config.where) ? config.where.length : true) ? config.where : null;
-        if (where) this.#checkWhere(viaT, where);
+        if (where) hit.owner.#checkWhere(viaT, where);
         field.config = { via: viaT.id, targetField: targetFieldId, aggregate, ...(where ? { where } : {}) };
       } else {
         const rel = this.getField(db.id, config.relationField ?? config.relation);
@@ -4000,8 +4211,9 @@ export class Weave {
       // its delete — #inMetaSync marks which side started it.
       const db = this.state.tables[e.dbId];
       if (db?.system && !this.#inMetaSync && ['spaces', 'tables'].includes(db.system)) {
-        if (db.system === 'spaces') this.restoreSpace(e.sysId);
-        else this.restoreTable(e.sysId);
+        const owner = this.#ownerOf(e);
+        if (db.system === 'spaces') owner.restoreSpace(e.sysId);
+        else owner.restoreTable(e.sysId);
         return this.readEntity(id);
       }
     }
@@ -4051,18 +4263,19 @@ export class Weave {
         return rel.config.many ? vals : (vals[0] ?? null);
       }
       case 'rollup': {
-        const { targetDb, targetField } = this.#rollupTarget(db, field);
+        const { targetDb, targetField, owner } = this.#rollupTarget(db, field);
         if (!targetDb) return null;
         let rows;
         if (field.config.via) {
           // A space rollup answers on the row of the space that holds the
           // table; every other Spaces row reads null, the way a rollup that
-          // lost its target does.
+          // lost its target does. The table's rows are read from the engine
+          // that owns it (Feature #219).
           if (e.sysId !== targetDb.spaceId) return null;
-          rows = this.listEntities(targetDb.id);
+          rows = owner.listEntities(targetDb.id);
           const w = field.config.where;
           if (w) {
-            try { rows = rows.filter((r) => this.#matchNode(r, targetDb, Array.isArray(w) ? { and: w } : w)); } catch { return null; }
+            try { rows = rows.filter((r) => owner.#matchNode(r, targetDb, Array.isArray(w) ? { and: w } : w)); } catch { return null; }
           }
         } else {
           const rel = db.fields[field.config.relationField];
@@ -4201,15 +4414,18 @@ export class Weave {
      names. Either may be gone (Issue #206); the caller treats null as null. */
   #rollupTarget(db, field) {
     let targetDb = null;
+    let owner = this;
     if (field.config.via) {
-      targetDb = this.state.tables[field.config.via];
+      const hit = this.#tableAnywhere(field.config.via);
+      targetDb = hit?.table;
+      owner = hit?.owner ?? this;
       if (targetDb?.deletedAt) targetDb = null;
     } else {
       const rel = db.fields[field.config.relationField];
       targetDb = rel && this.state.tables[rel.config.targetDb];
     }
     const targetField = targetDb && field.config.targetField ? targetDb.fields[field.config.targetField] ?? null : null;
-    return { targetDb: targetDb ?? null, targetField };
+    return { targetDb: targetDb ?? null, targetField, owner };
   }
 
   /* A `where` is checked when it is stored, not when a row happens to be
@@ -4250,11 +4466,12 @@ export class Weave {
     const row = spacesT && this.#sysRow('spaces', db.spaceId);
     if (!row) return [];
     const out = [];
+    const reg = this.#reg;
     for (const fid of spacesT.fieldOrder) {
       const f = spacesT.fields[fid];
       if (f?.type !== 'rollup' || f.config.via !== db.id) continue;
-      const value = this.#resolve(row, spacesT, f, 0);
-      const display = value == null ? null : this.#displayValue(spacesT, f, value, row);
+      const value = reg.#resolve(row, spacesT, f, 0);
+      const display = value == null ? null : reg.#displayValue(spacesT, f, value, row);
       out.push({
         fieldId: f.id, name: f.name, spaceRowId: row.id,
         targetField: f.config.targetField ? db.fields[f.config.targetField]?.name ?? null : null,
@@ -4417,7 +4634,7 @@ export class Weave {
       url: `/e/${e.id}`,
       // A registry row stands for a piece of structure; sysId says which, so
       // a surface can open the space/table itself rather than the row.
-      ...(e.sysId ? { sysId: e.sysId } : {}),
+      ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
     };
   }
 
@@ -4905,6 +5122,8 @@ export class Weave {
       }
     }
     for (const hit of this.search(text, { limit })) {
+      // The Workspaces registry row IS the workspace hit above (Feature #219).
+      if (this.state.tables[this.state.entities[hit.id]?.dbId]?.system === 'workspaces') continue;
       results.push({ kind: 'entity', url: `${prefix}/e/${hit.id}`, ...hit });
     }
     return results.sort((a, b) => b.score - a.score).slice(0, limit);
@@ -5214,7 +5433,7 @@ export class Weave {
           }
           if (f.type === 'rollup' && f.config.via) {
             // A space rollup: the table it reads, not a relation it crosses.
-            const tdb = this.state.tables[f.config.via];
+            const tdb = this.#tableAnywhere(f.config.via)?.table;
             if (tdb) { out.viaTable = this.qualifiedName(tdb); out.viaTableId = tdb.id; }
             if (f.config.targetField) out.targetField = tdb?.fields[f.config.targetField]?.name;
             if (f.config.where) out.where = f.config.where;
@@ -5309,7 +5528,8 @@ export class Weave {
     if (!state || ![1, 2].includes(state.version)) throw new WeaveError('Unsupported workspace format', 'invalid');
     this.state = JSON.parse(JSON.stringify(state));
     this.#migrate();
-    this.#ensureMetaTables();
+    if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
+    else if (this.registryHost) this.#syncAll();
     this.#landBlobs();
     this.#dirtyAll = true;
     this.save();

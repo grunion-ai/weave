@@ -32,10 +32,11 @@ function buildWorkspace() {
 
 test('spaces and tables', () => {
   const { w } = buildWorkspace();
-  // +1/+4: the Workspace system space with the Spaces/Tables/Fields registry
-  // (Features #12, #52) and the Workflows table (2026-08-24).
+  // +1/+5: the Workspace system space with the Spaces/Tables/Fields registry
+  // (Features #12, #52), the Workflows table (2026-08-24) and the
+  // Workspaces table (Feature #219).
   assert.equal(w.listSpaces().length, 2);
-  assert.equal(w.listTables().length, 6);
+  assert.equal(w.listTables().length, 7);
   assert.equal(w.getTable('Product/Task').name, 'Task');
   assert.equal(w.getTable('task').name, 'Task');
   assert.throws(() => w.getTable('Nope'), /not found/);
