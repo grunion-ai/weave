@@ -96,7 +96,13 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
   const instances = new Map();
   let defaultName = defaultWeave.state.meta.name || 'workspace';
   instances.set(defaultName, defaultWeave);
-  for (const [name, w] of Object.entries(workspaces)) instances.set(name, w);
+  // The registry lives once, at the root (Feature #219): the default
+  // workspace hosts it and every other workspace the hub holds joins it —
+  // handed in, adopted by scan, or created here. A single-member hub (the
+  // Worker) is its own root, untouched.
+  defaultWeave.hostRegistry();
+  const enroll = (w) => { if (w !== defaultWeave) w.joinRegistry(defaultWeave); return w; };
+  for (const [name, w] of Object.entries(workspaces)) instances.set(name, enroll(w));
 
   const dataDir = defaultWeave.store.path ? dirname(defaultWeave.store.path) : null;
   // One workspace = one .db file; legacy sibling .json files migrate on
@@ -119,7 +125,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
             w.save();
           }
           // Never let a later file clobber an already-adopted name.
-          if (!instances.has(w.state.meta.name)) instances.set(w.state.meta.name, w);
+          if (!instances.has(w.state.meta.name)) instances.set(w.state.meta.name, enroll(w));
           adoptedPaths.add(dbPath);
         }
       } catch { /* not a workspace file */ }
@@ -189,6 +195,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       const path = w.store.path;
       w.store.close?.();
       instances.delete(name);
+      defaultWeave.dropWorkspace(w.state.meta.id);
       if (path) {
         adoptedPaths.delete(path);
         const trashDir = join(dirname(path), 'trash');
@@ -219,9 +226,9 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       // A fresh workspace opens on its own page: say what the reader is
       // looking at and what to do first, instead of bare registry scaffolding
       // (Issue #123). The description is theirs to rewrite or clear.
-      w.state.meta.description = 'A fresh workspace. Create a **space** from the sidebar, add a **table** to it, and rows take it from there.\n\nThe *Workspace* space below is the workspace describing itself — every space, table and field you create appears there as a row, and editing those rows edits the schema.';
+      w.state.meta.description = 'A fresh workspace. Create a **space** from the sidebar, add a **table** to it, and rows take it from there.\n\nEvery space, table and field you create appears as a row in the registry at the weave root — the *Workspace* space of the default workspace — and editing those rows edits the schema here.';
       w.save();
-      instances.set(name, w);
+      instances.set(name, enroll(w));
       adoptedPaths.add(w.store.path);
       return w;
     },
