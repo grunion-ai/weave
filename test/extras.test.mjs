@@ -152,21 +152,22 @@ test('webhook automation fires on state change', async () => {
 // can create — is loaded as a test and the whole run dies with
 // ERR_IMPORT_ATTRIBUTE_MISSING. CI stayed green the entire time because it
 // never used the npm script. Pin them together.
+// The command is now `npm test` everywhere, and what it runs — scripts/test.mjs,
+// which asks a failed file again before it votes, Issue #44 — is pinned by
+// test/test-runner.test.mjs. A surface that spells the bare run out again goes
+// around that, and drifts the same way this test was written to stop.
 // (Line comments, not a block: the glob itself contains a comment terminator.)
 
 test('npm test runs exactly the command CI and the docs run', async () => {
   const { readFileSync } = await import('node:fs');
   const root = new URL('../', import.meta.url);
-  const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'));
   const CI = readFileSync(new URL('.github/workflows/test.yml', root), 'utf8');
 
-  const documented = "node --test 'test/**/*.test.mjs'";
-  assert.equal(pkg.scripts.test, documented,
-    'the npm script is the entry point a new contributor types first');
-  assert.ok(CI.includes(documented), 'CI must run the same command the script does');
+  assert.match(CI, /^ +- run: npm test$/m, 'CI must run the same command the docs do');
 
-  for (const doc of ['README.md', 'CONTRIBUTING.md', 'AGENTS.md']) {
-    assert.ok(readFileSync(new URL(doc, root), 'utf8').includes("node --test 'test/**/*.test.mjs'"),
-      `${doc} must document the same command`);
+  for (const doc of ['README.md', 'CONTRIBUTING.md', 'AGENTS.md', '.github/PULL_REQUEST_TEMPLATE.md']) {
+    const src = readFileSync(new URL(doc, root), 'utf8');
+    assert.ok(/\bnpm test\b/.test(src), `${doc} must document the same command`);
+    assert.ok(!src.includes("node --test 'test/"), `${doc} must not spell out a run that goes around the runner`);
   }
 });

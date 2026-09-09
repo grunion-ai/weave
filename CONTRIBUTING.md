@@ -27,7 +27,7 @@ Node ≥ 22.16 (Node 24 LTS recommended). There is nothing to install.
 1. **Tests first, and they must pass.**
 
    ```bash
-   node --test 'test/**/*.test.mjs'
+   npm test
    ```
 
    New engine or server behavior lands with tests in the same change. Bug fixes

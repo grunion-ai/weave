@@ -366,7 +366,7 @@ escape.
 ## Development
 
 ```bash
-node --test 'test/**/*.test.mjs'
+npm test
 ```
 
 The test suite is mirrored as entities in the docs workspace (Quality space),

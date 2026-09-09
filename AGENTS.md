@@ -34,8 +34,8 @@ to [Using weave as an agent](#using-weave-as-an-agent).
 
 ## Rules for changing this repo
 
-1. **Tests first.** `node --test 'test/**/*.test.mjs'` must be green before any
-   commit, and new engine or server behavior lands with tests in the same change.
+1. **Tests first.** `npm test` must be green before any commit, and new engine
+   or server behavior lands with tests in the same change.
 2. **Zero runtime dependencies.** Never add a package to `dependencies`. Storage
    is `node:sqlite`, built into Node. Third-party browser code is vendored and
    pinned into `public/vendor/` (mermaid 11.4.1, @tabler/core 1.4.0) — never

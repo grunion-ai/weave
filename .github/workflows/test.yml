@@ -21,4 +21,6 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       # No install step: weave has zero runtime dependencies and no build.
-      - run: node --test 'test/**/*.test.mjs'
+      # scripts/test.mjs: a file that fails once is asked again before the
+      # run is called red — see the header there.
+      - run: npm test

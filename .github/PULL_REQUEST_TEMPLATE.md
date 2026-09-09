@@ -7,7 +7,7 @@
 <!-- Paste the relevant test output, and the steps you ran in the UI. -->
 
 ```
-node --test 'test/**/*.test.mjs'
+npm test
 ```
 
 ## Checklist
