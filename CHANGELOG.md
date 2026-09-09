@@ -4,6 +4,8 @@ weave's tracker (the Development space in the weave workspace) is the changelog 
 
 ## Unreleased
 
+## v0.4.15 — 2026-09-09
+
 - **A test that fails once gets asked again** (Issues #44 and #239): `npm test` runs through `scripts/test.mjs`, which re-runs the files that failed — only those — and lets the second answer stand. Sixty-eight of the 192 suites drive a real Chromium, and under the full run a wait for a menu to paint can lose to a thirty-second budget: a different browser case failed on roughly every other full run while the same file alone was green eight times out of eight, and each one cost a Verified −1 on a change that was fine plus a re-gate to prove it. A regression is not a coin toss, so a broken file fails both times and the vote stands; the retry can only rescue a failure that did not reproduce. Nothing green pays for it — there is no second run on a passing suite. The flake is not absorbed either: every retried file is named on stdout under `# RETRYING` and `# RETRIED`, inside the `tail` that `weave-review.sh` quotes into its Verified +1, so a suite that keeps needing the second chance says so in the review that passed it. Capping browser concurrency was the other candidate and the measurements refused it: the 68 browser suites take 110 s at `--test-concurrency=4` against 66–70 s at 10, 16 and 24, and were green at every one of those over eight runs. `npm test` is now the one command in the README, CONTRIBUTING, AGENTS.md, the PR template and the GitHub matrix. Gates: `test/test-runner.test.mjs`, `test/extras.test.mjs`.
 
 ## v0.4.14 — 2026-09-09
