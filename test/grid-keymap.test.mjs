@@ -48,11 +48,45 @@ test('Return or any character opens the cell; a read-only cell stays shut', () =
 
 test('the resting state hands over row selection for free', () => {
   assert.equal(act(' '), 'toggleSelect');
-  assert.deepEqual(at('ArrowUp', { shift: true }), { type: 'extendSelect', dir: -1 });
-  assert.deepEqual(at('ArrowDown', { shift: true }), { type: 'extendSelect', dir: 1 });
+  const rows = { sel: new Set(['r1']) };
+  assert.deepEqual(at('ArrowUp', { shift: true }, rows), { type: 'extendSelect', dir: -1 });
+  assert.deepEqual(at('ArrowDown', { shift: true }, rows), { type: 'extendSelect', dir: 1 });
   assert.equal(act('a', { meta: true }), 'selectAll');
-  assert.equal(act('Escape', {}, { sel: new Set(['r1']) }), 'clearSelect');
+  assert.equal(act('Escape', {}, rows), 'clearSelect');
   assert.equal(act('Escape'), 'none', 'Escape with nothing chosen is the browser’s');
+});
+
+/* ── ⇧-arrows grow a range of CELLS (Feature #220) ─────────────────────── */
+
+test('with no row picked up, ⇧↑ / ⇧↓ grow a range of cells', () => {
+  assert.deepEqual(at('ArrowUp', { shift: true }), { type: 'extendRange', dr: -1, dc: 0 });
+  assert.deepEqual(at('ArrowDown', { shift: true }), { type: 'extendRange', dr: 1, dc: 0 });
+});
+
+test('Space still picks the ROW up, and ⇧↑ / ⇧↓ still extend that run (Feature #134)', () => {
+  // The one rule that keeps both readings honest: rows first. Space is
+  // unchanged, and once a row is up the vertical shift-arrows are its.
+  assert.equal(act(' '), 'toggleSelect');
+  const rows = { sel: new Set(['r1', 'r2']) };
+  assert.equal(act('ArrowUp', { shift: true }, rows), 'extendSelect');
+  assert.equal(act('ArrowDown', { shift: true }, rows), 'extendSelect');
+});
+
+test('⇧← / ⇧→ are the range’s in both cases — a row selection has no width', () => {
+  assert.deepEqual(at('ArrowLeft', { shift: true }), { type: 'extendRange', dr: 0, dc: -1 });
+  assert.deepEqual(at('ArrowRight', { shift: true }), { type: 'extendRange', dr: 0, dc: 1 });
+  assert.equal(act('ArrowRight', { shift: true }, { sel: new Set(['r1']) }), 'extendRange');
+});
+
+test('Esc lets the range go once the rows are back — one key, in order', () => {
+  assert.equal(act('Escape', {}, { sel: new Set(['r1']), range: true }), 'clearSelect', 'rows first');
+  assert.equal(act('Escape', {}, { range: true }), 'clearRange');
+  assert.equal(act('Escape', {}, { range: false }), 'none');
+});
+
+test('an open cell keeps ⇧← / ⇧→ for text selection — a range is a resting gesture', () => {
+  assert.equal(act('ArrowLeft', { shift: true }, { mode: 'edit' }), 'none');
+  assert.equal(act('ArrowDown', { shift: true }, { mode: 'edit' }), 'commitMove');
 });
 
 test('on a toggle cell Space flips the switch — the one cell where Space is the value\'s key (Feature #202)', () => {

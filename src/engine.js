@@ -4153,9 +4153,24 @@ export class Weave {
       }
     };
     switch (op) {
-      case 'set':
-        each((e) => this.updateEntity(e.id, params.values ?? {}));
+      case 'set': {
+        /* `changed` beside `done`: a set writes the same value across every
+           row, and a row that already held it records no undo step. A caller
+           that wants one gesture to step the whole write back — the grid's
+           fill and paste (Feature #220) — needs the depth of the stack this
+           call left, and counting the rows it VISITED would walk past this
+           write into somebody else's. Same before-image and same comparison
+           `updateEntity` uses, so the two cannot drift. */
+        const names = Object.keys(params.values ?? {});
+        out.changed = [];
+        each((e) => {
+          const db = this.state.tables[e.dbId];
+          const before = this.#undoBefore(e, db, names.filter((n) => this.findField(db, n)));
+          this.updateEntity(e.id, params.values ?? {});
+          if (this.#undoChanged(e, before)) out.changed.push(e.id);
+        });
         break;
+      }
       case 'link':
         each((e) => this.link(e.id, params.field, params.targets ?? []));
         break;

@@ -10,13 +10,15 @@
    (test/grid-patterns.test.mjs presses that one). No DOM here: a keystroke
    plus a grid state resolves to a verb, and public/app.js carries it out.
 
-   state  { mode: 'rest' | 'edit', readonly, sel: Set, flip? }  · flip: the cell is a toggle
+   state  { mode: 'rest' | 'edit', readonly, sel: Set, flip?, range? }
+            flip: the cell is a toggle · range: a cell range is live (#220)
    verb   { type, ... }
      move / commitMove {dr,dc,wrap?}  · move, saving first if it must
      edit {select}  · revert          · open the cell · back out of it
      open                             · open the record
      newRow {at,focus}                · create an item
      toggleSelect / extendSelect {dir} / selectAll / clearSelect
+     extendRange {dr,dc} / clearRange  · the cell range of Feature #220
      none                             · the browser keeps it */
 (() => {
   const printable = (key) => key.length === 1 && key !== ' ';
@@ -30,12 +32,24 @@
     if (k.key === 'Enter' && k.shift) return { type: 'newRow', at: 'below', focus: 'first' };
     if (k.key === 'Enter') return s.readonly ? { type: 'none' } : { type: 'edit', select: 'all' };
     if (k.key === 'a' && k.meta) return { type: 'selectAll' };
-    if (k.shift && (k.key === 'ArrowUp' || k.key === 'ArrowDown')) return { type: 'extendSelect', dir: k.key === 'ArrowUp' ? -1 : 1 };
+    /* ⇧-arrows do two jobs, and rows go first (Feature #220 over #134). With
+       a row picked up, ⇧↑/⇧↓ extend that run exactly as they did — Space and
+       the vertical shift-arrows are one gesture and splitting them would
+       break the reading #134 shipped. With no row up, the same keys grow a
+       RANGE of cells. ⇧←/⇧→ are always the range's: a run of rows has no
+       width, so nothing was ever claiming them. */
+    if (k.shift && MOVE[k.key]) {
+      const [dr, dc] = MOVE[k.key];
+      if (dc === 0 && s.sel.size) return { type: 'extendSelect', dir: dr };
+      return { type: 'extendRange', dr, dc };
+    }
     if (MOVE[k.key]) return { type: 'move', dr: MOVE[k.key][0], dc: MOVE[k.key][1] };
     // A toggle cell is the one place Space is the value's own key: it
     // flips the switch (Feature #202); everywhere else it picks the row up.
     if (k.key === ' ') return s.flip && !s.readonly ? { type: 'edit', select: 'all' } : { type: 'toggleSelect' };
-    if (k.key === 'Escape') return s.sel.size ? { type: 'clearSelect' } : { type: 'none' };
+    // Escape lets go of one thing at a time, rows before cells: the puck is
+    // the louder state and the one a reader means when both are up.
+    if (k.key === 'Escape') return s.sel.size ? { type: 'clearSelect' } : s.range ? { type: 'clearRange' } : { type: 'none' };
     if (printable(k.key) && !k.meta) return s.readonly ? { type: 'none' } : { type: 'edit', select: 'replace' };
     return { type: 'none' };
   };

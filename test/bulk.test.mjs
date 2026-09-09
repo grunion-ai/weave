@@ -58,6 +58,28 @@ test('bulk set writes one value across the selection, undoably, with activity pe
   for (const id of ids) assert.equal(w.readEntity(id).fields.Estimate, 1);
 });
 
+/* `changed` is how a caller knows how deep to step back (Feature #220): a
+   fill or a paste writes the same value across a rectangle, and a row that
+   already held it pushes no undo entry. Counting `done` and undoing that
+   many would walk past this write into somebody else's. */
+test('bulk set names the rows that actually CHANGED, not just the ones it visited', () => {
+  const { w, ids } = build();
+  w.updateEntity(ids[0], { Estimate: 5 });
+  const r = w.bulk(ids, 'set', { values: { Estimate: 5 } });
+  assert.deepEqual(r.done, ids, 'every row was visited');
+  assert.deepEqual(r.changed, ids.slice(1), 'the row that already held 5 wrote nothing');
+  // And that is exactly the depth of the undo stack this call left behind.
+  w.undo({ steps: r.changed.length });
+  assert.deepEqual(ids.map((id) => w.readEntity(id).fields.Estimate), [5, 1, 1]);
+});
+
+test('a set of nothing changes nothing, and says so', () => {
+  const { w, ids } = build();
+  const r = w.bulk(ids, 'set', { values: { Estimate: 1 } });
+  assert.deepEqual(r.done, ids);
+  assert.deepEqual(r.changed, [], 'every row already held it');
+});
+
 test('bulk names what did NOT land, per row, and still lands the rest', () => {
   const { w, ids, apollo } = build();
   // Apollo is a Project: Estimate is not a field there.

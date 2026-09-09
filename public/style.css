@@ -416,6 +416,29 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    hover draws no lines between fields, and it still does not. */
 .wv-grid tbody td[tabindex]:hover .inline-edit:not(:focus) { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .wv-grid tbody td[tabindex]:hover .chip-trigger { border-color: var(--tblr-border-color); }
+
+/* ---------- a range of cells (Feature #220) ----------
+   The range is the same accent as a chosen row, one step quieter: rows are
+   the louder state and the two can be up at once. The cursor's own ring
+   stays on top of it, so which cell the arrows will move from is never in
+   doubt. Tokens only, so both themes read the same. */
+.wv-grid tbody td.wv-in-range { background: color-mix(in srgb, var(--tblr-primary) 13%, transparent); }
+/* Where a fill is about to land, before the mouse comes up: an outline
+   rather than a fill, because nothing has been written yet. */
+.wv-grid tbody td.wv-fill-target { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tblr-primary) 55%, transparent); }
+/* The handle on the bottom-right corner of the range — drag it down or
+   across to fill. It sits INSIDE the cell's box (no overflow), so no column
+   moves and no cell starts reporting itself clipped (Issue #157's measure). */
+.wv-grid tbody td.wv-range-corner { position: relative; }
+.wv-fill-handle {
+  position: absolute; right: 0; bottom: 0; width: 8px; height: 8px;
+  background: var(--tblr-primary); border-radius: 2px; cursor: crosshair; z-index: 2;
+  /* A hairline of the page under it, so the handle still reads as a separate
+     thing when it sits on the cursor's own ring — which is the same accent. */
+  box-shadow: 0 0 0 1.5px var(--tblr-bg-surface);
+}
+/* A drag across cells is a selection gesture, not a text one. */
+.wv-grid tbody td.wv-in-range, .wv-grid tbody td.wv-fill-target { user-select: none; }
 .wv-grid tbody td.cell-pick { cursor: pointer; }
 /* Remove and link are chrome about the row, not part of it. */
 .wv-grid .chip .x, .wv-grid .k .x, .wv-grid .ms-box > .btn, .wv-grid .date-pick-btn { opacity: 0; transition: opacity .12s ease; }

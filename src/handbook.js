@@ -873,6 +873,33 @@ Cells **rest as values** and open on purpose. The cursor is a ring on one cell; 
 
 Every field cell is a stop, select, multi-select, checkbox and date included. A document chip column is not: it is a door to the record, not a value, so the cursor passes over it. The checkbox column and the \`#id\` link are pointer targets; \`Space\` and \`⌘Return\` are their keys.
 
+## Ranges, fill and paste
+
+A rectangle of cells is a **range**. Grow one with \`⇧\` and the arrows, or drag the pointer across the cells; the range is what a fill and a paste act on, and drawing one writes nothing.
+
+| Gesture | What it does |
+| --- | --- |
+| \`⇧← ⇧→\` | grow the range sideways from the resting cell |
+| \`⇧↑ ⇧↓\` | grow it up or down — **unless a row is picked up**, where they still extend the run of rows |
+| Drag across cells | the same rectangle, from the pointer |
+| Drag the corner handle | fill: the range's values, down or across, over everything the handle covers |
+| \`⌘C\` | copy the range |
+| \`⌘V\` | paste, tiled to fit whatever it lands on |
+| \`Esc\` | let the range go — a row selection goes first when both are up |
+
+The blue square on the range's bottom-right corner is the **fill handle**. Drag it down a column or across a row and the range's values are written into every cell it covers — one value down twenty rows, or a whole row of values across. It moves along one axis, whichever you pull further.
+
+\`⌘C\` puts two things on the clipboard at once: tab-separated text a spreadsheet reads, and the same block **typed**, which is what another weave tab reads back. That is what makes a select paste as an option and not as a word, and a multi-select carry its whole set. Pasting onto a single cell lays the block down from there; pasting onto a range fills the range, repeating the block to cover it — so one copied cell fills twenty.
+
+What the types force:
+
+- **Select, multi-select and workflow paste by option identity.** Within a table the option itself carries over. Into a different table the label goes instead, and a label that names no option there is **refused**, never invented.
+- **A multi-select pastes as a replacement**, never a merge: the set you copied is the set the cell ends up with.
+- **A formula, rollup, lookup, view, relation or document column takes no paste.** The cell refuses and the message names the column, the way the selection bar names what did not land.
+- **Text from a spreadsheet** fills the range row by row. Each column reads it in its own terms — a number parsed, a checkbox read (\`false\` is false), a comma list split into a set — and a cell that will not read is dropped and counted while its neighbours land.
+
+A fill or a paste is written the same way the selection bar writes: \`POST /api/bulk\`, one call per distinct set of values, reported per row. Rows that receive the same values share one call, so a fill down a column is **one write**, and the message it raises carries an **Undo** that steps the whole thing back at once.
+
 ## Working on many rows at once
 
 The checkbox column sits **left of the \`#\` link**, so the link never disappears while a selection is live. It draws nothing at rest: the box appears when the pointer is on the row, and every box in the column stays lit once anything is chosen.
@@ -904,7 +931,7 @@ Once a row is chosen, a bar sits at the bottom centre of the window saying how m
 | **Roll up into a new …** | pick a relation, name one new parent in its table, and every chosen row is linked to it |
 | **Copy links** | one permalink per chosen row on the clipboard; the selection stays |
 
-Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/bulk\`, \`weave bulk\`, \`weave_bulk\`), reported per row. If part of it fails, the bar says what did **not** land rather than reporting a success it cannot vouch for, and each row keeps its own undo step.
+Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/bulk\`, \`weave bulk\`, \`weave_bulk\`), reported per row. If part of it fails, the bar says what did **not** land rather than reporting a success it cannot vouch for, and each row keeps its own undo step. A \`set\` also reports \`changed\` — the rows whose value actually moved, which is how deep the undo stack it left goes, and what the grid's fill and paste count before offering to step one back.
 
 ## Column order, width, and what is on screen at all
 

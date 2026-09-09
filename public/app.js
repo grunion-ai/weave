@@ -2127,6 +2127,39 @@ function hideCellPop(wrap) {
 /* Clipped is measured, never assumed: a value that fits gets no marker, so
    the marker always means there is more to see. */
 const overflowsX = (n) => n.scrollWidth > n.clientWidth + 1;
+/* A block of cells on the system clipboard (Feature #220).
+
+   Two flavours go on together. `text/plain` is TSV — what a spreadsheet
+   reads, and what weave reads back from one. `text/html` carries the same
+   block TYPED, in a comment ahead of a table nothing else has to understand:
+   option IDS, a multi-select's whole set, a boolean that is a boolean. That
+   is the flavour the system clipboard keeps intact between two weave tabs,
+   which is why the typed copy rides there rather than in a custom MIME type
+   the platform would drop.
+
+   `lastCopiedBlock` is the same-page shortcut, for a browser that hands the
+   html back stripped: the plain text still identifies the block that made it. */
+const WEAVE_CELLS = /<!--weave-cells:([^->]*)-->/;
+let lastCopiedBlock = null;
+const htmlText = (s) => String(s).replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]);
+function weaveCellsHTML(block) {
+  const label = (d) => (d == null ? '' : Array.isArray(d) ? d.join(', ') : String(d));
+  const rows = block.cells.map((row) => `<tr>${row.map((c) => `<td>${htmlText(label(c.d))}</td>`).join('')}</tr>`).join('');
+  // The table is for whatever else reads the clipboard; the comment ahead of
+  // it is the typed block, and only weave looks for that.
+  return `<!--weave-cells:${encodeURIComponent(JSON.stringify(block))}--><table>${rows}</table>`;
+}
+function readWeaveCells(html) {
+  const m = WEAVE_CELLS.exec(html ?? '');
+  if (!m) return null;
+  // Clipboard content is data, never trusted structure: a block that does not
+  // parse into cells is no block, and the TSV underneath takes over.
+  try {
+    const block = JSON.parse(decodeURIComponent(m[1]));
+    return Array.isArray(block?.cells) && block.h > 0 && block.w > 0 ? block : null;
+  } catch { return null; }
+}
+
 function markClippedCells(grid) {
   // A text cell's value is cut off INSIDE its control: the <input> is
   // `width: 100%`, so it never outgrows the cell and the cell never reports
@@ -3352,6 +3385,10 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
      gesture is one too many, so the checkbox owns selection outright and
      shift extends from the last box hit. */
   const SEL = () => globalThis.WeaveSelection;
+  // Assigned by the range layer below (Feature #220); a redraw rebuilds every
+  // row, so the range — which is keyed on records, not positions — repaints
+  // itself onto the new ones. Declared here because draw() runs first.
+  let repaintRange = () => {};
   const chosen = () => state.selected.get(db.id) ?? new Set();
   let anchor = null;                       // the last box hit, for shift-range
   // Read off the DOM rather than off `sorted`: what shift-click means is
@@ -3777,8 +3814,10 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     // Measured after the browser has laid the columns out, so "clipped"
     // means clipped and the marker never claims there is more to read.
     requestAnimationFrame(() => markClippedCells(table));
-    // A redraw rebuilds every row; the docked one takes its light back.
+    // A redraw rebuilds every row; the docked one takes its light back, and
+    // the cell range redraws onto the rows it named (Feature #220).
     markDockedRow();
+    repaintRange();
   };
   draw();
 
@@ -3811,7 +3850,9 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
   const apply = (verb, td, at) => {
     const eid = td.parentElement.dataset.eid;
     switch (verb.type) {
-      case 'move': case 'commitMove': landOn(td, verb); return true;
+      // A bare arrow is the cursor leaving the rectangle it cornered, so the
+      // range goes with it (Feature #220).
+      case 'move': case 'commitMove': clearRange(); landOn(td, verb); return true;
       case 'edit': {
         const activation = globalThis.WeaveEditorLib.cellActivation(td.dataset.ftype);
         // A character does not flip a checkbox; Return does.
@@ -3841,6 +3882,23 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
         onAdd?.();
         return true;
       }
+      /* A range of cells (Feature #220). ⇧ grows it; a bare arrow lets it go,
+         because the cursor has left the rectangle it was the corner of. */
+      case 'extendRange': {
+        const here = coordOfCell(td);
+        const cur = rangeRect() && sameCell(coordOfRef(rangeFocus), here)
+          ? { anchor: coordOfRef(rangeAnchor), focus: here }
+          // The cursor moved without ⇧ since the last extension: it is the
+          // new anchor. Growing from where the reader last LOOKED, not from
+          // where they last held ⇧, is the only reading that never surprises.
+          : { anchor: here, focus: here };
+        const out = RG().extend({ ...cur, dr: verb.dr, dc: verb.dc, rows: rowsOf().length, cols: rangeCols().length });
+        if (!out) return true;
+        setRange(refAtCoord(out.anchor), refAtCoord(out.focus));
+        cellAt(out.focus.r, out.focus.c)?.focus();
+        return true;
+      }
+      case 'clearRange': clearRange(); return true;
       case 'toggleSelect': anchor = eid; setChosen(SEL().toggle(chosen(), eid)); return true;
       case 'extendSelect': {
         const out = KM().extend({ ids: drawnIds(), anchor, at: eid, dir: verb.dir });
@@ -3862,9 +3920,226 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     const td = at?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
     if (!td) return;
     const open = at !== td && at.matches(OPEN_CONTROLS);
-    const verb = KM().keymap(KM().keyOf(e), { mode: open ? 'edit' : 'rest', readonly: !openerOf(td), sel: chosen(), flip: td.dataset.ftype === 'toggle' });
+    const verb = KM().keymap(KM().keyOf(e), {
+      mode: open ? 'edit' : 'rest', readonly: !openerOf(td), sel: chosen(),
+      flip: td.dataset.ftype === 'toggle', range: !!rangeRect(),
+    });
     if (apply(verb, td, at)) { e.preventDefault(); e.stopPropagation(); }
   });
+
+  /* ---------- Feature #220: ranges, fill and paste ----------
+     #134 made the cell rest as a value and #132 gave a run of ROWS one write.
+     This is the rectangle between them: a range of CELLS, the handle that
+     drags one value across it, and a clipboard that carries typed values.
+
+     The arithmetic is pure and lives in public/grid-range.js. The write is
+     the SAME `bulk set` the puck uses — one op, per-row results, riding the
+     single-row undo, tombstone and activity paths. Nothing here writes on
+     its own, and one Undo on the toast steps the whole fill or paste back.
+
+     The range is keyed on the RECORD and the FIELD, never on a row and
+     column number, for the reason #132 learned about selection: a sort
+     re-orders every row and coordinates would slide onto different cells. */
+  const RG = () => globalThis.WeaveGridRange;
+  let rangeAnchor = null, rangeFocus = null;   // each { eid, field }
+  let fillRect = null;                          // the handle's target, mid-drag
+
+  const rangeCols = () => (rowsOf()[0] ? stops(rowsOf()[0]).map((td) => td.dataset.field) : []);
+  const refOfCell = (td) => ({ eid: td.parentElement.dataset.eid, field: td.dataset.field });
+  const coordOfCell = (td) => ({ r: rowsOf().indexOf(td.parentElement), c: stops(td.parentElement).indexOf(td) });
+  const coordOfRef = (ref) => (ref ? { r: drawnIds().indexOf(ref.eid), c: rangeCols().indexOf(ref.field) } : null);
+  const refAtCoord = ({ r, c }) => ({ eid: drawnIds()[r], field: rangeCols()[c] });
+  const sameCell = (a, b) => !!a && !!b && a.r === b.r && a.c === b.c;
+  // Null once either end has left the page — a range to a row that is no
+  // longer drawn is the same lie a stale selection would be.
+  const rangeRect = () => {
+    const a = coordOfRef(rangeAnchor), b = coordOfRef(rangeFocus);
+    if (!a || !b || a.r < 0 || a.c < 0 || b.r < 0 || b.c < 0) return null;
+    const rect = RG().rect(a, b);
+    return RG().single(rect) ? null : rect;
+  };
+  // What a copy or a paste acts on: the range if there is one, else the one
+  // cell the cursor is resting on — the smallest range there is.
+  const rangeOrCursor = () => {
+    const rect = rangeRect();
+    if (rect) return rect;
+    const td = document.activeElement?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
+    if (!td || !wrap.contains(td)) return null;
+    const { r, c } = coordOfCell(td);
+    return r < 0 || c < 0 ? null : { r0: r, c0: c, r1: r, c1: c };
+  };
+
+  /* Painting, not redrawing — same rule as the selection: a redraw would
+     tear down an editor the reader has open. The handle is one absolutely
+     positioned corner on the bottom-right cell, so no column ever moves. */
+  const paintRange = () => {
+    const grid = wrap.querySelector('.wv-grid');
+    if (!grid) return;
+    for (const td of grid.querySelectorAll('td.wv-in-range, td.wv-fill-target')) {
+      td.classList.remove('wv-in-range', 'wv-fill-target', 'wv-range-corner');
+    }
+    grid.querySelector('.wv-fill-handle')?.remove();
+    const rect = rangeRect();
+    const rows = rowsOf();
+    // A rectangle can outlive the rows it named for one frame — a filter or a
+    // sort lands between the drag and the repaint — so an absent cell is
+    // simply not painted rather than a throw inside a redraw.
+    const cellOf = (r, c) => (rows[r] ? stops(rows[r])[c] ?? null : null);
+    for (const { r, c } of rect ? RG().cellsOf(rect) : []) cellOf(r, c)?.classList.add('wv-in-range');
+    for (const { r, c } of fillRect ? RG().cellsOf(fillRect) : []) cellOf(r, c)?.classList.add('wv-fill-target');
+    // The handle hangs off whatever the cursor's bottom-right corner is —
+    // the range's, or the resting cell's when there is no range yet, so
+    // filling one value down a column never needs a range first.
+    const corner = rect ? cellOf(rect.r1, rect.c1)
+      : document.activeElement?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
+    if (corner && wrap.contains(corner)) {
+      corner.classList.add('wv-range-corner');
+      corner.append(el('span', { class: 'wv-fill-handle', 'aria-hidden': 'true', title: 'Drag to fill' }));
+    }
+  };
+  repaintRange = paintRange;
+  const setRange = (a, f) => { rangeAnchor = a; rangeFocus = f; paintRange(); };
+  const clearRange = () => setRange(null, null);
+  // The handle follows the resting cursor, so a fill needs no range first.
+  wrap.addEventListener('focusin', (e) => { if (!rangeRect() && e.target.matches?.('td[tabindex="0"]')) paintRange(); });
+
+  /* What a cell holds, in both dialects: `v` is the TYPED value the engine
+     writes (a select's option id, a multi-select's whole set, a boolean) and
+     `d` is the label a spreadsheet reads. */
+  const fieldNamed = (name) => db.fields.find((f) => f.name === name) ?? null;
+  const typeOf = (name) => fieldNamed(name)?.type ?? null;
+  const optionsOf = (name) => {
+    const f = fieldNamed(name);
+    return f?.optionsFull ?? f?.states ?? [];
+  };
+  const valueAt = (r, c) => {
+    const name = rangeCols()[c];
+    const item = items.find((i) => i.id === drawnIds()[r]) ?? {};
+    return { type: typeOf(name), v: item.raw?.[name] ?? null, d: item.fields?.[name] ?? null };
+  };
+
+  /* One gesture, one plan, as few writes as the values allow — rows that get
+     an identical set share a `bulk` call, so a fill down twenty rows is ONE
+     write and one Undo. The toast names the columns that refused (a formula,
+     a rollup, a relation) and counts the cells that would not read. */
+  const runRange = async (verb, rect, block) => {
+    const fields = rangeCols(), rowIds = drawnIds();
+    const target = RG().target({ rect, block, rows: rowIds.length, cols: fields.length });
+    const plan = RG().plan({ block, rect: target, fields, rowIds, typeOf, optionsOf });
+    const results = [];
+    for (const g of RG().group(plan.writes)) {
+      try { results.push(await api('POST', '/bulk', { ids: g.ids, op: 'set', values: g.values })); }
+      catch (err) { results.push({ done: [], failed: g.ids.map((id) => ({ id, error: err.message })) }); }
+    }
+    // How deep to step back: the rows that actually CHANGED. A row that
+    // already held the value pushed no undo entry, and undoing past it would
+    // walk into somebody else's edit (the engine reports this per call).
+    const steps = results.reduce((n, r) => n + (r.changed?.length ?? 0), 0);
+    const t = RG().toast({ verb, cells: plan.writes.length, refused: plan.refused, unparsed: plan.unparsed, results });
+    toast(t.msg, t.err, steps ? {
+      label: 'Undo',
+      run: async () => { await api('POST', '/undo', { steps }); await onSaved?.(); },
+    } : null);
+    await onSaved?.();
+  };
+
+  /* ---------- the clipboard ----------
+     An internal copy carries typed values; TSV from a spreadsheet carries
+     strings and the target column's type reads them. The typed block rides
+     a marker in the text/html flavour, which is what survives the system
+     clipboard between two weave tabs; `lastCopiedBlock` is the same-page
+     shortcut for a browser that hands the html back stripped. */
+  const inOpenCell = () => {
+    const at = document.activeElement;
+    return !!at && at !== at.closest?.('td') && !!at.matches?.(OPEN_CONTROLS);
+  };
+  wrap.addEventListener('copy', (e) => {
+    if (inOpenCell()) return;                       // the caret's own copy
+    const rect = rangeOrCursor();
+    if (!rect || !e.clipboardData) return;
+    const block = RG().block({ rect, fields: rangeCols(), valueAt });
+    lastCopiedBlock = block;
+    e.clipboardData.setData('text/plain', RG().toTSV(block));
+    e.clipboardData.setData('text/html', weaveCellsHTML(block));
+    e.preventDefault();
+  });
+  wrap.addEventListener('paste', (e) => {
+    if (inOpenCell()) return;
+    const rect = rangeOrCursor();
+    if (!rect || !e.clipboardData) return;
+    const plain = e.clipboardData.getData('text/plain');
+    const block = readWeaveCells(e.clipboardData.getData('text/html'))
+      ?? (lastCopiedBlock && RG().toTSV(lastCopiedBlock) === plain ? lastCopiedBlock : null)
+      ?? RG().parseTSV(plain);
+    if (!block) return;
+    e.preventDefault();
+    runRange('Pasted', rect, block);
+  });
+
+  /* ---------- the pointer ----------
+     A drag across cells draws a range, and the corner handle fills one. Both
+     start on mousedown and neither may steal the plain click: Ledger's rule
+     is that a bare cell click raises THAT cell's editor, so a range only
+     begins once the pointer has reached a DIFFERENT cell, and the click that
+     ends such a drag is spent here rather than opening anything. */
+  let dragFrom = null, dragged = false;
+  const cellUnder = (e) => e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
+  wrap.addEventListener('mousedown', (e) => {
+    // A modifier or a non-primary button is the reader saying "not here" —
+    // the browser's own gesture (`nativeClick`, 023b777), never a range drag.
+    if (nativeClick(e)) return;
+    if (e.target?.closest?.('.wv-fill-handle')) {
+      // The handle drags the range (or the resting cell) down or across.
+      fillRect = rangeOrCursor();
+      dragged = true;
+      e.preventDefault();
+      return;
+    }
+    const td = cellUnder(e);
+    dragFrom = td ? refOfCell(td) : null;
+  });
+  wrap.addEventListener('mouseover', (e) => {
+    const td = cellUnder(e);
+    if (!td) return;
+    if (fillRect) {
+      const grown = RG().fillTarget(rangeOrCursor() ?? fillRect, coordOfCell(td));
+      fillRect = grown ?? rangeOrCursor();
+      paintRange();
+    } else if (dragFrom && (e.buttons & 1)) {
+      const ref = refOfCell(td);
+      if (ref.eid === dragFrom.eid && ref.field === dragFrom.field) return;
+      // The press landed in a text cell's live <input> and focused it. A
+      // drag is not an edit, so the cursor comes back out to the cell it
+      // started from — otherwise a range would be drawn around an open
+      // editor, which is two states at once.
+      if (!dragged) wrap.querySelector(`tr[data-eid="${dragFrom.eid}"] > td[data-field="${CSS.escape(dragFrom.field)}"]`)?.focus();
+      dragged = true;
+      setRange(dragFrom, ref);
+    }
+  });
+  // On the window: a drag that ends outside the grid still has to end.
+  const endDrag = () => {
+    const fill = fillRect;
+    dragFrom = null; fillRect = null;
+    if (!fill) { paintRange(); return; }
+    const source = rangeOrCursor();
+    paintRange();
+    // The handle dragged nowhere fills nothing rather than rewriting the
+    // range with itself.
+    if (!source || (fill.r1 === source.r1 && fill.c1 === source.c1)) return;
+    runRange('Filled', fill, RG().block({ rect: source, fields: rangeCols(), valueAt }));
+  };
+  addEventListener('mouseup', function up() {
+    if (!wrap.isConnected) return removeEventListener('mouseup', up);
+    if (dragFrom || fillRect) endDrag();
+  });
+  // The click that ends a drag is the drag's, not the cell editor's.
+  wrap.addEventListener('click', (e) => {
+    if (!dragged) return;
+    dragged = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
 
   // A clipped cell opens over the grid on hover, in a layer of its own —
   // the cell keeps its box, so no column ever moves (Kyle, 2026-08-24).
