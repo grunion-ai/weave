@@ -2,7 +2,7 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record — every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
-## Unreleased
+## v0.4.14 — 2026-09-09
 
 - **The field dialog can write a space rollup** (Issue #222): a rollup over a whole table — the Σ under a grid column — is a field on the `Workspace/Spaces` row of the space that holds the table, and `via` names the table instead of a relation to cross. Three surfaces wrote one: the Σ footer picker with a switch, `weave field add --config`, and `weave_add_field`. The dialog offered only the registry's own relations, so `+ field → rollup` on the Spaces grid could produce a count of `Tables` or `Workflows` and nothing else. Its rollup section now asks **Rolls up** — *Through a relation* or *Over a table* — on the Spaces registry, the one place the engine accepts `via`, and *Over a table* picks the table, the aggregate and the column. Every other grid's rollup section is untouched, because `via` is refused there. Reopening a space rollup also folds back onto its table and keeps its `where`, where before it claimed an empty relation and dropped the filter. Writing a filter stays API-only. Gates: `test/field-dialog-core.test.mjs`, `test/space-rollup-dialog-browser.test.mjs`.
 
