@@ -5359,16 +5359,15 @@ function fieldDialog(db, existing, after) {
           oninput: (e) => { state.depth = Number(e.target.value) || 1; changed(); },
         })));
       } else if (t === 'lookup' || t === 'rollup') {
-        if (isEdit) {
-          kids.push(el('div', { class: 'modal-note full' }, 'Computed config is not editable — delete and recreate to repoint it'));
-        } else {
-          // Both picks are search-as-you-type over what exists: the table's
-          // relations, then the fields of the table that relation points at.
+        // Both picks are search-as-you-type over what exists: the table's
+        // relations, then the fields of the table that relation points at.
+        const throughRelation = () => {
+          const out = [];
           const rels = db.fields.filter((x) => x.type === 'relation');
           const relSel = pickerSelect({ name: 'relationField', options: rels.map((r) => ({ id: r.name, label: `${r.name} → ${r.targetDb}` })), value: state.relationField || (rels[0]?.name ?? null) });
           state.relationField = state.relationField || (rels[0]?.name ?? '');
           relSel.input.addEventListener('change', () => { state.relationField = relSel.input.value; state.targetField = ''; drawCfg(); changed(); });
-          kids.push(dsection('Relation', rels.length ? relSel : el('div', { class: 'modal-note' }, 'This table has no relations yet — add one first')));
+          out.push(dsection('Relation', rels.length ? relSel : el('div', { class: 'modal-note' }, 'This table has no relations yet — add one first')));
           const rel = rels.find((r) => r.name === state.relationField);
           const target = rel && allTables().find((d) => d.id === rel.targetDbId);
           const targets = (target?.fields ?? []).filter((x) => x.type !== 'document');
@@ -5376,11 +5375,53 @@ function fieldDialog(db, existing, after) {
           if (needsTarget && target) {
             const tSel = pickerSelect({ name: 'targetField', placeholder: `Field of ${target.name}…`, options: targets.map((x) => ({ id: x.name, label: `${x.name} · ${x.type}` })), value: state.targetField || null });
             tSel.input.addEventListener('change', () => { state.targetField = tSel.input.value; changed(); });
-            kids.push(dsection('Target field', tSel));
+            out.push(dsection('Target field', tSel));
           }
           if (t === 'rollup') {
-            kids.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); changed(); })));
+            out.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); changed(); })));
           }
+          return out;
+        };
+        /* A rollup on the Spaces registry has a second kind (Issue #222):
+           over a WHOLE table, no relation crossed — the Σ under a grid
+           column. The footer picker and the API could write one; the dialog
+           offered only the registry's own relations, so it was the odd
+           surface out. `via` names the table, and the engine refuses it
+           anywhere but here, which is why the question is asked here alone.
+           A filter (`where`) stays API-only for now. */
+        const overs = t === 'rollup' && db.system === 'spaces' ? allTables().filter((x) => !x.system) : [];
+        const overTable = () => {
+          const over = overs.find((x) => x.id === state.via) ?? overs[0];
+          state.via = over.id;
+          const out = [];
+          const vSel = pickerSelect({ name: 'via', options: overs.map((x) => ({ id: x.id, label: `${x.space} / ${x.name}` })), value: over.id });
+          vSel.input.addEventListener('change', () => { state.via = vSel.input.value; state.targetField = ''; drawCfg(); changed(); });
+          out.push(dsection('Table', vSel));
+          out.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); changed(); })));
+          if ((state.aggregate ?? 'count') !== 'count') {
+            const cols = over.fields.filter((x) => x.type !== 'document');
+            const tSel = pickerSelect({ name: 'targetField', placeholder: `Column of ${over.name}…`, options: cols.map((x) => ({ id: x.name, label: `${x.name} · ${x.type}` })), value: state.targetField || null });
+            tSel.input.addEventListener('change', () => { state.targetField = tSel.input.value; changed(); });
+            out.push(dsection('Target field', tSel));
+          }
+          out.push(el('div', { class: 'modal-note full' },
+            `The whole ${over.name} table, read on this space’s row — the figure the grid’s Σ row shows under that column. Other spaces read nothing.`));
+          return out;
+        };
+        if (isEdit) {
+          kids.push(el('div', { class: 'modal-note full' }, 'Computed config is not editable — delete and recreate to repoint it'));
+        } else {
+          if (overs.length) {
+            kids.push(dsection('Rolls up', segCtl(
+              [{ id: 'relation', label: 'Through a relation' }, { id: 'table', label: 'Over a table' }],
+              state.via ? 'table' : 'relation',
+              (v) => {
+                state.via = v === 'table' ? (state.via || overs[0].id) : '';
+                state.targetField = '';
+                drawCfg(); changed();
+              })));
+          } else state.via = '';
+          kids.push(...(state.via ? overTable() : throughRelation()));
         }
       }
       if (t === 'date') {

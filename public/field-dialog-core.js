@@ -311,6 +311,11 @@
     toggle: { on: 'On', off: 'Off' }, // toggle: the two state labels
     relation: { targetDb: '', cardinality: 'many-to-one', inverseName: '' },
     relationField: '',
+    // A rollup rolls up through a relation, or — on the Spaces registry —
+    // over a whole table (Issue #222). A table named here is the second
+    // mode; empty is the first, so the mode needs no key of its own.
+    via: '',
+    where: null,
     targetField: '',
     aggregate: 'count',
     default: '',
@@ -430,9 +435,15 @@
       config.on = String(tg.on ?? '').trim() || 'On';
       config.off = String(tg.off ?? '').trim() || 'Off';
     } else if (t === 'rollup') {
-      config.relationField = state.relationField;
+      // The space rollup (Issue #222): `via` names the table it reads and
+      // there is no relation to cross. The engine takes the relation when
+      // both are sent, so only one is ever written.
+      if (state.via) config.via = state.via;
+      else config.relationField = state.relationField;
       config.aggregate = state.aggregate ?? 'count';
       if (config.aggregate !== 'count' && state.targetField) config.targetField = state.targetField;
+      // No editor writes a filter yet; a column that has one keeps it.
+      if (state.via && state.where) config.where = state.where;
     }
     const dflt = typedDefault(t, state.default);
     if (dflt !== undefined) config.default = dflt;
@@ -490,6 +501,7 @@
       state.relationField = c.relationField ?? '';
       state.targetField = c.targetField ?? '';
       state.aggregate = c.aggregate ?? 'count';
+      if (def.type === 'rollup') { state.via = c.via ?? ''; state.where = c.where ?? null; }
     }
     if (c.default !== undefined && c.default !== null) {
       state.default = Array.isArray(c.default) ? c.default.join(', ')
@@ -660,7 +672,16 @@
     if (f.type === 'toggle') { c.on = f.on ?? 'On'; c.off = f.off ?? 'Off'; }
     if (f.type === 'document' && f.kind) c.kind = f.kind;
     if (f.type === 'key') { c.kind = f.kind ?? 'apikey'; c.keystore = f.keystore ?? 'local'; }
-    if (f.type === 'lookup' || f.type === 'rollup') { c.relationField = f.via ?? ''; c.targetField = f.targetField ?? ''; c.aggregate = f.aggregate; }
+    /* The schema spells a rollup's RELATION `via` and its whole TABLE
+       `viaTable`; the definition spells the table `via` and has no word for
+       the relation but `relationField`. So the space rollup folds back on
+       viaTable, and only what is left is the relation kind (Issue #222). */
+    if (f.type === 'rollup' && f.viaTable) {
+      c.via = f.viaTable;
+      c.targetField = f.targetField ?? '';
+      c.aggregate = f.aggregate;
+      if (f.where) c.where = f.where;
+    } else if (f.type === 'lookup' || f.type === 'rollup') { c.relationField = f.via ?? ''; c.targetField = f.targetField ?? ''; c.aggregate = f.aggregate; }
     if (f.type === 'view') Object.assign(c, { shape: f.shape ?? f.role, link: !!f.link, state: !!f.state, description: f.description ?? 'none', fields: Array.isArray(f.fields) ? f.fields.slice() : null });
     if (f.default !== undefined) c.default = f.default;
     if (f.term) c.term = { ...f.term };

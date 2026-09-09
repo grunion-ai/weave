@@ -130,6 +130,32 @@ test('rollup includes targetField only when aggregate needs one', () => {
   assert.deepEqual(sum.config, { relationField: 'Tasks', aggregate: 'sum', targetField: 'Estimate' });
 });
 
+/* Issue #222: a rollup over a WHOLE table — the Σ under a grid column —
+   names the table it reads (`via`) instead of a relation to cross. The
+   footer picker and the API could author one; the dialog could not, so
+   `via` had no spelling in the dialog's state at all. */
+test('a rollup over a whole table names the table, not a relation', () => {
+  const count = core.definitionFromState({ type: 'rollup', via: 'Agent/Sessions', relationField: 'Tables', aggregate: 'count', targetField: 'Cost' });
+  assert.deepEqual(count, { type: 'rollup', config: { via: 'Agent/Sessions', aggregate: 'count' } });
+  const sum = core.definitionFromState({ type: 'rollup', via: 'Agent/Sessions', aggregate: 'sum', targetField: 'Cost' });
+  assert.deepEqual(sum.config, { via: 'Agent/Sessions', aggregate: 'sum', targetField: 'Cost' });
+  assert.equal(core.blankState('rollup').via, '', 'a fresh rollup rolls up through a relation');
+});
+
+test('a space rollup column reopens on its table, filter and all', () => {
+  const view = {
+    id: 'f1', name: 'Sessions · Cost · sum', type: 'rollup',
+    viaTable: 'Agent/Sessions', viaTableId: 't1', targetField: 'Cost', aggregate: 'sum',
+    where: [['Kind', '=', 'scheduled']],
+  };
+  const def = core.definitionFromFieldView(view);
+  assert.deepEqual(def, { type: 'rollup', config: { via: 'Agent/Sessions', targetField: 'Cost', aggregate: 'sum', where: [['Kind', '=', 'scheduled']] } });
+  // A relation rollup still folds back onto the relation (the field view
+  // spells THAT one `via` too — the table is `viaTable`).
+  assert.deepEqual(core.definitionFromFieldView({ type: 'rollup', via: 'Tasks', targetField: 'Estimate', aggregate: 'sum' }).config,
+    { relationField: 'Tasks', targetField: 'Estimate', aggregate: 'sum' });
+});
+
 test('default value is typed per field type, empty means absent', () => {
   assert.equal(core.definitionFromState({ type: 'text', default: '' }).config.default, undefined);
   assert.equal(core.definitionFromState({ type: 'checkbox', default: 'true' }).config.default, true);
@@ -173,6 +199,8 @@ test('definition -> state -> definition round-trips for every shape', () => {
     { type: 'field', config: { depth: 2 } },
     { type: 'formula', config: { expression: 'len(Name)' } },
     { type: 'rollup', config: { relationField: 'Tasks', aggregate: 'sum', targetField: 'Estimate' } },
+    { type: 'rollup', config: { via: 'Agent/Sessions', aggregate: 'count' } },
+    { type: 'rollup', config: { via: 'Agent/Sessions', aggregate: 'sum', targetField: 'Cost', where: [['Kind', '=', 'scheduled']] } },
     { type: 'lookup', config: { relationField: 'Project', targetField: 'Owner' } },
   ];
   for (const def of defs) {

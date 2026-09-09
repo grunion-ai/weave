@@ -431,6 +431,8 @@ The Σ under a grid column is a rollup on the **Workspace/Spaces** row of the sp
               "where": [["Kind", "=", "scheduled"]] } }
 \`\`\`
 
+Three surfaces write that field. The Σ row's picker turns one on with a switch, \`weave field add\` / \`weave_add_field\` take the config above, and the field dialog on the **Workspace/Spaces** grid asks **Rolls up** — through a relation, or over a table — where *Over a table* picks the table, the aggregate and the column. Only the API writes a \`where\`.
+
 A grid carries no Σ row until you ask for one: switch **Σ rollup row** on in the eye's Rows section and the grid draws every space rollup in a **Σ row** pinned under the field headers — it stays while the body scrolls — and offers the aggregates on a click in that row. The switch is the table's \`hideRollups\` (mirrored as **Hide Rollups** on its Tables row, like the filter and the sort — never a browser setting): \`false\` is the table that opted in, \`true\` is one switched back off, and a table nobody has touched has no row. The space page draws the same rollups as tiles; \`weave stats <table>\` / \`weave_stats\` / \`GET /api/tables/:ref/stats\` summarise every column on demand without storing anything. A space rollup answers on its own space's row and reads \`null\` on every other; \`via\` is refused anywhere but the Spaces registry and on registry tables.
 
 ## Usage
