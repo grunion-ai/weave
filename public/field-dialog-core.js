@@ -155,6 +155,17 @@
   // Four since 2026-08-24: 'other' was retired with the chip system. The
   // engine migrates anything still stored under it to in-progress.
   const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
+  /* What a fresh state field starts with (Issue #251) — the mirror of the
+     engine's DEFAULT_WORKFLOW_STATES, gated against it in
+     test/workflow-defaults.test.mjs. Editing is unchanged: these four rename,
+     reorder, recolour and delete like any others. */
+  const DEFAULT_WORKFLOW_STATES = [
+    { name: 'Not started', category: 'not-started' },
+    { name: 'In progress', category: 'in-progress' },
+    { name: 'Done', category: 'done' },
+    { name: 'Canceled', category: 'canceled' },
+  ];
+  const defaultStates = () => DEFAULT_WORKFLOW_STATES.map((s) => ({ ...s }));
   // Glyphs a state may wear in its chip; '' = none.
   // Kyle accepted five more on 2026-08-26; they sit with the meanings they
   // belong to rather than in a pile at the end.
@@ -302,7 +313,9 @@
     computed: false,          // false | 'formula' — any field can be a formula
     expression: '',
     options: [],              // [{name, color}]
-    states: [],               // [{name, category, default}]
+    // A workflow opens on the default lifecycle, never on an empty list the
+    // tray would then refuse to save (Issue #251).
+    states: type === 'workflow' ? defaultStates() : [],
     number: { format: 'number', unit: '', currency: 'USD', decimals: null, separator: false, accounting: false },
     date: { grain: { year: true, month: true, day: true }, format: DG().DEFAULT_FORMAT, time: false, clock: DG().DEFAULT_CLOCK, zone: 'floating', zoneName: '', pad: false, elapsed: false },
     depth: 1,
@@ -471,7 +484,9 @@
     if (def.type === 'select' || def.type === 'multiselect') {
       state.options = (c.options ?? []).map((o) => (typeof o === 'string' ? { name: o, color: '' } : { ...(o.id ? { id: o.id } : {}), name: o.name, color: o.color ?? '' }));
     } else if (def.type === 'workflow') {
-      state.states = (c.states ?? []).map((s) => (typeof s === 'string'
+      // Absent states are the default lifecycle, the same as in the engine; an
+      // empty array stays empty, and the validator says why.
+      state.states = (c.states ?? defaultStates()).map((s) => (typeof s === 'string'
         ? { name: s, category: 'in-progress', default: false }
         : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}) }));
     } else if (def.type === 'number') {
@@ -556,7 +571,7 @@
       if (c.options != null && !Array.isArray(c.options)) return fail('options must be an array');
     }
     if (def.type === 'workflow') {
-      const states = c.states ?? [];
+      const states = c.states ?? DEFAULT_WORKFLOW_STATES;
       if (!Array.isArray(states) || states.length === 0) return fail('Workflow field needs at least one state');
       for (const s of states) {
         const cat = typeof s === 'string' ? 'in-progress' : (s.category ?? 'in-progress');
@@ -721,7 +736,7 @@
   }
 
   root.fieldDialogCore = {
-    FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
+    FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,

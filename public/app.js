@@ -5482,7 +5482,12 @@ function fieldDialog(db, existing, after) {
   function pickType(id) {
     state.computed = false;
     if (isEdit && id !== state.type) Object.assign(state, fdc.migrateState(state, id));
-    else state.type = id;
+    else {
+      state.type = id;
+      // A new field starts as text, so picking `workflow` is where the tray
+      // first has a lifecycle to show: blankState carries it (Issue #251).
+      if (id === 'workflow' && !state.states.length) state.states = fdc.blankState('workflow').states;
+    }
     drawGrid(); drawCfg(); changed();
   }
   function drawGrid() {

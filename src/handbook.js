@@ -315,6 +315,8 @@ A lifecycle. One state at a time, each state belonging to a **category**, and th
 
 \`states\` — \`[{ name, category, default, icon }]\`. Categories are exactly four: \`not-started\`, \`in-progress\`, \`done\`, \`canceled\`.
 
+**Leave \`states\` out and you get one.** A workflow whose config never mentions states arrives as \`Not started\` · \`In progress\` · \`Done\` · \`Canceled\` — one per category, \`Not started\` the default — in the tray and on \`weave field add\` alike. Rename, reorder, recolour or delete them like any others. Sending \`"states": []\` is a different thing and still refused: a list emptied on purpose is not a lifecycle.
+
 \`\`\`json
 { "name": "Stage", "type": "workflow", "config": { "states": [
   { "name": "Backlog",  "category": "not-started", "default": true },

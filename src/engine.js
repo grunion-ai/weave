@@ -170,6 +170,18 @@ function docChange(field, before, after) {
    in-progress, and normaliseStates migrates it on the next write. */
 const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
 const RETIRED_STATE_CATEGORIES = { other: 'in-progress' };
+/* The lifecycle a state field starts life with (Issue #251). A workflow whose
+   config omits `states` used to be a refusal, so a new status column cost you
+   a vocabulary before it could exist; the four categories already say what the
+   four states are. Named once here, mirrored in public/field-dialog-core.js so
+   the tray opens on the same list, and both are gated in
+   test/workflow-defaults.test.mjs. */
+const DEFAULT_WORKFLOW_STATES = [
+  { name: 'Not started', category: 'not-started', default: true },
+  { name: 'In progress', category: 'in-progress' },
+  { name: 'Done', category: 'done' },
+  { name: 'Canceled', category: 'canceled' },
+];
 
 /* An option's colour is a name from the ten-hue ramp (public/chip-core.js),
    not a loose hex. `color` is kept in step with it so schema export, CSV and
@@ -459,7 +471,10 @@ function normalizeSelfContainedConfig(type, config = {}) {
     };
   }
   if (type === 'workflow') {
-    const states = (config.states ?? []).map((s) => (typeof s === 'string'
+    // No `states` key at all means "give me a lifecycle" and gets the default
+    // four; an empty array means someone emptied the list, and that is still
+    // invalid. Seeding here rather than relaxing the throw keeps both true.
+    const states = (config.states ?? DEFAULT_WORKFLOW_STATES).map((s) => (typeof s === 'string'
       ? { id: slug(s), name: s, category: 'in-progress', default: false }
       : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(iconValue(s.icon) ? { icon: iconValue(s.icon) } : {}) }));
     if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
@@ -3448,7 +3463,9 @@ export class Weave {
       nextConfig = normalizeSelfContainedConfig(toType, { options });
     } else if (toType === 'workflow') {
       const states = (from === 'select' ? field.config.options : []).map((o, i) => ({ id: o.id, name: o.name, category: 'in-progress', default: i === 0 }));
-      nextConfig = normalizeSelfContainedConfig('workflow', { states: config.states?.length ? config.states : states });
+      // Nothing to carry across (an option-less select) leaves `states` unsent,
+      // so the conversion lands on the default lifecycle instead of a refusal.
+      nextConfig = normalizeSelfContainedConfig('workflow', { states: config.states?.length ? config.states : (states.length ? states : undefined) });
     } else if (toType === 'formula') {
       if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
       nextConfig = { expression: config.expression, ...normalizeSelfContainedConfig('number', config) };
