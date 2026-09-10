@@ -277,6 +277,17 @@ function openNativeClick(e) {
 }
 addEventListener('click', openNativeClick, true);
 addEventListener('auxclick', openNativeClick, true);
+/* The frozen # column shows its seam only while something is passing under
+   it (Issue #252): the wrap flags its own sideways scroll and the hairline
+   in style.css takes its colour from that. One capture-phase listener for
+   every grid on every page — scroll does not bubble, and a per-grid listener
+   would have to be wired into each of the four places a grid is built. */
+addEventListener('scroll', (e) => {
+  const wrap = e.target;
+  if (wrap instanceof HTMLElement && wrap.classList.contains('table-wrap')) {
+    wrap.classList.toggle('wv-scrolled-x', wrap.scrollLeft > 0);
+  }
+}, { capture: true, passive: true });
 /* The row term of a table by id (Feature #40) — for surfaces that hold a
    target id rather than the table. Unknown ids speak the default, "record". */
 /* The field that carries a table's row identity — by ROLE (Feature #168: the

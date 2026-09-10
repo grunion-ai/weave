@@ -280,12 +280,51 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    (Issue #233): fitGridScroller sets the max-height; border-box so that is
    the box the page sees. The header and the Σ row stick to it. */
 .table-wrap.wv-grid-scroll { box-sizing: border-box; }
-.wv-grid thead th { position: sticky; top: 0; z-index: 2; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
+/* The sticky layers of a grid, lowest first (Issue #252): the frozen # pair
+   in the body (1) passes under the Σ rollup row (2), whose own frozen corner
+   (3) passes under the header row (4), whose corner (5) sits over the lot.
+   Ties are broken by document order, which would put a body cell over the
+   Σ row it scrolls beneath, so each layer is numbered rather than shared. */
+.wv-grid thead th { position: sticky; top: 0; z-index: 4; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* The id column carries a short "#12 ↗" link — collapse it to its content
    instead of letting the table hand it an equal share of the width. */
 .wv-grid th.pid-head, .wv-grid td.pid-cell { width: 1%; white-space: nowrap; text-align: left; padding-right: 6px; }
+/* ---------- the frozen # column (Issue #252) ----------
+   Scroll a wide grid sideways and the row used to lose its identity: the id
+   went with the body, so the reader could not see which record the far
+   columns belonged to and the `#12 ↗` permalink was off screen. The # is
+   anchored to the wrap's left edge instead, and the checkbox travels with it
+   — the pair separates otherwise. The hairline is reserved at rest and only
+   takes its colour once there is something underneath: a frozen column reads
+   as a seam, not as a panel laid over the grid.
+   A sticky cell floats over moving content, so it has to paint its own
+   ground: a token background in both themes, never a tint mixed against
+   `transparent`, and the layer numbers from the header rule above. */
+/* The checkbox column's width, in the two numbers that make it: Tabler's
+   .card-table inset on a first child, and our own hit box. It is not padding
+   we own — the grid is a card table and the inset is what keeps the box off
+   the card's edge — so it is named here rather than overridden. The suite
+   asserts the # lands exactly at the checkbox column's rendered right edge,
+   so a drift in either number fails the build rather than opening a gap. */
+.wv-grid { --wv-sel-lead: 1.25rem; --wv-sel-hit: 30px; }
+.wv-grid :is(th.sel-head, td.sel-cell, th.pid-head, td.pid-cell) { position: sticky; left: 0; }
+.wv-grid :is(th.pid-head, td.pid-cell) { border-right: 1px solid transparent; }
+/* The # clears the checkbox column wherever there is one. The registry,
+   stats and related grids draw the # with no checkbox beside it, and it
+   freezes against the wrap's edge itself. */
+.wv-grid:has(th.sel-head) :is(th.pid-head, td.pid-cell) { left: calc(var(--wv-sel-lead) + var(--wv-sel-hit)); }
+.wv-grid tbody :is(td.sel-cell, td.pid-cell) { z-index: 1; background: var(--tblr-bg-surface); }
+.wv-grid thead :is(th.sel-head, th.pid-head) { z-index: 5; }
+.table-wrap.wv-scrolled-x .wv-grid :is(th.pid-head, td.pid-cell) { border-right-color: var(--tblr-border-color); }
+/* A chosen row's tint is 9% of the accent over nothing at all, which a
+   frozen cell cannot use — the same 9% is mixed against the surface here so
+   the colour matches and the cell stays opaque. */
+.wv-grid tbody tr.row-selected > :is(td.sel-cell, td.pid-cell),
+.wv-grid tbody tr.row-selected:hover > :is(td.sel-cell, td.pid-cell) {
+  background: color-mix(in srgb, var(--tblr-primary) 9%, var(--tblr-bg-surface));
+}
 /* ---------- row selection (Feature #132) ----------
    The checkbox is its own column, LEFT of the # link, so the link never
    disappears while a selection is live and a chosen row stays openable.
@@ -295,7 +334,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 /* One padding rule at equal specificity for head and body, inside an
    identical hit target, so the select-all box lands on the same vertical
    line as every row's box (Kyle's second pass, 2026-08-24). */
-.wv-grid .sel-hit { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 26px; margin: 0; cursor: pointer; }
+.wv-grid .sel-hit { display: inline-flex; align-items: center; justify-content: center; width: var(--wv-sel-hit); height: 26px; margin: 0; cursor: pointer; }
 .wv-grid .sel-box { opacity: 0; transition: opacity .12s ease; cursor: pointer; margin: 0; }
 .wv-grid tbody tr:hover .sel-box,
 .wv-grid thead:hover .sel-box,
@@ -1960,7 +1999,11 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
    cells (whose menus drop over it); opaque, so the rows slide under it, not
    through it. The rule beneath it is an inset shadow, not a thicker border: a
    collapsed 2px border lent the first body row a pixel. */
-.wv-grid thead tr.wv-foot td { position: sticky; top: var(--wv-head-h, 0px); z-index: 1; box-shadow: inset 0 -1px 0 var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); font-size: 12px; color: var(--tblr-secondary); vertical-align: top; white-space: nowrap; padding-top: 4px; padding-bottom: 4px; }
+.wv-grid thead tr.wv-foot td { position: sticky; top: var(--wv-head-h, 0px); z-index: 2; box-shadow: inset 0 -1px 0 var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); font-size: 12px; color: var(--tblr-secondary); vertical-align: top; white-space: nowrap; padding-top: 4px; padding-bottom: 4px; }
+/* The Σ row's own corner: frozen left as well as pinned under the header,
+   and a layer above the rest of the row so the body's frozen cells pass
+   beneath it rather than through it (Issue #252). */
+.wv-grid thead tr.wv-foot :is(td.sel-cell, td.pid-cell) { z-index: 3; }
 .wv-grid tr.wv-foot td.foot-mark { font-weight: 600; }
 .wv-grid tr.wv-foot td.foot-open { cursor: pointer; min-height: 22px; }
 .wv-grid tr.wv-foot td.foot-open:hover, .wv-grid tr.wv-foot td.foot-open:focus-visible { background: var(--tblr-bg-surface); color: var(--tblr-body-color); outline: none; }
