@@ -8,6 +8,10 @@
 // Both are applied by upsert (name is the key), so a workspace seeded before
 // this file existed grows the new pages and refreshes the old ones without
 // losing a row's id, its links, or anything a reader added underneath.
+// A docs workspace that already exists gets the same apply on the first boot
+// of each build whose pages differ (syncHandbook, Issue #255).
+
+import { createHash } from 'node:crypto';
 
 /* ---------------------------------------------------------------- fields */
 
@@ -1565,7 +1569,9 @@ function ensureOptions(w, db, fieldName, names) {
 }
 
 /* Upsert on the name. A page that already exists keeps its id, its inbound
-   [[…]] links and its position; only its values and its document move. */
+   [[…]] links and its position; only its values and its document move. The
+   engine drops identical values and identical text, so a re-apply that
+   changes nothing writes nothing. */
 function upsertRow(w, db, { name, values, doc }) {
   const existing = w.findEntity(db, name);
   if (!existing) return w.createEntity(db, { name, values, doc });
@@ -1573,6 +1579,13 @@ function upsertRow(w, db, { name, values, doc }) {
   if (doc != null) w.setDoc(existing.id, doc);
   return existing;
 }
+const sameValue = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/* The generated pages, one list per table — the single source applyHandbook,
+   handbookHash and handbookDrift all read. */
+const guidePages = () => GUIDES.map((g) => ({ name: g.name, values: { Audience: g.audience, Order: g.order }, doc: g.doc }));
+const fieldPages = () => FIELD_DOCS.map((f) => ({ name: f.name, values: { Kind: f.kind }, doc: f.doc }));
+const HANDBOOK_PAGES = () => [['Handbook/Guide', guidePages()], ['Handbook/Fields', fieldPages()]];
 
 /* The Handbook: one page per field type, plus the guides that no single field
    page can carry. Idempotent — safe on a workspace seeded before either
@@ -1587,9 +1600,7 @@ export function applyHandbook(w) {
   });
   ensureField(w, guides, { name: 'Audience', type: 'select', config: { options: ['Human', 'Agent', 'Both'] } });
   ensureField(w, guides, { name: 'Order', type: 'number' });
-  for (const g of GUIDES) {
-    upsertRow(w, guides, { name: g.name, values: { Audience: g.audience, Order: g.order }, doc: g.doc });
-  }
+  for (const page of guidePages()) upsertRow(w, guides, page);
 
   const fields = ensureTable(w, 'Handbook', 'Fields', {
     description: 'One page per field type: what it stores, what it can be configured into, and what bites.',
@@ -1598,12 +1609,56 @@ export function applyHandbook(w) {
   });
   ensureField(w, fields, { name: 'Kind', type: 'select', config: { options: FIELD_KINDS.map((name) => ({ name, color: '' })) } });
   ensureOptions(w, fields, 'Kind', FIELD_KINDS);
-  for (const f of FIELD_DOCS) {
-    upsertRow(w, fields, { name: f.name, values: { Kind: f.kind }, doc: f.doc });
-  }
+  for (const page of fieldPages()) upsertRow(w, fields, page);
 
   w.save();
   return w;
+}
+
+/* ---------- handbook sync (Issue #255) ----------
+   applyHandbook used to run only from seedWeaver, which serve calls only when
+   no weave.db exists — so a landed edit to a page in this file never reached
+   a docs workspace that already existed. Boot now applies it the way it
+   applies the Development manifest: the generated pages' hash on meta makes
+   it one pass per build, not one per boot, so a hand edit on a page survives
+   restarts until the source of that build moves. `weave handbook sync`
+   applies on demand; `weave handbook check` reports drift and writes nothing.
+   The apply is name-matched and additive: a guide a person wrote is never
+   read, rewritten or removed, and sync deletes nothing. */
+export function handbookHash() {
+  return createHash('sha256').update(JSON.stringify(HANDBOOK_PAGES())).digest('hex').slice(0, 16);
+}
+
+export function handbookDrift(w) {
+  const missing = [], stale = [];
+  for (const [qualified, pages] of HANDBOOK_PAGES()) {
+    const db = w.findTable(qualified);
+    for (const page of pages) {
+      const row = db && w.findEntity(db, page.name);
+      if (!row) { missing.push(`${qualified}: ${page.name}`); continue; }
+      const read = w.readEntity(row.id);
+      const differs = read.doc !== page.doc || Object.entries(page.values).some(([k, v]) => !sameValue(read.fields[k], v));
+      if (differs) stale.push(`${qualified}: ${page.name}`);
+    }
+  }
+  return { missing, stale };
+}
+
+export function syncHandbook(w, { force = false } = {}) {
+  const hash = handbookHash();
+  if (!force && w.state.meta.handbookSync === hash) return { applied: false, hash };
+  const { missing, stale } = handbookDrift(w);
+  // The feed names the sync, not whoever happened to start the server.
+  const actor = w.actor;
+  w.actor = 'handbook-sync';
+  try {
+    applyHandbook(w);
+  } finally {
+    w.actor = actor;
+  }
+  w.state.meta.handbookSync = hash;
+  w.save();
+  return { applied: true, created: missing.length, updated: stale.length, hash };
 }
 
 /* The document half of the Showcase space: every construct a document can

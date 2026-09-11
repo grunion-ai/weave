@@ -93,6 +93,8 @@ Service (macOS launchd — auto-start on login, restart on crash)
                                       (mutates its target — never the live file)
   quality sync --data weave.db        Reconcile Quality/Suite + Case rows to the test
                                       files (generated mirror; check = report drift)
+  handbook sync --data weave.db       Re-apply the Handbook pages from src/handbook.js
+                                      (serve does it once per build; check = report drift)
 
 Schema
   schema                              Describe spaces, tables, fields
@@ -210,14 +212,18 @@ async function main() {
        Development manifest to the docs workspace, so an updated install
        shows the current known / resolved issues and the roadmap. Fail-open —
        a missing or unreadable manifest never blocks serving. */
+    const docsPath = w.state.meta.name === 'weave' ? dataPath : join(dirname(dataPath), 'weave.db');
+    let docsW = null;
+    try {
+      if (existsSync(docsPath)) docsW = w.state.meta.name === 'weave' ? w : new Weave({ path: docsPath, actor: CLI_ACTOR });
+    } catch (err) {
+      console.warn(`Docs workspace sync skipped: ${err.message}`);
+    }
     try {
       const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'development.json'), 'utf8'));
-      const docsPath = w.state.meta.name === 'weave' ? dataPath : join(dirname(dataPath), 'weave.db');
-      if (existsSync(docsPath)) {
+      if (docsW) {
         const { syncDevelopment } = await import('../src/weaver-seed.js');
-        const docsW = w.state.meta.name === 'weave' ? w : new Weave({ path: docsPath, actor: CLI_ACTOR });
         const r = syncDevelopment(docsW, manifest);
-        if (docsW !== w) docsW.store.close?.();
         if (r.applied) console.log(`Development sync v${manifest.version}: ${r.created} created, ${r.updated} updated`);
         for (const s of r.skipped ?? []) console.warn(`Development sync skipped ${s}`);
       }
@@ -227,6 +233,20 @@ async function main() {
       // left the install half-synced (Issue #245).
       console.warn(`Development sync skipped: ${err.message}`);
     }
+    /* The Handbook pages are generated from src/handbook.js, so a build that
+       edits one carries the edit to an existing docs workspace here — once
+       per build, keyed on the pages' hash (Issue #255). Fail-open, same as
+       the Development sync. */
+    try {
+      if (docsW) {
+        const { syncHandbook } = await import('../src/handbook.js');
+        const r = syncHandbook(docsW);
+        if (r.applied) console.log(`Handbook sync: ${r.created} created, ${r.updated} updated`);
+      }
+    } catch (err) {
+      console.warn(`Handbook sync skipped: ${err.message}`);
+    }
+    if (docsW && docsW !== w) docsW.store.close?.();
     const port = Number(flags.port ?? process.env.PORT ?? 4400);
     // Loopback unless asked otherwise. --host 0.0.0.0 puts every workspace on
     // the local network with no authentication in front of /api/*; it exists
@@ -287,6 +307,30 @@ async function main() {
       return;
     }
     throw new WeaveError(`Unknown quality subcommand '${sub}'. Try: sync, check`);
+  }
+
+  if (command === 'handbook') {
+    // The Handbook pages, re-applied from src/handbook.js (Issue #255).
+    // `sync` writes whatever differs (serve does the same once per build);
+    // `check` only reports drift (exit 1 when any).
+    const [sub] = args;
+    if (!flags.data || flags.data === true) {
+      console.error('handbook needs an explicit --data (the weave docs workspace .db)');
+      process.exit(1);
+    }
+    const { handbookDrift, syncHandbook } = await import('../src/handbook.js');
+    const hw = new Weave({ path: String(flags.data), actor: CLI_ACTOR });
+    if (sub === 'check') {
+      const drift = handbookDrift(hw);
+      out(drift);
+      process.exitCode = drift.missing.length + drift.stale.length ? 1 : 0;
+      return;
+    }
+    if (sub === 'sync' || !sub) {
+      out(syncHandbook(hw, { force: true }));
+      return;
+    }
+    throw new WeaveError(`Unknown handbook subcommand '${sub}'. Try: sync, check`);
   }
 
   if (command === 'service') {
