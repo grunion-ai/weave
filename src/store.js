@@ -32,11 +32,19 @@ CREATE TABLE IF NOT EXISTS audit_log (
   actor TEXT, action TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS undo_log (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS doc_revisions (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, entity_id TEXT NOT NULL, field_id TEXT NOT NULL,
+  at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
 `;
 
 // The undo stack is bounded: it is a working set, not an archive (the audit
 // log is the archive). 200 steps of full before-images stays small.
 const UNDO_CAP = 200;
+// A document's history is bounded the same way (Feature #225): 200 snapshots
+// per document, oldest trimmed. A snapshot is one typing session, so 200 is
+// months of editing on a busy page.
+export const DOC_REVISION_CAP = 200;
 
 function isWorkspaceShape(data) {
   return data && typeof data === 'object' && data.meta && (data.tables != null || data.databases != null);
@@ -189,6 +197,65 @@ export class Store {
     if (!this.#db) return this.#memUndo.slice(-limit).reverse();
     return this.#db.prepare('SELECT json FROM undo_log ORDER BY seq DESC LIMIT ?').all(limit)
       .map((r) => JSON.parse(r.json));
+  }
+
+  /* Document revisions (Feature #225): one row per snapshot of a document
+     field, outside the entity blob. Same dual backing. The engine decides
+     when a write is a new revision and when it folds into the newest one;
+     the store pushes, replaces in place, lists metadata, gets text, caps. */
+  #memRevs = [];
+  #memRevSeq = 0;
+
+  pushDocRevision({ entityId, fieldId, at, actor = null, text }) {
+    const len = text.length;
+    if (!this.#db) {
+      const row = { seq: ++this.#memRevSeq, entityId, fieldId, at, actor, text, len };
+      this.#memRevs.push(row);
+      const mine = this.#memRevs.filter((r) => r.entityId === entityId && r.fieldId === fieldId);
+      if (mine.length > DOC_REVISION_CAP) {
+        const drop = new Set(mine.slice(0, mine.length - DOC_REVISION_CAP).map((r) => r.seq));
+        this.#memRevs = this.#memRevs.filter((r) => !drop.has(r.seq));
+      }
+      return { seq: row.seq };
+    }
+    const { lastInsertRowid } = this.#db.prepare('INSERT INTO doc_revisions (entity_id, field_id, at, actor, text, len) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(entityId, fieldId, at, actor, text, len);
+    this.#db.prepare(`DELETE FROM doc_revisions WHERE entity_id = ? AND field_id = ? AND seq NOT IN
+      (SELECT seq FROM doc_revisions WHERE entity_id = ? AND field_id = ? ORDER BY seq DESC LIMIT ?)`)
+      .run(entityId, fieldId, entityId, fieldId, DOC_REVISION_CAP);
+    return { seq: Number(lastInsertRowid) };
+  }
+
+  replaceDocRevision(seq, { at, text }) {
+    if (!this.#db) {
+      const row = this.#memRevs.find((r) => r.seq === seq);
+      if (row) Object.assign(row, { at, text, len: text.length });
+      return;
+    }
+    this.#db.prepare('UPDATE doc_revisions SET at = ?, text = ?, len = ? WHERE seq = ?').run(at, text, text.length, seq);
+  }
+
+  listDocRevisions(entityId, fieldId, { limit = 50 } = {}) {
+    if (!this.#db) {
+      return this.#memRevs.filter((r) => r.entityId === entityId && r.fieldId === fieldId)
+        .slice(-limit).reverse().map(({ seq, at, actor, len }) => ({ seq, at, actor, len }));
+    }
+    return this.#db.prepare('SELECT seq, at, actor, len FROM doc_revisions WHERE entity_id = ? AND field_id = ? ORDER BY seq DESC LIMIT ?')
+      .all(entityId, fieldId, limit);
+  }
+
+  getDocRevision(entityId, fieldId, seq) {
+    if (!this.#db) {
+      const r = this.#memRevs.find((x) => x.seq === seq && x.entityId === entityId && x.fieldId === fieldId);
+      return r ? { seq: r.seq, at: r.at, actor: r.actor, len: r.len, text: r.text } : null;
+    }
+    return this.#db.prepare('SELECT seq, at, actor, len, text FROM doc_revisions WHERE seq = ? AND entity_id = ? AND field_id = ?')
+      .get(seq, entityId, fieldId) ?? null;
+  }
+
+  deleteDocRevisions(entityId) {
+    if (!this.#db) { this.#memRevs = this.#memRevs.filter((r) => r.entityId !== entityId); return; }
+    this.#db.prepare('DELETE FROM doc_revisions WHERE entity_id = ?').run(entityId);
   }
 
   listAudit({ limit = 100, offset = 0 } = {}) {

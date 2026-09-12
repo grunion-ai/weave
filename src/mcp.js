@@ -137,6 +137,16 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { entity: { type: 'string' }, markdown: { type: 'string' }, mode: { type: 'string', enum: ['replace', 'append'] }, field: { type: 'string' } }, required: ['entity', 'markdown'] },
   },
   {
+    name: 'weave_doc_revisions',
+    description: 'A document\'s version history (Feature #225). Without seq: the revisions newest first as {seq, at, actor, len} — one per editing session (writes by one actor inside ten minutes fold into one). With seq: that revision with its text. field picks a document field; omit for the default.',
+    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string', description: 'Document field name (optional)' }, seq: { type: 'number', description: 'A revision seq from the list — returns its text' }, limit: { type: 'number', description: 'How many to list (default 50)' } }, required: ['entity'] },
+  },
+  {
+    name: 'weave_doc_restore',
+    description: 'Write a past revision back as the document\'s current text (Feature #225). An ordinary write: activity, undo and automations all see it, and the history keeps both the restored text and what it replaced.',
+    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, seq: { type: 'number' }, field: { type: 'string', description: 'Document field name (optional)' } }, required: ['entity', 'seq'] },
+  },
+  {
     name: 'weave_add_comment',
     description: 'Add a comment to an entity. Comments are their own thread on the entity page and ride the activity feed; delete one with weave_delete_comment.',
     inputSchema: { type: 'object', properties: { entity: { type: 'string' }, text: { type: 'string' }, author: { type: 'string' } }, required: ['entity', 'text'] },
@@ -455,6 +465,11 @@ export function dispatchTool(weave, name, args = {}) {
       if (args.mode === 'append') weave.appendDoc(args.entity, args.markdown, args.field ?? null);
       else weave.setDoc(args.entity, args.markdown, args.field ?? null);
       return { ok: true, length: weave.getDoc(args.entity, args.field ?? null).length };
+    case 'weave_doc_revisions':
+      if (args.seq != null) return weave.getDocRevision(args.entity, args.field ?? null, args.seq);
+      return weave.listDocRevisions(args.entity, args.field ?? null, { limit: args.limit ?? 50 });
+    case 'weave_doc_restore':
+      return weave.restoreDocRevision(args.entity, args.field ?? null, args.seq);
     case 'weave_add_comment':
       return weave.addComment(args.entity, { author: args.author ?? 'agent', text: args.text });
     case 'weave_delete_comment':

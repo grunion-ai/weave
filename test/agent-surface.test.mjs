@@ -62,6 +62,8 @@ const SURFACE = [
   ['entity.bulk', ['bulk'], 'weave_bulk', 'bulk', ['POST /api/bulk']],
   ['doc.read', ['getDoc'], 'weave_get_doc', 'doc', ['GET /api/entities/:ref/doc']],
   ['doc.write', ['setDoc', 'appendDoc'], 'weave_set_doc', 'doc', ['PUT /api/entities/:ref/doc', 'POST /api/entities/:ref/doc']],
+  ['doc.revisions', ['listDocRevisions', 'getDocRevision'], 'weave_doc_revisions', 'doc-revisions', ['GET /api/entities/:ref/doc/revisions', 'GET /api/entities/:ref/doc/revisions/:ref']],
+  ['doc.restore', ['restoreDocRevision'], 'weave_doc_restore', 'doc-restore', ['POST /api/entities/:ref/doc/revisions/:ref/restore']],
   ['comment.add', ['addComment'], 'weave_add_comment', 'comment', ['POST /api/entities/:ref/comments']],
   ['comment.delete', ['deleteComment'], 'weave_delete_comment', 'comment delete', ['DELETE /api/entities/:ref/comments/:ref']],
   ['search', ['search', 'universalSearch'], 'weave_search', 'search', ['GET /api/search']],

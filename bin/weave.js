@@ -151,6 +151,9 @@ default is the table's first document field, usually "Description")
   doc set <ref> (--content 'md' | --file path) [--field Name]
   doc append <ref> (--content 'md' | --file path) [--field Name]
   doc export <ref> --format md|html|pdf [--out path] [--field Name]
+  doc-revisions <ref> [--field Name] [--limit 50]   History newest first: seq, at, actor, len
+  doc-revisions <ref> --seq <n> [--field Name]      One revision with its text
+  doc-restore <ref> --seq <n> [--field Name]        Write that revision back (an ordinary write; undoable)
 
 Credentials (#64, #143 — secrets live encrypted in ~/.weave/keystore.json, never in data)
   key set <name> (--value <secret> | reads stdin)
@@ -809,6 +812,18 @@ async function main() {
         return out(data);
       }
       throw new WeaveError(`Unknown doc subcommand '${sub}'`);
+    }
+    case 'doc-revisions': {
+      const e = resolveEntityRef(w, args[0], flags.db);
+      const docField = flags.field === true ? null : flags.field ?? null;
+      if (flags.seq != null && flags.seq !== true) return out(w.getDocRevision(e.id, docField, Number(flags.seq)));
+      return out(w.listDocRevisions(e.id, docField, { limit: flags.limit ? Number(flags.limit) : 50 }));
+    }
+    case 'doc-restore': {
+      const e = resolveEntityRef(w, args[0], flags.db);
+      const docField = flags.field === true ? null : flags.field ?? null;
+      if (flags.seq == null || flags.seq === true) throw new WeaveError('--seq is required: a revision from doc-revisions');
+      return out(w.restoreDocRevision(e.id, docField, Number(flags.seq)));
     }
     case 'comment': {
       const [first, ...rest] = args;

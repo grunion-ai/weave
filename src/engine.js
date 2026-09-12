@@ -145,6 +145,10 @@ export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
    differs. Trimming the common head and tail is the shape of a single edit —
    which is what an autosave almost always is — and degrades honestly to "the
    whole document changed" when the edit was not local. */
+/* One typing session is one revision: the same ten minutes the activity
+   feed folds doc-updated entries over (Issue #32), so a page's history and
+   its feed tell the same story. */
+const DOC_REVISION_WINDOW_MS = 10 * 60 * 1000;
 function docChange(field, before, after) {
   const a = before.split('\n');
   const b = after.split('\n');
@@ -329,7 +333,7 @@ export const ONTOLOGY = {
       key: 'document', name: 'Document', storedIn: 'entity.docs',
       definition: 'A long-form body — markdown, HTML or code — held in a document-typed field. An entity may carry any number.',
       identity: 'the entity plus the document field it fills',
-      api: ['getDoc', 'setDoc', 'appendDoc', 'documentFields', 'descriptionField'],
+      api: ['getDoc', 'setDoc', 'appendDoc', 'documentFields', 'descriptionField', 'listDocRevisions', 'getDocRevision', 'restoreDocRevision'],
     },
     {
       key: 'comment', name: 'Comment', storedIn: 'entity.comments',
@@ -707,8 +711,11 @@ export class Weave {
 
   // `store` injects an alternate Store implementation (same interface) — the
   // Cloudflare Worker port (Feature #84) passes a Durable Object-backed one.
-  constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null } = {}) {
+  constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null, revisionWindowMs = DOC_REVISION_WINDOW_MS } = {}) {
     this.actor = actor;
+    // Writes by one actor to one document inside this window are one
+    // revision (Feature #225); a test sets 0 to make every write its own.
+    this.revisionWindowMs = revisionWindowMs;
     this.keystorePath = keystorePath ?? process.env.WEAVE_KEYSTORE ?? join(process.env.HOME ?? '.', '.weave', 'keystore.json');
     // Injected so a test can hold a passphrase without touching the process.
     this.keystoreEnv = keystoreEnv ?? process.env;
@@ -2658,7 +2665,13 @@ export class Weave {
               }
             }
             for (const [fid, text] of Object.entries(before.docs)) {
-              if (db.fields[fid]) { fields.push(db.fields[fid].name); e.docs[fid] = text; }
+              if (!db.fields[fid]) continue;
+              fields.push(db.fields[fid].name);
+              const was = e.docs[fid] ?? '';
+              e.docs[fid] = text;
+              // Stepping back is a write too: the log keeps the step, fresh,
+              // so the edit undone stays readable in history.
+              if (was !== text) this.#recordDocRevision(e, db.fields[fid], was, text, { fresh: true });
             }
             e.updatedAt = nowISO();
             e.modifiedBy = this.actor;
@@ -3945,6 +3958,10 @@ export class Weave {
     // Recorded before automations run, so their edits sit above the create on
     // the undo stack and step back first.
     this.#recordUndo('create', e);
+    // A row born with a document starts its history there (Feature #225).
+    for (const [fid, text] of Object.entries(e.docs)) {
+      if (text && db.fields[fid]) this.#recordDocRevision(e, db.fields[fid], '', text, { fresh: true });
+    }
     this.#runAutomations(db, e, { type: 'entity-created' }, depth);
     this.save();
     return e;
@@ -3982,10 +3999,12 @@ export class Weave {
         const md = String(raw ?? '');
         const before = e.docs[field.id] ?? '';
         if (before === md) continue;
+        const prior = { at: e.updatedAt, by: e.modifiedBy };
         e.docs[field.id] = md;
         e.updatedAt = nowISO();
         e.modifiedBy = this.actor;
         if (!isCreate) this.#logActivity(e, 'doc-updated', docChange(field.name, before, md));
+        this.#recordDocRevision(e, field, before, md, { prior });
         continue;
       }
       const val = this.#validateValue(field, raw);
@@ -4301,6 +4320,7 @@ export class Weave {
       }
     }
     delete this.state.entities[id];
+    this.store.deleteDocRevisions(id); // the history goes with the row (Feature #225)
     this.#mark(id); // absent from state at save time → row delete
     this.save();
     return { id, purged: true };
@@ -5000,11 +5020,13 @@ export class Weave {
     // Autosave writes on every pause, so identical text arrives often. Nothing
     // changed, nothing happened: no timestamp bump and no entry in the feed.
     if (before === after) return e;
+    const prior = { at: e.updatedAt, by: e.modifiedBy };
     e.docs[f.id] = after;
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
     this.#logActivity(e, 'doc-updated', docChange(f.name, before, after));
     this.#recordUndo('update', e, { before: { values: {}, docs: { [f.id]: before } } });
+    this.#recordDocRevision(e, f, before, after, { prior });
     this.save();
     return e;
   }
@@ -5017,13 +5039,73 @@ export class Weave {
     const before = e.docs[f.id] ?? '';
     const after = (before ? before.replace(/\n*$/, '\n\n') : '') + String(markdown ?? '');
     if (before === after) return e;
+    const prior = { at: e.updatedAt, by: e.modifiedBy };
     e.docs[f.id] = after;
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
     this.#logActivity(e, 'doc-appended', docChange(f.name, before, after));
     this.#recordUndo('update', e, { before: { values: {}, docs: { [f.id]: before } } });
+    this.#recordDocRevision(e, f, before, after, { prior });
     this.save();
     return e;
+  }
+
+  /* ---------------- document history (Feature #225) ----------------
+     Every write above lands a snapshot of the NEW text in doc_revisions,
+     beside the entity blob. Rules: identical text records nothing (the
+     writes already return early); the same actor writing the same field
+     inside revisionWindowMs replaces the newest snapshot instead of adding
+     one, so a typing session is one revision and not a keystroke log; a
+     restore and an undo are always fresh, so restoring can never overwrite
+     the session it steps back from; a document that predates the log gets
+     its prior text as the first snapshot on its first write, so the text
+     before the feature is not the one text history cannot show. System
+     tables (the registry) keep no history, as they keep no undo. */
+  #docRevisionFresh = false;
+
+  #recordDocRevision(e, f, before, after, { prior = null, fresh = false } = {}) {
+    if (this.#inMetaSync) return;
+    const db = this.state.tables[e.dbId];
+    if (!db || db.system) return;
+    const now = nowISO();
+    const [latest] = this.store.listDocRevisions(e.id, f.id, { limit: 1 });
+    if (!latest && before) {
+      this.store.pushDocRevision({ entityId: e.id, fieldId: f.id, at: prior?.at ?? now, actor: prior?.by ?? null, text: before });
+    } else if (latest && !fresh && !this.#docRevisionFresh && latest.actor === this.actor
+      && Date.now() - Date.parse(latest.at) < this.revisionWindowMs) {
+      this.store.replaceDocRevision(latest.seq, { at: now, text: after });
+      return;
+    }
+    this.store.pushDocRevision({ entityId: e.id, fieldId: f.id, at: now, actor: this.actor, text: after });
+  }
+
+  // Metadata only, newest first: { seq, at, actor, len }. The text is one
+  // getDocRevision away, so a long history lists without moving its bytes.
+  listDocRevisions(entityId, fieldRef = null, { limit = 50 } = {}) {
+    const e = this.getEntity(entityId);
+    const f = this.#resolveDocField(this.state.tables[e.dbId], fieldRef);
+    const revisions = this.store.listDocRevisions(e.id, f.id, { limit: Math.max(1, Math.min(1000, Number(limit) || 50)) });
+    return { field: f.name, revisions };
+  }
+
+  getDocRevision(entityId, fieldRef, seq) {
+    const e = this.getEntity(entityId);
+    const f = this.#resolveDocField(this.state.tables[e.dbId], fieldRef);
+    const rev = this.store.getDocRevision(e.id, f.id, Number(seq));
+    if (!rev) throw new WeaveError(`Revision ${seq} of ${f.name} not found on this entity`, 'not-found');
+    return rev;
+  }
+
+  // A restore is a setDoc of the old text: activity, undo and automations
+  // all see an ordinary write. Recorded fresh — never folded into the
+  // session it replaces — so the log keeps both what was and what is.
+  restoreDocRevision(entityId, fieldRef, seq) {
+    const rev = this.getDocRevision(entityId, fieldRef, seq);
+    this.#docRevisionFresh = true;
+    try { this.setDoc(entityId, rev.text, fieldRef); } finally { this.#docRevisionFresh = false; }
+    const e = this.getEntity(entityId);
+    const f = this.#resolveDocField(this.state.tables[e.dbId], fieldRef);
+    return { ok: true, field: f.name, seq: rev.seq, at: rev.at, length: rev.text.length };
   }
 
   // ---------------- comments & activity ----------------

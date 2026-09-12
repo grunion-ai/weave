@@ -929,6 +929,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.readEntity(m[1], { viewerZone }));
         }
 
+        // Document history (Feature #225): metadata newest first, one
+        // revision's text, and a restore that is an ordinary write.
+        if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc\/revisions$/)) && rx.method === 'GET') {
+          const fieldRef = rx.searchParams.get('field') ?? null;
+          return out(200, weave.listDocRevisions(m[1], fieldRef, { limit: rx.searchParams.get('limit') ?? 50 }));
+        }
+        if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc\/revisions\/([^/]+)$/)) && rx.method === 'GET') {
+          return out(200, weave.getDocRevision(m[1], rx.searchParams.get('field') ?? null, m[2]));
+        }
+        if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc\/revisions\/([^/]+)\/restore$/)) && rx.method === 'POST') {
+          return out(200, weave.restoreDocRevision(m[1], body.field ?? null, m[2]));
+        }
+
         // Document field selected by ?field= (GET) or body.field (PUT/POST);
         // omitted = the table's default (first) document field.
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc$/))) {

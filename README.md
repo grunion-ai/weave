@@ -69,6 +69,10 @@ file on your disk. No accounts, no cloud, no telemetry.
 - **Undoable** — every entity mutation (edits, creates, deletes, links,
   comments) can be stepped back with `weave undo`, `POST /api/undo`, or the
   `weave_undo` MCP tool; agents get to make mistakes without making a mess.
+- **Versioned documents** — every document field keeps its revisions (one
+  per editing session), browsable and restorable from the page, `weave
+  doc-revisions` / `weave doc-restore`, or the `weave_doc_revisions` /
+  `weave_doc_restore` MCP tools.
 
 ## Quickstart
 

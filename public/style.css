@@ -1229,6 +1229,25 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-section:has(:focus-visible) .doc-anchor, .doc-section:has(:focus-visible) .doc-dl { opacity: .7; }
 .doc-anchor { cursor: pointer; font-size: 11px; }
 .doc-anchor:hover { opacity: 1; }
+/* Document history (Feature #225): a panel inside the section, never a
+   modal. The control keeps the anchor's hover reveal but stays lit while
+   the panel is open, so the open state is readable from the head. */
+.doc-history-btn.active, .doc-section .doc-history-btn.active { opacity: 1; color: var(--tblr-primary); }
+.wv-doc-history { border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface-secondary); margin: 0 0 10px; font-size: 12.5px; }
+.wv-doc-history-head { display: flex; gap: 10px; align-items: baseline; padding: 6px 10px; border-bottom: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-weight: 600; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.wv-doc-history-hint { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.wv-rev-list { max-height: 220px; overflow-y: auto; }
+.wv-rev-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; width: 100%; text-align: left; border: 0; background: none; padding: 5px 10px; color: var(--tblr-body-color); cursor: pointer; font: inherit; font-size: 12.5px; }
+.wv-rev-row:hover, .wv-rev-row.selected { background: var(--tblr-active-bg); }
+.wv-rev-row.selected .wv-rev-when { font-weight: 600; }
+.wv-rev-actor { color: var(--tblr-secondary); }
+.wv-rev-delta { font-variant-numeric: tabular-nums; color: var(--tblr-secondary); min-width: 4ch; text-align: right; }
+.wv-rev-delta.pos { color: var(--tblr-success); }
+.wv-rev-delta.neg { color: var(--tblr-danger); }
+.wv-rev-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin: 0 0 10px; border-radius: 6px; background: var(--tblr-warning-lt); color: var(--tblr-body-color); font-size: 12.5px; }
+.wv-rev-bar-text { flex: 1; }
+.wv-rev-view { padding: 0 2px; font-size: 15px; }
+.wv-rev-source { white-space: pre-wrap; font-family: var(--tblr-font-monospace); font-size: 13px; margin: 0; }
 /* Save state is a single glyph, because "saved" is the normal case and should
    not need a sentence — · pending, ✓ written, ! failed. */
 .doc-status { margin-left: auto; font-size: 11px; color: var(--tblr-secondary); min-width: 10px; text-align: right; }

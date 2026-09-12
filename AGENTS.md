@@ -81,7 +81,7 @@ human.
 | Statistics | `weave_stats` — every column of a table summarised in one read (sum, avg, median, min, max, p25/p75, stdev, a histogram for numbers; a ranked distribution for chips; earliest/latest/span for dates), the space rollups pointed at the table, and per-group figures with `by`. To keep a figure on the record, add a rollup on the `Workspace/Spaces` row with `config.via` naming the table (`aggregate` from the vocabulary, optional `where`) — that is the Σ the grid footer draws under the column. A grid draws no Σ row until the table asks for one: `weave_update_table` with `hideRollups: false` (`weave table update <ref> --rollup-row on`) turns it on, `true` puts it away |
 | Relations & state | `weave_link`, `weave_unlink`, `weave_set_state` |
 | Many rows at once | `weave_bulk` — set values, link, move to another table, or roll up into a new parent across a list of ids; the reply names what did not land |
-| Documents & comments | `weave_get_doc`, `weave_set_doc`, `weave_add_comment`, `weave_delete_comment` |
+| Documents & comments | `weave_get_doc`, `weave_set_doc`, `weave_doc_revisions`, `weave_doc_restore`, `weave_add_comment`, `weave_delete_comment` |
 | Search & data | `weave_search`, `weave_export_csv`, `weave_import_csv`, `weave_export_json`, `weave_import_json` |
 | Files | `weave_attach_file`, `weave_files` |
 | Views | `weave_views` |
@@ -156,6 +156,7 @@ workspace. Every MCP tool has a command:
 | `weave map` | `weave field add` / `weave field update` / `weave field delete` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
 | `weave registry` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
+| `weave doc-revisions <ref> [--field F] [--seq n]` | `weave doc-restore <ref> --seq n [--field F]` | |
 | `weave audit` | `weave view` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
 | `weave workspace` | `weave workspace logo` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
 | `weave audit` | `weave account invite` / `weave account sessions` / `weave account revoke-session` / `weave account remove-credential` | |
@@ -206,6 +207,14 @@ Notes that save round trips:
   `.pdf` return the rendered document directly; no tool call needed to read one.
 - **Entities can hold several documents.** `weave_get_doc` / `weave_set_doc`
   take a field name; the default is the table's first document field.
+- **Every document keeps its history.** `weave_doc_revisions` lists a
+  document's revisions newest first (`seq`, `at`, `actor`, `len`) — one per
+  editing session, since writes by one actor inside ten minutes fold into
+  one — and with `seq` returns that revision's text; `weave_doc_restore`
+  writes a revision back as an ordinary, undoable write. Over HTTP:
+  `GET /api/entities/:ref/doc/revisions?field=`, `GET …/doc/revisions/:seq`,
+  `POST …/doc/revisions/:seq/restore` `{field}`. Two hundred revisions per
+  document are kept; a purge drops them with the row.
 - **Deletes are recoverable.** `weave_delete_entity` is a soft delete by
   default; `weave_trash` lists what is recoverable and `weave_restore_entity`
   brings it back. Schema deletes are not: a dropped column takes its values.

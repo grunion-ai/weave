@@ -214,6 +214,8 @@ What one entity holds in one field, validated and coerced by that field's type.
 ### Document
 A long-form body held in a document-typed field — markdown by default, HTML or
 code by kind. Any number per entity; rendered natively as HTML, PDF or raw text.
+Every document keeps its own revisions (`doc_revisions`, beside the entity
+blob): one snapshot per editing session, restorable, dropped on purge.
 
 ### Comment
 An authored, time-ordered note on an entity, kept separate from its documents.

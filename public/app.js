@@ -7582,7 +7582,7 @@ function retheme() {
 
 /* A pause in typing is the save. Keyed per entity+field so two document
    sections on one page cannot cancel each other's writes. */
-function scheduleDocSave(entityId, field, value, statusEl) {
+function scheduleDocSave(entityId, field, value, statusEl, onSaved = null) {
   const key = `${entityId}::${field}`;
   clearTimeout(pendingDocSaves.get(key)?.timer);
   if (statusEl) statusEl.textContent = '·';
@@ -7590,6 +7590,7 @@ function scheduleDocSave(entityId, field, value, statusEl) {
     pendingDocSaves.delete(key);
     try {
       await api('PUT', `/entities/${entityId}/doc`, { field, doc: value });
+      onSaved?.();
       if (!statusEl) return;
       statusEl.textContent = '✓';
       setTimeout(() => { if (statusEl.textContent === '✓') statusEl.textContent = ''; }, 1500);
@@ -7599,6 +7600,27 @@ function scheduleDocSave(entityId, field, value, statusEl) {
     }
   };
   pendingDocSaves.set(key, { timer: setTimeout(write, DOC_SAVE_DEBOUNCE), write });
+}
+
+// One document's pending save, written now: the history panel lists and
+// restores against the log, so what was just typed has to be in it first.
+async function flushDocSave(entityId, field) {
+  const p = pendingDocSaves.get(`${entityId}::${field}`);
+  if (!p) return;
+  clearTimeout(p.timer);
+  await p.write();
+}
+
+/* "5 min ago" for a revision row; the exact time rides in the title.
+   ponytail: Intl.RelativeTimeFormat still needs the unit picked, and this is
+   the whole of that. */
+function relTime(iso) {
+  const sec = (Date.now() - Date.parse(iso)) / 1000;
+  if (sec < 45) return 'just now';
+  if (sec < 3600) return `${Math.round(sec / 60)} min ago`;
+  if (sec < 86400) return `${Math.round(sec / 3600)} h ago`;
+  if (sec < 7 * 86400) return `${Math.round(sec / 86400)} d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 // Leaving the page must not cost the last few keystrokes.
@@ -7884,6 +7906,92 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     };
     let showingSource = false;
     let mounted = false;
+    /* History (Feature #225): a control beside the source toggle, hidden
+       until the document has a past — one revision is nothing to browse.
+       It opens a panel inside the section, never a modal: the list newest
+       first, a row previews read-only where the editor was, Restore writes
+       the text back through the ordinary doc write and re-renders. */
+    const fieldQ = `field=${encodeURIComponent(f.name)}`;
+    let histPanel = null;
+    let preview = null;
+    const editorVisible = (on) => {
+      if (appFrame) {
+        appFrame.classList.toggle('hidden', !on || showingSource);
+        host.classList.toggle('hidden', !on || !showingSource);
+      } else host.classList.toggle('hidden', !on);
+    };
+    const onEsc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeHistory(); } };
+    const closeHistory = () => {
+      histPanel?.remove(); histPanel = null;
+      preview?.remove(); preview = null;
+      histBtn.classList.remove('active');
+      editorVisible(true);
+      document.removeEventListener('keydown', onEsc);
+    };
+    const checkHistory = async () => {
+      try {
+        const { revisions } = await api('GET', `/entities/${id}/doc/revisions?${fieldQ}&limit=2`);
+        histBtn.hidden = revisions.length < 2;
+      } catch { /* an older server: no history door, no control */ }
+    };
+    const restoreRevision = async (rev) => {
+      try {
+        await flushDocSave(id, f.name);
+        await api('POST', `/entities/${id}/doc/revisions/${rev.seq}/restore`, { field: f.name });
+        closeHistory();
+        toast(`Restored ${f.name} from ${relTime(rev.at)}`);
+        refresh();
+      } catch (err) { toast(err.message, true); }
+    };
+    const viewRevision = async (rev, row, current) => {
+      let text, html = null;
+      try {
+        ({ text } = await api('GET', `/entities/${id}/doc/revisions/${rev.seq}?${fieldQ}`));
+        if (mode === 'markdown') ({ html } = await api('POST', '/markdown', { md: text }));
+      } catch (err) { return toast(err.message, true); }
+      for (const r of histPanel?.querySelectorAll('.wv-rev-row') ?? []) r.classList.toggle('selected', r === row);
+      const view = el('div', { class: 'wv-rev-view' + (html != null ? ' vditor-reset' : '') });
+      if (html != null) view.innerHTML = html;
+      else view.append(el('pre', { class: 'wv-rev-source' }, text));
+      const bar = el('div', { class: 'wv-rev-bar' },
+        el('span', { class: 'wv-rev-bar-text' }, current ? 'Viewing the current text' : `Viewing revision from ${new Date(rev.at).toLocaleString()}`),
+        current ? null : el('button', { class: 'btn btn-sm btn-primary wv-rev-restore', type: 'button', onclick: () => restoreRevision(rev) }, 'Restore'),
+        el('button', { class: 'btn btn-sm wv-rev-back', type: 'button', onclick: closeHistory }, 'Back'));
+      preview?.remove();
+      preview = el('div', { class: 'wv-rev-preview' }, bar, view);
+      histPanel.after(preview);
+      editorVisible(false);
+    };
+    const openHistory = async () => {
+      if (histPanel) return closeHistory();
+      let revisions;
+      try {
+        await flushDocSave(id, f.name);
+        ({ revisions } = await api('GET', `/entities/${id}/doc/revisions?${fieldQ}&limit=200`));
+      } catch (err) { return toast(err.message, true); }
+      const rows = revisions.map((rev, i) => {
+        const prev = revisions[i + 1];
+        const delta = prev ? rev.len - prev.len : rev.len;
+        const row = el('button', { class: 'wv-rev-row', type: 'button', title: new Date(rev.at).toLocaleString() },
+          el('span', { class: 'wv-rev-when' }, i === 0 ? 'Current' : relTime(rev.at)),
+          el('span', { class: 'wv-rev-actor' }, rev.actor ?? '—'),
+          el('span', { class: 'wv-rev-delta' + (delta > 0 ? ' pos' : delta < 0 ? ' neg' : '') },
+            delta > 0 ? `+${delta}` : delta < 0 ? `−${-delta}` : '±0'));
+        row.addEventListener('click', () => viewRevision(rev, row, i === 0));
+        return row;
+      });
+      histPanel = el('div', { class: 'wv-doc-history' },
+        el('div', { class: 'wv-doc-history-head' },
+          `${revisions.length} revision${revisions.length === 1 ? '' : 's'}`,
+          el('span', { class: 'wv-doc-history-hint' }, 'Select one to view it · Esc closes')),
+        el('div', { class: 'wv-rev-list' }, ...rows));
+      body.prepend(histPanel);
+      histBtn.classList.add('active');
+      document.addEventListener('keydown', onEsc);
+    };
+    const histBtn = el('span', { class: 'doc-anchor doc-history-btn', title: 'History', hidden: '', onclick: openHistory },
+      iconEl('lucide:history', 'wv-icon'));
+    checkHistory();
     const sourceToggle = appFrame ? el('span', {
       class: 'doc-anchor', title: 'Edit source',
       onclick: () => {
@@ -7911,6 +8019,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         caret,
         el('span', { class: 'doc-section-name' }, f.name),
         sourceToggle,
+        histBtn,
         el('span', {
           class: 'doc-anchor permalink-copy', title: 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
@@ -7930,7 +8039,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         entityId: id, // toolbar uploads attach to this entity
         placeholder: `Write ${f.name}… press / for blocks`,
         onInput: (value) => {
-          scheduleDocSave(id, f.name, value, status);
+          scheduleDocSave(id, f.name, value, status, checkHistory);
           rail.schedule(); // headings may have changed
           folds.schedule(); // a re-render drops the fold classes; re-apply
         },
@@ -7944,7 +8053,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
       ta.value = entity.docs?.[f.name] ?? '';
-      ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, status));
+      ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, status, checkHistory));
       sourceBox = ta;
       host.append(ta);
     };

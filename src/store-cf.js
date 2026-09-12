@@ -27,9 +27,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
   actor TEXT, action TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS undo_log (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS doc_revisions (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, entity_id TEXT NOT NULL, field_id TEXT NOT NULL,
+  at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
 `;
 
 const UNDO_CAP = 200;
+const DOC_REVISION_CAP = 200; // mirrors src/store.js (Feature #225)
 
 export class CFStore {
   #sql = null;        // ctx.storage.sql
@@ -160,6 +165,33 @@ export class CFStore {
   listUndo({ limit = 20 } = {}) {
     return this.#all('SELECT json FROM undo_log ORDER BY seq DESC LIMIT ?', limit)
       .map((r) => JSON.parse(r.json));
+  }
+
+  // Document revisions (Feature #225) — the same contract as src/store.js.
+  pushDocRevision({ entityId, fieldId, at, actor = null, text }) {
+    this.#run('INSERT INTO doc_revisions (entity_id, field_id, at, actor, text, len) VALUES (?, ?, ?, ?, ?, ?)',
+      entityId, fieldId, at, actor, text, text.length);
+    const [{ seq }] = this.#all('SELECT MAX(seq) AS seq FROM doc_revisions');
+    this.#run(`DELETE FROM doc_revisions WHERE entity_id = ? AND field_id = ? AND seq NOT IN
+      (SELECT seq FROM doc_revisions WHERE entity_id = ? AND field_id = ? ORDER BY seq DESC LIMIT ?)`,
+    entityId, fieldId, entityId, fieldId, DOC_REVISION_CAP);
+    return { seq: Number(seq) };
+  }
+
+  replaceDocRevision(seq, { at, text }) {
+    this.#run('UPDATE doc_revisions SET at = ?, text = ?, len = ? WHERE seq = ?', at, text, text.length, seq);
+  }
+
+  listDocRevisions(entityId, fieldId, { limit = 50 } = {}) {
+    return this.#all('SELECT seq, at, actor, len FROM doc_revisions WHERE entity_id = ? AND field_id = ? ORDER BY seq DESC LIMIT ?', entityId, fieldId, limit);
+  }
+
+  getDocRevision(entityId, fieldId, seq) {
+    return this.#all('SELECT seq, at, actor, len, text FROM doc_revisions WHERE seq = ? AND entity_id = ? AND field_id = ?', seq, entityId, fieldId)[0] ?? null;
+  }
+
+  deleteDocRevisions(entityId) {
+    this.#run('DELETE FROM doc_revisions WHERE entity_id = ?', entityId);
   }
 
   changedExternally() { return false; }

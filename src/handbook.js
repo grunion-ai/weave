@@ -527,6 +527,20 @@ weave doc export Task#5 --format pdf --out t5.pdf
 
 Every document is addressable as MD, HTML, MMD and PDF at \`/e/<id>/doc/<Field>.<fmt>\`.
 
+## History
+
+Every document keeps its own revisions. A revision is one editing session: writes by the same actor to the same field within ten minutes fold into one, so a pause is not a snapshot and a keystroke log never builds up. Identical text records nothing. Two hundred revisions are kept per document, oldest trimmed; the trash keeps them, a purge drops them with the row.
+
+The history control (the clock-arrow beside the source toggle in the section head) shows once a document has more than one revision. It opens a panel inside the section: the list newest first — when, who, how much the size moved — and a row shows that revision read-only in place of the editor under a **Viewing revision** bar. **Restore** writes it back as an ordinary edit (undoable, on the activity feed) and the editor returns; **Back** or Escape returns without writing. A restore never overwrites what it replaces: both texts stay in the list.
+
+\`\`\`bash
+weave doc-revisions Task#5 --field Spec          # newest first: seq, at, actor, len
+weave doc-revisions Task#5 --field Spec --seq 41 # that revision's text
+weave doc-restore Task#5 --field Spec --seq 41   # write it back
+\`\`\`
+
+Agents reach the same three through \`weave_doc_revisions\` / \`weave_doc_restore\` and \`GET /api/entities/<id>/doc/revisions?field=\`, \`GET …/doc/revisions/<seq>\`, \`POST …/doc/revisions/<seq>/restore\`. Revisions live beside the entity, not inside it: an export carries the current text only.
+
 ## What a document can hold
 
 Headings that fold, tables, task lists, code blocks that detect their own language, mermaid diagrams, KaTeX math including chemistry, raw HTML, \`[[…]]\` chips that link to any entity, table or space, and \`:name:\` icons drawn from the set. See the **Document formatting** guide for the whole surface.
