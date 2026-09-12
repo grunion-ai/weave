@@ -103,12 +103,12 @@ test('the environment contract cannot drift: the reference guide, the Dockerfile
   for (const [file, text] of [['railway.json', RAILWAY], ['fly.toml', FLY]]) {
     for (const v of varsIn(text)) assert.ok(documented.has(v), `${file} names ${v}, which the guide does not document`);
   }
-  // Reserved for later phases: named, defaults stated, never read yet.
-  for (const v of ['WEAVE_BACKUP_DEST']) {
-    assert.match(ref.doc, new RegExp(`\`${v}\`[^\\n]*reserved`, 'i'), `${v} is marked reserved`);
-    assert.doesNotMatch(read('bin/weave.js') + read('src/engine.js') + read('src/server.js'), new RegExp(v),
-      `${v} is documented as reserved, so the code must not read it yet`);
-  }
+  // Nothing is reserved any more: phase 2 reads WEAVE_ORIGIN, phase 3 reads WEAVE_BACKUP_DEST.
+  assert.doesNotMatch(ref.doc, /reserved for phase/i, 'no variable is still a promise');
+  // Phase 3 landed: WEAVE_BACKUP_DEST is read by serve (the nightly) and by backup (the default --dest).
+  assert.match(read('bin/weave.js'), /process\.env\.WEAVE_BACKUP_DEST/, 'serve reads WEAVE_BACKUP_DEST');
+  assert.match(read('src/backup.js'), /env\.WEAVE_BACKUP_DEST/, 'backup reads WEAVE_BACKUP_DEST');
+  assert.doesNotMatch(ref.doc, /`WEAVE_BACKUP_DEST`[^\n]*reserved/i, 'the reference no longer calls it reserved');
 });
 
 test('the Dockerfile and compose agree with the code on what each variable does', () => {
@@ -140,6 +140,7 @@ test('the self-hosting guides ship in the Handbook seed with their exact titles,
     assert.ok(guide('Door B: passkeys').doc.includes(s), `door B covers ${s}`);
   }
   assert.match(guide('Backup and restore').doc, /phase 3/i);
+  assert.match(guide('Backup and restore').doc, /weave(\.js)? backup --data/, 'phase 3 landed: the guide documents the verb, not a promise');
 });
 
 test('the door and deploy guides carry the content the README used to hold, plus one block per gate and target', () => {

@@ -22,7 +22,8 @@ services:
       # 1 when a reverse proxy sits in front so rate limits see the client.
       # WEAVE_ORIGIN: https://weave.example.com
       # WEAVE_TRUST_PROXY: "1"
-      # Reserved for phase 3; not read yet.
+      # Set this (plus the bucket credentials — Handbook → "Backup and restore")
+      # and the server backs itself up nightly at 04:00 UTC, thirty archives kept.
       # WEAVE_BACKUP_DEST: s3://bucket/weave
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4400/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]

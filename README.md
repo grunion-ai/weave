@@ -242,8 +242,8 @@ on any instance, including the one you just started):
   custom domain, one replica.
 - **Deploy: Fly.io, Render, a VPS, Docker** — one section each, same shape;
   the service unit lives here.
-- **Backup and restore** — `weave backup` / `weave restore` land in phase 3;
-  the manual copy until then.
+- **Backup and restore** — `weave backup` (one sealed tar of every workspace,
+  attachments and keystore), `weave restore`, the nightly switch, retention.
 - **Environment reference** — every variable, its default, and what breaks
   when it is wrong.
 

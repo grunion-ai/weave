@@ -43,11 +43,15 @@ const parseCookies = (header) => Object.fromEntries(String(header ?? '').split('
    - version: the version string /api/health reports (adapter resolves it —
      node reads package.json, the worker inlines it at deploy)
    - uptime: () => seconds (node: process.uptime; worker: isolate age)
+   - backup: () => the nightly backup's last result ({lastAt, lastStatus,
+     nextAt, dest}, no secrets) or null when WEAVE_BACKUP_DEST is unset —
+     /api/health carries it so a stale backup shows where staleness is
+     already checked (Feature #222 phase 3, Feature #209)
    - serveStatic: (path) => {status, headers, body} | null, or null when the
      platform serves assets before the dispatcher runs
    Returns handle(rx) where rx = { method, path (decoded pathname),
    searchParams, header(name), readBody() } → {status, headers, body}. */
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS } = {}) {
   const challenges = new Map();
   const rates = { options: new Map(), failed: new Map() };
   /* limited(kind, ip) counts this call and says whether the minute's budget
@@ -526,7 +530,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         // startedAt + uptime let callers spot a stale server (process start
         // time vs commit/package version) instead of assuming "up" = "current".
-        if (route === 'GET /api/health') return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...(build() ?? {}), ...weave.storageStats() });
+        if (route === 'GET /api/health') {
+          const nightly = backup();
+          return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...(build() ?? {}), ...weave.storageStats(), ...(nightly ? { backup: nightly } : {}) });
+        }
         if (route === 'GET /api/schema') return out(200, weave.describeSchema());
         // Every closed set a config value can come from, and what the choice
         // looks like on screen — served so an agent never has to guess a

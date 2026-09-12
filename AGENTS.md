@@ -160,6 +160,18 @@ workspace. Every MCP tool has a command:
 | `weave workspace` | `weave workspace logo` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
 | `weave audit` | `weave account invite` / `weave account sessions` / `weave account revoke-session` / `weave account remove-credential` | |
 
+Two operator verbs work on the whole data directory rather than one workspace
+and have no MCP tool on purpose — an agent holding a token must not be able to
+ship the keystore off the box or overwrite the store under a running server:
+`weave backup` (every `.db` via `VACUUM INTO` + `files/` + `keystore.json`
+into one tar, sealed when a passphrase or key file exists, `--dest s3://…`
+uploads it with a stdlib SigV4 signer and keeps thirty) and
+`weave restore <archive>` (verifies the manifest's sha256s, unpacks beside
+`--data`, refuses a database a server holds open). `weave restore <ref>` is
+still the entity verb. The Handbook's **Backup and restore** guide is the
+reference; `WEAVE_BACKUP_DEST` on `weave serve` arms the nightly and
+`/api/health` carries its last result as `backup`.
+
 Notes that save round trips:
 
 - **Refs are flexible.** Anywhere an entity is expected, pass a UUID, `#12`,

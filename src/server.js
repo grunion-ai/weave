@@ -260,7 +260,7 @@ export function originFromEnv(env = process.env) {
 }
 export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
 
   // Node adapter around the runtime-agnostic dispatcher (src/routes.js): this
@@ -301,6 +301,8 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     // Opt-in (the CLI serve path passes buildInfo): an embedded/test server
     // must not read git or toast about a checkout it does not represent.
     build,
+    // The nightly backup's last result, when serve armed one (Feature #222 phase 3).
+    backup,
     serveStatic,
     origin,
     trustProxy,
@@ -324,8 +326,8 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, origin, trustProxy, limits } = {}) {
-  const server = createServer(weave, { workspaces, build, limits, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}) });
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits } = {}) {
+  const server = createServer(weave, { workspaces, build, backup, limits, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

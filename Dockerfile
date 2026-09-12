@@ -14,7 +14,7 @@ COPY --chown=node:node . .
 #   WEAVE_KEYSTORE_PASSPHRASE  derives the keystore key; no key file on disk (unset)
 #   WEAVE_ORIGIN               public origin passkeys + the session cookie bind to (unset = loopback)
 #   WEAVE_TRUST_PROXY          1 behind a platform proxy: rate limits read X-Forwarded-For (unset)
-#   WEAVE_BACKUP_DEST          reserved for phase 3 (backup); not read yet
+#   WEAVE_BACKUP_DEST          s3://bucket/prefix: nightly backup at 04:00 UTC   (unset = off)
 ENV PORT=4400 \
     WEAVE_HOST=0.0.0.0 \
     WEAVE_DATA=/data/workspace.db \

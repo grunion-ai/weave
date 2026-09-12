@@ -96,6 +96,18 @@ Service (macOS launchd — auto-start on login, restart on crash)
   handbook sync --data weave.db       Re-apply the Handbook pages from src/handbook.js
                                       (serve does it once per build; check = report drift)
 
+Backup and restore (Feature #222 phase 3, #209 — --data names the data dir or any file in it)
+  backup [--out dir|file.tar] [--dest s3://bucket/prefix] [--workspace name]
+         [--passphrase-env NAME] [--now]
+                                      VACUUM INTO every .db + files/ + keystore.json into one
+                                      tar; AES-256-GCM when a passphrase or key file exists
+                                      (keystore.key never leaves); SigV4 upload; 30 kept
+  restore <archive|s3://…|https://…> --data <dir> [--passphrase-env NAME] [--force]
+                                      Verify the manifest, unpack beside --data; refuses a
+                                      db a server holds open. (restore <ref> is the entity verb)
+  serve with WEAVE_BACKUP_DEST set runs backup daily at 04:00 UTC — audit rows
+  backup-completed / backup-failed, last result on /api/health as "backup"
+
 Schema
   schema                              Describe spaces, tables, fields
   schema export [--out file]          The schema as an editable JSON document
@@ -287,8 +299,28 @@ async function main() {
       process.exit(1);
     }
     if (origin) console.log(`Passkey origin: ${origin}${process.env.WEAVE_TRUST_PROXY ? ' (trusting X-Forwarded-For)' : ''}`);
+    /* The nightly backup (Feature #222 phase 3, Feature #209): one env var
+       switches it on. Daily at 04:00 UTC, in this process — a platform cron
+       service cannot share the volume, and a sidecar is one more thing to
+       run — into a temp file, up to the bucket, thirty kept, the archive
+       removed once it is up. The result lands in the audit log and on
+       /api/health; the health hook is wired before the scheduler exists so
+       the first probe never sees a missing function. */
+    let nightly = null;
+    const dest = process.env.WEAVE_BACKUP_DEST || null;
     // The served instance reports its build so a stale one can toast.
-    const { port: actual } = await startServer(w, { port, host, build: buildInfo });
+    const { port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null });
+    if (dest) {
+      const { backup, scheduleNightly } = await import('../src/backup.js');
+      const { tmpdir } = await import('node:os');
+      const dataDir = dirname(dataPath);
+      nightly = scheduleNightly({
+        run: () => backup({ dataDir, out: tmpdir(), dest, env: process.env, keep: false }),
+        dest,
+        audit: (entry) => w.store.audit({ at: new Date().toISOString(), actor: 'backup', ...entry }),
+      });
+      console.log(`Nightly backup → ${dest} at 04:00 UTC (next ${nightly.status().nextAt})`);
+    }
     const wide = host === '0.0.0.0' || host === '::';
     const shown = wide ? hostname() : host;
     console.log(`Weave running at http://${shown}:${actual}  (workspace: ${w.state.meta.name}, data: ${dataPath})`);
@@ -495,6 +527,54 @@ async function main() {
       return out({ promoted: true, sha, previous: prevSha, server: { version: health.version, startedAt: health.startedAt } });
     }
     throw new WeaveError(`Unknown service subcommand '${sub}'. Try: install, uninstall, status, promote`);
+  }
+
+  /* Backup and restore work on the DATA DIRECTORY, not one workspace: every
+     .db beside --data, files/, keystore.json. --data may name the directory
+     itself or any file in it. Neither verb opens the default workspace —
+     restore must run while no server does, and backup must not create one. */
+  const dataDirOf = (p) => (/\.(db|json)$/.test(p) ? dirname(p) : p);
+  const flagStr = (name) => (flags[name] != null && flags[name] !== true ? String(flags[name]) : null);
+  const mb = (n) => `${(n / 1e6).toFixed(1)} MB`;
+  if (command === 'backup') {
+    const { backup } = await import('../src/backup.js');
+    // --now is the manual trigger of the same run the nightly makes: plain
+    // `weave backup` already is that run, so the flag documents intent.
+    const r = await backup({
+      dataDir: dataDirOf(dataPath),
+      out: flagStr('out') ?? process.cwd(),
+      dest: flagStr('dest'),
+      workspace: flagStr('workspace'),
+      passphraseEnv: flagStr('passphrase-env'),
+      env: process.env,
+    });
+    const lines = [`Backup ${r.archive} (${mb(r.bytes)}, ${r.encrypted ? 'encrypted' : 'plain tar — no passphrase or key file'}) → ${r.path}`];
+    for (const [name, ws] of Object.entries(r.workspaces)) lines.push(`  ${name}: ${ws.entities ?? '?'} entities, ${mb(ws.bytes)}`);
+    lines.push(`  files: ${r.files} attachment blob${r.files === 1 ? '' : 's'} copied`);
+    lines.push(`  orphaned references (Issue #250): ${r.orphans.count}${r.orphans.count ? ' — ' + r.orphans.list.slice(0, 5).map((o) => `${o.workspace}: ${o.name || o.id}`).join(', ') + (r.orphans.count > 5 ? ', …' : '') : ''}`);
+    if (r.uploaded) lines.push(`  uploaded ${r.uploaded}${r.pruned.length ? `; pruned ${r.pruned.length} past the newest 30` : ''}`);
+    return out(lines.join('\n'));
+  }
+  /* `restore <ref>` brings a trashed entity back; `restore <archive>` brings
+     a data directory back. An archive is a URL, a .tar/.tar.enc, or a path
+     that exists on disk — an entity ref is none of those. */
+  const looksLikeArchive = (a) => typeof a === 'string' && (/^(s3|https?):\/\//.test(a) || /\.tar(\.enc)?$/.test(a) || (a.includes('/') && existsSync(a)));
+  if (command === 'restore' && looksLikeArchive(args[0])) {
+    const { restore } = await import('../src/backup.js');
+    const r = await restore({
+      source: args[0],
+      dataDir: dataDirOf(dataPath),
+      passphraseEnv: flagStr('passphrase-env'),
+      force: Boolean(flags.force),
+      env: process.env,
+    });
+    const lines = [`Restored ${r.landed.length} entries from a weave ${r.archive.weave} backup of ${r.archive.createdAt} into ${r.dataDir} (${r.verified} sha256 checks passed)`];
+    for (const name of r.landed.filter((n) => !n.startsWith('files/'))) lines.push(`  ${name}${r.workspaces[name.replace(/\.db$/, '')] ? ` — ${r.workspaces[name.replace(/\.db$/, '')].entities} entities` : ''}`);
+    const blobs = r.landed.filter((n) => n.startsWith('files/')).length;
+    if (blobs) lines.push(`  files/: ${blobs} attachment blob${blobs === 1 ? '' : 's'}`);
+    lines.push(`  orphaned references in the source (Issue #250): ${r.orphans.count}`);
+    if (r.landed.includes('keystore.json')) lines.push('  keystore.json landed — put keystore.key (or WEAVE_KEYSTORE_PASSPHRASE) beside it before credentials will read');
+    return out(lines.join('\n'));
   }
 
   const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
