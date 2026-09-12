@@ -903,7 +903,8 @@ What the types force:
 
 - **Select, multi-select and workflow paste by option identity.** Within a table the option itself carries over. Into a different table the label goes instead, and a label that names no option there is **refused**, never invented.
 - **A multi-select pastes as a replacement**, never a merge: the set you copied is the set the cell ends up with.
-- **A formula, rollup, lookup, view, relation or document column takes no paste.** The cell refuses and the message names the column, the way the selection bar names what did not land.
+- **A relation links by name.** Each label in the paste — a copied relation cell, or \`Ann, Bob\` from a sheet — is matched against the related table's rows: a cell copied inside weave links the same rows; otherwise the exact name (case and surrounding spaces aside), then \`#12\`. A set is replaced whole, as a multi-select is; a single relation takes the first match. A label that names no row is never invented: the message counts and names it, and a cell whose labels all miss is left alone.
+- **A formula, rollup, lookup, view or document column takes no paste.** The cell refuses and the message names the column, the way the selection bar names what did not land.
 - **Text from a spreadsheet** fills the range row by row. Each column reads it in its own terms — a number parsed, a checkbox read (\`false\` is false), a comma list split into a set — and a cell that will not read is dropped and counted while its neighbours land.
 
 A fill or a paste is written the same way the selection bar writes: \`POST /api/bulk\`, one call per distinct set of values, reported per row. Rows that receive the same values share one call, so a fill down a column is **one write**, and the message it raises carries an **Undo** that steps the whole thing back at once.
