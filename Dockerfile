@@ -12,7 +12,8 @@ COPY --chown=node:node . .
 #   WEAVE_DATA                 the workspace .db; files/ + weave.db beside it
 #   WEAVE_KEYSTORE             the secrets file; set here so it lives on the volume
 #   WEAVE_KEYSTORE_PASSPHRASE  derives the keystore key; no key file on disk (unset)
-#   WEAVE_ORIGIN               reserved for phase 2 (passkeys); not read yet
+#   WEAVE_ORIGIN               public origin passkeys + the session cookie bind to (unset = loopback)
+#   WEAVE_TRUST_PROXY          1 behind a platform proxy: rate limits read X-Forwarded-For (unset)
 #   WEAVE_BACKUP_DEST          reserved for phase 3 (backup); not read yet
 ENV PORT=4400 \
     WEAVE_HOST=0.0.0.0 \

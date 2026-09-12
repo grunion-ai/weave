@@ -81,6 +81,13 @@ const SURFACE = [
   ['workspace.record', ['getWorkspace', 'updateWorkspace'], 'weave_workspace', 'workspace', ['GET /api/workspace', 'PATCH /api/workspace']],
   ['workspace.logo', ['setWorkspaceLogo', 'getWorkspaceLogo', 'deleteWorkspaceLogo'], 'weave_workspace', 'workspace logo', ['GET /api/workspace/logo', 'PUT /api/workspace/logo', 'DELETE /api/workspace/logo']],
   ['accounts', ['createAccount', 'listAccounts', 'deleteAccount', 'setRequireAuth'], 'weave_accounts', 'account', ['GET /api/accounts', 'POST /api/accounts', 'DELETE /api/accounts/:rest']],
+  /* Door B (Feature #222 part 2). The HTTP side is the browser's ceremony;
+     the CLI and MCP side is the operator's: mint an invite, list and revoke
+     sessions, remove a passkey. Registration and sign-in have no CLI because
+     a passkey is a browser act — the invite URL is how the CLI reaches them. */
+  ['auth.invite', ['createInvite', 'consumeInvite'], 'weave_accounts', 'account invite', ['POST /api/auth/register/options', 'POST /api/auth/register/verify']],
+  ['auth.credentials', ['addCredential', 'removeCredential'], 'weave_accounts', 'account remove-credential', ['POST /api/auth/register/verify', 'DELETE /api/auth/credentials/:ref']],
+  ['auth.sessions', ['createSession', 'listSessions', 'revokeSession'], 'weave_accounts', 'account sessions', ['POST /api/auth/login/options', 'POST /api/auth/login/verify', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref']],
   ['keys', ['setKey', 'listKeys', 'deleteKey'], 'weave_keys', 'key', ['GET /api/keys', 'POST /api/keys', 'DELETE /api/keys/:rest']],
   /* Reveal has no MCP tool ON PURPOSE (Feature #143). A human asking for their
      own credential is the use case; an agent holding a token that can drain
@@ -108,6 +115,10 @@ const INTERNAL = {
   credentialLink: 'read helper — where a remote keystore keeps the credential',
   bodyBlocks: 'read helper — the resolved body order already ships inside the schema payload',
   viewByShareToken: 'the share link IS this call', verifyToken: 'auth path',
+  verifySession: 'auth path — the wv_session cookie IS this call (Feature #222 part 2)',
+  readInvite: 'auth path — the invite link is checked here and consumed by consumeInvite once the passkey lands',
+  credentialById: 'auth path — which account holds the passkey an assertion names',
+  useCredential: 'auth path — the counter and lastUsedAt write after an assertion verifies',
   hasKey: 'keystore predicate', resolveKey: 'returns a secret — never leaves the process',
   storageStats: 'read helper — /api/health already ships it for the nav stats strip',
   relationTargetDbIds: 'read helper — the tables a relation may point at; describeSchema already ships them',

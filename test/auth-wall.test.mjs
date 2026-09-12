@@ -94,9 +94,14 @@ async function serve() {
 }
 
 /* The doors: /api/health, GET /view/<share token> (Feature #17), the passcode
-   applet under /t (its own door), and the static assets a sign-in page will
-   need (Feature #222 phase 2) — CSS, JS, fonts and images, never .html. */
-const OPEN = (method, path) => path === '/api/health'
+   applet under /t (its own door), the static assets the sign-in page needs
+   (CSS, JS, fonts and images, never .html), and door B itself (Feature #222
+   part 2): the /auth page and the ceremonies under /api/auth/ — options,
+   verify and logout answer an anonymous caller because they are how a caller
+   stops being anonymous. /api/auth/me and the self-service session and
+   credential verbs are the account's own and stay 401 to nobody. */
+const OPEN = (method, path) => path === '/api/health' || path === '/auth'
+  || /^\/api\/auth\/login\/(options|verify)$/.test(path) || path === '/api/auth/logout'
   || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || path.startsWith('/t/')
     || /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path)));
 
@@ -108,6 +113,13 @@ test('with requireAuth on, every route the dispatcher serves refuses an anonymou
       const res = await call(method, path);
       if (OPEN(method, path)) {
         assert.notEqual(res.status, 401, `${method} ${path} is a door and must not hit the wall`);
+        continue;
+      }
+      // Registration is a door with its own lock: an invite or a session.
+      // Anonymous with neither, the ceremony refuses — not the wall.
+      if (/^\/api\/auth\/register\//.test(path)) {
+        assert.ok([400, 401].includes(res.status), `${path} answered ${res.status}`);
+        assert.doesNotMatch((await res.json()).error, /requires authentication/, `${path} is refused by the ceremony, not the wall`);
         continue;
       }
       assert.equal(res.status, 401, `${method} ${path} answered ${res.status} to nobody`);
@@ -131,6 +143,11 @@ test('with requireAuth on, every route the dispatcher serves refuses an anonymou
     assert.equal((await call('GET', '/t')).status, 200);
     assert.equal((await call('GET', `${ws}/api/health`)).status, 200);
     for (const p of ['/app.js', '/style.css']) assert.equal((await call('GET', p)).status, 200, `${p} is an asset the sign-in page needs`);
+    // Door B: the sign-in page is served under both prefixes, and the HTML 401 links to it.
+    assert.equal((await call('GET', '/auth')).status, 200);
+    assert.equal((await call('GET', `${ws}/auth`)).status, 200);
+    assert.match(await (await call('GET', `/e/${task.id}/doc.html`)).text(), /href="\/auth\?next=/);
+    assert.match(await (await call('GET', `${ws}/e/${task.id}/doc.html`)).text(), new RegExp(`href="${ws}/auth\\?next=`));
   } finally {
     stop();
   }

@@ -152,6 +152,11 @@ Accounts & audit (Feature #14)
   account list
   account delete <ref>
   audit [--limit 50]
+Passkeys & sessions (Feature #222, door B)
+  account invite <name> [--role admin] [--ttl 15m]   One-time URL to register a passkey (creates the account if missing)
+  account sessions <name>                             Browser sessions the account holds
+  account revoke-session <name> (--all | --id <id>)  End sessions — the lost-phone verb
+  account remove-credential <name> <credId>           Drop a passkey (id or prefix, from account list)
 Undo (entity mutations only — schema work is not undoable)
   undo [--steps n]                    Revert the last n entity mutations
   undo --list [--limit 20]           Show what undo would revert, newest first
@@ -182,7 +187,24 @@ Collaboration & data
   import --file path
 
 Refs: entities accept "Table#publicId" (e.g. Task#3), a UUID, or a name with --db.
-Data file: --data flag > WEAVE_DATA env > ~/.weave/workspace.json`;
+Data file: --data flag > WEAVE_DATA env > ~/.weave/workspace.json
+Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (public origin passkeys
+     and the session cookie bind to, e.g. https://weave.example.com — required when auth is on and the
+     host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by X-Forwarded-For behind Railway/Fly/a proxy),
+     WEAVE_KEYSTORE_PASSPHRASE, WEAVE_APPLET_PASSCODE`;
+
+/* Where an invite URL points: WEAVE_ORIGIN, else the loopback dev origin. */
+function publicOrigin() {
+  const port = Number(flags.port ?? process.env.PORT ?? 4400);
+  return process.env.WEAVE_ORIGIN?.trim().replace(/\/$/, '') || `http://localhost:${port}`;
+}
+/* "15m", "2h", "90s", or a number of minutes. */
+function parseTtl(v, fallbackMs) {
+  if (v == null || v === true) return fallbackMs;
+  const m = String(v).match(/^(\d+)\s*([smhd]?)$/);
+  if (!m) throw new WeaveError(`--ttl must look like 15m, 2h or 90s (got '${v}')`, 'invalid');
+  return Number(m[1]) * ({ s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2] || 'm']);
+}
 
 async function main() {
   if (!command || command === 'help' || flags.help) return out(HELP);
@@ -253,7 +275,18 @@ async function main() {
     // so a phone on the same wifi can reach the task applet, and it should be
     // turned off again when it is not needed.
     const host = String(flags.host ?? process.env.WEAVE_HOST ?? '127.0.0.1');
-    const { buildInfo } = await import('../src/server.js');
+    const { buildInfo, originFromEnv } = await import('../src/server.js');
+    /* Door B (Feature #222 part 2): passkeys and the session cookie bind to
+       one public origin. Off loopback with auth on, an unset WEAVE_ORIGIN
+       means every sign-in would fail with an origin mismatch — so it fails
+       here, once, with the fix in the message. */
+    const loopback = ['127.0.0.1', 'localhost', '::1'].includes(host);
+    const origin = originFromEnv(); // throws on a malformed value
+    if (w.state.meta.requireAuth && !loopback && !origin) {
+      console.error(`WEAVE_ORIGIN is required when authentication is on and the host is ${host}: set it to the public origin browsers use, e.g. WEAVE_ORIGIN=https://weave.example.com`);
+      process.exit(1);
+    }
+    if (origin) console.log(`Passkey origin: ${origin}${process.env.WEAVE_TRUST_PROXY ? ' (trusting X-Forwarded-For)' : ''}`);
     // The served instance reports its build so a stale one can toast.
     const { port: actual } = await startServer(w, { port, host, build: buildInfo });
     const wide = host === '0.0.0.0' || host === '::';
@@ -481,11 +514,30 @@ async function main() {
       return out(w.describeSchema());
     }
     case 'account': {
-      const [sub, ref] = args;
+      const [sub, ref, extra] = args;
       if (sub === 'create') return out(w.createAccount({ name: ref, role: flags.role ?? 'writer' }));
       if (sub === 'delete') return out(w.deleteAccount(ref));
       if (sub === 'list' || !sub) return out(w.listAccounts());
-      throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete`);
+      /* Door B (Feature #222 part 2). A CLI holder is the root of trust: the
+         invite URL it prints is the only way a first passkey gets onto an
+         account, and the three verbs after it are the lost-device path. */
+      if (sub === 'invite') {
+        if (!ref) throw new WeaveError('account invite needs a name', 'invalid');
+        if (!w.listAccounts().some((a) => a.name === ref)) {
+          const made = w.createAccount({ name: ref, role: flags.role ?? 'admin' });
+          console.error(`Created account '${ref}' (${made.account.role}). Its wv_ token: ${made.token}`);
+        }
+        const inv = w.createInvite(ref, { ttlMs: parseTtl(flags.ttl, Weave.INVITE_TTL_MS) });
+        const url = `${publicOrigin()}/auth?invite=${inv.token}`;
+        return out({ account: inv.account, expiresAt: inv.expiresAt, url });
+      }
+      if (sub === 'sessions') return out(w.listSessions(ref));
+      if (sub === 'revoke-session') {
+        if (!flags.all && (flags.id == null || flags.id === true)) throw new WeaveError('account revoke-session needs --all or --id <session id>', 'invalid');
+        return out(w.revokeSession(ref, { all: Boolean(flags.all), id: flags.all ? null : String(flags.id) }));
+      }
+      if (sub === 'remove-credential') return out(w.removeCredential(ref, extra));
+      throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete, invite, sessions, revoke-session, remove-credential`);
     }
     case 'key': {
       const [sub, name] = args;

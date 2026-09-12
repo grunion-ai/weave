@@ -16,6 +16,8 @@ import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
 import { handleMcpMessage } from './mcp.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
+import { renderAuthPage } from './auth-page.js';
+import { verifyRegistration, verifyAssertion, newChallenge, b64url } from './webauthn.js';
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
@@ -24,10 +26,17 @@ export function statusFor(err) {
 
 const STARTED_AT = new Date().toISOString();
 
-/* What a browser sees at the wall (Feature #222 phase 0). Phase 2 replaces
-   it with the /auth sign-in page; until then it names the condition and
-   the two ways in. */
-const WALL_PAGE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}</style><h1>This workspace requires authentication</h1><p>Send a Bearer token, or open a share link you were given.</p>';
+/* What a browser sees at the wall (Feature #222 phase 0): the condition and
+   the ways in — the passkey page (phase 2), a Bearer token, a share link. */
+const wallPageHtml = (authHref) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in with a passkey</a>, send a Bearer token, or open a share link you were given.</p>`;
+
+/* ---------- door B plumbing (Feature #222 part 2) ----------
+   Challenges live five minutes in memory, keyed by a random id the client
+   echoes back; rate limits are per IP, in memory, sized to blunt guessing
+   and nothing more (10 options calls a minute, 5 failed verifies a minute). */
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const LIMITS = { options: 10, failed: 5 };
+const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
 /* hub: createWorkspaceHub's interface (get/list/create/rename/entries/
    defaultName). opts:
@@ -38,7 +47,53 @@ const WALL_PAGE = '<!doctype html><meta charset="utf-8"><meta name="viewport" co
      platform serves assets before the dispatcher runs
    Returns handle(rx) where rx = { method, path (decoded pathname),
    searchParams, header(name), readBody() } → {status, headers, body}. */
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, serveStatic = null } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS } = {}) {
+  const challenges = new Map();
+  const rates = { options: new Map(), failed: new Map() };
+  /* limited(kind, ip) counts this call and says whether the minute's budget
+     is spent; limited(kind, ip, { peek: true }) only asks. Options calls
+     count on arrival; a verify counts only when it fails. */
+  const limited = (kind, ip, { peek = false } = {}) => {
+    const now = Date.now();
+    const bucket = rates[kind];
+    if (bucket.size > 5000) bucket.clear();
+    let hit = bucket.get(ip);
+    if (!hit || now - hit.at > 60 * 1000) { hit = { at: now, n: 0 }; bucket.set(ip, hit); }
+    if (!peek) hit.n += 1;
+    return hit.n > limits[kind] || (peek && hit.n >= limits[kind]);
+  };
+  const noteFailure = (ip) => limited('failed', ip);
+  /* The id the client echoes back IS the challenge: 32 random bytes, used
+     once — takeChallenge deletes on read, so a replayed verify finds nothing. */
+  const putChallenge = (entry) => {
+    const now = Date.now();
+    for (const [k, v] of challenges) if (v.expiresAt <= now) challenges.delete(k);
+    const id = newChallenge();
+    challenges.set(id, { ...entry, expiresAt: now + CHALLENGE_TTL_MS });
+    return id;
+  };
+  const takeChallenge = (id, kind) => {
+    const c = challenges.get(id);
+    challenges.delete(id);
+    if (!c || c.kind !== kind || c.expiresAt <= Date.now()) return null;
+    return c;
+  };
+  /* The origin passkeys are bound to. WEAVE_ORIGIN when set; else the
+     loopback dev form — http://localhost:<port> — because a WebAuthn RP ID
+     cannot be an IP address, and rpId is the origin's hostname. */
+  const originFor = (rx) => {
+    if (origin) return origin;
+    const port = String(rx.header('host') ?? '').split(':')[1];
+    return `http://localhost${port ? ':' + port : ''}`;
+  };
+  const rpIdFor = (rx) => new URL(originFor(rx)).hostname;
+  const clientIp = (rx) => {
+    const fwd = trustProxy ? String(rx.header('x-forwarded-for') ?? '').split(',')[0].trim() : '';
+    return fwd || rx.remote || 'unknown';
+  };
+  const sessionCookie = (token, rx) => `wv_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}${originFor(rx).startsWith('https:') ? '; Secure' : ''}`;
+  const clearCookie = (rx) => `wv_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${originFor(rx).startsWith('https:') ? '; Secure' : ''}`;
+
   return async function handle(rx) {
     let path = rx.path;
     // Where the reader is: an instant renders in this zone (public/date-grain.js).
@@ -162,27 +217,50 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
        doc.html, entity.pdf, a deck or the app shell needs a token like the
        API does. The doors that stay open carry their own authorization or
        are needed before anyone can sign in: /api/health for a monitor, the
-       share link and the applet above, and the static CSS/JS/font/image
-       assets the sign-in page (phase 2) will load — never a .html, which is
-       the app itself. A browser gets a page, an API caller keeps the JSON. */
-    const wallPage = () => out(401, WALL_PAGE, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    const openDoor = path === '/api/health'
+       share link and the applet above, the sign-in page at /auth with its
+       ceremonies under /api/auth/ (part 2), and the static CSS/JS/font/image
+       assets — never a .html, which is the app itself. A browser gets a
+       page, an API caller keeps the JSON. */
+    const authHref = `${wsPrefix}/auth?next=${encodeURIComponent(wsPrefix + path)}`;
+    const wallPage = () => out(401, wallPageHtml(authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/')
       || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
+    /* Who is here (Feature #222 part 2): a Bearer token wins when both are
+       present; otherwise the wv_session cookie names the account. A session
+       minted on the hub root opens a member workspace too — the root is
+       where the registry lives (Feature #219) and where an operator's
+       passkey is registered; a member's own sessions still verify first. */
+    let session = null;
+    const cookies = parseCookies(rx.header('cookie'));
     const authz = rx.header('authorization');
     if (authz && /^Bearer /i.test(authz)) {
       const account = weave.verifyToken(authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
       weave.actor = account.name;
       role = account.role;
+    } else if (cookies.wv_session) {
+      const root = hub.get(hub.defaultName);
+      session = weave.verifySession(cookies.wv_session) ?? (root !== weave ? root.verifySession(cookies.wv_session) : null);
+      if (session) {
+        weave.actor = session.name;
+        role = session.role;
+      } else if (weave.state.meta.requireAuth && !openDoor) {
+        // A dead cookie: the browser goes to the sign-in page and the cookie
+        // is cleared on the way; an API caller keeps the JSON 401.
+        return path.startsWith('/api/')
+          ? deny(401, 'Session expired or revoked')
+          : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(rx), 'Cache-Control': 'no-store' }, body: '' };
+      }
     } else if (weave.state.meta.requireAuth && !openDoor) {
       return path.startsWith('/api/') ? deny(401, 'This workspace requires authentication') : wallPage();
     }
     // The caps reach the page routes too: every page is a read, so a reader
-    // may GET any of them and POST at none (Feature #222 phase 0).
+    // may GET any of them and POST at none (Feature #222 phase 0). The auth
+    // verbs are every account's own — a reader may sign out.
     if (role && role !== 'admin') {
       const m2 = rx.method;
-      const read = m2 === 'GET' || m2 === 'HEAD'
+      const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'));
       const schemaWrite = !read && (
         /^\/api\/(spaces|automations|accounts|registry)/.test(path)
@@ -335,10 +413,116 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return { status: 302, headers: { Location: `${wsPrefix}/#/entity/${entity.id}` }, body: '' };
       }
 
+      /* ---------- door B: the sign-in page and its ceremonies (Feature #222 part 2) ---------- */
+      if (path === '/auth') {
+        return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      }
+
       // ---------- API ----------
       if (path.startsWith('/api/')) {
         const body = ['POST', 'PUT', 'PATCH'].includes(rx.method) ? await rx.readBody() : {};
         const route = `${rx.method} ${path}`;
+
+        if (path.startsWith('/api/auth/')) {
+          const ip = clientIp(rx);
+          const tooMany = () => out(429, { error: 'Too many attempts — wait a minute and try again', code: 'rate-limited' });
+          const who = () => session ?? (role ? weave.verifyToken(authz.slice(7).trim()) : null);
+          // Which engine holds the session: the one asked, or the hub root.
+          const holder = () => (session && weave.verifySession(cookies.wv_session)) ? weave : hub.get(hub.defaultName);
+          if (route === 'POST /api/auth/register/options') {
+            if (limited('options', ip)) return tooMany();
+            const invite = body?.invite ? weave.readInvite(String(body.invite)) : null;
+            const account = invite ?? who();
+            if (!account) return deny(401, body?.invite ? 'This invite link is not valid or has expired — ask for a new one' : 'Registering a passkey needs an invite link or a signed-in session');
+            const id = putChallenge({ kind: 'register', accountId: account.id, invite: invite ? String(body.invite) : null, holder: invite ? weave : holder() });
+            return out(200, {
+              id,
+              options: {
+                challenge: id,
+                rp: { id: rpIdFor(rx), name: weave.state.meta.name || 'weave' },
+                user: { id: b64url.encode(new TextEncoder().encode(account.id)), name: account.name, displayName: account.name },
+                pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+                authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'preferred' },
+                attestation: 'none',
+                timeout: CHALLENGE_TTL_MS,
+                excludeCredentials: (account.credentials ?? []).map((c) => ({ type: 'public-key', id: c.id, transports: c.transports ?? [] })),
+              },
+            });
+          }
+          if (route === 'POST /api/auth/register/verify') {
+            if (limited('failed', ip, { peek: true })) return tooMany();
+            const c = takeChallenge(String(body?.id ?? ''), 'register');
+            if (!c) { noteFailure(ip); return out(400, { error: 'This registration expired or was already used — start again', code: 'invalid' }); }
+            const engine = c.holder;
+            let cred;
+            try {
+              cred = await verifyRegistration({ response: body?.response, expectedChallenge: String(body?.id), origin: originFor(rx), rpId: rpIdFor(rx) });
+              if (c.invite) engine.consumeInvite(c.invite);
+              engine.addCredential(c.accountId, { ...cred, label: String(body?.label ?? '').slice(0, 80) });
+            } catch (err) {
+              noteFailure(ip);
+              throw err;
+            }
+            const minted = engine.createSession(c.accountId, { ua: rx.header('user-agent') });
+            return out(200, { ok: true, account: minted.account, credential: { id: cred.id, alg: cred.alg } }, { 'Set-Cookie': sessionCookie(minted.token, rx), 'Cache-Control': 'no-store' });
+          }
+          if (route === 'POST /api/auth/login/options') {
+            if (limited('options', ip)) return tooMany();
+            const id = putChallenge({ kind: 'login' });
+            return out(200, { id, options: { challenge: id, rpId: rpIdFor(rx), allowCredentials: [], userVerification: 'preferred', timeout: CHALLENGE_TTL_MS } });
+          }
+          if (route === 'POST /api/auth/login/verify') {
+            if (limited('failed', ip, { peek: true })) return tooMany();
+            const c = takeChallenge(String(body?.id ?? ''), 'login');
+            if (!c) { noteFailure(ip); return out(400, { error: 'This sign-in expired or was already used — start again', code: 'invalid' }); }
+            const credId = String(body?.response?.id ?? '');
+            // The credential's home: this workspace, or the hub root.
+            const root = hub.get(hub.defaultName);
+            const engine = weave.credentialById(credId) ? weave : (root.credentialById(credId) ? root : null);
+            const hit = engine?.credentialById(credId);
+            if (!hit) { noteFailure(ip); return deny(401, 'No account holds this passkey — it may have been removed; ask for an invite'); }
+            let verdict;
+            try {
+              verdict = await verifyAssertion({ response: body?.response, credential: hit.credential, expectedChallenge: String(body?.id), origin: originFor(rx), rpId: rpIdFor(rx) });
+            } catch (err) {
+              noteFailure(ip);
+              throw err;
+            }
+            engine.useCredential(credId, { counter: verdict.counter });
+            const minted = engine.createSession(hit.account.id, { ua: rx.header('user-agent') });
+            return out(200, { ok: true, account: minted.account }, { 'Set-Cookie': sessionCookie(minted.token, rx), 'Cache-Control': 'no-store' });
+          }
+          if (route === 'POST /api/auth/logout') {
+            if (session) {
+              try { holder().revokeSession(session.id, { id: session.sessionId }); } catch { /* already gone */ }
+            }
+            return out(200, { ok: true }, { 'Set-Cookie': clearCookie(rx), 'Cache-Control': 'no-store' });
+          }
+          if (route === 'GET /api/auth/me') {
+            const account = who();
+            if (!account) return deny(401, 'Not signed in');
+            const engine = session ? holder() : weave;
+            const sessions = engine.listSessions(account.id).map(({ accountId, ...s }) => ({ ...s, current: s.id === session?.sessionId }));
+            const { credentials = [], ...pub } = engine.listAccounts().find((a) => a.id === account.id) ?? account;
+            return out(200, { account: pub, role: account.role, sessions, credentials }, { 'Cache-Control': 'no-store' });
+          }
+          /* The two self-service verbs the You section needs. `others` ends
+             every session but this one; an id ends that one. */
+          if ((m = path.match(/^\/api\/auth\/sessions\/([^/]+)$/)) && rx.method === 'DELETE') {
+            const account = who();
+            if (!account) return deny(401, 'Not signed in');
+            const engine = session ? holder() : weave;
+            if (m[1] === 'others') return out(200, engine.revokeSession(account.id, { all: true, except: session?.sessionId ?? null }));
+            return out(200, engine.revokeSession(account.id, { id: m[1] }));
+          }
+          if ((m = path.match(/^\/api\/auth\/credentials\/([^/]+)$/)) && rx.method === 'DELETE') {
+            const account = who();
+            if (!account) return deny(401, 'Not signed in');
+            const engine = session ? holder() : weave;
+            return out(200, engine.removeCredential(account.id, decodeURIComponent(m[1])));
+          }
+          return notFound({ error: 'Unknown auth route', code: 'not-found' });
+        }
 
         // startedAt + uptime let callers spot a stale server (process start
         // time vs commit/package version) instead of assuming "up" = "current".

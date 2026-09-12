@@ -242,7 +242,25 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
   };
 }
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null } = {}) {
+/* The public origin passkeys and the session cookie are bound to (Feature
+   #222 part 2): WEAVE_ORIGIN, e.g. https://weave.example.com. Unset means
+   loopback — http://localhost:<port>, RP ID `localhost`. WEAVE_TRUST_PROXY=1
+   makes the rate limiter read X-Forwarded-For (Railway, Fly and every other
+   platform proxy put the client there); off, the socket address is the
+   client, so a proxy would rate-limit itself. */
+export function originFromEnv(env = process.env) {
+  const raw = env.WEAVE_ORIGIN?.trim();
+  if (!raw) return null;
+  let url;
+  try { url = new URL(raw); } catch { throw new WeaveError(`WEAVE_ORIGIN must be an absolute URL like https://weave.example.com (got '${raw}')`, 'invalid'); }
+  if (!['http:', 'https:'].includes(url.protocol) || url.pathname !== '/' || url.search || url.hash) {
+    throw new WeaveError(`WEAVE_ORIGIN must be a bare origin — scheme and host only, no path (got '${raw}')`, 'invalid');
+  }
+  return url.origin;
+}
+export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
+
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
 
   // Node adapter around the runtime-agnostic dispatcher (src/routes.js): this
@@ -284,6 +302,9 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     // must not read git or toast about a checkout it does not represent.
     build,
     serveStatic,
+    origin,
+    trustProxy,
+    ...(limits ? { limits } : {}),
   });
 
   const server = createHttpServer(async (req, res) => {
@@ -294,6 +315,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       searchParams: url.searchParams,
       header: (name) => req.headers[name.toLowerCase()],
       readBody: () => readBody(req),
+      remote: req.socket?.remoteAddress ?? null,
     });
     res.writeHead(outcome.status, outcome.headers);
     res.end(outcome.body);
@@ -302,8 +324,8 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null } = {}) {
-  const server = createServer(weave, { workspaces, build });
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, origin, trustProxy, limits } = {}) {
+  const server = createServer(weave, { workspaces, build, limits, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });
