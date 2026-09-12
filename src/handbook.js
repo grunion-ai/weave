@@ -1243,10 +1243,359 @@ Opening a row opens the structure: a row that describes another workspace deep-l
 
 A workspace that minted its own Workspace space keeps it as a **tombstone**: the space and its four tables are marked deleted, their rows kept, nothing purged. Its space rollups are re-created on the root Spaces table (a name clash gets \` (<workspace>)\` appended). \`weave serve\` on that file alone hosts the registry again; joining a hub tombstones it again. The Cloudflare Worker serves one workspace per deployment, so there the root is that workspace and nothing moves.`,
   },
+  /* ---------- Self-hosting (Feature #222, phase 1) ----------
+     The door matrix, the gates, the deploy targets and the environment
+     contract live here so a fresh clone carries them; the README's
+     self-hosting section is an index into these pages. Two stubs name the
+     phase that fills them. test/deploy-artifacts.test.mjs pins the titles,
+     the checks, and the variable set against the Dockerfile and compose. */
+  {
+    name: "Self-host weave: choose your door",
+    audience: 'Human',
+    order: 13,
+    doc: `# Self-host weave: choose your door
+
+weave on a laptop binds \`127.0.0.1\` and needs no login. weave on a server needs a door: something that decides who gets to the port. The rule this page and the ones after it follow: **the authentication surface is the operator's choice, and no surface depends on another.** Three doors, each a complete path on its own page, each ending with a check you can run.
+
+\`requireAuth\` is the switch inside weave (\`weave workspace require-auth\`). With requireAuth on, every page and API call needs a token: a \`wv_\` bearer for agents, a session for people once door B lands. Off, whoever reaches the port is an admin. A door in front of the port is what makes "reaches the port" mean something.
+
+## The three doors
+
+| Door | Runs where | Code in weave | Phone browser | Agents over HTTP | Share links | Portability |
+| --- | --- | --- | --- | --- | --- | --- |
+| **A. Edge gate**: Cloudflare Access, Tailscale, Caddy \`basic_auth\`, oauth2-proxy, Authelia | In front of the process | None | Yes (Tailscale needs its app) | Service token or tailnet member | Only behind a public gate | Swap the proxy; weave untouched |
+| **B. Built-in passkeys + scoped tokens** | Inside weave | Ships with weave, zero dependencies | Yes: Face ID, Touch ID, Android | \`wv_\` bearer tokens | Share grants | Any host, any DNS, no vendor |
+| **C. Identity provider over OIDC**: GitHub, Google; Keycloak, Authentik; Clerk, Auth0 | Inside weave, identity outside | On top of B's sessions | Yes | Same tokens as B | Same as B | One client id per provider |
+
+**Door A** is the fastest way to a private instance today and costs nothing: every gate on the list has a free tier, and Cloudflare Access is free to fifty users. The gate owns identity; weave never learns who came in. Stack it in front of B or C whenever you like; neither side needs to know. The **Door A: an edge gate** guide has one config block per gate.
+
+**Door B** is the door a fresh \`git clone\` gets: passkeys for people, typed and scoped \`wv_\` tokens for agents, no account at a third party. It is the default the guides lead with once it ships (phase 2 of Feature #222; the **Door B: passkeys** page says what it will hold).
+
+**Door C** adds a provider to door B's session: sign in with GitHub, Google, or a self-hosted identity server. It is "add a provider", never a second auth system, and it lands with Feature #212.
+
+## Tailscale, stated plainly
+
+Tailscale is the simplest door A and the most limited: no public URL. Hosted MCP from claude.ai, share links opened off the tailnet, and phone capture from outside all stay off. Right for one person and their devices; wrong the day someone outside the tailnet needs a link.
+
+## Where the door goes
+
+Every deploy target (Railway, Fly.io, Render, a VPS, Docker on a NAS) takes the same container and the same environment (the **Environment reference** guide). The door sits between the internet and the published port: a platform's custom domain plus a gate, or a reverse proxy on the same box. Pick the target in **Deploy: Railway** or **Deploy: Fly.io, Render, a VPS, Docker**, then pick the door.
+
+## How you know it worked
+
+1. Open the instance in a private browser window. A door A gate asks you to sign in before any weave page draws. With requireAuth on and no gate, the page loads but every call answers \`401\` until a token is set.
+2. \`curl -s https://weave.example.com/api/health\` still answers \`{"ok":true,…}\` through a public gate that exempts it, or a \`302\` to the gate's login when it does not. Either is fine; a bare \`200\` with your data behind it and no gate is the failure.
+3. From a device that should not have access, the same URL gets the gate, not weave.`,
+  },
+  {
+    name: "Door A: an edge gate",
+    audience: 'Human',
+    order: 14,
+    doc: `# Door A: an edge gate
+
+A gate in front of the port. weave keeps binding \`127.0.0.1\` (or the container's \`0.0.0.0\` behind a platform that only routes the custom domain); the gate is what the internet talks to. Five gates, one config block each, one check each. All five stack in front of door B or C without either side knowing.
+
+With a gate in place, turn \`requireAuth\` on as well when agents reach the instance over HTTP: with requireAuth on, every page and API call needs a token, so a gate that admits a person still does not hand an agent anonymous write.
+
+## Cloudflare Access
+
+Free to fifty users. The DNS record is proxied, a tunnel carries traffic to the box, and an Access application decides who gets through.
+
+\`\`\`yaml
+# ~/.cloudflared/config.yml  (cloudflared tunnel create weave; cloudflared tunnel route dns weave weave.example.com)
+tunnel: <tunnel-id>
+credentials-file: /home/weave/.cloudflared/<tunnel-id>.json
+ingress:
+  - hostname: weave.example.com
+    service: http://127.0.0.1:4400
+  - service: http_status:404
+\`\`\`
+
+In Zero Trust → Access → Applications, add a self-hosted application for \`weave.example.com\` with one policy: **Allow** → Emails → the people who belong. Agents get a **service token** (Access → Service Auth) and send it as \`CF-Access-Client-Id\` / \`CF-Access-Client-Secret\` headers on every call.
+
+**Check:** \`curl -sI https://weave.example.com/api/health\` answers \`302\` to \`*.cloudflareaccess.com\`. The same call with the two service-token headers answers \`200\` and \`{"ok":true\`.
+
+## Tailscale
+
+Private to your devices, nothing exposed, no certificate to manage, no public URL (the limit is stated on the **choose your door** page). One command on the server:
+
+\`\`\`bash
+tailscale serve --bg 4400
+\`\`\`
+
+**Check:** \`tailscale serve status\` lists \`https://<machine>.<tailnet>.ts.net → http://127.0.0.1:4400\`. That URL opens on another device in the tailnet and does not resolve anywhere else.
+
+## Caddy \`basic_auth\`
+
+A public hostname with automatic TLS and one shared password. Make the hash with \`caddy hash-password\`, then:
+
+\`\`\`caddyfile
+# /etc/caddy/Caddyfile
+weave.example.com {
+	basic_auth {
+		you $2a$14$replace-with-your-bcrypt-hash
+	}
+	reverse_proxy 127.0.0.1:4400
+}
+\`\`\`
+
+One credential for everyone: every person who gets in is whatever \`requireAuth\` says they are. Fine for one operator; for distinct identities use one of the gates below.
+
+**Check:** \`curl -sI https://weave.example.com/\` answers \`401\`; \`curl -sI -u you:password https://weave.example.com/api/health\` answers \`200\`.
+
+## oauth2-proxy
+
+Sign in with GitHub, Google, or any OIDC provider; the proxy holds the session and forwards to weave.
+
+\`\`\`ini
+# /etc/oauth2-proxy.cfg  (oauth2-proxy --config /etc/oauth2-proxy.cfg)
+http_address = "127.0.0.1:4180"
+upstreams = ["http://127.0.0.1:4400"]
+provider = "github"
+client_id = "<oauth app id>"
+client_secret = "<oauth app secret>"
+cookie_secret = "<python3 -c 'import secrets; print(secrets.token_urlsafe(32))'>"
+email_domains = ["example.com"]
+redirect_url = "https://weave.example.com/oauth2/callback"
+\`\`\`
+
+Caddy (or nginx) terminates TLS for \`weave.example.com\` and \`reverse_proxy 127.0.0.1:4180\`.
+
+**Check:** the hostname redirects to the provider's sign-in page; an address outside \`email_domains\` is refused with \`403\` after signing in; yours lands on weave.
+
+## Authelia
+
+Self-hosted SSO with two-factor, driven through Caddy's \`forward_auth\`.
+
+\`\`\`yaml
+# authelia/configuration.yml (excerpt)
+access_control:
+  default_policy: deny
+  rules:
+    - domain: weave.example.com
+      policy: two_factor
+\`\`\`
+
+\`\`\`caddyfile
+weave.example.com {
+	forward_auth 127.0.0.1:9091 {
+		uri /api/authz/forward-auth
+		copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+	}
+	reverse_proxy 127.0.0.1:4400
+}
+\`\`\`
+
+**Check:** the hostname redirects to Authelia's portal; after the second factor the same URL draws weave; \`curl -sI https://weave.example.com/api/health\` answers \`401\` from Authelia, never weave's JSON.
+
+## How you know it worked
+
+Three checks, whichever gate you chose:
+
+1. A private browser window gets the gate before any weave page.
+2. \`curl -sI https://weave.example.com/api/health\` answers a redirect or \`401\` from the gate, or \`200\` only with the gate's own credential (service token, basic auth, cookie).
+3. A row created through the gate is there after the gate is restarted: the gate holds sessions, weave holds data, and neither borrowed the other's.`,
+  },
+  {
+    name: "Door B: passkeys",
+    audience: 'Human',
+    order: 15,
+    doc: `# Door B: passkeys
+
+Not built yet. Phase 2 of Feature #222 builds door B inside weave with zero dependencies: a passkey sign-in page at \`/auth\`, \`wv_session\` cookies with a thirty-day sliding expiry, \`weave account invite <name>\` for the first admin and every device after it, \`weave account sessions\` and \`revoke-session\` for the lost-phone day, and \`WEAVE_ORIGIN\` as the public origin the passkeys are bound to. Agents keep their \`wv_\` bearer tokens; passkeys never lock the CLI out. This page fills in when that lands. Until then, put a **Door A: an edge gate** in front of the port.
+
+## How you know it worked
+
+Not yet. Door A's check is the check until phase 2 lands.`,
+  },
+  {
+    name: "Deploy: Railway",
+    audience: 'Human',
+    order: 16,
+    doc: `# Deploy: Railway
+
+One service, one volume, one replica. The repo carries \`railway.json\` (Dockerfile build, health check on \`/api/health\`, restart on failure, \`numReplicas: 1\`, \`requiredMountPath: /data\`), so the dashboard has little left to set.
+
+## 1. Project from GitHub
+
+New Project → **Deploy from GitHub repo** → your fork of \`grunion-ai/weave\` (or the repo itself). Railway reads \`railway.json\`, builds the \`Dockerfile\`, and deploys on every push to the branch you pick. Nothing to build, nothing from npm.
+
+## 2. Volume at /data
+
+Right-click the service → **Add Volume** → mount path \`/data\`. Everything worth keeping lives there: \`workspace.db\`, the \`weave.db\` docs workspace beside it, \`files/\` for attachments, and the keystore. A volume attaches to one service, and replicas cannot be used with a volume, so the count stays at \`1\`, which is also what a single SQLite writer needs.
+
+Railway mounts the volume owned by root, and the image runs as the unprivileged \`node\` user. If the first deploy log shows \`EACCES\` on \`/data\`, set \`RAILWAY_RUN_UID=0\` on the service and redeploy; the process then runs as root inside its own container, which is the platform's documented answer.
+
+## 3. Variables
+
+Service → **Variables**. Railway sets \`PORT\` itself; the Dockerfile sets \`WEAVE_HOST\`, \`WEAVE_DATA\` and \`WEAVE_KEYSTORE\`; set the rest here.
+
+\`\`\`
+WEAVE_DATA=/data/workspace.db
+WEAVE_KEYSTORE_PASSPHRASE=<a long random string, kept in your password manager>
+\`\`\`
+
+\`WEAVE_KEYSTORE_PASSPHRASE\` is what keeps the keystore key off the volume; lose it and the secrets in the keystore are unreadable (the data is untouched). \`WEAVE_ORIGIN\` joins this list when door B lands; \`WEAVE_BACKUP_DEST\` when phase 3 does. The **Environment reference** guide has every variable and what breaks when each is wrong.
+
+## 4. Custom domain
+
+Service → **Settings → Networking → Custom Domain** → \`weave.example.com\`. Railway shows the target; at your DNS add a **CNAME** record for \`weave\` pointing at it. At Cloudflare keep the proxy **off** (DNS only) so Railway's certificate check sees the record. TLS is Railway's.
+
+## 5. Health check and restarts
+
+\`railway.json\` carries \`healthcheckPath: /api/health\` and \`healthcheckTimeout: 120\`: a deploy is live only once \`/api/health\` answers \`2xx\`, and a crash restarts the container up to ten times. Health checks run at deploy time, not continuously; for an alert when the instance is down, point a free uptime monitor at \`/api/health\`.
+
+## 6. The door
+
+The custom domain is public. Turn \`requireAuth\` on (\`weave workspace require-auth\` from a shell on the service, or \`PATCH /api/workspace\` with \`{"requireAuth": true}\` and an admin token) and put a door in front: **Door A: an edge gate** today, **Door B: passkeys** when it ships.
+
+## Backups
+
+Railway's cron is a separate service and cannot share the volume, so backup runs inside the weave process, not as a Railway cron: phase 3 adds \`weave backup\` and the in-process nightly switch (\`WEAVE_BACKUP_DEST\`). Until then the **Backup and restore** page has the manual copy, and paid Railway plans snapshot the volume.
+
+## How you know it worked
+
+1. \`curl -s https://weave.example.com/api/health\` answers \`{"ok":true,"name":"weave","version":"…","workspace":"workspace",…}\` and the Deployments tab shows the health check passed.
+2. Create a row, then **Redeploy** from the dashboard. The row is still there: the volume, not the container, holds it.
+3. The service shows **1 replica** and one volume at \`/data\`; the log has no \`EACCES\`.`,
+  },
+  {
+    name: "Deploy: Fly.io, Render, a VPS, Docker",
+    audience: 'Human',
+    order: 17,
+    doc: `# Deploy: Fly.io, Render, a VPS, Docker
+
+Four targets, the same container and the same environment. The constraint every one satisfies: weave writes one SQLite file per workspace in WAL mode through Node's synchronous driver, so it needs a real Node ≥ 22.16 process, a disk that survives restarts, and exactly one running copy per data directory. Serverless runtimes and horizontal scaling are out.
+
+## Fly.io
+
+The repo carries \`fly.toml\`: one Machine, a volume at \`/data\`, the internal port \`4400\`, a health check on \`/api/health\`, and \`auto_stop_machines = "off"\` so the single writer never sleeps mid-WAL.
+
+\`\`\`bash
+fly launch --no-deploy --copy-config            # takes fly.toml as is; pick the app name and region
+fly volumes create weave_data -r <region> -n 1 -s 2
+fly secrets set WEAVE_KEYSTORE_PASSPHRASE=<long random string>
+fly deploy --ha=false                            # one Machine, not two: one volume, one writer
+\`\`\`
+
+Fly snapshots the volume daily with five days of retention; that is a floor, not a backup plan (the **Backup and restore** page). If the log shows \`EACCES\` on \`/data\`, the mount came up root-owned: \`fly ssh console -C "chown node:node /data"\` once, then \`fly machine restart\`.
+
+**Check:** \`fly status\` shows one Machine \`started\`; \`curl -s https://<app>.fly.dev/api/health\` answers \`{"ok":true\`; a row created before \`fly machine restart\` is there after it.
+
+## Render
+
+New → **Web Service** → your repo, runtime **Docker**. Disks need a paid instance type. Under **Disks** add one at mount path \`/data\` (1 GB is plenty to start). Under **Environment** set \`WEAVE_DATA=/data/workspace.db\` and \`WEAVE_KEYSTORE_PASSPHRASE\`; Render sets \`PORT\`. Health check path: \`/api/health\`.
+
+A disk pins the service to one instance and turns off zero-downtime deploys: Render stops the old instance before starting the new one, so each deploy is a few seconds of \`502\`. Render snapshots the disk daily and keeps snapshots at least seven days.
+
+**Check:** the service log ends in \`Weave running at http://…:<port>\`; \`/api/health\` on the \`onrender.com\` URL answers ok; a row survives **Manual Deploy → Deploy latest commit**.
+
+## A VPS (Hetzner, or any Linux box) with systemd
+
+Any always-on Linux box with **Node ≥ 22.16**. There is nothing to build and nothing to install from npm.
+
+\`\`\`bash
+sudo git clone https://github.com/grunion-ai/weave /opt/weave
+sudo useradd --system --home /var/lib/weave --create-home weave
+\`\`\`
+
+\`\`\`ini
+# /etc/systemd/system/weave.service
+[Unit]
+Description=weave
+After=network.target
+
+[Service]
+User=weave
+WorkingDirectory=/opt/weave
+Environment=WEAVE_KEYSTORE=/var/lib/weave/keystore.json
+ExecStart=/usr/bin/node /opt/weave/bin/weave.js serve --port 4400 --data /var/lib/weave/workspace.db
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+\`\`\`
+
+\`\`\`bash
+sudo systemctl enable --now weave
+\`\`\`
+
+Keep it bound to \`127.0.0.1\` (the default) and put a **Door A: an edge gate** in front: Caddy for a public hostname, Tailscale for a private one. Everything worth keeping is in \`/var/lib/weave\`. Update with \`sudo git -C /opt/weave pull && sudo systemctl restart weave\`; there is no migration step.
+
+**Check:** \`systemctl status weave\` is \`active (running)\`; \`curl -s http://127.0.0.1:4400/api/health\` answers ok on the box; the gate's own check passes from outside.
+
+## Docker (a NAS, a home server, Unraid, anywhere)
+
+The repo carries \`compose.yaml\`: one service built from the \`Dockerfile\`, a named volume at \`/data\`, the port published on \`4400\`, a health check on \`/api/health\`.
+
+\`\`\`bash
+git clone https://github.com/grunion-ai/weave && cd weave
+docker compose up -d
+\`\`\`
+
+To keep the data in a directory you can see instead of a named volume, change the mount to \`./data:/data\` and \`chown 1000:1000 data\` first: the image runs as the unprivileged \`node\` user (uid 1000) and a bind mount keeps the host's ownership. Set \`WEAVE_KEYSTORE_PASSPHRASE\` in the \`environment\` block to keep the keystore key off the disk. Update with \`git pull && docker compose up -d --build\`.
+
+**Check:** \`docker compose ps\` shows the service \`healthy\`; \`curl -s http://127.0.0.1:4400/api/health\` answers ok; \`docker compose restart\` keeps every row.
+
+## How you know it worked
+
+Whichever target: \`/api/health\` answers \`{"ok":true,…}\` with the version you deployed, a row created before a restart is there after it, and the log shows no \`EACCES\` on the data directory. Then pick the door on the **Self-host weave: choose your door** page.`,
+  },
+  {
+    name: "Backup and restore",
+    audience: 'Human',
+    order: 18,
+    doc: `# Backup and restore
+
+\`weave backup\` and \`weave restore\` are not built yet. Phase 3 of Feature #222 (and Feature #209) adds them: \`VACUUM INTO\` a temp file per workspace, tar with \`files/\` and the keystore, encrypt, upload to an S3-compatible bucket with nothing but \`node:fetch\` and \`node:crypto\`; \`WEAVE_BACKUP_DEST\` set on the server switches on a nightly run inside the process, thirty archives kept; \`weave restore <archive> --data <dir>\` brings one back without any SQLite tooling installed. Litestream stays the documented upgrade for operators who need under-a-minute loss. This page fills in when that lands.
+
+## Until then
+
+Everything lives in the data directory: one \`.db\` per workspace (yours, plus the \`weave.db\` docs workspace), one \`files/\` directory of attachments, and \`keystore.json\`.
+
+\`\`\`bash
+for db in /var/lib/weave/*.db; do
+	sqlite3 "$db" ".backup '/backups/$(basename "$db" .db)-$(date +%F).db'"
+done
+rsync -a /var/lib/weave/files/ /backups/files/
+\`\`\`
+
+Use \`.backup\` rather than copying the file: it is safe while the server is running and folds in the \`-wal\`/\`-shm\` sidecars. \`node bin/weave.js export --data <file>\` writes the same workspace as human-readable JSON if you want a copy you can read without weave.
+
+## How you know it worked
+
+Copy the backed-up \`.db\` and \`files/\` into an empty directory, run \`node bin/weave.js serve --port 4401 --data <dir>/workspace.db\`, and compare an entity count and one attachment against the live instance. A backup you have not restored is a hope.`,
+  },
+  {
+    name: "Environment reference",
+    audience: 'Human',
+    order: 19,
+    doc: `# Environment reference
+
+Every deploy target takes the same variables. Precedence is the same everywhere: a CLI flag beats the environment, the environment beats the default. The \`Dockerfile\` and \`compose.yaml\` in the repo name exactly this set; \`test/deploy-artifacts.test.mjs\` refuses a build where they and this page disagree.
+
+| Variable | Read by | Default | What breaks when it is wrong |
+| --- | --- | --- | --- |
+| \`PORT\` | \`weave serve\` | \`4400\` | The platform's router and health check probe a port nothing listens on: the deploy never goes live. Railway and Fly set it; leave it alone there. |
+| \`WEAVE_HOST\` | \`weave serve\` | \`127.0.0.1\` | Inside a container the loopback address is the container's own: the platform cannot reach the process and the health check fails. Containers need \`0.0.0.0\`; the \`Dockerfile\` sets it. On a VPS keep the default and let the gate connect on loopback. |
+| \`WEAVE_DATA\` | every verb | \`~/.weave/workspace.json\` | Points off the volume: every restart starts empty. It names the workspace \`.db\`; the \`weave.db\` docs workspace and the \`files/\` directory of attachments are created beside it, so the directory is what needs to persist. A \`.json\` spelling is accepted and becomes the sibling \`.db\`. |
+| \`WEAVE_KEYSTORE\` | every verb | \`~/.weave/keystore.json\` | Defaults into \`$HOME\`, which in a container is not on the volume: every restart loses the encrypted secrets. The \`Dockerfile\` sets \`/data/keystore.json\`. |
+| \`WEAVE_KEYSTORE_PASSPHRASE\` | every verb | unset | Unset, a random key is written to a \`chmod 600\` file beside the keystore, so a copy of the volume carries the key. Set, the key is derived from the passphrase and nothing lands. Change it and every stored secret becomes unreadable; keep it in a password manager. |
+| \`WEAVE_ORIGIN\` | nothing yet | unset | Reserved for phase 2 (door B). It will be the public origin passkeys and cookies are bound to, required whenever \`requireAuth\` is on and the host is not loopback. Setting it today does nothing. |
+| \`WEAVE_BACKUP_DEST\` | nothing yet | unset | Reserved for phase 3. It will be the S3-compatible URL of the nightly archive; set, the server backs up in-process at 04:00 UTC. Setting it today does nothing. |
+
+## The container
+
+The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOST=0.0.0.0\`, \`WEAVE_DATA=/data/workspace.db\`, \`WEAVE_KEYSTORE=/data/keystore.json\`. A platform overrides \`PORT\`; you supply \`WEAVE_KEYSTORE_PASSPHRASE\`. The two reserved variables are listed as comments so the contract is visible in one place.
+
+## How you know it worked
+
+\`curl -s http://<host>:<port>/api/health\` answers with \`"workspace":"workspace"\` (the basename of \`WEAVE_DATA\`), and a listing of the data directory shows \`workspace.db\`, \`weave.db\`, \`files/\` and \`keystore.json\`, and no \`keystore.key\` when the passphrase is set.`,
+  },
   {
     name: 'Chip and card anatomy',
     audience: 'Both',
-    order: 12,
+    order: 20,
     doc: `# Chip and card anatomy
 
 A row appears in two shapes outside its own page: the **chip**, inline — a relation cell, a \`[[…]]\` mention in a document, a reference card, a picker — and the **card**, a tile. Both are drawn from the table's two \`view\` fields (the **view** page in [[table:Handbook/Fields|Fields]] says what they can contain; the entity page's **Appears as** strip shows the live pair once the eye unhides them — a hidden view is not drawn there either, Issue #208). This page is the face: every element, what it does, how you use it, and its **hitbox** — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.

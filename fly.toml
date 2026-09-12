@@ -1,0 +1,39 @@
+# fly launch --no-deploy && fly volumes create weave_data -r <region> -n 1 && fly deploy --ha=false
+# One Machine, one volume, one SQLite writer. See the Handbook guide
+# "Deploy: Fly.io, Render, a VPS, Docker".
+app = "weave"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "4400"
+  WEAVE_HOST = "0.0.0.0"
+  WEAVE_DATA = "/data/workspace.db"
+  WEAVE_KEYSTORE = "/data/keystore.json"
+  # WEAVE_KEYSTORE_PASSPHRASE is a secret: fly secrets set WEAVE_KEYSTORE_PASSPHRASE=...
+
+[[mounts]]
+  source = "weave_data"
+  destination = "/data"
+  initial_size = "2gb"
+
+[http_service]
+  internal_port = 4400
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  grace_period = "15s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/api/health"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

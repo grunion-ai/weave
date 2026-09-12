@@ -226,88 +226,34 @@ form is not yet accepted.
 
 ## Self-hosting
 
-A server install is the local install plus a front door. Any always-on Linux box
-with **Node ≥ 22.16** will do — there is nothing to build and nothing to install
-from npm.
+A server install is the local install plus a door. The container is the same
+on every target and the Handbook carries the guides (open **Handbook → Guide**
+on any instance, including the one you just started):
 
-**1. Run it as a service.** Keep it bound to `127.0.0.1`; step 2 is what the
-network actually talks to.
+- **Self-host weave: choose your door** — the three authentication surfaces
+  (an edge gate, built-in passkeys, an identity provider) and the rule: the
+  surface is the operator's choice, and no surface depends on another.
+- **Door A: an edge gate** — Cloudflare Access, Tailscale, Caddy, oauth2-proxy,
+  Authelia: one config block and one check each.
+- **Door B: passkeys** — built-in sign-in; lands in phase 2 of Feature #222.
+- **Deploy: Railway** — project from GitHub, volume at `/data`, variables,
+  custom domain, one replica.
+- **Deploy: Fly.io, Render, a VPS, Docker** — one section each, same shape;
+  the service unit lives here.
+- **Backup and restore** — `weave backup` / `weave restore` land in phase 3;
+  the manual copy until then.
+- **Environment reference** — every variable, its default, and what breaks
+  when it is wrong.
 
-```bash
-sudo git clone https://github.com/grunion-ai/weave /opt/weave
-sudo useradd --system --home /var/lib/weave --create-home weave
-```
-
-```ini
-# /etc/systemd/system/weave.service
-[Unit]
-Description=weave
-After=network.target
-
-[Service]
-User=weave
-WorkingDirectory=/opt/weave
-ExecStart=/usr/bin/node /opt/weave/bin/weave.js serve --port 4400 --data /var/lib/weave/workspace.db
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
+Quick start with Docker, using the `Dockerfile` and `compose.yaml` in the repo:
 
 ```bash
-sudo systemctl enable --now weave
+docker compose up -d        # http://127.0.0.1:4400, data in the weave-data volume
 ```
 
-**2. Put a front door on it.** weave has no accounts and no login of its own —
-whoever reaches the port has full read/write on every workspace — so the proxy
-or private network in front of it *is* the authentication. Pick one:
-
-*Tailscale* — private to your devices, nothing exposed to the internet, no
-certificate to manage. One command on the server:
-
-```bash
-tailscale serve --bg 4400
-```
-
-*Caddy* — a public hostname with automatic TLS and a shared password. Create the
-hash with `caddy hash-password`, then:
-
-```caddyfile
-# /etc/caddy/Caddyfile
-weave.example.com {
-	basic_auth {
-		you $2a$14$replace-with-your-bcrypt-hash
-	}
-	reverse_proxy 127.0.0.1:4400
-}
-```
-
-Basic auth is one shared credential for everyone — weave has no per-user
-permissions, so every person who gets in is an admin. If you need distinct
-identities, put an SSO proxy (Cloudflare Access, oauth2-proxy, Authelia) in that
-slot instead.
-
-**3. Back up the data directory.** Everything lives in `/var/lib/weave`: one
-`.db` per workspace (yours, plus the `weave.db` docs workspace provisioned
-alongside it) and one `files/` directory of attachments.
-
-```bash
-for db in /var/lib/weave/*.db; do
-	sqlite3 "$db" ".backup '/backups/$(basename "$db" .db)-$(date +%F).db'"
-done
-rsync -a /var/lib/weave/files/ /backups/files/
-```
-
-Use `.backup` rather than copying the file — it is safe while the server is
-running and folds in the `-wal`/`-shm` sidecars. `node bin/weave.js export
---data <file>` writes the same workspace as human-readable JSON if you want a
-copy you can read without weave.
-
-**4. Update** with `git pull` — there is no migration step or build:
-
-```bash
-sudo git -C /opt/weave pull && sudo systemctl restart weave
-```
+`railway.json` and `fly.toml` are the platform manifests for the same image.
+Whatever the target, put a door in front before the port is reachable from
+anywhere but your own machine.
 
 ## What weave is not
 

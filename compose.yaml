@@ -1,0 +1,32 @@
+# docker compose up -d   →   http://127.0.0.1:4400
+# One service, one named volume, one replica: weave is a single SQLite writer.
+# Put a front door in front of the published port before exposing it — see
+# the Handbook guide "Self-host weave: choose your door".
+services:
+  weave:
+    build: .
+    image: weave:local
+    restart: unless-stopped
+    ports:
+      - "4400:4400"
+    volumes:
+      - weave-data:/data
+    environment:
+      PORT: 4400
+      WEAVE_HOST: 0.0.0.0
+      WEAVE_DATA: /data/workspace.db
+      WEAVE_KEYSTORE: /data/keystore.json
+      # Set this and no key file lands on the volume (Handbook → "Environment reference").
+      # WEAVE_KEYSTORE_PASSPHRASE: change-me
+      # Reserved for later phases; not read yet.
+      # WEAVE_ORIGIN: https://weave.example.com
+      # WEAVE_BACKUP_DEST: s3://bucket/weave
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4400/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  weave-data:

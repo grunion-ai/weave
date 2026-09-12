@@ -1,0 +1,34 @@
+# Workspace state never ships in an image — it lives on the /data volume.
+*.db
+*.db-wal
+*.db-shm
+files/
+demo-workspace.json
+uno.json
+weave.json
+weaver.json
+test.json
+
+# Local tooling and VCS
+node_modules
+.jj
+.git
+.github
+.claude
+.impeccable/
+.wt-slot/
+.wrangler/
+.dev.vars
+wrangler.toml
+wrangler.jsonc
+
+# The suite, screenshots and mockups are for the repo, not the runtime.
+test/
+docs/screenshots
+docs/mockups
+brand/
+*.orig
+.*-probe.mjs
+.*-shot.mjs
+.DS_Store
+*.tmp
