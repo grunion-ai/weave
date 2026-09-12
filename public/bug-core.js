@@ -51,6 +51,11 @@
         }
       },
       events: () => buf.slice(),
+      /* The one line the email carries (Feature #223): the newest error's
+         message. The trace itself never leaves the page by mail — its
+         describeTarget lines name tables and buttons, and schema is the
+         customer's. */
+      lastError: () => { for (let i = buf.length - 1; i >= 0; i--) if (isError(buf[i])) return String(buf[i].message ?? ''); return ''; },
       clear: () => { buf.length = 0; },
       counts() {
         const c = { actions: 0, errors: 0, failedRequests: 0, total: buf.length };
@@ -144,5 +149,113 @@
      the four fits. */
   const canSubmit = (picked, note) => picked.length > 0 || String(note ?? '').trim().length > 0;
 
-  root.bugCore = { CATEGORIES, MAX_EVENTS, createRecorder, describeTarget, clientContext, toggleCategory, canSubmit };
+  /* ---------- report by email (Feature #223) ----------
+     POST /api/bug-report files into THIS instance's Issue table. On a
+     self-hosted weave that table is on the operator's disk; an instance
+     without a docs workspace answers 501. The way out of any box is a
+     mailto: built here — the reporter's own client opens with the report
+     filled in, they read and edit every line, and nothing transits the
+     server. The address is receive-only: a reply, when there is one, comes
+     from a person's mailbox to the reporter's own address.
+     ponytail: REPORT_MAIL is a constant; an operator-set address delivered
+     through /api/health is the upgrade path when a second deployment wants
+     its own inbox. */
+  const REPORT_MAIL = 'weave@grunion.ai';
+  /* Browsers and mail clients start truncating or refusing a mailto: around
+     two thousand characters. The fixed lines are never what gets trimmed. */
+  const MAILTO_MAX = 2000;
+  const ERROR_MAX = 300;
+
+  /* The same three patterns as src/bugreport.js, verbatim — a contract test
+     pins the copies together. The page cannot import the server's module. */
+  const SECRET_PARAMS = /\b(token|key|secret|password|passwd|share|sig|signature|auth)=([^&\s"'`]+)/gi;
+  const BEARER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
+  const PREFIXED_KEY = /\b(wv[a-z]?|sk|pk|ucmcp|ghp|gho)_[A-Za-z0-9_-]{8,}/gi;
+  const redact = (text) => String(text ?? '')
+    .replace(BEARER, '$1 ***')
+    .replace(SECRET_PARAMS, '$1=***')
+    .replace(PREFIXED_KEY, '***');
+  /* A server message quotes the thing it could not find — a row name, a
+     field name. In an email leaving the deployment that is customer data,
+     so every quoted run is blanked; the shape of the message survives. */
+  const blankQuotes = (text) => String(text ?? '').replace(/"[^"]*"/g, '"…"').replace(/'[^']*'/g, "'…'");
+
+  /* Where the reporter was, as a kind of page and never a particular one:
+     the workspace segment and every id become placeholders, and the query
+     (the docked entity, a share token) goes. Issue #230 is the precedent. */
+  function routeShape(pathname = '/', hash = '') {
+    const path = String(pathname ?? '/').replace(/^\/w\/[^/]+\//, '/w/<ws>/');
+    const route = String(hash ?? '').replace(/\?.*$/, '') || '#/';
+    const shaped = route.replace(/^#\/(entity|table|db|space|view|trash|activity)\/[^/?]+/, '#/$1/<id>');
+    return `${path}${shaped}`;
+  }
+
+  /* Family, major and OS. "Looks broken" is browser-specific and Kyle reads
+     weave in Safari; the raw string is a fingerprint and never rides. */
+  function browserLabel(ua = '') {
+    const s = String(ua ?? '');
+    // Edge and iOS Chrome carry a Chrome/ token too: the specific name wins.
+    const fam = s.match(/\b(Edg|CriOS|Firefox)\/(\d+)/) ?? s.match(/\b(?:Headless)?(Chrome|Version)\/(\d+)/);
+    if (!fam) return 'unknown browser';
+    const name = { Edg: 'Edge', CriOS: 'Chrome', Version: 'Safari' }[fam[1]] ?? fam[1];
+    const os = /iPhone|iPad/.test(s) ? 'iOS' : /Android/.test(s) ? 'Android' : /Windows/.test(s) ? 'Windows'
+      : /Mac OS X/.test(s) ? 'macOS' : /Linux|X11/.test(s) ? 'Linux' : '';
+    return `${name} ${fam[2]}${os ? ` on ${os}` : ''}`;
+  }
+
+  const upWords = (s) => {
+    const n = Number(s);
+    if (!Number.isFinite(n)) return '';
+    return n < 3600 ? `, up ${Math.round(n / 60)}m` : `, up ${Math.round(n / 3600)}h`;
+  };
+  const cut = (text, n) => (text.length > n ? text.slice(0, n) + '…' : text);
+
+  /* mailtoReport({categories, note, pathname, hash, health, userAgent, viewport, theme, lastError})
+       → 'mailto:weave@grunion.ai?subject=…&body=…', at most MAILTO_MAX chars.
+     Every line of the body is listed in the Handbook's "Reporting a bug"
+     guide; add a field there before adding one here. */
+  function mailtoReport({ categories = [], note = '', pathname = '/', hash = '', health = {}, userAgent = '', viewport = null, theme = '', lastError = '' } = {}) {
+    const labels = categories.map((id) => CATEGORIES.find((c) => c.id === id)?.label).filter(Boolean);
+    const page = routeShape(pathname, hash);
+    const text = String(note ?? '').trim();
+    const first = text.split('\n')[0].trim();
+    const subject = `[weave] ${labels.length ? `${labels.join(' + ')}: ` : ''}${first || `on ${page}`}`.slice(0, 100).trim();
+    // Four keys, copied by name: health also carries the workspace name, and
+    // that stays behind.
+    const version = health?.version ? `v${health.version}${health.stale ? ' (STALE: the server predates its own files)' : ''}` : 'v?';
+    const build = `weave ${version}${health?.startedAt ? `, started ${health.startedAt}` : ''}${upWords(health?.uptime)}`;
+    const look = [browserLabel(userAgent), viewport ? `${viewport.w} × ${viewport.h}` : '', theme].filter(Boolean).join(' · ');
+    const error = cut(blankQuotes(redact(lastError)).replace(/\s+/g, ' ').trim(), ERROR_MAX);
+    const body = (noteText, errorText) => [
+      `Symptoms: ${labels.join(' + ') || '(none picked)'}`,
+      `Note: ${noteText}`,
+      '',
+      'Steps:',
+      '1. ',
+      'Expected: ',
+      'Actual: ',
+      '',
+      '--',
+      build,
+      `Page: ${page}`,
+      `Browser: ${look}`,
+      errorText ? `Console: ${errorText}` : null,
+      '',
+    ].filter((l) => l != null).join('\n');
+    const href = (n, e) => `mailto:${REPORT_MAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body(n, e))}`;
+    /* Fit under the ceiling: the error gives first, down to a stub, then the
+       note, then the rest of the error. The fixed lines always ride. */
+    let n = text, e = error, out = href(n, e);
+    const bare = (str) => str.replace(/…$/, '');
+    for (let guard = 0; out.length > MAILTO_MAX && guard < 80; guard++) {
+      if (bare(e).length > 80) e = bare(e).slice(0, Math.max(80, Math.floor(bare(e).length * 0.8))) + '…';
+      else if (bare(n).length > 0) n = bare(n).slice(0, Math.floor(bare(n).length * 0.8)) + '…';
+      else if (e) e = '';
+      else break;
+      out = href(n, e);
+    }
+    return out;
+  }
+
+  root.bugCore = { CATEGORIES, MAX_EVENTS, REPORT_MAIL, MAILTO_MAX, createRecorder, describeTarget, clientContext, toggleCategory, canSubmit, redact, routeShape, browserLabel, mailtoReport };
 })(typeof window !== 'undefined' ? window : globalThis);

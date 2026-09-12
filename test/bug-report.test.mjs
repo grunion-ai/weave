@@ -24,6 +24,7 @@ import { Weave } from '../src/engine.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { startServer } from '../src/server.js';
 
+import { fnBody } from './lib/source.mjs';
 await import('../public/bug-core.js');
 const bug = globalThis.bugCore;
 
@@ -625,4 +626,169 @@ test('both themes are declared for the panel, not just the one it was built in',
   }
   assert.ok(!/#bug-panel[^}]*background:\s*#(fff|ffffff)\b/i.test(CSS), 'surfaces come from Tabler tokens, so dark mode follows');
   assert.match(CSS, /#bug-panel\s*{[^}]*var\(--tblr-/, 'themed by token');
+});
+
+/* ---------- report by email (Feature #223) ----------
+   POST /api/bug-report files into THIS instance's Issue table. On a
+   self-hosted weave that table is on the operator's disk and Kyle never sees
+   it; an instance with no docs workspace answers 501. weave@grunion.ai is a
+   receive-only forward to Kyle's inbox, and the way out of any box is a
+   mailto: the page builds — the reporter's own client opens with the report
+   filled in, they read and edit every line, and nothing transits the server.
+   The builder is pure and lives in bug-core.js so the same source is tested
+   here and run in the page. Issue #230 is the precedent this section guards
+   against: what leaves the box is listed, and everything else is asserted
+   absent. */
+
+const WS = 'acme-legal';
+const EID = '9f1c2d3e-4b5a-6c7d-8e9f-0a1b2c3d4e5f';
+const mail = (over = {}) => bug.mailtoReport({
+  categories: ['error'],
+  note: 'the Task grid never loaded after I renamed a column',
+  pathname: `/w/${WS}/`,
+  hash: `#/entity/${EID}`,
+  health: { version: '0.4.17', startedAt: '2026-09-12T15:38:41.268Z', uptime: 10800, stale: false, workspace: WS, name: 'weave' },
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+  viewport: { w: 1440, h: 900 },
+  theme: 'dark',
+  lastError: "TypeError: Cannot read properties of undefined (reading 'id')",
+  ...over,
+});
+const parts = (href) => {
+  const m = href.match(/^mailto:([^?]+)\?subject=([^&]*)&body=(.*)$/);
+  assert.ok(m, `not a mailto with subject and body: ${href.slice(0, 60)}`);
+  return { to: m[1], subject: decodeURIComponent(m[2]), body: decodeURIComponent(m[3]) };
+};
+
+test('the route shape keeps the kind of page and drops which one', () => {
+  const shape = bug.routeShape;
+  assert.equal(shape(`/w/${WS}/`, `#/entity/${EID}`), '/w/<ws>/#/entity/<id>');
+  assert.equal(shape('/', `#/table/${EID}?e=${EID}`), '/#/table/<id>', 'the docked entity and the query go');
+  assert.equal(shape('/', `#/db/${EID}`), '/#/db/<id>');
+  assert.equal(shape(`/w/${WS}/`, `#/space/${EID}`), '/w/<ws>/#/space/<id>');
+  assert.equal(shape('/', `#/view/${EID}`), '/#/view/<id>');
+  assert.equal(shape('/', `#/trash/${EID}`), '/#/trash/<id>');
+  assert.equal(shape('/', `#/activity/${EID}`), '/#/activity/<id>');
+  assert.equal(shape('/', '#/activity'), '/#/activity');
+  assert.equal(shape('/', '#/map'), '/#/map');
+  assert.equal(shape('/', ''), '/#/', 'the home route is spelled out');
+  assert.equal(shape(`/w/${WS}/`, '#/'), '/w/<ws>/#/');
+  assert.equal(shape(`/w/${WS}/doc.html`, ''), '/w/<ws>/doc.html#/', 'a page under the workspace keeps its file name');
+});
+
+test('the email goes to the receive-only address with a tagged subject', () => {
+  const { to, subject } = parts(mail());
+  assert.equal(to, 'weave@grunion.ai');
+  assert.equal(bug.REPORT_MAIL, 'weave@grunion.ai');
+  assert.equal(subject, '[weave] Error: the Task grid never loaded after I renamed a column');
+});
+
+test('the subject follows the Issue title rule: symptoms, then the first line, or the place', () => {
+  assert.equal(parts(mail({ categories: ['slow', 'wrong-data'], note: 'a rollup shows\nyesterday' })).subject, '[weave] Slow + Wrong data: a rollup shows');
+  assert.equal(parts(mail({ categories: [], note: 'just a sentence' })).subject, '[weave] just a sentence');
+  assert.equal(parts(mail({ categories: [], note: '' })).subject, '[weave] on /w/<ws>/#/entity/<id>');
+  assert.equal(parts(mail({ categories: ['error'], note: '' })).subject, '[weave] Error: on /w/<ws>/#/entity/<id>');
+  const long = parts(mail({ note: 'x'.repeat(300) })).subject;
+  assert.ok(long.length <= 100, `a subject fits an inbox row, got ${long.length}`);
+});
+
+test('the body carries every field triage needs, and blanks for the reporter to fill', () => {
+  const { body } = parts(mail());
+  for (const line of [
+    'Symptoms: Error',
+    'Note: the Task grid never loaded after I renamed a column',
+    'Steps:', 'Expected:', 'Actual:',
+    'weave v0.4.17, started 2026-09-12T15:38:41.268Z, up 3h',
+    'Page: /w/<ws>/#/entity/<id>',
+    'Browser: Safari 18 on macOS · 1440 × 900 · dark',
+    "Console: TypeError: Cannot read properties of undefined (reading '…')",
+  ]) assert.ok(body.includes(line), `body lacks: ${line}\n---\n${body}`);
+});
+
+test('a stale build says so in the email, because that is the first thing to rule out', () => {
+  assert.match(parts(mail({ health: { version: '0.4.17', stale: true } })).body, /weave v0\.4\.17 \(STALE: the server predates its own files\)/);
+  assert.match(parts(mail({ health: {} })).body, /weave v\?/, 'no health yet is said, not faked');
+  assert.doesNotMatch(parts(mail()).body, /STALE/);
+});
+
+test('the browser line is family, major and OS — never the raw user agent', () => {
+  const ua = (s) => bug.browserLabel(s);
+  assert.equal(ua('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'), 'Chrome 128 on macOS');
+  assert.equal(ua('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0'), 'Edge 128 on Windows');
+  assert.equal(ua('Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0'), 'Firefox 130 on Linux');
+  assert.equal(ua('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'), 'Safari 17 on iOS');
+  assert.equal(ua('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36'), 'Chrome 128 on Android');
+  assert.equal(ua(''), 'unknown browser');
+  assert.ok(!parts(mail()).body.includes('Mozilla/'), 'the raw string never rides');
+});
+
+test('what leaves the box is listed; everything else is absent (Issue #230)', () => {
+  const href = mail({
+    note: 'plain note',
+    lastError: `Bearer abc.def-ghi token=wv_1234567890abcdef "Acme Corp" not found 'Salary' wvs_zzzzzzzzzzzz`,
+    health: { version: '0.4.17', startedAt: 's', uptime: 1, stale: false, workspace: WS, name: 'weave', sha: 'deadbeef', meta: { tokenHash: 'nope' } },
+  });
+  const raw = decodeURIComponent(href);
+  for (const bad of [WS, EID, 'Acme Corp', 'Salary', 'wv_1234567890abcdef', 'wvs_zzzzzzzzzzzz', 'tokenHash', 'abc.def-ghi', 'deadbeef', 'Mozilla']) {
+    assert.ok(!raw.includes(bad), `${bad} leaked into the email:\n${raw}`);
+  }
+  assert.match(raw, /Console: Bearer \*\*\* token=\*\*\* "…" not found '…' \*\*\*\n/);
+});
+
+test('the console line is the last error only, capped, and the trace never rides', () => {
+  const { body } = parts(mail({ lastError: 'E'.repeat(1000) }));
+  const line = body.split('\n').find((l) => l.startsWith('Console:'));
+  assert.ok(line.length <= 'Console: '.length + 300 + 1, `capped at 300, got ${line.length}`);
+  assert.doesNotMatch(parts(mail({ lastError: '' })).body, /Console:/, 'no error, no line');
+});
+
+test('the whole URL stays under the mailto ceiling, trimming the error before the note', () => {
+  const href = mail({ note: 'N'.repeat(5000) + ' end', lastError: 'É'.repeat(2000) });
+  assert.ok(href.length <= 2000, `${href.length} > 2000`);
+  const { body } = parts(href);
+  assert.match(body, /Page: \/w\/<ws>\/#\/entity\/<id>/, 'the fixed lines are never the ones trimmed');
+  assert.match(body, /Console: É+…\n/, 'the error is trimmed with an ellipsis');
+  assert.match(body, /Note: N+…/, 'and the note after it');
+  assert.equal(bug.MAILTO_MAX, 2000);
+  assert.ok(mail().length < 1400, 'an ordinary report is nowhere near the cap');
+});
+
+test('the redaction in the page is the redaction on the server, verbatim', () => {
+  const server = src('src/bugreport.js');
+  const client = src('public/bug-core.js');
+  for (const name of ['SECRET_PARAMS', 'BEARER', 'PREFIXED_KEY']) {
+    const re = new RegExp(`const ${name} = (/.*/[gi]*);`);
+    const s = server.match(re)?.[1]; const c = client.match(re)?.[1];
+    assert.ok(s && c, `${name} is declared in both files`);
+    assert.equal(c, s, `${name} drifted between bug-core.js and bugreport.js`);
+  }
+});
+
+test('both entry points build their link through the one builder, and never promise a reply', () => {
+  const panel = APP.slice(APP.indexOf('function openBugPanel'), APP.indexOf('function openBugPanel') + 6000);
+  assert.match(panel, /class: 'bug-mail'/, 'the panel foot carries the mail link');
+  assert.match(panel, /bugCore\.mailtoReport\(/, 'built by the tested builder');
+  assert.match(panel, /iconEl\('lucide:mail'/, 'the vendored mail glyph, through iconEl like every mark');
+  assert.match(panel, /Email instead/, 'the words say what happens');
+  assert.match(panel, /bugCore\.REPORT_MAIL/, 'the address is printed so a device with no mail handler has something to copy');
+  const err = fnBody('paintRouteError');
+  assert.match(err, /bugCore\.mailtoReport\(/, 'a page that did not load offers the same link');
+  assert.match(err, /Report by email/);
+  assert.match(err, /lastError:/, 'with the error folded in');
+  for (const s of [APP, src('src/handbook.js')]) {
+    assert.doesNotMatch(s, /reply from weave@/i, 'the address is receive-only: no reply is promised from it');
+    assert.doesNotMatch(s, /get back to you/i);
+  }
+  assert.match(CSS, /\.bug-mail\s*{/, 'styled');
+});
+
+test('the recorder keeps the last error message for the email, and only the message', () => {
+  const r = bug.createRecorder({ max: 3 });
+  assert.equal(r.lastError(), '');
+  r.record({ kind: 'click', target: 'button.x', t: 1 });
+  r.record({ kind: 'error', message: 'first', source: 'app.js', line: 9, t: 2 });
+  r.record({ kind: 'console', level: 'error', message: 'second', t: 3 });
+  assert.equal(r.lastError(), 'second');
+  r.record({ kind: 'api', method: 'POST', path: '/api/x', status: 500, t: 4 });
+  assert.equal(r.lastError(), 'second', 'a failed request is not a console error');
 });

@@ -94,4 +94,32 @@ if (s) {
       assert.deepEqual(await picked(page), [], 'and no symptoms carried over');
     } finally { await page.close(); }
   });
+
+  /* Report by email (Feature #223): the link is live in the panel, rebuilt as
+     the report is written, and what it carries is the route shape — never
+     the workspace the reporter was in. */
+  test('the email link carries the report as written and no workspace name', async () => {
+    // Opened at the workspace's own address, so there is a name to leak.
+    const page = await browser.newPage();
+    try {
+      await page.goto(`${base}/w/weave/`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.bug-fab');
+      await page.click('.bug-fab');
+      await page.waitForSelector('#bug-panel .bug-note');
+      await page.fill('#bug-panel .bug-note', 'the grid never loaded');
+      await page.click('#bug-panel .bug-cat[data-cat="error"]');
+      const href = await page.$eval('#bug-panel a.bug-mail', (a) => a.getAttribute('href'));
+      assert.match(href, /^mailto:weave@grunion\.ai\?subject=/);
+      const subject = decodeURIComponent(href.match(/subject=([^&]*)/)[1]);
+      const body = decodeURIComponent(href.match(/body=(.*)$/)[1]);
+      assert.equal(subject, '[weave] Error: the grid never loaded');
+      assert.match(body, /Page: \/w\/<ws>\/#\//, 'the route shape of the page under test');
+      assert.match(body, /weave v\d+\.\d+\.\d+/, 'the version came from /api/health');
+      assert.match(body, /Browser: Chrome \d+ on /, 'headless Chromium reduced to a family');
+      assert.ok(!body.includes('/w/weave/'), 'the workspace segment never rides');
+      assert.ok(!body.includes('Workspace:'), 'nor a workspace line');
+      assert.ok(!body.includes('Mozilla'), 'nor the raw user agent');
+      assert.equal(await page.$eval('#bug-panel .bug-addr', (n) => n.textContent), 'weave@grunion.ai', 'the address is printed for a device with no mail handler');
+    } finally { await page.close(); }
+  });
 }

@@ -84,7 +84,7 @@ export const MAX_EVENTS = 200;
    strip it and the "replayable" report stops being replayable. */
 const SECRET_PARAMS = /\b(token|key|secret|password|passwd|share|sig|signature|auth)=([^&\s"'`]+)/gi;
 const BEARER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
-const PREFIXED_KEY = /\b(wv|sk|pk|ucmcp|ghp|gho)_[A-Za-z0-9_-]{8,}/gi;
+const PREFIXED_KEY = /\b(wv[a-z]?|sk|pk|ucmcp|ghp|gho)_[A-Za-z0-9_-]{8,}/gi;
 
 export function redact(text) {
   return String(text ?? '')

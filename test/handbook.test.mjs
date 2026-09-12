@@ -360,3 +360,23 @@ test('the grid guide names the cell clipboard rule and select-on-open', () => {
   assert.match(guide.doc, /no text selected|there is none/i, 'and says what happens when nothing is selected');
   assert.match(guide.doc, /whole value selected|value selected/i, 'and that a click opens a text cell with its value selected');
 });
+
+/* Reporting a bug (Feature #223): the panel files a local Issue, and the
+   email link is the way out of a self-hosted box. A reader has to be told
+   both paths exist and, above all, what never leaves the page — the leak
+   review lives in the guide, not only in the test. */
+test('the bug-reporting guide names both paths, the address, and what is never sent', () => {
+  const guide = GUIDES.find((g) => g.name === 'Reporting a bug');
+  assert.ok(guide, 'there is no bug-reporting guide');
+  assert.equal(guide.audience, 'Both');
+  assert.ok(guide.order < 20, 'the anatomy guide stays last');
+  for (const topic of [
+    'weave@grunion.ai', 'Email instead', 'Report by email', 'Development/Issue', '[weave]',
+    'Slow', 'Looks broken', 'Wrong data', 'Error',
+    'route shape', '/w/<ws>/#/entity/<id>', 'never', 'workspace name', 'trace', '2000',
+    'receive-only', 'mail app',
+  ]) {
+    assert.ok(guide.doc.includes(topic), `the bug-reporting guide never mentions ${topic}`);
+  }
+  assert.doesNotMatch(guide.doc, /reply from weave@|get back to you/i, 'the address is receive-only; no reply is promised from it');
+});

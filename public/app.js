@@ -986,6 +986,7 @@ function renderNav() {
     const status = el('div', { class: 'nav-health', title: 'This weave instance' }, '…');
     (state.healthP ??= api('GET', '/health')).then((h) => {
       const up = h.uptime == null ? '' : ` · up ${h.uptime < 3600 ? Math.round(h.uptime / 60) + 'm' : Math.round(h.uptime / 3600) + 'h'}`;
+      state.health = h; // the email report reads version + stale from here (Feature #223)
       status.textContent = `v${h.version}${up}`;
       if (h.startedAt) status.title = `This weave instance — started ${h.startedAt}`;
       /* The instance must run the latest main; when it does not, say so out
@@ -8896,7 +8897,21 @@ function paintRouteError(err) {
     el('div', { class: 'card-body' },
       el('h2', { class: 'wv-route-error-title' }, 'This page did not load'),
       el('p', { class: 'wv-route-error-msg' }, String(err?.message || err || 'Unknown error')),
-      el('button', { class: 'btn btn-primary', type: 'button', onclick: () => route() }, 'Try again'))));
+      el('div', { class: 'wv-route-error-actions' },
+        el('button', { class: 'btn btn-primary', type: 'button', onclick: () => route() }, 'Try again'),
+        /* A page that did not load is where the corner button is hardest to
+           reach for, so the report link sits here too, with the error folded
+           in (Feature #223). */
+        el('a', {
+          class: 'bug-mail', title: `Opens your mail app with the error filled in, addressed to ${bugCore.REPORT_MAIL}`,
+          href: bugCore.mailtoReport({
+            categories: ['error'], note: '',
+            pathname: location.pathname, hash: location.hash,
+            health: state.health ?? {}, userAgent: navigator.userAgent,
+            viewport: { w: innerWidth, h: innerHeight }, theme: document.documentElement.dataset.bsTheme ?? 'light',
+            lastError: String(err?.message || err || ''),
+          }),
+        }, iconEl('lucide:mail', 'wv-icon bug-mail-icon'), 'Report by email')))));
 }
 /* Promise.resolve().then, not work().catch: renderRoute is a plain function
    whose branches return a promise, a value or nothing, and it can throw
@@ -9393,10 +9408,32 @@ function openBugPanel(fab) {
       btn.classList.toggle('picked', on);
       btn.setAttribute('aria-pressed', String(on));
       sync();
+      refreshMail();
     });
     return btn;
   });
   sync();
+
+  /* Report by email (Feature #223). Send files into THIS instance's Issue
+     table, which on a self-hosted weave nobody at grunion reads. The link
+     opens the reporter's own mail client with the report filled in —
+     symptoms, note, build, route shape, browser, the last error — and they
+     read and edit every line before it goes. The trace never rides by mail.
+     The href is rebuilt as the report is written, so what was typed is what
+     the mail carries. */
+  const mailHref = () => bugCore.mailtoReport({
+    categories: picked, note: note.value,
+    pathname: location.pathname, hash: location.hash,
+    health: state.health ?? {}, userAgent: navigator.userAgent,
+    viewport: { w: innerWidth, h: innerHeight }, theme: document.documentElement.dataset.bsTheme ?? 'light',
+    lastError: bugRecorder.lastError(),
+  });
+  const mailLink = el('a', {
+    class: 'bug-mail', href: mailHref(),
+    title: `Opens your mail app with this report filled in, addressed to ${bugCore.REPORT_MAIL}, sent from your own address`,
+  }, iconEl('lucide:mail', 'wv-icon bug-mail-icon'), 'Email instead');
+  function refreshMail() { mailLink.href = mailHref(); }
+  note.addEventListener('input', refreshMail);
 
   const form = el('form', { class: 'bug-form' },
     note,
@@ -9406,7 +9443,10 @@ function openBugPanel(fab) {
       // session is not something to attach quietly.
       el('span', { class: 'bug-captured', title: 'Recent routes, clicks, requests and errors — never anything you typed into a field' },
         `${c.actions + c.errors + c.failedRequests} steps captured`),
-      send));
+      send),
+    // Its own row under the foot, with the address printed beside it so a
+    // device with no mail handler still has something to copy.
+    el('div', { class: 'bug-mail-row' }, mailLink, el('span', { class: 'bug-addr' }, bugCore.REPORT_MAIL)));
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
