@@ -95,6 +95,9 @@ if (s) {
     const known = await page.evaluate(() => [...document.querySelectorAll('tr[data-eid]')].map((r) => r.dataset.eid));
 
     await page.click(`tr[data-eid="${first}"] td[data-field="Name"] input`);
+    // The click opens the cell with its value selected (Feature #221); →
+    // collapses it to the end so the '!' is appended, the edit under test.
+    await page.keyboard.press('ArrowRight');
     await page.keyboard.type('!');
     await page.keyboard.press('Shift+Enter');
     await waitForNewRow(page, known);

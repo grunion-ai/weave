@@ -349,3 +349,14 @@ test('docs/chip-card-anatomy.html is the exported page, self-contained, and curr
   assert.match(html, /class="k k-rel has-segs"/, 'the chip figure is in the export');
   assert.match(html, /class="wv-card"/, 'and the card figure');
 });
+
+/* Feature #221 (Kyle, 2026-09-12): the grid guide names the clipboard rule —
+   ⌘C/⌘V follow the selection and take the cell when there is none — and
+   that a clicked text cell opens with its value selected. */
+test('the grid guide names the cell clipboard rule and select-on-open', () => {
+  const guide = GUIDES.find((g) => g.name === 'Making a workspace your own');
+  assert.ok(guide, 'the grid guide exists');
+  assert.match(guide.doc, /⌘C.*follow the selection/s, 'the guide says the clipboard follows the selection');
+  assert.match(guide.doc, /no text selected|there is none/i, 'and says what happens when nothing is selected');
+  assert.match(guide.doc, /whole value selected|value selected/i, 'and that a click opens a text cell with its value selected');
+});

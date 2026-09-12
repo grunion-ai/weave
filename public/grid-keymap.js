@@ -76,6 +76,17 @@
       return s.mode === 'edit' ? openKeys(k, s) : restKeys(k, s);
     },
 
+    /* What ⌘C and ⌘V act on (Feature #221 — Kyle, 2026-09-12, "B+"). A
+       click opens the cell exactly as before; the clipboard follows the
+       SELECTION. Text selected inside the open control is the browser's own
+       copy and paste. With no selection — a collapsed caret, a control with
+       no caret at all (number, date, select, checkbox), a picker's popover,
+       a resting cell — they take the cell, typed, through the same bulk set
+       a range paste uses. One rule for every field type. */
+    clipboardTarget({ mode, selectionCollapsed = true }) {
+      return mode === 'edit' && selectionCollapsed === false ? 'text' : 'cell';
+    },
+
     /* The keystroke a DOM KeyboardEvent carries, in the shape keymap reads.
        ⌘ and Ctrl are one modifier: the grid does not care which hand. */
     keyOf(e) {

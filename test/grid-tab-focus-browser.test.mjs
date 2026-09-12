@@ -86,6 +86,7 @@ if (s) {
 
     // Edit the middle row's Note, then Tab — the gesture in the report.
     await page.click(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
+    await page.keyboard.press('ArrowRight');   // the click selects the value (Feature #221); → collapses it to the end
     await page.keyboard.type('!');
     await page.keyboard.press('Tab');
 
@@ -126,6 +127,7 @@ if (s) {
     // only `button,input,select` put focus on <body> here even with the cell
     // correctly remembered.
     await page.click(`tr[data-eid="${second.id}"] td[data-field="Name"] input`);
+    await page.keyboard.press('ArrowRight');   // the click selects the value (Feature #221); → collapses it to the end
     await page.keyboard.type('!');
     await page.keyboard.press('Tab');
     assert.deepEqual(await cursorInGrid(page), { eid: second.id, field: 'Description', tag: 'TD' },
@@ -157,6 +159,7 @@ if (s) {
     await page.evaluate(() => { document.querySelector('#main tbody').dataset.mark = '1'; });
 
     await page.click(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
+    await page.keyboard.press('ArrowRight');   // the click selects the value (Feature #221); → collapses it to the end
     await page.keyboard.type('!');
     await page.keyboard.press('Tab');
 

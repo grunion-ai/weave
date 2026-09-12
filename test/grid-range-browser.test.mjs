@@ -25,10 +25,14 @@ const s = await launch('grid ranges', (weave) => {
   weave.addField(rows, { name: 'Tags', type: 'multiselect', config: { options: ['red', 'blue', 'green'] } });
   weave.addField(rows, { name: 'Score', type: 'number' });
   weave.addField(rows, { name: 'Double', type: 'formula', config: { expression: 'Score * 2' } });
+  // A relation onto itself: the chip in Peer is the one-click door Feature
+  // #221 must leave alone.
+  weave.addRelation(rows, { name: 'Peer', targetDb: 'Rows', cardinality: 'many-to-one' });
   // Twenty rows, so the Verify list's "fill down 20" is the real thing.
   ids = Array.from({ length: 20 }, (_, i) =>
     weave.createEntity(rows, { name: `r${i}`, values: { Note: `n${i}`, Score: i } }).id);
   weave.updateEntity(ids[0], { Kind: 'bug', Tags: ['red', 'blue'] });
+  weave.link(ids[0], 'Peer', [ids[1]]);
   return { rows, ids };
 });
 
@@ -277,5 +281,99 @@ if (s) {
       const text = await page.evaluate(() => navigator.clipboard.readText());
       assert.equal(text, 'n1', 'the input copied its own text; the grid stayed out of it');
     } finally { await ctx.close(); reset(); }
+  });
+
+  /* ── the clipboard follows the selection (Feature #221) ──────────────
+     Kyle, 2026-09-12 (B+): a click opens the cell exactly as before. ⌘C
+     and ⌘V follow the selection: text selected in the open control is the
+     browser's own copy and paste; with no selection — a collapsed caret, a
+     picker open, a resting cell — they take the CELL, typed, through the
+     same `bulk set` as a paste onto a range, with one Undo. A clicked text
+     cell opens with its whole value selected so all three read the same. */
+
+  const selection = (page) => page.evaluate(() => {
+    const a = document.activeElement;
+    return { tag: a?.tagName ?? null, start: a?.selectionStart ?? null, end: a?.selectionEnd ?? null };
+  });
+
+  test('a click opens a text cell with its whole value selected; a second click places the caret', async () => {
+    reset();
+    const { ctx, page } = await grid();
+    try {
+      await page.locator(`${sel(1, 'Note')} input`).click();
+      assert.deepEqual(await selection(page), { tag: 'INPUT', start: 0, end: 2 }, 'n1, selected end to end');
+      await page.locator(`${sel(1, 'Note')} input`).click();
+      const again = await selection(page);
+      assert.equal(again.tag, 'INPUT');
+      assert.equal(again.start, again.end, 'the second click is the caret’s');
+      await page.keyboard.press('Escape');
+    } finally { await ctx.close(); }
+  });
+
+  test('⌘C with no text selected copies the CELL, and ⌘V with none writes the cell with one Undo', async () => {
+    reset();
+    const { ctx, page } = await grid();
+    try {
+      await page.locator(`${sel(1, 'Note')} input`).click();
+      await page.keyboard.press('ArrowRight');             // collapse the selection: a bare caret
+      assert.equal((await selection(page)).start, 2);
+      await page.keyboard.press('ControlOrMeta+c');
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'n1', 'the cell, not the (empty) caret selection');
+
+      await page.locator(`${sel(2, 'Note')} input`).click();
+      await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('ControlOrMeta+v');
+      await page.waitForSelector('#wv-toasts .wv-toast');
+      assert.match(await toastText(page), /Pasted 1 cell/);
+      assert.equal(value(2, 'Note'), 'n1', 'written to the record through bulk set');
+      assert.equal(await page.locator('.wv-toast-action').count(), 1, 'and the toast carries Undo');
+      assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'TD', 'the cell rests after the paste');
+    } finally { await ctx.close(); reset(); }
+  });
+
+  test('⌘V over selected text in the open cell is the browser’s own paste', async () => {
+    reset();
+    const { ctx, page } = await grid();
+    try {
+      await page.evaluate(() => navigator.clipboard.writeText('typed'));
+      await page.locator(`${sel(3, 'Note')} input`).click();   // opens with n3 selected
+      await page.keyboard.press('ControlOrMeta+v');
+      assert.equal(await page.inputValue(`${sel(3, 'Note')} input`), 'typed', 'the selection was replaced in place');
+      assert.equal(value(3, 'Note'), 'n3', 'and nothing was written until the cell commits');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(([id]) => !document.querySelector('#main tbody[data-mark]') && document.querySelector(`tr[data-eid="${id}"] td[data-field="Note"] input`)?.value === 'typed', [s.ids[3]]);
+      assert.equal(value(3, 'Note'), 'typed');
+    } finally { await ctx.close(); reset(); }
+  });
+
+  test('a click on a select cell opens its picker; ⌘C there copies the cell and ⌘V of an option name writes it', async () => {
+    reset();
+    const { ctx, page } = await grid();
+    try {
+      await page.locator(sel(0, 'Kind')).click();
+      await page.waitForSelector('.picker-pop input.picker-search');
+      assert.equal(await page.evaluate(() => document.activeElement?.className), 'picker-search', 'focus is in the popover, off the grid');
+      await page.keyboard.press('ControlOrMeta+c');
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'bug', 'the picker’s empty search box is no selection: the cell is copied');
+      await page.keyboard.press('Escape');
+
+      await page.evaluate(() => navigator.clipboard.writeText('chore'));
+      await page.locator(sel(2, 'Kind')).click();
+      await page.waitForSelector('.picker-pop input.picker-search');
+      await page.keyboard.press('ControlOrMeta+v');
+      await page.waitForSelector('#wv-toasts .wv-toast');
+      assert.match(await toastText(page), /Pasted 1 cell/);
+      assert.equal(value(2, 'Kind'), 'chore', 'the option, by name, through the same plan a range paste uses');
+      assert.equal(await page.locator('.picker-pop').count(), 0, 'the picker closed: the cell was written under it');
+    } finally { await ctx.close(); reset(); }
+  });
+
+  test('a relation chip still opens its record on one click', async () => {
+    const { ctx, page } = await grid();
+    try {
+      await page.locator(`${sel(0, 'Peer')} a .k-label`).click();
+      await page.waitForSelector(`tr[data-eid="${s.ids[1]}"].row-docked`, { timeout: 3000 });
+      assert.equal(await page.locator('.row-docked').count(), 1, 'docked beside the table, one click');
+    } finally { await ctx.close(); }
   });
 }

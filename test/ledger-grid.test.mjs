@@ -43,7 +43,7 @@ test('the grid dispatches a cell click through that map, and places the caret', 
   assert.match(APP, /function activateCell\(/);
   const fn = APP.match(/function activateCell\([^]*?\n\}/)[0];
   assert.match(fn, /cellActivation\(/, 'the DOM half reads the pure half');
-  assert.match(fn, /setSelectionRange/, 'focusing a text cell puts the cursor in it');
+  assert.match(fn, /input\.select\(\)/, 'focusing a text cell selects its whole value (Feature #221)');
   assert.match(fn, /chip-trigger|ms-box/, 'a picker cell opens its picker');
   assert.match(fn, /checked|\.click\(\)/, 'a checkbox cell toggles');
   assert.match(APP, /dataset:\s*\{[^}]*ftype/, 'each cell carries its field type for the dispatch');

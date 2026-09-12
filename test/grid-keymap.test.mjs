@@ -196,3 +196,25 @@ test('the port names where EDGE would go, and nothing more', async () => {
   assert.match(src, /EDGE/, 'the open-cell keymap says where the edge-through branch belongs');
   assert.ok(!/caret\.atEnd|caret\.atStart/.test(src), 'and does not build it');
 });
+
+/* ── the clipboard follows the selection (Feature #221) ─────────────────── */
+
+/* Kyle, 2026-09-12 (B+): a click opens the cell exactly as before; ⌘C and
+   ⌘V follow the selection, and when there is none they take the CELL. Text
+   selected inside an open control is the browser's own copy and paste; a
+   collapsed caret, a picker's popover, a checkbox and a resting cell all
+   read as "no selection". */
+
+test('at rest, ⌘C and ⌘V take the cell', () => {
+  assert.equal(KM.clipboardTarget({ mode: 'rest' }), 'cell');
+  assert.equal(KM.clipboardTarget({ mode: 'rest', selectionCollapsed: false }), 'cell', 'a page selection outside the cell is not the cell’s text');
+});
+
+test('open with text selected, the clipboard is the caret’s', () => {
+  assert.equal(KM.clipboardTarget({ mode: 'edit', selectionCollapsed: false }), 'text');
+});
+
+test('open with a collapsed caret — or a control that has no caret — the clipboard takes the cell', () => {
+  assert.equal(KM.clipboardTarget({ mode: 'edit', selectionCollapsed: true }), 'cell');
+  assert.equal(KM.clipboardTarget({ mode: 'edit' }), 'cell', 'a number, date, select or checkbox control reports no selection at all');
+});

@@ -847,7 +847,7 @@ The **noun** is what one row is called — the table's *row term*. It lives on t
 
 ## The grid reads as a record
 
-The table view is a ledger, not a form. The \`#id\` link opens the row in the **dock** beside the table; **every other cell edits in place**, raising that field type's own editor with the cursor already in it. Chips keep their tint and lose their box. Computed cells keep their glyph and drop their ground. A row hover draws no lines between fields; the row's tint is the feedback. The one cell under the pointer shows the control a click would open.
+The table view is a ledger, not a form. The \`#id\` link opens the row in the **dock** beside the table; **every other cell edits in place**, raising that field type's own editor with the cursor already in it. A text, number, date or url cell opens with its **whole value selected**, so typing, \`⌘C\` and \`⌘V\` act on the value you can see; a second click inside the open cell places the caret. Chips keep their tint and lose their box. Computed cells keep their glyph and drop their ground. A row hover draws no lines between fields; the row's tint is the feedback. The one cell under the pointer shows the control a click would open.
 
 The dock is the entity itself, not a preview: edit there and the table keeps its place, the docked row stays lit, Esc closes it. **Docked is the default pose** (Issue #198): a relation chip, a card, a mention chip in a document, a ⌘K hit and a document chip in a cell all open the entity beside its table — travelling to that table first when you were somewhere else. The outward diagonal arrows on the dock expand it to the full page (⌘⇧E flips either way); the inward arrows on the page dock it again. Only a \`#/entity/…\` address opens as the page — the address a new tab, a permalink and the expand arrows land on. ⌘-click a row (or its \`#id\` link) to give the record its own browser tab. Every navigating surface in weave answers the same three gestures — ⌘/Ctrl, Shift, and the middle button — so an activity row, a ⌘K hit and a node on the relation map open in a tab the same way. Text cells keep their own modifiers: shift-click still extends a selection there. A document chip in a cell opens its entity in the dock.
 
@@ -889,9 +889,11 @@ A rectangle of cells is a **range**. Grow one with \`⇧\` and the arrows, or dr
 | \`⇧↑ ⇧↓\` | grow it up or down — **unless a row is picked up**, where they still extend the run of rows |
 | Drag across cells | the same rectangle, from the pointer |
 | Drag the corner handle | fill: the range's values, down or across, over everything the handle covers |
-| \`⌘C\` | copy the range |
+| \`⌘C\` | copy the range, or the cell the cursor is on |
 | \`⌘V\` | paste, tiled to fit whatever it lands on |
 | \`Esc\` | let the range go — a row selection goes first when both are up |
+
+\`⌘C\` and \`⌘V\` **follow the selection**, in every kind of cell. Text selected inside an open cell is the browser's own copy and paste — the text moves. With no text selected — a bare caret, a picker open, a checkbox, a cell at rest — they take the **cell**: \`⌘C\` copies its value, typed, and \`⌘V\` writes the clipboard into it through the same write a paste onto a range makes, with the same Undo. A clicked text cell opens with its value selected, so the two readings agree until you place the caret.
 
 The blue square on the range's bottom-right corner is the **fill handle**. Drag it down a column or across a row and the range's values are written into every cell it covers — one value down twenty rows, or a whole row of values across. It moves along one axis, whichever you pull further.
 

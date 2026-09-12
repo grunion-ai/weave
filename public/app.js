@@ -1294,6 +1294,8 @@ function showPopover(trigger, rows) {
   state.refocus = cell
     ? { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell) }
     : null;
+  // The popover hangs off <body>, so the grid's ⌘C/⌘V find their cell here.
+  pop.cellFrom = cell;
   return pop;
 }
 
@@ -1662,6 +1664,10 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
     else dismiss();
   });
   document.body.append(pop);
+  // The cell this picker was opened from, for the grid's ⌘C/⌘V (Feature
+  // #221): focus sits in the popover, off the grid, and the cell is still
+  // what the reader is looking at.
+  pop.cellFrom = anchor?.closest?.('tr[data-eid] > td') ?? null;
   const close = (ev) => {
     if (pop.contains(ev.target)) return;
     removeEventListener('click', close, true);
@@ -1889,7 +1895,10 @@ function openCellPicker(cell) {
    search for a relation, a caret for text — rather than a generic input the
    reader then has to find. Which one is the pure half, in editor-lib.js.
    A click that already landed ON a control is left alone: the browser has
-   put the caret where the reader aimed, which is better than any guess. */
+   put the caret where the reader aimed, which is better than any guess.
+   A text-like cell opens with its WHOLE value selected (Feature #221):
+   ⌘C, ⌘V and typing then act on the value the reader can see, and a second
+   click inside the open control places the caret — the browser's own. */
 function activateCell(cell) {
   switch (globalThis.WeaveEditorLib.cellActivation(cell.dataset.ftype)) {
     case 'none': return;
@@ -1907,10 +1916,9 @@ function activateCell(cell) {
       if (!input) { cell.querySelector('.num-dressed, .text-dressed, .url-edit')?.click(); input = cell.querySelector('input, select'); }
       if (!input) return;
       input.focus();
-      // Placing the cursor is the point — a bare focus() leaves a text input
-      // with everything selected in some browsers and nothing in others.
-      const end = String(input.value ?? '').length;
-      try { input.setSelectionRange(end, end); } catch { /* number/date reject it */ }
+      // Select-on-open, on purpose: a bare focus() leaves a text input with
+      // everything selected in some browsers and nothing in others.
+      try { input.select(); } catch { /* a <select> has nothing to select */ }
     }
   }
 }
@@ -2366,6 +2374,7 @@ function dressedText(md, input) {
     e.stopPropagation();
     dressed.replaceWith(input);
     input.focus();
+    input.select();   // select-on-open, the same as every text cell (Feature #221)
   });
   input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
   return dressed;
@@ -2385,6 +2394,7 @@ function dressedUrl(value, input) {
     e.stopPropagation();
     dressed.replaceWith(input);
     input.focus();
+    input.select();   // select-on-open, the same as every text cell (Feature #221)
   };
   const link = el('a', {
     class: 'url-link', href: parts.href,
@@ -3969,13 +3979,21 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     const rect = RG().rect(a, b);
     return RG().single(rect) ? null : rect;
   };
+  // The cell the cursor is on: the resting <td>, the open control's cell,
+  // or — a picker's popover hangs off <body> — the cell the popover was
+  // opened from (Feature #221). Null when focus is off this grid.
+  const cellOfNode = (n) => n?.closest?.('tbody tr.entity-row > td[tabindex="0"]') ?? n?.closest?.('.chip-pop')?.cellFrom ?? null;
+  const cursorCell = () => {
+    const td = cellOfNode(document.activeElement);
+    return td && wrap.contains(td) ? td : null;
+  };
   // What a copy or a paste acts on: the range if there is one, else the one
   // cell the cursor is resting on — the smallest range there is.
   const rangeOrCursor = () => {
     const rect = rangeRect();
     if (rect) return rect;
-    const td = document.activeElement?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
-    if (!td || !wrap.contains(td)) return null;
+    const td = cursorCell();
+    if (!td) return null;
     const { r, c } = coordOfCell(td);
     return r < 0 || c < 0 ? null : { r0: r, c0: c, r1: r, c1: c };
   };
@@ -4060,30 +4078,63 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
      a marker in the text/html flavour, which is what survives the system
      clipboard between two weave tabs; `lastCopiedBlock` is the same-page
      shortcut for a browser that hands the html back stripped. */
-  const inOpenCell = () => {
+  /* ⌘C and ⌘V follow the selection, and take the cell when there is none
+     (Feature #221 — Kyle, 2026-09-12, "B+"). Text selected in the open
+     control is the browser's own copy and paste. A collapsed caret, a
+     control with no caret (a <select>, a checkbox), a picker's popover and
+     a resting cell all read as no selection, and the cell is what moves.
+     The pure rule is WeaveGridKeymap.clipboardTarget; this reads the DOM. */
+  const openControl = () => {
     const at = document.activeElement;
-    return !!at && at !== at.closest?.('td') && !!at.matches?.(OPEN_CONTROLS);
+    return at && at !== at.closest?.('td') && at.matches?.(OPEN_CONTROLS) ? at : null;
   };
-  wrap.addEventListener('copy', (e) => {
-    if (inOpenCell()) return;                       // the caret's own copy
+  const clipboardTarget = () => {
+    const at = openControl();
+    // selectionStart is null on a number or date input — no caret to read.
+    const collapsed = !at ? true
+      : at.isContentEditable ? !!getSelection()?.isCollapsed
+        : at.selectionStart == null || at.selectionStart === at.selectionEnd;
+    return KM().clipboardTarget({ mode: at ? 'edit' : 'rest', selectionCollapsed: collapsed });
+  };
+  // Where a ⌘C/⌘V landed, resolved to this grid's cell — or null when the
+  // gesture is another surface's. The listeners sit on the document because
+  // a picker's popover (the search box, the option rows) is not inside the
+  // wrap, and the cell it was opened from is still the reader's cell.
+  const cellOfEvent = (e) => {
+    const td = cellOfNode(e.target);
+    return td && wrap.contains(td) ? td : null;
+  };
+  const onGrid = (kind, handle) => document.addEventListener(kind, function fn(e) {
+    if (!wrap.isConnected) return document.removeEventListener(kind, fn);
+    if (!e.clipboardData || !cellOfEvent(e) || clipboardTarget() === 'text') return;
+    handle(e);
+  });
+  onGrid('copy', (e) => {
     const rect = rangeOrCursor();
-    if (!rect || !e.clipboardData) return;
+    if (!rect) return;
     const block = RG().block({ rect, fields: rangeCols(), valueAt });
     lastCopiedBlock = block;
     e.clipboardData.setData('text/plain', RG().toTSV(block));
     e.clipboardData.setData('text/html', weaveCellsHTML(block));
     e.preventDefault();
   });
-  wrap.addEventListener('paste', (e) => {
-    if (inOpenCell()) return;
+  onGrid('paste', (e) => {
     const rect = rangeOrCursor();
-    if (!rect || !e.clipboardData) return;
+    if (!rect) return;
     const plain = e.clipboardData.getData('text/plain');
     const block = readWeaveCells(e.clipboardData.getData('text/html'))
       ?? (lastCopiedBlock && RG().toTSV(lastCopiedBlock) === plain ? lastCopiedBlock : null)
       ?? RG().parseTSV(plain);
     if (!block) return;
     e.preventDefault();
+    // The paste writes the record, so the open control is let go the way Esc
+    // lets it go — value put back, cursor resting on the cell — and a
+    // picker's popover closes: the redraw would otherwise commit a stale
+    // editor over the value just pasted.
+    const td = cursorCell(), at = openControl();
+    if (at && 'defaultValue' in at) at.value = at.defaultValue;
+    document.activeElement?.closest?.('.chip-pop')?.remove();
+    td?.focus();
     runRange('Pasted', rect, block);
   });
 
@@ -4094,11 +4145,20 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
      begins once the pointer has reached a DIFFERENT cell, and the click that
      ends such a drag is spent here rather than opening anything. */
   let dragFrom = null, dragged = false;
+  // The live control a press is about to open (Feature #221): a plain text
+  // cell keeps its <input> in the row, so the press lands ON it, activateCell
+  // never runs, and the browser places a caret. The click that follows
+  // selects the whole value instead — unless the press dragged a selection
+  // of its own, or the control was already open, where the caret is the
+  // reader's. The click, not the focus: a mouseup collapses whatever a
+  // focus handler selected.
+  let opening = null;
   const cellUnder = (e) => e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
   wrap.addEventListener('mousedown', (e) => {
     // A modifier or a non-primary button is the reader saying "not here" —
     // the browser's own gesture (`nativeClick`, 023b777), never a range drag.
     if (nativeClick(e)) return;
+    opening = e.target?.matches?.(OPEN_CONTROLS) && e.target !== document.activeElement && cellUnder(e) ? e.target : null;
     if (e.target?.closest?.('.wv-fill-handle')) {
       // The handle drags the range (or the resting cell) down or across.
       fillRect = rangeOrCursor();
@@ -4146,10 +4206,18 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
   });
   // The click that ends a drag is the drag's, not the cell editor's.
   wrap.addEventListener('click', (e) => {
-    if (!dragged) return;
-    dragged = false;
-    e.preventDefault();
-    e.stopPropagation();
+    const opened = opening;
+    opening = null;
+    if (dragged) {
+      dragged = false;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (opened && opened === e.target && opened === document.activeElement
+      && opened.selectionStart != null && opened.selectionStart === opened.selectionEnd) {
+      try { opened.select(); } catch { /* not a text box */ }
+    }
   }, true);
 
   // A clipped cell opens over the grid on hover, in a layer of its own —
