@@ -5546,10 +5546,20 @@ export class Weave {
      behind by a delete stay behind. A blob already gone is simply absent —
      an export must not fail on damage it did not do.
      `blobs: false` is for a reader rather than a backup: an agent asking for
-     the shape of the workspace should not be handed 30MB of base64. */
+     the shape of the workspace should not be handed 30MB of base64.
+     Secrets stay home (Issue #230): a reader token may take an export, so
+     the account token hashes and the view share tokens are stripped on the
+     way out — from every surface, the CLI and MCP included. The dump still
+     round-trips: an imported account keeps its name and role but verifies
+     no token until it is deleted and created again, and an imported view
+     arrives unshared until someone shares it, which mints a fresh token.
+     The .db copy (`weave backup`, Feature #209) is the surface that keeps
+     them; the JSON is interchange, not a key escrow. */
   exportJSON({ blobs: withBlobs = true } = {}) {
     const out = JSON.parse(JSON.stringify(this.state));
     delete out.fileBlobs;
+    for (const a of Object.values(out.meta.accounts ?? {})) delete a.tokenHash;
+    for (const v of Object.values(out.meta.views ?? {})) delete v.shareToken;
     if (!withBlobs) return out;
     const blobs = {};
     const carry = (id) => {

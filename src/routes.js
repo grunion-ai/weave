@@ -24,6 +24,11 @@ export function statusFor(err) {
 
 const STARTED_AT = new Date().toISOString();
 
+/* What a browser sees at the wall (Feature #222 phase 0). Phase 2 replaces
+   it with the /auth sign-in page; until then it names the condition and
+   the two ways in. */
+const WALL_PAGE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}</style><h1>This workspace requires authentication</h1><p>Send a Bearer token, or open a share link you were given.</p>';
+
 /* hub: createWorkspaceHub's interface (get/list/create/rename/entries/
    defaultName). opts:
    - version: the version string /api/health reports (adapter resolves it —
@@ -152,17 +157,30 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
     }
 
+    /* The wall covers every route, not just /api (Feature #222 phase 0,
+       closing Feature #194 problem 2): with requireAuth on, an entity page,
+       doc.html, entity.pdf, a deck or the app shell needs a token like the
+       API does. The doors that stay open carry their own authorization or
+       are needed before anyone can sign in: /api/health for a monitor, the
+       share link and the applet above, and the static CSS/JS/font/image
+       assets the sign-in page (phase 2) will load — never a .html, which is
+       the app itself. A browser gets a page, an API caller keeps the JSON. */
+    const wallPage = () => out(401, WALL_PAGE, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    const openDoor = path === '/api/health'
+      || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
     const authz = rx.header('authorization');
     if (authz && /^Bearer /i.test(authz)) {
       const account = weave.verifyToken(authz.slice(7).trim());
-      if (!account) return deny(401, 'Invalid token');
+      if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
       weave.actor = account.name;
       role = account.role;
-    } else if (weave.state.meta.requireAuth && path.startsWith('/api/') && path !== '/api/health') {
-      return deny(401, 'This workspace requires authentication');
+    } else if (weave.state.meta.requireAuth && !openDoor) {
+      return path.startsWith('/api/') ? deny(401, 'This workspace requires authentication') : wallPage();
     }
-    if (role && role !== 'admin' && path.startsWith('/api/')) {
+    // The caps reach the page routes too: every page is a read, so a reader
+    // may GET any of them and POST at none (Feature #222 phase 0).
+    if (role && role !== 'admin') {
       const m2 = rx.method;
       const read = m2 === 'GET' || m2 === 'HEAD'
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'));
@@ -171,6 +189,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // MCP carries every tool, schema tools included — a capped token must
         // not widen itself through the tunnel. Admin (or the edge gate) only.
         || path === '/api/mcp'
+        // Replacing the whole workspace is every schema change at once
+        // (Issue #230): a writer barred from one field cannot swap them all.
+        || path === '/api/import'
         || /^\/api\/tables$/.test(path)
         || (/^\/api\/tables\/[^/]+$/.test(path) && (m2 === 'PATCH' || m2 === 'DELETE'))
         // Re-homing, cloning or un-trashing a table is structure too (nav

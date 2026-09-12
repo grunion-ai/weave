@@ -1010,7 +1010,7 @@ weave view share <id>     # returns a wvv_ capability URL
 weave view unshare <id>
 \`\`\`
 
-The share URL carries its own capability. Anyone holding it reads that view and nothing else — no account, no login.
+The share URL carries its own capability. Anyone holding it reads that view and nothing else — no account, no login, and the link stays open when the workspace requires authentication. The token never leaves through \`weave export\`: an imported view arrives unshared, and \`weave view share\` mints it a fresh link.
 
 ## The relation map
 
@@ -1040,6 +1040,8 @@ weave audit --limit 50
 \`\`\`
 
 Three roles: \`admin\`, \`writer\`, \`reader\`. Tokens are \`wv_\` values hashed at rest, and every mutation lands in a durable audit log with the actor that made it — a person, the CLI, or a named MCP client.
+
+\`weave workspace require-auth\` closes every page and every API route to a caller without a token. The doors that stay open are \`/api/health\`, a view's share link, the task applet, and the static assets a sign-in page needs; a browser without a token gets a page that says so, an API call gets a 401. A reader may read any page and write at none; a writer writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an admin token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
 
 Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard deletes and file deletions are not.
 
