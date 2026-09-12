@@ -158,6 +158,7 @@ workspace. Every MCP tool has a command:
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
 | `weave audit` | `weave view` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
 | `weave workspace` | `weave workspace logo` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
+| `weave audit` | `weave account invite` / `weave account sessions` / `weave account revoke-session` / `weave account remove-credential` | |
 
 Notes that save round trips:
 
@@ -196,6 +197,16 @@ Notes that save round trips:
 - **Deletes are recoverable.** `weave_delete_entity` is a soft delete by
   default; `weave_trash` lists what is recoverable and `weave_restore_entity`
   brings it back. Schema deletes are not: a dropped column takes its values.
+- **People sign in with a passkey; agents keep the token.** With
+  `requireAuth` on, a browser needs a `wv_session` cookie (minted by the
+  passkey ceremony at `/auth`) or a Bearer token; the API and MCP keep using
+  `wv_` tokens, and a Bearer token wins when both are present. An agent
+  cannot register a passkey — that is a browser act — but it can hand a person
+  the door: `weave_accounts` `action: invite` (or `weave account invite <name>`)
+  returns a one-time token, and `<origin>/auth?invite=<token>` registers the
+  passkey within 15 minutes. `sessions`, `revoke-session` and
+  `remove-credential` are the lost-device verbs. `WEAVE_ORIGIN` names the
+  origin passkeys bind to on a hosted instance; localhost needs nothing.
 - **Secrets never come back to an agent.** A `key` (credential) field holds the
   *name* of a secret; the secret itself is encrypted in a keystore outside the
   workspace, so it is never in a cell, an export, a formula or a query result.

@@ -104,7 +104,7 @@ test('the environment contract cannot drift: the reference guide, the Dockerfile
     for (const v of varsIn(text)) assert.ok(documented.has(v), `${file} names ${v}, which the guide does not document`);
   }
   // Reserved for later phases: named, defaults stated, never read yet.
-  for (const v of ['WEAVE_ORIGIN', 'WEAVE_BACKUP_DEST']) {
+  for (const v of ['WEAVE_BACKUP_DEST']) {
     assert.match(ref.doc, new RegExp(`\`${v}\`[^\\n]*reserved`, 'i'), `${v} is marked reserved`);
     assert.doesNotMatch(read('bin/weave.js') + read('src/engine.js') + read('src/server.js'), new RegExp(v),
       `${v} is documented as reserved, so the code must not read it yet`);
@@ -134,8 +134,11 @@ test('the self-hosting guides ship in the Handbook seed with their exact titles,
   }
   const orders = GUIDE_TITLES.map((t) => guide(t).order);
   assert.deepEqual(orders, [...orders].sort((a, b) => a - b), 'the guides read in the order listed');
-  // The two stubs name the phase that fills them.
-  assert.match(guide('Door B: passkeys').doc, /phase 2/i);
+  // The remaining stub names the phase that fills it; door B is built (Feature #222 part 2).
+  assert.doesNotMatch(guide('Door B: passkeys').doc, /Not built yet/);
+  for (const s of ['weave account invite', 'revoke-session', 'remove-credential', 'WEAVE_ORIGIN', 'WEAVE_TRUST_PROXY', 'second device', 'wv_']) {
+    assert.ok(guide('Door B: passkeys').doc.includes(s), `door B covers ${s}`);
+  }
   assert.match(guide('Backup and restore').doc, /phase 3/i);
 });
 

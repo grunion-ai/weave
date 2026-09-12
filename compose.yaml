@@ -18,8 +18,11 @@ services:
       WEAVE_KEYSTORE: /data/keystore.json
       # Set this and no key file lands on the volume (Handbook → "Environment reference").
       # WEAVE_KEYSTORE_PASSPHRASE: change-me
-      # Reserved for later phases; not read yet.
+      # Passkeys (Handbook → "Door B: passkeys"): the origin browsers use, and
+      # 1 when a reverse proxy sits in front so rate limits see the client.
       # WEAVE_ORIGIN: https://weave.example.com
+      # WEAVE_TRUST_PROXY: "1"
+      # Reserved for phase 3; not read yet.
       # WEAVE_BACKUP_DEST: s3://bucket/weave
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4400/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]

@@ -235,7 +235,9 @@ on any instance, including the one you just started):
   surface is the operator's choice, and no surface depends on another.
 - **Door A: an edge gate** — Cloudflare Access, Tailscale, Caddy, oauth2-proxy,
   Authelia: one config block and one check each.
-- **Door B: passkeys** — built-in sign-in; lands in phase 2 of Feature #222.
+- **Door B: passkeys** — built-in sign-in, no third party: `weave account
+  invite <name>` prints a one-time link, the phone registers a passkey, and
+  `WEAVE_ORIGIN` names the origin it binds to. Agents keep `wv_` tokens.
 - **Deploy: Railway** — project from GitHub, volume at `/data`, variables,
   custom domain, one replica.
 - **Deploy: Fly.io, Render, a VPS, Docker** — one section each, same shape;

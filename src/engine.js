@@ -368,9 +368,9 @@ export const ONTOLOGY = {
     },
     {
       key: 'account', name: 'Account', storedIn: 'state.meta.accounts',
-      definition: 'A named token holder with a role — admin, writer, or reader. Only the token hash is kept.',
+      definition: 'A named token holder with a role — admin, writer, or reader. Only the token hash is kept. Passkeys (public keys) live on the row as credentials[]; browser sessions and one-time invites are kept beside it as sha256 hashes (Feature #222 part 2).',
       identity: 'uuid; name unique in the workspace',
-      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth'],
+      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createInvite', 'consumeInvite', 'addCredential', 'removeCredential', 'createSession', 'verifySession', 'listSessions', 'revokeSession'],
     },
     {
       key: 'key', name: 'Credential', storedIn: 'keystore',
@@ -2232,8 +2232,14 @@ export class Weave {
     return pub;
   }
 
+  /* Public keys may be listed; the token hash never is (Issue #230), and a
+     credential's JWK is a public key, so it stays too — trimmed to what a
+     list needs: id, label, alg, transports and the two dates. */
   listAccounts() {
-    return Object.values(this.state.meta.accounts ?? {}).map(({ tokenHash, ...pub }) => pub);
+    return Object.values(this.state.meta.accounts ?? {}).map(({ tokenHash, credentials, ...pub }) => ({
+      ...pub,
+      credentials: (credentials ?? []).map(({ publicKeyJwk, ...c }) => c),
+    }));
   }
 
   deleteAccount(ref) {
@@ -2251,6 +2257,167 @@ export class Weave {
     this.save();
     this.#audit(on ? 'auth-required-on' : 'auth-required-off');
     return this.state.meta.requireAuth;
+  }
+
+  // ---------------- passkeys, sessions, invites (Feature #222 part 2, Feature #208) ----------------
+  /* Door B. A passkey is a public key on the account row
+     (account.credentials[]); a session is a browser's standing with that
+     account, minted at sign-in and carried as a cookie; an invite is a
+     one-time, short-lived door for registering the first passkey on a row.
+     Sessions and invites are stored as sha256 of their token only — the
+     raw token is handed out exactly once, like a wv_ token. Neither leaves
+     through exportJSON. */
+  static SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  static INVITE_TTL_MS = 15 * 60 * 1000;
+
+  #account(ref) {
+    const accounts = this.state.meta.accounts ?? {};
+    const a = accounts[ref] ?? Object.values(accounts).find((x) => x.name === ref);
+    if (!a) throw new WeaveError(`Account '${ref}' not found`, 'not-found');
+    return a;
+  }
+
+  #hash(token) { return createHash('sha256').update(String(token)).digest('hex'); }
+
+  createInvite(accountRef, { ttlMs = Weave.INVITE_TTL_MS } = {}) {
+    const a = this.#account(accountRef);
+    const invites = (this.state.meta.invites ??= {});
+    const now = Date.now();
+    for (const [h, inv] of Object.entries(invites)) if (Date.parse(inv.expiresAt) <= now) delete invites[h];
+    const token = randomBytes(24).toString('base64url');
+    const expiresAt = new Date(now + Math.max(1000, Number(ttlMs) || Weave.INVITE_TTL_MS)).toISOString();
+    invites[this.#hash(token)] = { accountId: a.id, expiresAt };
+    this.save();
+    this.#audit('invite-created', { name: a.name, expiresAt });
+    return { token, expiresAt, account: { id: a.id, name: a.name, role: a.role } };
+  }
+
+  /* The account an invite token names, or null when it is unknown or
+     expired. Consuming it is a separate step so a ceremony that fails
+     halfway leaves the invite usable until it expires. */
+  readInvite(token) {
+    if (!token) return null;
+    const inv = this.state.meta.invites?.[this.#hash(token)];
+    if (!inv || Date.parse(inv.expiresAt) <= Date.now()) return null;
+    const a = this.state.meta.accounts?.[inv.accountId];
+    if (!a) return null;
+    const { tokenHash, ...pub } = a;
+    return pub;
+  }
+
+  consumeInvite(token) {
+    const pub = this.readInvite(token);
+    if (!pub) throw new WeaveError('This invite link is not valid or has expired — ask for a new one (weave account invite <name>)', 'forbidden');
+    delete this.state.meta.invites[this.#hash(token)];
+    this.save();
+    this.#audit('invite-consumed', { name: pub.name });
+    return pub;
+  }
+
+  addCredential(accountRef, { id, publicKeyJwk, alg, counter = 0, transports = [], label = '' } = {}) {
+    const a = this.#account(accountRef);
+    if (!id || !publicKeyJwk || ![-7, -257].includes(alg)) throw new WeaveError('A credential needs an id, a public key and a supported alg', 'invalid');
+    for (const other of Object.values(this.state.meta.accounts)) {
+      if ((other.credentials ?? []).some((c) => c.id === id)) throw new WeaveError('This passkey is already registered', 'conflict');
+    }
+    const cred = { id, publicKeyJwk, alg, counter: Number(counter) || 0, transports, label: String(label ?? '').slice(0, 80), createdAt: nowISO(), lastUsedAt: null };
+    (a.credentials ??= []).push(cred);
+    this.save();
+    this.#audit('credential-added', { name: a.name, label: cred.label, alg });
+    return cred;
+  }
+
+  removeCredential(accountRef, credId) {
+    const a = this.#account(accountRef);
+    const i = (a.credentials ?? []).findIndex((c) => c.id === credId || c.id.startsWith(credId));
+    if (i < 0) throw new WeaveError(`Credential '${credId}' not found on '${a.name}'`, 'not-found');
+    const [cred] = a.credentials.splice(i, 1);
+    this.save();
+    this.#audit('credential-removed', { name: a.name, label: cred.label });
+    return { id: cred.id, removed: true, remaining: a.credentials.length };
+  }
+
+  /* The auth path: which account holds a credential id, for the assertion
+     step; and the counter/lastUsedAt write once an assertion verified. */
+  credentialById(credId) {
+    for (const a of Object.values(this.state.meta.accounts ?? {})) {
+      const cred = (a.credentials ?? []).find((c) => c.id === credId);
+      if (cred) { const { tokenHash, ...pub } = a; return { account: pub, credential: cred }; }
+    }
+    return null;
+  }
+
+  useCredential(credId, { counter }) {
+    const hit = this.credentialById(credId);
+    if (!hit) throw new WeaveError('Unknown credential', 'not-found');
+    hit.credential.counter = Number(counter) || 0;
+    hit.credential.lastUsedAt = nowISO();
+    this.save();
+    return hit.credential;
+  }
+
+  createSession(accountRef, { ua = '' } = {}) {
+    const a = this.#account(accountRef);
+    const sessions = (this.state.meta.sessions ??= {});
+    const now = Date.now();
+    for (const [h, s] of Object.entries(sessions)) if (Date.parse(s.expiresAt) <= now) delete sessions[h];
+    const token = randomBytes(32).toString('base64url');
+    const at = new Date(now).toISOString();
+    const expiresAt = new Date(now + Weave.SESSION_TTL_MS).toISOString();
+    sessions[this.#hash(token)] = { accountId: a.id, createdAt: at, expiresAt, lastSeenAt: at, ua: String(ua ?? '').slice(0, 200) };
+    this.save();
+    this.#audit('session-created', { name: a.name });
+    return { token, expiresAt, account: { id: a.id, name: a.name, role: a.role } };
+  }
+
+  /* Sliding expiry: every verified use pushes expiresAt 30 days out. The
+     write is throttled to once a minute per session so a page of fetches
+     does not turn into a page of saves. */
+  verifySession(token) {
+    if (!token) return null;
+    const h = this.#hash(token);
+    const s = this.state.meta.sessions?.[h];
+    if (!s) return null;
+    const now = Date.now();
+    if (Date.parse(s.expiresAt) <= now) { delete this.state.meta.sessions[h]; this.save(); return null; }
+    const a = this.state.meta.accounts?.[s.accountId];
+    if (!a) return null;
+    if (now - Date.parse(s.lastSeenAt) > 60 * 1000) {
+      s.lastSeenAt = new Date(now).toISOString();
+      s.expiresAt = new Date(now + Weave.SESSION_TTL_MS).toISOString();
+      this.save();
+    }
+    const { tokenHash, ...pub } = a;
+    return { ...pub, sessionId: h };
+  }
+
+  listSessions(accountRef) {
+    const a = this.#account(accountRef);
+    const now = Date.now();
+    return Object.entries(this.state.meta.sessions ?? {})
+      .filter(([, s]) => s.accountId === a.id && Date.parse(s.expiresAt) > now)
+      .map(([id, s]) => ({ id, ...s }))
+      .sort((x, y) => y.lastSeenAt.localeCompare(x.lastSeenAt));
+  }
+
+  /* revokeSession(accountRef, { id }) ends one session by its id (the hash,
+     or a prefix of it); { all: true } ends every session the account holds;
+     { except } spares one — the browser asking. */
+  revokeSession(accountRef, { id = null, all = false, except = null } = {}) {
+    const a = this.#account(accountRef);
+    const sessions = this.state.meta.sessions ?? {};
+    const gone = [];
+    for (const [h, s] of Object.entries(sessions)) {
+      if (s.accountId !== a.id) continue;
+      if (h === except) continue;
+      if (all || (id && h.startsWith(id))) { delete sessions[h]; gone.push(h); }
+    }
+    if (!all && id && !gone.length) throw new WeaveError(`Session '${id}' not found on '${a.name}'`, 'not-found');
+    if (gone.length) {
+      this.save();
+      this.#audit('session-revoked', { name: a.name, count: gone.length, all: !!all });
+    }
+    return { revoked: gone.length };
   }
 
   // ---------------- meta-model (Feature #12) ----------------
@@ -5560,6 +5727,10 @@ export class Weave {
     delete out.fileBlobs;
     for (const a of Object.values(out.meta.accounts ?? {})) delete a.tokenHash;
     for (const v of Object.values(out.meta.views ?? {})) delete v.shareToken;
+    // Sessions and invites are standing (Feature #222 part 2): a dump is
+    // interchange, and a browser signed in here is not signed in there.
+    delete out.meta.sessions;
+    delete out.meta.invites;
     if (!withBlobs) return out;
     const blobs = {};
     const carry = (id) => {
