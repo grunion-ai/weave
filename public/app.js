@@ -4042,20 +4042,42 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     const f = fieldNamed(name);
     return f?.optionsFull ?? f?.states ?? [];
   };
+  // A relation's display value is its summaries; the label is their names,
+  // so the TSV reads `Ann, Cy` and a paste elsewhere can match them (#224).
+  const labelOf = (x) => (x && typeof x === 'object' ? x.name ?? '' : x);
   const valueAt = (r, c) => {
     const name = rangeCols()[c];
     const item = items.find((i) => i.id === drawnIds()[r]) ?? {};
-    return { type: typeOf(name), v: item.raw?.[name] ?? null, d: item.fields?.[name] ?? null };
+    const d = item.fields?.[name] ?? null;
+    return { type: typeOf(name), v: item.raw?.[name] ?? null, d: Array.isArray(d) ? d.map(labelOf) : labelOf(d) };
   };
 
   /* One gesture, one plan, as few writes as the values allow — rows that get
      an identical set share a `bulk` call, so a fill down twenty rows is ONE
      write and one Undo. The toast names the columns that refused (a formula,
-     a rollup, a relation) and counts the cells that would not read. */
+     a rollup) and counts the cells that would not read.
+     A relation column links by name (Feature #224): its target table's rows
+     are fetched first — the same query the record picker runs — so the plan
+     can match labels to ids and stay pure. A fetch that fails leaves the
+     column to refuse by name, exactly as it did before. */
+  const relationRows = async (names) => {
+    const out = new Map();
+    for (const name of new Set(names)) {
+      const f = fieldNamed(name);
+      if (f?.type !== 'relation') continue;
+      const dbIds = f.targetDbIds ?? (f.targetDbId ? [f.targetDbId] : []);
+      try {
+        const lists = await Promise.all(dbIds.map((id) => api('POST', `/tables/${id}/query`, { select: ['Name'] })));
+        out.set(name, { rows: lists.flatMap((l) => l.items), many: !!f.many });
+      } catch { /* refused by name below */ }
+    }
+    return (name) => out.get(name) ?? null;
+  };
   const runRange = async (verb, rect, block) => {
     const fields = rangeCols(), rowIds = drawnIds();
     const target = RG().target({ rect, block, rows: rowIds.length, cols: fields.length });
-    const plan = RG().plan({ block, rect: target, fields, rowIds, typeOf, optionsOf });
+    const relationOf = await relationRows(fields.slice(target.c0, target.c1 + 1));
+    const plan = RG().plan({ block, rect: target, fields, rowIds, typeOf, optionsOf, relationOf });
     const results = [];
     for (const g of RG().group(plan.writes)) {
       try { results.push(await api('POST', '/bulk', { ids: g.ids, op: 'set', values: g.values })); }
@@ -4065,7 +4087,7 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     // already held the value pushed no undo entry, and undoing past it would
     // walk into somebody else's edit (the engine reports this per call).
     const steps = results.reduce((n, r) => n + (r.changed?.length ?? 0), 0);
-    const t = RG().toast({ verb, cells: plan.writes.length, refused: plan.refused, unparsed: plan.unparsed, results });
+    const t = RG().toast({ verb, cells: plan.writes.length, refused: plan.refused, unparsed: plan.unparsed, unmatched: plan.unmatched, results });
     toast(t.msg, t.err, steps ? {
       label: 'Undo',
       run: async () => { await api('POST', '/undo', { steps }); await onSaved?.(); },

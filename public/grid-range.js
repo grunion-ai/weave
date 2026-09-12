@@ -21,6 +21,7 @@
      target / at                   where a paste lands, and how it tiles
      fillTarget                    where the corner handle dragged to
      plan / group                  the writes, and what refused
+     resolveRelation               a relation's labels, matched to its rows
      toast                         what did NOT land, said out loud */
 (() => {
   const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -152,24 +153,50 @@
        - Text from outside is read into the column's type: a number parsed, a
          checkbox read rather than coerced (`Boolean('false')` is true, which
          is exactly the mistake to avoid), a comma list split into a set. A
-         cell that will not read is dropped and counted; its neighbours land. */
-    plan({ block, rect, fields, rowIds, typeOf, optionsOf }) {
-      const writes = [], refused = [];
+         cell that will not read is dropped and counted; its neighbours land.
+       - A relation LINKS BY NAME (Feature #224): given the target table's
+         rows (`relationOf(field)` → `{ rows, many }`, fetched by the caller
+         before the plan, so the plan stays pure), each label resolves to a
+         row and the ids are written whole, the multi-select's replacement
+         rule. A label that names no row is listed in `unmatched` for the
+         toast; a cell whose labels ALL miss is dropped rather than emptied.
+         Without the rows it refuses as before — nothing is guessed. */
+    plan({ block, rect, fields, rowIds, typeOf, optionsOf, relationOf = () => null }) {
+      const writes = [], refused = [], unmatched = [];
       let unparsed = 0;
       for (const { r, c } of this.cellsOf(rect)) {
         const field = fields[c], eid = rowIds[r];
         if (field == null || eid == null) continue;
         const type = typeOf(field);
-        if (!this.pasteable(type)) {
+        const rel = type === 'relation' ? relationOf(field) : null;
+        if (!this.pasteable(type) && !rel) {
           if (!refused.includes(field)) refused.push(field);
           continue;
         }
         const cell = this.at(block, r - rect.r0, c - rect.c0);
-        const value = valueFor(cell, type, optionsOf(field));
+        const value = rel ? relationValue(cell, rel, unmatched) : valueFor(cell, type, optionsOf(field));
         if (value === UNREADABLE) { unparsed += 1; continue; }
         writes.push({ eid, field, value });
       }
-      return { writes, refused, unparsed };
+      return { writes, refused, unparsed, unmatched };
+    },
+
+    /* Labels to rows: an id we already hold is the row itself (a block copied
+       inside weave); otherwise the exact name, trimmed and case-insensitive,
+       then `#12`. A single-cardinality field takes the first match; a set
+       never repeats a row. What matched nothing comes back by label. */
+    resolveRelation({ ids = [], labels = [], rows, many }) {
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      const byName = new Map(rows.map((row) => [String(row.name ?? '').trim().toLowerCase(), row]));
+      const byPid = new Map(rows.map((row) => [`#${row.publicId}`, row]));
+      const out = [], unmatched = [];
+      for (let i = 0; i < Math.max(ids.length, labels.length); i++) {
+        const label = String(labels[i] ?? ids[i] ?? '').trim();
+        const row = byId.get(ids[i]) ?? byName.get(label.toLowerCase()) ?? byPid.get(label);
+        if (!row) { if (label) unmatched.push(label); continue; }
+        if (!out.includes(row.id)) out.push(row.id);
+      }
+      return { ids: many ? out : out.slice(0, 1), unmatched };
     },
 
     /* Rows that receive an IDENTICAL set of values are one `bulk` call, so a
@@ -195,11 +222,12 @@
        columns that refused, by name, and the cells that would not read, by
        count — there is no column to name for those. `bulkToast` says this for
        a selection of rows (#132); this says it for a rectangle of cells. */
-    toast({ verb, cells, refused = [], unparsed = 0, results = [] }) {
+    toast({ verb, cells, refused = [], unparsed = 0, unmatched = [], results = [] }) {
       const failed = results.flatMap((r) => r.failed ?? []);
       const aside = [
         refused.length ? `${refused.join(', ')} cannot take a value` : null,
         unparsed ? `${unparsed} unreadable` : null,
+        unmatched.length ? `${unmatched.length} unmatched (${unmatched.join(', ')})` : null,
       ].filter(Boolean).join('; ');
       if (failed.length) {
         return { msg: `${verb.toLowerCase()}: ${failed.length} of ${results.reduce((n, r) => n + (r.done?.length ?? 0), 0) + failed.length} rows failed — ${failed[0].error}`, err: true };
@@ -209,6 +237,19 @@
     },
   };
 
+
+  /* A relation cell: the ids a weave copy carries beside its labels, or a
+     comma list from a sheet — the shape `toTSV` wrote it out in. */
+  function relationValue(cell, { rows, many }, unmatched) {
+    const list = (x) => (x == null || x === '' ? [] : Array.isArray(x) ? x : [x]);
+    const fromText = () => text(cell.d).split(',').map((x) => x.trim()).filter(Boolean);
+    const ids = cell.type === 'relation' ? list(cell.v) : [];
+    const labels = cell.type === 'relation' ? list(cell.d) : fromText();
+    const got = globalThis.WeaveGridRange.resolveRelation({ ids, labels, rows, many });
+    unmatched.push(...got.unmatched.filter((l) => !unmatched.includes(l)));
+    if (!got.ids.length && (ids.length || labels.length)) return UNREADABLE;
+    return many ? got.ids : (got.ids[0] ?? null);
+  }
 
   /* One cell of a copied block, resolved against the column it lands in.
      UNREADABLE is not a value: the cell is dropped and counted, and its

@@ -217,9 +217,10 @@ test('a refusal takes only its own column: the rest of the block still lands', (
 test('every unwritable type refuses, and the pasteable list is the settable one', () => {
   assert.deepEqual(R.PASTEABLE, globalThis.WeaveSelection.SETTABLE,
     'one list: what Set a field… offers is what a paste can land on');
-  for (const t of ['formula', 'rollup', 'lookup', 'view', 'relation', 'document', 'attachments', 'key', 'field']) {
+  for (const t of ['formula', 'rollup', 'lookup', 'view', 'document', 'attachments', 'key', 'field']) {
     assert.equal(R.pasteable(t), false, `${t} is not a paste target`);
   }
+  assert.equal(R.pasteable('relation'), false, 'a relation is not a Set a field… target; the plan admits it only with rows to match (Feature #224)');
   for (const t of ['text', 'number', 'select', 'multiselect', 'workflow', 'checkbox']) {
     assert.equal(R.pasteable(t), true);
   }
@@ -308,4 +309,77 @@ test('nothing to write says so instead of claiming a paste', () => {
   assert.equal(t.err, true);
   assert.match(t.msg, /Nothing pasted/);
   assert.match(t.msg, /Total/);
+});
+
+/* ── a relation links by name (Feature #224) ───────────────────────────── */
+
+const PEOPLE = [
+  { id: 'p-ann', name: 'Ann', publicId: 1 },
+  { id: 'p-bob', name: 'Bob', publicId: 2 },
+  { id: 'p-cy', name: 'Cy Ng', publicId: 3 },
+];
+const REL = {
+  ...FIELDS,
+  Peers: { type: 'relation', many: true },
+  Owner: { type: 'relation', many: false },
+};
+const relCols = [...cols, 'Peers', 'Owner'];
+const relCtx = {
+  fields: relCols, rowIds,
+  typeOf: (n) => REL[n]?.type ?? null,
+  optionsOf: (n) => REL[n]?.options ?? [],
+  relationOf: (n) => (REL[n]?.type === 'relation' ? { rows: PEOPLE, many: REL[n].many } : null),
+};
+const PEERS = 6, OWNER = 7;
+
+test('resolveRelation: an id we hold wins, then the exact name, then #id — and the strangers are named', () => {
+  const out = R.resolveRelation({ ids: ['p-ann', 'far-id', 'x', 'y'], labels: ['Zed', ' bob ', '#3', 'Nobody'], rows: PEOPLE, many: true });
+  assert.deepEqual(out.ids, ['p-ann', 'p-bob', 'p-cy'], 'id first, then the trimmed case-insensitive name, then the public id');
+  assert.deepEqual(out.unmatched, ['Nobody']);
+});
+
+test('resolveRelation: a single-cardinality field takes the first match, and a set never repeats a row', () => {
+  assert.deepEqual(R.resolveRelation({ labels: ['Bob', 'Ann'], rows: PEOPLE, many: false }).ids, ['p-bob']);
+  assert.deepEqual(R.resolveRelation({ labels: ['Ann', 'ann', '#1'], rows: PEOPLE, many: true }).ids, ['p-ann']);
+});
+
+test('a relation cell copied inside weave pastes its ids whole — the same replacement rule a multi-select has', () => {
+  const b = { fields: ['Peers'], w: 1, h: 1, cells: [[{ type: 'relation', v: ['p-ann', 'p-cy'], d: ['Ann', 'Cy Ng'] }]] };
+  const plan = R.plan({ block: b, rect: { r0: 0, c0: PEERS, r1: 2, c1: PEERS }, ...relCtx });
+  assert.deepEqual(plan.refused, []);
+  assert.equal(plan.writes.length, 3);
+  for (const w of plan.writes) assert.deepEqual(w.value, ['p-ann', 'p-cy']);
+  assert.deepEqual(plan.unmatched, []);
+});
+
+test('text into a relation links by name, and the label that names no row is counted and named', () => {
+  const plan = R.plan({ block: R.parseTSV('Ann, Nobody'), rect: { r0: 0, c0: PEERS, r1: 0, c1: PEERS }, ...relCtx });
+  assert.deepEqual(plan.writes[0].value, ['p-ann'], 'the known name links');
+  assert.deepEqual(plan.unmatched, ['Nobody']);
+  assert.equal(plan.unparsed, 0, 'the cell landed, so it is not an unreadable cell');
+});
+
+test('a relation cell whose labels all miss is dropped rather than emptied', () => {
+  const plan = R.plan({ block: R.parseTSV('Nobody\nAnn'), rect: { r0: 0, c0: PEERS, r1: 1, c1: PEERS }, ...relCtx });
+  assert.deepEqual(plan.writes.map((w) => [w.eid, w.value]), [['e2', ['p-ann']]]);
+  assert.equal(plan.unparsed, 1);
+  assert.deepEqual(plan.unmatched, ['Nobody']);
+});
+
+test('an empty cell pasted into a relation clears it; a single relation takes one id, not a list', () => {
+  const b = { fields: ['Peers'], w: 1, h: 2, cells: [[{ type: 'relation', v: [], d: [] }], [{ type: 'relation', v: ['p-bob', 'p-ann'], d: ['Bob', 'Ann'] }]] };
+  const plan = R.plan({ block: b, rect: { r0: 0, c0: OWNER, r1: 1, c1: OWNER }, ...relCtx });
+  assert.deepEqual(plan.writes.map((w) => w.value), [null, 'p-bob']);
+});
+
+test('a relation whose rows are not to hand still refuses by name — nothing is guessed', () => {
+  const plan = R.plan({ block: R.parseTSV('Ann'), rect: { r0: 0, c0: PEERS, r1: 0, c1: PEERS }, ...relCtx, relationOf: () => null });
+  assert.deepEqual(plan.writes, []);
+  assert.deepEqual(plan.refused, ['Peers']);
+});
+
+test('the toast names the labels that matched no row', () => {
+  const t = R.toast({ verb: 'Pasted', cells: 1, unmatched: ['Nobody', 'Ghost'], results: [{ done: ['a'], failed: [] }] });
+  assert.equal(t.err, false);
+  assert.match(t.msg, /2 unmatched \(Nobody, Ghost\)/);
 });

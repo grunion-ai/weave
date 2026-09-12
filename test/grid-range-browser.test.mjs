@@ -16,9 +16,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let rows, ids;
+let rows, ids, people;
 const s = await launch('grid ranges', (weave) => {
   weave.createSpace({ name: 'Ledger' });
+  people = weave.createTable({ space: 'Ledger', name: 'People' });
+  for (const n of ['Ann', 'Bob', 'Cy']) weave.createEntity(people, { name: n });
   rows = weave.createTable({ space: 'Ledger', name: 'Rows' });
   weave.addField(rows, { name: 'Note', type: 'text' });
   weave.addField(rows, { name: 'Kind', type: 'select', config: { options: ['bug', 'chore', 'epic'] } });
@@ -28,11 +30,15 @@ const s = await launch('grid ranges', (weave) => {
   // A relation onto itself: the chip in Peer is the one-click door Feature
   // #221 must leave alone.
   weave.addRelation(rows, { name: 'Peer', targetDb: 'Rows', cardinality: 'many-to-one' });
+  // Two relations into People, one of each cardinality (Feature #224).
+  weave.addRelation(rows, { name: 'Peers', targetDb: people.id, cardinality: 'many-to-many', inverseName: 'Peer of' });
+  weave.addRelation(rows, { name: 'Owner', targetDb: people.id, cardinality: 'many-to-one', inverseName: 'Owns' });
   // Twenty rows, so the Verify list's "fill down 20" is the real thing.
   ids = Array.from({ length: 20 }, (_, i) =>
     weave.createEntity(rows, { name: `r${i}`, values: { Note: `n${i}`, Score: i } }).id);
   weave.updateEntity(ids[0], { Kind: 'bug', Tags: ['red', 'blue'] });
   weave.link(ids[0], 'Peer', [ids[1]]);
+  weave.updateEntity(ids[0], { Peers: ['Ann', 'Cy'] });
   return { rows, ids };
 });
 
@@ -58,7 +64,7 @@ if (s) {
   const value = (i, field) => weave.readEntity(s.ids[i]).fields[field];
   const raw = (i, field) => weave.readEntity(s.ids[i]).raw[field];
   const reset = () => {
-    for (let i = 0; i < 20; i++) weave.updateEntity(s.ids[i], { Kind: i === 0 ? 'bug' : null, Tags: i === 0 ? ['red', 'blue'] : [], Note: `n${i}`, Score: i });
+    for (let i = 0; i < 20; i++) weave.updateEntity(s.ids[i], { Kind: i === 0 ? 'bug' : null, Tags: i === 0 ? ['red', 'blue'] : [], Note: `n${i}`, Score: i, Peers: i === 0 ? ['Ann', 'Cy'] : [], Owner: null });
   };
 
   /* ── the range ────────────────────────────────────────────────────── */
@@ -198,6 +204,61 @@ if (s) {
       await page.keyboard.press('ControlOrMeta+v');
       await page.waitForSelector('#wv-toasts .wv-toast');
       assert.deepEqual(value(6, 'Tags'), ['red', 'blue'], 'green is gone, not kept');
+    } finally { await ctx.close(); reset(); }
+  });
+
+  /* ── a relation links by name (Feature #224) ────────────────────── */
+
+  const names = (i, field) => { const v = value(i, field); return (Array.isArray(v) ? v : v ? [v] : []).map((x) => x.name); };
+
+  test('⌘C on a relation cell, ⌘V on another row: the same rows are linked, chips appear, and ONE Undo takes it back', async () => {
+    reset();
+    const { ctx, page } = await grid();
+    try {
+      await page.focus(sel(0, 'Peers'));
+      await page.keyboard.press('ControlOrMeta+c');
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Ann, Cy', 'the TSV carries names, not summaries');
+      await page.focus(sel(1, 'Peers'));
+      await page.keyboard.press('ControlOrMeta+v');
+      await page.waitForSelector('#wv-toasts .wv-toast');
+      assert.match(await toastText(page), /Pasted 1 cell/);
+      assert.deepEqual(names(1, 'Peers'), ['Ann', 'Cy'], 'linked by id — the block carried them');
+      await page.waitForFunction((q) => /Ann/.test(document.querySelector(q)?.innerText ?? ''), sel(1, 'Peers'));
+      assert.match(await page.locator(sel(1, 'Peers')).innerText(), /Ann[\s\S]*Cy/, 'the chips are on the page');
+      await page.locator('.wv-toast-action').first().click();
+      await page.waitForFunction(() => !document.querySelector('.wv-toast-action'));
+      await page.waitForTimeout(200);
+      assert.deepEqual(names(1, 'Peers'), [], 'Undo unlinked them');
+      assert.deepEqual(names(0, 'Peers'), ['Ann', 'Cy'], 'and the source row is untouched');
+    } finally { await ctx.close(); reset(); }
+  });
+
+  test('a TSV label links the row it names, and the toast names the label that matched nothing', async () => {
+    reset();
+    const { ctx, page } = await grid();
+    try {
+      await page.evaluate(() => navigator.clipboard.writeText('bob, Nobody'));
+      await page.focus(sel(2, 'Peers'));
+      await page.keyboard.press('ControlOrMeta+v');
+      await page.waitForSelector('#wv-toasts .wv-toast');
+      const msg = await toastText(page);
+      assert.match(msg, /Pasted 1 cell/);
+      assert.match(msg, /1 unmatched \(Nobody\)/);
+      assert.deepEqual(names(2, 'Peers'), ['Bob'], 'case-insensitive on the name; the stranger is not invented');
+    } finally { await ctx.close(); reset(); }
+  });
+
+  test('a single-cardinality relation takes the first name, and #id resolves too', async () => {
+    reset();
+    const { ctx, page } = await grid();
+    try {
+      const cy = weave.findEntity(people.id, 'Cy').publicId;
+      await page.evaluate((t) => navigator.clipboard.writeText(t), `#${cy}, Ann`);
+      await page.focus(sel(3, 'Owner'));
+      await page.keyboard.press('ControlOrMeta+v');
+      await page.waitForSelector('#wv-toasts .wv-toast');
+      assert.match(await toastText(page), /Pasted 1 cell/);
+      assert.deepEqual(names(3, 'Owner'), ['Cy'], 'one row, the first match');
     } finally { await ctx.close(); reset(); }
   });
 
