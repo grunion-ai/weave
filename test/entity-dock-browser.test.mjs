@@ -17,11 +17,14 @@ test('the dock panel and its core ship in the page shell', () => {
   assert.ok(html.includes('entity-surface-core.js'), 'index.html loads the surface core');
 });
 
-let deals, a, b;
+let deals, contacts, a, b, jane;
 const s = await launch('entity dock', (weave) => {
   weave.createSpace({ name: 'Sales' });
   deals = weave.createTable({ space: 'Sales', name: 'Deals' });
-  a = weave.createEntity(deals, { name: 'Acme Working Capital' });
+  contacts = weave.createTable({ space: 'Sales', name: 'Contacts' });
+  weave.addRelation(deals, { name: 'Contact', targetDb: contacts.id, cardinality: 'many-to-one', inverseName: 'Deals' });
+  jane = weave.createEntity(contacts, { name: 'Jane Rivera' });
+  a = weave.createEntity(deals, { name: 'Acme Working Capital', Contact: jane.id });
   b = weave.createEntity(deals, { name: 'Bluefin Renewal' });
 });
 if (s) {
@@ -112,6 +115,63 @@ if (s) {
     await page.waitForSelector('#dock:not([hidden])');
     await page.click('#dock .dock-head button[title^="Close"]');
     await page.waitForSelector('#dock', { state: 'hidden' });
+    await page.close();
+  });
+
+  /* Issue #276 (Kyle, 2026-09-12): the dock follows the click, the page
+     stays. A relation hop from a docked row into another table used to tear
+     the table down, push #/table/<other> and restart the crumb there. */
+  const dockedName = (page, n) => page.waitForFunction((name) => document.querySelector('#dock:not([hidden]) .name-edit')?.value === name, n);
+  const crumbLabels = (page) => page.$$eval('#dock .crumb-path a', (as) => as.map((x) => x.textContent));
+  async function hopToJane(page) {
+    await page.click(`tr[data-eid="${a.id}"] .open-link`);
+    await dockedName(page, 'Acme Working Capital');
+    const before = await page.evaluate(() => history.length);
+    await page.click(`#dock a[href="#/entity/${jane.id}"]`);
+    await dockedName(page, 'Jane Rivera');
+    return before;
+  }
+
+  test('a relation hop from the dock keeps the table under it and pushes no history', async () => {
+    const page = await freshTablePage();
+    const before = await hopToJane(page);
+    assert.equal(await page.locator(`#main .wv-grid tr[data-eid="${a.id}"]`).count(), 1, 'the Deals grid is still the page');
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${jane.id}`, 'the foreign row rides the CURRENT table hash');
+    assert.equal(await page.evaluate(() => history.length), before, 'the hop added no history entry');
+    await page.close();
+  });
+
+  test('the dock crumb reads as one path across the tables, and the back arrow walks it', async () => {
+    const page = await freshTablePage();
+    await hopToJane(page);
+    assert.deepEqual(await crumbLabels(page), ['Deals', 'Acme Working Capital', 'Contacts'], 'Deals › Acme › Contacts › #jane');
+    assert.equal(await page.locator(`tr[data-eid="${a.id}"].row-docked`).count(), 1, 'the root row keeps its light while a foreign row is on top');
+    await page.click('#dock .dock-back');
+    await dockedName(page, 'Acme Working Capital');
+    assert.deepEqual(await crumbLabels(page), ['Deals']);
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${a.id}`);
+    assert.equal(await page.locator('#dock .dock-back').count(), 0, 'nothing behind the root: no back arrow');
+    await page.close();
+  });
+
+  test('a reload re-docks the foreign row beside the same table', async () => {
+    const page = await freshTablePage();
+    await hopToJane(page);
+    await page.reload({ waitUntil: 'networkidle' });
+    await dockedName(page, 'Jane Rivera');
+    assert.equal(await page.locator(`#main .wv-grid tr[data-eid="${a.id}"]`).count(), 1, 'still the Deals grid');
+    assert.deepEqual(await crumbLabels(page), ['Contacts'], 'the row is rendered from its own table');
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${jane.id}`);
+    await page.close();
+  });
+
+  test('expanding a foreign docked row lands on its own #/entity page', async () => {
+    const page = await freshTablePage();
+    await hopToJane(page);
+    await page.click('#dock .pose-btn');
+    await page.waitForSelector('#main .name-edit');
+    assert.equal(await page.evaluate(() => location.hash), `#/entity/${jane.id}`);
+    assert.equal(await page.inputValue('#main .name-edit'), 'Jane Rivera');
     await page.close();
   });
 }

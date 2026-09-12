@@ -191,24 +191,28 @@ const state = { schema: [], route: null, refocus: null, trail: [], showDeleted: 
   selected: new Map() };
 
 /* Single entry point for opening an entity, and it DOCKS (Issue #198). The
-   ONE entity view opens beside its table (ruling of 2026-09-02); the
-   outward arrows expand it to the #/entity page. A reader elsewhere travels
-   to the entity's table first — that is a new place, so it is a real
-   history entry — and the dock itself is presentation, never a navigation
-   (the ledger's #id link set that rule). The route stays the page: a new
-   tab, a permalink and the expand arrows all land on #/entity/<id>. */
-async function openEntity(id) {
+   ONE entity view opens beside the table the reader is on (ruling of
+   2026-09-02); the outward arrows expand it to the #/entity page. The dock
+   follows the click and the page stays (Kyle, 2026-09-12, Issue #276): a
+   relation hop into another table docks that row beside the table under
+   the reader, extends the dock's own crumb, and pushes nothing. Only a
+   reader with no table under them (home, a space, activity) travels to the
+   entity's table first — that is a new place, so it is a real history entry.
+   The dock itself is presentation, never a navigation (the ledger's #id
+   link set that rule). The route stays the page: a new tab, a permalink
+   and the expand arrows all land on #/entity/<id>. */
+async function openEntity(id, { drill = false } = {}) {
   let entity;
   try { entity = await api('GET', `/entities/${id}`); } catch (err) { return toast(err.message, true); }
   const db = allTables().find((d) => d.id === entity.dbId);
   if (!db) { location.hash = `#/entity/${id}`; return; }
-  if (!(state.route?.page === 'db' && state.route.dbId === db.id)) {
+  if (state.route?.page !== 'db') {
     teardownDocEditors();
     dockClose();
     history.pushState(null, '', `#/table/${db.id}`);
     await withPageLoader(() => showDatabase(db.id));
   }
-  await dockEntity(db, id);
+  await dockEntity(db, id, { drill });
 }
 
 /* Every plain click on an entity link docks, wherever the link was drawn —
@@ -223,7 +227,9 @@ document.addEventListener('click', (e) => {
   const m = a.getAttribute('href').match(/^#\/entity\/([^/?]+)$/);
   if (!m) return;
   e.preventDefault();
-  openEntity(m[1]);
+  // A link inside the dock is a hop FROM the docked entity: it drills the
+  // chain (Issue #276). A link anywhere else opens afresh.
+  openEntity(m[1], { drill: !!a.closest('#dock') });
 }, true);
 
 /* ---------- the clicks the browser owns (Issue #134) ----------
@@ -379,6 +385,13 @@ function poseGlyph(expanded) {
   return span;
 }
 
+/* Tabler's arrow-left, same family and scale as the pose glyphs. */
+function backGlyph() {
+  const span = el('span', { class: 'pose-glyph' });
+  span.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0"/><path d="M5 12l6 6"/><path d="M5 12l6 -6"/></svg>';
+  return span;
+}
+
 /* The two poses live in two mounts of the ONE renderer: split is the dock
    panel, expanded is the classic entity page in #main — same URL, same
    geometry (doc rails, drag reorder, icon scale) as it always had. The
@@ -428,14 +441,30 @@ function dockClose() {
   markDockedRow();
 }
 
-async function dockEntity(db, id) {
+/* The table under the reader — the dock's anchor. Off a table page (the
+   entity page re-docking, a caller with no route) the entity's own table
+   stands in. */
+function anchorTable(db) {
+  return (state.route?.page === 'db' && allTables().find((d) => d.id === state.route.dbId)) || db;
+}
+
+/* db is the entity's OWN table (its fields, its term); the anchor is the
+   table beside the dock. They differ on a cross-table hop, and the chain
+   carries both: each frame names its table, the state names the anchor
+   (Issue #276). `drill` extends the chain — a hop from the docked entity —
+   and a frame already on the chain cuts back to it, so a loop never
+   accumulates (the same rule pushTrail keeps for the page crumb). */
+async function dockEntity(db, id, { drill = false } = {}) {
   commitActiveEdit();
   const S = weaveEntitySurface;
   const frame = { kind: 'entity', id, tableId: db.id, tableName: db.name };
-  const state = dock && dock.db.id === db.id
-    ? S.open(dock.state, frame)
-    : S.open(S.init({ tableId: db.id, tableName: db.name }), frame);
-  dock = { db, state, editors: dock?.editors ?? [] };
+  const anchor = anchorTable(db);
+  let st = dock && dock.state.anchor.tableId === anchor.id
+    ? dock.state
+    : S.init({ tableId: anchor.id, tableName: anchor.name });
+  const at = drill ? st.chain.findIndex((f) => f.kind === 'entity' && f.id === id) : -1;
+  st = at >= 0 ? S.popTo(st, at) : drill ? S.drill(st, frame) : S.open(st, frame);
+  dock = { db, state: st, editors: dock?.editors ?? [] };
   dockSyncUrl();
   await drawDock();
 }
@@ -458,11 +487,25 @@ function dockDismiss() {
   dockSyncUrl();
 }
 
+/* Back walks the chain one frame (Issue #276): the same pop Esc makes. */
+function dockBack() {
+  if (!dock || dock.state.chain.length < 2) return;
+  dock.state = weaveEntitySurface.popTo(dock.state, dock.state.chain.length - 2);
+  dockSyncUrl();
+  drawDock();
+}
+
 async function drawDock() {
   if (!dock) return;
   const top = dock.state.chain[dock.state.chain.length - 1];
   let entity;
   try { entity = await api('GET', `/entities/${top.id}`); } catch (err) { dockClose(); return toast(err.message, true); }
+  // The frame learns its name here, for the crumb of the next hop; the
+  // dock's table follows the frame on top (its eye, its fields).
+  top.name = entity.name;
+  dock.db = allTables().find((d) => d.id === top.tableId) ?? dock.db;
+  const tableOf = (tid) => allTables().find((d) => d.id === tid);
+  const crumbs = weaveBreadcrumbs.dockCrumbs(dock.state.chain, tableOf);
   releaseDockPanel();
   const panel = $('#dock');
   panel.hidden = false;
@@ -471,6 +514,11 @@ async function drawDock() {
   const host = el('div', { class: 'dock-entity' });
   panel.replaceChildren(
     el('div', { class: 'dock-head' },
+      dock.state.chain.length > 1 ? el('button', {
+        class: 'btn btn-sm btn-ghost-secondary dock-back', type: 'button',
+        title: 'Back (Esc)', 'aria-label': 'Back to the previous entity',
+        onclick: () => dockBack(),
+      }, backGlyph()) : null,
       el('span', { style: 'flex:1' }),
       el('button', {
         class: 'btn btn-sm btn-ghost-secondary pose-btn', type: 'button',
@@ -484,7 +532,7 @@ async function drawDock() {
       }, iconEl('✕'))),
     host);
   // The full entity view — the dock is the entity, not a preview of it.
-  await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockDismiss, editors: dock.editors });
+  await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockDismiss, editors: dock.editors, crumbs });
   markDockedRow();
 }
 
@@ -7651,7 +7699,7 @@ function entityHop(entity) {
    mode changes only what must change: no route/nav writes, refresh redraws
    the panel, deleting closes it instead of navigating, and mounted editors
    are handed back for scoped teardown when the panel goes. */
-async function renderEntityView(entity, { mount, refresh, inPeek = false, onClose = null, editors = null }) {
+async function renderEntityView(entity, { mount, refresh, inPeek = false, onClose = null, editors = null, crumbs = null }) {
   const id = entity.id;
   const db = allTables().find((d) => d.id === entity.dbId);
 
@@ -7764,7 +7812,9 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       el('div', { class: 'crumb crumb-row' },
         el('span', { class: 'crumb-path' },
         ...(inPeek
-          ? [el('a', { href: `#/table/${entity.dbId}` }, entity.db), ' › ']
+          /* The dock's crumb is its chain (Issue #276); a caller without
+             one gets the entity's table alone. */
+          ? (crumbs ?? [{ label: entity.db, href: `#/table/${entity.dbId}` }]).map((c) => [el('a', { href: c.href }, c.label), ' › ']).flat()
           : weaveBreadcrumbs.entityCrumbs($('#ws-name').textContent || 'workspace', state.trail, entityHop(entity))
             .map((c, i) => i === 0 ? [el('a', { href: wsHomeHref() }, c.label), ' › '] : [el('a', { href: c.href }, c.label), ' › ']).flat()),
         el('span', {
@@ -8950,13 +9000,16 @@ function route() {
 
 /* A table hash carrying ?e=<id> re-docks that row after the table renders
    (Issue #226). A row that is gone, or a stale id, drops the query rather
-   than toasting on every reload. ponytail: the dock chain reopens one deep;
-   nested drills are not encoded. */
+   than toasting on every reload. The row may live in another table (Issue
+   #276): it renders from its own. ponytail: the dock chain reopens one
+   deep; nested drills are not encoded. */
 async function redock(dbId, id) {
   if (!id) return;
-  const db = allTables().find((d) => d.id === dbId);
-  if (!db) return;
-  try { await api('GET', `/entities/${id}`); } catch { dockSyncUrl(); return; }
+  const anchor = allTables().find((d) => d.id === dbId);
+  if (!anchor) return;
+  let entity;
+  try { entity = await api('GET', `/entities/${id}`); } catch { dockSyncUrl(); return; }
+  const db = allTables().find((d) => d.id === entity.dbId) ?? anchor;
   await dockEntity(db, id);
 }
 

@@ -39,5 +39,20 @@
     return crumbs;
   }
 
-  root.weaveBreadcrumbs = { pushTrail, entityCrumbs, MAX_TRAIL };
+  /* The dock's crumb (Issue #276): the chain of frames the dock walked, run
+     through the same rule — a hop into another table shows that table where
+     it changes — minus the workspace › space head, which the sidebar already
+     shows beside a docked table. Frames carry their table; tableOf(tableId)
+     supplies the space. */
+  function dockCrumbs(chain, tableOf) {
+    const hop = (f) => {
+      const t = tableOf(f.tableId) || {};
+      return { id: f.id, name: f.name, space: t.space ?? '', spaceId: t.spaceId ?? '', table: f.tableName, tableId: f.tableId };
+    };
+    const hops = chain.map(hop);
+    if (!hops.length) return [];
+    return entityCrumbs('', hops.slice(0, -1), hops[hops.length - 1]).slice(2);
+  }
+
+  root.weaveBreadcrumbs = { pushTrail, entityCrumbs, dockCrumbs, MAX_TRAIL };
 })(globalThis);
