@@ -9,12 +9,13 @@
    opening in full screen not dock panel by default, fix."
 
    One delegated listener now turns every plain click on a #/entity link
-   into a dock beside that entity's table, travelling to the table first
-   when the reader is elsewhere. Modifier clicks still hand the link to the
-   browser (Issue #134), and the #/entity/<id> route itself stays the
-   expanded page — that is what a new tab, a permalink and the outward
-   arrows land on. Playwright is NOT a dependency; the suite skips when
-   absent. */
+   into a dock beside the table the reader is on — the page stays and the
+   dock follows the click (Issue #276, Kyle 2026-09-12); only a reader with
+   no table under them (home, a space) travels to the entity's table first.
+   Modifier clicks still hand the link to the browser (Issue #134), and the
+   #/entity/<id> route itself stays the expanded page — that is what a new
+   tab, a permalink and the outward arrows land on. Playwright is NOT a
+   dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -42,21 +43,22 @@ if (s) {
   };
 
   for (const colorScheme of ['light', 'dark']) {
-    test(`a relation chip docks its entity beside the far table, in ${colorScheme}`, async () => {
+    test(`a relation chip docks its entity beside the table under the reader, in ${colorScheme}`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
       await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector(`tr[data-eid="${acme.id}"] td[data-ftype="relation"] a[href="#/entity/${jane.id}"]`);
       await page.click(`tr[data-eid="${acme.id}"] td[data-ftype="relation"] a[href="#/entity/${jane.id}"]`);
       await docked(page, 'Jane Rivera');
       assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme);
-      assert.equal(await page.evaluate(() => location.hash), `#/table/${contacts.id}?e=${jane.id}`,
-        'the reader travelled to the chip\'s table; the dock rides its hash, not the history');
-      await page.waitForSelector(`tr[data-eid="${jane.id}"].row-docked`);
+      assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${jane.id}`,
+        'the page stays on Deals; the foreign row rides its hash, not the history (Issue #276)');
+      assert.equal(await page.locator(`#main .wv-grid tr[data-eid="${acme.id}"]`).count(), 1, 'the Deals grid is still the page');
+      assert.equal(await page.locator('tr.row-docked').count(), 0, 'no Deals row is the docked entity');
       await page.close();
     });
   }
 
-  test('a ⌘K hit docks instead of opening the page', async () => {
+  test('a ⌘K hit docks beside the table the reader is on', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${contacts.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -65,7 +67,22 @@ if (s) {
     await page.waitForSelector('#cmdk-results .result.active');
     await page.keyboard.press('Enter');
     await docked(page, 'Bluefin Renewal');
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${contacts.id}?e=${bluefin.id}`);
+    await page.close();
+  });
+
+  test('a ⌘K hit from a page with no table under it travels to the entity\'s table', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#search-btn');
+    const before = await page.evaluate(() => history.length);
+    await page.click('#search-btn');
+    await page.fill('#cmdk-input', 'Bluefin');
+    await page.waitForSelector('#cmdk-results .result.active');
+    await page.keyboard.press('Enter');
+    await docked(page, 'Bluefin Renewal');
     assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${bluefin.id}`);
+    assert.equal(await page.evaluate(() => history.length), before + 1, 'the table is a new place: one history entry');
     await page.close();
   });
 
@@ -86,7 +103,7 @@ if (s) {
     await page.close();
   });
 
-  test('a relation chip inside the dock docks the far entity in its own table', async () => {
+  test('a relation chip inside the dock docks the far entity beside the same table', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`tr[data-eid="${acme.id}"] .open-link`);
@@ -94,7 +111,7 @@ if (s) {
     await docked(page, 'Acme Working Capital');
     await page.click(`#dock a[href="#/entity/${jane.id}"]`);
     await docked(page, 'Jane Rivera');
-    assert.equal(await page.evaluate(() => location.hash), `#/table/${contacts.id}?e=${jane.id}`);
+    assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${jane.id}`);
     await page.close();
   });
 

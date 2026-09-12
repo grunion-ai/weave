@@ -2074,9 +2074,15 @@ test('dock: the #id link docks plain rows only; registry rows and modified click
   assert.match(link, /e\.preventDefault\(\);\s*dockEntity\(db, item\.id\);/, 'a plain click docks');
   assert.match(link, /`Open \$\{db\.term\.singular\} beside the table — ⌘-click for a new tab`/, 'the title speaks the row term (row-term work) and names both gestures');
   assert.match(grid, /href: registryHref\(db, item\) \?\? `#\/entity\/\$\{item\.id\}`/, '⌘-click on the row opens a tab, registry rows aside — the row carries the destination and openNativeClick opens it');
+  /* Issue #276: the anchor is the table under the reader, never the
+     entity's own — a cross-table hop keeps the pane state and extends it. */
   const dockFn = fnBody('dockEntity');
-  assert.match(dockFn, /dock && dock\.db\.id === db\.id\s*\?\s*S\.open\(dock\.state, frame\)/, 'a second open in the same table keeps the pane state');
-  assert.match(dockFn, /S\.init\(\{ tableId: db\.id, tableName: db\.name \}\)/, 'a different table re-anchors');
+  assert.match(dockFn, /dock && dock\.state\.anchor\.tableId === anchor\.id\s*\?\s*dock\.state/, 'a second open beside the same table keeps the pane state');
+  assert.match(dockFn, /S\.init\(\{ tableId: anchor\.id, tableName: anchor\.name \}\)/, 'a different anchor re-inits');
+  assert.match(dockFn, /drill \? S\.drill\(st, frame\) : S\.open\(st, frame\)/, 'a hop from the dock drills the chain; any other open replaces it');
+  const opener = fnBody('openEntity');
+  assert.match(opener, /if \(state\.route\?\.page !== 'db'\) \{/, 'the page only travels when no table is under the reader');
+  assert.doesNotMatch(opener, /state\.route\.dbId === db\.id/, 'the entity\'s own table never decides a navigation');
 });
 
 test('dock: the panel is styled as the table\'s twin, sticky, and lights its row in both themes', () => {
