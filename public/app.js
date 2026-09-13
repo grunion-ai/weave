@@ -4015,8 +4015,22 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     // A paged grid is in the server's order already (page 1 has to be the
     // right 200); the local sort is for the grids that hold every row.
     if (sortKey && !pager) {
+      /* A sort orders the value, never the costume it wears (Issue #279).
+         "Sep 9, 2026 9:51 AM" beats "Sep 12, 2026 7:32 AM" as text, and
+         "15,829,984" loses to "900" — so a number sorts as a number and a
+         date as its stored instant, both read off item.raw. Everything else
+         sorts by its display form, because for an option, a state or a
+         joined relation the name IS the value. Mirrors the engine's own
+         comparator (#pathValue's `undressed`), so a grid that holds every
+         row lands in the same order as the paged one beside it. */
+      const isDate = db.fields.find((f) => f.name === sortKey)?.type === 'date';
+      const val = (item) => {
+        const raw = item.raw?.[sortKey];
+        return typeof raw === 'number' || isDate ? raw : item.fields[sortKey];
+      };
       sortedItems.sort((a, b) => {
-        const av = a.fields[sortKey], bv = b.fields[sortKey];
+        const av = val(a), bv = val(b);
+        if (av == null && bv == null) return 0;
         if (av == null) return 1;
         if (bv == null) return -1;
         return (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(fieldValueCell(av)).localeCompare(String(fieldValueCell(bv)))) * sortDir;

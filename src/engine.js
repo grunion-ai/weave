@@ -4904,9 +4904,12 @@ export class Weave {
     for (const s of [...sort].reverse()) {
       const { field, dir = 'asc' } = typeof s === 'string' ? { field: s } : s;
       const mul = dir === 'desc' ? -1 : 1;
+      /* Undressed: a sort orders the value, not the costume it wears. The
+         grid read "Sep 9, 2026" above every Sep 12 row because the painted
+         string is what reached the comparator (Issue #279). */
       rows = [...rows].sort((a, b) => {
-        const av = this.#pathValue(a, db, field);
-        const bv = this.#pathValue(b, db, field);
+        const av = this.#pathValue(a, db, field, { undressed: true });
+        const bv = this.#pathValue(b, db, field, { undressed: true });
         if (av == null && bv == null) return 0;
         if (av == null) return 1;
         if (bv == null) return -1;
@@ -4959,8 +4962,16 @@ export class Weave {
     return a === b || String(a) === String(b);
   }
 
-  // Path: 'Field' or 'Relation.Field' (any hops). Returns display values.
-  #pathValue(e, db, path) {
+  /* Path: 'Field' or 'Relation.Field' (any hops). Returns display values —
+     `undressed` takes the costume off the two types whose painted form does
+     not order the way the value does (Issue #279): a number stays a number,
+     a date stays its stored instant. Everything else keeps its display form,
+     because for an option, a state or a joined relation the name IS the
+     value. Same rule a formula reads by (#resolve, the 'formula' case).
+     A `daterange` is the one type this leaves dressed: its raw value is an
+     object, so ordering it needs a start-then-end rule someone has to say out
+     loud, and Issue #287 asks for it. */
+  #pathValue(e, db, path, { undressed = false } = {}) {
     const parts = String(path).split('.');
     let current = [{ e, db }];
     for (let i = 0; i < parts.length; i++) {
@@ -4978,7 +4989,8 @@ export class Weave {
         if (!f) throw new WeaveError(`Field '${parts[i]}' not found in table '${cdb.name}'`, 'not-found');
         const resolved = this.#resolve(ce, cdb, f, 0);
         if (isLast) {
-          results.push(this.#displayValue(cdb, f, resolved));
+          results.push(undressed && (typeof resolved === 'number' || f.type === 'date')
+            ? resolved : this.#displayValue(cdb, f, resolved));
         } else {
           if (f.type !== 'relation') throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');
           // Each target knows its own table — a target-set relation's members
