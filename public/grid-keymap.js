@@ -32,6 +32,10 @@
     if (k.key === 'Enter' && k.shift) return { type: 'newRow', at: 'below', focus: 'first' };
     if (k.key === 'Enter') return s.readonly ? { type: 'none' } : { type: 'edit', select: 'all' };
     if (k.key === 'a' && k.meta) return { type: 'selectAll' };
+    // The first and the last row of the TABLE, not of the drawn window
+    // (Issue #271) — the grid scrolls the row in before the cursor lands.
+    if (k.key === 'End') return { type: 'move', to: 'end' };
+    if (k.key === 'Home') return { type: 'move', to: 'home' };
     /* ⇧-arrows do two jobs, and rows go first (Feature #220 over #134). With
        a row picked up, ⇧↑/⇧↓ extend that run exactly as they did — Space and
        the vertical shift-arrows are one gesture and splitting them would

@@ -865,6 +865,10 @@ The table view is a ledger, not a form. The \`#id\` link opens the row in the **
 
 The dock is the entity itself, not a preview: edit there and the table keeps its place, the docked row stays lit, Esc closes it. **Docked is the default pose** (Issue #198): a relation chip, a card, a mention chip in a document, a ⌘K hit and a document chip in a cell all open the entity in the dock beside the table you are reading. **The dock follows the click and the page stays** (Issue #276): a relation hop into another table docks that row beside the table you were on, the grid keeps its place and its filters, nothing lands in the browser history, and the dock's own crumb carries the path taken — Deals › Acme › Contacts › #4 — with a back arrow (or Esc) that walks it one hop at a time. Only from a page with no table under it (home, a space, the activity page) does a hit travel to the entity's table first. The outward diagonal arrows on the dock expand it to the full page (⌘⇧E flips either way); the inward arrows on the page dock it again. Only a \`#/entity/…\` address opens as the page — the address a new tab, a permalink and the expand arrows land on. ⌘-click a row (or its \`#id\` link) to give the record its own browser tab. Every navigating surface in weave answers the same three gestures — ⌘/Ctrl, Shift, and the middle button — so an activity row, a ⌘K hit and a node on the relation map open in a tab the same way. Text cells keep their own modifiers: shift-click still extends a selection there. A document chip in a cell opens its entity in the dock.
 
+## A big table draws only what is in view
+
+The grid holds the rows in view plus a buffer of rows above and below — the buffer runs ahead of the direction you scroll, so the next rows are drawn before they arrive — and two spacer rows stand in for the rest, at the height they would take, so the scrollbar and the scroll position are honest (Issue #271). The rows come in pages of 200 in the table's sort and filter order; the page past the edge of the window is fetched before it is needed, and a row whose page is still on its way holds its place at the row height for the moment it takes. The foot reads \`200 of 2,087 loaded\` until every row has been through the window. Sort and filter stay on the server, so page one is the right 200 and the Σ row still reads the space rollups, never the page. A cell commit re-reads the pages under the window and redraws at the same scroll.
+
 ## The grid from the keyboard
 
 Cells **rest as values** and open on purpose. The cursor is a ring on one cell; the arrows and Tab move it, and a cell opens when you ask. That is what gives ← and → to navigation: a text caret only owns them while a cell is open, and hands them back when you Tab, Return or Esc out.
@@ -877,7 +881,8 @@ Cells **rest as values** and open on purpose. The cursor is a ring on one cell; 
 | any character | open the cell and start typing over the value |
 | \`Space\` | pick the row up — or, on a toggle cell, flip the switch |
 | \`⇧↑\` / \`⇧↓\` | extend the run of chosen rows |
-| \`⌘A\` | take the whole table |
+| \`⌘A\` | take every loaded row — the foot says how many that is |
+| \`Home\` / \`End\` | the first or the last row of the table, scrolled in first |
 | \`⇧Return\` | make the next row, open on its name |
 | \`⌘Return\` | open the record in the dock |
 | \`Esc\` | let the selection go |

@@ -134,5 +134,6 @@ test('keepScroll restores every box that was scrolled, not one hard-coded scroll
   assert.match(body, /querySelectorAll\('\*'\)/, 'it looks at every box on the page');
   assert.match(body, /scrollTop\s*\|\|\s*\w+\.scrollLeft/, 'a box resting at the origin has nothing to restore');
   assert.match(body, /isConnected/, 'a box the redraw replaced cannot be restored on the old node');
-  assert.match(body, /window\.scrollTo\(x, y\)/, 'and the page itself still holds its place');
+  assert.match(body, /window\.scrollTo\(\{ left: x, top: y, behavior: 'instant' \}\)/, 'and the page itself still holds its place — instantly, a restore is not a scroll the reader asked for (Issue #271)');
+  assert.match(body, /b\.el\.scrollTo\(\{ top: b\.top, left: b\.left, behavior: 'instant' \}\)/, 'every box the same way');
 });

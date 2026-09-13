@@ -1477,11 +1477,14 @@ function rememberGridFocus() {
 }
 
 /* Put focus back on the cell that triggered a redraw (see showPopover). */
-function restoreGridFocus() {
+function restoreGridFocus({ now = false } = {}) {
   const want = state.refocus;
   state.refocus = null;
   if (!want) return;
-  requestAnimationFrame(() => {
+  // `now`: the caller has already waited a frame (keepScroll resolves after
+  // its restore), so the rows are painted and the cell can take focus
+  // without leaving the document a frame longer on <body>.
+  (now ? (fn) => fn() : requestAnimationFrame)(() => {
     const td = $(`tr[data-eid="${want.eid}"]`)?.children[want.col];
     if (!td) return;
     // A resting cursor comes back as a resting cursor: the cell is the stop.
@@ -3159,18 +3162,93 @@ async function showDatabase(dbId, view) {
   // page can be newer than the routes behind it (git pull without a restart).
   // The trash badge is decoration — it must never keep the table from opening.
   const where = filterWhere(db);
+  /* The first page only (Issue #271): the grid windows its rows and pages
+     its data, so the open costs one page of 200 in the table's own sort —
+     server-side, so page 1 is the right 200 — and the response's `total`
+     sizes the spacers and the foot's count from the first paint. The
+     eyeball's "show deleted" is the one path that still asks for the whole
+     table: trashed rows ride along in place, and a page has no place for
+     them. ponytail: the window still draws only what is in view there. */
+  const showDeleted = state.showDeleted.has(db.id);
+  const query = {
+    ...(where ? { where } : {}),
+    ...(gridSort(db) ? { sort: gridSort(db) } : {}),
+    ...(showDeleted ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
+  };
   const [result, trash] = await Promise.all([
-    api('POST', `/tables/${db.id}/query`, where ? { where } : {}),
+    api('POST', `/tables/${db.id}/query`, query),
     api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0, items: [] })),
   ]);
   // The eyeball's "show deleted": trashed rows ride along, dimmed, in place.
-  const items = state.showDeleted.has(db.id)
+  const items = showDeleted
     ? [...result.items, ...(trash.items ?? []).map((e) => ({ ...e, deleted: true }))]
     : result.items;
-  drawDatabase(db, items, trash.total);
+  drawDatabase(db, items, trash.total, showDeleted ? null : gridPager(db, query, result));
 }
 
-function drawDatabase(db, items, trashCount = 0) {
+/* The table's sort as the query takes it: only fields that still exist, so a
+   sort left pointing at a dropped column cannot keep the table from opening. */
+function gridSort(db) {
+  const sort = (db.sort ?? []).filter((s) => db.fields.some((f) => f.name === s.field));
+  return sort.length ? sort : null;
+}
+
+/* The data pages behind a windowed grid (Issue #271). `rows` is the whole
+   table as one sparse array in the query's order — a hole is a row whose page
+   has not arrived — so a row's index is its position on screen and the
+   spacer math needs nothing else. Pages are fetched at most once and kept;
+   `refresh` drops them all and re-reads only the pages under the window,
+   which is what a cell commit or a bulk write costs now (Issue #257 owns the
+   in-place patch). ponytail: `total` drifting between two page reads — a row
+   created or trashed by someone else meanwhile — shifts positions by that
+   much until the next refresh, and is not reconciled. */
+function gridPager(db, query, first) {
+  const GW = globalThis.WeaveGridWindow;
+  const rows = new Array(first.total);
+  const pages = new Map();                    // offset → the fetch, settled or not
+  const put = (offset, res) => {
+    pager.total = res.total;
+    res.items.forEach((e, i) => { rows[offset + i] = e; });
+    rows.length = res.total;
+  };
+  const fetch = (offset) => {
+    if (pages.has(offset)) return pages.get(offset);
+    const p = api('POST', `/tables/${db.id}/query`, { ...query, limit: GW.PAGE, offset }).then((res) => put(offset, res));
+    // A read that failed is not a page: the next window asks again.
+    p.catch(() => pages.delete(offset));
+    pages.set(offset, p);
+    return p;
+  };
+  const pager = {
+    rows, total: first.total, page: GW.PAGE,
+    window: { start: 0, end: 0 },             // the last window painted; renderTable keeps it current
+    has: (offset) => pages.has(offset),
+    fetch,
+    pageOf: (i) => Math.floor(i / GW.PAGE) * GW.PAGE,
+    refresh: async () => {
+      const want = GW.pagesFor(pager.window, GW.PAGE, pager.total);
+      pages.clear();
+      rows.length = 0;
+      await Promise.all((want.length ? want : [0]).map(fetch));
+      rows.length = pager.total;
+    },
+    /* Where a row sits, fetching pages until it is found: the last page first
+       (an unsorted table puts a new row there), then from the top (a sorted
+       table puts it wherever the sort says). -1 when it is nowhere. */
+    indexOf: async (id) => {
+      const found = () => rows.findIndex((r) => r && r.id === id);
+      let i = found();
+      if (i < 0 && pager.total) { await fetch(pager.pageOf(pager.total - 1)); i = found(); }
+      for (let o = 0; i < 0 && o < pager.total; o += GW.PAGE) { await fetch(o); i = found(); }
+      return i;
+    },
+  };
+  put(0, first);
+  pages.set(0, Promise.resolve());
+  return pager;
+}
+
+function drawDatabase(db, items, trashCount = 0, pager = null) {
   const main = $('#main');
   main.replaceChildren();
 
@@ -3190,7 +3268,7 @@ function drawDatabase(db, items, trashCount = 0) {
     onRename: async (name) => {
       await api('PATCH', `/tables/${db.id}`, { name });
       await loadSchema();
-      drawDatabase(allTables().find((d) => d.id === db.id), items, trashCount);
+      drawDatabase(allTables().find((d) => d.id === db.id), items, trashCount, pager);
     },
     description: db.description,
     onSaveDescription: async (md) => {
@@ -3266,15 +3344,23 @@ function drawDatabase(db, items, trashCount = 0) {
   const strip = filterStrip(db, () => showDatabase(db.id, state.route.view));
   if (strip) main.append(strip);
 
+  /* A commit re-reads the pages under the window and redraws at the same
+     scroll (Issue #271): the redraw is held to where the reader was, and the
+     row window comes back around the same rows, so the cell the focus goes
+     back to is a drawn cell. Nothing jumps to the top. */
   const onSaved = async () => {
     rememberGridFocus();
     // A registry row IS the structure: renaming a Spaces row renames the
     // space, and the sidebar must say so (Issue #241).
     if (db.system) await loadSchema();
-    const w2 = filterWhere(db);
-    const fresh = await api('POST', `/tables/${db.id}/query`, w2 ? { where: w2 } : {});
-    drawDatabase(db, fresh.items);
-    restoreGridFocus();
+    let fresh = items;
+    if (pager) await pager.refresh();
+    else {
+      const w2 = filterWhere(db);
+      fresh = (await api('POST', `/tables/${db.id}/query`, w2 ? { where: w2 } : {})).items;
+    }
+    await keepScroll(() => drawDatabase(db, fresh, trashCount, pager));
+    restoreGridFocus({ now: true });
   };
 
   // Inline add: create the row, redraw, focus its Name cell. A registry row
@@ -3284,8 +3370,12 @@ function drawDatabase(db, items, trashCount = 0) {
   // asks for it; a Workflows row is ordinary data. A refused create is said
   // out loud — the button never reads as dead.
   const redraw = async () => {
-    const fresh = await api('POST', `/tables/${db.id}/query`, {});
-    drawDatabase(db, fresh.items);
+    if (!pager) {
+      const fresh = await api('POST', `/tables/${db.id}/query`, {});
+      return drawDatabase(db, fresh.items, trashCount);
+    }
+    await pager.refresh();
+    await keepScroll(() => drawDatabase(db, items, trashCount, pager));
   };
   state.inlineAdd = async () => {
     try {
@@ -3295,11 +3385,17 @@ function drawDatabase(db, items, trashCount = 0) {
       const created = await api('POST', `/tables/${db.id}/entities`, seed);
       await loadSchema();
       await redraw();
+      // A windowed grid draws the new row only once it is scrolled to: the
+      // pager finds where the sort put it, and the grid brings it in.
+      if (pager) {
+        const i = await pager.indexOf(created.id);
+        if (i >= 0) main.querySelector('.table-wrap')?.wvScrollToRow?.(i);
+      }
       focusNewRow(created.id, { field: nameFieldOf(db)?.name, select: !!seed.name });
     } catch (err) { toast(err.message, true); }
   };
 
-  renderTable(main, db, items, onSaved, state.inlineAdd);
+  renderTable(main, db, items, onSaved, state.inlineAdd, pager);
 }
 
 /* Show / hide, one list: the table's fields, then the system columns, then
@@ -3414,7 +3510,9 @@ function visibleCols(db) {
    grid's create-and-name. Without one the grid has no foot button: the old
    button reached for state.inlineAdd, which on a space page was whatever
    table the reader had visited last (Issue #195). */
-function renderTable(main, db, items, onSaved, onAdd = null) {
+// Measured row heights, per table and density, for a redraw's first paint.
+const GRID_ROW_H = new Map();
+function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const cols = visibleCols(db);
   // Header bar = checkbox + id + one per field + the "+" field control.
   // Full-width rows span it, so it is derived once rather than restated per
@@ -3442,6 +3540,9 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
        flow. Fitting grids clip and stick to the page as before. */
     wrap.classList.toggle('wv-grid-scroll', !fit && state.route?.page === 'db');
     fitGridScroller(wrap);
+    // The box that scrolls may have just changed hands, and a density flip
+    // lands here too: the row window is re-measured against whichever it is.
+    rewindow();
   });
 
   /* ---------- Feature #132: row selection ----------
@@ -3464,6 +3565,25 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
   // Read off the DOM rather than off `sorted`: what shift-click means is
   // "everything between these two rows ON SCREEN", which is the drawn order.
   const drawnIds = () => [...wrap.querySelectorAll('tbody tr.entity-row')].map((r) => r.dataset.eid);
+  /* ---------- the row window (Issue #271) ----------
+     The grid draws the rows in view plus a buffer, and two spacer rows stand
+     in for the rest, so a 2,000-row table costs a hundred rows of DOM and
+     the scrollbar stays honest. The arithmetic is pure and lives in
+     public/grid-window.js; this half measures and paints. `ordered()` is
+     the whole table in display order — the pager's sparse array when the
+     data is paged, the (locally sorted) items otherwise — and a row's index
+     in it is its `data-i`. Rows are built once per draw and kept, so a row
+     that scrolls out and back in is the same node; a row leaving the window
+     is removed, which blurs an editor open in it, and that blur is the
+     commit it would have had anyway. ⌘A and the header box take the LOADED
+     rows, and the foot says how many that is out of the table. */
+  let sortedItems = items;
+  const ordered = () => (pager ? pager.rows : sortedItems);
+  const total = () => ordered().length;
+  const itemAt = (i) => ordered()[i] ?? null;
+  // Sparse-safe: `find` visits holes as undefined; `filter` skips them.
+  const itemOf = (id) => ordered().find((x) => x && x.id === id) ?? null;
+  const loadedIds = () => ordered().filter(Boolean).map((x) => x.id);
 
   /* Painting is deliberately not a redraw: a redraw would tear down whatever
      editor the reader has open in a cell of the row they are selecting. */
@@ -3481,7 +3601,7 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     }
     const head = table.querySelector('thead .sel-box');
     if (head) {
-      const st = SEL().headState(sel.size, table.querySelectorAll('tbody tr.entity-row').length);
+      const st = SEL().headState(sel.size, loadedIds().length);
       head.checked = st === 'all';
       head.indeterminate = st === 'some';
     }
@@ -3688,95 +3808,240 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     clearChosen();
   });
 
+  // One row, built once per draw and kept for the life of the window.
+  const buildRow = (item) => {
+    const row = el('tr', {
+      class: 'entity-row' + (item.deleted ? ' row-deleted' : ''),
+      /* Ledger's one rule: the #id link opens, every cell edits. A bare
+         row click raises the cell's own editor; the #id link docks the
+         entity beside the table. data-href is what the row navigates to,
+         and openNativeClick above turns a ⌘-click on any cell into that
+         record's own tab — the modifier means "not here", same as every
+         link. A registry row points at the structure it stands for. */
+      dataset: { eid: item.id, href: registryHref(db, item) ?? `#/entity/${item.id}` },
+      onclick: (e) => {
+        if (e.target.closest('a, button, input, select, textarea, label')) return;
+        const cell = e.target.closest('td');
+        if (cell) activateCell(cell);
+      },
+    },
+      // Left of the # link, so the link never disappears while a selection
+      // is live and a chosen row stays openable (mockup, 2026-08-24).
+      el('td', { class: 'sel-cell' },
+        item.deleted ? null : el('label', { class: 'sel-hit' },
+          el('input', {
+            class: 'sel-box', type: 'checkbox',
+            'aria-label': `Select #${item.publicId}`,
+            onclick: (e) => onBox(e, item.id),
+          }))),
+      el('td', { class: 'pid-cell' },
+        el('a', {
+          class: 'open-link',
+          href: registryHref(db, item) ?? `#/entity/${item.id}`,
+          title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular} beside the table — ⌘-click for a new tab`,
+          // Plain click docks the entity beside the table; a modifier
+          // falls through to the real href, so ⌘-click opens a tab.
+          onclick: (e) => {
+            if (nativeClick(e) || registryHref(db, item)) return;
+            e.preventDefault();
+            dockEntity(db, item.id);
+          },
+        }, `#${item.publicId} ↗`)),
+      ...cols.map((c) => {
+        const f = db.fields.find((x) => x.name === c);
+        /* A description is not computed. `cell-computed` dims a value to
+           --tblr-secondary and says "nothing to do here"; the description is
+           the row's own prose and one click opens it (Kyle, 2026-08-27), so
+           it takes the plain cell every text value takes. */
+        const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
+          : (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') ? ' cell-computed'
+          /* A document chip is not a cell: it opens the record, it holds
+             no value the grid edits, so the arrows and Tab pass over it
+             (Feature #134, the open question, decided 2026-09-05). The
+             description is the row's own prose and stays a stop. */
+          : (f.type === 'document' && f.role !== 'description') ? ' cell-nostop' : '';
+        return el('td', {
+          dataset: { ftype: f.type, field: f.name },
+          // The leading column carries the row's identity — Name by default,
+          // whatever the reader put first after a reorder — so it is set
+          // heavier than the fields that qualify it.
+          class: (f.type === 'number' ? 'num' : '')
+            + (c === cols[0] ? ' name-cell' : '') + kind,
+          // A resized column overrides the shared 260px cap — otherwise the
+          // header widens and the cells keep ellipsising at the old width.
+          style: f.width ? columnWidthStyle(f.width) : null,
+        }, editorFor(f, item, db, onSaved, { compact: true }));
+      }),
+      ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')));
+    /* Cells rest as values (Feature #134): the CELL is the focus stop and
+       nothing inside it is. Tab lands on every field cell — select, multi-
+       select, checkbox and date included, which the browser's own order
+       skipped or fell through to its chrome from (Issue #84) — and the
+       keymap below decides what a key means from there. A document chip
+       column is passed over; the box and the #id link are pointer targets,
+       with Space and ⌘Return their keys. */
+    for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop)')) td.tabIndex = 0;
+    for (const n of row.querySelectorAll('td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
+    return row;
+  };
+
+  const GW = () => globalThis.WeaveGridWindow;
+  let table = null, tbody = null, topSpacer = null, bottomSpacer = null, loadedNote = null;
+  const live = new Map();     // index → the <tr> in the tbody right now
+  const built = new Map();    // entity id → its <tr>, for the life of this draw
+  const win = { start: 0, end: 0, lastTop: 0, dir: 1, rowH: 0 };
+  /* The row height: measured from a painted row, else what this table
+     measured at this density last time, else the density's default. The
+     memory matters on a redraw: its first paint has no real row yet (the
+     pages under the old window are the ones held, the top's may not be),
+     and a spacer sized on the default lands the restored scroll on the
+     wrong rows. */
+  const rowHKey = () => `${db.id}:${gridDensity(db.id)}`;
+  const rowH = () => win.rowH || GRID_ROW_H.get(rowHKey()) || GW().ROW_H[gridDensity(db.id)];
+  const spacer = () => el('tr', { class: 'wv-spacer', 'aria-hidden': 'true' },
+    el('td', { colspan: String(colCount) }));
+  /* A spacer with nothing to stand in for leaves the tbody, so the first
+     body row is a real row (every suite that waits on `tbody tr` reads the
+     first one) and the last is the + New foot. */
+  const setPad = (tr, px) => {
+    tr.firstChild.style.height = `${px}px`;
+    if (px <= 0) return tr.remove();
+    if (tr.isConnected) return;
+    if (tr === topSpacer) tbody.prepend(tr);
+    else tbody.insertBefore(tr, tbody.querySelector('tr.add-entity-row'));
+  };
+  // A row whose page is still on its way holds the place at the row height.
+  const rowFor = (i) => {
+    const item = itemAt(i);
+    if (!item) return el('tr', { class: 'entity-row-pending', 'aria-hidden': 'true', dataset: { i: String(i) }, style: `height:${rowH()}px` }, el('td', { colspan: String(colCount) }));
+    let tr = built.get(item.id);
+    if (!tr) { tr = buildRow(item); built.set(item.id, tr); }
+    tr.dataset.i = String(i);
+    return tr;
+  };
+  // Which box scrolls the body: the wrap when it is the scroller (a grid
+  // wider than its card on the table page), else the page. Geometry is
+  // body-relative — how much of the <tbody> sits above the viewport's top
+  // edge — so one arithmetic serves both.
+  const scroller = () => (wrap.classList.contains('wv-grid-scroll') ? wrap : null);
+  const geometry = () => {
+    const box = scroller();
+    const viewTop = box ? box.getBoundingClientRect().top : 0;
+    return {
+      box,
+      scrollTop: viewTop - tbody.getBoundingClientRect().top,
+      viewportH: box ? box.clientHeight : innerHeight,
+      headH: table.tHead?.offsetHeight ?? 0,
+    };
+  };
+  /* Paint a window: rows leaving are removed, rows arriving are inserted at
+     their place, rows staying are not touched — a focused cell keeps its
+     focus. Only a changed window pays for the repaints underneath. */
+  const paint = (w) => {
+    let changed = false;
+    for (const [i, tr] of live) {
+      if (i < w.start || i >= w.end || (tr.classList.contains('entity-row-pending') && itemAt(i))) {
+        tr.remove(); live.delete(i); changed = true;
+      }
+    }
+    setPad(topSpacer, w.topPad); setPad(bottomSpacer, w.bottomPad);
+    let cursor = topSpacer.isConnected ? topSpacer : null;
+    for (let i = w.start; i < w.end; i++) {
+      let tr = live.get(i);
+      if (!tr) { tr = rowFor(i); live.set(i, tr); cursor ? cursor.after(tr) : tbody.prepend(tr); changed = true; }
+      cursor = tr;
+    }
+    win.start = w.start; win.end = w.end;
+    if (pager) pager.window = { start: w.start, end: w.end };
+    if (!changed) return;
+    if (loadedNote) {
+      const n = loadedIds().length;
+      loadedNote.textContent = n < total() ? `${n.toLocaleString()} of ${total().toLocaleString()} loaded` : '';
+    }
+    // Rows that just arrived take their state: the clipped marker measured
+    // after layout, the selection, the docked light and the cell range.
+    requestAnimationFrame(() => markClippedCells(table));
+    paintSelection(); markDockedRow(); repaintRange();
+  };
+  const rewindow = () => {
+    if (!tbody?.isConnected) return;
+    const g = geometry();
+    const first = tbody.querySelector('tr.entity-row');
+    // Measured from a painted row, per density; the fallback until then.
+    if (first) {
+      win.rowH = first.getBoundingClientRect().height || win.rowH;
+      if (win.rowH) GRID_ROW_H.set(rowHKey(), win.rowH);
+    }
+    if (g.scrollTop !== win.lastTop) { win.dir = g.scrollTop > win.lastTop ? 1 : -1; win.lastTop = g.scrollTop; }
+    const w = GW().windowFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), total: total(), direction: win.dir });
+    if (pager) {
+      // The pages under the window, and the one past its leading edge, are
+      // asked for once; a page landing repaints the placeholders it fills.
+      const want = GW().pagesFor(w, pager.page, pager.total);
+      if (w.prefetchOffset != null) want.push(w.prefetchOffset);
+      for (const o of want) if (!pager.has(o)) pager.fetch(o).then(schedule, () => {});
+    }
+    paint(w);
+  };
+  // Re-windowed once per frame, never per scroll event.
+  let raf = 0;
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; rewindow(); }); };
+  const onScroll = (e) => {
+    if (!wrap.isConnected) return document.removeEventListener('scroll', onScroll, true);
+    if (e.target === document || e.target === wrap) schedule();
+  };
+  document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+  // Bring row i into view with the least motion and paint the window there,
+  // synchronously, so the caller can focus a cell in it on the next line.
+  const scrollToRow = (i) => {
+    if (!tbody?.isConnected) return;
+    const g = geometry();
+    const want = GW().scrollTopFor({ index: i, rowH: rowH(), viewportH: g.viewportH, headH: g.headH, scrollTop: g.scrollTop });
+    if (want !== g.scrollTop) (g.box ?? window).scrollBy({ top: want - g.scrollTop, left: 0, behavior: 'instant' });
+    rewindow();
+  };
+  // The <tr> for row i, drawn — fetched, scrolled to and painted if it must be.
+  const ensureRow = async (i) => {
+    if (i < 0 || i >= total()) return null;
+    if (pager && !itemAt(i)) await pager.fetch(pager.pageOf(i));
+    scrollToRow(i);
+    return live.get(i) ?? null;
+  };
+  wrap.wvRewindow = rewindow;
+  wrap.wvScrollToRow = scrollToRow;
+
   const draw = () => {
-    const sorted = [...items];
-    if (sortKey) {
-      sorted.sort((a, b) => {
+    sortedItems = [...items];
+    // A paged grid is in the server's order already (page 1 has to be the
+    // right 200); the local sort is for the grids that hold every row.
+    if (sortKey && !pager) {
+      sortedItems.sort((a, b) => {
         const av = a.fields[sortKey], bv = b.fields[sortKey];
         if (av == null) return 1;
         if (bv == null) return -1;
         return (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(fieldValueCell(av)).localeCompare(String(fieldValueCell(bv)))) * sortDir;
       });
     }
-    const tbody = el('tbody');
-    for (const item of sorted) {
-      const row = el('tr', {
-        class: 'entity-row' + (item.deleted ? ' row-deleted' : ''),
-        /* Ledger's one rule: the #id link opens, every cell edits. A bare
-           row click raises the cell's own editor; the #id link docks the
-           entity beside the table. data-href is what the row navigates to,
-           and openNativeClick above turns a ⌘-click on any cell into that
-           record's own tab — the modifier means "not here", same as every
-           link. A registry row points at the structure it stands for. */
-        dataset: { eid: item.id, href: registryHref(db, item) ?? `#/entity/${item.id}` },
-        onclick: (e) => {
-          if (e.target.closest('a, button, input, select, textarea, label')) return;
-          const cell = e.target.closest('td');
-          if (cell) activateCell(cell);
-        },
-      },
-        // Left of the # link, so the link never disappears while a selection
-        // is live and a chosen row stays openable (mockup, 2026-08-24).
-        el('td', { class: 'sel-cell' },
-          item.deleted ? null : el('label', { class: 'sel-hit' },
-            el('input', {
-              class: 'sel-box', type: 'checkbox',
-              'aria-label': `Select #${item.publicId}`,
-              onclick: (e) => onBox(e, item.id),
-            }))),
-        el('td', { class: 'pid-cell' },
-          el('a', {
-            class: 'open-link',
-            href: registryHref(db, item) ?? `#/entity/${item.id}`,
-            title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : `Open ${db.term.singular} beside the table — ⌘-click for a new tab`,
-            // Plain click docks the entity beside the table; a modifier
-            // falls through to the real href, so ⌘-click opens a tab.
-            onclick: (e) => {
-              if (nativeClick(e) || registryHref(db, item)) return;
-              e.preventDefault();
-              dockEntity(db, item.id);
-            },
-          }, `#${item.publicId} ↗`)),
-        ...cols.map((c) => {
-          const f = db.fields.find((x) => x.name === c);
-          /* A description is not computed. `cell-computed` dims a value to
-             --tblr-secondary and says "nothing to do here"; the description is
-             the row's own prose and one click opens it (Kyle, 2026-08-27), so
-             it takes the plain cell every text value takes. */
-          const kind = PICKER_FIELD_TYPES.includes(f.type) ? ' cell-pick'
-            : (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') ? ' cell-computed'
-            /* A document chip is not a cell: it opens the record, it holds
-               no value the grid edits, so the arrows and Tab pass over it
-               (Feature #134, the open question, decided 2026-09-05). The
-               description is the row's own prose and stays a stop. */
-            : (f.type === 'document' && f.role !== 'description') ? ' cell-nostop' : '';
-          return el('td', {
-            dataset: { ftype: f.type, field: f.name },
-            // The leading column carries the row's identity — Name by default,
-            // whatever the reader put first after a reorder — so it is set
-            // heavier than the fields that qualify it.
-            class: (f.type === 'number' ? 'num' : '')
-              + (c === cols[0] ? ' name-cell' : '') + kind,
-            // A resized column overrides the shared 260px cap — otherwise the
-            // header widens and the cells keep ellipsising at the old width.
-            style: f.width ? columnWidthStyle(f.width) : null,
-          }, editorFor(f, item, db, onSaved, { compact: true }));
-        }),
-        ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')));
-      tbody.append(row);
-    }
+    live.clear(); built.clear();
+    win.start = 0; win.end = 0; win.lastTop = 0; win.dir = 1;
+    tbody = el('tbody');
+    topSpacer = spacer(); bottomSpacer = spacer();
     // Creating an entity is the last row of the grid, not a detached bar:
-    // the table reads as one surface that grows from the bottom.
+    // the table reads as one surface that grows from the bottom. A paged
+    // grid says there how much of the table is here.
+    loadedNote = null;
     if (onAdd) {
+      loadedNote = pager ? el('span', { class: 'wv-loaded', 'aria-live': 'polite' }) : null;
       tbody.append(el('tr', { class: 'add-entity-row' },
         el('td', { colspan: String(colCount) },
           el('button', {
             class: 'add-entity-btn', type: 'button', title: `New ${db.term.singular}`,
             onclick: () => onAdd(),
-          }, `+ New ${db.term.singular}`))));
+          }, `+ New ${db.term.singular}`),
+          loadedNote)));
     }
 
-    const table = el('table', {
+    table = el('table', {
       class: 'table table-sm table-vcenter card-table table-hover wv-grid',
       dataset: { density: gridDensity(db.id) },
     },
@@ -3788,11 +4053,11 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
             el('input', {
               class: 'sel-box', type: 'checkbox', 'aria-label': 'Select every row',
               onclick: () => {
-                const drawn = drawnIds();
+                const loaded = loadedIds();
                 const L = SEL();
                 anchor = null;
-                setChosen(L.headState(chosen().size, drawn.length) === 'all'
-                  ? new Set() : L.selectAll(drawn));
+                setChosen(L.headState(chosen().size, loaded.length) === 'all'
+                  ? new Set() : L.selectAll(loaded));
               },
             }))),
         el('th', { class: 'pid-head' }, '#'),
@@ -3835,8 +4100,13 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
           fieldMenuButton(db, colField(db, c), {
             sorted: sortKey === c ? sortDir : 0,
             onSort: (dir) => {
-              sortKey = dir ? c : null; sortDir = dir || 1; draw();
-              api('PATCH', `/tables/${db.id}`, { sort: dir ? [{ field: c, dir: dir > 0 ? 'asc' : 'desc' }] : [] }).then(loadSchema);
+              sortKey = dir ? c : null; sortDir = dir || 1;
+              const saved = api('PATCH', `/tables/${db.id}`, { sort: dir ? [{ field: c, dir: dir > 0 ? 'asc' : 'desc' }] : [] }).then(loadSchema);
+              // A paged grid sorts on the server: page 1 is re-read in the
+              // new order once the sort is the table's. The rest sort in
+              // place for the instant redraw, as before.
+              if (pager) saved.then(() => keepScroll(() => showDatabase(db.id, state.route.view)));
+              else draw();
             },
           }),
           columnResizeGrip(db, colField(db, c)))),
@@ -3852,15 +4122,6 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
       // table, so the absence reads as hidden (Issue #249).
       db.system || db.hideRollups !== false ? null : renderFooter(db, cols)),
       tbody);
-    /* Cells rest as values (Feature #134): the CELL is the focus stop and
-       nothing inside it is. Tab lands on every field cell — select, multi-
-       select, checkbox and date included, which the browser's own order
-       skipped or fell through to its chrome from (Issue #84) — and the
-       keymap below decides what a key means from there. A document chip
-       column is passed over; the box and the #id link are pointer targets,
-       with Space and ⌘Return their keys. */
-    for (const td of table.querySelectorAll('tbody tr.entity-row > td[data-field]:not(.cell-nostop)')) td.tabIndex = 0;
-    for (const n of table.querySelectorAll('tbody tr.entity-row td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     const kept = wrap.scrollTop;
     wrap.replaceChildren(table, puck);
     // A redraw is not a scroll: a wrap that scrolls (wide grid) is clamped
@@ -3877,17 +4138,15 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
       // rather than assumed.
       new ResizeObserver(() => table.style.setProperty('--wv-head-h', `${table.tHead.rows[0].offsetHeight}px`)).observe(table.tHead.rows[0]);
     }
-    // A row that left the page — trashed, filtered out, sorted away — is no
-    // longer selected. Done after the draw so it reads the rows that exist.
-    if (chosen().size) setChosen(SEL().prune(chosen(), drawnIds()));
+    // The window, painted now if the wrap is already in the document (a
+    // redraw); the first draw paints it once renderTable has attached the
+    // wrap. Every repaint underneath (selection, dock, range, clipped
+    // markers) rides on it.
+    rewindow();
+    // A row that left the table — trashed, filtered out — is no longer
+    // selected. Done after the draw so it reads the rows that exist.
+    if (chosen().size) setChosen(SEL().prune(chosen(), loadedIds()));
     else paintSelection();
-    // Measured after the browser has laid the columns out, so "clipped"
-    // means clipped and the marker never claims there is more to read.
-    requestAnimationFrame(() => markClippedCells(table));
-    // A redraw rebuilds every row; the docked one takes its light back, and
-    // the cell range redraws onto the rows it named (Feature #220).
-    markDockedRow();
-    repaintRange();
   };
   draw();
 
@@ -3909,20 +4168,29 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
     return preview ? () => preview.click() : null;
   };
   const cellAt = (r, c) => stops(rowsOf()[r])?.[c] ?? null;
-  const landOn = (td, verb) => {
-    const rows = rowsOf();
+  /* A move counts rows over the WHOLE table, not the drawn window (Issue
+     #271): the row it lands on is scrolled into the window first — fetched,
+     when its page has not arrived — and End and Home are the last and the
+     first row of the table. */
+  const landOn = async (td, verb) => {
     const row = td.parentElement;
-    const r = rows.indexOf(row), c = stops(row).indexOf(td);
-    const to = KM().step({ r, c, rows: rows.length, cols: stops(row).length }, verb);
+    const r = Number(row.dataset.i), c = stops(row).indexOf(td), cols = stops(row).length;
+    const last = total() - 1;
+    const to = verb.to === 'end' ? (r === last ? null : { r: last, c })
+      : verb.to === 'home' ? (r === 0 ? null : { r: 0, c })
+        : KM().step({ r, c, rows: total(), cols }, verb);
+    if (!to) return td.focus();
+    const tr = await ensureRow(to.r);
     // Focusing the next cell blurs the open one, which is what commits it.
-    (to ? cellAt(to.r, to.c) : td)?.focus();
+    (tr ? stops(tr)[to.c] : td)?.focus();
   };
   const apply = (verb, td, at) => {
     const eid = td.parentElement.dataset.eid;
     switch (verb.type) {
       // A bare arrow is the cursor leaving the rectangle it cornered, so the
       // range goes with it (Feature #220).
-      case 'move': case 'commitMove': clearRange(); landOn(td, verb); return true;
+      // landOn may wait on a page; a read that fails leaves the cursor put.
+      case 'move': case 'commitMove': clearRange(); landOn(td, verb).catch(() => td.focus()); return true;
       case 'edit': {
         const activation = globalThis.WeaveEditorLib.cellActivation(td.dataset.ftype);
         // A character does not flip a checkbox; Return does.
@@ -3978,7 +4246,7 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
         stops(wrap.querySelector(`tbody tr.entity-row[data-eid="${out.at}"]`))?.[c]?.focus();
         return true;
       }
-      case 'selectAll': anchor = null; setChosen(SEL().selectAll(drawnIds())); return true;
+      case 'selectAll': anchor = null; setChosen(SEL().selectAll(loadedIds())); return true;
       // Escape with a selection is the standing listener's (above); with none,
       // the browser's. Either way the keymap lets it through.
       default: return false;
@@ -4095,7 +4363,7 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
   const labelOf = (x) => (x && typeof x === 'object' ? x.name ?? '' : x);
   const valueAt = (r, c) => {
     const name = rangeCols()[c];
-    const item = items.find((i) => i.id === drawnIds()[r]) ?? {};
+    const item = itemOf(drawnIds()[r]) ?? {};
     const d = item.fields?.[name] ?? null;
     return { type: typeOf(name), v: item.raw?.[name] ?? null, d: Array.isArray(d) ? d.map(labelOf) : labelOf(d) };
   };
@@ -4305,6 +4573,11 @@ function renderTable(main, db, items, onSaved, onAdd = null) {
   });
   wrap.addEventListener('mouseleave', () => { clearTimeout(popTimer); hideCellPop(wrap); });
   main.append(wrap);
+  // The first window is painted once the wrap is in the document: before
+  // that there is no geometry to measure, and a draw that painted nothing
+  // left the page 800px tall for the frame in which keepScroll put the
+  // reader's scroll back — clamped to 0 (Issue #271).
+  rewindow();
 }
 
 
@@ -5971,17 +6244,29 @@ async function keepScroll(redraw) {
     .filter((e) => e.scrollTop || e.scrollLeft)
     .map((e) => ({ el: e, top: e.scrollTop, left: e.scrollLeft }));
   const left = document.querySelector('.wv-grid')?.parentElement?.scrollLeft ?? 0;
+  const top = document.querySelector('.wv-grid')?.parentElement?.scrollTop ?? null;
   await redraw();
-  requestAnimationFrame(() => {
-    window.scrollTo(x, y);
+  // Resolved only once the scroll is back: a caller that scrolls next (a
+  // new row brought into the window, Issue #271) must not race the restore.
+  await new Promise((done) => requestAnimationFrame(() => {
+    /* Instant, every one: a restore is not a scroll the reader asked for,
+       and Tabler's smooth `:root` would otherwise animate the page back —
+       an animation a windowed grid's first repaint cancels, leaving the
+       page at the top (Issue #271). */
+    window.scrollTo({ left: x, top: y, behavior: 'instant' });
     for (const b of boxes) {
       if (!b.el.isConnected) continue;
-      b.el.scrollTop = b.top;
-      b.el.scrollLeft = b.left;
+      b.el.scrollTo({ top: b.top, left: b.left, behavior: 'instant' });
     }
     const again = document.querySelector('.wv-grid')?.parentElement;
     if (again) again.scrollLeft = left;
-  });
+    /* The grid scroller is a new box after the redraw, so its own scrollTop
+       is put back by hand, and the row window is painted for that position
+       in the same frame — before the focus a commit restores looks for its
+       cell (Issue #271). */
+    if (again) { if (top != null) again.scrollTo({ top, behavior: 'instant' }); again.wvRewindow?.(); }
+    done();
+  }));
 }
 
 function editFieldDialog(db, f) {

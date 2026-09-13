@@ -554,6 +554,16 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid tr.add-entity-row:hover td { background: var(--tblr-bg-surface); }
 .add-entity-btn { width: 100%; display: block; padding: 7px 12px; background: none; border: 0; color: var(--tblr-secondary); font: inherit; text-align: left; cursor: pointer; }
 .add-entity-btn:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-primary); }
+/* The row window (Issue #271): two spacer rows stand in for the rows not
+   drawn, a pending row holds a place at the row height until its page
+   lands, and the foot says how much of the table is here. */
+/* No scroll anchoring over a windowed body: the browser would otherwise
+   move the scroll to keep some row where it was each time the spacer
+   above it changed height, and the window would chase its own tail. */
+.table-wrap, .wv-grid, .wv-grid tbody { overflow-anchor: none; }
+.wv-grid tr.wv-spacer > td { padding: 0; border: 0; height: 0; }
+.wv-grid tr.entity-row-pending > td { padding: 0; }
+.wv-grid .wv-loaded { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--tblr-secondary); font-size: var(--wv-grid-font); white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
 .entity-row { cursor: pointer; }
 .docs-cell { white-space: nowrap; }
 /* One chip per document field: its name, then what it holds. The kind rides

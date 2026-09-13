@@ -192,8 +192,8 @@ test('full-width grid rows derive their span from one column count', () => {
   assert.match(APP, /const colCount = cols\.length \+ 3;/, 'the table view derives it once');
   assert.match(APP, /const colCount = cols\.length \+ 2;/, 'so does the embedded related grid, from its own columns');
   assert.doesNotMatch(APP, /colspan: String\(cols\.length/, 'never restated at a use site');
-  assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 2,
-    'the new-entity row in the table view, plus the related grid\'s add row');
+  assert.equal((APP.match(/colspan: String\(colCount\)/g) ?? []).length, 4,
+    'the table view\'s spacer rows (one builder), its pending row and its new-entity row, plus the related grid\'s add row');
 });
 
 test('grid create controls are styled', () => {
@@ -264,7 +264,9 @@ test('focus survives the redraw a pick causes', () => {
   // focus to the document and Tab restarts from the top of the page.
   assert.match(APP, /state\.refocus/);
   assert.match(APP, /function restoreGridFocus/);
-  assert.match(APP, /drawDatabase\(db, fresh\.items\);\s*\n\s*restoreGridFocus\(\);/);
+  // The redraw is held to the reader's scroll and re-windowed there first
+  // (Issue #271), so the cell the focus returns to is a drawn cell.
+  assert.match(APP, /await keepScroll\(\(\) => drawDatabase\(db, fresh, trashCount, pager\)\);\s*\n\s*restoreGridFocus\(\{ now: true \}\);/);
   assert.match(APP, /refocus: null/, 'state must declare the slot');
 });
 

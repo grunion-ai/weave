@@ -53,6 +53,12 @@ test('the resting state hands over row selection for free', () => {
   assert.deepEqual(at('ArrowDown', { shift: true }, rows), { type: 'extendSelect', dir: 1 });
   assert.equal(act('a', { meta: true }), 'selectAll');
   assert.equal(act('Escape', {}, rows), 'clearSelect');
+  // The first and the last row of the whole table (Issue #271): the grid
+  // draws a window of rows, and a move past it scrolls the row in first.
+  assert.deepEqual(at('End'), { type: 'move', to: 'end' });
+  assert.deepEqual(at('Home'), { type: 'move', to: 'home' });
+  assert.equal(act('End', {}, { mode: 'edit' }), 'none', 'open, End is the caret’s');
+  assert.equal(act('Home', {}, { mode: 'edit' }), 'none', 'open, Home is the caret’s');
   assert.equal(act('Escape'), 'none', 'Escape with nothing chosen is the browser’s');
 });
 
