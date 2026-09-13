@@ -143,6 +143,45 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  /* Issue #260, and the window is what made it bite. A bare End inside an
+     open cell was left to the browser; Chromium reads it in a single-line
+     field as "scroll to the end of the document", so the grid scrolled a
+     thousand rows, recycled the row the editor sat in and dropped focus on
+     <body> — with the caret still where it started. A reader who meant to
+     append kept typing into the middle of the value, which is how Issue #85
+     came to be named "L zzs broken: …". */
+  test('End inside an open cell moves the caret, not the window', async () => {
+    const page = await open();
+    try {
+      const box = await scrollBox(page);
+      const top = () => page.evaluate((b) => (b === 'wrap' ? document.querySelector('.table-wrap') : document.scrollingElement).scrollTop, box);
+      await page.click(`tr[data-eid="${ids[0]}"] td[data-field="Name"] input`);
+      await page.evaluate(() => document.activeElement.setSelectionRange(2, 2));
+      const before = await top();
+      await page.keyboard.press('End');
+      await frames(page, 2);
+      const land = await page.evaluate(() => {
+        const a = document.activeElement;
+        const td = a?.closest?.('tr[data-eid] > td');
+        return { tag: a?.tagName, eid: td?.parentElement.dataset.eid ?? null, field: td?.dataset.field ?? null, sel: a?.selectionStart ?? null, len: a?.value?.length ?? null };
+      });
+      assert.deepEqual(
+        { tag: land.tag, eid: land.eid, field: land.field, atEnd: land.sel === land.len },
+        { tag: 'INPUT', eid: ids[0], field: 'Name', atEnd: true },
+        `the caret sits at the end of the open cell, not on <body>: ${JSON.stringify(land)}`,
+      );
+      assert.equal(await top(), before, 'the window stayed where the reader left it');
+      // The harm the Issue names: what is typed next goes on the END.
+      await page.keyboard.type('!');
+      assert.match(await page.evaluate(() => document.activeElement.value), /!$/, 'typing after End appends');
+      await page.keyboard.press('Home');
+      await frames(page, 2);
+      assert.equal(await page.evaluate(() => document.activeElement.selectionStart), 0, 'Home goes to the start of the value');
+      assert.equal(await top(), before, 'and Home does not move the window either');
+      await page.keyboard.press('Escape');
+    } finally { await page.close(); }
+  });
+
   test('⌘A and the header box take the loaded rows, not the drawn window', async () => {
     const page = await open();
     try {

@@ -892,6 +892,8 @@ Cells **rest as values** and open on purpose. The cursor is a ring on one cell; 
 | In an open cell | What it does |
 | --- | --- |
 | \`← →\` | the caret's; they never step out of the cell |
+| \`Home\` / \`End\` | the start or the end of the value — the grid places the caret, so the window never scrolls out from under an open editor (Issue #260) |
+| \`⇧Home\` / \`⇧End\`, \`⌥←\` / \`⌥→\`, \`⌘←\` / \`⌘→\` | the browser's own editing keys: select to the edge, walk a word, walk a line |
 | \`Return\` | commit, move down the column |
 | \`Tab\` / \`⇧Tab\` | commit, move across |
 | \`↑\` / \`↓\` | commit, move up or down |

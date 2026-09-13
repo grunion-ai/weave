@@ -4220,6 +4220,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         }
         return true;
       }
+      /* Home and End inside an open cell (Issue #260) — see grid-keymap.js
+         for why the browser cannot be trusted with them. Only a single-line
+         <input> is ours: a textarea's End belongs to the line it is on, and
+         a select, a number or a date box has no caret to place (setting one
+         throws), so each of those keeps the browser's own key. */
+      case 'caret': {
+        if (at.tagName !== 'INPUT' || typeof at.value !== 'string') return false;
+        const to = verb.to === 'end' ? at.value.length : 0;
+        try { at.setSelectionRange(to, to); } catch { return false; }
+        return true;
+      }
       case 'revert': {
         if ('defaultValue' in at) at.value = at.defaultValue;
         td.focus();

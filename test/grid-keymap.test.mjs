@@ -57,8 +57,6 @@ test('the resting state hands over row selection for free', () => {
   // draws a window of rows, and a move past it scrolls the row in first.
   assert.deepEqual(at('End'), { type: 'move', to: 'end' });
   assert.deepEqual(at('Home'), { type: 'move', to: 'home' });
-  assert.equal(act('End', {}, { mode: 'edit' }), 'none', 'open, End is the caret’s');
-  assert.equal(act('Home', {}, { mode: 'edit' }), 'none', 'open, Home is the caret’s');
   assert.equal(act('Escape'), 'none', 'Escape with nothing chosen is the browser’s');
 });
 
@@ -114,6 +112,25 @@ test('open, ← and → belong to the caret — REST never steps out', () => {
     assert.equal(act(key, {}, { mode: 'edit' }), 'none', `${key} is the caret’s`);
     assert.equal(act(key, { shift: true }, { mode: 'edit' }), 'none', `⇧${key} selects text`);
   }
+});
+
+/* Issue #260: a bare End inside an open cell used to be the browser's, and
+   Chromium reads it in a single-line field as "scroll to the end of the
+   document" — the windowed grid (Issue #271) scrolled away, the row under
+   the editor was recycled and the caret never moved, so the next keystroke
+   landed in the middle of the old value. The grid places the caret itself. */
+test('open, Home and End place the caret — the window does not move', () => {
+  const open = { mode: 'edit' };
+  assert.deepEqual(at('End', {}, open), { type: 'caret', to: 'end' });
+  assert.deepEqual(at('Home', {}, open), { type: 'caret', to: 'home' });
+  // The modified forms are real editing commands and stay the browser's.
+  for (const mod of [{ shift: true }, { alt: true }, { meta: true }]) {
+    assert.equal(act('End', mod, open), 'none', `${JSON.stringify(mod)} End is the browser’s`);
+    assert.equal(act('Home', mod, open), 'none', `${JSON.stringify(mod)} Home is the browser’s`);
+  }
+  // At rest they are still the first and the last ROW of the table (#271).
+  assert.deepEqual(at('End'), { type: 'move', to: 'end' });
+  assert.deepEqual(at('Home'), { type: 'move', to: 'home' });
 });
 
 test('open, Return commits down, Tab commits across, Esc reverts, ↑↓ commit and move', () => {

@@ -15,6 +15,7 @@
    verb   { type, ... }
      move / commitMove {dr,dc,wrap?}  · move, saving first if it must
      edit {select}  · revert          · open the cell · back out of it
+     caret {to}                       · place the caret in the open cell
      open                             · open the record
      newRow {at,focus}                · create an item
      toggleSelect / extendSelect {dir} / selectAll / clearSelect
@@ -67,6 +68,17 @@
     if (k.key === 'Enter') return { type: 'commitMove', dr: 1, dc: 0 };
     if (k.key === 'ArrowUp' || k.key === 'ArrowDown') return { type: 'commitMove', dr: k.key === 'ArrowUp' ? -1 : 1, dc: 0 };
     if (k.key === 'Escape') return { type: 'revert' };
+    /* Home and End are the caret's, and only placing it ourselves keeps them
+       there (Issue #260). Left to the browser, Chromium reads a bare End
+       inside a single-line field as "scroll to the end of the document": the
+       windowed grid (Issue #271) scrolled a thousand rows, recycled the row
+       the editor sat in and dropped focus on the floor, while the caret never
+       moved — so the reader who meant to append went on typing into the
+       middle of the old value. ⇧, ⌥ and ⌘ variants are real editing commands
+       (select to the end, walk a word, walk a line) and stay the browser's. */
+    if ((k.key === 'End' || k.key === 'Home') && !k.shift && !k.meta && !k.alt) {
+      return { type: 'caret', to: k.key === 'End' ? 'end' : 'home' };
+    }
     /* EDGE would branch here: with a caret at the end of the text, → steps
        out into the next cell (and ← at the start into the previous one),
        ⇧← / ⇧→ staying with text selection. It is a setting, not a verdict
