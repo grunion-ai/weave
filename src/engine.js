@@ -8,7 +8,7 @@ import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync }
 import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
 import { Store, WeaveError } from './store.js';
-import { evaluate, check as checkExpression } from './formula.js';
+import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
 
 /* An icon value is one of the inventory (`lucide:<name>`), a legacy alias that
@@ -214,6 +214,15 @@ function normaliseOption(o) {
 // contract every surface (vocabulary, field dialog, handbook) is gated on.
 const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'];
 const MAX_COMPUTE_DEPTH = 8;
+/* A computed field that is already being computed for this row has looped
+   back on itself. The depth guard above used to swallow that as null, which
+   reads exactly like an empty cell and quietly fabricated a number one level
+   up (Issue #283). A loop now answers with its own path instead. */
+const CYCLE_PREFIX = '#CYCLE: ';
+const isCycle = (v) => typeof v === 'string' && v.startsWith(CYCLE_PREFIX);
+class CycleSignal extends Error {
+  constructor(marker) { super(marker); this.marker = marker; }
+}
 // A formula scan reads this many rows at most: enough to catch a null on a
 // third of the table, cheap enough to run on every keystroke.
 const FORMULA_SCAN_CAP = 200;
@@ -708,6 +717,9 @@ export class Weave {
   // rows. An id missing from state at save time means "delete the row".
   #dirty = new Set();
   #dirtyAll = false;
+
+  // The computed fields currently resolving, innermost last — see #resolve.
+  #computing = [];
 
   // `store` injects an alternate Store implementation (same interface) — the
   // Cloudflare Worker port (Feature #84) passes a Durable Object-backed one.
@@ -3336,6 +3348,7 @@ export class Weave {
       if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
       const checked = checkExpression(config.expression, Object.values(db.fields).map((f) => f.name));
       if (!checked.ok) throw new WeaveError(checked.error, 'invalid');
+      this.#refuseFormulaCycle(db, field.id, field.name, config.expression);
       // A numeric result wears the number costume (unit / currency / decimals).
       field.config = { expression: config.expression, ...normalizeSelfContainedConfig('number', config) };
     }
@@ -3549,6 +3562,9 @@ export class Weave {
           const names = Object.values(db.fields).filter((f) => f.id !== field.id).map((f) => f.name);
           const checked = checkExpression(patch.config.expression, names);
           if (!checked.ok) throw new WeaveError(checked.error, 'invalid');
+          // Its own name is off the list above; a longer way round to itself
+          // is refused here, with the path (Issue #283).
+          this.#refuseFormulaCycle(db, field.id, field.name, patch.config.expression);
           field.config.expression = patch.config.expression;
         }
       } else if (field.type === 'workflow') {
@@ -3566,6 +3582,41 @@ export class Weave {
     return field;
   }
 
+  /* The path back to `fieldId` through the table's other formulas, or null.
+     Only formula-to-formula edges are walked: every other type is a leaf as
+     far as an expression is concerned, and a loop that runs through a rollup
+     or a lookup needs two rows to exist, so no save can see it — that half is
+     caught at read time and reads `#CYCLE:` (Issue #283). */
+  #formulaCycle(db, fieldId, fieldName, expression) {
+    const seen = new Set([fieldId]);
+    const walk = (expr, path) => {
+      for (const name of formulaReferences(expr)) {
+        const f = this.findField(db, name);
+        // A field being added is not in the table yet, so a reference that
+        // names it resolves to nothing — and is still the loop closing.
+        if (!f) {
+          if (String(name).toLowerCase() === String(fieldName).toLowerCase()) return [...path, fieldName];
+          continue;
+        }
+        if (f.id === fieldId) return [...path, fieldName];
+        if (f.type !== 'formula') continue;
+        if (seen.has(f.id)) continue;
+        seen.add(f.id);
+        const hit = walk(f.config?.expression ?? '', [...path, f.name]);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    return walk(expression, [fieldName]);
+  }
+
+  #refuseFormulaCycle(db, fieldId, fieldName, expression) {
+    const path = this.#formulaCycle(db, fieldId, fieldName, expression);
+    if (path) {
+      throw new WeaveError(`Formula '${fieldName}' would close a reference cycle: ${path.join(' → ')}`, 'invalid');
+    }
+  }
+
   /* The authoring loop for formulas — validate an expression against a
      table's fields and, when the table has rows, evaluate it on one so the
      author (human or agent) sees a real result before saving. Never throws
@@ -3580,12 +3631,19 @@ export class Weave {
     const names = Object.values(db.fields).filter((f) => f.id !== excludeField && f.name !== excludeField).map((f) => f.name);
     const checked = checkExpression(expression, names);
     if (!checked.ok) return checked;
+    // Editing an existing formula: the dialog hears about a cycle before the
+    // save refuses one, and with the same path (Issue #283).
+    const edited = excludeField && this.findField(db, excludeField);
+    if (edited) {
+      const path = this.#formulaCycle(db, edited.id, edited.name, expression);
+      if (path) return { ok: false, error: `Formula '${edited.name}' would close a reference cycle: ${path.join(' → ')}` };
+    }
     const rows = this.listEntities(db.id);
     const e = entity ? this.getEntity(entity) : rows[0];
     if (!e) return { ok: true };
     const temp = { id: '__preview', name: '__preview', type: 'formula', config: { expression } };
     const nameOf = (row) => String(row.values[db.nameFieldId] ?? '');
-    const kindOf = (v) => (v == null ? 'null' : typeof v === 'string' && v.startsWith('#ERR: ') ? 'error'
+    const kindOf = (v) => (v == null ? 'null' : typeof v === 'string' && (v.startsWith('#ERR: ') || isCycle(v)) ? 'error'
       : Array.isArray(v) ? 'list' : typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'boolean' : 'text');
     const preview = this.#resolve(e, db, temp, 0);
     const result = { ok: true, preview, previewEntity: nameOf(e), type: kindOf(preview) };
@@ -3597,7 +3655,7 @@ export class Weave {
       const v = this.#resolve(row, db, temp, 0);
       const kind = kindOf(v);
       if (kind === 'null') { out.nulls++; out.sampleByOutcome.null ??= { entity: nameOf(row), id: row.id }; }
-      else if (kind === 'error') { out.errors++; out.sampleByOutcome.error ??= { entity: nameOf(row), id: row.id, error: v.slice(6) }; }
+      else if (kind === 'error') { out.errors++; out.sampleByOutcome.error ??= { entity: nameOf(row), id: row.id, error: isCycle(v) ? v : v.slice(6) }; }
       else { types[kind] = (types[kind] ?? 0) + 1; out.sampleByOutcome.ok ??= { entity: nameOf(row), id: row.id, value: v }; }
     }
     const dominant = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
@@ -3648,6 +3706,9 @@ export class Weave {
       nextConfig = normalizeSelfContainedConfig('workflow', { states: config.states?.length ? config.states : (states.length ? states : undefined) });
     } else if (toType === 'formula') {
       if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
+      // A type change is a formula save too, and can close the same loop a
+      // direct edit is refused for (Issue #283).
+      this.#refuseFormulaCycle(db, field.id, field.name, config.expression);
       nextConfig = { expression: config.expression, ...normalizeSelfContainedConfig('number', config) };
     } else {
       nextConfig = normalizeSelfContainedConfig(toType, config);
@@ -4480,8 +4541,44 @@ export class Weave {
     return this.#resolve(e, db, field, depth);
   }
 
+  /* A computed field is keyed by the row it is computing on, so the same
+     field on two rows is two computations and only a return to the same pair
+     is a loop. The stack is per-engine and unwound in a `finally`, so an
+     erroring formula never leaves a row looking cyclic to the next read. */
   #resolve(e, db, field, depth) {
     if (depth > MAX_COMPUTE_DEPTH) return null;
+    if (field.type !== 'formula' && field.type !== 'lookup' && field.type !== 'rollup') {
+      return this.#resolveValue(e, db, field, depth);
+    }
+    const key = `${e.id}:${field.id}`;
+    const frame = { key, name: field.name, row: e.id, rowName: this.#rawName(e, db) };
+    const at = this.#computing.findIndex((c) => c.key === key);
+    if (at >= 0) {
+      // A loop that stays on one row names its fields; one that travels — two
+      // rows pointing at each other through a rollup — names the rows too,
+      // since 'Double → PeerSum → Double' would read as a loop on one row.
+      const loop = [...this.#computing.slice(at), frame];
+      const travels = new Set(loop.map((c) => c.row)).size > 1;
+      return CYCLE_PREFIX + loop.map((c) => (travels && c.rowName ? `${c.rowName} › ${c.name}` : c.name)).join(' → ');
+    }
+    this.#computing.push(frame);
+    try {
+      return this.#resolveValue(e, db, field, depth);
+    } finally {
+      this.#computing.pop();
+    }
+  }
+
+  /* The row's stored name, never a computed one: a formula Name is read
+     while a cycle is being reported, and computing it could walk back into
+     the loop. `#mark` materialises it on every write, so the stored string
+     is the name the reader saw. */
+  #rawName(e, db) {
+    const raw = e.values?.[db?.nameFieldId];
+    return raw == null ? '' : String(raw);
+  }
+
+  #resolveValue(e, db, field, depth) {
     switch (field.type) {
       case 'relation':
         // Deleted targets stay linked in storage but are never read back out.
@@ -4498,6 +4595,10 @@ export class Weave {
           .map((id) => this.#liveEntity(id))
           .filter(Boolean)
           .map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
+        // A looked-up value that is itself part of a loop carries the loop
+        // out, rather than being listed or joined as if it were a value.
+        const looped = vals.find(isCycle);
+        if (looped) return looped;
         return rel.config.many ? vals : (vals[0] ?? null);
       }
       case 'rollup': {
@@ -4522,6 +4623,10 @@ export class Weave {
         if (field.config.aggregate === 'count') return rows.length;
         if (!targetField) return null;
         const vals = rows.map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
+        // Summing a loop would report a number nobody can explain: the loop
+        // is the answer.
+        const looped = vals.find(isCycle);
+        if (looped) return looped;
         const display = rows.map((t, i) => this.#displayValue(targetDb, targetField, vals[i], t));
         return aggregateValues(field.config.aggregate, vals, { display, separator: field.config.separator ?? ', ' });
       }
@@ -4536,6 +4641,9 @@ export class Weave {
               throw new WeaveError(`Formula references unknown field '${name}'`, 'invalid');
             }
             const v = this.#resolve(e, db, f, depth + 1);
+            // A field in a loop stops the arithmetic here: `[Looped] + 1` has
+            // no honest answer, so the formula reports the loop it sits on.
+            if (isCycle(v)) throw new CycleSignal(v);
             // Numbers stay numbers in formulas — the display costume (#97)
             // would turn '$1,200.50' * 2 into NaN — and a date stays its
             // stored ISO form: a day-only field displays '15', which no date
@@ -4544,6 +4652,7 @@ export class Weave {
             return typeof v === 'number' || f.type === 'date' ? v : this.#displayValue(db, f, v, e);
           });
         } catch (err) {
+          if (err instanceof CycleSignal) return err.marker;
           return `#ERR: ${err.message}`;
         }
       }
@@ -4557,6 +4666,8 @@ export class Weave {
   // Human-readable value: option/state names, entity names for relations.
   #displayValue(db, field, resolved, e = null) {
     if (resolved == null) return null;
+    // A cycle marker wears no costume: '$#CYCLE…' would read as a value.
+    if (isCycle(resolved)) return resolved;
     switch (field.type) {
       case 'select':
         return this.#findOption(field.config.options, resolved)?.name ?? resolved;

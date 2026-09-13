@@ -260,3 +260,19 @@ export function check(expression, fieldNames = []) {
     return { ok: false, error: err.message };
   }
 }
+
+// Every field a formula reads, in first-seen order — the dependency edges the
+// engine walks before it saves an expression (Issue #283). Both arms of if()
+// and both sides of and/or are evaluated eagerly by `evaluate`, so a resolver
+// that only records names sees every reference. A malformed expression yields
+// what it named before it broke; `check` is what reports the parse error.
+export function references(expression) {
+  const names = [];
+  try {
+    evaluate(expression, (name) => {
+      if (!names.includes(name)) names.push(name);
+      return 0;
+    });
+  } catch { /* not this function's verdict */ }
+  return names;
+}

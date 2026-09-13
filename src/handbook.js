@@ -495,6 +495,8 @@ A formula reads **raw** values. A number's currency and unit are display costume
 
 A formula cannot reference its own field — it never converges, and the save refuses it as an unknown field.
 
+A formula cannot reach its own field the long way round either. \`Total\` reading \`Bonus\` while \`Bonus\` reads \`Total\` is refused when it is saved, and the message names the path: \`Formula 'Bonus' would close a reference cycle: Bonus → Total → Bonus\`. A loop that only closes through a rollup or a lookup takes two rows pointing at each other to exist, so no save can see it — those cells read \`#CYCLE:\` and the path instead of computing, and the marker travels: a rollup over a looping value reports the loop rather than summing it. A loop that stays on one row names its fields (\`#CYCLE: Double → MirrorSum → Double\`); one that travels between rows names them too (\`#CYCLE: Alpha › Double → Alpha › PeerSum → Beta › Double → Beta › PeerSum → Alpha › Double\`), because the rows are what closed it (Issue #283).
+
 A formula cannot cross a relation. That is what \`lookup\` and \`rollup\` are for.` },
 
   { name: 'document', kind: 'Document', doc: `# document
