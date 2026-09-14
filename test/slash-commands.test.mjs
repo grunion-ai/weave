@@ -70,6 +70,30 @@ if (s) {
     return seen;
   }
 
+  /* Vditor hides the hint menu on ANY scroll — a listener on the window and
+     one on the editor's own element, both calling its hide(['hint']). That is
+     what made the wheel case below flake (Issue #275): pressing Enter in an
+     eighty-paragraph document leaves the page parked at the document's end,
+     the next keystroke animates it back to the caret over about a second, and
+     the menu that keystroke opened is shut by the first scroll event of that
+     animation. Twenty-one rows in the DOM, display:none, and thirty seconds
+     spent waiting for something visible — three times in Gerrit 334's gate,
+     on a change that had not touched the editor.
+     So the page says when it has stopped moving, instead of a sleep guessing
+     at it: every scroll, captured at the document, stamps a clock, and this
+     resolves once that clock has been quiet. */
+  async function scrollStopped(page, quiet = 250) {
+    await page.evaluate(() => {
+      if (!window.__scrollMark) {
+        window.__scrollMark = () => { window.__scrolledAt = performance.now(); };
+        document.addEventListener('scroll', window.__scrollMark, { capture: true, passive: true });
+      }
+      window.__scrollMark();
+    });
+    await page.waitForFunction((ms) => performance.now() - window.__scrolledAt > ms,
+      quiet, { timeout: 15000, polling: 50 });
+  }
+
   async function runSlash(query) {
     const page = await browser.newPage();
     try {
@@ -426,9 +450,27 @@ if (s) {
     await page.click('.vditor-ir [contenteditable="true"] p');
     await page.keyboard.press('End');
     await page.keyboard.press('Enter');
+    /* Let the page come to rest, then put the caret in the middle of it, so
+       the "/" below has no scrolling left to cause. See scrollStopped. */
+    await scrollStopped(page);
+    const centred = await page.evaluate(() => {
+      const n = getSelection().anchorNode;
+      const el = n?.nodeType === 1 ? n : n?.parentElement;
+      el?.scrollIntoView({ block: 'center' });
+      return !!el;
+    });
+    assert.ok(centred, 'the caret is in the document');
+    await scrollStopped(page);
     await page.keyboard.type('/');
     await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintSettled(page);
+    /* The cap comes from a MutationObserver watching the menu's style, so for
+       a frame the menu is its uncapped self — the wrong height to assert and
+       the wrong box to aim a pointer at. Read the menu that carries the cap. */
+    await page.waitForFunction(() => {
+      const h = document.querySelector('.vditor-hint:not(.vditor-panel--arrow)');
+      return !!h && h.style.display !== 'none' && h.style.maxHeight !== '';
+    }, null, { timeout: 10000 });
     const before = await page.evaluate(() => {
       const h = document.querySelector('.vditor-hint:not(.vditor-panel--arrow)');
       const r = h.getBoundingClientRect();
@@ -436,9 +478,13 @@ if (s) {
     });
     assert.ok(before.h <= 400, `the menu is capped short (${before.h}px)`);
     await page.mouse.move(before.cx, before.cy);
+    // A wheel that misses the menu proves nothing, and would pass for it.
+    const onMenu = await page.evaluate(([x, y]) =>
+      !!document.elementFromPoint(x, y)?.closest('.vditor-hint'), [before.cx, before.cy]);
+    assert.ok(onMenu, 'the pointer sits over the menu');
     // Far past the menu's own travel: what it cannot absorb must stop here.
     for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 600);
-    await page.waitForTimeout(400);
+    await scrollStopped(page);
     const after = await page.evaluate(() => ({
       y: Math.round(scrollY),
       shown: document.querySelector('.vditor-hint:not(.vditor-panel--arrow)').style.display !== 'none',
