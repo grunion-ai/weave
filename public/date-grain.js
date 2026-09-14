@@ -309,11 +309,25 @@
     }
     return text;
   }
+  /* A range sorts by its start, then by its end — what a calendar does with
+     two spans that open on the same day (Issue #287). The stored ends are
+     already grain-shaped strings of one width per field, so joining them in
+     that order is the whole comparison; the object they come in cannot be
+     compared at all ('[object Object]' makes every row equal). U+FFFF stands
+     in for an end that is missing, because an open range extends furthest and
+     so sorts after a closed one that opens on the same day — the server
+     refuses half a range, so only importJSON can put one in the store. */
+  function rangeKey(value) {
+    if (!value) return null;
+    const { start, end } = value;
+    if (start == null && end == null) return null;
+    return `${start ?? ''}/${end ?? '\uffff'}`;
+  }
 
   root.weaveDateGrain = {
     PARTS, DATE_FORMATS, CLOCKS, DEFAULT_FORMAT, DEFAULT_CLOCK, ZONES, NEEDS, MON, MON_LONG,
     normalizeGrain, grainOf, legalFormats, formatProblem,
     partsOf, storeOf, coerce, coerceInstant, isZone, toInstant, fromInstant, wallIn, zoneAbbr,
-    formatDate, formatDateRange, clockText, parseClock, elapsedText, ordinal,
+    formatDate, formatDateRange, clockText, parseClock, elapsedText, ordinal, rangeKey,
   };
 })(globalThis);

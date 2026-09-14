@@ -22,6 +22,7 @@ function build() {
   w.addField(t, { name: 'Cache Read', type: 'number', config: { separator: true } });
   w.addField(t, { name: 'Cost', type: 'number', config: { format: 'currency', currency: 'USD' } });
   w.addField(t, { name: 'Stage', type: 'select', config: { options: ['alpha', 'beta', 'gamma'] } });
+  w.addField(t, { name: 'Window', type: 'daterange', config: { format: 'long' } });
   return { w, t };
 }
 const names = (res) => res.items.map((i) => i.name);
@@ -45,6 +46,43 @@ test('a number column sorts by the number, through its separators and its curren
   w.createEntity(t, { name: 'mid', values: { 'Cache Read': 2048, Cost: 100 } });
   assert.deepEqual(names(w.query(t, { sort: [{ field: 'Cache Read' }] })), ['small', 'mid', 'large']);
   assert.deepEqual(names(w.query(t, { sort: [{ field: 'Cost', dir: 'desc' }] })), ['mid', 'large', 'small']);
+});
+
+test('a daterange column sorts by its start, then by its end (Issue #287)', () => {
+  const { w, t } = build();
+  w.createEntity(t, { name: 'sep-09', values: { Window: { start: '2026-09-09', end: '2026-09-12' } } });
+  w.createEntity(t, { name: 'oct-01', values: { Window: { start: '2026-10-01', end: '2026-10-03' } } });
+  // Two spans that open on the same day: the end breaks the tie, so the
+  // shorter one comes first, the way a calendar stacks them.
+  w.createEntity(t, { name: 'sep-09-long', values: { Window: { start: '2026-09-09', end: '2026-09-30' } } });
+  assert.equal(w.readEntity(w.query(t, {}).items[0].id).fields.Window, 'Sep 9 – Sep 12, 2026', 'the cells still wear the long format');
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'Window' }] })), ['sep-09', 'sep-09-long', 'oct-01']);
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'Window', dir: 'desc' }] })), ['oct-01', 'sep-09-long', 'sep-09']);
+});
+
+test('a daterange of clock times sorts by the clock, and an empty range still sorts last', () => {
+  const { w, t } = build();
+  w.addField(t, { name: 'Hours', type: 'daterange', config: { grain: [], time: true, clock: '12h' } });
+  w.createEntity(t, { name: 'evening', values: { Hours: { start: '17:40', end: '23:00' } } });
+  w.createEntity(t, { name: 'morning', values: { Hours: { start: '09:15', end: '12:00' } } });
+  w.createEntity(t, { name: 'none' });
+  // "5:40 PM" beats "9:15 AM" as text; 17:40 does not beat 09:15 as a clock.
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'Hours' }] })), ['morning', 'evening', 'none']);
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'Hours', dir: 'desc' }] })), ['evening', 'morning', 'none']);
+});
+
+test('half a range is still refused, so an open end is only ever imported data', () => {
+  const { w, t } = build();
+  // The rule for one all the same (an open range extends furthest, so it
+  // sorts after a closed one that opens on the same day): importJSON writes
+  // state verbatim, and a hand-built file can carry a null end.
+  assert.throws(() => w.createEntity(t, { name: 'half', values: { Window: { start: '2026-09-09', end: null } } }), /needs valid start and end/);
+  w.createEntity(t, { name: 'closed', values: { Window: { start: '2026-09-09', end: '2026-09-12' } } });
+  const open = w.createEntity(t, { name: 'open', values: { Window: { start: '2026-09-09', end: '2026-09-30' } } });
+  const state = w.exportJSON({ blobs: false });
+  state.entities[open.id].values[w.findField(w.getTable(t), 'Window').id].end = null;
+  w.importJSON(state);
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'Window' }] })), ['closed', 'open']);
 });
 
 test('a select still sorts by the option name the reader sees, not by its id', () => {

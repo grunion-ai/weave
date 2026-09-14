@@ -15,10 +15,12 @@ import { launch } from './lib/browser.mjs';
 let sessions;
 // Deliberately out of creation order, so neither insertion order nor the
 // public id can pass for a working sort.
+// The two spans that open on Sep 9 are what makes the end matter: a range
+// sorts by its start, then by its end (Issue #287).
 const ROWS = [
-  { name: 'sep-09', Created: '2026-09-09T09:51', Cache: 15829984 },
-  { name: 'oct-01', Created: '2026-10-01T00:05', Cache: 900 },
-  { name: 'sep-12', Created: '2026-09-12T07:32', Cache: 2048 },
+  { name: 'sep-09', Created: '2026-09-09T09:51', Cache: 15829984, Window: { start: '2026-09-09', end: '2026-09-12' } },
+  { name: 'oct-01', Created: '2026-10-01T00:05', Cache: 900, Window: { start: '2026-10-01', end: '2026-10-03' } },
+  { name: 'sep-12', Created: '2026-09-12T07:32', Cache: 2048, Window: { start: '2026-09-09', end: '2026-09-30' } },
 ];
 const s = await launch('a grid sorts by value, not costume', (weave) => {
   weave.createSpace({ name: 'Agent' });
@@ -26,7 +28,8 @@ const s = await launch('a grid sorts by value, not costume', (weave) => {
   // The uno field exactly: a date wearing the long format with a clock.
   weave.addField(sessions, { name: 'Created', type: 'date', config: { format: 'long', time: true } });
   weave.addField(sessions, { name: 'Cache Read', type: 'number', config: { separator: true } });
-  for (const r of ROWS) weave.createEntity(sessions, { name: r.name, values: { Created: r.Created, 'Cache Read': r.Cache } });
+  weave.addField(sessions, { name: 'Window', type: 'daterange', config: { format: 'long' } });
+  for (const r of ROWS) weave.createEntity(sessions, { name: r.name, values: { Created: r.Created, 'Cache Read': r.Cache, Window: r.Window } });
   weave.updateTable(sessions, { sort: [{ field: 'Created', dir: 'desc' }] });
 });
 
@@ -67,6 +70,30 @@ if (s) {
     await page.locator('.chip-pop .wv-menu-row', { hasText: 'Sort ascending' }).first().click();
     await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'oct-01');
     assert.deepEqual(await order(page), ['oct-01', 'sep-12', 'sep-09'], '900 < 2,048 < 15,829,984');
+    await page.close();
+  });
+
+  test('a daterange column reads earliest span first, whichever half does the sorting (Issue #287)', async () => {
+    const page = await open();
+    const cells = await page.$$eval('.wv-grid tbody tr.entity-row td[data-field="Window"] input', (ins) => ins.map((i) => i.value));
+    assert.ok(cells.every((c) => / – /.test(c)), `the cells wear the painted span: ${cells.join(' | ')}`);
+    // Ascending on the costume read "Oct 1 – Oct 3, 2026" first, because
+    // "O" < "S". The server orders page one; the eyeball's Deleted switch
+    // hands the whole table to app.js, which must land in the same order.
+    await page.locator('.wv-grid thead th', { hasText: 'Window' }).locator('.field-menu').click();
+    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Sort ascending' }).first().click();
+    await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'sep-09');
+    assert.deepEqual(await order(page), ['sep-09', 'sep-12', 'oct-01'], 'paged: the server orders page one');
+    await page.close();
+  });
+
+  test('the grid sorts a daterange itself the same way the server does (Issue #287)', async () => {
+    const page = await open();
+    await stopPaging(page);
+    await page.locator('.wv-grid thead th', { hasText: 'Window' }).locator('.field-menu').click();
+    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Sort ascending' }).first().click();
+    await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'sep-09');
+    assert.deepEqual(await order(page), ['sep-09', 'sep-12', 'oct-01'], 'Sep 9–12 < Sep 9–30 < Oct 1–3');
     await page.close();
   });
 }

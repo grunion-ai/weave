@@ -5074,14 +5074,12 @@ export class Weave {
   }
 
   /* Path: 'Field' or 'Relation.Field' (any hops). Returns display values —
-     `undressed` takes the costume off the two types whose painted form does
-     not order the way the value does (Issue #279): a number stays a number,
-     a date stays its stored instant. Everything else keeps its display form,
+     `undressed` takes the costume off the three types whose painted form does
+     not order the way the value does (Issue #279): a number stays a number, a
+     date stays its stored instant, and a daterange becomes its start then its
+     end (DG.rangeKey, Issue #287). Everything else keeps its display form,
      because for an option, a state or a joined relation the name IS the
-     value. Same rule a formula reads by (#resolve, the 'formula' case).
-     A `daterange` is the one type this leaves dressed: its raw value is an
-     object, so ordering it needs a start-then-end rule someone has to say out
-     loud, and Issue #287 asks for it. */
+     value. Same rule a formula reads by (#resolve, the 'formula' case). */
   #pathValue(e, db, path, { undressed = false } = {}) {
     const parts = String(path).split('.');
     let current = [{ e, db }];
@@ -5100,8 +5098,9 @@ export class Weave {
         if (!f) throw new WeaveError(`Field '${parts[i]}' not found in table '${cdb.name}'`, 'not-found');
         const resolved = this.#resolve(ce, cdb, f, 0);
         if (isLast) {
-          results.push(undressed && (typeof resolved === 'number' || f.type === 'date')
-            ? resolved : this.#displayValue(cdb, f, resolved));
+          results.push(undressed && (typeof resolved === 'number' || f.type === 'date') ? resolved
+            : undressed && f.type === 'daterange' ? DG.rangeKey(resolved)
+            : this.#displayValue(cdb, f, resolved));
         } else {
           if (f.type !== 'relation') throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');
           // Each target knows its own table — a target-set relation's members
