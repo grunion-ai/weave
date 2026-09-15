@@ -110,6 +110,42 @@ test('includeDeleted opts a read back into seeing the trash', () => {
   assert.equal(w.query(tasks, { includeDeleted: true, where: [['Name', '=', 'Alpha']] }).total, 1);
 });
 
+/* The table page's trash count (Issue #270): opening a table asked for the
+   whole trash list — every trashed row read in full — only to print a number
+   in the eyeball. The query answers the count on request instead, for the
+   table as a whole (a filter narrows the rows, not the trash). */
+test('query answers the trash count on request, without the trash list', () => {
+  const { w, tasks, projects, a, b, apollo } = buildWorkspace();
+  assert.equal('trashCount' in w.query(tasks, {}), false, 'no count unless asked');
+  assert.equal(w.query(tasks, { trashCount: true }).trashCount, 0);
+  w.deleteEntity(a.id);
+  w.deleteEntity(b.id);
+  w.deleteEntity(apollo.id);
+  const r = w.query(tasks, { trashCount: true, where: [['Name', '=', 'Nope']], limit: 1 });
+  assert.equal(r.trashCount, 2, 'the count is the table\'s trash, not the filtered page');
+  assert.equal(r.total, 0);
+  assert.equal(w.query(projects, { trashCount: true }).trashCount, 1);
+  w.restoreEntity(a.id);
+  assert.equal(w.query(tasks, { trashCount: true }).trashCount, 1, 'restore takes it back out');
+});
+
+test('REST and MCP query carry the trash count opt-in', async () => {
+  const { w, a } = buildWorkspace();
+  w.deleteEntity(a.id);
+  assert.ok(TOOLS.find((t) => t.name === 'weave_query').inputSchema.properties.trashCount,
+    'MCP query must advertise trashCount');
+  assert.equal(dispatchTool(w, 'weave_query', { db: 'Task', trashCount: true }).trashCount, 1);
+  const { server } = await startServer(w, { port: 0 });
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/Task/query`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashCount: true, limit: 1 }),
+    });
+    assert.equal((await res.json()).trashCount, 1);
+  } finally {
+    server.close();
+  }
+});
+
 test('hard delete purges the row and unlinks it for good', () => {
   const { w, tasks, apollo, a } = buildWorkspace();
   w.deleteEntity(a.id, { hard: true });

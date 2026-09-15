@@ -359,7 +359,11 @@ test('purging keeps the hold-to-confirm and is the only hard delete in the UI', 
 
 test('deleted rows are reached through the eyeball; the toolbar has no trash badge (superseded 2026-08-23)', () => {
   assert.doesNotMatch(fnBody('drawDatabase'), /#\/trash\//, 'no 🗑 control on the toolbar');
-  assert.match(APP, /api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/, 'the count still feeds the eyeball');
+  // Issue #270: the count rides on the query; the list is fetched only when
+  // the eyeball's "Deleted rows" asks for the rows themselves.
+  assert.match(fnBody('showDatabase'), /trashCount: true/, 'the count still feeds the eyeball');
+  assert.match(fnBody('showDatabase'), /showDeleted\s*\?\s*api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/,
+    'the trash list is fetched only when deleted rows are shown');
   assert.match(fnBody('fieldVisibilityPopover'), /Deleted \$\{cur\.term\.plural\}/, 'the toggle speaks the table\'s row term');
 });
 

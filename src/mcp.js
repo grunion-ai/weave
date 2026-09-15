@@ -44,6 +44,7 @@ export const TOOLS = [
         offset: { type: 'number' },
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
         includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
+        trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
       },
       required: ['db'],
     },
@@ -425,6 +426,7 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.query(args.db, {
         where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null,
         offset: args.offset ?? 0, select: args.select ?? null, includeDeleted: Boolean(args.includeDeleted),
+        trashCount: Boolean(args.trashCount),
       });
     case 'weave_get_entity':
       return weave.readEntity(args.entity);

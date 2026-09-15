@@ -3175,15 +3175,21 @@ async function showDatabase(dbId, view) {
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
     ...(showDeleted ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
   };
+  /* The trash list only when it is shown (Issue #270): the open used to read
+     the whole trash — every trashed row in full — to print one number in the
+     eyeball. The count rides on the query (`trashCount`); the rows are asked
+     for only when "Deleted rows" puts them in the grid. */
   const [result, trash] = await Promise.all([
-    api('POST', `/tables/${db.id}/query`, query),
-    api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0, items: [] })),
+    api('POST', `/tables/${db.id}/query`, { ...query, trashCount: true }),
+    showDeleted
+      ? api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0, items: [] }))
+      : null,
   ]);
   // The eyeball's "show deleted": trashed rows ride along, dimmed, in place.
   const items = showDeleted
     ? [...result.items, ...(trash.items ?? []).map((e) => ({ ...e, deleted: true }))]
     : result.items;
-  drawDatabase(db, items, trash.total, showDeleted ? null : gridPager(db, query, result));
+  drawDatabase(db, items, trash?.total ?? result.trashCount ?? 0, showDeleted ? null : gridPager(db, query, result));
 }
 
 /* The table's sort as the query takes it: only fields that still exist, so a

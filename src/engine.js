@@ -5006,9 +5006,15 @@ export class Weave {
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
     try { return this.#queryIn(dbRef, opts); } finally { this.viewerZone = prev; }
   }
-  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, includeDeleted = false } = {}) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, includeDeleted = false, trashCount = false } = {}) {
     const db = this.getTable(dbRef);
     let rows = this.listEntities(db.id, { includeDeleted });
+    /* `trashCount: true` answers how many of the table's rows are in the
+       trash — the whole table's, not the filtered page's — so the table page
+       can print its eyeball count without reading the trash list (Issue #270). */
+    const trashed = trashCount
+      ? this.listEntities(db.id, { includeDeleted: true }).filter((e) => e.deletedAt).length
+      : null;
     if (where && (Array.isArray(where) ? where.length : true)) {
       rows = rows.filter((e) => this.#matchNode(e, db, Array.isArray(where) ? { and: where } : where));
     }
@@ -5036,7 +5042,7 @@ export class Weave {
       for (const path of select) out[path] = this.#pathValue(e, db, path);
       return out;
     });
-    return { total, items };
+    return trashCount ? { total, items, trashCount: trashed } : { total, items };
   }
 
   #matchNode(e, db, node) {
