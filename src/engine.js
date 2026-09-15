@@ -1788,7 +1788,6 @@ export class Weave {
             const named = (tDoc.fields ?? []).find((f) => f.role === 'name') ?? (tDoc.fields ?? []).find((f) => f.name === 'Name');
             if (named) {
               if (named.name !== 'Name') this.updateField(db.id, db.nameFieldId, { name: named.name });
-              if (named.type === 'formula') this.updateField(db.id, db.nameFieldId, { type: 'formula', config: configFromDescriptor(named) });
             }
             for (const f of tDoc.fields ?? []) {
               if (f === named || f === described) continue;
@@ -1803,6 +1802,9 @@ export class Weave {
               }
               this.addField(db.id, { name: f.name, type: f.type, config: configFromDescriptor(f) });
             }
+            // A computed Name reads fields the loop above just added, and the
+            // type change checks every name it reads (Issue #288), so it goes last.
+            if (named?.type === 'formula') this.updateField(db.id, db.nameFieldId, { type: 'formula', config: configFromDescriptor(named) });
             this.#applyTableCostume(db, tDoc);
           });
           continue;
@@ -1827,6 +1829,7 @@ export class Weave {
         // one shows, not what each one stores.
         if ('hideRollups' in tDoc && (tDoc.hideRollups !== false) !== (db.hideRollups !== false)) tPatch.hideRollups = !!tDoc.hideRollups;
         if (Object.keys(tPatch).length) act('update-table', qualified, () => this.updateTable(db.id, tPatch));
+        let nameTypeChange = null;
         for (const fDoc of tDoc.fields ?? []) {
           let existing = Object.values(db.fields).find((x) => x.name === fDoc.name);
           // The name role matches by role, so a renamed Name is a rename here
@@ -1840,7 +1843,8 @@ export class Weave {
             if (existing) act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, existing.id, { name: fDoc.name }));
           }
           if (existing && existing.id === db.nameFieldId && fDoc.type && fDoc.type !== existing.type && ['text', 'formula'].includes(fDoc.type)) {
-            act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, db.nameFieldId, { type: fDoc.type, config: configFromDescriptor(fDoc, existing) }));
+            // Deferred past the loop: a computed Name may read a field created below (Issue #288).
+            nameTypeChange = () => act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, db.nameFieldId, { type: fDoc.type, config: configFromDescriptor(fDoc, existing) }));
             continue;
           }
           if (!existing) {
@@ -1864,6 +1868,7 @@ export class Weave {
             act('update-field', `${qualified}.${fDoc.name}`, () => this.updateField(db.id, existing.id, { config: nextCfg }));
           }
         }
+        nameTypeChange?.();
         // Omitted fields are deletions.
         for (const existing of Object.values(db.fields)) {
           if (existing.system || existing.id === db.nameFieldId) continue;
@@ -3706,6 +3711,10 @@ export class Weave {
       nextConfig = normalizeSelfContainedConfig('workflow', { states: config.states?.length ? config.states : (states.length ? states : undefined) });
     } else if (toType === 'formula') {
       if (!config.expression) throw new WeaveError('Formula field needs an expression', 'invalid');
+      // Same parse + known-field gate as addField and updateField, the
+      // field's own name off the list (Issue #288).
+      const checked = checkExpression(config.expression, Object.values(db.fields).filter((f) => f.id !== field.id).map((f) => f.name));
+      if (!checked.ok) throw new WeaveError(checked.error, 'invalid');
       // A type change is a formula save too, and can close the same loop a
       // direct edit is refused for (Issue #283).
       this.#refuseFormulaCycle(db, field.id, field.name, config.expression);

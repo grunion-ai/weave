@@ -68,6 +68,21 @@ test('a type change into a formula is refused when it closes a cycle', () => {
   assert.equal(w.resolveField(w.getEntity(e.id), 'Total'), 6, 'an acyclic migration still lands');
 });
 
+test('a type change into a formula is refused when the expression does not parse or names an unknown field (Issue #288)', () => {
+  const { w, t } = seeded();
+  w.addField(t.id, { name: 'X', type: 'text' });
+  // The same message addField gives for the same string.
+  let addError;
+  try { w.addField(t.id, { name: 'Y', type: 'formula', config: { expression: 'if(upper(' } }); } catch (err) { addError = err.message; }
+  assert.ok(addError, 'addField refuses the broken expression');
+  assert.throws(() => w.updateField(t.id, 'X', { type: 'formula', config: { expression: 'if(upper(' } }), (err) => err.message === addError);
+  assert.throws(() => w.updateField(t.id, 'X', { type: 'formula', config: { expression: 'Nope * 2' } }), /Nope/);
+  assert.throws(() => w.updateField(t.id, 'X', { type: 'formula', config: { expression: 'X + 1' } }), /X/, 'its own name is off the list');
+  assert.equal(w.getField(t.id, 'X').type, 'text', 'every refused migration left the type alone');
+  w.updateField(t.id, 'X', { type: 'formula', config: { expression: 'Amount * 2' } });
+  assert.equal(w.getField(t.id, 'X').type, 'formula', 'a valid migration still lands');
+});
+
 test('a deep but acyclic formula chain still computes', () => {
   const { w, t } = seeded();
   w.addField(t.id, { name: 'A', type: 'formula', config: { expression: 'Amount * 2' } });

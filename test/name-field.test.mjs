@@ -62,6 +62,27 @@ test('a renamed Name field survives the declarative door into a fresh workspace'
   assert.equal(t2.fields[t2.nameFieldId].name, 'Title');
 });
 
+test('a computed Name that reads later fields survives the declarative door, fresh and onto an existing table (Issue #288)', () => {
+  const { w, db, nameField } = deals();
+  w.updateField(db.id, nameField.id, { type: 'formula', config: { expression: 'Company + " · " + Amount' } });
+  const doc = w.describeSchema().filter((s) => !s.system);
+  // Fresh: the table is created, Name first in the document, Company after it.
+  const fresh = new Weave();
+  fresh.applySchema(doc);
+  const t = fresh.getTable('Sales/Deal');
+  assert.equal(t.fields[t.nameFieldId].type, 'formula');
+  assert.equal(t.fields[t.nameFieldId].config.expression, 'Company + " · " + Amount');
+  // Existing: a bare table with a text Name gains Company and a computed Name in one apply.
+  const again = new Weave();
+  again.createSpace({ name: 'Sales' });
+  again.createTable({ space: 'Sales', name: 'Deal' });
+  again.applySchema(doc);
+  const t2 = again.getTable('Sales/Deal');
+  assert.equal(t2.fields[t2.nameFieldId].type, 'formula');
+  const e = again.createEntity(t2.id, { values: { Company: 'Acme', Amount: 3 } });
+  assert.equal(again.readEntity(e.id).name, 'Acme · 3');
+});
+
 test('the Name field can become a formula: the name is computed, the term survives, writes are tolerated', () => {
   const { w, db, nameField } = deals();
   w.updateField(db.id, nameField.id, { config: { term: { singular: 'deal' } } });
