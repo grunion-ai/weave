@@ -5371,6 +5371,7 @@ export class Weave {
     const auto = { id: uuid(), dbId: db.id, name: name ?? 'Automation', trigger: t, actions: acts, enabled };
     this.state.automations[auto.id] = auto;
     this.save();
+    if (!db.system) this.#audit('automation-created', { table: db.name, name: auto.name, trigger: t.type });
     return auto;
   }
 
@@ -5417,14 +5418,19 @@ export class Weave {
     if (patch.enabled != null) auto.enabled = patch.enabled;
     if (patch.name != null) auto.name = patch.name;
     this.save();
+    const changed = ['enabled', 'name'].filter((k) => patch[k] != null);
+    const db = this.state.tables[auto.dbId];
+    if (changed.length && !db?.system) this.#audit('automation-updated', { table: db?.name ?? null, name: auto.name, patch: changed });
     return auto;
   }
 
   deleteAutomation(id) {
-    const existed = id in this.state.automations;
+    const auto = this.state.automations[id];
     delete this.state.automations[id];
     this.save();
-    return { id, deleted: existed };
+    const db = auto && this.state.tables[auto.dbId];
+    if (auto && !db?.system) this.#audit('automation-deleted', { table: db?.name ?? null, name: auto.name });
+    return { id, deleted: !!auto };
   }
 
   #runAutomations(db, e, event, depth) {

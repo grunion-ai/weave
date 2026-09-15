@@ -125,3 +125,23 @@ test('requireAuth closes the API to anonymous callers — health stays open', as
     server.close();
   }
 });
+
+test('automation create, update and delete land in the audit log (Issue #284)', () => {
+  const w = new Weave({ actor: 'ada' });
+  w.createSpace({ name: 'Dev' });
+  w.createTable({ space: 'Dev', name: 'Task' });
+  const auto = w.createAutomation('Task', {
+    name: 'Greet', trigger: { type: 'entity-created' }, actions: [{ type: 'add-comment', text: 'hi' }],
+  });
+  w.updateAutomation(auto.id, { enabled: false });
+  w.deleteAutomation(auto.id);
+  const log = w.listAudit({ limit: 50 }).filter((r) => r.action.startsWith('automation-'));
+  const by = (a) => log.find((r) => r.action === a);
+  assert.deepEqual(by('automation-created')?.detail, { table: 'Task', name: 'Greet', trigger: 'entity-created' });
+  assert.deepEqual(by('automation-updated')?.detail, { table: 'Task', name: 'Greet', patch: ['enabled'] });
+  assert.deepEqual(by('automation-deleted')?.detail, { table: 'Task', name: 'Greet' });
+  assert.ok(log.every((r) => r.actor === 'ada'));
+  // Deleting an id that does not exist changes nothing, so it writes nothing.
+  w.deleteAutomation('nope');
+  assert.equal(w.listAudit({ limit: 50 }).filter((r) => r.action === 'automation-deleted').length, 1);
+});
