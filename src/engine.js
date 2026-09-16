@@ -4301,11 +4301,12 @@ export class Weave {
 
       for (const rid of removed) {
         const t = this.state.entities[rid];
-        if (t) this.#pluck(t, inverse, e.id);
+        if (!t) continue;
+        this.#pluck(t, inverse, e.id);
+        this.#logInverse(t, inverse, { removed: [this.entityName(e)] });
       }
       for (const rid of added) {
         const t = this.getEntity(rid);
-        this.#mark(t); // inverse side changes without its own activity entry
         if (inverse.config.many) {
           const cur = this.#relationIds(t, inverse);
           if (!cur.includes(e.id)) t.values[inverse.id] = [...cur, e.id];
@@ -4314,10 +4315,14 @@ export class Weave {
           const prevHolder = t.values[inverse.id];
           if (prevHolder && prevHolder !== e.id) {
             const p = this.state.entities[prevHolder];
-            if (p) this.#pluck(p, field, t.id);
+            if (p) {
+              this.#pluck(p, field, t.id);
+              this.#logInverse(p, field, { removed: [this.entityName(t)] });
+            }
           }
           t.values[inverse.id] = e.id;
         }
+        this.#logInverse(t, inverse, { added: [this.entityName(e)] });
       }
     }
     e.values[field.id] = field.config.many ? newIds : (newIds[0] ?? null);
@@ -4328,6 +4333,15 @@ export class Weave {
       added: added.map((id) => this.entityName(this.state.entities[id])),
       removed: removed.map((id) => this.state.entities[id] ? this.entityName(this.state.entities[id]) : id),
     });
+  }
+
+  /* The far side of a paired relation changed too, so it gets its own entry
+     (Issue #286): before this, only the row the caller touched was logged and
+     the inverse field moved with nothing in its history to say so. `inverse`
+     marks the write a row received rather than made — Fibery shows the link on
+     both feeds the same way. */
+  #logInverse(t, field, { added = [], removed = [] }) {
+    this.#logActivity(t, 'relation-updated', { field: field.name, added, removed, inverse: true });
   }
 
   #relationIds(e, field) {
