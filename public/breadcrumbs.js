@@ -54,5 +54,15 @@
     return entityCrumbs('', hops.slice(0, -1), hops[hops.length - 1]).slice(2);
   }
 
-  root.weaveBreadcrumbs = { pushTrail, entityCrumbs, dockCrumbs, MAX_TRAIL };
+  /* The tab title (Issue #267): the row or table in front of the reader,
+     then the workspace, so tabs, history entries and bookmarks tell places
+     apart. The workspace page is the workspace name alone; "Weave" only
+     where no workspace has loaded. */
+  function docTitle(name, wsName) {
+    const n = String(name ?? '').trim();
+    const w = String(wsName ?? '').trim();
+    return n && w ? `${n} · ${w}` : n || w || 'Weave';
+  }
+
+  root.weaveBreadcrumbs = { pushTrail, entityCrumbs, dockCrumbs, docTitle, MAX_TRAIL };
 })(globalThis);

@@ -438,6 +438,7 @@ function dockClose() {
   panel.replaceChildren();
   $('#dock-gutter').hidden = true;
   dock = null;
+  syncDocTitle();
   markDockedRow();
 }
 
@@ -503,6 +504,7 @@ async function drawDock() {
   // The frame learns its name here, for the crumb of the next hop; the
   // dock's table follows the frame on top (its eye, its fields).
   top.name = entity.name;
+  syncDocTitle();
   dock.db = allTables().find((d) => d.id === top.tableId) ?? dock.db;
   const tableOf = (tid) => allTables().find((d) => d.id === tid);
   const crumbs = weaveBreadcrumbs.dockCrumbs(dock.state.chain, tableOf);
@@ -857,19 +859,22 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
     el('span', { class: 'crumb-path' }, ...crumbKids),
     el('span', { class: 'crumb-actions wv-toolbar' }, ...actions.filter(Boolean))));
 
+  syncDocTitle(title);
   const titleInput = el('input', { class: 'view-title', value: title, title: onRename ? 'Click to rename' : '' });
   if (onRename) {
     titleInput.addEventListener('change', async () => {
       const name = titleInput.value.trim();
       if (!name || name === title) { titleInput.value = title; return; }
-      try { await onRename(name); toast('Renamed'); } catch (err) { titleInput.value = title; toast(err.message, true); }
+      try { await onRename(name); syncDocTitle(name); toast('Renamed'); } catch (err) { titleInput.value = title; toast(err.message, true); }
     });
   } else {
     titleInput.readOnly = true;
   }
+  // The page's heading is a real <h1> (Issue #267) that wears the old look:
+  // .view-title-h resets the element, the input inside keeps its style.
   box.append(el('div', { class: 'wv-toolbar view-title-row' },
     onSetIcon ? iconButton(icon, onSetIcon) : (icon ? iconEl(icon) : null),
-    titleInput));
+    el('h1', { class: 'view-title-h' }, titleInput)));
 
   if (onSaveDescription) {
     const descBox = el('div', { class: 'view-desc' });
@@ -8112,6 +8117,7 @@ async function showEntity(id) {
   const hop = entityHop(entity);
   state.trail = weaveBreadcrumbs.pushTrail(state.trail, state.route, hop);
   state.route = { page: 'entity', id, dbId: entity.dbId, entity: hop };
+  syncDocTitle(entity.name);
   renderNav();
   const main = $('#main');
   main.replaceChildren();
@@ -9077,10 +9083,12 @@ async function showActivityDetail(id) {
 
 async function showView(id) {
   state.route = { page: 'view', id };
+  syncDocTitle(null);
   renderNav();
   const main = $('#main');
   let v;
   try { v = await api('GET', `/views/${id}`); } catch { return showHome(); }
+  syncDocTitle(v.name);
   const meta = (await api('GET', '/views')).find((x) => x.id === id);
   main.replaceChildren(el('div', { class: 'wv-toolbar' },
     el('h1', {}, v.name),
@@ -9118,6 +9126,7 @@ async function showView(id) {
 
 async function showHome() {
   state.route = { page: 'home' };
+  syncDocTitle(null);
   renderNav();
   const main = $('#main');
   const dbs = allTables();
@@ -9441,6 +9450,16 @@ function paintSkeleton(kind, db) {
   }
 }
 
+/* The tab title follows the place (Issue #267): a docked row, else the page's
+   own name (a table, a space, an entity), then the workspace. Pages hand in
+   their name as they render; the dock and the workspace wordmark call with
+   no argument, re-reading what is already known. */
+function syncDocTitle(pageName) {
+  if (pageName !== undefined) state.pageName = pageName;
+  const top = dock?.state.chain[dock.state.chain.length - 1];
+  document.title = weaveBreadcrumbs.docTitle(top?.name || state.pageName, $('#ws-name')?.textContent);
+}
+
 function renderRoute() {
   /* Navigating away abandons any floating chrome: a picker left open would
      otherwise survive the route change and haunt the next page (Issue #93's
@@ -9452,6 +9471,8 @@ function renderRoute() {
   teardownDocEditors();
   // A route change leaves the view the dock belonged to.
   dockClose();
+  // A new place names itself as it renders (Issue #267).
+  state.pageName = null;
   const hash = location.hash || '#/';
   // The skeleton of where we're going, painted before we go (Feature #49).
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
@@ -9590,6 +9611,7 @@ async function buildWsRail() {
     // middle-click open the workspace in a tab like every other link.
     const wordmark = $('#ws-name');
     wordmark.textContent = current ?? '';
+    syncDocTitle();
     wordmark.href = wsHomeHref();
     wordmark.title = current ? `Open the ${current} workspace page` : 'Open the workspace page';
     const weaveWs = list.find((w) => w.name === 'weave');

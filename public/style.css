@@ -200,6 +200,8 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .view-header { margin-bottom: 16px; }
 .view-header .crumb { margin-bottom: 4px; }
 .view-title-row { margin-bottom: 0; }
+/* Issue #267: the heading element around the title input, with none of an h1's own look. */
+.view-title-h { display: flex; flex: 1; min-width: 0; margin: 0; font: inherit; }
 .view-title { font-size: 19px; font-weight: 700; font-family: 'Inter', var(--tblr-font-sans-serif, -apple-system, sans-serif); background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); padding: 2px 6px; margin: 0 auto 0 -6px; min-width: 0; flex: 1; color: var(--tblr-body-color); }
 .view-title:not([readonly]):hover, .view-title:focus { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); outline: none; }
 .view-desc { margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--tblr-secondary); max-width: 720px; cursor: text; }

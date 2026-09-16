@@ -73,3 +73,18 @@ test('dockCrumbs: the chain as one path, table crumbs only where they change', (
   assert.deepEqual(dockCrumbs([a1, l1], tableOf).map((c) => c.label), ['People', 'Ada Chen'], 'same table twice: no repeated table crumb');
   assert.deepEqual(dockCrumbs([], tableOf), []);
 });
+
+/* Issue #267: the tab title reads the place — the row or table in front of
+   the reader, then the workspace — so tabs, history entries and bookmarks
+   stop all reading "Weave". The bare workspace page is the workspace name;
+   "Weave" is left only where no workspace has loaded. */
+test('docTitle: <row or table> · <workspace>, the workspace alone, Weave with neither', () => {
+  const { docTitle } = globalThis.weaveBreadcrumbs;
+  assert.equal(docTitle('Issue', 'weave'), 'Issue · weave');
+  assert.equal(docTitle('Acme Working Capital', 'uno'), 'Acme Working Capital · uno');
+  assert.equal(docTitle(null, 'weave'), 'weave');
+  assert.equal(docTitle('  ', 'weave'), 'weave');
+  assert.equal(docTitle('Deals', ''), 'Deals');
+  assert.equal(docTitle(null, ''), 'Weave');
+  assert.equal(docTitle(undefined, undefined), 'Weave');
+});
