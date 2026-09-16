@@ -874,8 +874,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/entities\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.readEntity(m[1], { viewerZone }));
           if (rx.method === 'PATCH') {
-            weave.updateEntity(m[1], body.values ?? body);
-            return out(200, weave.readEntity(m[1], { viewerZone }));
+            /* `affected` is the blast radius of this write (Issue #257): the
+               rows a client has to re-read, so a cell commit patches those
+               rows in place instead of asking for the table again. The fresh
+               row is still the body — an old client reads it as before. */
+            const { touched } = weave.touching(() => weave.updateEntity(m[1], body.values ?? body));
+            return out(200, { ...weave.readEntity(m[1], { viewerZone }), affected: weave.affectedBy(m[1], touched) });
           }
           // Soft by default; ?hard=1 is the irreversible purge.
           if (rx.method === 'DELETE') {

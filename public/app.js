@@ -2591,8 +2591,11 @@ function toggleSwitch(f, val, patch) {
 function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
-  // No 'Saved' toast: a save is the default outcome of leaving a field, and
-  // a message for the default is noise (Issue #135). Failures still toast.
+  /* The way back for the writers that are not a field PATCH — a state change,
+     a link, an unlink. Each writes through its own endpoint, which answers
+     nothing the grid can use, so the row is re-read and the grid redrawn.
+     No 'Saved' toast: a save is the default outcome of leaving a field, and
+     a message for the default is noise (Issue #135). Failures still toast. */
   const saved = async () => {
     const fresh = await api('GET', `/entities/${id}`);
     onSaved(fresh);
@@ -2601,12 +2604,18 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
      editor already holds it, and waiting on PATCH → GET → re-render left the
      old chip up long enough to read as a lost edit. `paint` draws the value
      on the control now; the round trip reconciles, and a refused write
-     paints the stored value back before it toasts. */
+     paints the stored value back before it toasts.
+
+     The PATCH answers with the fresh row AND names every row this write can
+     have changed (`affected`, Issue #257), so nothing re-reads the row and
+     the grid swaps those rows' cells where they stand. The field's name goes
+     with it: an edit to the column the table is sorted by or filtered on can
+     move the row, and only the grid knows that. */
   const patch = async (value, paint = null) => {
     paint?.(value);
     try {
-      await api('PATCH', `/entities/${id}`, { values: { [f.name]: value } });
-      await saved();
+      const fresh = await api('PATCH', `/entities/${id}`, { values: { [f.name]: value } });
+      await onSaved(fresh, f.name);
     } catch (err) { paint?.(val); toast(err.message, true); }
   };
 
@@ -3192,6 +3201,18 @@ async function showDatabase(dbId, view) {
   drawDatabase(db, items, trash?.total ?? result.trashCount ?? 0, showDeleted ? null : gridPager(db, query, result));
 }
 
+/* Whether committing `field` can move the row or take it out of the grid: it
+   is the column the table is sorted by, or one the filter strip is holding.
+   A paged grid has one page of the server's order, so where the row belongs
+   now is the server's question — which is what sends the commit back to the
+   full re-read (Issue #257). A write that names no field (a bulk command, an
+   undo) is that question too. */
+function gridMoves(db, field) {
+  if (!field) return true;
+  if ((gridSort(db) ?? []).some((s) => s.field === field)) return true;
+  return Object.keys(tableFilters(db) ?? {}).includes(field);
+}
+
 /* The table's sort as the query takes it: only fields that still exist, so a
    sort left pointing at a dropped column cannot keep the table from opening. */
 function gridSort(db) {
@@ -3350,11 +3371,22 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
   const strip = filterStrip(db, () => showDatabase(db.id, state.route.view));
   if (strip) main.append(strip);
 
-  /* A commit re-reads the pages under the window and redraws at the same
-     scroll (Issue #271): the redraw is held to where the reader was, and the
-     row window comes back around the same rows, so the cell the focus goes
-     back to is a drawn cell. Nothing jumps to the top. */
-  const onSaved = async () => {
+  /* One commit, one row (Issue #257). `written` is the PATCH response: the
+     fresh row, and `affected` — every row this write can have changed. The
+     grid swaps those rows' cells where they stand, so scroll, focus,
+     selection and any open editor are never torn down and the table is not
+     read again.
+
+     The re-read below answers everything the client cannot work out from the
+     page it holds: a registry row (it IS the structure, Issue #241), an edit
+     to the column the table is sorted by or filtered on (the row moves, or
+     leaves), a bulk write, and any response without `affected` — a state
+     change, a link, an older server. That path re-reads the pages under the
+     window and redraws at the same scroll (Issue #271), so the cell the
+     focus goes back to is a drawn cell and nothing jumps to the top. */
+  const onSaved = async (written = null, field = null) => {
+    if (written?.affected && !db.system && !gridMoves(db, field)
+      && await main.querySelector('.table-wrap')?.wvPatchRows?.(written)) return;
     rememberGridFocus();
     // A registry row IS the structure: renaming a Spaces row renames the
     // space, and the sidebar must say so (Issue #241).
@@ -4013,8 +4045,64 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     scrollToRow(i);
     return live.get(i) ?? null;
   };
+  /* ---------- the in-place commit (Issue #257) ----------
+     One row's cells, swapped where they stand. The <tr> and its <td>s are
+     kept: the CELL is the focus stop (Feature #134), so a cell that is not
+     repainted cannot lose focus, and the reader's scroll, selection and
+     range are never touched. Only the cells whose value actually moved are
+     redrawn — a Name commit costs one cell's markup, and the description
+     beside it does not go back to the markdown renderer for nothing. */
+  const repaintRow = (tr, item, was) => {
+    for (const td of tr.querySelectorAll(':scope > td[data-field]')) {
+      const f = db.fields.find((x) => x.name === td.dataset.field);
+      if (!f) continue;
+      // A cell the reader is INSIDE keeps what they are typing: the editor
+      // painted it already, and the round trip must not take it back.
+      if (td !== document.activeElement && td.contains(document.activeElement)) continue;
+      if (was && JSON.stringify(was.fields?.[f.name] ?? null) === JSON.stringify(item.fields?.[f.name] ?? null)) continue;
+      td.replaceChildren(editorFor(f, item, db, onSaved, { compact: true }));
+      for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
+    }
+    const sys = tr.querySelectorAll(':scope > td.sys-cell');
+    (db.systemFields ?? []).forEach((n, k) => { if (sys[k]) sys[k].textContent = SYSTEM_COLS[n]?.(item) ?? ''; });
+    tr.classList.toggle('row-deleted', !!item.deleted);
+  };
+  /* `fresh` is the PATCH response: the edited row, plus `affected`. The rows
+     of that set THIS grid is holding are re-read in one query; the rest are
+     rows the grid cannot show, or pages it has not fetched, and a page that
+     arrives later arrives fresh. False when the edited row is not here at
+     all, which sends the caller back to the full re-read. */
+  const patchRows = async (fresh) => {
+    const arr = ordered();
+    const at = (eid) => arr.findIndex((r) => r && r.id === eid);
+    if (at(fresh.id) < 0) return false;
+    const stale = fresh.affected.filter((x) => x !== fresh.id && at(x) >= 0);
+    const rows = [fresh];
+    if (stale.length) {
+      const read = await api('POST', `/tables/${db.id}/query`, { where: [['id', 'in', [fresh.id, ...stale]]] });
+      rows.push(...read.items.filter((r) => r.id !== fresh.id));
+    }
+    for (const item of rows) {
+      const i = at(item.id);
+      if (i < 0) continue;
+      const was = arr[i];
+      arr[i] = item;
+      /* And the rows the grid was OPENED with, which are a second copy: a
+         local sort rebuilds `sortedItems` from them. A paged grid sorts on
+         the server and never reads them again, but the one grid with no
+         pager — "Deleted rows" on, where trashed rows ride along in place —
+         does, and it would sort the patched row back to its old value. */
+      const j = items.findIndex((r) => r && r.id === item.id);
+      if (j >= 0) items[j] = item;
+      const tr = built.get(item.id);
+      if (tr) repaintRow(tr, item, was);
+    }
+    requestAnimationFrame(() => markClippedCells(table));
+    return true;
+  };
   wrap.wvRewindow = rewindow;
   wrap.wvScrollToRow = scrollToRow;
+  wrap.wvPatchRows = patchRows;
 
   const draw = () => {
     sortedItems = [...items];

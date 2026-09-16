@@ -55,12 +55,18 @@ if (s) {
      for it (Issue #199).
 
      A wait and a separate read are two round trips with a frame between them,
-     and that is the frame the redraw lands in: replacing the <tbody> drops
+     and that is the frame a redraw lands in: replacing the <tbody> drops
      focus on <body> until `restoreGridFocus` puts it back, so a read arriving
      there sees BODY on a grid that is behaving correctly. Waiting for the
-     LAST step — the rebuild has landed AND the cursor is back in a cell — and
+     LAST step — the commit has settled AND the cursor is in a cell — and
      reporting that cell from inside the wait closes the window. Which cell it
      is stays the assertion, so this is still a test and not a tautology.
+
+     "Settled" is the write coming back. Since Issue #257 a commit whose field
+     cannot move the row does not redraw at all — it swaps that row's cells
+     where they stand — so a marked <tbody> being replaced is no longer a
+     signal that arrives on every path; the PATCH landing is. `landed` is
+     registered BEFORE the gesture, so the wait cannot miss it.
 
      No cap of its own, so it falls back on Playwright's 30 s default: under
      the full gate this suite has taken 52 s (review-logs/227-1) and 27 s
@@ -68,26 +74,27 @@ if (s) {
      on a client round trip is how a green change gets voted Verified −1 —
      wait on the signal, and let the default catch a grid that never puts the
      cursor back at all (Issue #216). */
-  const settledFocus = (page) => page.waitForFunction(() => {
-    if (document.querySelector('#main tbody[data-mark]')) return false; // the redraw has not landed yet
-    const td = document.activeElement?.closest?.('tr[data-eid] > td');
-    if (!td) return false; // ...and the grid has not put the cursor back yet
-    return { eid: td.parentElement.dataset.eid, field: td.dataset.field ?? null, tag: document.activeElement.tagName };
-  }).then((h) => h.jsonValue());
+  const commitLands = (page) => page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
+  const settledFocus = async (page, landed) => {
+    await landed;
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return page.waitForFunction(() => {
+      const td = document.activeElement?.closest?.('tr[data-eid] > td');
+      if (!td) return false; // the grid has not put the cursor back yet
+      return { eid: td.parentElement.dataset.eid, field: td.dataset.field ?? null, tag: document.activeElement.tagName };
+    }).then((h) => h.jsonValue());
+  };
 
   test('a redraw triggered by an edit leaves focus on the row the reader tabbed into', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
 
-    // Mark the live grid: the redraw replaces the whole <tbody>, so the mark
-    // vanishing is the signal that the PATCH round trip has landed.
-    await page.evaluate(() => { document.querySelector('#main tbody').dataset.mark = '1'; });
-
     // Edit the middle row's Note, then Tab — the gesture in the report.
     await page.click(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
     await page.keyboard.press('ArrowRight');   // the click selects the value (Feature #221); → collapses it to the end
     await page.keyboard.type('!');
+    const landed = commitLands(page);
     await page.keyboard.press('Tab');
 
     // Tab lands the resting cursor on Tail of the same row.
@@ -95,7 +102,7 @@ if (s) {
       'Tab moves along the row');
 
     // ...and it is still there after the grid rebuilds itself underneath.
-    assert.deepEqual(await settledFocus(page), { eid: second.id, field: 'Tail', tag: 'TD' },
+    assert.deepEqual(await settledFocus(page, landed), { eid: second.id, field: 'Tail', tag: 'TD' },
       'the redraw puts focus back on the cell Tab had reached');
 
     /* Which is what makes the NEXT Tab continue along the row instead of
@@ -120,7 +127,6 @@ if (s) {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Name"] input`);
-    await page.evaluate(() => { document.querySelector('#main tbody').dataset.mark = '1'; });
 
     // Description follows Name, and it rests as a preview span rather than a
     // form control — the very column the report was tabbing into. Restoring
@@ -129,11 +135,12 @@ if (s) {
     await page.click(`tr[data-eid="${second.id}"] td[data-field="Name"] input`);
     await page.keyboard.press('ArrowRight');   // the click selects the value (Feature #221); → collapses it to the end
     await page.keyboard.type('!');
+    const landed = commitLands(page);
     await page.keyboard.press('Tab');
     assert.deepEqual(await cursorInGrid(page), { eid: second.id, field: 'Description', tag: 'TD' },
       'Tab reaches the description cell');
 
-    assert.deepEqual(await settledFocus(page), { eid: second.id, field: 'Description', tag: 'TD' },
+    assert.deepEqual(await settledFocus(page, landed), { eid: second.id, field: 'Description', tag: 'TD' },
       'the redraw puts focus back on the cell the reader tabbed into');
 
     await page.close();
@@ -150,22 +157,24 @@ if (s) {
     await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
 
-    // Only the redraw's query is held. The PATCH lands at once, so the gesture
-    // is the reader's ordinary one and the wait is what is under test.
-    await page.route('**/api/tables/*/query', async (route) => {
+    /* The commit's own round trip is held. Since Issue #257 a Note commit
+       does not re-read the table at all, so the write itself is what a slow
+       network delays — and the cursor still has to be on the cell Tab
+       reached when it lands. */
+    await page.route('**/api/entities/*', async (route) => {
       await new Promise((r) => { setTimeout(r, 5500); });
       await route.continue();
     });
-    await page.evaluate(() => { document.querySelector('#main tbody').dataset.mark = '1'; });
 
     await page.click(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
     await page.keyboard.press('ArrowRight');   // the click selects the value (Feature #221); → collapses it to the end
     await page.keyboard.type('!');
+    const landed = commitLands(page);
     await page.keyboard.press('Tab');
 
     // 5.5 s: longer than the 5 s cap these waits used to carry, so this case
     // is red on the budget and green on the signal.
-    assert.deepEqual(await settledFocus(page), { eid: second.id, field: 'Tail', tag: 'TD' },
+    assert.deepEqual(await settledFocus(page, landed), { eid: second.id, field: 'Tail', tag: 'TD' },
       'the cursor is back on the cell Tab reached, 5.5 s after the edit');
 
     await page.close();

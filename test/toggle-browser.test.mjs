@@ -33,15 +33,17 @@ if (s) {
   });
   const word = (page, id) => page.locator(`${cell(id)} .wv-toggle-word`).textContent();
   const isOn = (page, id) => page.locator(`${cell(id)} .wv-toggle`).evaluate((l) => l.classList.contains('on'));
-  /* A flip paints at once and then reconciles through PATCH → GET → a grid
-     redraw that puts the focus back a frame later. `flip` marks the tbody
-     before the gesture and waits for the redraw to take the mark away, the
-     word to read as expected, and the cursor to be back on the cell — or
-     the next press lands in the frame the old row is already gone. */
+  /* A flip paints at once and then reconciles through the PATCH. `flip`
+     registers the write before the gesture and waits for it to come back,
+     then for the word to read as expected and the cursor to be on the cell —
+     or the next press lands in the frame the reconcile is still in. Before
+     Issue #257 the signal was a marked <tbody> being replaced by the grid's
+     redraw; a commit that patches its row in place never replaces one. */
   const flip = async (page, id, gesture, expect) => {
-    await page.evaluate(() => { document.querySelector('#main tbody').dataset.mark = '1'; });
+    const landed = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
     await gesture();
-    await page.waitForFunction(() => !document.querySelector('#main tbody')?.dataset.mark);
+    await landed;
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     await page.waitForFunction(([sel, w]) => document.querySelector(sel)?.textContent === w, [`${cell(id)} .wv-toggle-word`, expect]);
     await page.waitForFunction((sel) => document.activeElement === document.querySelector(sel), cell(id));
     assert.equal(await word(page, id), expect);

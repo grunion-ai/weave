@@ -49,15 +49,22 @@ if (s) {
     await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"]`);
     return page;
   };
-  /* A commit PATCHes and redraws, and the redraw puts the cursor back a
-     frame later. Where the cursor is BETWEEN those is not the contract;
-     where it is once the marked <tbody> has been replaced and focus has
-     landed is. */
-  const settledOn = (page, eid, field) => page.waitForFunction(([e, f]) => {
-    if (document.querySelector('#main tbody[data-mark]')) return false; // the redraw has not landed yet
-    const td = document.activeElement?.closest?.('tr[data-eid] > td');
-    return document.activeElement === td && td?.parentElement.dataset.eid === e && td?.dataset.field === f;
-  }, [eid, field], { timeout: 5000 });
+  /* A commit PATCHes and then settles the grid — since Issue #257 by swapping
+     the committed row's cells where they stand, and still by redrawing when
+     the edit can move the row. Where the cursor is DURING that is not the
+     contract; where it is once the write has come back and the frame after
+     it has been painted is. The write coming back is the one signal both
+     paths share: the old one, a marked <tbody> being replaced, only ever
+     fired on the redraw. `landed` is registered BEFORE the gesture. */
+  const commitLands = (page) => page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
+  const settledOn = async (page, landed, eid, field) => {
+    await landed;
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return page.waitForFunction(([e, f]) => {
+      const td = document.activeElement?.closest?.('tr[data-eid] > td');
+      return document.activeElement === td && td?.parentElement.dataset.eid === e && td?.dataset.field === f;
+    }, [eid, field], { timeout: 5000 });
+  };
   const restOn = async (page, eid, field) => {
     await page.focus(`tr[data-eid="${eid}"] td[data-field="${field}"]`);
     assert.deepEqual(await at(page), { eid, field, tag: 'TD' }, `resting on ${field}`);
@@ -166,16 +173,15 @@ if (s) {
   test('Return commits down the column and the cursor survives the redraw', async () => {
     const page = await grid();
     try {
-      await page.evaluate(() => { document.querySelector('#main tbody').dataset.mark = '1'; });
       await restOn(page, first.id, 'Note');
       await page.keyboard.press('Enter');
       await page.keyboard.type('A!');
+      const landed = commitLands(page);
       await page.keyboard.press('Enter');
-      await settledOn(page, second.id, 'Note');
+      await settledOn(page, landed, second.id, 'Note');
       assert.deepEqual(await at(page), { eid: second.id, field: 'Note', tag: 'TD' }, 'down one, at rest');
-      await page.waitForFunction(() => !document.querySelector('#main tbody[data-mark]'), null, { timeout: 5000 });
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-      assert.deepEqual(await at(page), { eid: second.id, field: 'Note', tag: 'TD' }, 'still there after the grid rebuilt');
+      assert.deepEqual(await at(page), { eid: second.id, field: 'Note', tag: 'TD' }, 'still there once the commit has settled');
       assert.equal(await page.inputValue(`tr[data-eid="${first.id}"] td[data-field="Note"] input`), 'A!', 'the edit landed');
       // And the value is on the server, not only on the page.
       const saved = await page.evaluate(async (id) => (await (await fetch(`/api/entities/${id}`)).json()).fields.Note, first.id);
@@ -186,14 +192,13 @@ if (s) {
   test('Tab out of an open cell commits across; ⇧Tab walks back from where it landed', async () => {
     const page = await grid();
     try {
-      await page.evaluate(() => { document.querySelector('#main tbody').dataset.mark = '1'; });
       await restOn(page, second.id, 'Note');
       await page.keyboard.press('Enter');
       await page.keyboard.type('!');
+      const landed = commitLands(page);
       await page.keyboard.press('Tab');
-      await settledOn(page, second.id, 'Kind');
+      await settledOn(page, landed, second.id, 'Kind');
       assert.deepEqual(await at(page), { eid: second.id, field: 'Kind', tag: 'TD' }, 'across one, at rest');
-      await page.waitForFunction(() => !document.querySelector('#main tbody[data-mark]'), null, { timeout: 5000 });
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       assert.deepEqual(await at(page), { eid: second.id, field: 'Kind', tag: 'TD' }, 'the redraw put the cursor back');
       await page.keyboard.press('Shift+Tab');
@@ -212,10 +217,10 @@ if (s) {
       await page.keyboard.press('Escape');
       await page.locator('.chip-pop').waitFor({ state: 'detached' });
 
-      await page.evaluate(() => { document.querySelector('#main tbody').dataset.mark = '1'; });
       await restOn(page, second.id, 'Done');
+      const landed = commitLands(page);
       await page.keyboard.press('Enter');
-      await page.waitForFunction(() => !document.querySelector('#main tbody[data-mark]'), null, { timeout: 5000 });
+      await landed;
       const done = await page.evaluate(async (id) => (await (await fetch(`/api/entities/${id}`)).json()).fields.Done, second.id);
       assert.equal(done, true, 'the box flipped and saved');
     } finally { await page.close(); }

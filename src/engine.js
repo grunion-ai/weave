@@ -1064,6 +1064,42 @@ export class Weave {
     this.#dirtyAll = false;
   }
 
+  /* What one write touched (Issue #257). `#dirty` is the store's business and
+     is cleared by every save, including the nested ones an automation causes,
+     so the blast radius a caller wants is collected alongside it: `touching`
+     opens a set, `#mark` fills it, and the caller reads it back whole. Nested
+     calls fold into the outer set rather than hiding from it. */
+  #touching = null;
+
+  touching(fn) {
+    const outer = this.#touching;
+    const set = new Set();
+    this.#touching = set;
+    try {
+      return { result: fn(), touched: [...set] };
+    } finally {
+      this.#touching = outer;
+      if (outer) for (const id of set) outer.add(id);
+    }
+  }
+
+  /* The rows a client must re-read after writing `id`: the ones this write
+     marked, plus every row `id` is linked to — a lookup or rollup there shows
+     this row's value and recomputes on read, so it repaints with nothing of
+     its own written. A one-way target-set relation POINTING AT `id` is the
+     one link this cannot see from here; that row keeps its stale value until
+     its page is read again. */
+  affectedBy(id, touched = []) {
+    const out = new Set([id, ...touched]);
+    const e = this.state.entities[id];
+    const db = e ? this.state.tables[e.dbId] : null;
+    for (const f of Object.values(db?.fields ?? {})) {
+      if (f.type !== 'relation') continue;
+      for (const rid of this.#relationIds(e, f)) out.add(rid);
+    }
+    return [...out];
+  }
+
   #mark(entityOrId) {
     const e = typeof entityOrId === 'string' ? this.state.entities[entityOrId] : entityOrId;
     // A formula Name is materialised into values[nameFieldId] on the row's own
@@ -1075,7 +1111,9 @@ export class Weave {
     if (nf?.type === 'formula' && e.values) {
       try { const v = this.#resolve(e, db, nf, 0); e.values[nf.id] = v == null ? '' : String(v); } catch { /* an erroring formula leaves the last value */ }
     }
-    this.#dirty.add(typeof entityOrId === 'string' ? entityOrId : entityOrId.id);
+    const id = typeof entityOrId === 'string' ? entityOrId : entityOrId.id;
+    this.#dirty.add(id);
+    this.#touching?.add(id);
   }
 
   // Re-read state when another process (CLI beside the server, a second

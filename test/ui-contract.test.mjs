@@ -271,14 +271,21 @@ test('focus survives the redraw a pick causes', () => {
 });
 
 test('every grid redraw remembers where focus was before it runs (Issue #83)', () => {
-  // A pick records its own cell; a TABBED-OUT text cell has nobody to do that
-  // for it, so each onSaved reads the live focus on the way in. Behaviour is
-  // gated by test/grid-tab-focus-browser.test.mjs — this pins all three
-  // grid-bearing pages so a fourth cannot land without it.
+  /* A pick records its own cell; a TABBED-OUT text cell has nobody to do that
+     for it, so each onSaved reads the live focus on the way in. Since Issue
+     #257 the table page opens with a path that does not redraw at all — it
+     swaps the committed row's cells where they stand, so there is nothing to
+     put focus back onto — and that path returns before this pair. Every
+     onSaved still reaches rememberGridFocus before anything it draws.
+     Behaviour is gated by test/grid-tab-focus-browser.test.mjs and
+     test/cell-commit-patch-browser.test.mjs; this pins all three grid-bearing
+     pages so a fourth cannot land without it. */
   assert.match(APP, /function rememberGridFocus/);
-  const saves = [...APP.matchAll(/const onSaved = async \(\) => \{\n\s*([^\n]*)/g)].map((m) => m[1]);
+  const saves = [...APP.matchAll(/const onSaved = async \([^)]*\) => \{\n([\s\S]{0,400}?)rememberGridFocus\(\);/g)];
   assert.ok(saves.length >= 3, `expected the three grid pages, found ${saves.length}`);
-  for (const first of saves) assert.match(first, /rememberGridFocus\(\);/);
+  for (const [, before] of saves) {
+    assert.doesNotMatch(before, /drawDatabase|renderTable|pager\.refresh/, 'nothing is drawn before focus is remembered');
+  }
 });
 
 test('the focused popover row is as visible as the hovered one', () => {
