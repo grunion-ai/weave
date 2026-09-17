@@ -104,6 +104,7 @@ const SURFACE = [
    persistence, and the two that must never leave the process. */
 const INTERNAL = {
   save: 'persistence', maybeRefresh: 'cross-process refresh',
+  schemaVersion: 'read helper (Issue #274) — the structure\'s fingerprint; every API response stamps it as X-Weave-Schema-Version and GET /api/workspace ships it in the body, so an agent reads it without a verb of its own',
   joinRegistry: 'hub plumbing (Feature #219) — the hub joins every member to the root registry on adoption',
   hostRegistry: 'hub plumbing (Feature #219) — the engine the hub stands on hosts the registry',
   syncRegistry: 'hub plumbing (Feature #219) — re-asserts a workspace\'s rows after a soft delete or restore; rebuildRegistry is the surfaced verb',

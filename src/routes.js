@@ -102,9 +102,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     let path = rx.path;
     // Where the reader is: an instant renders in this zone (public/date-grain.js).
     const viewerZone = rx.header('x-weave-zone') || null;
+    /* Every answer names the structure it was computed against (Issue #274),
+       so a tab that loaded the schema once learns it moved — under the CLI,
+       an agent, an automation, a second tab — on the query it was already
+       making, and refetches the schema before it draws stale columns. It is
+       the workspace the URL names, never the registry root a request may
+       fall through to: a version that alternated between two workspaces
+       would have a tab refetching forever. */
+    let versionOf = null;
     const out = (status, data, headers = {}) => {
       const isBin = data instanceof Uint8Array;
       const isStr = typeof data === 'string';
+      let schemaVersion = null;
+      try { schemaVersion = versionOf?.schemaVersion?.() ?? null; } catch { /* never fail a response over a header */ }
       // Same-origin only: no CORS headers. An unauthenticated localhost API
       // with ACAO:* would let any open website read/write the workspace
       // cross-origin (2026-08-16 release audit).
@@ -112,6 +122,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         status,
         headers: {
           'Content-Type': headers['Content-Type'] ?? (isBin || isStr ? 'text/plain; charset=utf-8' : 'application/json'),
+          ...(schemaVersion ? { 'X-Weave-Schema-Version': schemaVersion } : {}),
           ...headers,
         },
         body: isBin || isStr ? data : JSON.stringify(data, null, 1),
@@ -142,6 +153,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     // Pick up commits from other processes (CLI beside the server) before
     // serving anything from this workspace.
     weave.maybeRefresh();
+    versionOf = weave;
 
     /* The registry lives at the root (Feature #219), but a member page reads
        and edits the rows that describe it through its own prefix: an entity
@@ -565,7 +577,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if (route === 'GET /api/workspace') {
           const ws = weave.getWorkspace();
-          return out(200, { ...ws, url: `/w/${ws.id}/` });
+          // In the body too, so an agent or a CLI can poll the structure's
+          // version without reading response headers (Issue #274).
+          return out(200, { ...ws, url: `/w/${ws.id}/`, schemaVersion: weave.schemaVersion() });
         }
 
         // Accounts (Feature #14). Once any account exists, only an admin

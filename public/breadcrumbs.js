@@ -61,6 +61,9 @@
   function docTitle(name, wsName) {
     const n = String(name ?? '').trim();
     const w = String(wsName ?? '').trim();
+    // The workspace page names the workspace twice otherwise: its header is
+    // the workspace name, and so is the second half of every title here.
+    if (n && n === w) return w;
     return n && w ? `${n} · ${w}` : n || w || 'Weave';
   }
 

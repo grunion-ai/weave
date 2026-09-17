@@ -246,6 +246,13 @@ Notes that save round trips:
   trash (its .db stays; `?deleted=1` lists the trash) and
   `POST /api/workspaces/<name>/restore` brings it back — removing the file
   itself stays a human act.
+- **The schema carries a version.** Every API response stamps
+  `X-Weave-Schema-Version`, and `GET /api/workspace` ships the same string as
+  `schemaVersion`. It fingerprints the structure (spaces, tables, fields,
+  automations), so it moves when anyone changes the schema and holds still
+  while rows are written. A client that caches the schema compares the stamp
+  on a read it was already making and refetches `GET /api/schema` when the two
+  disagree; the browser app does exactly that (Issue #274).
 
 ## Self-documenting workspace
 

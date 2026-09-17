@@ -83,6 +83,9 @@ test('docTitle: <row or table> · <workspace>, the workspace alone, Weave with n
   assert.equal(docTitle('Issue', 'weave'), 'Issue · weave');
   assert.equal(docTitle('Acme Working Capital', 'uno'), 'Acme Working Capital · uno');
   assert.equal(docTitle(null, 'weave'), 'weave');
+  // The workspace page: its own name IS the workspace's, and a tab reading
+  // "weave \u00b7 weave" says nothing the first word did not.
+  assert.equal(docTitle('weave', 'weave'), 'weave');
   assert.equal(docTitle('  ', 'weave'), 'weave');
   assert.equal(docTitle('Deals', ''), 'Deals');
   assert.equal(docTitle(null, ''), 'Weave');

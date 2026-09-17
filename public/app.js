@@ -67,6 +67,40 @@ for (const ev of ['beforeunload', 'pagehide']) {
   window.addEventListener(ev, () => { leaving = true; commitActiveEdit(); });
 }
 
+/* The structure's version this tab's schema was loaded at (Issue #274). The
+   schema is fetched once at boot; every answer the server gives names the
+   structure it was computed against, so a read that comes back stamped with
+   a version this tab has not loaded means somebody else — the CLI, an agent
+   over MCP, an automation, a second tab — moved the schema, and the tab
+   refetches it before drawing another row against definitions it no longer
+   has. Set by loadSchema(), which owns what "loaded" means. */
+let loadedSchemaVersion = null;
+// The version the last response named, whatever it was for: loadSchema()
+// reads it back to learn which structure the schema it just took belongs to.
+let lastSchemaVersion = null;
+// True while loadSchema() is in flight: its own responses carry the version
+// it is in the middle of adopting and must not read as drift.
+let schemaLoading = false;
+/* The refetch in flight, if any: the FETCH, never the redraw that follows
+   it. A render waits on this, so a navigation made while the schema is being
+   refetched draws from the fresh one. Waiting on the redraw instead would
+   deadlock, since the redraw is itself a render. */
+let schemaFetch = null;
+
+/* Only a READ is somebody else's news. A write is this tab's own doing —
+   the path that made it refreshes whatever it needs (a column resize
+   deliberately does not repaint, Issue #160) — so a mutation adopts the
+   version it caused without a redraw. The row query every navigation makes
+   is a read wearing POST. */
+function noteSchemaVersion(version, isRead) {
+  if (!version) return;
+  lastSchemaVersion = version;
+  if (schemaLoading) return;
+  if (loadedSchemaVersion === null || !isRead) { loadedSchemaVersion = version; return; }
+  if (version === loadedSchemaVersion) return;
+  syncSchema();
+}
+
 async function api(method, path, body) {
   const res = await fetch(WS_PREFIX + '/api' + path, {
     method,
@@ -75,6 +109,7 @@ async function api(method, path, body) {
     keepalive: leaving,
   });
   const data = await res.json().catch(() => ({}));
+  noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
   if (!res.ok) throw new Error(data.error ?? `${res.status}`);
   return data;
 }
@@ -621,7 +656,11 @@ function allTables() {
 }
 
 async function loadSchema() {
-  state.schema = await api('GET', '/schema');
+  schemaLoading = true;
+  try {
+    state.schema = await api('GET', '/schema');
+    loadedSchemaVersion = lastSchemaVersion;
+  } finally { schemaLoading = false; }
   /* The registry lives once, at the weave root (Feature #219). A member
      workspace's schema has no Workspace space, so the Σ row, the space tiles
      and the registry grids read the root's — its API answers for those rows
@@ -9526,7 +9565,18 @@ function paintRouteError(err) {
 /* Promise.resolve().then, not work().catch: renderRoute is a plain function
    whose branches return a promise, a value or nothing, and it can throw
    before it ever returns — all three have to land in the same catch. */
-const renderRouteSafely = () => Promise.resolve().then(renderRoute).catch(paintRouteError);
+/* One render at a time, in the order they were asked for (Issue #274). Two
+   renders in flight over the same #main means the slower one wins whatever
+   it was drawing from, and the loser can be the fresher schema. */
+let renderChain = Promise.resolve();
+const renderRouteSafely = () => {
+  renderChain = renderChain
+    .catch(() => {})
+    .then(() => schemaFetch)
+    .then(renderRoute)
+    .catch(paintRouteError);
+  return renderChain;
+};
 // Every route change may earn the rope, but only past LOADER_SHOW_AFTER_MS
 // (500ms): the skeleton covers the wait until a load proves it is genuinely
 // long (Feature #148). At the old 200ms threshold the full-cycle rule WAS
@@ -9859,23 +9909,36 @@ function wireThemeToggle() {
   });
 }
 
-// Schema can change from another tab, the CLI, or an agent while a view is
-// open. On refocus, re-fetch it; if it changed, re-render — unless a document
-// editor is open (never clobber unsaved text; hint instead).
-window.addEventListener('focus', async () => {
+/* Schema can change from another tab, the CLI, or an agent while a view is
+   open. Re-fetch it and, if it moved, redraw — unless a document editor is
+   open (never clobber unsaved text; hint instead).
+
+   Two things call this. Refocusing the window (Feature #33) covers the
+   person who edited in another tab and came back. A read stamped with a
+   version this tab has not loaded (Issue #274) covers everyone who does not
+   come back: an agent over MCP, the CLI, an automation. Only the second one
+   catches the tab that never loses focus while it navigates. */
+function syncSchema() {
+  if (schemaFetch) return schemaFetch;
   const before = JSON.stringify(state.schema);
-  try {
-    await loadSchema();
-  } catch { return; }
-  if (JSON.stringify(state.schema) === before) return;
-  // A re-render destroys live editors. Never do that over text that has not
-  // reached the server yet.
-  if (pendingDocSaves.size) {
-    toast('Schema changed elsewhere — reopen this entity to see new fields');
-    return;
-  }
-  route();
-});
+  schemaFetch = loadSchema().then(() => true, () => false);
+  return schemaFetch.then((loaded) => {
+    schemaFetch = null;
+    if (!loaded || JSON.stringify(state.schema) === before) return;
+    // A re-render destroys live editors. Never do that over text that has not
+    // reached the server yet.
+    if (pendingDocSaves.size) {
+      toast('Schema changed elsewhere — reopen this entity to see new fields');
+      return;
+    }
+    /* The render that DISCOVERED the drift is still running, on the schema
+       this one replaces: the version came back on its own row query. Renders
+       are chained, so this one takes the page after it, and the fresh paint
+       is the one that stays. */
+    route();
+  });
+}
+window.addEventListener('focus', syncSchema);
 
 
 /* ---------- the bug reporter (Feature #141) ---------- */

@@ -712,11 +712,38 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+/* What "the schema" means for Weave#schemaVersion() below: the structural
+   rows, minus `publicIdCounter`. That counter lives on the table row and ticks on
+   every row insert, which is not a schema change — leaving it in would cost
+   every open tab a schema refetch every time anyone added a row anywhere.
+   The hash is FNV-1a over the canonical JSON, paired with its length in hex: a
+   collision would cost one missed refresh, which is the bug this fixes, so
+   it never needs to be cryptographic. */
+function schemaFingerprint(state) {
+  const { spaces = {}, tables = {}, automations = {}, entities, ...meta } = state ?? {};
+  const drop = (key, value) => (key === 'publicIdCounter' ? undefined : value);
+  const parts = [JSON.stringify(meta, drop)];
+  for (const collection of [spaces, tables, automations]) {
+    for (const id of Object.keys(collection).sort()) parts.push(id, JSON.stringify(collection[id], drop));
+  }
+  const text = parts.join('\u0000');
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${text.length.toString(16)}${h.toString(16).padStart(8, '0')}`;
+}
+
 export class Weave {
   // Entity ids mutated since the last save — the store flushes only these
   // rows. An id missing from state at save time means "delete the row".
   #dirty = new Set();
   #dirtyAll = false;
+
+  // Memo for schemaVersion(): cleared by every save and every reload, so it
+  // is recomputed at most once per write and only when someone asks.
+  #schemaVersion = null;
 
   // The computed fields currently resolving, innermost last — see #resolve.
   #computing = [];
@@ -1062,6 +1089,7 @@ export class Weave {
     this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll });
     this.#dirty.clear();
     this.#dirtyAll = false;
+    this.#schemaVersion = null;
   }
 
   /* What one write touched (Issue #257). `#dirty` is the store's business and
@@ -1127,7 +1155,25 @@ export class Weave {
       // root rows are a projection, so re-assert them (Feature #219).
       if (this.registryHost) this.#syncAll();
     }
+    this.#schemaVersion = null;
     return true;
+  }
+
+  /* The structure's fingerprint (Issue #274). A browser tab loads the schema
+     once and then draws fresh rows against it forever; this is how it learns
+     the schema moved underneath it — under the CLI, an agent over MCP, an
+     automation or a second tab — on the query it was already making, since
+     every API response stamps this value. Feature #33's focus listener only
+     ever covered the second-tab case: nobody refocuses the window after an
+     agent writes.
+
+     Derived, never stored: two processes holding the same workspace compute
+     the same string, so nothing has to be bumped, persisted or coordinated.
+     The cost is one stringify + one hash of the structural rows (~0.4ms on
+     the largest workspace here), paid at most once per write. */
+  schemaVersion() {
+    this.#schemaVersion ??= schemaFingerprint(this.state);
+    return this.#schemaVersion;
   }
 
   // ---------------- spaces ----------------
