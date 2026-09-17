@@ -4,6 +4,8 @@ weave's tracker (the Development space in the weave workspace) is the changelog 
 
 ## Unreleased
 
+## v0.4.23 — 2026-09-17
+
 - **Search keeps the hierarchy and finds saved views** (Issue #280): `universalSearch` sorted workspace, space, table and row hits together and then sliced to `limit`, and a row can score up to 20 against 8–9 for a container, so `GET /w/weave/api/search?q=weave&all=1&limit=200` returned 200 rows and no workspace, and `q=issue&limit=40` never returned the Issue table. `limit` now bounds entity rows only: a shared `Weave.capRows` keeps every matching workspace, space, table and view, caps rows, and orders in three tiers: an exact id hit first (Issue #113), then the containers, then text-matched rows. The scoped route, the cross-workspace merge (`all=1`) and `weave_search` on MCP all go through it. Saved views are searched by name (kind `view`, url `#/view/<id>`), and a ⌘K pick on one opens the view. Gates: `test/search-hierarchy.test.mjs` (new, 4 cases: engine, id-hit ranking, scoped and cross-workspace routes), `test/search-view-browser.test.mjs` (new: the palette labels and opens a view).
 
 ## v0.4.22 — 2026-09-16
