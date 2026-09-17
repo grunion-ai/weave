@@ -5594,8 +5594,11 @@ export class Weave {
     return results.sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
-  // Universal search across everything addressable, with stable permalinks.
-  // Kinds: workspace, space, table, entity.
+  /* Universal search across everything addressable, with stable permalinks.
+     Kinds: workspace, space, table, view, entity. `limit` bounds the entity
+     rows only: the containers that match are always returned, however many
+     rows match too (Issue #280 — a sort-then-slice let rows scoring above
+     the hierarchy crowd it out). */
   universalSearch(text, { limit = 25, prefix = '' } = {}) {
     const needle = String(text).toLowerCase().trim();
     if (!needle) return [];
@@ -5616,12 +5619,29 @@ export class Weave {
         });
       }
     }
+    for (const v of this.listViews()) {
+      if (v.name.toLowerCase().includes(needle)) {
+        results.push({ kind: 'view', id: v.id, name: v.name, url: `${prefix}/#/view/${v.id}`, score: 8 });
+      }
+    }
     for (const hit of this.search(text, { limit })) {
       // The Workspaces registry row IS the workspace hit above (Feature #219).
       if (this.state.tables[this.state.entities[hit.id]?.dbId]?.system === 'workspaces') continue;
       results.push({ kind: 'entity', url: `${prefix}/e/${hit.id}`, ...hit });
     }
-    return results.sort((a, b) => b.score - a.score).slice(0, limit);
+    return Weave.capRows(results, limit);
+  }
+
+  /* At most `limit` entity rows; hierarchy hits are never cut. Order is
+     three tiers, score order inside each: an exact id hit (score ≥ 20,
+     Issue #113), then the containers, then text-matched rows — the
+     containers section sits above rows the way quick-find tools list it.
+     Shared by the scoped search and the cross-workspace merge. */
+  static capRows(hits, limit) {
+    const tier = (h) => (h.kind !== 'entity' ? 1 : h.score >= 20 ? 2 : 0);
+    let rows = 0;
+    return [...hits].sort((a, b) => tier(b) - tier(a) || b.score - a.score)
+      .filter((h) => h.kind !== 'entity' || rows++ < limit);
   }
 
   /* The headline fields a reference chip previews. Zero configuration by

@@ -4,7 +4,7 @@
 // runs under node (src/server.js wraps it) and workerd (src/worker.js will).
 // The adapter owns transport: reading the body stream, writing the response,
 // and static assets (node reads public/; Workers bind Static Assets).
-import { WeaveError } from './engine.js';
+import { Weave, WeaveError } from './engine.js';
 import { handleApplet } from './applet.js';
 import { VOCABULARY } from './vocabulary.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.js';
@@ -1021,7 +1021,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 results.push({ workspace: name, ...hit });
               }
             }
-            return out(200, results.sort((a, b) => b.score - a.score).slice(0, limit));
+            return out(200, Weave.capRows(results, limit));
           }
           return out(200, weave.universalSearch(q, { limit, prefix: wsPrefix }));
         }

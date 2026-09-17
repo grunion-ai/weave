@@ -159,7 +159,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_search',
-    description: 'Universal search across the workspace, spaces, tables, and entities (names, documents, comments). Every result carries a stable permalink url.',
+    description: 'Universal search across the workspace, spaces, tables, saved views, and entities (names, documents, comments). Every result carries a stable permalink url. limit bounds entity rows only; every matching workspace, space, table and view is always returned.',
     inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] },
   },
   {

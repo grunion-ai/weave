@@ -9218,7 +9218,7 @@ async function showHome() {
 
 /* ---------- universal search (sidebar + ⌘K palette) ---------- */
 
-const KIND_ICON = { workspace: '', space: '▣', table: '▦', entity: '●' };
+const KIND_ICON = { workspace: '', space: '▣', table: '▦', view: '▤', entity: '●' };
 
 function navigateToResult(hit) {
   // Results can come from another workspace: follow the permalink's path.
@@ -9230,6 +9230,7 @@ function navigateToResult(hit) {
   if (hit.kind === 'entity') openEntity(hit.id);
   else if (hit.kind === 'table') location.hash = `#/table/${hit.id}`;
   else if (hit.kind === 'space') location.hash = `#/space/${hit.id}`;
+  else if (hit.kind === 'view') location.hash = `#/view/${hit.id}`;
   else location.hash = '#/';
 }
 
@@ -9269,7 +9270,7 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
   const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
   const input = el('input', {
     id: 'cmdk-input', autocomplete: 'off',
-    placeholder: placeholder ?? 'Search workspace, spaces, tables, entities…',
+    placeholder: placeholder ?? 'Search workspace, spaces, tables, views, entities…',
   });
   const list = el('div', { id: 'cmdk-results' });
   let hits = [], rowEls = [], sel = 0;
