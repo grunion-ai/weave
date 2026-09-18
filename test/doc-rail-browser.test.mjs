@@ -51,4 +51,28 @@ if (s) {
     assert.ok(labels >= 4, 'the headings are readable in the open panel');
     await page.close();
   });
+
+  /* Issue #269: a window resize fired every rail's schedule on every event.
+     A burst of resize events now costs one pass per animation frame. */
+  test('a burst of resize events reschedules the rails once per frame', async () => {
+    const page = await browser.newPage();
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await page.goto(`${base}/#/entity/${target.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
+    const calls = await page.evaluate(async () => {
+      const real = window.setTimeout;
+      let n = 0;
+      window.setTimeout = (fn, ms, ...rest) => { if (ms === 250) n++; return real(fn, ms, ...rest); };
+      try {
+        for (let i = 0; i < 30; i++) window.dispatchEvent(new Event('resize'));
+        const sync = n;
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return { sync, framed: n, rails: document.querySelectorAll('.doc-rail').length };
+      } finally { window.setTimeout = real; }
+    });
+    assert.ok(calls.rails >= 1, 'the page has a rail to reschedule');
+    assert.equal(calls.sync, 0, `no rail work inside the burst (saw ${calls.sync})`);
+    assert.ok(calls.framed >= 1 && calls.framed <= calls.rails, `one reschedule per rail after the frame (saw ${calls.framed} for ${calls.rails})`);
+    await page.close();
+  });
 }

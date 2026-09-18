@@ -3182,34 +3182,63 @@ function filterWhere(db) {
       : [f.name, 'in', states]));
   return conds.length ? conds : undefined;
 }
+/* A burst of chip clicks is one write and one re-read (Issue #269). Each
+   click used to PATCH, re-read the schema and re-query the grid on its own,
+   and read the selection the strip was drawn with, so a second quick click
+   dropped the first. The strip now keeps its own copy of the selection, a
+   click paints its chip at once, and the PATCH and the grid's re-query run
+   once the clicks pause. Flushes chain: a click during a re-read queues one
+   more instead of racing it. The rows still come from the engine's
+   where-language (Feature #38); the grid never filters client-side. */
+const FILTER_DEBOUNCE = 250;
 function filterStrip(db, onChange) {
   const wfFields = db.fields.filter(isFilterField);
   if (!wfFields.length) return null;
-  const active = tableFilters(db);
+  const active = { ...tableFilters(db) };
   const strip = el('div', { class: 'filter-strip' });
+  const chips = [];
+  let timer = 0;
+  let flushing = Promise.resolve();
+  const flush = () => {
+    clearTimeout(timer);
+    const next = { ...active };
+    flushing = flushing.catch(() => {}).then(async () => {
+      await setTableFilters(db, next);
+      // A reader who left the table in the pause keeps the saved filter but
+      // is not pulled back to the grid by its redraw.
+      if (strip.isConnected) await onChange();
+    });
+    return flushing;
+  };
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE); };
   for (const f of wfFields) {
     const row = el('span', { class: 'filter-group' },
       el('span', { class: 'filter-label' }, f.name));
     for (const st of filterStates(f)) {
       const on = (active[f.name] ?? []).includes(st.name);
-      row.append(el('button', {
+      const chip = el('button', {
         class: `filter-chip cat-${st.category}${on ? ' on' : ''}`,
-        onclick: async () => {
+        onclick: () => {
           const cur = new Set(active[f.name] ?? []);
           cur.has(st.name) ? cur.delete(st.name) : cur.add(st.name);
-          const next = { ...active };
-          if (cur.size) next[f.name] = [...cur]; else delete next[f.name];
-          await setTableFilters(db, next);
-          onChange();
+          if (cur.size) active[f.name] = [...cur]; else delete active[f.name];
+          chip.classList.toggle('on', cur.has(st.name));
+          schedule();
         },
-      }, st.name));
+      }, st.name);
+      chips.push(chip);
+      row.append(chip);
     }
     strip.append(row);
   }
   if (Object.keys(active).length) {
     strip.append(el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny',
-      onclick: async () => { await setTableFilters(db, {}); onChange(); },
+      onclick: () => {
+        for (const k of Object.keys(active)) delete active[k];
+        for (const c of chips) c.classList.remove('on');
+        flush();
+      },
     }, 'Clear'));
   }
   return strip;
@@ -7748,8 +7777,15 @@ window.addEventListener('scroll', () => {
   for (const st of refChipLayers) st.schedule();
   for (const st of docRails) st.schedule();
 }, true);
+/* One pass per animation frame (Issue #269): a window drag fires resize
+   dozens of times a second, and every event used to reschedule every rail. */
+let resizeFrame = 0;
 window.addEventListener('resize', () => {
-  for (const st of docRails) st.schedule(); // an open outline re-pins its x
+  if (resizeFrame) return;
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = 0;
+    for (const st of docRails) st.schedule(); // an open outline re-pins its x
+  });
 });
 
 async function refreshRefChips(st) {
