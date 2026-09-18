@@ -2,6 +2,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { spawnSync, execFile } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
 import { createRequestHandler } from './routes.js';
@@ -70,6 +71,45 @@ const MIME = {
   '.png': 'image/png',
   '.json': 'application/json',
 };
+
+/* ---------- compression (Issue #258) ----------
+   A cold load moved 2.1 MB: app.js 475 KB, the schema 96 KB, all as plain
+   text. The Node adapter gzips text-shaped answers — statics and JSON alike —
+   when the request says it can inflate them. Cloudflare (src/worker.js)
+   compresses at its edge, so this lives here, not in the shared dispatcher.
+   Under 1 KB the header costs more than it saves; images are already packed. */
+const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml)|image\/svg\+xml)/i;
+const GZIP_MIN = 1024;
+
+// RFC 9110 12.5.3: gzip's own q wins; failing that the wildcard's; q=0 refuses.
+export function acceptsGzip(header) {
+  const q = {};
+  for (const part of String(header ?? '').toLowerCase().split(',')) {
+    const [coding, ...params] = part.split(';').map((x) => x.trim());
+    if (!coding) continue;
+    const qp = params.find((x) => x.startsWith('q='));
+    q[coding] = qp ? Number(qp.slice(2)) : 1;
+  }
+  const v = q.gzip ?? q['*'];
+  return v > 0;
+}
+
+export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache = null, path = '' } = {}) {
+  const type = headers['Content-Type'] ?? '';
+  if (!COMPRESSIBLE.test(type) || headers['Content-Encoding']) return { headers, body };
+  // Every representation of a compressible answer depends on the header, 304s included.
+  const vary = headers.Vary ? `${headers.Vary}, Accept-Encoding` : 'Accept-Encoding';
+  const size = typeof body === 'string' ? Buffer.byteLength(body) : body?.length ?? 0;
+  if (status !== 200 || size < GZIP_MIN || !acceptsGzip(acceptEncoding)) return { headers: { ...headers, Vary: vary }, body };
+  // Two files can share a size and an mtime; the path keeps them apart.
+  const key = headers.ETag && `${path} ${headers.ETag}`;
+  let zipped = key && cache?.get(key);
+  if (!zipped) {
+    zipped = gzipSync(body);
+    if (key && cache) cache.set(key, zipped);
+  }
+  return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'gzip' }, body: zipped };
+}
 
 async function readBody(req) {
   const chunks = [];
@@ -281,12 +321,22 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     // Last-Modified lets that revalidation answer 304 (Feature #148): a
     // workspace switch is a full page load, and without it every switch
     // re-downloaded ~1MB of unchanged vendor JS/CSS.
-    const mtime = statSync(full).mtime;
+    const { mtime, size } = statSync(full);
     const headers = {
       'Content-Type': MIME[extname(full)] ?? 'application/octet-stream',
       'Cache-Control': 'no-cache',
       'Last-Modified': mtime.toUTCString(),
+      /* Weak on purpose (Issue #258): the adapter may gzip the body, and a
+         weak validator names the file, not the bytes of one encoding. */
+      ETag: `W/"${size.toString(16)}-${Math.floor(mtime.getTime()).toString(16)}"`,
     };
+    // If-None-Match wins over If-Modified-Since when both are sent (RFC 9110 13.2.2).
+    const match = rx?.header?.('if-none-match');
+    if (match) {
+      const tags = match.split(',').map((t) => t.trim().replace(/^W\//, ''));
+      if (tags.includes('*') || tags.includes(headers.ETag.slice(2))) return { status: 304, headers, body: '' };
+      return { status: 200, headers, body: readFileSync(full) };
+    }
     const since = Date.parse(rx?.header?.('if-modified-since') ?? '');
     // HTTP dates carry whole seconds; compare at that grain or nothing matches.
     if (since && Math.floor(mtime.getTime() / 1000) <= Math.floor(since / 1000)) {
@@ -309,6 +359,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     ...(limits ? { limits } : {}),
   });
 
+  // gzip of a static, keyed by its ETag: app.js costs ~10ms to deflate and
+  // only changes on a deploy. ponytail: unbounded by count, but the keys are
+  // the files in public/ at their current versions — a deploy restarts us.
+  const gzCache = new Map();
   const server = createHttpServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const outcome = await handle({
@@ -319,8 +373,9 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       readBody: () => readBody(req),
       remote: req.socket?.remoteAddress ?? null,
     });
-    res.writeHead(outcome.status, outcome.headers);
-    res.end(outcome.body);
+    const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
+    res.writeHead(outcome.status, headers);
+    res.end(body);
   });
 
   return server;

@@ -657,27 +657,37 @@ function allTables() {
   return state.schema.flatMap((s) => s.tables.map((d) => ({ ...d, space: s.space, spaceId: s.spaceId })));
 }
 
+/* The registry lives once, at the weave root (Feature #219). A member
+   workspace's schema has no Workspace space, so the Σ row, the space tiles
+   and the registry grids read the root's — its API answers for those rows
+   through this workspace's own prefix. */
+async function readRegistry() {
+  const res = await fetch('/api/schema', { headers: { 'X-Weave-Zone': LOCAL_ZONE } });
+  // No access to the root is an answer, not a failure: no registry to show.
+  if (res.status === 401 || res.status === 403) return [];
+  if (!res.ok) throw new Error(`${res.status}`);
+  const rootSchema = await res.json();
+  return Array.isArray(rootSchema) ? rootSchema.filter((sp) => sp.system === 'workspace') : [];
+}
+
 async function loadSchema() {
+  /* Three independent reads go out together (Issue #258); they used to run
+     one after another before routing could start. The root registry is asked
+     for up front on a prefixed URL whose last load needed it (or on the first
+     load), and the own schema decides afterwards whether it is used. The
+     workspace id tells a registry row whether it is ours or another
+     workspace's (deep link); it is read once. */
+  const registryRead = WS_PREFIX && state.registry !== null ? readRegistry() : null;
+  registryRead?.catch(() => {}); // awaited below, or dropped if the schema read fails
+  const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null); // null: older server
   schemaLoading = true;
   try {
     state.schema = await api('GET', '/schema');
     loadedSchemaVersion = lastSchemaVersion;
   } finally { schemaLoading = false; }
-  /* The registry lives once, at the weave root (Feature #219). A member
-     workspace's schema has no Workspace space, so the Σ row, the space tiles
-     and the registry grids read the root's — its API answers for those rows
-     through this workspace's own prefix. The workspace id tells a registry
-     row whether it is ours or another workspace's (deep link). */
   if (WS_PREFIX && !state.schema.some((sp) => sp.system === 'workspace')) {
     try {
-      const res = await fetch('/api/schema', { headers: { 'X-Weave-Zone': LOCAL_ZONE } });
-      // No access to the root is an answer, not a failure: no registry to show.
-      if (res.status === 401 || res.status === 403) state.registry = [];
-      else {
-        if (!res.ok) throw new Error(`${res.status}`);
-        const rootSchema = await res.json();
-        state.registry = Array.isArray(rootSchema) ? rootSchema.filter((sp) => sp.system === 'workspace') : [];
-      }
+      state.registry = await (registryRead ?? readRegistry());
     } catch (err) {
       // The rail still renders without the registry, but say why it is empty
       // rather than let it vanish (Issue #265).
@@ -685,7 +695,7 @@ async function loadSchema() {
       toast(`Couldn't load the workspace registry: ${err.message}`, true);
     }
   } else state.registry = null;
-  if (!state.wsId) { try { state.wsId = (await api('GET', '/workspace')).id; } catch { /* older server */ } }
+  if (idRead) state.wsId = await idRead;
   renderNav();
 }
 
@@ -7045,8 +7055,10 @@ async function relationMapCard(title, { spaceId = null } = {}) {
   const card = el('div', { class: 'card panel home-map' },
     el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, title)),
     el('div', { class: 'card-body' }, el('div', { class: 'wv-empty' }, '…')));
-  const [schema, automations] = await Promise.all([api('GET', '/schema'), api('GET', '/automations').catch(() => [])]);
-  const tables = schema.flatMap((s) => s.tables.map((t) => ({ ...t, space: s.space, spaceId: s.spaceId })));
+  // The tab's own schema: boot loaded it and Issue #274 keeps it current, so
+  // fetching it again here was a second 96 KB read per page (Issue #258).
+  const automations = await api('GET', '/automations').catch(() => []);
+  const tables = state.schema.flatMap((s) => s.tables.map((t) => ({ ...t, space: s.space, spaceId: s.spaceId })));
   const view = relationMapView(tables, automations, { spaceId });
   card.querySelector('.card-body').replaceChildren(view);
   return view.classList.contains('wv-empty') ? null : card;
@@ -7061,9 +7073,8 @@ async function showMap() {
     permalink: `${location.origin}${WS_PREFIX}/#/map`,
     title: 'Relation map',
   }));
-  const [schema, automations] = await Promise.all([api('GET', '/schema'), api('GET', '/automations')]);
-  const tables = schema.flatMap((s) => s.tables.map((t) => ({ ...t, space: s.space, spaceId: s.spaceId })));
-  main.append(relationMapView(tables, automations));
+  const automations = await api('GET', '/automations'); // the schema is the tab's (Issue #258)
+  main.append(relationMapView(allTables(), automations));
 }
 
 /* ---------- the embedded document editor (Feature #45) ----------
@@ -9235,13 +9246,15 @@ async function showHome() {
   renderNav();
   const main = $('#main');
   const dbs = allTables();
-  let ws = { name: $('#ws-name').textContent || 'workspace', description: '' };
-  try { ws = await api('GET', '/workspace'); } catch { /* older server */ }
+  // Two independent reads, asked for together (Issue #258).
+  const [wsRead, listRead] = await Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces')]);
+  // An older server has no /workspace; the header's name stands in.
+  const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
   // Deleting a workspace lives on the workspace's own page (Issue #122) and
   // on its rail chip (Issue #190) — the hub says which rows may go; the
   // default and the weave docs workspaces never do, and theirs shows no menu.
-  let wsRow = null;
-  try { wsRow = (await api('GET', '/workspaces')).find((w) => w.name === ws.name); } catch { /* single-workspace hub */ }
+  // A single-workspace hub has no list: no row, no menu.
+  const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
   const deletable = !!wsRow?.deletable;
   main.replaceChildren(
     viewHeader({

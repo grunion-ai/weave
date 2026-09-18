@@ -42,11 +42,15 @@ test('every bare catch in app.js toasts, rethrows, or says why silence is right 
 });
 
 test('the registry catch surfaces the failure instead of emptying the rail (Issue #265)', () => {
+  // The read moved into readRegistry() so boot can start it early (Issue #258);
+  // loadSchema still owns what a failure looks like.
   const body = fnBody('loadSchema');
-  const c = body.slice(body.indexOf('/api/schema'));
+  const c = body.slice(body.indexOf('readRegistry()'));
   assert.match(c, /catch \(err\) \{[\s\S]*?toast\(/, 'a failed root-schema fetch toasts');
-  assert.match(c, /if \(!res\.ok\)/, 'and a non-2xx answer counts as a failure, not an empty registry');
-  assert.match(c, /res\.status === 401 \|\| res\.status === 403\) state\.registry = \[\]/,
+  const read = fnBody('readRegistry');
+  assert.match(read, /fetch\('\/api\/schema'/, 'the registry is the root schema');
+  assert.match(read, /if \(!res\.ok\) throw/, 'and a non-2xx answer counts as a failure, not an empty registry');
+  assert.match(read, /res\.status === 401 \|\| res\.status === 403\) return \[\]/,
     'but no access to the root is an answer: an empty registry, no toast');
 });
 
