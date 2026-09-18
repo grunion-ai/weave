@@ -977,6 +977,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .activity-item { display: block; font-size: 12px; color: var(--tblr-secondary); padding: 3px 0; border-top: 1px solid var(--tblr-border-color); text-decoration: none; }
 .activity-item:first-child { border-top: none; }
 .activity-item:hover { color: var(--tblr-primary); }
+.activity-dropped { display: block; font-size: 12px; font-style: italic; color: var(--tblr-secondary); padding: 3px 0; border-top: 1px solid var(--tblr-border-color); }
 .panel-link { margin-left: auto; font-size: 12px; text-decoration: none; }
 /* A system table is weave's own: the label says so before anyone tries to add
    a column to it. */

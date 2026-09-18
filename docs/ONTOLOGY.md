@@ -56,7 +56,7 @@ of their own.
 | **Document** | `entity.docs` | A long-form body — markdown, HTML or code — in a document-typed field. Any number per entity. |
 | **Comment** | `entity.comments` | An authored, time-ordered note, kept separate from the documents. |
 | **File** | `entity.files` | A blob stored beside the workspace file, referenced by id from attachments fields. |
-| **Activity** | `entity.activity` | An append-only record of one thing that happened to the entity. Ten kinds; last 500 kept. |
+| **Activity** | `entity.activity` | An append-only record of one thing that happened to the entity. Ten kinds; last 500 kept, the older ones counted in `entity.activityDropped`. |
 
 ### Machinery around the entities
 

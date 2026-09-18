@@ -8273,7 +8273,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       class: 'activity-item', href: `#/activity/${id}:${firstIndex - n}`,
       title: 'Open this event',
     }, `${new Date(a.ts).toLocaleString()} — ${activitySummary(a)}`)),
-    recent.length ? null : el('span', { class: 'wv-empty' }, 'Nothing has happened here yet.'));
+    recent.length ? null : el('span', { class: 'wv-empty' }, 'Nothing has happened here yet.'),
+    entity.activityDropped ? el('span', { class: 'activity-dropped' }, droppedText(entity.activityDropped)) : null);
   const actPanel = el('div', { class: 'card panel' },
     el('div', { class: 'card-header' },
       el('h3', { class: 'card-title' }, 'Activity'),
@@ -9043,6 +9044,12 @@ async function relatedGrid(entity, f, onSaved) {
 
 const ACTIVITY_PANE_ROWS = 10;
 
+/* An entity keeps its newest 500 activity entries; the engine counts the
+   rest (Issue #281). Entities trimmed before the count existed read 0. */
+function droppedText(n) {
+  return `${n} older ${n === 1 ? 'entry' : 'entries'} not kept`;
+}
+
 function activitySummary(a) {
   const d = a.detail ?? {};
   switch (a.kind) {
@@ -9116,7 +9123,8 @@ async function showActivity(param) {
     }),
     el('div', { class: 'wv-note' },
       'A system table: weave writes these rows, so they cannot be added, edited or deleted. ',
-      el('b', {}, `${feed.total}`), ' events.'),
+      el('b', {}, `${feed.total}`), ' events.',
+      feed.dropped ? ` ${droppedText(feed.dropped)}.` : ''),
     feed.items.length
       ? el('div', { class: 'card' },
         el('table', { class: 'table table-sm table-vcenter card-table table-hover wv-grid' },

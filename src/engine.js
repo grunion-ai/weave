@@ -83,6 +83,10 @@ const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
 export const VIEW_SHAPES = ['chip', 'card'];
 export const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
 const DESCRIPTION_CHARS = { small: 0, medium: 120, large: 320 };
+/* An entity keeps its newest ACTIVITY_CAP activity entries. Older ones are
+   dropped and counted on the entity as `activityDropped` (Issue #281), so a
+   read can say the history is partial instead of passing it off as complete. */
+export const ACTIVITY_CAP = 500;
 /* How many segments a view takes when nobody chose (`fields: null`): the
    state counts as one, so a chip stays three wide and a card four. */
 const VIEW_AUTO_SEGMENTS = { chip: 3, card: 4 };
@@ -358,7 +362,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'activity', name: 'Activity', storedIn: 'entity.activity',
-      definition: 'An append-only record of one thing that happened to an entity — created, field-updated, state-changed, relation-updated, doc-updated, doc-appended, comment-added, file-attached, automation-ran, undo.',
+      definition: 'An append-only record of one thing that happened to an entity — created, field-updated, state-changed, relation-updated, doc-updated, doc-appended, comment-added, file-attached, automation-ran, undo. An entity keeps its newest 500; entity.activityDropped counts the older ones it no longer holds.',
       identity: 'entityId:index',
       api: ['activityFeed', 'getActivity'],
     },
@@ -5077,6 +5081,8 @@ export class Weave {
       docs,
       comments: e.comments,
       activity: e.activity,
+      // Older entries past the cap are gone; this says how many (Issue #281).
+      activityDropped: e.activityDropped ?? 0,
       /* Metadata outlives bytes: a dump that carried no blobs, a backup that
          took the .db and left files/ behind. A surface must be able to tell
          the two apart, or it draws a live-looking link into a 404 and the
@@ -5378,9 +5384,11 @@ export class Weave {
     // 'Table#12' works here the way it works everywhere an id does.
     if (entityId) entityId = this.getEntity(entityId).id;
     const rows = [];
+    let dropped = 0;
     for (const e of Object.values(this.state.entities)) {
       if (entityId && e.id !== entityId) continue;
       if (dbId && e.dbId !== dbId) continue;
+      dropped += e.activityDropped ?? 0;
       const db = this.state.tables[e.dbId];
       (e.activity ?? []).forEach((a, i) => {
         if (wanted && !wanted.has(a.kind)) return;
@@ -5406,6 +5414,8 @@ export class Weave {
     rows.sort((x, y) => (x.ts === y.ts ? y.id.localeCompare(x.id) : (x.ts < y.ts ? 1 : -1)));
     return {
       total: rows.length,
+      // Entries in this scope older than the per-entity cap, no longer kept.
+      dropped,
       items: limit == null ? rows.slice(offset) : rows.slice(offset, offset + limit),
     };
   }
@@ -5436,7 +5446,12 @@ export class Weave {
       return;
     }
     e.activity.push({ ts: nowISO(), kind, detail, actor: this.actor });
-    if (e.activity.length > 500) e.activity = e.activity.slice(-500);
+    if (e.activity.length > ACTIVITY_CAP) {
+      // ponytail: counted, not kept. Keeping every entry (the cap as a
+      // read-time page size) changes stored size and is Kyle's call.
+      e.activityDropped = (e.activityDropped ?? 0) + e.activity.length - ACTIVITY_CAP;
+      e.activity = e.activity.slice(-ACTIVITY_CAP);
+    }
     this.#mark(e);
   }
 
