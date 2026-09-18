@@ -1112,6 +1112,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 #cmdk-results { max-height: 46vh; overflow-y: auto; }
 #cmdk-results .result { padding: 8px 14px; }
 #cmdk-results .result.active { background: var(--tblr-active-bg); box-shadow: inset 2px 0 0 var(--tblr-primary); }
+#cmdk-results .cmdk-error { color: var(--tblr-danger); cursor: default; } /* a failed search, named under the input (Issue #265) */
 .cmdk-foot { padding: 7px 14px; color: var(--tblr-secondary); font-size: 11.5px; background: var(--tblr-bg-surface-secondary); }
 
 /* ---------- relation map ---------- */

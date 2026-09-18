@@ -45,7 +45,7 @@ const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
 /* Where this browser is. An instant (a date field with zone: instant) is
    stored as UTC and rendered in the reader's zone — the server learns the
    zone from this header and the cell uses it directly. */
-const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
+const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; /* no Intl zone data: UTC is the honest default */ } })();
 /* A field mid-edit saves when the page leaves it (Kyle, 2026-09-07). Every
    plain editor commits through its native `change`, which a browser fires on
    blur — so clicking elsewhere already saved. A route change, a dock swap or
@@ -101,9 +101,11 @@ function noteSchemaVersion(version, isRead) {
   syncSchema();
 }
 
-async function api(method, path, body) {
+// `signal` lets a caller cancel a request a newer one has replaced (⌘K).
+async function api(method, path, body, { signal } = {}) {
   const res = await fetch(WS_PREFIX + '/api' + path, {
     method,
+    signal,
     headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE },
     body: body === undefined ? undefined : JSON.stringify(body),
     keepalive: leaving,
@@ -292,7 +294,7 @@ function externalLinksOpenInTabs(e) {
   const a = e.target?.closest?.('a[href]');
   if (!a || a.target) return;
   let u;
-  try { u = new URL(a.getAttribute('href'), location.href); } catch { return; }
+  try { u = new URL(a.getAttribute('href'), location.href); } catch { return; } // not a URL: leave the click to the browser
   if (u.origin === location.origin || !/^https?:$/.test(u.protocol)) return;
   a.target = '_blank';
   a.rel = 'noopener';
@@ -668,9 +670,20 @@ async function loadSchema() {
      row whether it is ours or another workspace's (deep link). */
   if (WS_PREFIX && !state.schema.some((sp) => sp.system === 'workspace')) {
     try {
-      const rootSchema = await (await fetch('/api/schema', { headers: { 'X-Weave-Zone': LOCAL_ZONE } })).json();
-      state.registry = Array.isArray(rootSchema) ? rootSchema.filter((sp) => sp.system === 'workspace') : [];
-    } catch { state.registry = []; }
+      const res = await fetch('/api/schema', { headers: { 'X-Weave-Zone': LOCAL_ZONE } });
+      // No access to the root is an answer, not a failure: no registry to show.
+      if (res.status === 401 || res.status === 403) state.registry = [];
+      else {
+        if (!res.ok) throw new Error(`${res.status}`);
+        const rootSchema = await res.json();
+        state.registry = Array.isArray(rootSchema) ? rootSchema.filter((sp) => sp.system === 'workspace') : [];
+      }
+    } catch (err) {
+      // The rail still renders without the registry, but say why it is empty
+      // rather than let it vanish (Issue #265).
+      state.registry = [];
+      toast(`Couldn't load the workspace registry: ${err.message}`, true);
+    }
   } else state.registry = null;
   if (!state.wsId) { try { state.wsId = (await api('GET', '/workspace')).id; } catch { /* older server */ } }
   renderNav();
@@ -931,7 +944,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         const { html } = await api('POST', '/markdown', { md });
         body.innerHTML = html;
       } catch {
-        body.textContent = md;
+        body.textContent = md; // the raw markdown is still the description; render is decoration
       }
       descBox.replaceChildren(body);
       // Only text that is actually hidden earns the control; a description
@@ -1213,7 +1226,7 @@ function expandDocument(grid, url, title) {
       el('button', { class: 'btn btn-sm', title: 'Collapse (Esc)', onclick: collapse }, '‹ Collapse'),
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),
-      el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')),
+      el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; /* cross-origin: reload by re-src */ } } }, iconEl('⟳')),
       el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon'))),
     frame);
   grid.classList.add('hidden');
@@ -1249,7 +1262,7 @@ function fullscreenViewer(title, { url = null, mount = null } = {}) {
   const back = el('div', { id: 'fsv-back' },
     el('div', { class: 'fsv-bar' },
       url ? el('button', { class: 'btn btn-sm', title: 'Back', onclick: goBack }, iconEl('‹')) : null,
-      url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; } } }, iconEl('⟳')) : null,
+      url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; /* cross-origin: reload by re-src */ } } }, iconEl('⟳')) : null,
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),
       url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')) : null,
@@ -2272,7 +2285,7 @@ function readWeaveCells(html) {
   try {
     const block = JSON.parse(decodeURIComponent(m[1]));
     return Array.isArray(block?.cells) && block.h > 0 && block.w > 0 ? block : null;
-  } catch { return null; }
+  } catch { return null; } // not our block: the TSV underneath takes over
 }
 
 function markClippedCells(grid) {
@@ -2304,7 +2317,7 @@ function gridDensity(dbId, next) {
   const key = `weave-grid-density:${dbId}`;
   if (next === undefined) {
     try { return localStorage.getItem(key) === 'compact' ? 'compact' : 'comfortable'; }
-    catch { return 'comfortable'; }
+    catch { return 'comfortable'; } // storage blocked: the default density
   }
   try { localStorage.setItem(key, next); } catch { /* private mode */ }
   return next;
@@ -3729,7 +3742,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const ids = [...chosen()];
     const failed = [];
     for (const id of ids) {
-      try { await each(id); } catch { failed.push(id); }
+      try { await each(id); } catch { failed.push(id); } // counted and toasted below
     }
     // What did NOT land is the part worth saying. A bulk command that half
     // works and reports success is how a row goes missing quietly.
@@ -4369,7 +4382,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       case 'caret': {
         if (at.tagName !== 'INPUT' || typeof at.value !== 'string') return false;
         const to = verb.to === 'end' ? at.value.length : 0;
-        try { at.setSelectionRange(to, to); } catch { return false; }
+        try { at.setSelectionRange(to, to); } catch { return false; } // no caret here: the browser keeps the key
         return true;
       }
       case 'revert': {
@@ -5309,12 +5322,12 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
     });
     const preview = el('div', { class: 'date-smart-preview' });
     const readSmart = () => {
-      try { return readTypedDate(smart.value, c, cur); } catch { return null; }
+      try { return readTypedDate(smart.value, c, cur); } catch { return null; } // half-typed: no preview yet
     };
     smart.addEventListener('input', () => {
       const local = readSmart();
       let shown = '…';
-      if (local) { try { shown = `→ ${dc.formatDate(c.grain == null ? local : dc.coerce(c, local), { ...c, format: c.grain == null ? 'long' : format })}`; } catch { shown = '…'; } }
+      if (local) { try { shown = `→ ${dc.formatDate(c.grain == null ? local : dc.coerce(c, local), { ...c, format: c.grain == null ? 'long' : format })}`; } catch { shown = '…'; /* not a date yet */ } }
       preview.textContent = smart.value.trim() ? shown : '';
     });
     smart.addEventListener('keydown', (e) => {
@@ -5948,7 +5961,7 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
     if (!fdc.legalFormats(g).includes(d.format)) d.format = 'iso';
   };
   let stored = '';
-  try { stored = parts.length ? dc.coerce({ ...costume, time: false }, todayIso) : ''; } catch { stored = ''; }
+  try { stored = parts.length ? dc.coerce({ ...costume, time: false }, todayIso) : ''; } catch { stored = ''; } // hint example only
   const storesHint = parts.length
     ? `Stores ${parts.join(' · ')}${d.time ? ' + a time of day' : ''} — today would be ${stored}${d.time ? 'T14:30' : ''}`
     : 'No date parts: a time of day, stored and compared as a clock reading.';
@@ -5979,7 +5992,7 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
       el('div', { class: 'hintnote' }, zoneHint[d.zone ?? 'floating']));
     if (d.zone === 'fixed') {
       let zones = [];
-      try { zones = Intl.supportedValuesOf('timeZone'); } catch { zones = [LOCAL_ZONE]; }
+      try { zones = Intl.supportedValuesOf('timeZone'); } catch { zones = [LOCAL_ZONE]; } // older engine: offer our own zone
       const list = el('datalist', { id: 'wv-zones' }, ...zones.map((z) => el('option', { value: z })));
       zoneSec.append(el('input', {
         class: 'form-control date-zone-name', list: 'wv-zones', value: d.zoneName ?? '', placeholder: LOCAL_ZONE,
@@ -6608,7 +6621,7 @@ async function fillFooter(db, foot, rollups = null) {
   if (!foot) return;
   try {
     rollups ??= (await api('GET', `/tables/${db.id}/stats`)).rollups;
-  } catch { return; }
+  } catch { return; } // the Σ row is a summary: blank beats a toast on every grid paint
   // The grid is drawn before it is attached, so connection is checked after
   // the read, not before; a row a redraw replaced meanwhile is left alone.
   if (!foot.isConnected) return;
@@ -6680,7 +6693,7 @@ async function spaceStatTiles(space) {
   try {
     const res = await api('POST', `/tables/${spacesT.id}/query`, { where: [['Name', '=', space.space]] });
     row = res.items.find((i) => i.sysId === space.spaceId) ?? null;
-  } catch { return null; }
+  } catch { return null; } // stat tiles are a summary: the space page draws without them
   if (!row) return null;
   return el('div', { class: 'wv-stat-tiles' }, ...mine.map((f) => {
     const t = space.tables.find((x) => x.id === f.viaTableId);
@@ -7208,6 +7221,7 @@ function slashRows(query) {
    a heading and never a search. */
 const ENTITY_HINT_MIN = 2;
 const entityHintCache = new Map();
+let entityHintFailing = false; // one toast per run of failures, not one per keystroke
 
 async function entityHint(query) {
   const q = String(query ?? '').trim();
@@ -7217,7 +7231,14 @@ async function entityHint(query) {
     try {
       hits = (await api('GET', `/search?q=${encodeURIComponent(q)}&limit=12`))
         .filter((h) => h.kind === 'entity');
-    } catch { return []; } // a search that fails is a menu that does not open
+      entityHintFailing = false;
+    } catch (err) {
+      // A search that fails is a menu that does not open — so say so, once
+      // until a search succeeds again (Issue #265).
+      if (!entityHintFailing) toast(`Couldn't search: ${err.message}`, true);
+      entityHintFailing = true;
+      return [];
+    }
     entityHintCache.set(q, hits);
   }
   return hits.map((hit) => ({
@@ -7898,7 +7919,7 @@ function docFoldState(entityId, field, next) {
   const key = `weave-doc-folds:${entityId}:${field}`;
   if (next === undefined) {
     try { return new Set(JSON.parse(localStorage.getItem(key)) ?? []); }
-    catch { return new Set(); }
+    catch { return new Set(); } // no stored folds: all open
   }
   localStorage.setItem(key, JSON.stringify([...next]));
   return next;
@@ -8147,7 +8168,8 @@ async function showEntity(id) {
   let entity;
   try {
     entity = await api('GET', `/entities/${id}`);
-  } catch {
+  } catch (err) {
+    toast(`Couldn't open that record: ${err.message}`, true);
     return showHome();
   }
   // The crumb is the path taken: an entity reached from another entity
@@ -9126,7 +9148,7 @@ async function showView(id) {
   renderNav();
   const main = $('#main');
   let v;
-  try { v = await api('GET', `/views/${id}`); } catch { return showHome(); }
+  try { v = await api('GET', `/views/${id}`); } catch (err) { toast(`Couldn't open that view: ${err.message}`, true); return showHome(); }
   syncDocTitle(v.name);
   const meta = (await api('GET', '/views')).find((x) => x.id === id);
   main.replaceChildren(el('div', { class: 'wv-toolbar' },
@@ -9313,7 +9335,7 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
   });
   const list = el('div', { id: 'cmdk-results' });
   let hits = [], rowEls = [], sel = 0;
-  let timer;
+  let timer, inflight = null;
   const pick = (hit) => {
     picked = true;
     back.remove();
@@ -9329,9 +9351,21 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
   input.addEventListener('input', () => {
     clearTimeout(timer);
     timer = setTimeout(async () => {
+      // One request in flight: a newer keystroke aborts the older one, so a
+      // slow earlier answer cannot land on top of a newer one (Issue #265).
+      inflight?.abort();
+      const ctl = inflight = new AbortController();
       const q = input.value.trim();
       if (!q) { hits = []; rowEls = []; list.replaceChildren(); return; }
-      hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`);
+      try {
+        hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`, undefined, { signal: ctl.signal });
+      } catch (err) {
+        if (ctl.signal.aborted) return; // replaced by a newer keystroke
+        hits = []; rowEls = [];
+        list.replaceChildren(el('div', { class: 'result cmdk-error', role: 'alert' }, `Couldn't search: ${err.message}`));
+        return;
+      }
+      if (ctl.signal.aborted) return;
       // A reference command asks for one kind of target; the palette itself
       // asks for all of them.
       if (kinds) hits = hits.filter((h) => kinds.includes(h.kind));
@@ -9596,7 +9630,7 @@ async function redock(dbId, id) {
   const anchor = allTables().find((d) => d.id === dbId);
   if (!anchor) return;
   let entity;
-  try { entity = await api('GET', `/entities/${id}`); } catch { dockSyncUrl(); return; }
+  try { entity = await api('GET', `/entities/${id}`); } catch { dockSyncUrl(); return; } // the docked record is gone: drop it from the URL
   const db = allTables().find((d) => d.id === entity.dbId) ?? anchor;
   await dockEntity(db, id);
 }
