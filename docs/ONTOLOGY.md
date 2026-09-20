@@ -56,7 +56,7 @@ of their own.
 | **Document** | `entity.docs` | A long-form body — markdown, HTML or code — in a document-typed field. Any number per entity. |
 | **Comment** | `entity.comments` | An authored, time-ordered note, kept separate from the documents. |
 | **File** | `entity.files` | A blob stored beside the workspace file, referenced by id from attachments fields. |
-| **Activity** | `entity.activity` | An append-only record of one thing that happened to the entity. Ten kinds; last 500 kept, the older ones counted in `entity.activityDropped`. |
+| **Activity** | `entity.activity` | An append-only record of one thing that happened to the entity, carrying `seq` (the commit order) and `ts` (the display time). Ten kinds; last 500 kept, the older ones counted in `entity.activityDropped`. |
 
 ### Machinery around the entities
 
@@ -228,7 +228,15 @@ id from attachments fields.
 An append-only entry recording one change to an entity — created, field-updated,
 state-changed, relation-updated, doc-updated, doc-appended, comment-added,
 file-attached, automation-ran, undo. Consecutive document edits in one session
-fold into a single entry.
+fold into a single entry, keeping the `seq` they started with.
+
+Every entry carries `seq`, a monotonic counter over the whole workspace
+(`meta.activitySeq`), alongside its wall-clock `ts`. `seq` is the order — the
+feed and `GET /api/activity` sort on it, newest first — and `ts` is what a
+reader is shown. Two writes inside one millisecond and a clock that steps
+backwards both order correctly because of it. A workspace written before `seq`
+existed is numbered once on open, oldest first, with each entity's stored order
+preserved.
 
 ### Saved view
 A saved arrangement of one or more table blocks, each with its own filter and

@@ -362,7 +362,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'activity', name: 'Activity', storedIn: 'entity.activity',
-      definition: 'An append-only record of one thing that happened to an entity — created, field-updated, state-changed, relation-updated, doc-updated, doc-appended, comment-added, file-attached, automation-ran, undo. An entity keeps its newest 500; entity.activityDropped counts the older ones it no longer holds.',
+      definition: 'An append-only record of one thing that happened to an entity — created, field-updated, state-changed, relation-updated, doc-updated, doc-appended, comment-added, file-attached, automation-ran, undo. Every entry carries seq, a monotonic per-workspace commit counter: seq is the order, ts is the display. An entity keeps its newest 500; entity.activityDropped counts the older ones it no longer holds.',
       identity: 'entityId:index',
       api: ['activityFeed', 'getActivity'],
     },
@@ -717,15 +717,17 @@ function nowISO() {
 }
 
 /* What "the schema" means for Weave#schemaVersion() below: the structural
-   rows, minus `publicIdCounter`. That counter lives on the table row and ticks on
-   every row insert, which is not a schema change — leaving it in would cost
-   every open tab a schema refetch every time anyone added a row anywhere.
+   rows, minus the two write counters. `publicIdCounter` lives on the table row
+   and ticks on every row insert; `activitySeq` lives on meta and ticks on every
+   activity entry (Issue #282). Neither is a schema change, and leaving either
+   in would cost every open tab a schema refetch every time anyone touched a
+   row anywhere.
    The hash is FNV-1a over the canonical JSON, paired with its length in hex: a
    collision would cost one missed refresh, which is the bug this fixes, so
    it never needs to be cryptographic. */
 function schemaFingerprint(state) {
   const { spaces = {}, tables = {}, automations = {}, entities, ...meta } = state ?? {};
-  const drop = (key, value) => (key === 'publicIdCounter' ? undefined : value);
+  const drop = (key, value) => (key === 'publicIdCounter' || key === 'activitySeq' ? undefined : value);
   const parts = [JSON.stringify(meta, drop)];
   for (const collection of [spaces, tables, automations]) {
     for (const id of Object.keys(collection).sort()) parts.push(id, JSON.stringify(collection[id], drop));
@@ -852,6 +854,35 @@ export class Weave {
         }
       }
       s.meta.percentFractional = true;
+      changed = true;
+    }
+    /* Activity gained `seq`, a commit counter, because a wall-clock `ts`
+       cannot separate two writes in one millisecond (Issue #282). Entries
+       written before it are numbered once, oldest first, and an entity's
+       stored order always wins: the key each stream sorts on only ever rises,
+       so a clock that stepped backwards cannot lift an entry above the one it
+       was appended after. The counter's own presence is the one-time flag, so
+       a workspace with no activity settles on 0 and is never rescanned. */
+    if (s.meta.activitySeq == null) {
+      const pending = [];
+      const touched = [];
+      for (const e of Object.values(s.entities ?? {})) {
+        if (!(e.activity ?? []).length) continue;
+        touched.push(e);
+        let high = '';
+        e.activity.forEach((a, i) => {
+          const ts = String(a.ts ?? '');
+          if (ts > high) high = ts;
+          pending.push({ e, a, i, key: high });
+        });
+      }
+      pending.sort((x, y) => (x.key === y.key
+        ? (x.e.id === y.e.id ? x.i - y.i : (x.e.id < y.e.id ? -1 : 1))
+        : (x.key < y.key ? -1 : 1)));
+      let n = 0;
+      for (const row of pending) row.a.seq = ++n;
+      for (const e of touched) this.#mark(e);
+      s.meta.activitySeq = n;
       changed = true;
     }
     if (changed) {
@@ -4479,7 +4510,7 @@ export class Weave {
       if (e.deletedAt) return this.readEntity(id); // already in the trash
       e.deletedAt = nowISO();
       e.updatedAt = e.deletedAt;
-      e.activity.push({ ts: e.deletedAt, kind: 'deleted', detail: {} });
+      this.#logActivity(e, 'deleted', {}, { ts: e.deletedAt });
       this.#recordUndo('delete', e);
       this.#mark(e);
       this.save();
@@ -4631,7 +4662,7 @@ export class Weave {
     e.deletedAt = null;
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
-    e.activity.push({ ts: e.updatedAt, kind: 'restored', detail: {} });
+    this.#logActivity(e, 'restored', {}, { ts: e.updatedAt });
     this.#recordUndo('restore', e);
     this.#mark(e);
     this.save();
@@ -5395,6 +5426,7 @@ export class Weave {
         if (since && a.ts < since) return;
         rows.push({
           id: `${e.id}:${i}`,
+          seq: a.seq,
           ts: a.ts,
           kind: a.kind,
           actor: a.actor ?? null,
@@ -5409,9 +5441,12 @@ export class Weave {
         });
       });
     }
-    // Same-millisecond events (an entity created with a document writes two)
-    // fall back to the index, so the later one still reads as the later one.
-    rows.sort((x, y) => (x.ts === y.ts ? y.id.localeCompare(x.id) : (x.ts < y.ts ? 1 : -1)));
+    // Newest first is the last commit, which only seq knows (Issue #282). The
+    // ts sort this replaced tie-broke on the row id, and got it wrong twice:
+    // across entities it ranked same-millisecond events by entity uuid, and
+    // within one entity it compared the index as a string, so ':9' read as
+    // newer than ':10'.
+    rows.sort((x, y) => y.seq - x.seq);
     return {
       total: rows.length,
       // Entries in this scope older than the per-entity cap, no longer kept.
@@ -5430,12 +5465,24 @@ export class Weave {
     return this.activityFeed({ entityId }).items.find((r) => r.id === `${entityId}:${index}`);
   }
 
-  #logActivity(e, kind, detail) {
+  /* Commit order, which the wall clock cannot give: two writes can share a
+     millisecond — an entity created with a document writes two — and a clock
+     can step backwards (Issue #282). One counter per workspace, minted where
+     an entry is stamped, so seq is the order and ts is only ever displayed. */
+  #nextSeq() {
+    this.state.meta.activitySeq = (this.state.meta.activitySeq ?? 0) + 1;
+    return this.state.meta.activitySeq;
+  }
+
+  // `ts` overrides the clock for the lifecycle entries, which stamp the same
+  // instant they wrote onto the entity (deletedAt, updatedAt).
+  #logActivity(e, kind, detail, { ts = null } = {}) {
     // One editing session is one entry: autosave flushes every pause, and a
     // row per pause is a keystroke log (Issue #32). A doc-updated landing
     // right after another doc-updated for the same field folds into it,
     // keeping the session's starting length so delta spans the whole session.
-    // Mutating in place (not pop+push) preserves entityId:index activity ids.
+    // Mutating in place (not pop+push) preserves entityId:index activity ids,
+    // and one event keeps one seq: the fold does not re-stamp it.
     const last = e.activity[e.activity.length - 1];
     if (kind === 'doc-updated' && last?.kind === 'doc-updated'
       && last.detail?.field === detail.field
@@ -5445,7 +5492,7 @@ export class Weave {
       this.#mark(e);
       return;
     }
-    e.activity.push({ ts: nowISO(), kind, detail, actor: this.actor });
+    e.activity.push({ ts: ts ?? nowISO(), kind, detail, actor: this.actor, seq: this.#nextSeq() });
     if (e.activity.length > ACTIVITY_CAP) {
       // ponytail: counted, not kept. Keeping every entry (the cap as a
       // read-time page size) changes stored size and is Kyle's call.
