@@ -154,6 +154,40 @@ test('a workspace written before seq existed is numbered once, in its stored ord
     'the counter carries on past the backfilled entries');
 });
 
+test('an entry a pre-seq writer appended is numbered on the next open', () => {
+  /* Weave lets a CLI and a server share one .db, so a process still running
+     code from before seq can append an unnumbered entry to a workspace whose
+     counter is already set — which is exactly what happened on the live
+     workspace the hour this landed. Gating the pass on the counter alone left
+     that entry unnumbered for good, so the pass numbers whatever it finds
+     unnumbered and only the numbering already handed out is left alone. */
+  const { w, t } = workspace();
+  const a = w.createEntity(t, { name: 'a' });
+  const dump = JSON.parse(JSON.stringify(w.exportJSON({ blobs: false })));
+  const before = dump.entities[a.id].activity[0].seq;
+  dump.entities[a.id].activity.push({ ts: '2026-09-20T21:00:06.178Z', kind: 'comment-added', detail: {}, actor: 'cli' });
+
+  const w2 = new Weave();
+  w2.importJSON(dump);
+  const acts = w2.state.entities[a.id].activity;
+  assert.equal(acts[0].seq, before, 'a number already handed out never moves');
+  assert.equal(acts[1].seq, w2.state.meta.activitySeq, 'the straggler takes the next one');
+  assert.ok(acts[1].seq > acts[0].seq, 'and reads as the later commit');
+  for (const x of entries(w2)) assert.equal(typeof x.seq, 'number', 'nothing is left unnumbered');
+});
+
+test('until that open, an unnumbered entry still reads as the newest', () => {
+  // A running server refreshes rows from the shared .db without re-opening the
+  // workspace, so the feed must stay sorted with the hole in it.
+  const { w, t } = workspace();
+  const e = w.createEntity(t, { name: 'a' });
+  w.addComment(e.id, { text: 'one' });
+  delete w.state.entities[e.id].activity[1].seq;
+  const feed = w.activityFeed({ entityId: e.id }).items;
+  assert.deepEqual(feed.map((r) => r.id), [`${e.id}:1`, `${e.id}:0`]);
+  assert.equal(feed[0].seq, undefined, 'the row says it has no number rather than inventing one');
+});
+
 test('the counter is a write counter, not part of the schema fingerprint', () => {
   // Same reason publicIdCounter is excluded: a row write must not cost every
   // open tab a schema refetch (Issue #274).

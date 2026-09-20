@@ -857,33 +857,37 @@ export class Weave {
       changed = true;
     }
     /* Activity gained `seq`, a commit counter, because a wall-clock `ts`
-       cannot separate two writes in one millisecond (Issue #282). Entries
-       written before it are numbered once, oldest first, and an entity's
-       stored order always wins: the key each stream sorts on only ever rises,
-       so a clock that stepped backwards cannot lift an entry above the one it
-       was appended after. The counter's own presence is the one-time flag, so
-       a workspace with no activity settles on 0 and is never rescanned. */
-    if (s.meta.activitySeq == null) {
+       cannot separate two writes in one millisecond (Issue #282). Every open
+       numbers whatever it finds unnumbered, continuing from the counter, and
+       never touches a number already handed out. That covers both cases: a
+       workspace written before seq existed, where nothing is numbered, and a
+       single straggler, which is what a CLI or a second server still running
+       pre-seq code leaves behind when it appends through the shared .db.
+       An entity's stored order always wins: the key each stream sorts on only
+       ever rises, so a clock that stepped backwards cannot lift an entry above
+       the one it was appended after. */
+    if (s.meta.activitySeq == null) { s.meta.activitySeq = 0; changed = true; }
+    {
       const pending = [];
-      const touched = [];
+      const touched = new Set();
       for (const e of Object.values(s.entities ?? {})) {
-        if (!(e.activity ?? []).length) continue;
-        touched.push(e);
         let high = '';
-        e.activity.forEach((a, i) => {
+        (e.activity ?? []).forEach((a, i) => {
           const ts = String(a.ts ?? '');
           if (ts > high) high = ts;
-          pending.push({ e, a, i, key: high });
+          if (a.seq == null) { pending.push({ e, a, i, key: high }); touched.add(e); }
         });
       }
-      pending.sort((x, y) => (x.key === y.key
-        ? (x.e.id === y.e.id ? x.i - y.i : (x.e.id < y.e.id ? -1 : 1))
-        : (x.key < y.key ? -1 : 1)));
-      let n = 0;
-      for (const row of pending) row.a.seq = ++n;
-      for (const e of touched) this.#mark(e);
-      s.meta.activitySeq = n;
-      changed = true;
+      if (pending.length) {
+        pending.sort((x, y) => (x.key === y.key
+          ? (x.e.id === y.e.id ? x.i - y.i : (x.e.id < y.e.id ? -1 : 1))
+          : (x.key < y.key ? -1 : 1)));
+        let n = s.meta.activitySeq;
+        for (const row of pending) row.a.seq = ++n;
+        for (const e of touched) this.#mark(e);
+        s.meta.activitySeq = n;
+        changed = true;
+      }
     }
     if (changed) {
       this.#dirtyAll = true;
@@ -5441,12 +5445,21 @@ export class Weave {
         });
       });
     }
-    // Newest first is the last commit, which only seq knows (Issue #282). The
-    // ts sort this replaced tie-broke on the row id, and got it wrong twice:
-    // across entities it ranked same-millisecond events by entity uuid, and
-    // within one entity it compared the index as a string, so ':9' read as
-    // newer than ':10'.
-    rows.sort((x, y) => y.seq - x.seq);
+    /* Newest first is the last commit, which only seq knows (Issue #282). The
+       ts sort this replaced tie-broke on the row id, and got it wrong twice:
+       across entities it ranked same-millisecond events by entity uuid, and
+       within one entity it compared the index as a string, so ':9' read as
+       newer than ':10'.
+       An entry a pre-seq writer appended through the shared .db has no number
+       until the next open, and that window is a running server's whole life.
+       Treating it as the highest number is right — it is the newest write —
+       and keeps the comparator total, which a bare subtraction over undefined
+       would not be. */
+    rows.sort((x, y) => {
+      const xs = x.seq ?? Infinity, ys = y.seq ?? Infinity;
+      if (xs !== ys) return ys - xs;
+      return x.ts < y.ts ? 1 : (x.ts > y.ts ? -1 : 0);
+    });
     return {
       total: rows.length,
       // Entries in this scope older than the per-entity cap, no longer kept.

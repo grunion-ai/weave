@@ -234,9 +234,11 @@ Every entry carries `seq`, a monotonic counter over the whole workspace
 (`meta.activitySeq`), alongside its wall-clock `ts`. `seq` is the order — the
 feed and `GET /api/activity` sort on it, newest first — and `ts` is what a
 reader is shown. Two writes inside one millisecond and a clock that steps
-backwards both order correctly because of it. A workspace written before `seq`
-existed is numbered once on open, oldest first, with each entity's stored order
-preserved.
+backwards both order correctly because of it. Every open numbers whatever it
+finds unnumbered, oldest first and with each entity's stored order preserved,
+and never moves a number already handed out: that covers a workspace written
+before `seq` existed and a straggler left by a writer running older code
+against the shared `.db`.
 
 ### Saved view
 A saved arrangement of one or more table blocks, each with its own filter and
