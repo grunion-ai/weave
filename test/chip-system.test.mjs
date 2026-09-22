@@ -232,7 +232,7 @@ test("the retired 'other' category leaves no styling behind", () => {
 });
 
 test('chip-core is loaded by the page, not just by the tests', () => {
-  assert.match(INDEX, /<script src="\/chip-core\.js"><\/script>/);
+  assert.match(INDEX, /<script src="\/chip-core\.js" defer><\/script>/);
   assert.ok(INDEX.indexOf('/chip-core.js') < INDEX.indexOf('/app.js'),
     'chip-core must load before app.js reads it');
 });

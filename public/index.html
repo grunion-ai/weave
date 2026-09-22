@@ -48,30 +48,35 @@
        the clock control that makes "finish the cycle" exact. -->
   <div id="page-loader" hidden aria-hidden="true"></div>
 </div>
-<script src="/vendor/vditor/dist/index.min.js"></script>
-<script src="/nl-date.js"></script>
-<script src="/date-grain.js"></script>
-<script src="/date-core.js"></script>
-<script src="/breadcrumbs.js"></script>
-<script src="/chip-core.js"></script>
-<script src="/view-core.js"></script>
-<script src="/bug-core.js"></script>
-<script src="/picker-core.js"></script>
-<script src="/term-core.js"></script>
-<script src="/selection-core.js"></script>
-<script src="/column-resize.js"></script>
-<script src="/grid-keymap.js"></script>
-<script src="/grid-range.js"></script>
-<script src="/grid-window.js"></script>
-<script src="/icon-registry.js"></script>
-<script src="/field-dialog-core.js"></script>
-<script src="/entity-surface-core.js"></script>
-<script src="/graph-parse.js"></script>
-<script src="/relmap-layout.js"></script>
-<script src="/vendor/lucide-moving.js"></script>
-<script src="/mark-icons.js"></script>
+<!-- Every boot script is deferred (Issue #313): none blocks the parser, and
+     deferred scripts, the inline module included, run in document order once
+     the DOM is parsed. The Node server versions these URLs when it serves
+     this file (a v query carrying the content hash), so a warm load fetches none of them;
+     keep them plain here. -->
+<script src="/vendor/vditor/dist/index.min.js" defer></script>
+<script src="/nl-date.js" defer></script>
+<script src="/date-grain.js" defer></script>
+<script src="/date-core.js" defer></script>
+<script src="/breadcrumbs.js" defer></script>
+<script src="/chip-core.js" defer></script>
+<script src="/view-core.js" defer></script>
+<script src="/bug-core.js" defer></script>
+<script src="/picker-core.js" defer></script>
+<script src="/term-core.js" defer></script>
+<script src="/selection-core.js" defer></script>
+<script src="/column-resize.js" defer></script>
+<script src="/grid-keymap.js" defer></script>
+<script src="/grid-range.js" defer></script>
+<script src="/grid-window.js" defer></script>
+<script src="/icon-registry.js" defer></script>
+<script src="/field-dialog-core.js" defer></script>
+<script src="/entity-surface-core.js" defer></script>
+<script src="/graph-parse.js" defer></script>
+<script src="/relmap-layout.js" defer></script>
+<script src="/vendor/lucide-moving.js" defer></script>
+<script src="/mark-icons.js" defer></script>
 <script type="module">import * as leanQR from "/vendor/lean-qr.mjs"; window.leanQR = leanQR;</script>
-<script src="/editor-lib.js"></script>
-<script src="/app.js"></script>
+<script src="/editor-lib.js" defer></script>
+<script src="/app.js" defer></script>
 </body>
 </html>

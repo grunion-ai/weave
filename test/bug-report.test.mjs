@@ -616,7 +616,7 @@ test('the browser sources actually parse', () => {
 });
 
 test('bug-core is loaded by the page, like every other core module', () => {
-  assert.match(HTML, /<script src="\/bug-core\.js"><\/script>/);
+  assert.match(HTML, /<script src="\/bug-core\.js" defer><\/script>/);
   assert.ok(HTML.indexOf('/bug-core.js') < HTML.indexOf('/app.js'), 'before app.js, which uses it');
 });
 

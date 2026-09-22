@@ -3,6 +3,7 @@ import { spawnSync, execFile } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
 import { createRequestHandler } from './routes.js';
@@ -300,12 +301,40 @@ export function originFromEnv(env = process.env) {
 }
 export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
 
+/* Content-versioned asset URLs (Issue #313). weave has no build step, so the
+   shell is versioned when it is served: every local src/href/import in
+   index.html that names a file gains `?v=<first 12 hex of its sha1>`, and an
+   asset asked for at its current version can be cached `immutable`. A
+   version is cached per file until its mtime or size moves, so a request for
+   the shell costs a stat per asset, not a hash. The Worker's Assets binding
+   serves public/ untouched (Issue #231): its shell keeps plain URLs and the
+   platform's own revalidation, which stays correct without this. */
+export function createAssetVersions(dir) {
+  const known = new Map();
+  const version = (file) => {
+    const full = join(dir, file.replace(/\.\./g, ''));
+    let st;
+    try { st = statSync(full); } catch { return null; }
+    if (!st.isFile()) return null;
+    const hit = known.get(full);
+    if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.v;
+    const v = createHash('sha1').update(readFileSync(full)).digest('hex').slice(0, 12);
+    known.set(full, { mtimeMs: st.mtimeMs, size: st.size, v });
+    return v;
+  };
+  const rewrite = (html) => html.replace(/(\b(?:src|href)="|\bfrom ")(\/[^"?#]+\.(?:js|mjs|css|svg|ico|png))"/g,
+    (all, lead, url) => { const v = version(url); return v ? `${lead}${url}?v=${v}"` : all; });
+  return { version, rewrite };
+}
+const IMMUTABLE = 'public, max-age=31536000, immutable';
+
 export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
 
   // Node adapter around the runtime-agnostic dispatcher (src/routes.js): this
   // side owns the body stream, the response socket, and static files from
   // public/. The Worker adapter (src/worker.js) wraps the same dispatcher.
+  const assets = createAssetVersions(PUBLIC_DIR);
   const serveStatic = (path, rx) => {
     /* Vditor lazy-loads mermaid from inside its own dist tree. weave already
        vendors a mermaid build for document pages, so that path is aliased
@@ -321,22 +350,34 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     // Last-Modified lets that revalidation answer 304 (Feature #148): a
     // workspace switch is a full page load, and without it every switch
     // re-downloaded ~1MB of unchanged vendor JS/CSS.
+    const match = rx?.header?.('if-none-match');
+    const matches = (etag) => match && match.split(',').map((t) => t.trim().replace(/^W\//, '')).some((t) => t === '*' || t === etag.slice(2));
+    if (file === '/index.html') {
+      /* The shell names its assets by version, so its validator must follow
+         the bytes it serves: an asset can change under an unchanged
+         index.html, and a 304 on the file's mtime would keep the old URLs.
+         No Last-Modified for the same reason. */
+      const body = assets.rewrite(readFileSync(full, 'utf8'));
+      const headers = {
+        'Content-Type': MIME['.html'],
+        'Cache-Control': 'no-cache',
+        ETag: `W/"${createHash('sha1').update(body).digest('hex').slice(0, 16)}"`,
+      };
+      return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body };
+    }
+    const v = rx?.searchParams?.get?.('v');
     const { mtime, size } = statSync(full);
     const headers = {
       'Content-Type': MIME[extname(full)] ?? 'application/octet-stream',
-      'Cache-Control': 'no-cache',
+      // Immutable only when the version asked for names these exact bytes.
+      'Cache-Control': v && v === assets.version(file) ? IMMUTABLE : 'no-cache',
       'Last-Modified': mtime.toUTCString(),
       /* Weak on purpose (Issue #258): the adapter may gzip the body, and a
          weak validator names the file, not the bytes of one encoding. */
       ETag: `W/"${size.toString(16)}-${Math.floor(mtime.getTime()).toString(16)}"`,
     };
     // If-None-Match wins over If-Modified-Since when both are sent (RFC 9110 13.2.2).
-    const match = rx?.header?.('if-none-match');
-    if (match) {
-      const tags = match.split(',').map((t) => t.trim().replace(/^W\//, ''));
-      if (tags.includes('*') || tags.includes(headers.ETag.slice(2))) return { status: 304, headers, body: '' };
-      return { status: 200, headers, body: readFileSync(full) };
-    }
+    if (match) return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body: readFileSync(full) };
     const since = Date.parse(rx?.header?.('if-modified-since') ?? '');
     // HTTP dates carry whole seconds; compare at that grain or nothing matches.
     if (since && Math.floor(mtime.getTime() / 1000) <= Math.floor(since / 1000)) {

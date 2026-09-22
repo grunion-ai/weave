@@ -803,7 +803,7 @@ test('a resize grip commits once, on release', () => {
   assert.match(grip, /WeaveColumnResize\.width\(/, 'one width rule, shared with the pure core');
   assert.match(grip, /th\.dataset\.resized = '1'/, 'the header wears the gesture mark');
   assert.match(grip, /delete th\.dataset\.resized/, 'and sheds it on the next press');
-  assert.match(readFileSync(join(ROOT, 'public/index.html'), 'utf8'), /<script src="\/column-resize\.js"><\/script>/, 'the pure core is loaded');
+  assert.match(readFileSync(join(ROOT, 'public/index.html'), 'utf8'), /<script src="\/column-resize\.js" defer><\/script>/, 'the pure core is loaded');
 });
 
 test('double-click fits the column to its content (measured), a schema write like any resize', () => {
