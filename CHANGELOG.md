@@ -4,6 +4,8 @@ weave's tracker (the Development space in the weave workspace) is the changelog 
 
 ## Unreleased
 
+## v0.4.28 — 2026-09-22
+
 - **The icon grid keeps one width while the readout names what the pointer is on** (Issue #336): the picker popover was shrink-to-fit, and its widest content is the name readout Issue #142 put in the search bar. Hovering a long label (`tick · done · complete`) widened the box from 292px to 345px, the `auto-fill` grid reflowed into the new width, the cell slid 12px out from under the pointer, the leave event reset the readout to the shorter resting name, the box snapped back, and the pointer was over the cell again: a flutter that shook the grid for as long as the cursor rested there. `.picker-pop:has(.picker-cells)` now declares `width: 292px` instead of `min-width: 292px`, which also gives the `max-width: 50%` on `.picker-name` a definite box to measure against, so a long name ellipsises inside the row instead of pushing the row wider (a percentage max-width against an indefinite containing block never constrained intrinsic sizing, which is why the existing cap did not hold). The row-term picker carries no readout and opts back out with `width: auto`, so it still sizes to its widest row. Verified on a copy of the live data in both themes: width 292px at rest and 292px under the longest label in the vocabulary, cell movement 0px, against 292px and 345px with a 12px shift before. Gate: `test/icon-vocabulary-browser.test.mjs` (1 new case: popover width and the hovered cell position are identical at rest and while the longest label is read out, and the readout stays inside the box).
 
 ## v0.4.27 — 2026-09-21
