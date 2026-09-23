@@ -2,9 +2,10 @@
    font half of Issue #67). Every one of them is a measurement the source can
    lie about, so this suite drives a real browser:
 
-     1. the hover expansion of a clipped cell must show the value WHERE the
-        value already is — same left edge, same baseline, same type. It landed
-        8px right and 22px high, so reading a cell moved what you were reading.
+     1. the hover expansion of a clipped cell must keep the value's left edge
+        and type. It landed 8px right and 22px high, so reading a cell moved
+        what you were reading. (It opened over the value until Issue #346
+        moved it above the cell, so a click never edits under a copy.)
      2. an EMPTY document chip must not make the row taller than a full one.
         Tabler ships a global `.empty` (flex column, height 100%, 1rem padding)
         and the chip wore the same class name, so one empty Brief field took a
@@ -81,9 +82,14 @@ if (s) {
     return page;
   }
 
-  /* ── 1 · the expansion opens over the value, not beside it ───────────── */
+  /* ── 1 · the expansion keeps the value's left edge, and never covers it ─
+     Issue #93 put the copy exactly over the value; Issue #346 (Kyle,
+     2026-09-23) moved it above the cell, because a copy over the value hid
+     the editor a click opened. The left edge still holds. This grid's only
+     long row is its first, so the pop opens below it — above/flip geometry
+     has its own suite, cell-pop-above-browser.test.mjs. */
 
-  test('a clipped cell expands where its value already sits', async () => {
+  test('a clipped cell expands on its value’s left edge without covering it', async () => {
     const page = await grid();
     try {
       const off = await page.evaluate(async () => {
@@ -94,11 +100,12 @@ if (s) {
         if (!pop) return null;
         const box = (n) => (n.firstElementChild ?? n).getBoundingClientRect();
         const a = box(td); const b = box(pop);
-        return { dx: Math.round(b.left - a.left), dy: Math.round(b.top - a.top) };
+        const cell = td.getBoundingClientRect(); const p = pop.getBoundingClientRect();
+        return { dx: Math.round(b.left - a.left), clear: p.bottom <= cell.top || p.top >= cell.bottom };
       });
       assert.ok(off, 'hovering a clipped cell opens the expansion');
       assert.ok(Math.abs(off.dx) <= 1, `the value keeps its left edge (moved ${off.dx}px)`);
-      assert.ok(Math.abs(off.dy) <= 1, `the value keeps its baseline (moved ${off.dy}px)`);
+      assert.equal(off.clear, true, 'the copy sits off the cell, never over the value');
     } finally { await page.close(); }
   });
 

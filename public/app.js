@@ -2247,15 +2247,33 @@ function showCellPop(td, wrap) {
     copy.replaceWith(text);
   });
   layer.replaceChildren(pop);
-  /* The expansion opens OVER the value, not beside it (Kyle, 2026-08-26): the
-     cell pads 9px/4px, the popover 8px/10px over a border, and the cell
-     centres its line in a row taller than one line — so pinning the two boxes
-     together put the value 8px right and 22px high, and reading a cell moved
-     the thing you were reading. Measure both after layout and close the gap. */
+  /* The expansion opens ABOVE the cell, never over it (Kyle, 2026-09-23,
+     Issue #346, superseding the 2026-08-26 over-the-value rule): a copy laid
+     on the live text blocked click and edit, because the editor, the caret
+     and every typed character sat under a static copy of the old value.
+     Horizontally the CONTENT still lines up — the cell pads 9px/4px and the
+     popover 8px/10px over a border, so the boxes cannot share an edge; the
+     value can. Vertically the pop's bottom sits CELL_POP_GAP over the cell's
+     top, and flips below the row when the room above inside the wrap's
+     visible area (or the viewport) is shorter than the pop — the first rows
+     of a table get their expansion below, never one clipped off the top. */
   const want = contentRect(td);
   const got = contentRect(pop);
   pop.style.left = `${left + (want.left - got.left)}px`;
-  pop.style.top = `${top + (want.top - got.top)}px`;
+  const at = pop.getBoundingClientRect(); // laid out at `top` for now
+  const visibleTop = Math.max(base.top + wrap.clientTop, 0);
+  const above = r.top - visibleTop >= at.height + CELL_POP_GAP;
+  const rowBottom = (td.closest('tr') ?? td).getBoundingClientRect().bottom;
+  const goal = above ? r.top - CELL_POP_GAP - at.height : rowBottom + CELL_POP_GAP;
+  pop.style.top = `${top + (goal - at.top)}px`;
+  pop.classList.toggle('cell-pop-below', !above);
+}
+const CELL_POP_GAP = 4; // px between the expansion and the cell it reads (Issue #346)
+/* Editing never happens under a copy (Issue #346): a cell whose own control
+   holds focus is being edited, so it opens nothing. */
+function cellIsEditing(td) {
+  const a = document.activeElement;
+  return !!a && a !== td && td.contains(a);
 }
 
 function hideCellPop(wrap) {
@@ -4796,19 +4814,25 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
   }, true);
 
-  // A clipped cell opens over the grid on hover, in a layer of its own —
+  // A clipped cell opens a copy above itself on hover, in a layer of its own —
   // the cell keeps its box, so no column ever moves (Kyle, 2026-08-24).
   // It opens for a pointer that RESTS on the cell: crossing a row of
   // clipped cells used to flash each one in turn (Issue #67). The delay is
   // per grid, and a pointer that leaves before it elapses opens nothing.
+  // A press or focus anywhere in the grid takes it down, and a cell being
+  // edited opens none (Issue #346).
   let popTimer = 0;
   wrap.addEventListener('mouseover', (e) => {
     const td = e.target.closest('td.clipped');
     clearTimeout(popTimer);
-    if (td && wrap.contains(td)) popTimer = setTimeout(() => showCellPop(td, wrap), CELL_POP_DELAY);
-    else hideCellPop(wrap);
+    if (td && wrap.contains(td) && !cellIsEditing(td)) {
+      popTimer = setTimeout(() => { if (!cellIsEditing(td)) showCellPop(td, wrap); }, CELL_POP_DELAY);
+    } else hideCellPop(wrap);
   });
-  wrap.addEventListener('mouseleave', () => { clearTimeout(popTimer); hideCellPop(wrap); });
+  const dropCellPop = () => { clearTimeout(popTimer); hideCellPop(wrap); };
+  wrap.addEventListener('mouseleave', dropCellPop);
+  wrap.addEventListener('mousedown', dropCellPop, true);
+  wrap.addEventListener('focusin', dropCellPop);
   main.append(wrap);
   // The first window is painted once the wrap is in the document: before
   // that there is no geometry to measure, and a draw that painted nothing
