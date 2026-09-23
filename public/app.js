@@ -4106,7 +4106,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       win.rowH = first.getBoundingClientRect().height || win.rowH;
       if (win.rowH) GRID_ROW_H.set(rowHKey(), win.rowH);
     }
-    if (g.scrollTop !== win.lastTop) { win.dir = g.scrollTop > win.lastTop ? 1 : -1; win.lastTop = g.scrollTop; }
+    // A row of travel decides the direction, never a pixel (Issue #317).
+    const travel = GW().travelFor({ scrollTop: g.scrollTop, lastTop: win.lastTop, direction: win.dir, rowH: rowH() });
+    win.dir = travel.direction; win.lastTop = travel.lastTop;
     const w = GW().windowFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), total: total(), direction: win.dir });
     if (pager) {
       // The pages under the window, and the one past its leading edge, are

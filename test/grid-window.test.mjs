@@ -127,3 +127,24 @@ test('scrollTopFor puts a row inside the viewport with the least motion', () => 
   assert.equal(GW.scrollTopFor({ index: 3, rowH, viewportH, headH, scrollTop: 900 }), 3 * rowH - headH);
   assert.equal(GW.scrollTopFor({ index: 10, rowH, viewportH, headH, scrollTop: 290 }), 10 * rowH - headH, 'a row under the sticky header is not in view');
 });
+
+test('travelFor reads a direction from a row of travel, never from a pixel (Issue #317)', () => {
+  const rowH = 30;
+  // The box correcting its own scroll at the bottom of a table: 27px
+  // backwards, under a row. Kyle felt that read as a direction — the buffer
+  // swapped to the far side of the window, the content height moved, the box
+  // clamped again, and it bounced once per wheel notch.
+  assert.deepEqual(GW.travelFor({ scrollTop: 973, lastTop: 1000, direction: 1, rowH }), { direction: 1, lastTop: 1000 });
+  // The anchor stands through it, so a scroll that creeps accumulates to a
+  // flip instead of being rounded away one pixel at a time.
+  assert.deepEqual(GW.travelFor({ scrollTop: 969, lastTop: 1000, direction: 1, rowH }), { direction: -1, lastTop: 969 });
+  // A row of travel either way is a gesture, and moves the anchor with it.
+  assert.deepEqual(GW.travelFor({ scrollTop: 1030, lastTop: 1000, direction: -1, rowH }), { direction: 1, lastTop: 1030 });
+  assert.deepEqual(GW.travelFor({ scrollTop: 940, lastTop: 1000, direction: 1, rowH }), { direction: -1, lastTop: 940 });
+  // Standing still is not a direction.
+  assert.deepEqual(GW.travelFor({ scrollTop: 1000, lastTop: 1000, direction: -1, rowH }), { direction: -1, lastTop: 1000 });
+  // Down is the direction a grid opens in, and a row height nobody has
+  // measured yet falls back to the density's own, as windowFor does.
+  assert.deepEqual(GW.travelFor({ scrollTop: 20, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 0 });
+  assert.deepEqual(GW.travelFor({ scrollTop: 40, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 40 });
+});

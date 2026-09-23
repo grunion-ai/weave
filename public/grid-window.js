@@ -52,6 +52,25 @@
       return out;
     },
 
+    /* The direction of travel, and the position it was last read at (Issue
+       #317). A grid's rows are not all the same height, and the spacers stand
+       in for the rows not drawn at one height, so swapping the double buffer
+       from one side of the window to the other moves the content height. At
+       the bottom that lands as a clamp — the box correcting its own scroll by
+       a few pixels — and reading a direction off that correction flipped the
+       buffer straight back, once per notch, for as long as the reader kept
+       pushing. A direction is a row of travel, not a pixel: under a row the
+       held direction and its anchor both stand, so a slow scroll accumulates
+       to a flip instead of being rounded away.
+       { scrollTop, lastTop, direction, rowH } → { direction, lastTop } */
+    travelFor({ scrollTop, lastTop, direction = 1, rowH }) {
+      const h = Number.isFinite(rowH) && rowH > 0 ? rowH : ROW_H.comfortable;
+      const top = Number(scrollTop) || 0;
+      const moved = top - (Number(lastTop) || 0);
+      if (Math.abs(moved) < h) return { direction, lastTop: Number(lastTop) || 0 };
+      return { direction: moved > 0 ? 1 : -1, lastTop: top };
+    },
+
     /* The body-relative scrollTop that puts row `index` in view with the least
        motion — unchanged when it already is, at the bottom edge when it is
        below, just under the header when it is above (or hidden under it). */
