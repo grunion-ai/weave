@@ -333,6 +333,47 @@ if (s) {
     await page.close();
   });
 
+  /* Issue #336, Kyle: "fluttering when hovering over icons maybe with long
+     names, changes popover width for some reason". The readout was doing its
+     job and the popover was sizing itself to its contents, so the two fought:
+     a long name widened the box, the grid reflowed into the new width, the
+     cell slid out from under the pointer, the leave reset the name, the box
+     snapped back, and the pointer was over the cell again. The grid's width
+     is the grid's own — the name under the cursor never gets a vote. */
+  test('naming the hovered icon never resizes the grid under the pointer', async () => {
+    const page = await entityPage();
+    await gridPickerOn(page, pulse);
+    const pop = page.locator('.picker-pop');
+    const rest = (await pop.boundingBox()).width;
+    // The worst case is the longest label the vocabulary carries, aliases and all.
+    const longest = (await page.locator('.picker-cell').evaluateAll(
+      (ns) => ns.map((n) => n.getAttribute('title')).filter(Boolean)))
+      .sort((a, b) => b.length - a.length)[0];
+    assert.ok(longest.length > 12, 'the grid must hold a label long enough to test with');
+    const cell = page.locator(`.picker-cell[title="${longest}"]`);
+    const before = await cell.boundingBox();
+    await cell.hover();
+    await page.waitForTimeout(150);
+    assert.equal((await page.locator('.picker-name').textContent()).trim(), longest,
+      'the long name is read out, as Issue #142 asks');
+    assert.equal((await pop.boundingBox()).width, rest,
+      'the popover must stay the same width while the longest name is named');
+    const after = await cell.boundingBox();
+    assert.deepEqual(
+      [Math.round(after.x), Math.round(after.y)],
+      [Math.round(before.x), Math.round(before.y)],
+      'the hovered cell must not move out from under the pointer');
+    // And the name still fits inside the box rather than pushing through it.
+    const box = await page.locator('.picker-box').boundingBox();
+    const name = await page.locator('.picker-name').boundingBox();
+    assert.ok(name.x + name.width <= box.x + box.width + 1, 'the readout stays inside the box');
+    // Width is a box, not a colour, but the house rule reads both themes anyway.
+    await page.evaluate(() => document.documentElement.setAttribute('data-bs-theme', 'dark'));
+    await page.waitForTimeout(80);
+    assert.equal((await pop.boundingBox()).width, rest, 'dark reads the same width');
+    await page.close();
+  });
+
   test('a picker that is not the grid stays a token box — no readout in its way', async () => {
     const page = await entityPage();
     // The Priority chip opens the list dialect; its box holds chips and a caret.

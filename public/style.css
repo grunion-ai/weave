@@ -1638,8 +1638,15 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
    wears, so "none" is picked with the gesture every other icon is picked with. */
 .picker-none { color: var(--tblr-secondary); }
 .picker-none .wv-icon { opacity: .75; }
-/* A grid wants more room than a name list did. */
-.picker-pop:has(.picker-cells) { min-width: 292px; }
+/* A grid wants more room than a name list did, and it wants EXACTLY that
+   room (Issue #336). A shrink-to-fit popover took its width from its widest
+   content, and the widest content is the readout naming whatever the pointer
+   is on: a long name widened the box, the grid reflowed into the new width,
+   the cell slid out from under the pointer, the leave reset the name, and the
+   box snapped back — a flutter the cursor could not escape. A definite width
+   also gives .picker-name's 50% cap something to measure against, which a
+   percentage against an indefinite box never had. */
+.picker-pop:has(.picker-cells) { width: 292px; }
 
 .picker-empty { color: var(--tblr-secondary); font-size: 12.5px; padding: 8px 6px; }
 .picker-face { text-align: left; cursor: pointer; width: 100%; }
@@ -1693,7 +1700,9 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .picker-pop:has(.picker-terms) .picker-list { max-height: 340px; }
 .picker-cell.picker-term.on { color: var(--tblr-primary); font-weight: 600; background: rgba(var(--tblr-primary-rgb), .10); }
 .picker-custom { display: block; width: 100%; text-align: left; font-size: 12.5px; color: var(--tblr-primary); background: none; border: none; border-top: 1px solid var(--tblr-border-color); margin-top: 4px; padding: 8px 6px 4px; cursor: pointer; }
-.picker-pop:has(.picker-terms) { min-width: 372px; }
+/* Words, not glyphs, and no readout to shake it: the term grid keeps sizing
+   to its widest row, so it opts back out of the grid's definite width. */
+.picker-pop:has(.picker-terms) { width: auto; min-width: 372px; }
 .term-preview { font-family: var(--tblr-font-monospace); font-size: 10.5px; }
 .opt-list { display: flex; flex-direction: column; gap: 4px; }
 .opt-row { display: flex; align-items: center; gap: 6px; }
