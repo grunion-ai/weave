@@ -1888,6 +1888,12 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .switch.on { background: var(--tblr-primary); }
 .switch.on .switch-knob { left: 14px; }
 .eye-btn svg { display: block; }
+/* Table search (Feature #228): a magnifier that opens into a box. */
+.table-search { display: inline-flex; align-items: center; gap: 4px; }
+.table-search-btn .wv-icon, .table-search-btn svg { display: block; width: 16px; height: 16px; }
+.table-search-input { display: none; width: 200px; }
+.table-search.open .table-search-input { display: block; }
+.table-search-empty { margin: 8px 0; color: var(--tblr-secondary); }
 .crumb-row { display: flex; align-items: center; gap: 12px; }
 .crumb-path { flex: 1; min-width: 0; }
 .crumb-actions { display: flex; align-items: center; gap: 6px; }

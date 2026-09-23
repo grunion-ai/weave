@@ -131,7 +131,7 @@ Schema
   map                                 Relation map as mermaid
 
 Entities
-  query <db> [--where '[["Field","=",1]]'] [--select 'A,B'] [--sort Field] [--limit n]
+  query <db> [--where '[["Field","=",1]]'] [--search text] [--select 'A,B'] [--sort Field] [--limit n]
   get <ref> [--db name]               Read one entity ("Task#3" or id)
   create <db> <name> [--values '{json}'] [--doc 'markdown']
   update <ref> --values '{json}'
@@ -729,6 +729,7 @@ async function main() {
         sort: flags.sort ? [String(flags.sort)] : [],
         limit: flags.limit ? Number(flags.limit) : null,
         offset: flags.offset ? Number(flags.offset) : 0,
+        search: flags.search ? String(flags.search) : '',
       });
       return out(result);
     }

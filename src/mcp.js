@@ -45,6 +45,7 @@ export const TOOLS = [
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
         includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
         trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
+        search: { type: 'string', description: 'Keep only the rows the weave_search matcher finds in this table: name, publicId (#143), text fields, documents, comments. Composes with where and sort; total counts the matches.' },
       },
       required: ['db'],
     },
@@ -159,7 +160,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_search',
-    description: 'Universal search across the workspace, spaces, tables, saved views, and entities (names, documents, comments). Every result carries a stable permalink url. limit bounds entity rows only; every matching workspace, space, table and view is always returned.',
+    description: 'Universal search across the workspace, spaces, tables, saved views, and entities (names, publicIds, text fields, documents, comments). Every result carries a stable permalink url. limit bounds entity rows only; every matching workspace, space, table and view is always returned.',
     inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] },
   },
   {
@@ -426,7 +427,7 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.query(args.db, {
         where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null,
         offset: args.offset ?? 0, select: args.select ?? null, includeDeleted: Boolean(args.includeDeleted),
-        trashCount: Boolean(args.trashCount),
+        trashCount: Boolean(args.trashCount), search: args.search ?? '',
       });
     case 'weave_get_entity':
       return weave.readEntity(args.entity);

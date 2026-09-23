@@ -3272,9 +3272,68 @@ function filterStrip(db, onChange) {
   return strip;
 }
 
+/* Table search (Feature #228): the magnifier in the table's toolbar. The
+   ⌘K matcher scoped to this table — name, publicId (#143), text fields —
+   runs on the server as the query's `search`, so it narrows every page of a
+   paged grid, keeps the table's sort and composes with its saved filter.
+   Transient view state: one table at a time, in memory, never written to
+   the Tables row, so nobody else's view moves. Leaving the table drops it. */
+const TABLE_SEARCH_DEBOUNCE = 150;               // the palette's pause
+let tableSearch = { dbId: null, text: '', open: false, focus: false, only: null };
+let tableSearchTimer = 0;
+const tableSearchText = (db) => (tableSearch.dbId === db.id ? tableSearch.text.trim() : '');
+function setTableSearch(db, text, { open = tableSearch.open, focus = false } = {}) {
+  clearTimeout(tableSearchTimer);
+  tableSearch = { ...tableSearch, dbId: db.id, text, open, focus };
+  return showDatabase(db.id, state.route.view);
+}
+function openTableSearch(root = document) {
+  const box = root.querySelector('.table-search');
+  if (!box) return;
+  tableSearch.open = true;
+  box.classList.add('open');
+  box.querySelector('.table-search-input').focus();
+}
+function tableSearchBox(db) {
+  const input = el('input', {
+    class: 'form-control form-control-sm table-search-input', type: 'search',
+    placeholder: `Search ${db.term.plural}`, 'aria-label': `Search ${db.term.plural}`,
+    value: tableSearchText(db) ? tableSearch.text : '',
+  });
+  const box = el('span', { class: 'table-search' + (tableSearch.dbId === db.id && tableSearch.open ? ' open' : '') },
+    el('button', {
+      class: 'btn btn-sm table-search-btn', type: 'button', title: 'Search this table (/)', 'aria-label': 'Search this table',
+      onclick: () => openTableSearch(box.parentElement),
+    }, lucideEl('search')),
+    input);
+  input.addEventListener('input', () => {
+    tableSearch = { ...tableSearch, dbId: db.id, text: input.value, open: true };
+    clearTimeout(tableSearchTimer);
+    tableSearchTimer = setTimeout(() => setTableSearch(db, input.value), TABLE_SEARCH_DEBOUNCE);
+  });
+  input.addEventListener('keydown', async (e) => {
+    if (e.isComposing) return;
+    if (e.key === 'Escape') {
+      e.preventDefault(); e.stopPropagation();
+      const had = tableSearchText(db) || input.value.trim();
+      if (!had) { clearTimeout(tableSearchTimer); tableSearch.open = false; box.classList.remove('open'); box.querySelector('button').focus(); return; }
+      await setTableSearch(db, '', { open: false });
+      document.querySelector('.table-search-btn')?.focus();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      // A keystroke still in its pause is flushed first: Enter answers what the box says.
+      if (input.value.trim() !== tableSearchText(db)) await setTableSearch(db, input.value, { focus: true });
+      if (tableSearch.only) openEntity(tableSearch.only);
+    }
+  });
+  return box;
+}
+
 async function showDatabase(dbId, view) {
   const db = allTables().find((d) => d.id === dbId);
   if (!db) return showHome();
+  if (tableSearch.dbId !== dbId) { clearTimeout(tableSearchTimer); tableSearch = { dbId, text: '', open: false, focus: false, only: null }; }
+  const search = tableSearch.text.trim();
   // The board view is gone (Kyle, 2026-08-25, Issue #75) the way the list
   // view went before it: stale #/… routes and saved views that say 'board'
   // land on the table.
@@ -3296,6 +3355,7 @@ async function showDatabase(dbId, view) {
   const query = {
     ...(where ? { where } : {}),
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
+    ...(search ? { search } : {}),
     ...(showDeleted ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
   };
   /* The trash list only when it is shown (Issue #270): the open used to read
@@ -3308,8 +3368,12 @@ async function showDatabase(dbId, view) {
       ? api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0, items: [] }))
       : null,
   ]);
+  // The box has moved on while this read was out: a newer read is coming.
+  if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
+  tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
   // The eyeball's "show deleted": trashed rows ride along, dimmed, in place.
-  const items = showDeleted
+  // The search never finds the trash, so a search leaves them out.
+  const items = showDeleted && !search
     ? [...result.items, ...(trash.items ?? []).map((e) => ({ ...e, deleted: true }))]
     : result.items;
   drawDatabase(db, items, trash?.total ?? result.trashCount ?? 0, showDeleted ? null : gridPager(db, query, result));
@@ -3361,7 +3425,7 @@ function gridPager(db, query, first) {
     return p;
   };
   const pager = {
-    rows, total: first.total, page: GW.PAGE,
+    rows, total: first.total, page: GW.PAGE, search: query.search ?? '',
     window: { start: 0, end: 0 },             // the last window painted; renderTable keeps it current
     has: (offset) => pages.has(offset),
     fetch,
@@ -3391,6 +3455,9 @@ function gridPager(db, query, first) {
 
 function drawDatabase(db, items, trashCount = 0, pager = null) {
   const main = $('#main');
+  // The search box is redrawn with the grid it narrows; the caret goes with it.
+  const typing = document.activeElement?.classList?.contains('table-search-input') ? document.activeElement : null;
+  const caret = typing ? [typing.selectionStart, typing.selectionEnd] : null;
   main.replaceChildren();
 
   main.append(viewHeader({
@@ -3417,6 +3484,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
       await loadSchema();
     },
     actions: [
+      tableSearchBox(db),
       // Only surfaced once the table actually has deleted rows — an empty
       // trash is not worth a permanent control.
       // The eyeball (Feature #114): show / hide fields, system columns and
@@ -3482,8 +3550,26 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
     ],
   }));
 
+  const searchInput = main.querySelector('.table-search-input');
+  if (searchInput && (typing || tableSearch.focus)) {
+    tableSearch.focus = false;
+    searchInput.focus();
+    if (caret) searchInput.setSelectionRange(...caret);
+  }
+
   const strip = filterStrip(db, () => showDatabase(db.id, state.route.view));
   if (strip) main.append(strip);
+
+  // A search that matches nothing says so, with the way back beside it.
+  const searching = tableSearchText(db);
+  if (searching && !(pager ? pager.total : items.length)) {
+    main.append(el('div', { class: 'table-search-empty wv-note' },
+      `No ${db.term.plural} match “${searching}”. `,
+      el('button', {
+        class: 'btn btn-sm btn-ghost-secondary tiny table-search-clear', type: 'button',
+        onclick: () => setTableSearch(db, '', { focus: true }),
+      }, 'Clear search')));
+  }
 
   /* One commit, one row (Issue #257). `written` is the PATCH response: the
      fresh row, and `affected` — every row this write can have changed. The
@@ -3509,7 +3595,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
     if (pager) await pager.refresh();
     else {
       const w2 = filterWhere(db);
-      fresh = (await api('POST', `/tables/${db.id}/query`, w2 ? { where: w2 } : {})).items;
+      fresh = (await api('POST', `/tables/${db.id}/query`, { ...(w2 ? { where: w2 } : {}), ...(searching ? { search: searching } : {}) })).items;
     }
     await keepScroll(() => drawDatabase(db, fresh, trashCount, pager));
     restoreGridFocus({ now: true });
@@ -3530,6 +3616,13 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
     await keepScroll(() => drawDatabase(db, items, trashCount, pager));
   };
   state.inlineAdd = async () => {
+    /* A new row is born empty and matches no search, so the search steps
+       aside first and the row lands where the reader can see it (the
+       search's half of Issue #341; the saved filter's half is its own). */
+    if (searching) {
+      await setTableSearch(db, '', { open: false });
+      return state.inlineAdd();
+    }
     try {
       if (db.system === 'tables') return newTableDialog(db, redraw);
       if (db.system === 'fields') return newFieldDialog(redraw);
@@ -3548,6 +3641,19 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
   };
 
   renderTable(main, db, items, onSaved, state.inlineAdd, pager);
+  /* / or ⌘F on a resting cell opens the search. Capture phase, ahead of the
+     grid's keymap: a resting cell would otherwise take / as the first
+     character of an edit. A cell already editing keeps its keys. */
+  main.querySelector('.table-wrap')?.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.altKey) return;
+    const td = e.target?.closest?.('tbody tr.entity-row > td[tabindex="0"]');
+    if (!td || e.target !== td) return;
+    const slash = e.key === '/' && !e.metaKey && !e.ctrlKey;
+    const find = (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f';
+    if (!slash && !find) return;
+    e.preventDefault(); e.stopPropagation();
+    openTableSearch(main);
+  }, true);
 }
 
 /* Show / hide, one list: the table's fields, then the system columns, then
@@ -4123,7 +4229,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!changed) return;
     if (loadedNote) {
       const n = loadedIds().length;
-      loadedNote.textContent = n < total() ? `${n.toLocaleString()} of ${total().toLocaleString()} loaded` : '';
+      // A search says how many rows it found (Feature #228).
+      loadedNote.textContent = n < total() ? `${n.toLocaleString()} of ${total().toLocaleString()} loaded`
+        : pager?.search ? `${WeaveTerm.count(total(), db.term)} found` : '';
     }
     // Rows that just arrived take their state: the clipped marker measured
     // after layout, the selection, the docked light and the cell range.

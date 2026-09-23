@@ -70,6 +70,8 @@ const isBodyBlock = (f) => f.type === 'document' || f.type === 'attachments'
   || (f.type === 'relation' && !!(f.many ?? f.config?.many));
 
 const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments'];
+// The stored values search reads as text (Feature #228). `key` is a secret and stays out.
+const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 /* checkbox and toggle store the same boolean; the toggle names its two states (Feature #202). */
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
@@ -5154,9 +5156,16 @@ export class Weave {
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
     try { return this.#queryIn(dbRef, opts); } finally { this.viewerZone = prev; }
   }
-  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, includeDeleted = false, trashCount = false } = {}) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, includeDeleted = false, trashCount = false, search = '' } = {}) {
     const db = this.getTable(dbRef);
     let rows = this.listEntities(db.id, { includeDeleted });
+    /* `search` is the ⌘K matcher scoped to this table (Feature #228): it
+       narrows whatever the where-clause and the sort make of the table, and
+       `total` counts the matches, so a paged grid pages through them. */
+    if (String(search ?? '').trim()) {
+      const hit = new Set(this.#searchHits(search, db.id).map((h) => h.e.id));
+      rows = rows.filter((e) => hit.has(e.id));
+    }
     /* `trashCount: true` answers how many of the table's rows are in the
        trash — the whole table's, not the filtered page's — so the table page
        can print its eyeball count without reading the trash list (Issue #270). */
@@ -5679,8 +5688,19 @@ export class Weave {
 
   // ---------------- search ----------------
 
-  search(text, { limit = 25 } = {}) {
-    const needle = String(text).toLowerCase().trim();
+  /* `table` scopes the search to one table (Feature #228): the table page's
+     search box is this scorer with a scope, never a second matcher. */
+  search(text, { limit = 25, table = null } = {}) {
+    const scope = table == null ? null : this.getTable(table).id;
+    return this.#searchHits(text, scope)
+      .map(({ e, score, snippet }) => ({ ...this.#summary(e.id), score, snippet }))
+      .sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+
+  /* The one matcher behind ⌘K and the table search: every live row that
+     matches, unsorted, as { e, score, snippet }. */
+  #searchHits(text, dbId = null) {
+    const needle = String(text ?? '').toLowerCase().trim();
     if (!needle) return [];
     // '#143', '143', or 'task #143' — an exact publicId hit outranks any text
     // match, so numbered entities land on top of the ⌘K palette.
@@ -5688,31 +5708,34 @@ export class Weave {
     const idNum = idm ? Number(idm[2]) : null;
     const idTable = idm ? idm[1].trim() : '';
     const results = [];
-    for (const e of Object.values(this.state.entities)) {
+    for (const e of dbId ? this.listEntities(dbId) : Object.values(this.state.entities)) {
       if (e.deletedAt) continue; // the trash is not searchable
       const home = this.state.tables[e.dbId];
       if (!home || home.deletedAt || this.state.spaces[home.spaceId]?.deletedAt) continue; // nor a trashed container
       const name = this.entityName(e);
       const docText = Object.values(e.docs ?? {}).join('\n');
       const comments = e.comments.map((c) => c.text).join('\n');
+      // Plain text values (text, url, email) read like the documents do.
+      const textValues = Object.values(home.fields)
+        .filter((f) => SEARCHED_VALUE_TYPES.has(f.type) && f.id !== home.nameFieldId && typeof e.values?.[f.id] === 'string')
+        .map((f) => e.values[f.id]).join('\n');
       let score = 0;
       let snippet = '';
       if (idNum !== null && e.publicId === idNum) {
-        const db = this.state.tables[e.dbId];
         if (!idTable
-          || db.name.toLowerCase().startsWith(idTable)
-          || this.qualifiedName(db).toLowerCase().includes(idTable)) score += 20;
+          || home.name.toLowerCase().startsWith(idTable)
+          || this.qualifiedName(home).toLowerCase().includes(idTable)) score += 20;
       }
       if (name.toLowerCase().includes(needle)) score += 10;
-      const hay = docText + '\n' + comments;
+      const hay = textValues + '\n' + docText + '\n' + comments;
       const idx = hay.toLowerCase().indexOf(needle);
       if (idx >= 0) {
         score += 5;
         snippet = hay.slice(Math.max(0, idx - 40), idx + needle.length + 40).replace(/\n+/g, ' ').trim();
       }
-      if (score > 0) results.push({ ...this.#summary(e.id), score, snippet });
+      if (score > 0) results.push({ e, score, snippet });
     }
-    return results.sort((a, b) => b.score - a.score).slice(0, limit);
+    return results;
   }
 
   /* Universal search across everything addressable, with stable permalinks.

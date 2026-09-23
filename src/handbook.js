@@ -873,6 +873,10 @@ The dock is the entity itself, not a preview: edit there and the table keeps its
 
 The grid holds the rows in view plus a buffer of rows above and below — the buffer runs ahead of the direction you scroll, so the next rows are drawn before they arrive — and two spacer rows stand in for the rest, at the height they would take, so the scrollbar and the scroll position are honest (Issue #271). The rows come in pages of 200 in the table's sort and filter order; the page past the edge of the window is fetched before it is needed, and a row whose page is still on its way holds its place at the row height for the moment it takes. The foot reads \`200 of 2,087 loaded\` until every row has been through the window. Sort and filter stay on the server, so page one is the right 200 and the Σ row still reads the space rollups, never the page. A cell commit re-reads the pages under the window and redraws at the same scroll.
 
+## Searching a table
+
+The magnifier in the table's toolbar opens a search box; \`/\` or \`⌘F\` opens it from a resting cell. It uses the ⌘K matcher, scoped to this table: a name fragment, a \`#143\` id, or the words in a text field or a document. The grid keeps only the matching rows as you type, in the table's own sort and inside its saved filter, and the foot reads \`3 records found\`. The search runs on the server, so it reaches every page of a big table, and it belongs to you alone: it is never saved on the table and nobody else's view changes (Feature #228). \`Return\` on a single match opens that row in the dock. \`Esc\` clears the box and folds it away; a search that finds nothing says so and offers **Clear search**. \`+ New\` clears the search first, since an empty new row matches nothing.
+
 ## The grid from the keyboard
 
 Cells **rest as values** and open on purpose. The cursor is a ring on one cell; the arrows and Tab move it, and a cell opens when you ask. That is what gives ← and → to navigation: a text caret only owns them while a cell is open, and hands them back when you Tab, Return or Esc out.
@@ -883,6 +887,7 @@ Cells **rest as values** and open on purpose. The cursor is a ring on one cell; 
 | \`Tab\` / \`⇧Tab\` | along the row, wrapping into the next or previous row; the last cell of the last row is the end, never the browser's chrome |
 | \`Return\` | open the cell: a caret with the value selected, a picker, a flipped checkbox |
 | any character | open the cell and start typing over the value |
+| \`/\` or \`⌘F\` | search this table |
 | \`Space\` | pick the row up — or, on a toggle cell, flip the switch |
 | \`⇧↑\` / \`⇧↓\` | extend the run of chosen rows |
 | \`⌘A\` | take every loaded row — the foot says how many that is |
