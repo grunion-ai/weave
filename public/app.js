@@ -4023,14 +4023,29 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   let table = null, tbody = null, topSpacer = null, bottomSpacer = null, loadedNote = null;
   const live = new Map();     // index → the <tr> in the tbody right now
   const built = new Map();    // entity id → its <tr>, for the life of this draw
-  const win = { start: 0, end: 0, lastTop: 0, dir: 1, rowH: 0 };
+  const win = { start: 0, end: 0, lastTop: 0, dir: 1, rowH: 0, rowHAt: '' };
   /* The row height: measured from a painted row, else what this table
      measured at this density last time, else the density's default. The
      memory matters on a redraw: its first paint has no real row yet (the
      pages under the old window are the ones held, the top's may not be),
      and a spacer sized on the default lands the restored scroll on the
-     wrong rows. */
+     wrong rows.
+
+     Measured ONCE per table, density and width, and then kept (Issue #324).
+     Weave's rows are not all the same height — the live Issue grid measures
+     46.5, 47 and 48 — and the spacer stands in for hundreds of them at one
+     height, so re-reading that height from whichever row happens to head
+     the window turned a pixel of row-to-row variance into hundreds of
+     pixels of page height. At the last row, where the scroll is already at
+     its maximum, the box clamped to the new height; the clamp resized the
+     wrap, which re-fired the observer, which re-measured, which moved the
+     height again: a three-position cycle thirty times a second, with no
+     hand on the wheel, and a console full of "ResizeObserver loop
+     completed with undelivered notifications". `rowHAt` names what was
+     measured, so a density flip or a resize measures again and a scroll
+     never does. */
   const rowHKey = () => `${db.id}:${gridDensity(db.id)}`;
+  const rowHAt = () => `${rowHKey()}:${Math.round(wrap.clientWidth)}`;
   const rowH = () => win.rowH || GRID_ROW_H.get(rowHKey()) || GW().ROW_H[gridDensity(db.id)];
   const spacer = () => el('tr', { class: 'wv-spacer', 'aria-hidden': 'true' },
     el('td', { colspan: String(colCount) }));
@@ -4101,8 +4116,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!tbody?.isConnected) return;
     const g = geometry();
     const first = tbody.querySelector('tr.entity-row');
-    // Measured from a painted row, per density; the fallback until then.
-    if (first) {
+    // Measured from a painted row, once per table, density and width; the
+    // fallback until then (Issue #324).
+    if (first && rowHAt() !== win.rowHAt) {
+      win.rowHAt = rowHAt();
       win.rowH = first.getBoundingClientRect().height || win.rowH;
       if (win.rowH) GRID_ROW_H.set(rowHKey(), win.rowH);
     }
@@ -4232,7 +4249,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       });
     }
     live.clear(); built.clear();
-    win.start = 0; win.end = 0; win.lastTop = 0; win.dir = 1;
+    win.start = 0; win.end = 0; win.lastTop = 0; win.dir = 1; win.rowHAt = '';
     tbody = el('tbody');
     topSpacer = spacer(); bottomSpacer = spacer();
     // Creating an entity is the last row of the grid, not a detached bar:
