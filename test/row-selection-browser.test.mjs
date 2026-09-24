@@ -142,6 +142,8 @@ if (s) {
     try {
       await boxes(page).nth(1).check();
       await boxes(page).nth(3).click({ modifiers: ['Shift'] });
+      await page.waitForFunction(() =>
+        document.querySelectorAll('.wv-grid tbody .sel-box:checked').length === 3, null, { timeout: 4000 }).catch(() => {});
       assert.equal(await page.locator('.wv-grid tbody .sel-box:checked').count(), 3,
         'rows 2 through 4 inclusive');
     } finally { await page.close(); }
@@ -209,10 +211,12 @@ if (s) {
   test('the count says what the bar holds, and follows the selection', async () => {
     const page = await grid();
     try {
+      const says = (text) => page.waitForFunction((t) =>
+        document.querySelector('.sel-count')?.textContent.trim() === t, text, { timeout: 4000 });
       await boxes(page).nth(0).check();
-      assert.equal((await page.locator('.sel-count').textContent()).trim(), '1 record');
+      await says('1 record');
       await boxes(page).nth(2).click({ modifiers: ['Shift'] });
-      assert.equal((await page.locator('.sel-count').textContent()).trim(), '3 records');
+      await says('3 records');
     } finally { await page.close(); }
   });
 
@@ -264,6 +268,15 @@ if (s) {
 
   /* ── the commands (slice 3) ─────────────────────────────────────────── */
   const act = (page, label) => page.locator(`.sel-puck .sel-act[aria-label="${label}"]`);
+  /* Issue #349: the puck leaves the moment a bulk write is SENT, and the rows
+     repaint only once the re-read behind it lands. Holding that re-read back
+     turns the gap between the two into a certainty, so a read taken before
+     the paint fails here every run instead of one run in five under a loaded
+     gate. Every case below that reads a written value waits for the paint. */
+  const holdRepaint = (page, ms = 600) => page.route('**/tables/*/query', async (route) => {
+    await new Promise((r) => setTimeout(r, ms));
+    await route.continue();
+  });
   const pickRow = (page, text) => page.locator('.picker-pop .picker-row', { hasText: text }).first().click();
 
   test('Set a field… walks field → value and writes one state across the selection', async () => {
@@ -280,10 +293,11 @@ if (s) {
       await pickRow(page, 'Status');
       // Step two: the state chips.
       await page.waitForSelector('.picker-pop .picker-search:focus');
+      await holdRepaint(page);
       await pickRow(page, 'Done');
-      await page.waitForFunction(() =>
-        document.querySelectorAll('.wv-grid tbody tr.entity-row td[data-field="Status"] button')
-          .length && !document.querySelector('.sel-puck'), null, { timeout: 4000 });
+      await page.waitForFunction(() => !document.querySelector('.sel-puck')
+        && [...document.querySelectorAll('.wv-grid tbody tr.entity-row td[data-field="Status"] button')]
+          .filter((b) => /Done/.test(b.textContent)).length === 2, null, { timeout: 8000 }).catch(() => {});
       const states = await page.locator('.wv-grid tbody tr.entity-row td[data-field="Status"] button').allTextContents();
       assert.equal(states.filter((t) => /Done/.test(t)).length, 2, 'both chosen rows are Done, the rest untouched');
       assert.equal(await page.locator('.sel-puck').count(), 0, 'the bar goes with the selection');
@@ -300,11 +314,16 @@ if (s) {
       await input.waitFor();
       assert.ok(await input.evaluate((n) => n === document.activeElement), 'the cursor is already in the box');
       await input.fill('42');
+      await holdRepaint(page);
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => !document.querySelector('.sel-puck'), null, { timeout: 4000 });
-      // A number rests as its input, so the value is read off the control.
+      // A number rests as its input, so the value is read off the control —
+      // and the wait is on that control, not on the puck the write outruns.
+      await page.waitForFunction(() => [...document.querySelectorAll(
+        '.wv-grid tbody tr.entity-row td[data-field="Estimate"] input')]
+        .filter((n) => n.value === '42').length === 1, null, { timeout: 8000 }).catch(() => {});
       const cells = await page.locator('.wv-grid tbody tr.entity-row td[data-field="Estimate"] input').evaluateAll((ns) => ns.map((n) => n.value));
-      assert.equal(cells.filter((t) => t === '42').length, 1);
+      assert.equal(cells.filter((t) => t === '42').length, 1, `the one chosen row reads 42: ${cells}`);
     } finally { await page.close(); }
   });
 
@@ -319,10 +338,13 @@ if (s) {
       // The target step searches the far table.
       await page.waitForSelector('.picker-pop .picker-search:focus');
       await page.keyboard.type('an');
+      await holdRepaint(page);
       await pickRow(page, 'Ann');
-      await page.waitForFunction(() => !document.querySelector('.sel-puck'), null, { timeout: 4000 });
+      await page.waitForFunction(() => !document.querySelector('.sel-puck')
+        && [...document.querySelectorAll('.wv-grid tbody tr.entity-row td[data-field="Owner"]')]
+          .filter((td) => /Ann/.test(td.textContent)).length === 2, null, { timeout: 8000 }).catch(() => {});
       const owners = await page.locator('.wv-grid tbody tr.entity-row td[data-field="Owner"]').allTextContents();
-      assert.equal(owners.filter((t) => /Ann/.test(t)).length, 2);
+      assert.equal(owners.filter((t) => /Ann/.test(t)).length, 2, `both chosen rows own Ann: ${owners}`);
     } finally { await page.close(); }
   });
 
@@ -388,10 +410,13 @@ if (s) {
       const input = page.locator('.value-pop input');
       await input.waitFor();
       await input.fill('Carol');
+      await holdRepaint(page);
       await page.keyboard.press('Enter');
-      await page.waitForFunction(() => !document.querySelector('.sel-puck'), null, { timeout: 4000 });
+      await page.waitForFunction(() => !document.querySelector('.sel-puck')
+        && [...document.querySelectorAll('.wv-grid tbody tr.entity-row td[data-field="Owner"]')]
+          .filter((td) => /Carol/.test(td.textContent)).length === 2, null, { timeout: 8000 }).catch(() => {});
       const owners = await page.locator('.wv-grid tbody tr.entity-row td[data-field="Owner"]').allTextContents();
-      assert.equal(owners.filter((t) => /Carol/.test(t)).length, 2);
+      assert.equal(owners.filter((t) => /Carol/.test(t)).length, 2, `both chosen rows own Carol: ${owners}`);
     } finally { await page.close(); }
   });
 
