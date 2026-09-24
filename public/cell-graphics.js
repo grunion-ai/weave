@@ -4,7 +4,8 @@
    test/cell-graphics.test.mjs. app.js puts the markup in a grid cell, a chip
    segment or a card, beside the value's own text.
 
-   The number display (Feature #230) and the rating's icons (Feature #231).
+   The number display (Feature #230), the rating's icons (Feature #231) and
+   the sparkline (Feature #232).
    The number display: a bar or a ring filled to the value's
    share of its scale, or a heat tint behind the text. The scale is the
    engine's (`scales` on a read): the column max, or a fixed number. Every
@@ -70,5 +71,75 @@
   /* Clicking the nth icon sets n; clicking the one that is the value clears it. */
   const ratingClick = (current, n) => (Number(current) === n ? 0 : n);
 
-  root.weaveCellGraphics = { DISPLAYS, isGraphic, share, meterSvg, meterTitle, ratingParts, ratingClick };
+  /* The sparkline (Feature #232): a formula's list drawn as a line, columns
+     or win/loss bars. The newest SPARK_CAP points are drawn — a series is
+     read left to right, oldest first — and the hover lists every value. A
+     blank slot is a gap in the line and an empty column. */
+  const SPARK_CAP = 60;
+  const SPARK_W = 80, SPARK_H = 18, PAD = 1.5;
+  const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+  function sparkPoints(values, cap = SPARK_CAP) {
+    const list = Array.isArray(values) ? values : [];
+    return { shown: list.slice(-cap), total: list.length, capped: list.length > cap };
+  }
+  const fmt = (v) => (isNum(v) ? String(Math.round(v * 100) / 100) : '–');
+  function sparkTitle(values, cap = SPARK_CAP) {
+    const { total, capped } = sparkPoints(values, cap);
+    const list = (Array.isArray(values) ? values : []).map(fmt).join(', ');
+    return capped ? `${list}\n(drawing the last ${cap} of ${total})` : list;
+  }
+  function sparkLabel(values) {
+    const nums = (Array.isArray(values) ? values : []).filter(isNum);
+    if (!nums.length) return 'no values';
+    return `${nums.length} value${nums.length === 1 ? '' : 's'}, last ${fmt(nums[nums.length - 1])}, low ${fmt(Math.min(...nums))}, high ${fmt(Math.max(...nums))}`;
+  }
+  function sparkSvg(style, values, { cap = SPARK_CAP } = {}) {
+    const pts = sparkPoints(values, cap).shown;
+    const nums = pts.filter(isNum);
+    if (!nums.length) return '';
+    const n = pts.length;
+    const open = `<svg class="cg cg-spark cg-spark-${style}" viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="none" ${SVG}>`;
+    const slot = (SPARK_W - 2 * PAD) / n;
+    if (style === 'winloss') {
+      const mid = SPARK_H / 2, h = mid - PAD, w = Math.max(1, slot * 0.7);
+      const bars = pts.map((v, i) => (isNum(v) && v !== 0
+        ? `<rect class="cg-fill cg-${v > 0 ? 'win' : 'loss'}" x="${r2(PAD + i * slot + (slot - w) / 2)}" y="${r2(v > 0 ? PAD : mid)}" width="${r2(w)}" height="${r2(h)}"/>`
+        : '')).join('');
+      return `${open}<line class="cg-track" x1="0" x2="${SPARK_W}" y1="${mid}" y2="${mid}"/>${bars}</svg>`;
+    }
+    const lo = Math.min(...nums), hi = Math.max(...nums);
+    if (style === 'column') {
+      // Columns stand on zero when the series crosses it, else on its floor.
+      const base = Math.min(0, lo), top = Math.max(0, hi);
+      const span = top - base || 1;
+      const y = (v) => PAD + (1 - (v - base) / span) * (SPARK_H - 2 * PAD);
+      const zero = y(Math.min(Math.max(0, base), top));
+      const w = Math.max(1, slot * 0.7);
+      return open + pts.map((v, i) => {
+        if (!isNum(v)) return '';
+        const yv = y(v);
+        const h = Math.max(1, Math.abs(zero - yv));
+        return `<rect class="cg-fill${v < 0 ? ' cg-neg' : ''}" x="${r2(PAD + i * slot + (slot - w) / 2)}" y="${r2(Math.min(yv, zero))}" width="${r2(w)}" height="${r2(h)}"/>`;
+      }).join('') + '</svg>';
+    }
+    // line
+    const span = hi - lo;
+    const x = (i) => (n === 1 ? SPARK_W / 2 : PAD + (i * (SPARK_W - 2 * PAD)) / (n - 1));
+    const y = (v) => (span ? PAD + (1 - (v - lo) / span) * (SPARK_H - 2 * PAD) : SPARK_H / 2);
+    if (nums.length === 1) {
+      const i = pts.findIndex(isNum);
+      return `${open}<circle class="cg-dot" cx="${r2(x(i))}" cy="${r2(y(pts[i]))}" r="1.8"/></svg>`;
+    }
+    let d = '', pen = false;
+    pts.forEach((v, i) => {
+      if (!isNum(v)) { pen = false; return; }
+      d += `${pen ? 'L' : 'M'}${r2(x(i))} ${r2(y(v))}`;
+      pen = true;
+    });
+    const last = pts.length - 1 - [...pts].reverse().findIndex(isNum);
+    return `${open}<path class="cg-fill" d="${d}" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`
+      + `<circle class="cg-dot" cx="${r2(x(last))}" cy="${r2(y(pts[last]))}" r="1.8"/></svg>`;
+  }
+
+  root.weaveCellGraphics = { DISPLAYS, isGraphic, share, meterSvg, meterTitle, ratingParts, ratingClick, SPARK_CAP, sparkPoints, sparkTitle, sparkLabel, sparkSvg };
 })(globalThis);

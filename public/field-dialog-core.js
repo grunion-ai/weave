@@ -58,6 +58,7 @@
     { name: 'min', group: 'number', sig: 'min(a, b, …)', doc: 'The smallest of the numbers given.', example: 'min([Amount], 1000)' },
     { name: 'max', group: 'number', sig: 'max(a, b, …)', doc: 'The largest of the numbers given.', example: 'max([Amount], 0)' },
     { name: 'number', group: 'number', sig: 'number(x)', doc: 'Any value as a number; text that is not numeric becomes NaN.', example: 'number([Stage])' },
+    { name: 'sortby', group: 'number', sig: 'sortby(values, keys)', doc: 'The list of values ordered by a parallel list of keys, ascending; blank keys last. Two lookups over one relation line up slot for slot.', example: 'sortby([Amount], [Close Date])' },
     { name: 'today', group: 'date', sig: 'today()', doc: "Today's date as YYYY-MM-DD, read from the engine clock.", example: 'today()' },
     { name: 'now', group: 'date', sig: 'now()', doc: 'The current instant as an ISO timestamp.', example: 'now()' },
     { name: 'days', group: 'date', sig: 'days(from, to)', doc: 'Whole days from one date to the other; negative when to is earlier.', example: 'days([Start], [End])' },
@@ -282,6 +283,8 @@
   const NUMBER_FORMATS = ['number', 'currency', 'percent', 'compact'];
   // Mirrors the engine's NUMBER_DISPLAYS (Feature #230, source-gated).
   const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
+  // A formula that returns a list can also wear a sparkline (Feature #232).
+  const SPARKLINE_STYLES = ['line', 'column', 'winloss'];
   /* A rating's scale (Feature #231): the dialog offers three, the engine
      takes any whole number 1..RATING_MAX. */
   const RATING_PRESETS = [3, 5, 7];
@@ -380,6 +383,12 @@
     // Compact groups on its own; accounting is a currency convention.
     if (n.separator && n.format !== 'compact') config.separator = true;
     if (n.accounting && n.format === 'currency') config.accounting = true;
+    // A sparkline (Feature #232): the style, line unless said.
+    if (n.display === 'sparkline') {
+      config.display = 'sparkline';
+      if (n.style && n.style !== 'line') config.style = n.style;
+      return config;
+    }
     // The display (Feature #230): text and the column scale are the defaults.
     if (n.display && n.display !== 'text') {
       config.display = n.display;
@@ -491,7 +500,7 @@
       state.type = 'text'; // grid shows a neutral tile behind the toggle
       state.computed = 'formula';
       state.expression = c.expression ?? '';
-      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column' };
+      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column', style: c.style ?? 'line' };
       return state;
     }
     if (def.type === 'view') {
@@ -567,7 +576,9 @@
       if (c.format === 'compact' && c.separator) return fail('Compact groups on its own; a separator has nothing to add');
       if (c.accounting && c.format !== 'currency') return fail('Accounting negatives need format currency');
     }
-    if (def.type === 'number' || def.type === 'formula') {
+    if (def.type === 'number' && c.display === 'sparkline') return fail('A sparkline draws a list: only a formula can wear it');
+    if (def.type === 'formula' && c.display === 'sparkline' && c.style != null && !SPARKLINE_STYLES.includes(c.style)) return fail(`Invalid sparkline style '${c.style}' (${SPARKLINE_STYLES.join(', ')})`);
+    if ((def.type === 'number' || def.type === 'formula') && c.display !== 'sparkline') {
       if (c.display != null && !NUMBER_DISPLAYS.includes(c.display)) return fail(`Invalid number display '${c.display}' (${NUMBER_DISPLAYS.join(', ')})`);
       if (c.display && c.display !== 'text' && c.scale != null && c.scale !== 'column' && !(typeof c.scale === 'number' && c.scale > 0)) return fail("Scale is 'column' or a number above 0");
     }
@@ -704,7 +715,7 @@
     const c = {};
     if (f.type === 'select' || f.type === 'multiselect') c.options = f.optionsFull ?? (f.options ?? []).map((n) => ({ name: n, color: '' }));
     if (f.type === 'workflow') c.states = f.states ?? [];
-    if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale']) { if (f[k] != null) c[k] = f[k]; }
+    if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style']) { if (f[k] != null) c[k] = f[k]; }
     if (f.type === 'date' || f.type === 'daterange') for (const k of ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) { if (f[k] != null) c[k] = f[k]; }
     if (f.type === 'formula') c.expression = f.expression ?? '';
     if (f.type === 'field') c.depth = f.depth ?? 1;
@@ -739,7 +750,7 @@
     // The row term is a lane of its own on the Name field: null clears it.
     if (existing.role === 'name') patch.term = c.term ?? null;
     if (existing.type === 'number' || existing.type === 'formula') {
-      for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale']) patch[k] = c[k] ?? null;
+      for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style']) patch[k] = c[k] ?? null;
     }
     if (existing.type === 'date' || existing.type === 'daterange') {
       // Every lane, every time: a null clears (a grain back to full drops the key).
@@ -766,7 +777,7 @@
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
-    NUMBER_FORMATS, NUMBER_DISPLAYS, RATING_PRESETS, RATING_MAX, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
+    NUMBER_FORMATS, NUMBER_DISPLAYS, SPARKLINE_STYLES, RATING_PRESETS, RATING_MAX, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     blankState, definitionFromState, stateFromDefinition,
     definitionFromFieldView, editPatchConfig,

@@ -154,11 +154,18 @@ export const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
 export const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
 const DEFAULT_PAIR_PARTS = [{ name: 'id', secret: false }, { name: 'secret', secret: true }];
 const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale'];
+/* A formula wears every number key, plus a sparkline's style (Feature #232). */
+const FORMULA_COSTUME_KEYS = [...NUMBER_COSTUME_KEYS, 'style'];
 /* How a number is drawn (Feature #230): text, or a graphic drawn against a
    scale — the column's max unless the field names a fixed one. Stars are not
    here: a rating is its own type. public/cell-graphics.js draws them. */
 export const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
-const isGraphicDisplay = (d) => d != null && d !== 'text' && NUMBER_DISPLAYS.includes(d);
+const isGraphicDisplay = (d) => d === 'bar' || d === 'ring' || d === 'heat';
+/* A formula that returns a list can wear a sparkline (Feature #232): a
+   line, columns, or win/loss bars. A stored number cannot — it is one value. */
+export const SPARKLINE_STYLES = ['line', 'column', 'winloss'];
+/* The last number in a series: what a sort or a filter on a sparkline reads. */
+const lastNumber = (list) => { for (let i = list.length - 1; i >= 0; i--) if (typeof list[i] === 'number' && Number.isFinite(list[i])) return list[i]; return null; };
 /* A rating (Feature #231): a whole number from 0 to `max`, drawn as `max`
    icons. The dialog offers 3, 5 and 7; the engine takes 1..10. */
 const RATING_MAX = 10;
@@ -508,7 +515,7 @@ function dressDateRange(c, value) { return DG.formatDateRange(value, c); }
 /* The single normaliser for every type whose config is self-contained. Used
    by addField AND by `field` value validation, so a definition can never
    describe a field the engine would refuse to create. */
-function normalizeSelfContainedConfig(type, config = {}) {
+function normalizeSelfContainedConfig(type, config = {}, { formula = false } = {}) {
   if (type === 'select' || type === 'multiselect') {
     return {
       options: (config.options ?? []).map((o) => (typeof o === 'string'
@@ -567,13 +574,20 @@ function normalizeSelfContainedConfig(type, config = {}) {
     }
     // The display (Feature #230): text is the default and is not written
     // down; a scale only means something to a graphic, so text drops it.
-    if (config.display != null) {
+    if (config.display === 'sparkline') {
+      if (!formula) throw new WeaveError('A sparkline draws a list: only a formula can wear it', 'invalid');
+      out.display = 'sparkline';
+      if (config.style != null && !SPARKLINE_STYLES.includes(config.style)) {
+        throw new WeaveError(`Invalid sparkline style '${config.style}' (${SPARKLINE_STYLES.join(', ')})`, 'invalid');
+      }
+      if (config.style != null && config.style !== 'line') out.style = config.style;
+    } else if (config.display != null) {
       if (!NUMBER_DISPLAYS.includes(config.display)) {
         throw new WeaveError(`Invalid number display '${config.display}' (${NUMBER_DISPLAYS.join(', ')})`, 'invalid');
       }
       if (config.display !== 'text') out.display = config.display;
     }
-    if (out.display && config.scale != null && config.scale !== 'column') {
+    if (isGraphicDisplay(out.display) && config.scale != null && config.scale !== 'column') {
       const scale = config.scale;
       if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
         throw new WeaveError("Scale is 'column' or a number above 0", 'invalid');
@@ -1157,6 +1171,8 @@ export class Weave {
       // A rating draws its icons on the chip and the card (Feature #231).
       const rt = typeof resolved === 'number' ? this.#ratingOf(db, f) : null;
       if (rt) seg.rating = { value: resolved, ...rt };
+      // A sparkline draws its series (Feature #232).
+      if (f.type === 'formula' && f.config.display === 'sparkline' && Array.isArray(resolved)) seg.spark = { style: f.config.style ?? 'line', values: resolved };
       out.fields.push(seg);
     }
     return out;
@@ -2135,7 +2151,7 @@ export class Weave {
       if (f.depth != null) config.depth = f.depth;
       if (f.width != null) config.width = f.width;
       if (f.type !== 'view' && f.description != null) config.description = f.description;
-      for (const k of NUMBER_COSTUME_KEYS) if (f[k] != null) config[k] = f[k];
+      for (const k of FORMULA_COSTUME_KEYS) if (f[k] != null) config[k] = f[k];
       for (const k of DATE_COSTUME_KEYS) if (k !== 'format' && f[k] != null) config[k] = f[k];
       if (f.kind != null) config.kind = f.kind;
       if (f.multiple != null) config.multiple = f.multiple;
@@ -2152,7 +2168,7 @@ export class Weave {
        config against config, where a relation field is an id on one side and a
        name on the other. */
     const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'viaTable', 'where', 'targetField', 'aggregate',
-      'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'time', 'kind', 'multiple', 'types', 'depth',
+      'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style', 'time', 'kind', 'multiple', 'types', 'depth',
       'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term', 'link', 'state', 'description', 'fields', 'max', 'icon'];
     const colorsOf = (full) => JSON.stringify((full ?? []).map((o) => ({ name: o.name, color: o.color ?? '' })));
     const fieldChanged = (fDoc, have) => {
@@ -3981,7 +3997,7 @@ export class Weave {
       if (!checked.ok) throw new WeaveError(checked.error, 'invalid');
       this.#refuseFormulaCycle(db, field.id, field.name, config.expression);
       // A numeric result wears the number costume (unit / currency / decimals).
-      field.config = { expression: config.expression, ...normalizeSelfContainedConfig('number', config) };
+      field.config = { expression: config.expression, ...normalizeSelfContainedConfig('number', config, { formula: true }) };
     }
     if (config.default !== undefined && config.default !== null) {
       field.config.default = this.#validateDefault(field, config.default);
@@ -4152,8 +4168,8 @@ export class Weave {
       if (field.type === 'number' || field.type === 'formula') {
         // Merge the costume keys through the same validation addField runs;
         // absent keys keep their value, width/default ride their own lanes.
-        const costume = normalizeSelfContainedConfig('number', { ...field.config, ...patch.config });
-        for (const k of NUMBER_COSTUME_KEYS) {
+        const costume = normalizeSelfContainedConfig('number', { ...field.config, ...patch.config }, { formula: field.type === 'formula' });
+        for (const k of field.type === 'formula' ? FORMULA_COSTUME_KEYS : NUMBER_COSTUME_KEYS) {
           // A stored key the canonical costume drops goes too: a fixed scale
           // left behind by a display gone back to text (Feature #230).
           if (k in patch.config || k in costume || k in field.config) {
@@ -4359,7 +4375,7 @@ export class Weave {
       // A type change is a formula save too, and can close the same loop a
       // direct edit is refused for (Issue #283).
       this.#refuseFormulaCycle(db, field.id, field.name, config.expression);
-      nextConfig = { expression: config.expression, ...normalizeSelfContainedConfig('number', config) };
+      nextConfig = { expression: config.expression, ...normalizeSelfContainedConfig('number', config, { formula: true }) };
     } else {
       nextConfig = normalizeSelfContainedConfig(toType, config);
     }
@@ -5849,7 +5865,9 @@ export class Weave {
         if (parts[i] === 'updatedAt') { results.push(ce.updatedAt); continue; }
         const f = this.findField(cdb, parts[i]);
         if (!f) throw new WeaveError(`Field '${parts[i]}' not found in table '${cdb.name}'`, 'not-found');
-        const resolved = this.#resolve(ce, cdb, f, 0);
+        let resolved = this.#resolve(ce, cdb, f, 0);
+        // A sparkline sorts and filters on its last value (Feature #232).
+        if (isLast && f.type === 'formula' && f.config.display === 'sparkline' && Array.isArray(resolved)) resolved = lastNumber(resolved);
         if (isLast) {
           results.push(undressed && (typeof resolved === 'number' || f.type === 'date') ? resolved
             : undressed && f.type === 'daterange' ? DG.rangeKey(resolved)
@@ -6703,7 +6721,7 @@ export class Weave {
             if (nd) { out.display = nd.display; if (typeof nd.scale === 'number') out.scale = nd.scale; }
           }
           if (f.type === 'number' || f.type === 'formula') {
-            for (const k of NUMBER_COSTUME_KEYS) {
+            for (const k of f.type === 'formula' ? FORMULA_COSTUME_KEYS : NUMBER_COSTUME_KEYS) {
               if (f.config[k] != null) out[k] = f.config[k];
             }
           }

@@ -2162,3 +2162,20 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--wv-rate-on); }
 .wv-rating-max { display: flex; gap: 8px; align-items: center; }
 .wv-rating-icon { display: inline-flex; gap: 6px; align-items: center; }
+
+/* ---------- the sparkline (Feature #232) ----------
+   A formula's list drawn in the cell's own box: a line with a dot on the
+   newest point, columns standing on zero, or win/loss bars about a midline. */
+:root { --wv-spark-loss: #e03131; }
+[data-bs-theme="dark"] { --wv-spark-loss: #ff6b6b; }
+.cg-wrap.cg-sparkwrap { display: inline-flex; width: 96px; min-width: 64px; height: 18px; }
+.cg-wrap.cg-sparkwrap .cg { width: 100%; height: 100%; }
+.cg-spark-line .cg-fill { stroke: var(--wv-cg-fill); fill: none; }
+.cg-spark .cg-dot { fill: var(--wv-cg-fill); }
+.cg-spark-column .cg-fill { fill: var(--wv-cg-fill); }
+.cg-spark-column .cg-fill.cg-neg, .cg-spark-winloss .cg-fill.cg-loss { fill: var(--wv-spark-loss); }
+.cg-spark-winloss .cg-fill.cg-win { fill: var(--wv-cg-fill); }
+.cg-spark-winloss .cg-track { stroke: var(--wv-cg-track); stroke-width: 1; }
+.wv-grid .k-computed:has(.cg-sparkwrap) { display: flex; width: 100%; }
+.wv-grid .k-computed .cg-sparkwrap { flex: 1 1 auto; width: auto; }
+.cg-spark-preview .cg-sparkwrap { width: 200px; height: 28px; }

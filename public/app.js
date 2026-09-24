@@ -2621,10 +2621,23 @@ function ratingEl(max, icon, value, { onSet = null, title = null } = {}) {
   if (onSet) box.addEventListener('rate', (e) => onSet(e.detail));
   return box;
 }
+/* ---------- the sparkline (Feature #232) ----------
+   A formula's list as a line, columns or win/loss bars, the newest 60
+   points drawn; the hover lists every value and a screen reader hears the
+   count, the last value, the low and the high. Null when there is no number
+   to draw, so the cell falls back to its text. */
+function sparkEl(style, values) {
+  const svg = cellGraphics.sparkSvg(style || 'line', values);
+  if (!svg) return null;
+  const box = el('span', { class: `cg-wrap cg-sparkwrap cg-${style || 'line'}`, role: 'img', 'aria-label': cellGraphics.sparkLabel(values), title: cellGraphics.sparkTitle(values) });
+  box.innerHTML = svg; // numbers only: cell-graphics.js builds it from the series
+  return box;
+}
 /* A segment: the state as the same state chip a cell wears (category owns
    the colour), or a label + value pair. A graphic number draws its meter,
-   a rating its icons. */
+   a rating its icons, a sparkline its series. */
 function segmentValueEl(seg) {
+  if (seg.spark) return sparkEl(seg.spark.style, seg.spark.values) ?? seg.value;
   if (seg.rating) return ratingEl(seg.rating.max, seg.rating.icon, seg.rating.value, { title: `${seg.label}: ${seg.value}` });
   return seg.meter && cellGraphics.isGraphic(seg.meter.display)
     ? numberGraphic(seg.meter.display, seg.meter.value, seg.meter.scale, seg.value)
@@ -2791,8 +2804,10 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     // are not mistaken for the chips and inputs beside them.
     const box = el('span', { class: 'computed k k-computed', title: `${f.type} — read-only` },
       el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
+      // A formula's list wears its sparkline (#232).
+      (f.type === 'formula' && f.display === 'sparkline' && Array.isArray(item?.raw?.[f.name]) ? sparkEl(f.style, item.raw[f.name]) : null)
       // A lookup or a rollup that reads a rating draws its icons (#231).
-      (f.rating && typeof item?.raw?.[f.name] === 'number'
+      ?? (f.rating && typeof item?.raw?.[f.name] === 'number'
         ? ratingEl(f.rating.max, f.rating.icon, item.raw[f.name], { title: `${f.name}: ${fieldValueCell(val)}` }) : null)
       ?? numberGraphicFor(f, item, fieldValueCell(val)) ?? (fieldValueCell(val) || '—'));
     if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
@@ -4586,6 +4601,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const val = (item) => {
         const raw = item.raw?.[sortKey];
         if (sortType === 'daterange') return weaveDateGrain.rangeKey(raw);
+        // A sparkline sorts on its last value, as the server does (#232).
+        if (Array.isArray(raw) && raw.some((v) => typeof v === 'number')) return raw.filter((v) => typeof v === 'number').at(-1);
         return typeof raw === 'number' || sortType === 'date' ? raw : item.fields[sortKey];
       };
       sortedItems.sort((a, b) => {
@@ -6461,6 +6478,23 @@ function numberCostumeControls(state, redraw, changed, { label = 'Format' } = {}
   return kids;
 }
 
+/* A list result's costume (Feature #232): text, or a sparkline in one of
+   three styles, with a sample series drawn in the chosen style. */
+const SPARK_STYLE_LABELS = { line: 'line', column: 'column', winloss: 'win/loss' };
+const SPARK_SAMPLE = [3, 5, 4, 7, 6, 9, 8, 11, 10, 12];
+const SPARK_SAMPLE_WL = [1, -1, 1, 1, -1, 1, -1, -1, 1, 1];
+function sparklineControls(n, redraw, changed) {
+  const on = n.display === 'sparkline';
+  const out = [dsection('Display', segCtl([{ id: 'text', label: 'text' }, { id: 'sparkline', label: 'sparkline' }], on ? 'sparkline' : 'text',
+    (v) => { n.display = v; if (v !== 'sparkline') n.style = 'line'; redraw(); changed(); }))];
+  if (!on) return out;
+  const style = n.style ?? 'line';
+  out.push(dsection('Style', segCtl(fieldDialogCore.SPARKLINE_STYLES.map((id) => ({ id, label: SPARK_STYLE_LABELS[id] })), style,
+    (v) => { n.style = v; redraw(); changed(); })));
+  out.push(dsection('Sample', el('div', { class: 'cg-preview cg-spark-preview' }, sparkEl(style, style === 'winloss' ? SPARK_SAMPLE_WL : SPARK_SAMPLE))));
+  return out;
+}
+
 /* The display picker (Feature #230): text, bar, ring or heat, then what
    100% is — the column's max, or a fixed number — and a live preview of
    three rows at a quarter, three fifths and the whole of the scale. */
@@ -6594,7 +6628,9 @@ function fieldDialog(db, existing, after) {
       // (direction B), and stays for a table with no rows to type it on.
       const costumeWrap = el('div', { class: 'full' });
       let resultType = null;
-      const drawCostume = () => costumeWrap.replaceChildren(...(resultType === null || resultType === 'number' ? numberCostumeControls(state, drawCostume, changed, { label: 'Result format' }) : []));
+      const drawCostume = () => costumeWrap.replaceChildren(...(resultType === 'list' || state.number.display === 'sparkline'
+        ? sparklineControls(state.number, drawCostume, changed)
+        : resultType === null || resultType === 'number' ? numberCostumeControls(state, drawCostume, changed, { label: 'Result format' }) : []));
       kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null, fieldName: () => nameInput.value, onType: (t) => { resultType = t; drawCostume(); } })));
       drawCostume();
       kids.push(costumeWrap);

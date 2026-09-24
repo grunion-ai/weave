@@ -19,7 +19,11 @@
     if (v?.state) out.push({ kind: 'state', label: 'State', value: v.state.name, category: v.state.category });
     for (const f of v?.fields ?? []) {
       if (f.value == null || f.value === '') continue;
-      out.push({ kind: 'field', label: f.label, value: String(f.value), ...(f.meter ? { meter: f.meter } : {}) });
+      // What a segment draws besides its text: a number's meter (#230), a
+      // rating's icons (#231), a sparkline's series (#232).
+      const extra = {};
+      for (const k of ['meter', 'rating', 'spark']) if (f[k]) extra[k] = f[k];
+      out.push({ kind: 'field', label: f.label, value: String(f.value), ...extra });
     }
     return out;
   }

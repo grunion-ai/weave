@@ -78,6 +78,8 @@ test('the closed sets match the engine and the field dialog', () => {
   // Feature #230: the engine, the dialog and the vocabulary name one set of displays.
   assert.deepEqual(VOCABULARY.numberDisplays, list(ENGINE, 'NUMBER_DISPLAYS'));
   assert.deepEqual(VOCABULARY.numberDisplays, list(DIALOG, 'NUMBER_DISPLAYS'));
+  assert.deepEqual(VOCABULARY.sparklineStyles, list(ENGINE, 'SPARKLINE_STYLES'));
+  assert.deepEqual(VOCABULARY.sparklineStyles, list(DIALOG, 'SPARKLINE_STYLES'));
   assert.deepEqual(VOCABULARY.dateFormats, list(DIALOG, 'DATE_FORMATS'));
   assert.deepEqual(VOCABULARY.cardinalities, list(DIALOG, 'CARDINALITIES'));
 });

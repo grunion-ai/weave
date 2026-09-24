@@ -145,3 +145,21 @@ if (s) {
     });
   }
 }
+
+if (s) {
+  const { base, browser, weave } = s;
+  test('the chip draws a rating as its icons (a segment keeps its rating through view-core)', async () => {
+    weave.updateField(vendors, 'Chip', { config: { fields: ['Fit'] } });
+    const deal = weave.createTable({ space: 'Buy', name: 'Order' });
+    weave.addRelation(deal, { name: 'Vendor', targetDb: vendors, cardinality: 'many-to-one', inverseName: 'Orders' });
+    weave.createEntity(deal, { name: 'o1', values: { Vendor: a.id } });
+    const page = await browser.newPage({ viewport: { width: 1300, height: 500 } });
+    try {
+      await page.goto(`${base}/#/table/${deal.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      await page.locator('td[data-field="Vendor"] .mention-wrap .mention-caret').first().click();
+      await page.waitForSelector('td[data-field="Vendor"] .mention-f .wv-rating');
+      assert.equal(await page.getAttribute('td[data-field="Vendor"] .mention-f .wv-rating', 'aria-label'), '3 of 5');
+    } finally { await page.close(); }
+  });
+}

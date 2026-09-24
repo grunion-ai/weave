@@ -879,3 +879,37 @@ test('the dialog refuses a rating max in the words the engine would', async () =
     assert.equal(mirrored.error, message, 'the dialog repeats the engine verbatim');
   }
 });
+
+/* ---------- formula lists and the sparkline (Feature #232) ---------- */
+
+test('sortby is in the builder catalog, and a formula can wear a sparkline with a style', () => {
+  const sortby = core.FORMULA_FUNCTIONS.find((f) => f.name === 'sortby');
+  assert.ok(sortby, 'the chip is offered');
+  assert.match(sortby.example, /sortby\(/);
+  assert.deepEqual(core.SPARKLINE_STYLES, ['line', 'column', 'winloss']);
+  const def = { type: 'formula', config: { expression: 'sortby([A], [B])', display: 'sparkline', style: 'winloss' } };
+  assert.deepEqual(core.definitionFromState(core.stateFromDefinition(def)), def, 'round-trips through the form');
+  const line = { type: 'formula', config: { expression: '[A]', display: 'sparkline' } };
+  assert.deepEqual(core.definitionFromState(core.stateFromDefinition(line)), line, 'line is the default style and is not written down');
+  const view = { name: 'Trend', type: 'formula', expression: '[A]', display: 'sparkline', style: 'column' };
+  assert.deepEqual(core.definitionFromFieldView(view).config, { expression: '[A]', display: 'sparkline', style: 'column' });
+  const state = core.stateFromDefinition(core.definitionFromFieldView(view));
+  state.number.display = 'text';
+  const patch = core.editPatchConfig(view, core.definitionFromState(state), state);
+  assert.equal(patch.display, null);
+  assert.equal(patch.style, null, 'back to text clears the style');
+});
+
+test('the dialog refuses a sparkline where the engine would, in its words', async () => {
+  const { Weave } = await import('../src/engine.js');
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  w.createTable({ space: 'S', name: 'T' });
+  for (const [type, config] of [['number', { display: 'sparkline' }], ['formula', { expression: '1', display: 'sparkline', style: 'area' }]]) {
+    const mirrored = core.parseDefinition(JSON.stringify({ type, config }));
+    assert.equal(mirrored.ok, false, JSON.stringify(config));
+    let message = null;
+    try { w.addField('T', { name: `F${type}`, type, config }); } catch (e) { message = e.message; }
+    assert.equal(mirrored.error, message, 'the dialog repeats the engine verbatim');
+  }
+});

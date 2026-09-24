@@ -13,7 +13,8 @@
 // Field references: [Field Name] (bracketed, any chars) or a bare identifier.
 // Functions: if(c,a,b), concat(...), round(x,n?), abs, min, max, len, lower,
 // upper, trim, contains(hay, needle), empty(x), today(), days(a,b), number(x),
-// text(x).
+// text(x), sortby(values, keys). A formula may return a list (a lookup, or
+// sortby over one) or null.
 
 const FUNCS = {
   if: (c, a, b) => (truthy(c) ? a : b),
@@ -68,6 +69,23 @@ const FUNCS = {
   day: (d) => { const p = d && globalThis.weaveDateGrain?.partsOf(d); return p ? p.d : d ? new Date(d).getUTCDate() : null; },
   number: (x) => Number(x),
   text: (x) => (x == null ? '' : String(x)),
+  /* Order a series by a parallel list of keys (Feature #232): a lookup reads
+     in relation order, so `sortby([Deal amounts], [Deal close dates])` puts
+     the amounts in date order. Ascending and stable; a blank key sorts last;
+     a blank value keeps its place beside its key. Two lookups over one
+     relation hold their blank slots in position, which is what keeps the
+     pairs together. A single value is its own series. */
+  sortby: (values, keys) => {
+    if (!Array.isArray(values)) return values;
+    const ks = Array.isArray(keys) ? keys : [keys];
+    if (ks.length !== values.length) throw new Error(`sortby needs one key per value (${values.length} values, ${ks.length} keys)`);
+    const blank = (k) => k == null || k === '';
+    const cmp = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b)));
+    return values
+      .map((v, i) => ({ v, k: ks[i], i }))
+      .sort((a, b) => (blank(a.k) ? (blank(b.k) ? a.i - b.i : 1) : blank(b.k) ? -1 : cmp(a.k, b.k) || a.i - b.i))
+      .map((x) => x.v);
+  },
 };
 
 function truthy(v) {

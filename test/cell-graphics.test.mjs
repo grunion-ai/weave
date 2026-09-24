@@ -88,3 +88,46 @@ test('clicking the nth icon sets n; clicking the current value clears to 0', () 
   assert.equal(cg.ratingClick(null, 1), 1);
   assert.equal(cg.ratingClick(0, 1), 1);
 });
+
+/* ---------- the sparkline (Feature #232) ---------- */
+
+test('a sparkline draws at most the last 60 points and says when it cut', () => {
+  const long = Array.from({ length: 75 }, (_, i) => i);
+  const p = cg.sparkPoints(long);
+  assert.equal(p.shown.length, 60);
+  assert.equal(p.shown[0], 15, 'the newest points are kept');
+  assert.equal(p.total, 75);
+  assert.equal(p.capped, true);
+  assert.equal(cg.SPARK_CAP, 60);
+  assert.equal(cg.sparkPoints([1, 2]).capped, false);
+  assert.match(cg.sparkTitle(long), /^0, 1, 2, .*, 74\n\(drawing the last 60 of 75\)$/s, 'the hover lists every value');
+  assert.equal(cg.sparkTitle([1, null, 3]), '1, –, 3', 'a blank slot is shown as a gap');
+});
+
+test('a line breaks at a blank slot and scales between the low and the high', () => {
+  const svg = cg.sparkSvg('line', [0, 10, null, 5]);
+  assert.match(svg, /^<svg class="cg cg-spark cg-spark-line"/);
+  assert.match(svg, /aria-hidden="true"/);
+  const d = svg.match(/<path class="cg-fill" d="([^"]+)"/)[1];
+  assert.equal((d.match(/M/g) ?? []).length, 2, 'two runs: before and after the gap');
+  const flat = cg.sparkSvg('line', [4, 4, 4]);
+  assert.ok(/d="M[^"]*"/.test(flat), 'a flat series still draws');
+  assert.match(cg.sparkSvg('line', [7]), /<circle/, 'one point is a dot');
+  assert.equal(cg.sparkSvg('line', [null, null]), '', 'nothing to draw, no graphic');
+});
+
+test('columns stand on zero; win/loss draws the sign only', () => {
+  const cols = cg.sparkSvg('column', [3, -1, null, 2]);
+  assert.equal((cols.match(/<rect class="cg-fill/g) ?? []).length, 3, 'one column per number');
+  assert.match(cols, /cg-neg/, 'a negative column is marked');
+  const wl = cg.sparkSvg('winloss', [5, -2, 0, 1]);
+  assert.equal((wl.match(/cg-win/g) ?? []).length, 2);
+  assert.equal((wl.match(/cg-loss/g) ?? []).length, 1);
+  const heights = [...wl.matchAll(/class="cg-fill cg-(?:win|loss)"[^>]*height="([\d.]+)"/g)].map((m) => m[1]);
+  assert.equal(new Set(heights).size, 1, 'every win and loss is the same height');
+});
+
+test('the words a screen reader hears', () => {
+  assert.equal(cg.sparkLabel([100, 300, null, 200]), '3 values, last 200, low 100, high 300');
+  assert.equal(cg.sparkLabel([]), 'no values');
+});

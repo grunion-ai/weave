@@ -27,7 +27,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'relation', renders: 'chips carrying the target\'s name, each with ×, plus "+ link"', config: ['targetDb', 'targetDbs', 'cardinality', 'inverseName'], verb: 'add_relation' },
   { type: 'lookup', renders: 'read-only cell on a tinted background, marked ↗', config: ['relationField', 'targetField'] },
   { type: 'rollup', renders: 'read-only cell on a tinted background, marked Σ, wearing the target column\'s costume; on a Workspace/Spaces row a `via` rollup is the figure the grid footer shows under that column', config: ['relationField', 'via', 'where', 'targetField', 'aggregate', 'separator'] },
-  { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ; a numeric result can wear a bar, ring or heat display like a number', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale'] },
+  { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ; a numeric result can wear a bar, ring or heat display like a number; a list result (a lookup, or sortby over lookups) can wear `display: sparkline` in a `style` of line, column or winloss, drawn from the last 60 points, sorted and filtered on its last value', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style'] },
   { type: 'document', renders: 'every document field is a column of its own: the description previews its first lines; any other renders as a named chip wearing its kind', config: ['kind'] },
   { type: 'attachments', renders: 'file chips', config: ['multiple'] },
   { type: 'field', renders: 'a field definition as a value — what the Fields registry\'s Definition is', config: ['types', 'depth'] },
@@ -95,6 +95,8 @@ export const VOCABULARY = {
   numberFormats: ['number', 'currency', 'percent', 'compact'],
   // How a number is drawn (Feature #230); `scale` is 'column' or a number.
   numberDisplays: ['text', 'bar', 'ring', 'heat'],
+  // A formula that returns a list also takes `display: sparkline` (Feature #232).
+  sparklineStyles: ['line', 'column', 'winloss'],
   dateFormats: ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative'],
   /* A date's grain is which of year · month · day it stores — any contiguous
      run (year, year·month, month·day, month, day) or none at all with a time

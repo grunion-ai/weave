@@ -493,7 +493,7 @@ An expression over this row's own fields, recomputed on read.
 
 ## Config
 
-\`expression\`, plus every number costume key — \`format\`, \`currency\`, \`unit\`, \`decimals\`, \`separator\`, \`accounting\`, \`display\`, \`scale\` — so a computed figure can wear the same clothes as a stored one. A rollup over a number column wears that column's format and display.
+\`expression\`, plus every number costume key — \`format\`, \`currency\`, \`unit\`, \`decimals\`, \`separator\`, \`accounting\`, \`display\`, \`scale\` — so a computed figure can wear the same clothes as a stored one; a list result also takes \`display: sparkline\` and its \`style\`. A rollup over a number column wears that column's format and display.
 
 \`\`\`json
 { "name": "Total", "type": "formula",
@@ -512,6 +512,17 @@ if(empty(Estimate), "unsized", if(Estimate > 5, "large", "small"))
 \`\`\`
 
 Renders on a tinted background marked \`ƒ\`. In the field dialog, formula is a checkbox on any type — ticking it opens the script editor.
+
+## Lists and the sparkline
+
+A formula can return a list or null. A list comes in through a lookup over a to-many relation, in relation order. \`sortby(values, keys)\` orders it by a parallel list, ascending, blank keys last: \`sortby([Deal amounts], [Deal close dates])\` is the amounts in close-date order. Two lookups over one relation keep their blank slots in position, so the pairs stay together (Feature #232).
+
+A list result can wear \`"display": "sparkline"\` with a \`style\` of \`line\` (the default), \`column\` or \`winloss\`. The cell, the chip and the card draw the newest 60 points; the hover lists every value and says when it cut; a screen reader hears the count, the last value, the low and the high. Sort and filter on the column read the last number in the series. The API returns the numbers.
+
+\`\`\`json
+{ "name": "Trend", "type": "formula",
+  "config": { "expression": "sortby([Deal amounts], [Deal close dates])", "display": "sparkline", "style": "column" } }
+\`\`\`
 
 ## Check before you save
 
