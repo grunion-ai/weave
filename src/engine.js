@@ -140,7 +140,12 @@ export const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
    rules, which is the whole reason weave never has to become one. */
 export const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
 const DEFAULT_PAIR_PARTS = [{ name: 'id', secret: false }, { name: 'secret', secret: true }];
-const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting'];
+const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale'];
+/* How a number is drawn (Feature #230): text, or a graphic drawn against a
+   scale — the column's max unless the field names a fixed one. Stars are not
+   here: a rating is its own type. public/cell-graphics.js draws them. */
+export const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
+const isGraphicDisplay = (d) => d != null && d !== 'text' && NUMBER_DISPLAYS.includes(d);
 /* Grain and costume keys of a date (Feature #164) — the rules live in public/date-grain.js. */
 const DATE_COSTUME_KEYS = ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed'];
 const DG = globalThis.weaveDateGrain;
@@ -538,6 +543,21 @@ function normalizeSelfContainedConfig(type, config = {}) {
       if (out.format !== 'currency') throw new WeaveError('Accounting negatives need format currency', 'invalid');
       out.accounting = true;
     }
+    // The display (Feature #230): text is the default and is not written
+    // down; a scale only means something to a graphic, so text drops it.
+    if (config.display != null) {
+      if (!NUMBER_DISPLAYS.includes(config.display)) {
+        throw new WeaveError(`Invalid number display '${config.display}' (${NUMBER_DISPLAYS.join(', ')})`, 'invalid');
+      }
+      if (config.display !== 'text') out.display = config.display;
+    }
+    if (out.display && config.scale != null && config.scale !== 'column') {
+      const scale = config.scale;
+      if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
+        throw new WeaveError("Scale is 'column' or a number above 0", 'invalid');
+      }
+      out.scale = scale;
+    }
     return out;
   }
   if (type === 'date' || type === 'daterange') {
@@ -752,6 +772,10 @@ export class Weave {
   // Memo for schemaVersion(): cleared by every save and every reload, so it
   // is recomputed at most once per write and only when someone asks.
   #schemaVersion = null;
+  /* Column scales for graphic numbers (Feature #230), `${tableId}:${fieldId}`
+     → the column max. Every write and every reload drops the lot: a max is
+     one pass over the column, and a grid page, a chip and a card all ask. */
+  #scales = new Map();
 
   // The computed fields currently resolving, innermost last — see #resolve.
   #computing = [];
@@ -1067,10 +1091,16 @@ export class Weave {
     }
     const budget = (limit ?? VIEW_AUTO_SEGMENTS[shape]) - (out.state ? 1 : 0);
     for (const f of this.#viewSegmentFields(e, db, cfg, Math.max(budget, 0))) {
-      const v = this.#displayValue(db, f, this.#resolve(e, db, f, 0), e);
+      const resolved = this.#resolve(e, db, f, 0);
+      const v = this.#displayValue(db, f, resolved, e);
       // A toggle's chip says the state's word, never `true` (Feature #202).
       const shown = f.type === 'toggle' ? (v ? f.config.on : f.config.off) : v;
-      out.fields.push({ label: f.name, value: shown == null ? '' : Array.isArray(shown) ? shown.map((x) => x?.name ?? x).join(', ') : String(shown?.name ?? shown) });
+      const seg = { label: f.name, value: shown == null ? '' : Array.isArray(shown) ? shown.map((x) => x?.name ?? x).join(', ') : String(shown?.name ?? shown) };
+      // A graphic number draws on the chip and the card too (Feature #230);
+      // the text stays for a surface that draws none.
+      const nd = typeof resolved === 'number' ? this.#numberDisplay(db, f) : null;
+      if (nd) seg.meter = { display: nd.display, value: resolved, scale: this.#scaleOf(db, f) };
+      out.fields.push(seg);
     }
     return out;
   }
@@ -1131,6 +1161,7 @@ export class Weave {
     this.#dirty.clear();
     this.#dirtyAll = false;
     this.#schemaVersion = null;
+    this.#scales.clear();
   }
 
   /* What one write touched (Issue #257). `#dirty` is the store's business and
@@ -1197,6 +1228,7 @@ export class Weave {
       if (this.registryHost) this.#syncAll();
     }
     this.#schemaVersion = null;
+    this.#scales.clear();
     return true;
   }
 
@@ -1858,7 +1890,7 @@ export class Weave {
        config against config, where a relation field is an id on one side and a
        name on the other. */
     const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'viaTable', 'where', 'targetField', 'aggregate',
-      'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'time', 'kind', 'multiple', 'types', 'depth',
+      'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'time', 'kind', 'multiple', 'types', 'depth',
       'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term', 'link', 'state', 'description', 'fields'];
     const colorsOf = (full) => JSON.stringify((full ?? []).map((o) => ({ name: o.name, color: o.color ?? '' })));
     const fieldChanged = (fDoc, have) => {
@@ -3648,7 +3680,9 @@ export class Weave {
         // absent keys keep their value, width/default ride their own lanes.
         const costume = normalizeSelfContainedConfig('number', { ...field.config, ...patch.config });
         for (const k of NUMBER_COSTUME_KEYS) {
-          if (k in patch.config || k in costume) {
+          // A stored key the canonical costume drops goes too: a fixed scale
+          // left behind by a display gone back to text (Feature #230).
+          if (k in patch.config || k in costume || k in field.config) {
             if (costume[k] == null) delete field.config[k];
             else field.config[k] = costume[k];
           }
@@ -5102,6 +5136,14 @@ export class Weave {
     const docs = {};
     for (const f of this.documentFields(db)) docs[f.name] = e.docs?.[f.id] ?? '';
     const defaultDocField = this.descriptionField(db) ?? this.documentFields(db)[0];
+    /* The 100% mark each graphic number column is drawn against (Feature
+       #230). Only when there is one: a table of plain figures reads as it
+       always did. */
+    const scales = {};
+    for (const fid of db.fieldOrder) {
+      const f = db.fields[fid];
+      if (this.#numberDisplay(db, f)) scales[f.name] = this.#scaleOf(db, f);
+    }
     return {
       id: e.id,
       publicId: e.publicId,
@@ -5131,10 +5173,39 @@ export class Weave {
       modifiedBy: e.modifiedBy ?? null,
       deletedAt: e.deletedAt ?? null,
       url: `/e/${e.id}`,
+      ...(Object.keys(scales).length ? { scales } : {}),
       // A registry row stands for a piece of structure; sysId says which, so
       // a surface can open the space/table itself rather than the row.
       ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
     };
+  }
+
+  /* The graphic a number column wears, or null for text (Feature #230): its
+     own costume on a number or a formula; a rollup wears the costume of the
+     column it summarises, the way it wears its format. A count is a count. */
+  #numberDisplay(db, f) {
+    let c = null;
+    if (f.type === 'number' || f.type === 'formula') c = f.config;
+    else if (f.type === 'rollup' && NUMERIC_AGGREGATES.includes(f.config.aggregate)) {
+      const { targetField } = this.#rollupTarget(db, f);
+      if (targetField && (targetField.type === 'number' || targetField.type === 'formula')) c = targetField.config;
+    }
+    return c && isGraphicDisplay(c.display) ? { display: c.display, scale: c.scale ?? 'column' } : null;
+  }
+
+  /* What 100% is: the fixed scale, or the column's max — computed by
+     src/stats.js, the one place a list becomes a figure, so it is the same
+     number a Space-level `via` max rollup over the column reads. */
+  #scaleOf(db, f) {
+    const d = this.#numberDisplay(db, f);
+    if (!d) return null;
+    if (typeof d.scale === 'number') return d.scale;
+    const key = `${db.id}:${f.id}`;
+    if (!this.#scales.has(key)) {
+      const vals = this.listEntities(db.id).map((r) => this.#resolve(r, db, f, 0)).filter((v) => typeof v === 'number' && Number.isFinite(v));
+      this.#scales.set(key, vals.length ? aggregateValues('max', vals) : null);
+    }
+    return this.#scales.get(key);
   }
 
   #summary(id) {
@@ -6105,6 +6176,11 @@ export class Weave {
               out.targetField = tdb.fields[f.config.targetField]?.name;
             }
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
+          }
+          // A rollup wears the display of the column it summarises (#230).
+          if (f.type === 'rollup') {
+            const nd = this.#numberDisplay(db, f);
+            if (nd) { out.display = nd.display; if (typeof nd.scale === 'number') out.scale = nd.scale; }
           }
           if (f.type === 'number' || f.type === 'formula') {
             for (const k of NUMBER_COSTUME_KEYS) {

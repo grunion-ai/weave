@@ -2103,3 +2103,32 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .wv-dist-bar { height: 8px; background: var(--tblr-bg-surface-secondary); border-radius: 4px; overflow: hidden; }
 .wv-dist-fill { display: block; height: 100%; background: var(--tblr-primary); opacity: .6; }
 .wv-dist-n { color: var(--tblr-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---------- the number display (Feature #230) ----------
+   A bar or a ring filled to the value's share of its scale, or a heat tint
+   behind the text. The graphic is drawn to fit the cell it is in and never
+   pushes the row taller than a line; the text beside it stays the tabular
+   figure every number cell prints. */
+:root { --wv-cg-fill: var(--tblr-primary); --wv-cg-track: color-mix(in srgb, var(--tblr-body-color) 12%, transparent); --wv-cg-heat: #f76707; }
+[data-bs-theme="dark"] { --wv-cg-fill: #4c8dff; --wv-cg-track: color-mix(in srgb, var(--tblr-body-color) 18%, transparent); --wv-cg-heat: #ff922b; }
+.cg-wrap { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; position: relative;
+  vertical-align: middle; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+.cg-wrap .cg { flex: none; display: block; }
+.cg-wrap .cg-text { flex: none; overflow: hidden; text-overflow: ellipsis; }
+.cg-wrap.cg-bar { display: flex; width: 100%; min-width: 64px; }
+.cg-wrap.cg-bar .cg { flex: 1 1 auto; min-width: 24px; height: 8px; }
+.cg-bar .cg-track { fill: var(--wv-cg-track); }
+.cg-bar .cg-fill { fill: var(--wv-cg-fill); }
+.cg-wrap.cg-ring .cg { width: 16px; height: 16px; }
+.cg-ring .cg-track { stroke: var(--wv-cg-track); }
+.cg-ring .cg-fill { stroke: var(--wv-cg-fill); }
+.cg-wrap.cg-heat { padding: 0 6px; border-radius: 4px; isolation: isolate; }
+.cg-wrap.cg-heat .cg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
+.cg-heat .cg-fill { fill: var(--wv-cg-heat); }
+.wv-grid .cg-wrap { font-size: var(--wv-grid-font); }
+.wv-card-fields dd .cg-wrap.cg-bar, .mention-f .cg-wrap.cg-bar { width: 96px; min-width: 64px; }
+.cg-wrap.num-dressed { cursor: text; }
+.wv-grid .k-computed:has(.cg-wrap.cg-bar) { display: flex; width: 100%; }
+.cg-preview { display: grid; gap: 6px; max-width: 240px; }
+.cg-preview-row { display: flex; justify-content: flex-end; }
+.cg-preview-row .cg-wrap.cg-bar { width: 100%; }

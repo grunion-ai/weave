@@ -2333,6 +2333,9 @@ function markClippedCells(grid) {
     // that cell unclipped and the rest of the description would never be
     // reachable, so having more than one line counts as clipped too.
     const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > 1;
+    // A graphic (Feature #230) is drawn to fit its cell and has nothing
+    // hidden: the pop would only show the same bar again.
+    if (td.querySelector('.cg-wrap')) { td.classList.remove('clipped'); continue; }
     td.classList.toggle('clipped', overflowsX(td) || cutOff.has(td) || hasHiddenLines);
   }
 }
@@ -2560,14 +2563,48 @@ const viewCore = globalThis.weaveViewCore;
 function viewFieldOf(db, shape) {
   return db?.fields?.find((f) => f.type === 'view' && f.role === shape) ?? null;
 }
+/* ---------- the number display (Feature #230) ----------
+   A bar, a ring or a heat tint, drawn against the scale the engine names on
+   the read (`scales`: the column max, or a fixed number) — so a paged grid, a
+   chip and a card all draw against the whole column. The value's own text
+   rides beside the graphic and is what a screen reader reads; the SVG is
+   aria-hidden. The cell never measures as clipped (markClippedCells). */
+const cellGraphics = globalThis.weaveCellGraphics;
+function scaleText(f, scale) {
+  if (scale == null) return null;
+  return f?.format === 'percent' ? `${Math.round(scale * 1e4) / 100}%` : Number(scale).toLocaleString();
+}
+function numberGraphic(display, value, scale, text, f = null) {
+  const shown = String(text ?? value ?? '');
+  const box = el('span', {
+    class: `cg-wrap cg-${display}`, role: 'img', 'aria-label': shown,
+    title: cellGraphics.meterTitle(shown, value, scale, scaleText(f, scale)),
+  });
+  // The markup is numbers only (cell-graphics.js builds it from a share).
+  box.innerHTML = cellGraphics.meterSvg(display, cellGraphics.share(value, scale) ?? 0);
+  box.append(el('span', { class: 'cg-text', 'aria-hidden': 'true' }, shown));
+  return box;
+}
+/* The graphic a field's value wears in this row, or null for plain text. */
+function numberGraphicFor(f, item, text) {
+  if (!cellGraphics.isGraphic(f.display)) return null;
+  const value = item?.raw?.[f.name];
+  if (typeof value !== 'number') return null;
+  return numberGraphic(f.display, value, item?.scales?.[f.name] ?? f.scale ?? null, text ?? value, f);
+}
 /* A segment: the state as the same state chip a cell wears (category owns
-   the colour), or a label + value pair. */
+   the colour), or a label + value pair. A graphic number draws its meter. */
+function segmentValueEl(seg) {
+  return seg.meter && cellGraphics.isGraphic(seg.meter.display)
+    ? numberGraphic(seg.meter.display, seg.meter.value, seg.meter.scale, seg.value)
+    : seg.value;
+}
 function viewSegmentEl(seg) {
   if (seg.kind === 'state') {
     const cat = chipCore.categoryOrDefault(seg.category);
     return el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)} wv-seg-state` }, seg.value);
   }
-  return el('span', { class: 'mention-f' }, el('span', { class: 'mention-f-label' }, seg.label), seg.value);
+  return el('span', { class: 'mention-f' }, el('span', { class: 'mention-f-label' }, seg.label), segmentValueEl(seg));
 }
 /* The chip: the whole thing is a link; the segments fold behind the same
    caret a doc mention uses (Feature #163), so the caret is the one
@@ -2613,7 +2650,7 @@ function viewCardEl(v, { compact = false } = {}) {
   const fields = segs.filter((x) => x.kind === 'field');
   if (fields.length) {
     card.append(el('dl', { class: 'wv-card-fields' },
-      ...fields.flatMap((f) => [el('dt', {}, f.label), el('dd', {}, f.value)])));
+      ...fields.flatMap((f) => [el('dt', {}, f.label), el('dd', {}, segmentValueEl(f))])));
   }
   return card;
 }
@@ -2722,7 +2759,8 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     // Read-only: the glyph says "computed, not editable" at a glance so these
     // are not mistaken for the chips and inputs beside them.
     const box = el('span', { class: 'computed k k-computed', title: `${f.type} — read-only` },
-      el('span', { class: 'computed-mark' }, computedMarkNode(f.type)), fieldValueCell(val) || '—');
+      el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
+      numberGraphicFor(f, item, fieldValueCell(val)) ?? (fieldValueCell(val) || '—'));
     if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
     return box;
   }
@@ -3046,6 +3084,20 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   // an http(s) url keeps the plain box below.
   if (f.type === 'url' && globalThis.WeaveEditorLib.urlParts(rawVal)) {
     return dressedUrl(rawVal, input);
+  }
+  // A number with a display (Feature #230) rests as its graphic and hands
+  // over the raw number the moment it is clicked, like the costume below.
+  const graphic = f.type === 'number' ? numberGraphicFor(f, item, val) : null;
+  if (graphic) {
+    graphic.tabIndex = 0;
+    graphic.classList.add('num-dressed');
+    graphic.addEventListener('click', (e) => {
+      e.stopPropagation();
+      graphic.replaceWith(input);
+      input.focus();
+    });
+    input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(graphic); });
+    return graphic;
   }
   // A formatted number (#97) shows its costume at rest — '30 days' — and
   // hands over the raw number the moment it is clicked.
@@ -6230,7 +6282,42 @@ function numberCostumeControls(state, redraw, changed, { label = 'Format' } = {}
       el('input', { type: 'checkbox', class: 'form-check-input', checked: n.accounting ? '' : undefined, onchange: (e) => { n.accounting = e.target.checked; changed(); } }),
       el('span', { class: 'form-check-label' }, 'Accounting negatives ', el('span', { class: 'date-format-eg' }, '($1,234.57)'))));
   }
+  kids.push(...numberDisplayControls(n, redraw, changed));
   return kids;
+}
+
+/* The display picker (Feature #230): text, bar, ring or heat, then what
+   100% is — the column's max, or a fixed number — and a live preview of
+   three rows at a quarter, three fifths and the whole of the scale. */
+function numberDisplayControls(n, redraw, changed) {
+  const display = n.display ?? 'text';
+  const out = [dsection('Display', segCtl(fieldDialogCore.NUMBER_DISPLAYS, display, (v) => { n.display = v; redraw(); changed(); }))];
+  if (!cellGraphics.isGraphic(display)) return out;
+  const fixed = typeof n.scale === 'number';
+  const scaleBox = el('input', {
+    type: 'number', min: 0, step: 'any', class: 'form-control dlg-narrow', 'aria-label': 'Fixed scale',
+    value: fixed ? n.scale : '', placeholder: '100',
+    oninput: (e) => { const v = Number(e.target.value); n.scale = e.target.value !== '' && v > 0 ? v : 'column'; drawPreview(); changed(); },
+  });
+  const preview = el('div', { class: 'cg-preview', 'aria-label': 'Sample rows' });
+  const drawPreview = () => {
+    const scale = typeof n.scale === 'number' ? n.scale : 1;
+    const f = { format: n.format };
+    preview.replaceChildren(...[0.25, 0.6, 1].map((share) => {
+      const value = share * scale;
+      const text = n.format === 'percent' ? `${Math.round(value * 1e4) / 100}%` : String(Math.round(value * 100) / 100);
+      return el('div', { class: 'cg-preview-row' }, numberGraphic(display, value, scale, text, f));
+    }));
+  };
+  drawPreview();
+  out.push(dsection('Scale',
+    segCtl([{ id: 'column', label: 'column max' }, { id: 'fixed', label: 'fixed' }], fixed ? 'fixed' : 'column', (v) => {
+      n.scale = v === 'fixed' ? (n.format === 'percent' ? 1 : 100) : 'column';
+      redraw(); changed();
+    }),
+    fixed ? scaleBox : el('div', { class: 'hintnote' }, "100% is the column's largest value")));
+  out.push(dsection('Sample', preview));
+  return out;
 }
 
 function fieldDialog(db, existing, after) {

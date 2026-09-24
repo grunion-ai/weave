@@ -66,6 +66,8 @@ Finite numeric value. One type, four costumes — plain, currency, percent, and 
 | \`decimals\` | integer | fixed places; defaults to 0, or 2 under \`currency\`, or 1 under \`compact\` |
 | \`separator\` | boolean | thousands grouping (currency and compact group on their own) |
 | \`accounting\` | boolean | negatives in parentheses — ($1,234.57) — the finance convention; needs \`currency\` |
+| \`display\` | \`text\` (default), \`bar\`, \`ring\`, \`heat\` | how the value is drawn: a bar or a ring filled to its share of the scale, or a cell tinted by it; the text rides beside it, and the API still returns the number |
+| \`scale\` | \`column\` (default) or a number above 0 | what 100% is for a bar, ring or heat: the column's largest value, or a fixed figure (\`1\` for a percent, \`5\` for a score out of five) |
 | \`default\` | number | the value a new row starts with |
 
 \`\`\`json
@@ -459,7 +461,7 @@ An expression over this row's own fields, recomputed on read.
 
 ## Config
 
-\`expression\`, plus every number costume key — \`format\`, \`currency\`, \`unit\`, \`decimals\`, \`separator\`, \`accounting\` — so a computed figure can wear the same clothes as a stored one.
+\`expression\`, plus every number costume key — \`format\`, \`currency\`, \`unit\`, \`decimals\`, \`separator\`, \`accounting\`, \`display\`, \`scale\` — so a computed figure can wear the same clothes as a stored one. A rollup over a number column wears that column's format and display.
 
 \`\`\`json
 { "name": "Total", "type": "formula",

@@ -19,7 +19,7 @@
     if (v?.state) out.push({ kind: 'state', label: 'State', value: v.state.name, category: v.state.category });
     for (const f of v?.fields ?? []) {
       if (f.value == null || f.value === '') continue;
-      out.push({ kind: 'field', label: f.label, value: String(f.value) });
+      out.push({ kind: 'field', label: f.label, value: String(f.value), ...(f.meter ? { meter: f.meter } : {}) });
     }
     return out;
   }

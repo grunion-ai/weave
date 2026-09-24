@@ -278,6 +278,8 @@
 
   const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'];
   const NUMBER_FORMATS = ['number', 'currency', 'percent', 'compact'];
+  // Mirrors the engine's NUMBER_DISPLAYS (Feature #230, source-gated).
+  const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
   // ISO 4217 codes offered in the picker (any valid code types in too).
   const CURRENCIES = [
     ['USD', 'US dollar'], ['EUR', 'Euro'], ['MXN', 'Mexican peso'], ['CNY', 'Chinese yuan'], ['JPY', 'Japanese yen'],
@@ -316,7 +318,7 @@
     // A workflow opens on the default lifecycle, never on an empty list the
     // tray would then refuse to save (Issue #251).
     states: type === 'workflow' ? defaultStates() : [],
-    number: { format: 'number', unit: '', currency: 'USD', decimals: null, separator: false, accounting: false },
+    number: { format: 'number', unit: '', currency: 'USD', decimals: null, separator: false, accounting: false, display: 'text', scale: 'column' },
     date: { grain: { year: true, month: true, day: true }, format: DG().DEFAULT_FORMAT, time: false, clock: DG().DEFAULT_CLOCK, zone: 'floating', zoneName: '', pad: false, elapsed: false },
     depth: 1,
     multiple: true,           // attachments: one file or many
@@ -371,6 +373,11 @@
     // Compact groups on its own; accounting is a currency convention.
     if (n.separator && n.format !== 'compact') config.separator = true;
     if (n.accounting && n.format === 'currency') config.accounting = true;
+    // The display (Feature #230): text and the column scale are the defaults.
+    if (n.display && n.display !== 'text') {
+      config.display = n.display;
+      if (n.scale != null && n.scale !== 'column' && n.scale !== '') config.scale = Number(n.scale);
+    }
     return config;
   }
 
@@ -474,7 +481,7 @@
       state.type = 'text'; // grid shows a neutral tile behind the toggle
       state.computed = 'formula';
       state.expression = c.expression ?? '';
-      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator };
+      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column' };
       return state;
     }
     if (def.type === 'view') {
@@ -490,7 +497,7 @@
         ? { name: s, category: 'in-progress', default: false }
         : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}) }));
     } else if (def.type === 'number') {
-      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting };
+      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column' };
     } else if (def.type === 'date' || def.type === 'daterange') {
       const parts = c.grain ?? ['year', 'month', 'day'];
       state.date = {
@@ -547,6 +554,10 @@
       if (c.decimals != null && (!Number.isInteger(c.decimals) || c.decimals < 0 || c.decimals > 6)) return fail(`Decimals must be 0..6, got '${c.decimals}'`);
       if (c.format === 'compact' && c.separator) return fail('Compact groups on its own; a separator has nothing to add');
       if (c.accounting && c.format !== 'currency') return fail('Accounting negatives need format currency');
+    }
+    if (def.type === 'number' || def.type === 'formula') {
+      if (c.display != null && !NUMBER_DISPLAYS.includes(c.display)) return fail(`Invalid number display '${c.display}' (${NUMBER_DISPLAYS.join(', ')})`);
+      if (c.display && c.display !== 'text' && c.scale != null && c.scale !== 'column' && !(typeof c.scale === 'number' && c.scale > 0)) return fail("Scale is 'column' or a number above 0");
     }
     if (def.type === 'date' || def.type === 'daterange') {
       let grain;
@@ -678,7 +689,7 @@
     const c = {};
     if (f.type === 'select' || f.type === 'multiselect') c.options = f.optionsFull ?? (f.options ?? []).map((n) => ({ name: n, color: '' }));
     if (f.type === 'workflow') c.states = f.states ?? [];
-    if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting']) { if (f[k] != null) c[k] = f[k]; }
+    if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale']) { if (f[k] != null) c[k] = f[k]; }
     if (f.type === 'date' || f.type === 'daterange') for (const k of ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) { if (f[k] != null) c[k] = f[k]; }
     if (f.type === 'formula') c.expression = f.expression ?? '';
     if (f.type === 'field') c.depth = f.depth ?? 1;
@@ -712,7 +723,7 @@
     // The row term is a lane of its own on the Name field: null clears it.
     if (existing.role === 'name') patch.term = c.term ?? null;
     if (existing.type === 'number' || existing.type === 'formula') {
-      for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting']) patch[k] = c[k] ?? null;
+      for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale']) patch[k] = c[k] ?? null;
     }
     if (existing.type === 'date' || existing.type === 'daterange') {
       // Every lane, every time: a null clears (a grain back to full drops the key).
@@ -738,7 +749,7 @@
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
-    NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
+    NUMBER_FORMATS, NUMBER_DISPLAYS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     blankState, definitionFromState, stateFromDefinition,
     definitionFromFieldView, editPatchConfig,

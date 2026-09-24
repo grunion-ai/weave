@@ -13,7 +13,7 @@
    grid sees, which is the thing an agent cannot look at. */
 export const FIELD_TYPE_VOCABULARY = [
   { type: 'text', renders: 'inline text input', config: ['default'] },
-  { type: 'number', renders: 'right-aligned, tabular figures', config: ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'default'] },
+  { type: 'number', renders: 'right-aligned, tabular figures; with a `display` of bar, ring or heat, a small graphic filled to the value\'s share of the `scale` (the column max, or a fixed number) beside the text', config: ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'default'] },
   { type: 'date', renders: 'inline date input with a picker button — a calendar, or a month/year, month/day, year or day-of-month picker when the grain stores less', config: ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'default'] },
   { type: 'daterange', renders: 'a pair of date inputs, both wearing the grain and costume; an elapsed span when asked', config: ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'default'] },
   { type: 'checkbox', renders: 'a checkbox', config: ['default'] },
@@ -26,7 +26,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'relation', renders: 'chips carrying the target\'s name, each with ×, plus "+ link"', config: ['targetDb', 'targetDbs', 'cardinality', 'inverseName'], verb: 'add_relation' },
   { type: 'lookup', renders: 'read-only cell on a tinted background, marked ↗', config: ['relationField', 'targetField'] },
   { type: 'rollup', renders: 'read-only cell on a tinted background, marked Σ, wearing the target column\'s costume; on a Workspace/Spaces row a `via` rollup is the figure the grid footer shows under that column', config: ['relationField', 'via', 'where', 'targetField', 'aggregate', 'separator'] },
-  { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting'] },
+  { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ; a numeric result can wear a bar, ring or heat display like a number', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale'] },
   { type: 'document', renders: 'every document field is a column of its own: the description previews its first lines; any other renders as a named chip wearing its kind', config: ['kind'] },
   { type: 'attachments', renders: 'file chips', config: ['multiple'] },
   { type: 'field', renders: 'a field definition as a value — what the Fields registry\'s Definition is', config: ['types', 'depth'] },
@@ -92,6 +92,8 @@ export const VOCABULARY = {
     names: ICONS,
   },
   numberFormats: ['number', 'currency', 'percent', 'compact'],
+  // How a number is drawn (Feature #230); `scale` is 'column' or a number.
+  numberDisplays: ['text', 'bar', 'ring', 'heat'],
   dateFormats: ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative'],
   /* A date's grain is which of year · month · day it stores — any contiguous
      run (year, year·month, month·day, month, day) or none at all with a time

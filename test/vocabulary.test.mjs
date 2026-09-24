@@ -75,6 +75,9 @@ test('the closed sets match the engine and the field dialog', () => {
   assert.deepEqual(VOCABULARY.aggregates, list(ENGINE, 'AGGREGATES'));
   assert.deepEqual(VOCABULARY.documentKinds, list(ENGINE, 'DOCUMENT_KINDS'));
   assert.deepEqual(VOCABULARY.numberFormats, list(DIALOG, 'NUMBER_FORMATS'));
+  // Feature #230: the engine, the dialog and the vocabulary name one set of displays.
+  assert.deepEqual(VOCABULARY.numberDisplays, list(ENGINE, 'NUMBER_DISPLAYS'));
+  assert.deepEqual(VOCABULARY.numberDisplays, list(DIALOG, 'NUMBER_DISPLAYS'));
   assert.deepEqual(VOCABULARY.dateFormats, list(DIALOG, 'DATE_FORMATS'));
   assert.deepEqual(VOCABULARY.cardinalities, list(DIALOG, 'CARDINALITIES'));
 });

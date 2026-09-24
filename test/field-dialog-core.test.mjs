@@ -790,3 +790,54 @@ test('formulaApply rewrites the word under the caret and lands the caret inside 
   const mid = core.formulaSuggest('ro + 1', 2, FIELDS);
   assert.deepEqual(core.formulaApply('ro + 1', mid, mid.items[0]), { text: 'round() + 1', caret: 6 });
 });
+
+/* ---------- the number display (Feature #230) ---------- */
+
+test('the display and its scale ride the number costume, canonical-minimal', () => {
+  assert.deepEqual(core.NUMBER_DISPLAYS, ['text', 'bar', 'ring', 'heat']);
+  const blank = core.blankState('number');
+  assert.equal(blank.number.display, 'text');
+  assert.equal(blank.number.scale, 'column');
+  assert.deepEqual(core.definitionFromState({ ...blank, type: 'number' }).config, {}, 'text on the column scale says nothing');
+  const bar = { ...blank, type: 'number', number: { ...blank.number, display: 'bar' } };
+  assert.deepEqual(core.definitionFromState(bar).config, { display: 'bar' }, 'the column scale is the default');
+  const ring = { ...blank, type: 'number', number: { ...blank.number, display: 'ring', scale: 5 } };
+  assert.deepEqual(core.definitionFromState(ring).config, { display: 'ring', scale: 5 });
+  const text = { ...blank, type: 'number', number: { ...blank.number, display: 'text', scale: 5 } };
+  assert.deepEqual(core.definitionFromState(text).config, {}, 'a scale means nothing to text');
+});
+
+test('a display round-trips through the form, on a number and on a formula', () => {
+  for (const def of [
+    { type: 'number', config: { format: 'percent', display: 'bar', scale: 1 } },
+    { type: 'formula', config: { expression: '[A] * 2', display: 'heat' } },
+  ]) {
+    const back = core.definitionFromState(core.stateFromDefinition(def));
+    assert.deepEqual(back, def);
+  }
+  const view = { name: 'Score', type: 'number', display: 'ring', scale: 10 };
+  assert.deepEqual(core.definitionFromFieldView(view).config, { display: 'ring', scale: 10 }, 'the flat schema view folds back');
+});
+
+test('an edit sends every display lane, so going back to text clears the scale', () => {
+  const existing = { name: 'Score', type: 'number', display: 'bar', scale: 10 };
+  const state = core.stateFromDefinition(core.definitionFromFieldView(existing));
+  state.number.display = 'text';
+  const patch = core.editPatchConfig(existing, core.definitionFromState(state), state);
+  assert.equal(patch.display, null);
+  assert.equal(patch.scale, null);
+});
+
+test('the dialog refuses a display or a scale in the words the engine would', async () => {
+  const { Weave } = await import('../src/engine.js');
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  w.createTable({ space: 'S', name: 'T' });
+  for (const config of [{ display: 'stars' }, { display: 'bar', scale: 0 }, { display: 'ring', scale: 'row' }]) {
+    const mirrored = core.parseDefinition(JSON.stringify({ type: 'number', config }));
+    assert.equal(mirrored.ok, false, JSON.stringify(config));
+    let message = null;
+    try { w.addField('T', { name: `F${JSON.stringify(config)}`, type: 'number', config }); } catch (e) { message = e.message; }
+    assert.equal(mirrored.error, message, 'the dialog repeats the engine verbatim');
+  }
+});
