@@ -3724,9 +3724,11 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
           { id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }],
         gridDensity(db.id),
         (mode) => {
-          gridDensity(db.id, mode);
-          const grid = document.querySelector('.wv-grid');
-          if (grid) { grid.dataset.density = mode; markClippedCells(grid); }
+          // The grid carries the reader's place across the flip (Issue #342);
+          // with no grid on the page there is only the preference to keep.
+          const gridWrap = document.querySelector('.wv-grid')?.closest('.table-wrap');
+          if (gridWrap?.wvSetDensity) gridWrap.wvSetDensity(mode);
+          else gridDensity(db.id, mode);
         },
       ),
       // Export and delete are occasional and one of them is irreversible, so
@@ -4578,8 +4580,44 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     requestAnimationFrame(() => markClippedCells(table));
     return true;
   };
+  /* ---------- the density flip (Issue #342) ----------
+     Density is a way of READING the table (Kyle, 2026-08-24), so it leaves
+     the reader where they were reading. The grid owns the flip because only
+     it knows the geometry: the window is placed from a body-relative offset
+     divided by the row height, and shorter rows put a different row under
+     the same offset, so a flip half way down drew from somewhere else
+     entirely. The row at the top edge is read BEFORE the flip and landed
+     back there after it, inside the one gesture, so no frame is painted
+     anywhere in between.
+
+     Read and landed off the DOM, not off `rowH`: weave's rows are not all
+     the same height (Issue #324), and an anchor estimated from one height
+     was twenty rows out on a 600-row grid. `scrollToRow` brings the row and
+     its window into the DOM at the estimate; the correction that follows is
+     under a screen and costs no extra paint. */
+  const topEdge = (g) => (g.box ? g.box.getBoundingClientRect().top : 0) + g.headH;
+  const topRowIndex = () => {
+    const edge = topEdge(geometry());
+    for (const tr of tbody.querySelectorAll('tr[data-i]')) {
+      if (tr.getBoundingClientRect().bottom > edge + 1) return Number(tr.dataset.i);
+    }
+    return win.start;
+  };
+  const setDensity = (mode) => {
+    if (!tbody?.isConnected) return gridDensity(db.id, mode);
+    const anchor = topRowIndex();
+    gridDensity(db.id, mode);
+    table.dataset.density = mode;
+    rewindow();            // measures the row at its new height and repaints
+    scrollToRow(anchor);   // and brings the reader's row back into the window
+    const g = geometry(), tr = live.get(anchor);
+    if (tr) (g.box ?? window).scrollBy({ top: tr.getBoundingClientRect().top - topEdge(g), left: 0, behavior: 'instant' });
+    rewindow();
+    markClippedCells(table);
+  };
   wrap.wvRewindow = rewindow;
   wrap.wvScrollToRow = scrollToRow;
+  wrap.wvSetDensity = setDensity;
   wrap.wvPatchRows = patchRows;
 
   const draw = () => {
@@ -5985,13 +6023,18 @@ function viewSection(db, dlg, changed, redraw) {
 function segCtl(options, value, onPick) {
   const wrap = el('div', { class: 'seg-ctl', role: 'group' });
   const norm = options.map((o) => (typeof o === 'string' ? { id: o, label: o } : o));
-  const draw = (current) => {
-    wrap.replaceChildren(...norm.map((o) => el('button', {
-      type: 'button', class: 'seg-opt' + (o.id === current ? ' on' : ''), title: o.title ?? null,
-      onclick: () => { draw(o.id); onPick(o.id); },
-    }, o.label)));
-  };
-  draw(value);
+  /* The buttons are built once and a pick only moves the `on` mark. Rebuilding
+     the strip took the button the reader had just clicked out of the document,
+     focus fell to <body>, and the browser scrolled to the top of the page to
+     show it — which is how a density flip half way down a table landed the
+     reader back at row 0 (Issue #342). */
+  const btns = norm.map((o) => el('button', {
+    type: 'button', class: 'seg-opt', title: o.title ?? null,
+    onclick: () => { mark(o.id); onPick(o.id); },
+  }, o.label));
+  const mark = (current) => btns.forEach((b, i) => b.classList.toggle('on', norm[i].id === current));
+  mark(value);
+  wrap.append(...btns);
   return wrap;
 }
 
