@@ -238,6 +238,38 @@ In the grid a click flips it, and so does \`Space\` on the resting cell — the 
 
 \`is-empty\` never matches a toggle — \`false\` is a value, not a hole. Renaming a label changes what the switch says, not what any row stores; a filter saved on the old label is refused until it names the new one.` },
 
+  { name: 'rating', kind: 'Value', doc: `# rating
+
+A whole number from 0 to the field's \`max\`, drawn as \`max\` icons with the first ones filled (Feature #231). Scoring a row (priority, quality, fit) takes one click instead of a number and a scale to remember. To a formula, a sort, a filter, CSV, the API and MCP it is a number.
+
+## Config
+
+\`max\` — how many icons, a whole number from 1 to 10; \`5\` unless named. The field dialog offers 3, 5 and 7.
+
+\`icon\` — one icon for the field, picked from the inventory (\`lucide:<name>\`, or a mark): \`lucide:star\` unless named. \`{ "name": "Fit", "type": "rating", "config": { "max": 7, "icon": "lucide:heart" } }\`.
+
+\`default\` — the rating a new row starts with.
+
+## Usage
+
+Click the third icon to set 3; click the filled third icon again to clear to 0. In the grid a digit key on the resting cell sets the rating (a digit past the max sets the max) and \`Backspace\` or \`Delete\` clears it to 0. A screen reader hears "3 of 5".
+
+A write is rounded and held to 0..max: \`{"Fit": 3.6}\` stores 4, \`{"Fit": 9}\` stores 5, numeric text is read as its number, anything else is refused by name. Lowering \`max\` holds every row to the new ceiling.
+
+A lookup of a rating, and a rollup whose answer stays on the scale (\`avg\`, \`min\`, \`max\`, \`median\`), draw the same icons, read-only, rounded to a whole number; the API returns the unrounded figure. A \`sum\` or a spread leaves the scale and prints as a number.
+
+## Migrations
+
+\`number\` ⇄ \`rating\` both ways: a number becomes a rating by rounding and clamping to the max; a rating becomes the number it held. To \`text\`, each row freezes its number.
+
+## In formulas
+
+\`[Fit] * 20\` reads the number: a 4 of 5 is 80.
+
+## Gotchas
+
+Empty and 0 are different: an unrated row is empty (\`is-empty\` matches it), a cleared one is 0.` },
+
   { name: 'url', kind: 'Value', doc: `# url
 
 A string the grid renders as a link, opening in a new tab. Click the link to open it; use the pencil beside it, double-click, or press Return on the cell to change the address.
@@ -581,7 +613,7 @@ In a grid the cell reads as a sentence rather than as JSON: \`select · 3 option
 
 ## Definable types
 
-\`text\`, \`number\`, \`date\`, \`daterange\`, \`checkbox\`, \`toggle\`, \`url\`, \`email\`, \`select\`, \`multiselect\`, \`workflow\`, \`document\`, \`field\`, \`key\`, \`attachments\`.
+\`text\`, \`number\`, \`rating\`, \`date\`, \`daterange\`, \`checkbox\`, \`toggle\`, \`url\`, \`email\`, \`select\`, \`multiselect\`, \`workflow\`, \`document\`, \`field\`, \`key\`, \`attachments\`.
 
 \`relation\`, \`lookup\`, \`rollup\` and \`formula\` are absent on purpose: each needs a target that only exists in a table's context, so each has its own verb.
 
@@ -891,6 +923,7 @@ Cells **rest as values** and open on purpose. The cursor is a ring on one cell; 
 | any character | open the cell and start typing over the value |
 | \`/\` or \`⌘F\` | search this table |
 | \`Space\` | pick the row up — or, on a toggle cell, flip the switch |
+| \`0\`–\`9\`, \`Backspace\` | on a rating cell: set the rating, or clear it to 0 |
 | \`⇧↑\` / \`⇧↓\` | extend the run of chosen rows |
 | \`⌘A\` | take every loaded row — the foot says how many that is |
 | \`Home\` / \`End\` | the first or the last row of the table, scrolled in first |

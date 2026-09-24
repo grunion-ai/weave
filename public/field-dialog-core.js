@@ -13,6 +13,7 @@
   const FIELD_TYPES = [
     { id: 'text', label: 'text', icon: 'Aa' },
     { id: 'number', label: 'number', icon: '#' },
+    { id: 'rating', label: 'rating', icon: 'lucide:star' },
     { id: 'date', label: 'date', icon: 'lucide:calendar' },
     { id: 'daterange', label: 'range', icon: 'lucide:calendar-range' },
     { id: 'checkbox', label: 'checkbox', icon: 'lucide:square-check' },
@@ -91,7 +92,8 @@
   const TYPE_MIGRATIONS = {
     text: ['number', 'key', 'url', 'email', 'select', 'multiselect', 'date', 'formula'],
     formula: ['text'],
-    number: ['text'],
+    number: ['rating', 'text'],
+    rating: ['number', 'text'],
     url: ['text'],
     email: ['text'],
     key: ['text'],
@@ -280,6 +282,10 @@
   const NUMBER_FORMATS = ['number', 'currency', 'percent', 'compact'];
   // Mirrors the engine's NUMBER_DISPLAYS (Feature #230, source-gated).
   const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
+  /* A rating's scale (Feature #231): the dialog offers three, the engine
+     takes any whole number 1..RATING_MAX. */
+  const RATING_PRESETS = [3, 5, 7];
+  const RATING_MAX = 10;
   // ISO 4217 codes offered in the picker (any valid code types in too).
   const CURRENCIES = [
     ['USD', 'US dollar'], ['EUR', 'Euro'], ['MXN', 'Mexican peso'], ['CNY', 'Chinese yuan'], ['JPY', 'Japanese yen'],
@@ -300,7 +306,7 @@
   const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
   const CARDINALITIES = ['many-to-one', 'one-to-many', 'many-to-many', 'one-to-one'];
   const MAX_DEPTH = 4;
-  const DEFAULTABLE = ['text', 'number', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect'];
+  const DEFAULTABLE = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect'];
   // Mirrors the engine's VIEW_SHAPES / DESCRIPTION_SIZES (source-gated).
   const VIEW_SHAPES = ['chip', 'card'];
   const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
@@ -324,6 +330,7 @@
     multiple: true,           // attachments: one file or many
     kind: 'markdown',         // document: markdown | html | code
     toggle: { on: 'On', off: 'Off' }, // toggle: the two state labels
+    rating: { max: 5, icon: 'lucide:star' }, // rating: the scale and its icon
     relation: { targetDb: '', cardinality: 'many-to-one', inverseName: '' },
     relationField: '',
     // A rollup rolls up through a relation, or — on the Spaces registry —
@@ -353,7 +360,7 @@
     if (!s || !DEFAULTABLE.includes(type)) return undefined;
     if (type === 'daterange') return rangeDefault(s) ?? undefined;
     if (type === 'checkbox' || type === 'toggle') return ['true', 'yes', '1'].includes(s.toLowerCase());
-    if (type === 'number') return Number(s);
+    if (type === 'number' || type === 'rating') return Number(s);
     if (type === 'multiselect') return s.split(',').map((x) => x.trim()).filter(Boolean);
     return s;
   }
@@ -450,6 +457,9 @@
     } else if (t === 'view') {
       const v = state.view ?? blankView();
       Object.assign(config, { shape: v.shape, link: !!v.link, state: !!v.state, description: v.description ?? 'none', fields: Array.isArray(v.fields) ? v.fields.slice() : null });
+    } else if (t === 'rating') {
+      config.max = Number(state.rating?.max ?? 5);
+      config.icon = state.rating?.icon || 'lucide:star';
     } else if (t === 'toggle') {
       const tg = state.toggle ?? {};
       config.on = String(tg.on ?? '').trim() || 'On';
@@ -511,6 +521,8 @@
       state.literal = !!c.literal;
     } else if (def.type === 'toggle') {
       state.toggle = { on: c.on ?? 'On', off: c.off ?? 'Off' };
+    } else if (def.type === 'rating') {
+      state.rating = { max: c.max ?? 5, icon: c.icon ?? 'lucide:star' };
     } else if (def.type === 'attachments') {
       state.multiple = c.multiple !== false;
     } else if (def.type === 'document') {
@@ -573,6 +585,9 @@
       if (c.zone === 'fixed' && c.zoneName && !DG().isZone(c.zoneName)) return fail(`'${c.zoneName}' is not a time zone`);
       if (c.elapsed && def.type !== 'daterange') return fail('elapsed belongs to a range');
       if (c.elapsed && !c.time) return fail('elapsed needs a time of day at both ends');
+    }
+    if (def.type === 'rating' && c.max != null && !(Number.isInteger(c.max) && c.max >= 1 && c.max <= RATING_MAX)) {
+      return fail(`A rating's max is a whole number from 1 to ${RATING_MAX}, got '${c.max}'`);
     }
     if (def.type === 'field') {
       const depth = c.depth ?? 1;
@@ -696,6 +711,7 @@
     if (f.type === 'text' && f.literal) c.literal = true;
     if (f.type === 'attachments') c.multiple = f.multiple !== false;
     if (f.type === 'toggle') { c.on = f.on ?? 'On'; c.off = f.off ?? 'Off'; }
+    if (f.type === 'rating') { c.max = f.max ?? 5; c.icon = f.icon ?? 'lucide:star'; }
     if (f.type === 'document' && f.kind) c.kind = f.kind;
     if (f.type === 'key') { c.kind = f.kind ?? 'apikey'; c.keystore = f.keystore ?? 'local'; }
     /* The schema spells a rollup's RELATION `via` and its whole TABLE
@@ -737,6 +753,7 @@
     if (existing.type === 'text') patch.literal = !!state.literal;
     if (existing.type === 'attachments') patch.multiple = state.multiple !== false;
     if (existing.type === 'toggle') { patch.on = c.on; patch.off = c.off; }
+    if (existing.type === 'rating') { patch.max = c.max; patch.icon = c.icon; }
     // The shape is the field's identity; everything else is the patch.
     if (existing.type === 'view') { const { shape, ...rest } = c; void shape; Object.assign(patch, rest); }
     if (existing.type === 'document') patch.kind = state.kind ?? 'markdown';
@@ -749,7 +766,7 @@
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
-    NUMBER_FORMATS, NUMBER_DISPLAYS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
+    NUMBER_FORMATS, NUMBER_DISPLAYS, RATING_PRESETS, RATING_MAX, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     blankState, definitionFromState, stateFromDefinition,
     definitionFromFieldView, editPatchConfig,

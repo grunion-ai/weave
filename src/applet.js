@@ -889,6 +889,7 @@ const CLIENT = `
       case 'checkbox': return v ? one('slate', f.name) : '';
       case 'toggle': return one(v ? 'slate' : 'ghost', f.name + ' ' + (v ? f.on : f.off));
       case 'number': return one('ghost', f.name + ' ' + v);
+      case 'rating': return one('ghost', f.name + ' ' + v + '/' + (f.max || 5));
       case 'relation': return [].concat(v).map((x) => '<span class="k pointer">' + esc(x) + '</span>').join('');
       case 'formula': case 'lookup': case 'rollup':
         return '<span class="k k-more">\\u25e6 ' + esc(v) + '</span>';
@@ -896,7 +897,7 @@ const CLIENT = `
       default: return one('ghost', v);
     }
   }
-  const editableType = (t) => ['workflow', 'select', 'multiselect', 'date', 'number', 'text', 'email', 'url', 'checkbox'].includes(t);
+  const editableType = (t) => ['workflow', 'select', 'multiselect', 'date', 'number', 'rating', 'text', 'email', 'url', 'checkbox'].includes(t);
 
   // ---- editing a field, in this page, never on another one ---------------
   function editField(t, name, after) {
@@ -944,7 +945,7 @@ const CLIENT = `
     }
     if (f.type === 'checkbox' || f.type === 'toggle') { done(!cur); return; }
     if (f.type === 'date') { editDate(name, cur, done); return; }
-    const kind = f.type === 'number' ? 'number'
+    const kind = f.type === 'number' || f.type === 'rating' ? 'number'
       : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : 'text';
     openSheet('<h4>' + esc(name) + '</h4>'
       + '<div style="padding:0 22px 8px"><input id="fv" type="' + kind + '" value="' + esc(cur == null ? '' : cur) + '" '

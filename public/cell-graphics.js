@@ -4,7 +4,8 @@
    test/cell-graphics.test.mjs. app.js puts the markup in a grid cell, a chip
    segment or a card, beside the value's own text.
 
-   The number display (Feature #230): a bar or a ring filled to the value's
+   The number display (Feature #230) and the rating's icons (Feature #231).
+   The number display: a bar or a ring filled to the value's
    share of its scale, or a heat tint behind the text. The scale is the
    engine's (`scales` on a read): the column max, or a fixed number. Every
    graphic is aria-hidden — the text beside it is what a screen reader reads,
@@ -57,5 +58,17 @@
     return `${text} — ${Math.round((Number(value) / Number(scale)) * 100)}% of ${scaleText ?? scale}`;
   }
 
-  root.weaveCellGraphics = { DISPLAYS, isGraphic, share, meterSvg, meterTitle };
+  /* The rating (Feature #231): how many of the `max` icons are filled, and
+     the words a screen reader hears. A lookup or a rollup can hand over a
+     fraction (an average of 3.5); the icons round it, the API keeps it. */
+  function ratingParts(value, max) {
+    const m = Number.isInteger(max) && max > 0 ? max : 5;
+    if (value == null || value === '' || !Number.isFinite(Number(value))) return { filled: 0, max: m, label: `unrated, of ${m}` };
+    const filled = Math.min(m, Math.max(0, Math.round(Number(value))));
+    return { filled, max: m, label: `${filled} of ${m}` };
+  }
+  /* Clicking the nth icon sets n; clicking the one that is the value clears it. */
+  const ratingClick = (current, n) => (Number(current) === n ? 0 : n);
+
+  root.weaveCellGraphics = { DISPLAYS, isGraphic, share, meterSvg, meterTitle, ratingParts, ratingClick };
 })(globalThis);

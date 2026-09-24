@@ -841,3 +841,41 @@ test('the dialog refuses a display or a scale in the words the engine would', as
     assert.equal(mirrored.error, message, 'the dialog repeats the engine verbatim');
   }
 });
+
+/* ---------- the rating type (Feature #231) ---------- */
+
+test('rating is a tile with a star, and a fresh one is five stars', () => {
+  const tile = core.FIELD_TYPES.find((t) => t.id === 'rating');
+  assert.ok(tile && !tile.computed, 'a value tile');
+  assert.deepEqual(core.RATING_PRESETS, [3, 5, 7]);
+  const blank = core.blankState('rating');
+  assert.deepEqual(blank.rating, { max: 5, icon: 'lucide:star' });
+  assert.deepEqual(core.definitionFromState({ ...blank, type: 'rating' }).config, { max: 5, icon: 'lucide:star' }, 'both keys written down, as the engine stores them');
+});
+
+test('a rating round-trips through the form, the schema view and an edit', () => {
+  const def = { type: 'rating', config: { max: 7, icon: 'lucide:heart', default: 3 } };
+  assert.deepEqual(core.definitionFromState(core.stateFromDefinition(def)), def);
+  const view = { name: 'Fit', type: 'rating', max: 7, icon: 'lucide:heart' };
+  assert.deepEqual(core.definitionFromFieldView(view).config, { max: 7, icon: 'lucide:heart' });
+  const state = core.stateFromDefinition(core.definitionFromFieldView(view));
+  state.rating.max = 3;
+  const patch = core.editPatchConfig(view, core.definitionFromState(state), state);
+  assert.equal(patch.max, 3);
+  assert.equal(patch.icon, 'lucide:heart');
+  assert.equal(patch.default, null, 'no default, so an edit clears any');
+});
+
+test('the dialog refuses a rating max in the words the engine would', async () => {
+  const { Weave } = await import('../src/engine.js');
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  w.createTable({ space: 'S', name: 'T' });
+  for (const max of [0, 11, 2.5]) {
+    const mirrored = core.parseDefinition(JSON.stringify({ type: 'rating', config: { max } }));
+    assert.equal(mirrored.ok, false, String(max));
+    let message = null;
+    try { w.addField('T', { name: `R${max}`, type: 'rating', config: { max } }); } catch (e) { message = e.message; }
+    assert.equal(mirrored.error, message, 'the dialog repeats the engine verbatim');
+  }
+});

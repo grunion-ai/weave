@@ -69,7 +69,7 @@ const VALUES_BLOCK = '@values';
 const isBodyBlock = (f) => f.type === 'document' || f.type === 'attachments'
   || (f.type === 'relation' && !!(f.many ?? f.config?.many));
 
-const VALUE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments'];
+const VALUE_TYPES = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments'];
 // The stored values search reads as text (Feature #228). `key` is a secret and stays out.
 const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 /* checkbox and toggle store the same boolean; the toggle names its two states (Feature #202). */
@@ -146,10 +146,18 @@ const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separato
    here: a rating is its own type. public/cell-graphics.js draws them. */
 export const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
 const isGraphicDisplay = (d) => d != null && d !== 'text' && NUMBER_DISPLAYS.includes(d);
+/* A rating (Feature #231): a whole number from 0 to `max`, drawn as `max`
+   icons. The dialog offers 3, 5 and 7; the engine takes 1..10. */
+const RATING_MAX = 10;
+const RATING_DEFAULTS = { max: 5, icon: 'lucide:star' };
+/* The aggregates whose answer stays on a rating's scale, so a rollup over a
+   rating can draw the same icons. A sum or a spread leaves the scale. */
+const RATING_SCALE_AGGS = ['avg', 'min', 'max', 'median'];
+const ratingValue = (n, max) => Math.min(max, Math.max(0, Math.round(n)));
 /* Grain and costume keys of a date (Feature #164) — the rules live in public/date-grain.js. */
 const DATE_COSTUME_KEYS = ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed'];
 const DG = globalThis.weaveDateGrain;
-const DEFAULTABLE_TYPES = ['text', 'number', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect'];
+const DEFAULTABLE_TYPES = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 /* What a document edit actually did, in the terms a reader of the feed needs:
    where it landed, how much text came and went, and the first line that
@@ -250,7 +258,7 @@ const FORMULA_SCAN_CAP = 200;
    alternative is a definition that only fails when something tries to
    materialise it. */
 export const DEFINABLE_TYPES = [
-  'text', 'number', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email',
+  'text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email',
   'select', 'multiselect', 'workflow', 'document', 'field', 'key', 'attachments',
 ];
 const MAX_DEFINITION_DEPTH = 4;
@@ -262,7 +270,8 @@ const MAX_DEFINITION_DEPTH = 4;
 export const TYPE_MIGRATIONS = {
   text: ['number', 'key', 'url', 'email', 'select', 'multiselect', 'date', 'formula'],
   formula: ['text'],
-  number: ['text'],
+  number: ['rating', 'text'],
+  rating: ['number', 'text'],
   url: ['text'],
   email: ['text'],
   key: ['text'],
@@ -636,6 +645,15 @@ function normalizeSelfContainedConfig(type, config = {}) {
       throw new WeaveError(`Only a 'pair' credential names parts; '${kind}' holds one value`, 'invalid');
     }
     return out;
+  }
+  /* A rating (Feature #231): both keys written down, like a toggle's
+     labels, so a reader of the config sees the scale and the icon. */
+  if (type === 'rating') {
+    const max = config.max ?? RATING_DEFAULTS.max;
+    if (!Number.isInteger(max) || max < 1 || max > RATING_MAX) {
+      throw new WeaveError(`A rating's max is a whole number from 1 to ${RATING_MAX}, got '${config.max}'`, 'invalid');
+    }
+    return { max, icon: iconValue(config.icon ?? RATING_DEFAULTS.icon) || RATING_DEFAULTS.icon };
   }
   /* A toggle names its two states (Feature #202). Both labels are kept
      even at their defaults so a reader of the config sees the words the
@@ -1100,6 +1118,9 @@ export class Weave {
       // the text stays for a surface that draws none.
       const nd = typeof resolved === 'number' ? this.#numberDisplay(db, f) : null;
       if (nd) seg.meter = { display: nd.display, value: resolved, scale: this.#scaleOf(db, f) };
+      // A rating draws its icons on the chip and the card (Feature #231).
+      const rt = typeof resolved === 'number' ? this.#ratingOf(db, f) : null;
+      if (rt) seg.rating = { value: resolved, ...rt };
       out.fields.push(seg);
     }
     return out;
@@ -1879,6 +1900,7 @@ export class Weave {
       if (f.kind != null) config.kind = f.kind;
       if (f.multiple != null) config.multiple = f.multiple;
       if (f.term != null) config.term = f.term;
+      if (f.type === 'rating') { if (f.max != null) config.max = f.max; if (f.icon != null) config.icon = f.icon; }
       if (f.type === 'view') {
         for (const k of ['link', 'state', 'description']) if (f[k] !== undefined) config[k] = f[k];
         if (f.fields !== undefined) config.fields = f.fields;
@@ -1891,7 +1913,7 @@ export class Weave {
        name on the other. */
     const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'viaTable', 'where', 'targetField', 'aggregate',
       'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'time', 'kind', 'multiple', 'types', 'depth',
-      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term', 'link', 'state', 'description', 'fields'];
+      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term', 'link', 'state', 'description', 'fields', 'max', 'icon'];
     const colorsOf = (full) => JSON.stringify((full ?? []).map((o) => ({ name: o.name, color: o.color ?? '' })));
     const fieldChanged = (fDoc, have) => {
       if (!have) return true;
@@ -3460,7 +3482,7 @@ export class Weave {
     if (type === 'view') throw new WeaveError('The chip and the card are minted on every table; configure those instead', 'invalid');
 
     const field = { id: uuid(), name, type, config: {} };
-    if (['select', 'multiselect', 'workflow', 'field', 'number', 'date', 'daterange', 'attachments', 'document', 'key', 'text', 'toggle'].includes(type)) {
+    if (['select', 'multiselect', 'workflow', 'field', 'number', 'rating', 'date', 'daterange', 'attachments', 'document', 'key', 'text', 'toggle'].includes(type)) {
       // One normaliser, shared with `field` value validation — see the note on
       // normalizeSelfContainedConfig. If these drift, a definition can describe
       // a field addField would reject.
@@ -3692,6 +3714,13 @@ export class Weave {
       if (field.type === 'text' && 'literal' in patch.config) {
         if (normalizeSelfContainedConfig('text', patch.config).literal) field.config.literal = true; else delete field.config.literal;
       }
+      if (field.type === 'rating' && ('max' in patch.config || 'icon' in patch.config)) {
+        // One key at a time: the other keeps. A lower max holds every
+        // stored value to the new ceiling on read (#resolve).
+        const { max, icon } = normalizeSelfContainedConfig('rating', { max: field.config.max, icon: field.config.icon, ...patch.config });
+        field.config.max = max;
+        field.config.icon = icon;
+      }
       if (field.type === 'toggle' && ('on' in patch.config || 'off' in patch.config)) {
         // One label at a time: the other keeps its word.
         const { on, off } = normalizeSelfContainedConfig('toggle', { ...field.config, ...patch.config });
@@ -3899,6 +3928,8 @@ export class Weave {
           return String(raw);
         }
         case 'number': { const n = Number(raw); return Number.isFinite(n) ? n : null; }
+        // Rounded and held to the scale (Feature #231).
+        case 'rating': { const n = Number(raw); return Number.isFinite(n) ? ratingValue(n, nextConfig.max) : null; }
         case 'date': { try { return this.#coerceDate(nextConfig ?? {}, raw); } catch { return null; } }
         case 'email': return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(raw)) ? String(raw) : null;
         case 'key':
@@ -4329,6 +4360,12 @@ export class Weave {
         const n = Number(raw);
         if (!Number.isFinite(n)) throw new WeaveError(`'${raw}' is not a number`, 'invalid');
         return n;
+      }
+      case 'rating': {
+        // A whole number on the scale: rounded, then held to 0..max.
+        const n = typeof raw === 'boolean' ? NaN : Number(raw);
+        if (!Number.isFinite(n)) throw new WeaveError(`'${raw}' is not a rating of '${field.name}' (a whole number from 0 to ${field.config.max})`, 'invalid');
+        return ratingValue(n, field.config.max);
       }
       case 'date':
         return this.#coerceDate(field.config, raw);
@@ -4840,6 +4877,11 @@ export class Weave {
       }
       case 'document':
         return e.docs?.[field.id] ?? '';
+      case 'rating': {
+        // A max lowered since the write holds the value to the new ceiling.
+        const v = e.values[field.id];
+        return typeof v === 'number' ? Math.min(v, field.config.max) : null;
+      }
       default:
         return e.values[field.id] ?? (isBoolType(field.type) ? false : null);
     }
@@ -5046,7 +5088,7 @@ export class Weave {
       return String(dressNumber(fractional ? { ...c, decimals: 2 } : c, v));
     };
     const kindOf = (f, vals) => {
-      if (f.type === 'number') return 'number';
+      if (f.type === 'number' || f.type === 'rating') return 'number';
       if (f.type === 'formula' || f.type === 'rollup' || f.type === 'lookup') {
         return vals.some((v) => typeof v === 'number') ? 'number' : vals.some((v) => Array.isArray(v)) ? 'category' : 'text';
       }
@@ -5206,6 +5248,23 @@ export class Weave {
       this.#scales.set(key, vals.length ? aggregateValues('max', vals) : null);
     }
     return this.#scales.get(key);
+  }
+
+  /* The scale a field's value is drawn on as icons (Feature #231): the
+     rating's own, or — for a lookup of a rating and a rollup whose answer
+     stays on the scale — the rating it reads. Null for everything else. */
+  #ratingOf(db, f) {
+    if (f.type === 'rating') return { max: f.config.max, icon: f.config.icon };
+    if (f.type === 'lookup') {
+      const rel = db.fields[f.config.relationField];
+      const target = rel && this.state.tables[rel.config.targetDb]?.fields[f.config.targetField];
+      return target?.type === 'rating' ? { max: target.config.max, icon: target.config.icon } : null;
+    }
+    if (f.type === 'rollup' && RATING_SCALE_AGGS.includes(f.config.aggregate)) {
+      const { targetField } = this.#rollupTarget(db, f);
+      return targetField?.type === 'rating' ? { max: targetField.config.max, icon: targetField.config.icon } : null;
+    }
+    return null;
   }
 
   #summary(id) {
@@ -6189,6 +6248,12 @@ export class Weave {
           }
           if (f.type === 'attachments') out.multiple = f.config.multiple !== false;
           if (f.type === 'toggle') { out.on = f.config.on; out.off = f.config.off; }
+          if (f.type === 'rating') { out.max = f.config.max; out.icon = f.config.icon; }
+          // A lookup or a rollup that reads a rating draws its icons (#231).
+          if (f.type === 'lookup' || f.type === 'rollup') {
+            const rt = this.#ratingOf(db, f);
+            if (rt) out.rating = rt;
+          }
           if (f.type === 'document' && f.config.kind) out.kind = f.config.kind;
           // Which document is the description, said out loud, so applying a
           // schema onto a fresh workspace reproduces the role rather than

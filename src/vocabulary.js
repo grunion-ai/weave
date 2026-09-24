@@ -14,6 +14,7 @@
 export const FIELD_TYPE_VOCABULARY = [
   { type: 'text', renders: 'inline text input', config: ['default'] },
   { type: 'number', renders: 'right-aligned, tabular figures; with a `display` of bar, ring or heat, a small graphic filled to the value\'s share of the `scale` (the column max, or a fixed number) beside the text', config: ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'default'] },
+  { type: 'rating', renders: 'a row of `max` icons (a star unless the config names another from the inventory), the first `n` filled; click the nth to set n, click the current one again to clear to 0; in the grid a digit sets it and Backspace clears; the value is a whole number 0..max, which formulas, sort, filter and CSV read as a number', config: ['max', 'icon', 'default'] },
   { type: 'date', renders: 'inline date input with a picker button — a calendar, or a month/year, month/day, year or day-of-month picker when the grain stores less', config: ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'default'] },
   { type: 'daterange', renders: 'a pair of date inputs, both wearing the grain and costume; an elapsed span when asked', config: ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'default'] },
   { type: 'checkbox', renders: 'a checkbox', config: ['default'] },

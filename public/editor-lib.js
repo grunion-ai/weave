@@ -51,6 +51,9 @@ globalThis.WeaveEditorLib = {
       select: 'open-picker', multiselect: 'open-picker', workflow: 'open-picker',
       relation: 'open-button', attachments: 'open-button', files: 'open-button',
       checkbox: 'toggle', toggle: 'toggle',
+      // A rating is set by its icons, a digit or Backspace (Feature #231);
+      // Return has nothing to open.
+      rating: 'rate',
       formula: 'none', rollup: 'none', lookup: 'none', count: 'none',
       document: 'none', field: 'none',
     }[type] ?? (type ? 'focus-input' : 'none');

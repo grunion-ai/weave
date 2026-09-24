@@ -2021,6 +2021,8 @@ function openCellPicker(cell) {
 function activateCell(cell) {
   switch (globalThis.WeaveEditorLib.cellActivation(cell.dataset.ftype)) {
     case 'none': return;
+    // A rating is set by its icons and its keys; there is nothing to open.
+    case 'rate': return;
     case 'toggle': {
       const box = cell.querySelector('input[type="checkbox"]');
       if (box) { box.checked = !box.checked; box.dispatchEvent(new Event('change')); }
@@ -2592,9 +2594,38 @@ function numberGraphicFor(f, item, text) {
   if (typeof value !== 'number') return null;
   return numberGraphic(f.display, value, item?.scales?.[f.name] ?? f.scale ?? null, text ?? value, f);
 }
+/* ---------- the rating (Feature #231) ----------
+   `max` icons, the first `n` filled. Editable, each icon is a button: the
+   nth sets n and the current one clears to 0, and the grid keymap sends a
+   `rate` event (a digit, Backspace). Read-only — a lookup, a rollup, a chip
+   — the same icons with no buttons, rounded to a whole icon. Either way the
+   group says "3 of 5" to a screen reader and the icons are hidden from it. */
+function ratingEl(max, icon, value, { onSet = null, title = null } = {}) {
+  const box = el('span', { class: 'wv-rating' + (onSet ? ' editable' : ''), role: onSet ? 'group' : 'img', dataset: { max: String(max ?? 5) } });
+  const paint = (v) => {
+    const { filled, max: m, label } = cellGraphics.ratingParts(v, max);
+    box.setAttribute('aria-label', label);
+    box.title = title ?? label;
+    box.dataset.value = v == null ? '' : String(v);
+    box.replaceChildren(...Array.from({ length: m }, (_, i) => {
+      const n = i + 1;
+      const glyph = iconEl(icon || 'lucide:star', 'wv-icon') ?? '★';
+      return onSet
+        ? el('button', { type: 'button', tabindex: '-1', class: 'wv-rate-ico' + (n <= filled ? ' on' : ''), 'aria-hidden': 'true', dataset: { n: String(n) },
+          onclick: (e) => { e.stopPropagation(); onSet(cellGraphics.ratingClick(box.dataset.value === '' ? null : Number(box.dataset.value), n)); } }, glyph)
+        : el('span', { class: 'wv-rate-ico' + (n <= filled ? ' on' : ''), 'aria-hidden': 'true' }, glyph);
+    }));
+  };
+  paint(value);
+  box.paint = paint;
+  if (onSet) box.addEventListener('rate', (e) => onSet(e.detail));
+  return box;
+}
 /* A segment: the state as the same state chip a cell wears (category owns
-   the colour), or a label + value pair. A graphic number draws its meter. */
+   the colour), or a label + value pair. A graphic number draws its meter,
+   a rating its icons. */
 function segmentValueEl(seg) {
+  if (seg.rating) return ratingEl(seg.rating.max, seg.rating.icon, seg.rating.value, { title: `${seg.label}: ${seg.value}` });
   return seg.meter && cellGraphics.isGraphic(seg.meter.display)
     ? numberGraphic(seg.meter.display, seg.meter.value, seg.meter.scale, seg.value)
     : seg.value;
@@ -2760,8 +2791,16 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     // are not mistaken for the chips and inputs beside them.
     const box = el('span', { class: 'computed k k-computed', title: `${f.type} — read-only` },
       el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
-      numberGraphicFor(f, item, fieldValueCell(val)) ?? (fieldValueCell(val) || '—'));
+      // A lookup or a rollup that reads a rating draws its icons (#231).
+      (f.rating && typeof item?.raw?.[f.name] === 'number'
+        ? ratingEl(f.rating.max, f.rating.icon, item.raw[f.name], { title: `${f.name}: ${fieldValueCell(val)}` }) : null)
+      ?? numberGraphicFor(f, item, fieldValueCell(val)) ?? (fieldValueCell(val) || '—'));
     if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
+    return box;
+  }
+  if (f.type === 'rating') {
+    // The value paints the moment it is chosen; the PATCH reconciles.
+    const box = ratingEl(f.max, f.icon, item.raw?.[f.name] ?? null, { onSet: (v) => patch(v, (x) => box.paint(x)) });
     return box;
   }
   if (f.type === 'workflow') {
@@ -4019,7 +4058,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         onPick: (o) => write(o.id === 'on') });
     }
     valuePop({ anchor, title, apply: `Set on ${nRows()}`,
-      type: f.type === 'number' ? 'number' : f.type === 'date' ? (f.time ? 'datetime-local' : 'date') : f.type === 'url' ? 'url' : f.type === 'email' ? 'email' : 'text',
+      type: f.type === 'number' || f.type === 'rating' ? 'number' : f.type === 'date' ? (f.time ? 'datetime-local' : 'date') : f.type === 'url' ? 'url' : f.type === 'email' ? 'email' : 'text',
       onApply: (v) => write(v === '' ? null : v) });
   };
 
@@ -4652,6 +4691,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         return true;
       }
       case 'clearRange': clearRange(); return true;
+      // A digit or Backspace on a rating cell (Feature #231): the control
+      // sets itself, the cursor stays on the cell.
+      case 'rate': td.querySelector('.wv-rating')?.dispatchEvent(new CustomEvent('rate', { detail: verb.value })); return true;
       case 'toggleSelect': anchor = eid; setChosen(SEL().toggle(chosen(), eid)); return true;
       case 'extendSelect': {
         const out = KM().extend({ ids: drawnIds(), anchor, at: eid, dir: verb.dir });
@@ -4676,6 +4718,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const verb = KM().keymap(KM().keyOf(e), {
       mode: open ? 'edit' : 'rest', readonly: !openerOf(td), sel: chosen(),
       flip: td.dataset.ftype === 'toggle', range: !!rangeRect(),
+      rate: td.dataset.ftype === 'rating' ? Number(td.querySelector('.wv-rating')?.dataset.max || 0) : 0,
     });
     if (apply(verb, td, at)) { e.preventDefault(); e.stopPropagation(); }
   });
@@ -6616,6 +6659,31 @@ function fieldDialog(db, existing, after) {
           placeholder: 'No default — pick a range',
           onChange: (r) => { state.default = r ? JSON.stringify(r) : ''; changed(); },
         })));
+      } else if (t === 'rating') {
+        /* The scale and its icon (Feature #231): 3, 5 or 7 at a click, any
+           whole number to 10 typed, one icon from the inventory, and a
+           sample row drawn with both so the choice is seen before it saves. */
+        const r = state.rating ?? (state.rating = { max: 5, icon: 'lucide:star' });
+        const sample = el('div', { class: 'wv-rating-sample' });
+        const drawSample = () => sample.replaceChildren(ratingEl(r.max, r.icon, Math.ceil(r.max * 0.6)));
+        const maxBox = el('input', {
+          type: 'number', min: 1, max: fdc.RATING_MAX, step: 1, class: 'form-control dlg-narrow', 'aria-label': 'Max', value: r.max,
+          oninput: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1 && v <= fdc.RATING_MAX) { r.max = v; drawSample(); changed(); } },
+        });
+        kids.push(dsection('Max', el('div', { class: 'wv-rating-max' },
+          segCtl(fdc.RATING_PRESETS.map((n) => ({ id: String(n), label: String(n) })), String(r.max), (v) => { r.max = Number(v); maxBox.value = v; drawSample(); changed(); }),
+          maxBox)));
+        const iconBtn = el('button', {
+          type: 'button', class: 'btn btn-sm wv-rating-icon', title: 'Pick the icon', 'aria-label': 'Icon',
+          onclick: (e) => glyphPopover(e.currentTarget, r.icon, (id) => { r.icon = id || 'lucide:star'; drawCfg(); changed(); }),
+        }, iconEl(r.icon, 'wv-icon'), el('span', {}, String(r.icon).replace(/^lucide:/, '')));
+        kids.push(dsection('Icon', iconBtn));
+        drawSample();
+        kids.push(dsection('Sample', sample));
+        kids.push(dsection('Default', el('input', {
+          type: 'number', min: 0, max: r.max, step: 1, class: 'form-control dlg-narrow', value: state.default ?? '', placeholder: 'none',
+          oninput: (e) => { state.default = e.target.value; changed(); },
+        })));
       } else if (t === 'toggle') {
         /* Two words and a starting state (Feature #202): the labels the
            switch wears, and which of them a new row begins on. The default
@@ -6857,7 +6925,7 @@ const FOOT_NUMERIC = ['sum', 'avg', 'median', 'min', 'max', 'stdev', 'range'];
 function footAggregatesFor(db, f) {
   if (!f) return [];
   if (f.role === 'name' || f.id === db.fields.find((x) => x.role === 'name')?.id) return ['count', 'distinct'];
-  if (f.type === 'number' || f.type === 'formula' || f.type === 'rollup') return [...FOOT_NUMERIC, 'filled', 'empty'];
+  if (f.type === 'number' || f.type === 'rating' || f.type === 'formula' || f.type === 'rollup') return [...FOOT_NUMERIC, 'filled', 'empty'];
   if (f.type === 'date') return ['min', 'max', 'filled', 'empty'];
   if (f.type === 'view' || f.type === 'document' || f.type === 'attachments' || f.type === 'key' || f.type === 'field') return [];
   return ['filled', 'empty', 'distinct'];

@@ -70,3 +70,21 @@ test('the page loads the module before app.js', () => {
   const at = html.indexOf('/cell-graphics.js');
   assert.ok(at > 0 && at < html.indexOf('/app.js'));
 });
+
+/* ---------- the rating (Feature #231) ---------- */
+
+test('a rating fills whole icons: rounded, held to the scale, read as "n of max"', () => {
+  assert.deepEqual(cg.ratingParts(3, 5), { filled: 3, max: 5, label: '3 of 5' });
+  assert.deepEqual(cg.ratingParts(3.5, 5), { filled: 4, max: 5, label: '4 of 5' }, 'an average rounds to a whole icon');
+  assert.deepEqual(cg.ratingParts(9, 5), { filled: 5, max: 5, label: '5 of 5' });
+  assert.deepEqual(cg.ratingParts(null, 7), { filled: 0, max: 7, label: 'unrated, of 7' }, 'empty is not zero');
+  assert.deepEqual(cg.ratingParts(0, 3), { filled: 0, max: 3, label: '0 of 3' });
+  assert.equal(cg.ratingParts(2, undefined).max, 5, 'a scale nobody named is five');
+});
+
+test('clicking the nth icon sets n; clicking the current value clears to 0', () => {
+  assert.equal(cg.ratingClick(2, 4), 4);
+  assert.equal(cg.ratingClick(4, 4), 0);
+  assert.equal(cg.ratingClick(null, 1), 1);
+  assert.equal(cg.ratingClick(0, 1), 1);
+});

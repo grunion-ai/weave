@@ -2132,3 +2132,18 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .cg-preview { display: grid; gap: 6px; max-width: 240px; }
 .cg-preview-row { display: flex; justify-content: flex-end; }
 .cg-preview-row .cg-wrap.cg-bar { width: 100%; }
+
+/* ---------- the rating (Feature #231) ----------
+   A row of icons, the first n filled in amber; the rest are outlines in the
+   muted text colour. Editable icons are bare buttons: no box, no focus stop
+   of their own (the cell is the stop), a pointer and a hover lift. */
+:root { --wv-rate-on: #f59f00; --wv-rate-off: color-mix(in srgb, var(--tblr-body-color) 30%, transparent); }
+[data-bs-theme="dark"] { --wv-rate-on: #fab005; --wv-rate-off: color-mix(in srgb, var(--tblr-body-color) 35%, transparent); }
+.wv-rating { display: inline-flex; align-items: center; gap: 1px; vertical-align: middle; white-space: nowrap; line-height: 1; }
+.wv-rate-ico { display: inline-flex; padding: 1px; border: 0; background: none; color: var(--wv-rate-off); font-size: 15px; line-height: 1; }
+.wv-rate-ico.on { color: var(--wv-rate-on); }
+.wv-rate-ico.on svg { fill: currentColor; fill-opacity: .9; }
+.wv-rating.editable .wv-rate-ico { cursor: pointer; }
+.wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--wv-rate-on); }
+.wv-rating-max { display: flex; gap: 8px; align-items: center; }
+.wv-rating-icon { display: inline-flex; gap: 6px; align-items: center; }

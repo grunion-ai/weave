@@ -10,8 +10,9 @@
    (test/grid-patterns.test.mjs presses that one). No DOM here: a keystroke
    plus a grid state resolves to a verb, and public/app.js carries it out.
 
-   state  { mode: 'rest' | 'edit', readonly, sel: Set, flip?, range? }
+   state  { mode: 'rest' | 'edit', readonly, sel: Set, flip?, range?, rate? }
             flip: the cell is a toggle · range: a cell range is live (#220)
+            rate: the cell is a rating, and this is its max (#231)
    verb   { type, ... }
      move / commitMove {dr,dc,wrap?}  · move, saving first if it must
      edit {select}  · revert          · open the cell · back out of it
@@ -20,6 +21,7 @@
      newRow {at,focus}                · create an item
      toggleSelect / extendSelect {dir} / selectAll / clearSelect
      extendRange {dr,dc} / clearRange  · the cell range of Feature #220
+     rate {value}                     · set a rating cell (#231)
      none                             · the browser keeps it */
 (() => {
   const printable = (key) => key.length === 1 && key !== ' ';
@@ -55,6 +57,14 @@
     // Escape lets go of one thing at a time, rows before cells: the puck is
     // the louder state and the one a reader means when both are up.
     if (k.key === 'Escape') return s.sel.size ? { type: 'clearSelect' } : s.range ? { type: 'clearRange' } : { type: 'none' };
+    /* A rating has no text box (Feature #231): a digit is the value,
+       Backspace or Delete clears it to 0, and no other character opens it. */
+    if (s.rate) {
+      if (s.readonly || k.meta) return { type: 'none' };
+      if (/^[0-9]$/.test(k.key)) return { type: 'rate', value: Math.min(Number(k.key), s.rate) };
+      if (k.key === 'Backspace' || k.key === 'Delete') return { type: 'rate', value: 0 };
+      if (printable(k.key)) return { type: 'none' };
+    }
     if (printable(k.key) && !k.meta) return s.readonly ? { type: 'none' } : { type: 'edit', select: 'replace' };
     return { type: 'none' };
   };

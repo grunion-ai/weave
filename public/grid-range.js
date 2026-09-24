@@ -280,7 +280,8 @@
       if (TRUE.test(s)) return true;
       return UNREADABLE;
     }
-    if (type === 'number') {
+    // A rating reads a number; the engine rounds and clamps it (#231).
+    if (type === 'number' || type === 'rating') {
       if (typeof cell.v === 'number') return cell.v;
       const s = text(cell.d).trim();
       if (!s) return null;

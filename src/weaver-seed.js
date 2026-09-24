@@ -37,6 +37,8 @@ export function seedFieldShowcase(w) {
   w.addField(ft, { name: 'Price', type: 'number', config: { format: 'currency', currency: 'USD', decimals: 2 } });
   w.addField(ft, { name: 'Share', type: 'number', config: { format: 'percent', decimals: 1 } });
   w.addField(ft, { name: 'Weight', type: 'number', config: { unit: 'kg', decimals: 0 } });
+  // --- rating: icons you click to fill (Feature #231)
+  w.addField(ft, { name: 'Fit', type: 'rating', config: { max: 5, icon: 'lucide:star' } });
   // --- dates: three configurations + a range
   w.addField(ft, { name: 'Due', type: 'date' });
   w.addField(ft, { name: 'Start', type: 'date', config: { format: 'us' } });
@@ -87,7 +89,7 @@ export function seedFieldShowcase(w) {
   const rows = [
     { name: 'Sensor board', values: {
       Notes: 'Rev C, lead-free', Site: 'https://example.com/sensor', Contact: 'sales@example.com',
-      Count: 12, Price: 149.5, Share: 0.325, Weight: 2,
+      Count: 12, Price: 149.5, Share: 0.325, Weight: 2, Fit: 4,
       Due: '2026-09-15', Start: '2026-08-01', Published: '2026-08-20T14:30:00Z', Window: { start: '2026-08-01', end: '2026-09-15' },
       Done: false, Feed: true, Priority: 'High', Category: 'Hardware', Tags: ['alpha', 'stable'],
       Definition: { type: 'number', config: { format: 'currency', unit: 'EUR', decimals: 2 } },

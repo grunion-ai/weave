@@ -149,8 +149,8 @@ are part of the engine, not user data.
 
 ## The other axis: field types
 
-Twenty, and not one of them is a kind of entity. Fifteen store a value —
-`text`, `number`, `date`, `daterange`, `checkbox`, `toggle`, `url`, `email`, `select`,
+Twenty-one, and not one of them is a kind of entity. Sixteen store a value —
+`text`, `number`, `rating`, `date`, `daterange`, `checkbox`, `toggle`, `url`, `email`, `select`,
 `multiselect`, `workflow`, `relation`, `field`, `key`, `attachments`. Four
 compute one from other fields — `lookup`, `rollup`, `formula`, and `view`,
 which computes the row's own chip or card. One holds a body — `document`.
@@ -318,6 +318,10 @@ Free string.
 ### `number`
 A validated number, dressed by its costume: decimals, thousands separator, and
 one of percent, an ISO currency, or a free-text unit.
+
+### `rating`
+A whole number from 0 to the field's `max` (1 to 10), drawn as `max` icons
+from the inventory with the first ones filled. A number to every reader.
 
 ### `date`
 A calendar date, optionally with a time, formatted iso / us / eu / long.

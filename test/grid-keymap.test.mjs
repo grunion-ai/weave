@@ -241,3 +241,16 @@ test('open with a collapsed caret — or a control that has no caret — the cli
   assert.equal(KM.clipboardTarget({ mode: 'edit', selectionCollapsed: true }), 'cell');
   assert.equal(KM.clipboardTarget({ mode: 'edit' }), 'cell', 'a number, date, select or checkbox control reports no selection at all');
 });
+
+test('on a rating cell a digit sets it and Backspace clears it to 0 (Feature #231)', () => {
+  assert.deepEqual(at('3', {}, { rate: 5 }), { type: 'rate', value: 3 });
+  assert.deepEqual(at('0', {}, { rate: 5 }), { type: 'rate', value: 0 });
+  assert.deepEqual(at('9', {}, { rate: 5 }), { type: 'rate', value: 5 }, 'past the max is the max');
+  assert.deepEqual(at('Backspace', {}, { rate: 5 }), { type: 'rate', value: 0 });
+  assert.deepEqual(at('Delete', {}, { rate: 5 }), { type: 'rate', value: 0 });
+  assert.equal(act('x', {}, { rate: 5 }), 'none', 'a letter opens nothing: a rating has no text box');
+  assert.equal(act('3', {}, { rate: 5, readonly: true }), 'none', 'a read-only rating keeps its value');
+  assert.equal(act('3', { meta: true }, { rate: 5 }), 'none', '⌘3 is the browser\'s');
+  assert.equal(act('ArrowRight', {}, { rate: 5 }), 'move', 'the arrows still walk the grid');
+  assert.equal(act('3', {}, { mode: 'edit', rate: 5 }), 'none');
+});
