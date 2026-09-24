@@ -514,7 +514,7 @@ async function dockEntity(db, id, { drill = false } = {}) {
    dockClose runs before the router reads the hash it is leaving for, so
    that path must leave the URL alone. */
 function dockSyncUrl() {
-  const m = location.hash.match(/^#\/(?:table|db)\/[^/?]+/);
+  const m = location.hash.match(/^#\/(?:table|db)\/[^/?]+(?:\/view\/[^/?]+)?/);
   if (!m) return;
   const top = dock?.state.chain[dock.state.chain.length - 1];
   history.replaceState(null, '', top ? `${m[0]}?e=${top.id}` : m[0]);
@@ -3269,7 +3269,118 @@ async function showTrash(dbId) {
       rows)));
 }
 
-/* ---------- table views ---------- */
+/* ---------- table views (Feature #229) ----------
+   A strip of named views under the table title; the first is the default and
+   opens with the table, and Blank — the raw table — closes the strip. The
+   schema carries each table's `views` (names, fields, filters, sort); Blank
+   is computed here as the engine computes it, never stored. The grid below
+   draws the table AS the view: `viewed()` lays the view's columns, filter and
+   sort over the table object, so every grid path reads them unchanged, and
+   `gridConfigWrite()` sends every change back to that view — the same
+   tableView verb an agent calls. Kyle's ruling (2026-09-23): a change
+   autosaves into the view; Blank is read-only; Save as view duplicates. */
+const BLANK_READ_ONLY = 'Blank is read-only: it is the raw table. Save as view to keep a change.';
+function blankView(db) {
+  return { id: 'blank', name: 'Blank', blank: true, fields: db.fields.filter((f) => f.type !== 'view').map((f) => f.name) };
+}
+/* The view a route names: an id, 'blank', or nothing (the default). A stale
+   id — a deleted view, an old #/…/board route — lands on the default. */
+function pickTableView(db, ref) {
+  const views = db.views ?? [];
+  if (ref === 'blank' || !views.length) return blankView(db);
+  return views.find((v) => v.id === ref) ?? views[0];
+}
+function viewed(db, v) {
+  if (!v) return db;
+  const by = new Map(db.fields.map((f) => [f.name, f]));
+  const shown = v.fields.map((n) => by.get(n)).filter(Boolean);
+  const on = new Set(shown);
+  const hidden = db.fields.filter((f) => !on.has(f));
+  return { ...db, fields: [...shown, ...hidden], hiddenFields: hidden.map((f) => f.name), filters: v.filters, sort: v.sort, view: v };
+}
+/* Where a grid's filter, sort, columns and column order are saved: the view
+   it shows, or — on a grid with no strip (a space page, a related grid) —
+   the table itself, which the engine reads as its default view. */
+async function gridConfigWrite(db, tablePatch, viewPatch = tablePatch) {
+  if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return false; }
+  if (db.view) await api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(db.view.id)}`, viewPatch);
+  else await api('PATCH', `/tables/${db.id}`, tablePatch);
+  await loadSchema();
+  return true;
+}
+const viewHref = (db, v) => `#/table/${db.id}/view/${v.blank ? 'blank' : v.id}`;
+/* A name for a new view, asked once; the view is made and opened. */
+function newViewDialog(db, { title, from }) {
+  modal(title, [
+    el('input', { name: 'name', placeholder: 'View name', class: 'form-control full', required: true }),
+  ], async (fd) => {
+    const name = String(fd.get('name') ?? '').trim();
+    if (!name) return;
+    const made = await api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(name)}`, { from });
+    await loadSchema();
+    location.hash = `#/table/${db.id}/view/${made.id}`;
+  }, 'Create');
+}
+function viewStrip(db) {
+  const cur = db.view;
+  const views = [...(db.views ?? []), blankView(db)];
+  const strip = el('div', { class: 'view-strip', role: 'tablist', 'aria-label': 'Views' });
+  for (const v of views) {
+    const active = cur && (cur.blank ? v.blank : v.id === cur.id);
+    strip.append(el('a', {
+      class: 'view-tab' + (active ? ' active' : '') + (v.blank ? ' blank' : ''),
+      role: 'tab', 'aria-selected': active ? 'true' : 'false', href: viewHref(db, v),
+      title: v.blank ? 'The raw table: every field, no filter, no sort (read-only)' : v.default ? 'The default view: it opens with the table' : v.name,
+    }, v.default ? el('span', { class: 'view-star', 'aria-label': 'default' }, '★') : null, v.name));
+  }
+  strip.append(el('button', {
+    class: 'btn btn-sm btn-ghost-secondary view-add', type: 'button', title: 'New view', 'aria-label': 'New view',
+    onclick: () => newViewDialog(db, { title: 'New view', from: 'blank' }),
+  }, '+'));
+  if (!cur) return strip;
+  const items = [{ label: 'Save as view…', run: () => newViewDialog(db, { title: 'Save as view', from: cur.blank ? 'blank' : cur.id }) }];
+  if (!cur.blank) {
+    items.push({
+      label: 'Rename view…',
+      run: () => modal('Rename view', [el('input', { name: 'name', value: cur.name, class: 'form-control full' })], async (fd) => {
+        await api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(cur.id)}`, { name: String(fd.get('name') ?? '').trim() });
+        await loadSchema();
+        showDatabase(db.id, cur.id);
+      }, 'Rename'),
+    });
+    if (!cur.default) {
+      items.push({ label: 'Make default', run: async () => {
+        await api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(cur.id)}`, { default: true });
+        await loadSchema();
+        showDatabase(db.id, cur.id);
+      } });
+    }
+    items.push('divider', { hold: 'Delete view', holdingLabel: 'Hold to delete view…', run: async () => {
+      try {
+        await api('DELETE', `/tables/${db.id}/views/${encodeURIComponent(cur.id)}`);
+        await loadSchema();
+        location.hash = `#/table/${db.id}`;
+      } catch (err) { toast(err.message, true); }
+    } });
+  }
+  strip.append(dotsMenu(items, { title: 'View actions' }));
+  return strip;
+}
+/* Issue #341: a row made on a filtered grid starts inside the filter, or the
+   grid cannot show it. A workflow whose default state the filter holds, or a
+   toggle whose resting label it holds, needs nothing; otherwise the row takes
+   the filter's first state. */
+function filterSeed(db) {
+  const values = {};
+  for (const [name, states] of Object.entries(tableFilters(db))) {
+    const f = db.fields.find((x) => x.name === name);
+    if (!f || !states?.length) continue;
+    if (f.type === 'toggle') { if (!states.includes(f.off)) values[name] = true; continue; }
+    const def = f.states?.find((s) => s.default)?.name;
+    if (!states.includes(def)) values[name] = states[0];
+  }
+  return values;
+}
 
 
 /* ---------- filters (Feature #38) ----------
@@ -3282,8 +3393,7 @@ function tableFilters(db) {
   return db.filters ?? {};
 }
 async function setTableFilters(db, filters) {
-  await api('PATCH', `/tables/${db.id}`, { filters });
-  await loadSchema();
+  return gridConfigWrite(db, { filters });
 }
 /* A toggle's two labels are its states (Feature #202): the strip offers
    them like a workflow's, and the where-clause carries the booleans. */
@@ -3338,6 +3448,7 @@ function filterStrip(db, onChange) {
       const chip = el('button', {
         class: `filter-chip cat-${st.category}${on ? ' on' : ''}`,
         onclick: () => {
+          if (db.view?.blank) return toast(BLANK_READ_ONLY, true);
           const cur = new Set(active[f.name] ?? []);
           cur.has(st.name) ? cur.delete(st.name) : cur.add(st.name);
           if (cur.size) active[f.name] = [...cur]; else delete active[f.name];
@@ -3421,15 +3532,20 @@ function tableSearchBox(db) {
 }
 
 async function showDatabase(dbId, view) {
-  const db = allTables().find((d) => d.id === dbId);
-  if (!db) return showHome();
+  const table = allTables().find((d) => d.id === dbId);
+  if (!table) return showHome();
+  // The route's view, laid over the table (Feature #229); the default when
+  // the route names none. state.route.view carries it through every redraw.
+  // A redraw that names no view keeps the one on screen; the router always
+  // names one (null for the bare table route, which opens the default).
+  if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
+  const db = viewed(table, pickTableView(table, view));
   if (tableSearch.dbId !== dbId) { clearTimeout(tableSearchTimer); tableSearch = { dbId, text: '', open: false, focus: false, only: null }; }
   const search = tableSearch.text.trim();
   // The board view is gone (Kyle, 2026-08-25, Issue #75) the way the list
-  // view went before it: stale #/… routes and saved views that say 'board'
-  // land on the table.
-  void view;
-  state.route = { page: 'db', dbId, view: 'table' };
+  // view went before it: a stale 'board' names no table view and lands on
+  // the default.
+  state.route = { page: 'db', dbId, view: db.view.id };
   renderNav();
   // public/ is served from disk while the server process is long-lived, so a
   // page can be newer than the routes behind it (git pull without a restart).
@@ -3556,7 +3672,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
       { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
       { label: db.space, href: `#/space/${db.spaceId}` },
     ],
-    permalink: `${location.origin}${WS_PREFIX}/#/table/${db.id}`,
+    permalink: `${location.origin}${WS_PREFIX}/${db.view ? viewHref(db, db.view) : `#/table/${db.id}`}`,
     title: db.name,
     icon: db.icon,
     onSetIcon: async (icon) => {
@@ -3606,15 +3722,17 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
         { label: 'Column stats…', run: () => columnStatsPanel(db) },
         { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
         'divider',
-        // A saved view is this table + these filters, named (Feature #17).
+        // A share page is this table + these filters, named (Feature #17).
+        // Its old label, "Save as view", now belongs to the view strip's
+        // duplicate (Feature #229), so the two never share a name.
         {
-          label: 'Save as view…',
-          run: () => modal('Save view', [
-            el('input', { name: 'name', placeholder: 'View name', class: 'form-control full' }),
+          label: 'New share page…',
+          run: () => modal('New share page', [
+            el('input', { name: 'name', placeholder: 'Page name', class: 'form-control full' }),
           ], async (fd) => {
             const where = filterWhere(db);
             await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
-            toast('View saved — find it on the workspace page');
+            toast('Share page saved — find it on the workspace page');
           }, 'Save'),
         },
         'divider',
@@ -3648,6 +3766,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
     if (caret) searchInput.setSelectionRange(...caret);
   }
 
+  if (db.view) main.append(viewStrip(db));
   const strip = filterStrip(db, () => showDatabase(db.id, state.route.view));
   if (strip) main.append(strip);
 
@@ -3718,6 +3837,8 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
       if (db.system === 'tables') return newTableDialog(db, redraw);
       if (db.system === 'fields') return newFieldDialog(redraw);
       const seed = { name: db.system === 'spaces' ? 'New space' : '' };
+      const inside = db.system ? {} : filterSeed(db);
+      if (Object.keys(inside).length) seed.values = inside;
       const created = await api('POST', `/tables/${db.id}/entities`, seed);
       await loadSchema();
       await redraw();
@@ -3769,9 +3890,11 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
   }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
   const save = async (patch) => {
     try {
-      await api('PATCH', `/tables/${db.id}`, patch);
-      await loadSchema();
-      const fresh = allTables().find((d) => d.id === db.id);
+      // A field flip on a grid with views is that view's (Feature #229);
+      // system columns and the Σ row stay the table's.
+      if (patch.view) { if (!await gridConfigWrite(db, null, patch.view)) return; }
+      else { await api('PATCH', `/tables/${db.id}`, patch); await loadSchema(); }
+      const fresh = liveTable();
       // The entity page opens this too (Feature #117): it redraws itself.
       redraw ? await redraw() : await keepScroll(() => showDatabase(db.id, state.route.view));
       /* One hidden set, possibly two visible surfaces: the split shows the
@@ -3780,7 +3903,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
          the grid). The primary redraw above covered the eye's own surface;
          this covers its sibling. */
       if (dock && dock.db.id === db.id) {
-        dock.db = fresh;
+        dock.db = allTables().find((d) => d.id === db.id) ?? dock.db;
         if (redraw !== drawDock) await drawDock();
         else if (state.route?.page === 'db' && state.route.dbId === db.id) {
           await keepScroll(() => showDatabase(db.id, state.route.view));
@@ -3807,14 +3930,22 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
      the table at click time. A set captured when the row was built would be
      one flip out of date, and the second flip would drop the first one back
      out of the hidden set (Issue #240). */
-  const liveTable = () => allTables().find((d) => d.id === db.id) ?? db;
+  const liveTable = () => {
+    const raw = allTables().find((d) => d.id === db.id) ?? db;
+    return db.view ? viewed(raw, db.view.blank ? blankView(raw) : (raw.views ?? []).find((v) => v.id === db.view.id) ?? db.view) : raw;
+  };
   const buildRows = (cur) => {
     const hidden = new Set(cur.hiddenFields ?? []);
     const sysOn = new Set(cur.systemFields ?? []);
+    // Listed in schema order, whatever the view's column order: a flip must
+    // not move the row under the pointer (Issue #240's rows are taught, not
+    // swapped, and a reordered list would be a swap).
+    const listed = (allTables().find((d) => d.id === cur.id) ?? cur).fields;
     return [
       el('div', { class: 'eye-head' }, 'Fields'),
-      ...cur.fields.map((f) => row(!hidden.has(f.name), f.name, () => {
+      ...listed.map((f) => row(!hidden.has(f.name), f.name, () => {
         const next = new Set(liveTable().hiddenFields ?? []);
+        if (db.view) return save({ view: { [next.has(f.name) ? 'show' : 'hide']: [f.name] } });
         if (next.has(f.name)) next.delete(f.name); else next.add(f.name);
         save({ hiddenFields: [...next] });
       })),
@@ -4543,8 +4674,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           fieldMenuButton(db, colField(db, c), {
             sorted: sortKey === c ? sortDir : 0,
             onSort: (dir) => {
+              if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
               sortKey = dir ? c : null; sortDir = dir || 1;
-              const saved = api('PATCH', `/tables/${db.id}`, { sort: dir ? [{ field: c, dir: dir > 0 ? 'asc' : 'desc' }] : [] }).then(loadSchema);
+              const saved = gridConfigWrite(db, { sort: dir ? [{ field: c, dir: dir > 0 ? 'asc' : 'desc' }] : [] });
               // A paged grid sorts on the server: page 1 is re-read in the
               // new order once the sort is the table's. The rest sort in
               // place for the instant redraw, as before.
@@ -6887,6 +7019,9 @@ async function reorderField(db, fromName, toName, { after = false, onFail = () =
   const ti = db.fields.findIndex((f) => f.name === toName);
   db.fields.splice(after ? ti + 1 : ti, 0, moved);
   try {
+    // A grid with a view strip moves the column in that view (Feature #229),
+    // by the same relative edit an agent sends; Blank refuses and redraws.
+    if (db.view) { if (!await gridConfigWrite(db, null, { move: { field: fromName, [after ? 'after' : 'before']: toName } })) onFail(); return; }
     await api('PATCH', `/tables/${db.id}`, { fieldOrder: order });
     await loadSchema();
   } catch (err) {
@@ -9917,7 +10052,7 @@ function renderRoute() {
     dbM ? allTables().find((d) => d.id === dbM[1]) : null);
   let m;
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
-  if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)(?:\?e=([^&]+))?/))) return showDatabase(m[1]).then(() => redock(m[1], m[2]));
+  if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)(?:\/view\/([^/?]+))?(?:\?e=([^&]+))?/))) return showDatabase(m[1], m[2] ? decodeURIComponent(m[2]) : null).then(() => redock(m[1], m[3]));
   if ((m = hash.match(/^#\/space\/([^/?]+)/))) return showSpace(m[1]);
   if ((m = hash.match(/^#\/activity(?:\/([^/?]+))?/))) return showActivity(m[1] ?? null);
   if (hash.startsWith('#/map')) return showMap();

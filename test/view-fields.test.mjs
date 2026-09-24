@@ -50,6 +50,9 @@ function onDisk() {
 
 // ---------- minting ----------
 
+// Since Feature #229 the hidden set is the default view's; the schema still speaks it.
+const hiddenOf = (w, t) => w.describeSchema().flatMap((s) => s.tables).find((x) => x.id === w.getTable(t).id).hiddenFields;
+
 test('a new table mints Chip and Card: system view fields, roles by id, hidden by default', () => {
   const { w, tasks } = build();
   const db = w.getTable(tasks);
@@ -63,7 +66,7 @@ test('a new table mints Chip and Card: system view fields, roles by id, hidden b
   assert.equal(card.system, true);
   assert.equal(db.chipFieldId, chip.id);
   assert.equal(db.cardFieldId, card.id);
-  assert.ok(db.hiddenFields.includes('Chip') && db.hiddenFields.includes('Card'), 'hidden from the grid until someone unhides them');
+  assert.ok(hiddenOf(w, tasks).includes('Chip') && hiddenOf(w, tasks).includes('Card'), 'hidden from the grid until someone unhides them');
 });
 
 test('the defaults: a chip is name + state + two fields; a card adds the link and a small description', () => {
@@ -84,13 +87,14 @@ test('a table that predates the roles gets both on open, and keeps what it alrea
     delete db.chipFieldId;
     delete db.cardFieldId;
     db.hiddenFields = ['Notes'];
+    delete db.tableViews; // a dump from before table views (Feature #229)
   }
   const w2 = new Weave();
   w2.importJSON(dump);
   const db = w2.getTable('Dev/Task');
   assert.equal(w2.viewField(db, 'chip')?.type, 'view');
   assert.equal(w2.viewField(db, 'card')?.type, 'view');
-  assert.deepEqual([...db.hiddenFields].sort(), ['Card', 'Chip', 'Notes']);
+  assert.deepEqual([...hiddenOf(w2, db)].sort(), ['Card', 'Chip', 'Notes']);
 });
 
 test('registry tables carry no chip or card', () => {
@@ -107,10 +111,11 @@ test('the roles survive a reload by id, through a rename', () => {
   const before = w.getTable(tasks).chipFieldId;
   w.updateField(tasks, 'Chip', { name: 'Badge' });
   assert.equal(w.getTable(tasks).chipFieldId, before);
-  const db = reopen().getTable('Dev/Task');
+  const w2 = reopen();
+  const db = w2.getTable('Dev/Task');
   assert.equal(db.chipFieldId, before);
   assert.equal(db.fields[before].name, 'Badge');
-  assert.ok(db.hiddenFields.includes('Badge') && !db.hiddenFields.includes('Chip'), 'a hidden field stays hidden under its new name');
+  assert.ok(hiddenOf(w2, db).includes('Badge') && !hiddenOf(w2, db).includes('Chip'), 'a hidden field stays hidden under its new name');
 });
 
 // ---------- guards ----------

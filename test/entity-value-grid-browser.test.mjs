@@ -315,7 +315,7 @@ if (s) {
     await page.click('.eye-row:has-text("Price")');
     await page.waitForFunction(() => !document.querySelector('[data-field="Price"]'), null, { timeout: 4000 });
     assert.ok(!(await order(page)).includes('Price'), 'the hidden field leaves the grid');
-    assert.ok((table().hiddenFields ?? []).includes('Price'),
+    assert.ok((weave.describeSchema().flatMap((sp) => sp.tables).find((t) => t.id === table().id).hiddenFields ?? []).includes('Price'),
       'hiding is the table\'s own set, so the grid view hides it too');
     await page.close();
   });

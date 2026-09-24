@@ -54,7 +54,7 @@ if (s) {
     const page = await open();
     try {
       let patches = 0;
-      page.on('request', (r) => { if (r.method() === 'PATCH' && r.url().endsWith(`/tables/${jobs.id}`)) patches++; });
+      page.on('request', (r) => { if (r.method() === 'PATCH' && r.url().includes(`/tables/${jobs.id}`)) patches++; });
       assert.match(await page.textContent('.wv-loaded'), /200 of 503 loaded/, 'the grid opens paged');
       await typeSearch(page, 'launch');
       await rowsAre(page, [named['Alpha launch'].id, named['Beta launch'].id]);
@@ -64,7 +64,7 @@ if (s) {
       assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('table-search-input')), true, 'the caret stays in the box');
       await page.waitForLoadState('networkidle');
       assert.equal(patches, 0, 'no PATCH: the search is not saved');
-      assert.deepEqual(weave.getTable(jobs).filters ?? {}, {}, 'the saved filter is untouched');
+      assert.deepEqual(weave.tableView(jobs).views[0].filters ?? {}, {}, 'the saved filter is untouched');
     } finally { await page.close(); }
   });
 
@@ -141,7 +141,7 @@ if (s) {
       await rowsAre(page, [named['Alpha launch'].id]);
       await page.press('.table-search-input', 'Escape');
       await page.waitForFunction((n) => /of (\d+) loaded/.exec(document.querySelector('.wv-loaded')?.textContent ?? '')?.[1] === String(n), TOTAL - 1);
-      assert.deepEqual(weave.getTable(jobs).filters, { Status: ['Open'] }, 'the saved filter is still the saved filter');
+      assert.deepEqual(weave.tableView(jobs).views[0].filters, { Status: ['Open'] }, 'the saved filter is still the saved filter');
     } finally {
       weave.updateTable(jobs, { filters: {} });
       await page.close();

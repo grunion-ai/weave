@@ -51,7 +51,8 @@ if (s) {
      left on <body> — where the Escape below cannot reach the popover, whose
      keydown listener is its own. The popover then stayed open and the wait
      burned its full 30s (Issue #216: two of four full-gate runs). */
-  const hiddenNow = () => weave.getTable(tasks.id).hiddenFields ?? [];
+  // The hidden set is the default view's since Feature #229; the schema speaks it.
+  const hiddenNow = () => weave.describeSchema().flatMap((sp) => sp.tables).find((t) => t.id === tasks.id).hiddenFields ?? [];
   const switchReads = ([name, want]) => [...document.querySelectorAll('.eye-row')]
     .find((r) => r.querySelector('.eye-label')?.textContent === name)
     ?.getAttribute('aria-checked') === want;

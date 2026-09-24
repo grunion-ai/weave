@@ -122,7 +122,7 @@ test('a table filter can rest on a toggle: its labels are the states', () => {
   w.createEntity(t, { name: 'a', values: { Active: true } });
   w.createEntity(t, { name: 'b' });
   w.updateTable(t, { filters: { Active: ['Live'] } });
-  assert.deepEqual(w.getTable(t).filters, { Active: ['Live'] });
+  assert.deepEqual(w.tableView(t).views[0].filters, { Active: ['Live'] });
   assert.throws(() => w.updateTable(t, { filters: { Active: ['Maybe'] } }), /not a state/);
   assert.deepEqual(w.query(t, { where: [['Active', 'in', [true]]] }).items.map((e) => e.name), ['a']);
 });

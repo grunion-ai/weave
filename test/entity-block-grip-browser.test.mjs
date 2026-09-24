@@ -74,7 +74,7 @@ if (s) {
   test('the Appears-as strip follows the eye: hidden views are not drawn (Issue #208)', async () => {
     const page = await open(order.id);
     assert.equal(await page.$('.wv-appears'), null, 'Chip and Card are minted hidden, so the strip is not there');
-    weave.updateTable(orders, { hiddenFields: (weave.getTable(orders).hiddenFields ?? []).filter((n) => n !== 'Chip') });
+    weave.updateTable(orders, { hiddenFields: (weave.describeSchema().flatMap((sp) => sp.tables).find((t) => t.id === orders.id).hiddenFields ?? []).filter((n) => n !== 'Chip') });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-appears');
     const slots = await page.$$eval('.wv-appears-slot', (ns) => ns.map((n) => n.className));

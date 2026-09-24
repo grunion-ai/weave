@@ -29,7 +29,7 @@ test('every workspace carries the Workspace system space with Spaces and Tables'
   const names = w.listEntities(w.getTable('Spaces').id).map((e) => w.entityName(e));
   assert.deepEqual(names, ['Workspace']);
   const tNames = w.listEntities(w.getTable('Tables').id).map((e) => w.entityName(e)).sort();
-  assert.deepEqual(tNames, ['Fields', 'Spaces', 'Tables', 'Workflows', 'Workspaces']);
+  assert.deepEqual(tNames, ['Fields', 'Spaces', 'Tables', 'Views', 'Workflows', 'Workspaces']);
 });
 
 test('creating structure creates its row; the row follows renames and deletes', () => {
@@ -185,8 +185,10 @@ test('a table row carries its configuration as fields: Field Order and Hidden Fi
     'the row states the column order — the views close it');
   assert.equal(tval(w, row, 'Hidden Fields') ?? '', 'Chip, Card', 'only the views are hidden to start');
 
+  // The system columns ride systemFields, so naming one here is accepted and
+  // changes nothing: the row speaks the default view (Feature #229).
   w.updateTable('Task', { hiddenFields: ['Points', 'Created At'] });
-  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Hidden Fields'), 'Points, Created At');
+  assert.equal(tval(w, tableRowOf(w, 'Task'), 'Hidden Fields'), 'Points');
 
   w.updateTable('Task', { fieldOrder: ['Due', 'Name', 'Points', 'Description'] });
   assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Due, Name, Points, Description, Chip, Card');
@@ -215,9 +217,9 @@ test('editing the row edits the table: Field Order and Hidden Fields write back'
   assert.deepEqual(db.fieldOrder.map((id) => db.fields[id].name), ['Points', 'Name', 'Description', 'Chip', 'Card'], 'the views may be left out; they close the order');
 
   w.updateEntity(row.id, { 'Hidden Fields': 'Points' });
-  assert.deepEqual(w.getTable('Task').hiddenFields, ['Points']);
+  assert.deepEqual(w.tableView('Task/Default').fields, ['Name', 'Description', 'Chip', 'Card'], 'the default view hides it; the list is the whole hidden set, so the chip and card it leaves out show');
   w.updateEntity(row.id, { 'Hidden Fields': '' });
-  assert.equal(w.getTable('Task').hiddenFields, undefined, 'empty clears');
+  assert.deepEqual(w.tableView('Task/Default').fields, ['Points', 'Name', 'Description', 'Chip', 'Card'], 'empty clears: every column shows, where the schema order puts it');
 
   // The same validation as the schema verb: a partial order is refused.
   assert.throws(() => w.updateEntity(row.id, { 'Field Order': 'Name' }), /every field exactly once/);

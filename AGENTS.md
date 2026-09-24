@@ -24,7 +24,7 @@ to [Using weave as an agent](#using-weave-as-an-agent).
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
 | `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP stdio server — 50 tools over the engine |
+| `src/mcp.js` | MCP stdio server — 55 tools over the engine |
 | `src/formula.js` | Formula parser/evaluator |
 | `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
 | `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
@@ -66,7 +66,7 @@ Point an MCP client at the stdio server:
 }
 ```
 
-Fifty-one tools, grouped. Every one of them reaches something the web UI can
+Fifty-five tools, grouped. Every one of them reaches something the web UI can
 do — there is no configuration that needs a browser, and none that needs a
 human.
 
@@ -84,7 +84,8 @@ human.
 | Documents & comments | `weave_get_doc`, `weave_set_doc`, `weave_doc_revisions`, `weave_doc_restore`, `weave_add_comment`, `weave_delete_comment` |
 | Search & data | `weave_search`, `weave_export_csv`, `weave_import_csv`, `weave_export_json`, `weave_import_json` |
 | Files | `weave_attach_file`, `weave_files` |
-| Views | `weave_views` |
+| Table views | `weave_table_view` — the tabs over one table's grid: which columns show, in what order, the state filter, the sort, and the default. One tool reads and writes them; see [Views over a table](#views-over-a-table) |
+| Share pages | `weave_views` — Feature #17's saved multi-table pages with share links (not table views) |
 | Automations | `weave_create_automation`, `weave_automations` |
 | History | `weave_activity`, `weave_audit` |
 | The workspace itself | `weave_workspace`, `weave_accounts`, `weave_keys` |
@@ -125,7 +126,7 @@ workspace's own `/w/<id>/api` answers for its rows:
 | --- | --- |
 | Rename a table, edit its description | `weave_update_entity` on `Workspace/Tables#n` → `Name`, `Description` |
 | Reorder columns | same row → `Field Order`: every field name, comma-separated, exactly once |
-| Hide a column | same row → `Hidden Fields` (data untouched) |
+| Hide a column | same row → `Hidden Fields` — the table's default view (data untouched); every view is also a `Workspace/Views` row: `Fields`, `Filter`, `Sort`, `Default`, `Position` |
 | Rename a field | `weave_update_entity` on `Workspace/Fields#n` → `Name` |
 | Reconfigure a field | same row → `Definition` = `{type, config: {…}}` — the type cannot change |
 | Drop a field or table | `weave_delete_entity` on its registry row with `hard: true` |
@@ -144,6 +145,42 @@ survives the apply, including option colors, column widths, icons, nouns,
 hidden columns and column order. Omitted spaces, tables and fields are
 deletions, which is why they need `allowDestructive`.
 
+### Views over a table
+
+A table has a strip of named views (Feature #229); the first is the default and
+opens with the table, and **Blank** — the raw table, every field in schema
+order, no filter, no sort — closes the strip. Blank is computed, never stored,
+and read-only. One tool does all of it, addressed by name:
+
+```
+weave_table_view {view: "Issue/Open bugs", fields: ["Name", "Severity", "Status"], filters: {Status: ["Open"]}, sort: [{field: "Severity", dir: "desc"}]}
+weave_table_view {view: "Issue/Open bugs", move: {field: "Status", before: "Name"}, default: true}
+```
+
+- `view: "Issue"` lists the strip (names, the default flag, fields, filters,
+  sort — never rows or field definitions); `"Issue/Open bugs"` reads one;
+  `"Issue/blank"` reads Blank. A table id works in place of its name.
+- Any other key writes, and a new name creates the view — from Blank, or
+  from the view `from` names (the UI's Save as view). A write returns the
+  resulting view, never the table.
+- `fields` is the visible columns in order: listed shows, unlisted hides.
+  `show` / `hide` take names and `move` takes `{field, before|after}` (or a
+  list of them), so a wide table never has to be resent. `show` puts a field
+  back at its schema position.
+- `filters` (`{WorkflowOrToggleField: [states]}`) and `sort`
+  (`[{field, dir}]`) are `weave_update_table`'s shapes and validators.
+- `default: true` stars a view (the default is the first view); `position`
+  sets its place in the strip; `name` renames; `delete: true` removes it.
+- The same verb is `weave table view Issue/Open --fields Name,Status`
+  (`--show`, `--hide`, `--move F --before G`, `--filters JSON`, `--sort JSON`,
+  `--default`, `--position N`, `--from V`, `--name N`, `--delete`) and
+  `GET` / `PATCH` / `DELETE /api/tables/:table/views/:view`
+  (`GET /api/tables/:table/views` lists). `weave_schema` emits every table's
+  `views` and `weave_apply_schema` round-trips them.
+- `weave_update_table`'s older `hiddenFields`, `filters` and `sort` still work
+  and write the default view; `fieldOrder` is the schema order (the entity
+  page and Blank), not any view's columns.
+
 ### The CLI mirrors all of it
 
 `node bin/weave.js help` prints the full list; `--data <path>` picks the
@@ -152,7 +189,7 @@ workspace. Every MCP tool has a command:
 | Read | Schema | Data |
 | --- | --- | --- |
 | `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
-| `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` / `weave stats <table> [--by F] [--where J]` |
+| `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table view` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` / `weave stats <table> [--by F] [--where J]` |
 | `weave map` | `weave field add` / `weave field update` / `weave field delete` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
 | `weave registry` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |

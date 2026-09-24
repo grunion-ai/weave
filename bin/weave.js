@@ -660,6 +660,19 @@ async function main() {
     case 'db': { // `db` kept as an alias
       const [sub, space, name] = args;
       if (sub === 'create') return out(w.createTable({ space, name, description: flags.description ?? '', icon: flags.icon ?? '' }));
+      // `table view Task` lists; `table view Task/Open --fields Name,State` writes (Feature #229).
+      if (sub === 'view') {
+        const patch = {};
+        for (const k of ['fields', 'show', 'hide']) if (flags[k] != null && flags[k] !== true) patch[k] = splitList(flags[k]);
+        if (flags.move != null) patch.move = { field: flags.move, ...(flags.before != null ? { before: flags.before } : { after: flags.after }) };
+        for (const k of ['filters', 'sort']) if (flags[k] != null) patch[k] = parseJsonFlag(k);
+        if (flags.name != null) patch.name = flags.name;
+        if (flags.from != null) patch.from = flags.from;
+        if (flags.position != null) patch.position = Number(flags.position);
+        if (flags.default) patch.default = true;
+        if (flags.delete) patch.delete = true;
+        return out(w.tableView(space, Object.keys(patch).length ? patch : null));
+      }
       if (sub === 'update') {
         // `space` is the table ref here: `table update Ops/Invoice --icon wallet`.
         const patch = pickFlags(['name', 'description', 'icon', 'noun']);
@@ -677,7 +690,7 @@ async function main() {
       if (sub === 'delete') { w.deleteTable(space, { hard: Boolean(flags.hard) }); return out({ table: space, deleted: true }); }
       if (sub === 'restore') return out(w.restoreTable(space));
       if (sub === 'list' || !sub) return out(w.listTables().map((d) => w.qualifiedName(d)));
-      throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, move, duplicate, delete, restore`);
+      throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, view, move, duplicate, delete, restore`);
     }
     case 'field': {
       const [sub, db, name, type] = args;

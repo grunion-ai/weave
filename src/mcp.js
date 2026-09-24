@@ -261,18 +261,30 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_table',
-    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one row is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), hiddenFields (names kept out of the grid, data untouched), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the column order — every field exactly once), hideRollups (the Σ row of space rollups pinned under the field headers: off unless a table asks for it, so pass `false` to show it and `true` to put it away again).',
+    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one row is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), systemFields (Created At, Modified At, Created By, Modified By, Activity), fieldOrder (the schema order — every field exactly once; the grid\'s columns are per view, see weave_table_view), hideRollups (the Σ row of space rollups pinned under the field headers: off unless a table asks for it, so pass `false` to show it and `true` to put it away again).',
     inputSchema: {
       type: 'object',
       properties: {
         db: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' },
         icon: { type: 'string' }, noun: { type: 'string' },
-        hiddenFields: { type: 'array', items: { type: 'string' } },
         systemFields: { type: 'array', items: { type: 'string' } },
         fieldOrder: { type: 'array', items: { type: 'string' } },
         hideRollups: { type: 'boolean' },
       },
       required: ['db'],
+    },
+  },
+  {
+    name: 'weave_table_view',
+    description: 'A table\'s views (the tabs over its grid). view "Task" lists them; "Task/Open" reads one; "Task/blank" is the raw table, read-only. Any other key writes, creating the view if new (from: a view to copy, else Blank). fields: visible columns in order, unlisted hidden. show/hide: names. move: {field, before|after}. filters: {WorkflowField: [states]}. sort: [{field, dir}]. default: true stars it (first in the strip); position: its place. name renames; delete: true. Returns the view.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        view: { type: 'string' }, fields: { type: 'array' }, show: { type: 'array' }, hide: { type: 'array' },
+        move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, default: { type: 'boolean' },
+        position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
+      },
+      required: ['view'],
     },
   },
   {
@@ -508,6 +520,10 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.restoreSpace(args.space);
     case 'weave_update_table':
       return weave.updateTable(args.db, pick(args, ['name', 'description', 'icon', 'noun', 'hiddenFields', 'systemFields', 'fieldOrder', 'hideRollups']));
+    case 'weave_table_view': {
+      const { view, ...patch } = args;
+      return weave.tableView(view, Object.keys(patch).length ? patch : null);
+    }
     case 'weave_move_table':
       return weave.moveTable(args.db, args.space);
     case 'weave_duplicate_table':

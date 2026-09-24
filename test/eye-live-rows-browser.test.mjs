@@ -36,7 +36,8 @@ const s = await launch('eye rows are taught, not swapped', (weave) => {
 
 if (s) {
   const { base, browser, weave } = s;
-  const hiddenNow = () => [...(weave.getTable(deals.id).hiddenFields ?? [])].sort();
+  // The hidden set is the default view's since Feature #229; the schema speaks it.
+  const hiddenNow = () => [...(weave.describeSchema().flatMap((sp) => sp.tables).find((t) => t.id === deals.id).hiddenFields ?? [])].sort();
   // Read one switch off the live popover. Hidden means the switch is off.
   const switchReads = ([name, want]) => [...document.querySelectorAll('.chip-pop .eye-row')]
     .find((r) => r.querySelector('.eye-label')?.textContent === name)

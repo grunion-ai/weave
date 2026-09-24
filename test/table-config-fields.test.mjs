@@ -28,6 +28,8 @@ function fresh() {
   return w;
 }
 
+// Since Feature #229 the filter and sort live on the default view.
+const dv = (w) => w.tableView('Task/Default');
 const tableRowOf = (w, dbName) =>
   w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === dbName);
 const tval = (w, row, fieldName) => {
@@ -39,9 +41,9 @@ const tval = (w, row, fieldName) => {
 test('updateTable validates and stores filters; empty clears', () => {
   const w = fresh();
   w.updateTable('Task', { filters: { State: ['Open', 'Doing'] } });
-  assert.deepEqual(w.getTable('Task').filters, { State: ['Open', 'Doing'] });
+  assert.deepEqual(dv(w).filters, { State: ['Open', 'Doing'] });
   w.updateTable('Task', { filters: {} });
-  assert.equal(w.getTable('Task').filters, undefined);
+  assert.equal(dv(w).filters, undefined);
   assert.throws(() => w.updateTable('Task', { filters: { Nope: ['Open'] } }), WeaveError);
   assert.throws(() => w.updateTable('Task', { filters: { Due: ['Open'] } }), WeaveError,
     'a non-workflow field cannot carry a state filter');
@@ -53,9 +55,9 @@ test('updateTable validates and stores filters; empty clears', () => {
 test('updateTable validates and stores sort; empty clears', () => {
   const w = fresh();
   w.updateTable('Task', { sort: [{ field: 'Due', dir: 'desc' }, { field: 'Name' }] });
-  assert.deepEqual(w.getTable('Task').sort, [{ field: 'Due', dir: 'desc' }, { field: 'Name', dir: 'asc' }]);
+  assert.deepEqual(dv(w).sort, [{ field: 'Due', dir: 'desc' }, { field: 'Name', dir: 'asc' }]);
   w.updateTable('Task', { sort: [] });
-  assert.equal(w.getTable('Task').sort, undefined);
+  assert.equal(dv(w).sort, undefined);
   assert.throws(() => w.updateTable('Task', { sort: [{ field: 'Nope' }] }), WeaveError);
   assert.throws(() => w.updateTable('Task', { sort: [{ field: 'Due', dir: 'sideways' }] }), WeaveError);
 });
@@ -77,11 +79,11 @@ test('editing the row text writes back through the schema verb', () => {
   const w = fresh();
   const row = tableRowOf(w, 'Task');
   w.updateEntity(row.id, { Filter: 'State: Done', Sort: 'Due desc, Name asc' });
-  assert.deepEqual(w.getTable('Task').filters, { State: ['Done'] });
-  assert.deepEqual(w.getTable('Task').sort, [{ field: 'Due', dir: 'desc' }, { field: 'Name', dir: 'asc' }]);
+  assert.deepEqual(dv(w).filters, { State: ['Done'] });
+  assert.deepEqual(dv(w).sort, [{ field: 'Due', dir: 'desc' }, { field: 'Name', dir: 'asc' }]);
   w.updateEntity(row.id, { Filter: '', Sort: '' });
-  assert.equal(w.getTable('Task').filters, undefined);
-  assert.equal(w.getTable('Task').sort, undefined);
+  assert.equal(dv(w).filters, undefined);
+  assert.equal(dv(w).sort, undefined);
   assert.throws(() => w.updateEntity(row.id, { Filter: 'State: Bogus' }), WeaveError,
     'the row edit gets the same validation as the verb, because it is the verb');
   assert.throws(() => w.updateEntity(row.id, { Filter: 'no colon here' }), WeaveError);
@@ -105,7 +107,7 @@ test('a sort without a direction defaults asc when parsed from the row', () => {
   const w = fresh();
   const row = tableRowOf(w, 'Task');
   w.updateEntity(row.id, { Sort: 'Due' });
-  assert.deepEqual(w.getTable('Task').sort, [{ field: 'Due', dir: 'asc' }]);
+  assert.deepEqual(dv(w).sort, [{ field: 'Due', dir: 'asc' }]);
 });
 
 /* Issue #233: the Σ row (space rollups pinned under the field headers) has a

@@ -133,7 +133,7 @@ if (s) {
       await chip.click();
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
       assert.equal(await page.locator('.wv-grid tbody tr.entity-row').getAttribute('data-eid'), live.id);
-      assert.deepEqual(weave.getTable(feeds).filters, { Active: ['Live'] });
+      assert.deepEqual(weave.tableView(feeds).views[0].filters, { Active: ['Live'] });
       weave.updateTable(feeds, { filters: {} });
     } finally { await page.close(); }
   });

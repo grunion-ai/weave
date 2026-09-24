@@ -292,6 +292,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // kebab, 2026-08-31; restore since Issue #149).
         || /^\/api\/tables\/[^/]+\/(move|duplicate|restore)$/.test(path)
         || /^\/api\/tables\/[^/]+\/fields/.test(path)
+        // A view's columns, filter and sort were a PATCH on the table before
+        // Feature #229 split them out; the gate follows them.
+        || /^\/api\/tables\/[^/]+\/views/.test(path)
         || (/^\/api\/schema$/.test(path))
         || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH'));
       // Registry rows ARE structure: writing Spaces/Tables/Fields rows through
@@ -817,6 +820,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             weave.deleteTable(m[1], { hard });
             return out(200, { ok: true });
           }
+        }
+        /* Table views (Feature #229): the tableView verb, one door. GET the
+           strip or one view; PATCH writes (creating a view that is new);
+           DELETE removes. The table part takes an id or a name. */
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/views$/)) && rx.method === 'GET') {
+          return out(200, weave.tableView(decodeURIComponent(m[1])));
+        }
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/views\/([^/]+)$/))) {
+          const ref = `${decodeURIComponent(m[1])}/${decodeURIComponent(m[2])}`;
+          if (rx.method === 'GET') return out(200, weave.tableView(ref));
+          if (rx.method === 'PATCH') return out(200, weave.tableView(ref, body ?? {}));
+          if (rx.method === 'DELETE') return out(200, weave.tableView(ref, { delete: true }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/move$/)) && rx.method === 'POST') {
           if (typeof body.space !== 'string' || !body.space.trim()) throw new WeaveError('space is required: the destination space', 'invalid');

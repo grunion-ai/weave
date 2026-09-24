@@ -9,7 +9,8 @@
         before and after any drag, its header takes no drag, and a field
         dropped on it goes nowhere.
      2. a dragged field snaps to the expected spot — in the pre-reload DOM
-        (the in-place move), in the reloaded DOM, and in fieldOrder.
+        (the in-place move), in the reloaded DOM, and in the view on screen
+        (Feature #229: the grid's columns are its view's, not the schema's).
      3. every body row moves with the header: no row's cells disagree with
         the header's column order after the move.
 
@@ -28,12 +29,8 @@ const s = await launch('table column reorder', (weave) => {
 });
 if (s) {
   const { base, browser, weave } = s;
-  /* fieldOrder holds field ids; read it back as names for the assertions. */
-  const orderOf = (db) => {
-    const t = weave.getTable(db);
-    return t.fieldOrder.map((id) => t.fields[id]?.name)
-      .filter((name) => BASE.includes(name));
-  };
+  /* The grid opens on the default view, so a drag lands in its fields. */
+  const orderOf = (db) => weave.tableView(db).views[0].fields.filter((name) => BASE.includes(name));
 
   /* A drag rewrites fieldOrder, so every test gets a table of its own. */
   let n = 0;
@@ -104,7 +101,7 @@ if (s) {
       await dragHeader(page, 'Price', 'Name');
       assertShape(await gridShape(page), ['Price', 'Name', 'Description', 'Vendor', 'Batch', 'Stage'], 'in-place');
       assert.deepEqual(orderOf(db),
-        ['Price', 'Name', 'Description', 'Vendor', 'Batch', 'Stage'], 'persisted fieldOrder');
+        ['Price', 'Name', 'Description', 'Vendor', 'Batch', 'Stage'], 'persisted into the view');
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
       assertShape(await gridShape(page), ['Price', 'Name', 'Description', 'Vendor', 'Batch', 'Stage'], 'after reload');
@@ -145,7 +142,7 @@ if (s) {
       await dragHeader(page, 'Batch', '#');
       assertShape(await gridShape(page), BASE, 'unchanged');
       assert.deepEqual(orderOf(db),
-        BASE, 'fieldOrder untouched');
+        BASE, 'the view untouched');
     } finally { await page.close(); }
   });
 }

@@ -1863,9 +1863,36 @@ The address is printed under the panel's foot, so a device with no mail app stil
 The mail app opens with the To, Subject and body already there. If nothing opens, the browser has no mail handler: copy the address from under the panel and send the report from any client.`,
   },
   {
-    name: 'Chip and card anatomy',
+    name: 'Table views',
     audience: 'Both',
     order: 20,
+    doc: `# Table views
+
+A table can be read several ways. The strip of tabs under the table title holds its **views**: each one keeps which columns show, in what order, the state filter and the sort. The starred view is the **default**. It sits first and opens with the table.
+
+**Blank** closes the strip. It is the raw table: every row, every field in schema order, no filter, no sort. Blank is never stored and never changes, so it is always one click away.
+
+## Using the strip
+
+| You do | What happens |
+| --- | --- |
+| Click a filter chip, a sort, a column drag or the eye | The change saves into the view on screen. There is no Save button. |
+| **+** | Makes a new view from Blank and opens it. |
+| **⋮ → Save as view…** | Copies the view on screen under a new name. On Blank this is how you start a view from the raw table. |
+| **⋮ → Make default** | Stars the view; it moves to the front and opens with the table. |
+| **⋮ → Rename view… / Delete view** | Renames or removes the view. Deleting the default passes the star to the next view. |
+| Change anything on Blank | Refused with a note: Blank is read-only. Use Save as view. |
+
+A view's link is \`#/table/<table>/view/<view id>\`; \`…/view/blank\` opens Blank.
+
+## For agents
+
+One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the strip; \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
+  },
+  {
+    name: 'Chip and card anatomy',
+    audience: 'Both',
+    order: 21,
     doc: `# Chip and card anatomy
 
 A row appears in two shapes outside its own page: the **chip**, inline — a relation cell, a \`[[…]]\` mention in a document, a reference card, a picker — and the **card**, a tile. Both are drawn from the table's two \`view\` fields (the **view** page in [[table:Handbook/Fields|Fields]] says what they can contain; the entity page's **Appears as** strip shows the live pair once the eye unhides them — a hidden view is not drawn there either, Issue #208). This page is the face: every element, what it does, how you use it, and its **hitbox** — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.

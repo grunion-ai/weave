@@ -1293,7 +1293,8 @@ test('the board view is gone (Kyle, 2026-08-25, Issue #75)', () => {
   // say "board" land on the table, and no switcher offers the choice.
   assert.ok(!APP.includes('renderBoard'), 'no board renderer');
   assert.ok(!APP.includes('view-switch'), 'no table/board switcher');
-  assert.match(fnBody('showDatabase'), /view: 'table'/, 'every #/table route lands on the grid');
+  // A stale 'board' names no table view (Feature #229), so it opens the default.
+  assert.match(fnBody('showDatabase'), /pickTableView\(table, view\)/, 'every #/table route lands on the grid');
 });
 
 test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #77)', () => {

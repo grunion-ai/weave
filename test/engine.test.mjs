@@ -34,9 +34,9 @@ test('spaces and tables', () => {
   const { w } = buildWorkspace();
   // +1/+5: the Workspace system space with the Spaces/Tables/Fields registry
   // (Features #12, #52), the Workflows table (2026-08-24) and the
-  // Workspaces table (Feature #219).
+  // Workspaces table (Feature #219) and the Views table (Feature #229).
   assert.equal(w.listSpaces().length, 2);
-  assert.equal(w.listTables().length, 7);
+  assert.equal(w.listTables().length, 8);
   assert.equal(w.getTable('Product/Task').name, 'Task');
   assert.equal(w.getTable('task').name, 'Task');
   assert.throws(() => w.getTable('Nope'), /not found/);
@@ -908,7 +908,8 @@ test('hiddenFields persists on the table and rides describeSchema; unknown names
   const { w, tasks } = buildWorkspace();
   w.updateTable(tasks, { hiddenFields: ['Estimate', 'Created At'] });
   const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id);
-  assert.deepEqual(view.hiddenFields, ['Estimate', 'Created At']);
+  // A system column rides systemFields; naming one here is accepted and inert.
+  assert.deepEqual(view.hiddenFields, ['Estimate']);
   assert.ok(view.fields.some((f) => f.name === 'Estimate'), 'the field itself is untouched');
   assert.throws(() => w.updateTable(tasks, { hiddenFields: ['Nope'] }), /Nope/);
   w.updateTable(tasks, { hiddenFields: [] });

@@ -35,7 +35,8 @@ if (s) {
       const hits = { query: 0, patch: 0 };
       page.on('request', (r) => {
         if (r.method() === 'POST' && r.url().endsWith(`/tables/${tasks.id}/query`)) hits.query++;
-        if (r.method() === 'PATCH' && r.url().endsWith(`/tables/${tasks.id}`)) hits.patch++;
+        // The strip saves into the view on screen (Feature #229).
+        if (r.method() === 'PATCH' && r.url().includes(`/tables/${tasks.id}/views/`)) hits.patch++;
       });
       // Three clicks in one task: Open on, Doing on, Done on then off again.
       const painted = await page.evaluate(() => {
@@ -48,7 +49,7 @@ if (s) {
       await page.waitForLoadState('networkidle');
       assert.equal(hits.patch, 1, 'one PATCH for the burst');
       assert.equal(hits.query, 1, 'one table query for the burst');
-      assert.deepEqual(weave.getTable(tasks).filters, { Status: ['Open', 'Doing'] }, 'no click was lost');
+      assert.deepEqual(weave.tableView(tasks).views[0].filters, { Status: ['Open', 'Doing'] }, 'no click was lost');
       const shown = await page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.map((r) => r.dataset.eid).sort());
       const server = weave.query(tasks, { where: [['Status', 'in', ['Open', 'Doing']]] }).items.map((e) => e.id).sort();
       assert.deepEqual(shown, server, 'the grid shows what the engine returns for the selection');
@@ -65,14 +66,14 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      const saved = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().endsWith(`/tables/${tasks.id}`));
+      const saved = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes(`/tables/${tasks.id}/views/`));
       await page.evaluate(() => {
         [...document.querySelectorAll('.filter-strip .filter-chip')].find((b) => b.textContent === 'Done').click();
         location.hash = '#/';
       });
       await saved;
       await page.waitForLoadState('networkidle');
-      assert.deepEqual(weave.getTable(tasks).filters, { Status: ['Done'] }, 'the click was saved');
+      assert.deepEqual(weave.tableView(tasks).views[0].filters, { Status: ['Done'] }, 'the click was saved');
       assert.equal(await page.evaluate(() => location.hash), '#/', 'the reader stays where they went');
       assert.equal(await page.locator('.filter-strip').count(), 0, 'the table was not drawn over the new page');
     } finally {

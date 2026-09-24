@@ -1483,6 +1483,21 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    with data-bs-theme, so the chip stays legible in either. */
 .nav-health.is-stale { color: var(--tblr-danger); border-color: var(--tblr-danger); opacity: 1; }
 .wv-grid td.sys-cell { color: var(--tblr-secondary); font-size: var(--wv-grid-font); white-space: nowrap; }
+/* ---------- view strip (Feature #229) ----------
+   Tabs under the table title, Attio/Airtable style: an underline marks the
+   view on screen, the star marks the default, Blank sits last in italics
+   because it is the raw table rather than a view someone made. A long strip
+   scrolls sideways inside itself; the page never does. */
+.view-strip { display: flex; align-items: center; gap: 2px; margin: 0 0 10px; border-bottom: 1px solid var(--tblr-border-color);
+  overflow-x: auto; scrollbar-width: none; }
+.view-strip::-webkit-scrollbar { display: none; }
+.view-tab { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: var(--wv-grid-font, 13px); line-height: 20px;
+  color: var(--tblr-secondary); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.view-tab:hover { color: var(--tblr-body-color); text-decoration: none; }
+.view-tab.active { color: var(--tblr-body-color); font-weight: 600; border-bottom-color: var(--tblr-primary); }
+.view-tab.blank { font-style: italic; }
+.view-star { color: var(--tblr-yellow); font-size: 11px; }
+.view-add { padding: 0 8px; margin-left: 2px; }
 /* ---------- filter strip (Feature #38) ---------- */
 .filter-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
 .filter-group { display: inline-flex; align-items: center; gap: 4px; }

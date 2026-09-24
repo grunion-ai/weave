@@ -122,8 +122,21 @@ function placeField(db, id) {
   let at = db.fieldOrder.length;
   while (at > 0 && db.fields[db.fieldOrder[at - 1]]?.type === 'view') at--;
   db.fieldOrder.splice(at, 0, id);
+  // A new column shows in every table view (Feature #229), as it showed in
+  // the one grid before views; a chip or card is minted hidden.
+  if (db.fields[id]?.type !== 'view') for (const v of db.tableViews ?? []) if (!v.fields.includes(id)) v.fields.push(id);
 }
-const clip = (text, max) => (text.length <= max ? text : text.slice(0, max - 1).replace(/\s+\S*$/, '') + '…');
+/* Put a field back where the schema order says, among the visible ones: after
+   the nearest field before it that is showing, or first (Feature #229). */
+function showBySchema(db, fields, id) {
+  const at = db.fieldOrder.indexOf(id);
+  for (let k = at - 1; k >= 0; k--) {
+    const i = fields.indexOf(db.fieldOrder[k]);
+    if (i >= 0) { fields.splice(i + 1, 0, id); return; }
+  }
+  fields.unshift(id);
+}
+const clip =(text, max) => (text.length <= max ? text : text.slice(0, max - 1).replace(/\s+\S*$/, '') + '…');
 /* Types whose definition can name the value a new row starts with. Workflow is
    absent on purpose: its default is one of its states, which is where it has
    always lived. */
@@ -858,10 +871,12 @@ export class Weave {
       // System registry tables (Feature #12) carry a TEXT Description that
       // syncs with the real space/table description — backfilling a document
       // field here would give them a second, colliding 'Description'.
-      if (db.system) continue;
-      if (this.#ensureDescriptionField(db)) changed = true;
-      if (this.#ensureTerm(db)) changed = true;
-      if (this.#ensureViewFields(db)) changed = true;
+      if (!db.system) {
+        if (this.#ensureDescriptionField(db)) changed = true;
+        if (this.#ensureTerm(db)) changed = true;
+        if (this.#ensureViewFields(db)) changed = true;
+      }
+      if (this.#ensureTableViews(db)) changed = true;
     }
     for (const e of Object.values(s.entities ?? {})) {
       if (e.docs) continue;
@@ -1014,10 +1029,31 @@ export class Weave {
       db.fieldOrder.push(field.id);
       db[key] = field.id;
       // Hidden by default: the grid is for data, and a view is presentation.
-      if (!(db.hiddenFields ?? []).includes(name)) db.hiddenFields = [...(db.hiddenFields ?? []), name];
+      // Once a table has views, placeField already leaves it out of them.
+      if (!db.tableViews && !(db.hiddenFields ?? []).includes(name)) db.hiddenFields = [...(db.hiddenFields ?? []), name];
       changed = true;
     }
     return changed;
+  }
+
+  /* Table views (Feature #229). A table carries its views as an ordered
+     list — the order IS the strip, and the first is the default — each view
+     holding its visible fields (ids, in column order: listed = shown,
+     unlisted = hidden), its state filter and its sort. A table that predates
+     views gets one, "Default", made of what it showed: the columns left after
+     its hidden set, in its field order, with its filter and sort. The legacy
+     keys go, so there is one source. Blank is never stored. */
+  #ensureTableViews(db) {
+    if (Array.isArray(db.tableViews)) return false;
+    const hidden = new Set(db.hiddenFields ?? []);
+    const view = { id: uuid(), name: 'Default', fields: db.fieldOrder.filter((id) => db.fields[id] && !hidden.has(db.fields[id].name)) };
+    if (db.filters && Object.keys(db.filters).length) view.filters = db.filters;
+    if (db.sort?.length) view.sort = db.sort;
+    db.tableViews = [view];
+    delete db.hiddenFields;
+    delete db.filters;
+    delete db.sort;
+    return true;
   }
 
   /* The table's chip or card field, or null on a registry table. */
@@ -1392,6 +1428,7 @@ export class Weave {
       createdAt: nowISO(),
     };
     this.#ensureViewFields(db);
+    this.#ensureTableViews(db);
     this.state.tables[db.id] = db;
     this.save();
     this.#syncTableRow(db);
@@ -1455,35 +1492,12 @@ export class Weave {
        the sort are table truth, not browser truth — stored here, mirrored to
        the Tables registry row as text, edited from either side. Density is
        deliberately absent: a per-person reading preference, not schema. */
-    if (patch.filters != null) {
-      if (typeof patch.filters !== 'object' || Array.isArray(patch.filters)) {
-        throw new WeaveError('filters is an object of { workflowFieldName: [stateNames] }', 'invalid');
-      }
-      const out = {};
-      for (const [fname, states] of Object.entries(patch.filters)) {
-        const f = this.findField(db, fname);
-        // A toggle's two labels are its states (Feature #202).
-        if (!f || !(f.type === 'workflow' || f.type === 'toggle')) throw new WeaveError(`'${fname}' is not a workflow or toggle field of ${db.name}`, 'invalid');
-        if (!Array.isArray(states)) throw new WeaveError(`The filter on '${fname}' is a list of state names`, 'invalid');
-        const names = f.type === 'toggle' ? [f.config.on, f.config.off] : f.config.states.map((st) => st.name);
-        for (const s of states) {
-          if (!names.includes(s)) {
-            throw new WeaveError(`'${s}' is not a state of ${db.name}.${f.name}`, 'invalid');
-          }
-        }
-        if (states.length) out[f.name] = [...states];
-      }
-      if (Object.keys(out).length) db.filters = out; else delete db.filters;
-    }
-    if (patch.sort != null) {
-      if (!Array.isArray(patch.sort)) throw new WeaveError('sort is a list of { field, dir }', 'invalid');
-      const out = patch.sort.map((s) => {
-        const f = this.getField(db.id, s.field);
-        const dir = s.dir ?? 'asc';
-        if (!['asc', 'desc'].includes(dir)) throw new WeaveError(`Sort direction is asc or desc, got '${s.dir}'`, 'invalid');
-        return { field: f.name, dir };
-      });
-      if (out.length) db.sort = out; else delete db.sort;
+    /* Since Feature #229 the filter, the sort and the hidden set belong to a
+       view. These three keys are the table's DEFAULT view under their older
+       names, written through the view verb, so every door that spoke them
+       still lands somewhere a reader sees. */
+    if (patch.filters != null || patch.sort != null || patch.hiddenFields != null) {
+      this.#writeDefaultView(db, patch);
     }
     /* The Σ row's switch (Issue #233), inverted by Issue #249 (Kyle,
        2026-09-08: "hide summation row by default"). A table has no Σ row
@@ -1498,14 +1512,6 @@ export class Weave {
     if (patch.hideRollups != null) {
       if (typeof patch.hideRollups !== 'boolean') throw new WeaveError('hideRollups is true or false', 'invalid');
       db.hideRollups = patch.hideRollups;
-    }
-    if (patch.hiddenFields != null) {
-      if (!Array.isArray(patch.hiddenFields)) throw new WeaveError('hiddenFields is a list of field names', 'invalid');
-      const system = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
-      for (const n of patch.hiddenFields) {
-        if (!system.includes(n) && !this.findField(db, n)) throw new WeaveError(`'${n}' is not a field of ${db.name}`, 'invalid');
-      }
-      if (patch.hiddenFields.length) db.hiddenFields = [...patch.hiddenFields]; else delete db.hiddenFields;
     }
     /* Body order (Issue #89): where the field block sits among the documents
        and the related tables on an entity page. The value fields are one
@@ -1627,8 +1633,9 @@ export class Weave {
     }
     const db = {
       ...structuredClone({ description: src.description, icon: src.icon, noun: src.noun,
-        systemFields: src.systemFields, hiddenFields: src.hiddenFields,
-        filters: src.filters, sort: src.sort, hideRollups: src.hideRollups }),
+        systemFields: src.systemFields, hideRollups: src.hideRollups }),
+      // The copy keeps the source's views, re-pointed at its own fields.
+      tableViews: (src.tableViews ?? []).map((v) => ({ ...structuredClone(v), id: uuid(), fields: v.fields.map(mapId) })),
       id: newId,
       spaceId: src.spaceId,
       name,
@@ -1662,6 +1669,7 @@ export class Weave {
       if (db.deletedAt) return db;
       db.deletedAt = nowISO();
       this.#trashSysRow('tables', db.id);
+      for (const v of db.tableViews ?? []) this.#trashSysRow('views', v.id);
       this.#audit('table-trashed', { name: db.name });
       this.save();
       return db;
@@ -1704,6 +1712,7 @@ export class Weave {
       if (auto.dbId === db.id) delete this.state.automations[id];
     }
     for (const f of Object.values(db.fields)) this.#dropFieldRow(f.id);
+    for (const v of db.tableViews ?? []) this.#dropSysRow('views', v.id);
     // A space rollup over this table has nothing left to read.
     const spacesT = this.#sysTable('spaces');
     if (spacesT) {
@@ -1735,6 +1744,7 @@ export class Weave {
     if (clash) throw new WeaveError(`A live table already holds the name '${this.qualifiedName(db)}'`, 'conflict');
     db.deletedAt = null;
     this.#restoreSysRow('tables', db.id);
+    for (const v of db.tableViews ?? []) this.#restoreSysRow('views', v.id);
     this.#audit('table-restored', { name: db.name });
     this.save();
     return db;
@@ -1846,6 +1856,236 @@ export class Weave {
   viewByShareToken(token) {
     if (!token) return null;
     return Object.values(this.state.meta.views ?? {}).find((v) => v.shareToken === token) ?? null;
+  }
+
+  // ---------------- table views (Feature #229) ----------------
+  /* The views over one table's grid — the strip under its title. Not the
+     saved views above (Feature #17, cross-table share pages, `views` in
+     meta); these live on the table as `tableViews` and answer to
+     `tableView`, `weave_table_view`, `weave table view` and
+     `/api/tables/:t/views`.
+
+     One verb, because every agent turn pays for every tool it can see:
+       tableView('Issue')                    the strip: compact, Blank last
+       tableView('Issue/Open bugs')          one view
+       tableView('Issue/Open bugs', patch)   write it, creating it if new
+     A patch names only what changes: `fields` (the visible columns in
+     order — listed shows, unlisted hides), `show` / `hide` (names), `move`
+     ({field, before|after}, or a list of them), `filters` and `sort`
+     (updateTable's shapes and validators), `default: true` (star it: the
+     default is the first view), `position` (its place in the strip),
+     `name` (rename), `from` (the view a new one copies — Blank when
+     omitted), `delete: true`. Blank is the raw table: readable as
+     'Issue/blank', never written, never stored. */
+  tableView(ref, patch = null) {
+    const { db, name } = this.#viewTarget(ref);
+    this.#ensureTableViews(db);
+    const keys = patch ? Object.keys(patch).filter((k) => patch[k] !== undefined) : [];
+    if (name == null) {
+      if (keys.length) throw new WeaveError(`Name the view to write: '${this.qualifiedName(db)}/<view>'`, 'invalid');
+      return { table: this.qualifiedName(db), views: [...db.tableViews.map((v, i) => this.#viewOut(db, v, i)), { name: 'Blank', blank: true }] };
+    }
+    if (name.toLowerCase() === 'blank') {
+      if (keys.length) throw new WeaveError(`Blank is read-only: it is the raw table — every field in schema order, no filter, no sort. Start a view from it instead: {from: 'blank'} under a new name`, 'invalid');
+      return { name: 'Blank', blank: true, fields: this.#blankFields(db).map((id) => db.fields[id].name) };
+    }
+    const i = this.#viewIndex(db, name);
+    if (!keys.length) {
+      if (i < 0) throw this.#noView(db, name);
+      return this.#viewOut(db, db.tableViews[i], i);
+    }
+    return this.#writeView(db, name, patch);
+  }
+
+  /* 'Table' or 'Space/Table' is the table; one more segment is a view. A
+     table id stands in for the table part anywhere. */
+  #viewTarget(ref) {
+    if (ref && typeof ref === 'object') return { db: this.getTable(ref), name: null };
+    const s = String(ref ?? '');
+    const parts = s.split('/');
+    if (parts.length <= 2) {
+      const db = this.findTable(s);
+      if (db) return { db, name: null };
+    }
+    if (parts.length >= 2) {
+      const db = this.findTable(parts.slice(0, -1).join('/'));
+      if (db) return { db, name: parts.at(-1) };
+    }
+    throw new WeaveError(`No table or view '${s}' — name a table ('Issue') or one of its views ('Issue/Open bugs')`, 'not-found');
+  }
+
+  /* A view answers to its name (any case) or its id. */
+  #viewIndex(db, ref) {
+    const r = String(ref).toLowerCase();
+    return db.tableViews.findIndex((v) => v.id === ref || v.name.toLowerCase() === r);
+  }
+
+  #noView(db, name) {
+    const have = [...db.tableViews.map((v) => v.name), 'Blank'].join(', ');
+    return new WeaveError(`View '${name}' not found on ${this.qualifiedName(db)} — it has: ${have}`, 'not-found');
+  }
+
+  #blankFields(db) {
+    return db.fieldOrder.filter((id) => db.fields[id] && db.fields[id].type !== 'view');
+  }
+
+  #viewOut(db, v, i) {
+    const out = { id: v.id, name: v.name };
+    if (i === 0) out.default = true;
+    out.fields = v.fields.filter((id) => db.fields[id]).map((id) => db.fields[id].name);
+    if (v.filters) out.filters = structuredClone(v.filters);
+    if (v.sort) out.sort = structuredClone(v.sort);
+    return out;
+  }
+
+  #checkViewName(db, name, self = null) {
+    const n = typeof name === 'string' ? name.trim() : '';
+    if (!n) throw new WeaveError('A view needs a name', 'invalid');
+    if (n.includes('/')) throw new WeaveError(`A view name cannot hold '/' — it separates the table from the view: '${n}'`, 'invalid');
+    if (n.toLowerCase() === 'blank') throw new WeaveError("'Blank' is reserved: it is the raw table every strip ends with", 'invalid');
+    const clash = db.tableViews.find((v) => v !== self && v.name.toLowerCase() === n.toLowerCase());
+    if (clash) throw new WeaveError(`${this.qualifiedName(db)} already has a view named '${clash.name}'`, 'conflict');
+    return n;
+  }
+
+  /* The one write path: the verb, the legacy table keys, the registry row
+     and the UI all land here. Everything is checked on a copy and committed
+     at the end, so a refused write leaves the view (or its absence) as it
+     was. */
+  #writeView(db, name, patch) {
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete'];
+    const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
+    if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
+    const views = db.tableViews;
+    let i = this.#viewIndex(db, name);
+    if (patch.delete) {
+      if (i < 0) throw this.#noView(db, name);
+      const [gone] = views.splice(i, 1);
+      this.#dropSysRow('views', gone.id);
+      this.save();
+      this.#syncTableRow(db);
+      this.#audit('table-view-deleted', { table: this.qualifiedName(db), name: gone.name });
+      return { name: gone.name, deleted: true };
+    }
+    let next;
+    if (i < 0) {
+      const from = patch.from == null || String(patch.from).toLowerCase() === 'blank' ? null : this.#viewIndex(db, patch.from);
+      if (from != null && from < 0) throw this.#noView(db, patch.from);
+      next = from == null ? { fields: this.#blankFields(db) } : structuredClone(views[from]);
+      next.id = uuid();
+      next.name = this.#checkViewName(db, name);
+    } else {
+      if (patch.from != null) throw new WeaveError(`${this.qualifiedName(db)} already has a view named '${views[i].name}' — from copies into a new name`, 'conflict');
+      next = structuredClone(views[i]);
+    }
+    const list = (x) => (x == null ? [] : Array.isArray(x) ? x : [x]);
+    const fid = (ref) => this.getField(db.id, ref).id;
+    if (patch.name != null && i >= 0) next.name = this.#checkViewName(db, patch.name, views[i]);
+    if (patch.fields != null) {
+      if (!Array.isArray(patch.fields)) throw new WeaveError('fields is the list of visible field names, in column order', 'invalid');
+      const ids = patch.fields.map(fid);
+      if (new Set(ids).size !== ids.length) throw new WeaveError('fields names each field once', 'invalid');
+      next.fields = ids;
+    }
+    for (const n of list(patch.hide)) { const id = fid(n); next.fields = next.fields.filter((x) => x !== id); }
+    for (const n of list(patch.show)) { const id = fid(n); if (!next.fields.includes(id)) showBySchema(db, next.fields, id); }
+    for (const m of list(patch.move)) {
+      if (!m || typeof m !== 'object' || m.field == null || (m.before == null) === (m.after == null)) {
+        throw new WeaveError('move is {field, before: <field>} or {field, after: <field>}', 'invalid');
+      }
+      const id = fid(m.field);
+      const anchor = fid(m.before ?? m.after);
+      if (!next.fields.includes(anchor)) throw new WeaveError(`'${m.before ?? m.after}' is hidden in this view — move beside a field that shows, or show it first`, 'invalid');
+      if (id === anchor) continue;
+      next.fields = next.fields.filter((x) => x !== id);
+      const k = next.fields.indexOf(anchor);
+      next.fields.splice(m.before != null ? k : k + 1, 0, id);
+    }
+    if (patch.filters != null) { const f = this.#checkFilters(db, patch.filters); if (f) next.filters = f; else delete next.filters; }
+    if (patch.sort != null) { const s = this.#checkSort(db, patch.sort); if (s) next.sort = s; else delete next.sort; }
+    if (patch.default === false && i === 0) throw new WeaveError(`'${next.name}' is the default — star another view instead`, 'invalid');
+    if (patch.position != null && !(Number.isInteger(patch.position) && patch.position >= 0)) {
+      throw new WeaveError('position is a whole number: 0 is the first place in the strip (the default)', 'invalid');
+    }
+    // Commit.
+    const created = i < 0;
+    if (created) { views.push(next); i = views.length - 1; } else views[i] = next;
+    const to = patch.default === true ? 0 : patch.position != null ? Math.min(patch.position, views.length - 1) : i;
+    if (to !== i) { views.splice(i, 1); views.splice(to, 0, next); i = to; }
+    this.save();
+    this.#syncTableRow(db);
+    this.#audit(created ? 'table-view-created' : 'table-view-updated', { table: this.qualifiedName(db), name: next.name });
+    return { ...this.#viewOut(db, next, i), ...(created ? { created: true } : {}) };
+  }
+
+  /* updateTable's filters / sort / hiddenFields, spoken to the default view
+     (a table whose views were all deleted gets its Default back). */
+  #writeDefaultView(db, { filters, sort, hiddenFields }) {
+    this.#ensureTableViews(db);
+    const cur = db.tableViews[0];
+    const patch = {};
+    if (filters != null) patch.filters = filters;
+    if (sort != null) patch.sort = sort;
+    if (hiddenFields != null) {
+      if (!Array.isArray(hiddenFields)) throw new WeaveError('hiddenFields is a list of field names', 'invalid');
+      // The system columns ride systemFields; naming one here is harmless.
+      const system = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
+      const hide = new Set();
+      for (const n of hiddenFields) {
+        if (system.includes(n)) continue;
+        const f = this.findField(db, n);
+        if (!f) throw new WeaveError(`'${n}' is not a field of ${db.name}`, 'invalid');
+        hide.add(f.id);
+      }
+      const shown = new Set(cur?.fields ?? []);
+      patch.hide = [...shown].filter((id) => hide.has(id));
+      patch.show = db.fieldOrder.filter((id) => !hide.has(id) && !shown.has(id));
+    }
+    return this.#writeView(db, cur?.name ?? 'Default', patch);
+  }
+
+  #checkFilters(db, filters) {
+    if (typeof filters !== 'object' || Array.isArray(filters)) {
+      throw new WeaveError('filters is an object of { workflowFieldName: [stateNames] }', 'invalid');
+    }
+    const out = {};
+    for (const [fname, states] of Object.entries(filters)) {
+      const f = this.findField(db, fname);
+      // A toggle's two labels are its states (Feature #202).
+      if (!f || !(f.type === 'workflow' || f.type === 'toggle')) throw new WeaveError(`'${fname}' is not a workflow or toggle field of ${db.name}`, 'invalid');
+      if (!Array.isArray(states)) throw new WeaveError(`The filter on '${fname}' is a list of state names`, 'invalid');
+      const names = f.type === 'toggle' ? [f.config.on, f.config.off] : f.config.states.map((st) => st.name);
+      for (const s of states) {
+        if (!names.includes(s)) throw new WeaveError(`'${s}' is not a state of ${db.name}.${f.name}`, 'invalid');
+      }
+      if (states.length) out[f.name] = [...states];
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
+  #checkSort(db, sort) {
+    if (!Array.isArray(sort)) throw new WeaveError('sort is a list of { field, dir }', 'invalid');
+    const out = sort.map((s) => {
+      const f = this.getField(db.id, s.field);
+      const dir = s.dir ?? 'asc';
+      if (!['asc', 'desc'].includes(dir)) throw new WeaveError(`Sort direction is asc or desc, got '${s.dir}'`, 'invalid');
+      return { field: f.name, dir };
+    });
+    return out.length ? out : null;
+  }
+
+  /* What the default view shows, in the table-level spelling older readers
+     (the entity page, the Tables row, describeSchema) still speak. */
+  #defaultViewConfig(db) {
+    const v = db.tableViews?.[0];
+    if (!v) return {};
+    const shown = new Set(v.fields);
+    const hidden = db.fieldOrder.filter((id) => db.fields[id] && !shown.has(id)).map((id) => db.fields[id].name);
+    return {
+      ...(hidden.length ? { hiddenFields: hidden } : {}),
+      ...(v.filters ? { filters: v.filters } : {}),
+      ...(v.sort ? { sort: v.sort } : {}),
+    };
   }
 
   // ---------------- schema as a document (Feature #13) ----------------
@@ -1992,23 +2232,29 @@ export class Weave {
         if (tDoc.description != null && tDoc.description !== (db.description ?? '')) tPatch.description = tDoc.description;
         if (tDoc.icon != null && tDoc.icon !== (db.icon ?? '')) tPatch.icon = tDoc.icon;
         if (tDoc.noun != null && tDoc.noun !== (this.termOf(db).set ? this.termOf(db).singular : '')) tPatch.noun = tDoc.noun;
-        if ('hiddenFields' in tDoc && JSON.stringify(tDoc.hiddenFields ?? []) !== JSON.stringify(db.hiddenFields ?? [])) {
-          tPatch.hiddenFields = tDoc.hiddenFields ?? [];
+        // A document that carries `views` says everything about them; an older
+        // one speaks for the default view through the table-level keys.
+        const dv = this.#defaultViewConfig(db);
+        if (!tDoc.views) {
+          if ('hiddenFields' in tDoc && JSON.stringify(tDoc.hiddenFields ?? []) !== JSON.stringify(dv.hiddenFields ?? [])) {
+            tPatch.hiddenFields = tDoc.hiddenFields ?? [];
+          }
+          if ('filters' in tDoc && JSON.stringify(tDoc.filters ?? {}) !== JSON.stringify(dv.filters ?? {})) {
+            tPatch.filters = tDoc.filters ?? {};
+          }
+          if ('sort' in tDoc && JSON.stringify(tDoc.sort ?? []) !== JSON.stringify(dv.sort ?? [])) {
+            tPatch.sort = tDoc.sort ?? [];
+          }
         }
         if ('systemFields' in tDoc && JSON.stringify(tDoc.systemFields ?? []) !== JSON.stringify(db.systemFields ?? [])) {
           tPatch.systemFields = tDoc.systemFields ?? [];
-        }
-        if ('filters' in tDoc && JSON.stringify(tDoc.filters ?? {}) !== JSON.stringify(db.filters ?? {})) {
-          tPatch.filters = tDoc.filters ?? {};
-        }
-        if ('sort' in tDoc && JSON.stringify(tDoc.sort ?? []) !== JSON.stringify(db.sort ?? [])) {
-          tPatch.sort = tDoc.sort ?? [];
         }
         // Absent is hidden on both sides (Issue #249), so compare what each
         // one shows, not what each one stores.
         if ('hideRollups' in tDoc && (tDoc.hideRollups !== false) !== (db.hideRollups !== false)) tPatch.hideRollups = !!tDoc.hideRollups;
         if (Object.keys(tPatch).length) act('update-table', qualified, () => this.updateTable(db.id, tPatch));
         let nameTypeChange = null;
+        const createdHere = new Set();
         for (const fDoc of tDoc.fields ?? []) {
           let existing = Object.values(db.fields).find((x) => x.name === fDoc.name);
           // The name role matches by role, so a renamed Name is a rename here
@@ -2027,6 +2273,7 @@ export class Weave {
             continue;
           }
           if (!existing) {
+            createdHere.add(fDoc.name);
             if (fDoc.type === 'relation') {
               act('create-relation', `${qualified}.${fDoc.name}`, () => this.addRelation(db.id, {
                 name: fDoc.name, targetDb: fDoc.targetDb,
@@ -2075,6 +2322,12 @@ export class Weave {
           if (wanted.length === db.fieldOrder.length && JSON.stringify(wanted) !== JSON.stringify(db.fieldOrder)) {
             act('reorder-fields', qualified, () => this.updateTable(db.id, { fieldOrder: wanted }));
           }
+        }
+        // Views last: they name fields the steps above may have created.
+        if (Array.isArray(tDoc.views)) {
+          this.#applyViews(db, tDoc.views, act, allowDestructive, createdHere);
+          const legacy = this.#legacyEdits(db, tDoc, createdHere);
+          if (Object.keys(legacy).length) act('update-table', qualified, () => this.updateTable(db.id, legacy));
         }
       }
       // Omitted tables are deletions.
@@ -2136,10 +2389,12 @@ export class Weave {
     const nameDoc = (tDoc.fields ?? []).find((f) => f.role === 'name') ?? (tDoc.fields ?? []).find((f) => f.name === 'Name');
     if (nameDoc?.term) this.#setTerm(db, nameDoc.term);
     else if (tDoc.noun) patch.noun = tDoc.noun;
-    if (tDoc.hiddenFields?.length) patch.hiddenFields = [...tDoc.hiddenFields];
+    if (!tDoc.views) {
+      if (tDoc.hiddenFields?.length) patch.hiddenFields = [...tDoc.hiddenFields];
+      if (tDoc.filters && Object.keys(tDoc.filters).length) patch.filters = tDoc.filters;
+      if (tDoc.sort?.length) patch.sort = tDoc.sort;
+    }
     if (tDoc.systemFields?.length) patch.systemFields = [...tDoc.systemFields];
-    if (tDoc.filters && Object.keys(tDoc.filters).length) patch.filters = tDoc.filters;
-    if (tDoc.sort?.length) patch.sort = tDoc.sort;
     if (tDoc.hideRollups != null) patch.hideRollups = !!tDoc.hideRollups;
     const wanted = [];
     for (const fDoc of tDoc.fields ?? []) {
@@ -2149,6 +2404,78 @@ export class Weave {
     for (const id of db.fieldOrder) if (!wanted.includes(id)) wanted.push(id);
     if (wanted.length === db.fieldOrder.length && JSON.stringify(wanted) !== JSON.stringify(db.fieldOrder)) patch.fieldOrder = wanted;
     if (Object.keys(patch).length) this.updateTable(db.id, patch);
+    // A created table is built to the document: its minted Default goes
+    // unless the document names it.
+    if (Array.isArray(tDoc.views)) {
+      this.#applyViews(db, tDoc.views, (a, s, fn) => fn(), true);
+      const legacy = this.#legacyEdits(db, tDoc);
+      if (Object.keys(legacy).length) this.updateTable(db.id, legacy);
+    }
+  }
+
+  /* A document carrying `views` still carries the default view's older
+     spelling (hiddenFields, filters, sort) beside it. Those keys win only
+     where they disagree with the document's own first view — that is an
+     edit someone made to the old keys; agreement is just the echo. A list
+     naming a field the table no longer has is a stale echo of a rename made
+     in the same document, and is left alone. */
+  #legacyEdits(db, tDoc, created = new Set()) {
+    const v0 = tDoc.views[0];
+    const out = {};
+    const SYSTEM = ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'];
+    const fresh = (list) => (list ?? []).every((n) => SYSTEM.includes(n) || this.findField(db, n));
+    if ('hiddenFields' in tDoc && Array.isArray(v0?.fields) && fresh(tDoc.hiddenFields)) {
+      const shown = new Set(v0.fields);
+      const echo = (tDoc.fields ?? []).map((f) => f.name).filter((n) => !shown.has(n) && !created.has(n));
+      if (JSON.stringify(tDoc.hiddenFields ?? []) !== JSON.stringify(echo)) out.hiddenFields = tDoc.hiddenFields ?? [];
+    }
+    if ('filters' in tDoc && JSON.stringify(tDoc.filters ?? {}) !== JSON.stringify(v0?.filters ?? {})) out.filters = tDoc.filters ?? {};
+    if ('sort' in tDoc && JSON.stringify(tDoc.sort ?? []) !== JSON.stringify(v0?.sort ?? [])) out.sort = tDoc.sort ?? [];
+    return out;
+  }
+
+  /* A schema document's `views` onto one table (Feature #229): the list IS
+     the strip, so each view lands at its index and the first is the default.
+     A view the document leaves out is a deletion, which needs
+     allowDestructive like every other omission. */
+  #applyViews(db, docViews, act, allowDestructive, created = new Set()) {
+    const q = this.qualifiedName(db);
+    /* A document is reconciled, not obeyed name by name: a view naming a
+       field the table does not have (renamed or dropped in the same edit)
+       loses that name, as deleteField would have taken it, and a field this
+       apply just created stays where placeField put it unless the view
+       names it — an agent adding a column should not have to find it in
+       every view first. The verb itself stays strict. */
+    const has = (n) => !!this.findField(db, n);
+    const clean = (vDoc) => {
+      const out = {};
+      if (vDoc.fields) {
+        out.fields = vDoc.fields.filter(has);
+        for (const n of created) if (!out.fields.includes(n) && has(n)) out.fields.push(n);
+      }
+      if (vDoc.filters) out.filters = Object.fromEntries(Object.entries(vDoc.filters).filter(([k]) => has(k)));
+      if (vDoc.sort) out.sort = vDoc.sort.filter((s) => has(s.field));
+      for (const k of ['filters', 'sort']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
+      return out;
+    };
+    const named = new Set(docViews.map((v) => String(v?.name ?? '').toLowerCase()));
+    for (const v of [...db.tableViews]) {
+      if (named.has(v.name.toLowerCase())) continue;
+      if (!allowDestructive) throw new WeaveError(`Applying this document would delete view '${q}/${v.name}' — a destructive change needs allowDestructive`, 'invalid');
+      act('delete-view', `${q}/${v.name}`, () => this.tableView(`${db.id}/${v.id}`, { delete: true }));
+    }
+    docViews.forEach((raw, k) => {
+      const vDoc = { name: raw.name, ...clean(raw) };
+      const i = this.#viewIndex(db, vDoc.name);
+      const have = i >= 0 ? this.#viewOut(db, db.tableViews[i], i) : null;
+      const patch = {};
+      if (vDoc.fields && JSON.stringify(vDoc.fields) !== JSON.stringify(have?.fields)) patch.fields = vDoc.fields;
+      if (JSON.stringify(vDoc.filters ?? null) !== JSON.stringify(have?.filters ?? null)) patch.filters = vDoc.filters ?? {};
+      if (JSON.stringify(vDoc.sort ?? null) !== JSON.stringify(have?.sort ?? null)) patch.sort = vDoc.sort ?? [];
+      if (i !== k) patch.position = k;
+      if (!Object.keys(patch).length) return;
+      act(have ? 'update-view' : 'create-view', `${q}/${vDoc.name}`, () => this.tableView(`${db.id}/${vDoc.name}`, patch));
+    });
   }
 
   // ---------------- the workspace record ----------------
@@ -2722,7 +3049,7 @@ export class Weave {
   /* A workspace leaves the hub: its rows leave the registry. */
   dropWorkspace(wsId) {
     this.members = this.members.filter((m) => m.state.meta.id !== wsId);
-    for (const kind of ['fields', 'tables', 'spaces']) {
+    for (const kind of ['views', 'fields', 'tables', 'spaces']) {
       const t = this.#sysTable(kind);
       if (!t) continue;
       for (const row of this.listEntities(t.id, { includeDeleted: true })) {
@@ -2947,6 +3274,7 @@ export class Weave {
         fields: { [nameF.id]: nameF, [descF.id]: descF },
         fieldOrder: [nameF.id, descF.id], createdAt: nowISO(),
       };
+      this.#ensureTableViews(t);
       s.tables[t.id] = t;
       return t;
     };
@@ -2980,6 +3308,20 @@ export class Weave {
     // are themselves definitions one level down. A depth-4 field column is the
     // one shape the registry cannot hold — #syncFieldRow leaves it empty.
     if (!this.#sysField(fieldsT, 'Definition')) this.addField(fieldsT.id, { name: 'Definition', type: 'field', config: { depth: 4 } }).system = true;
+    /* Table views (Feature #229): configuration as field values on a row, per
+       the 2026-08-28 ruling — one row per view, related to its table. A row
+       edit runs the view verb (#interceptUpdate), so its validation is the
+       verb's. Blank has no row: it is never stored. */
+    const viewsT = this.#sysTable('views')
+      ?? mkTable('Views', 'views', 'Every view over every table, as a row related to its table: the columns it shows in order, its state filter and its sort. The first view of a table is its default. Creating a row creates the view; editing it edits the view; deleting it deletes the view.');
+    if (!this.#sysField(viewsT, 'Table')) {
+      const { field, inverse } = this.addRelation(viewsT.id, { name: 'Table', targetDb: tablesT.id, cardinality: 'many-to-one', inverseName: 'Views' });
+      field.system = true;
+      inverse.system = true;
+    }
+    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number']]) {
+      if (!this.#sysField(viewsT, n)) this.addField(viewsT.id, { name: n, type, ...(type === 'number' ? { config: { decimals: 0 } } : {}) }).system = true;
+    }
     /* Workflows (Kyle, 2026-08-24): a system table whose rows are DATA —
        one row per workflow — not a mirror of structure. It lives beside the
        registries because a workflow belongs to the workspace, not to any one
@@ -3022,7 +3364,7 @@ export class Weave {
        side under one Workspace column. */
     const wsT = this.#sysTable('workspaces')
       ?? mkTable('Workspaces', 'workspaces', 'Every workspace this weave serves, as a row: the hub root and every member workspace. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted from the hub, not as rows.');
-    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows']]) {
+    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views']]) {
       if (this.#sysField(t, 'Workspace')) continue;
       const { field, inverse } = this.addRelation(t.id, { name: 'Workspace', targetDb: wsT.id, cardinality: 'many-to-one', inverseName });
       field.system = true;
@@ -3077,7 +3419,9 @@ export class Weave {
     for (const [kind, sysTable, lookup] of [
       ['table', tablesT, (id) => this.#tableAnywhere(id)],
       ['field', fieldsT, (id) => this.#fieldOwner(id)],
+      ['view', this.#sysTable('views'), (id) => this.#viewAnywhere(id)],
     ]) {
+      if (!sysTable) continue;
       for (const row of reg.listEntities(sysTable.id)) {
         if (!mine.has(this.#wsIdOfRow(row))) continue; // another workspace's slice
         if (row.sysId && !lookup(row.sysId)) {
@@ -3170,26 +3514,82 @@ export class Weave {
       const order = db.fieldOrder.map((id) => db.fields[id]?.name).filter(Boolean).join(', ');
       if ((row.values[orderF.id] ?? '') !== order) patch['Field Order'] = order;
     }
+    // Hidden Fields, Filter and Sort are the default view's (Feature #229).
+    const dv = this.#defaultViewConfig(db);
     const hiddenF = this.#sysField(t, 'Hidden Fields');
     if (hiddenF) {
-      const hidden = (db.hiddenFields ?? []).join(', ');
+      const hidden = (dv.hiddenFields ?? []).join(', ');
       if ((row.values[hiddenF.id] ?? '') !== hidden) patch['Hidden Fields'] = hidden;
     }
     const filterF = this.#sysField(t, 'Filter');
     if (filterF) {
-      const txt = formatFilters(db.filters);
+      const txt = formatFilters(dv.filters);
       if ((row.values[filterF.id] ?? '') !== txt) patch.Filter = txt;
     }
     const sortF = this.#sysField(t, 'Sort');
     if (sortF) {
-      const txt = formatSort(db.sort);
+      const txt = formatSort(dv.sort);
       if ((row.values[sortF.id] ?? '') !== txt) patch.Sort = txt;
     }
     const hideF = this.#sysField(t, 'Hide Rollups');
     // Checked is hidden, and a table nobody opted in is hidden (Issue #249).
     if (hideF && !!row.values[hideF.id] !== (db.hideRollups !== false)) patch['Hide Rollups'] = db.hideRollups !== false;
     if (Object.keys(patch).length) reg.#metaSync(() => reg.updateEntity(row.id, patch));
+    this.#syncViewRows(db, row);
     return row;
+  }
+
+  /* One Workspace/Views row per table view (Feature #229), related to the
+     table's row: Fields, Filter and Sort as text, Default and Position as the
+     strip says. Every table change passes through #syncTableRow, so a field
+     added, renamed or dropped rewrites the Fields text here too. */
+  #syncViewRows(db, tableRow) {
+    const t = this.#sysTable('views');
+    // Mid-bootstrap the table exists before its columns do; #syncAll comes back.
+    if (!t || !db.tableViews || !this.#sysField(t, 'Position') || !this.#sysField(t, 'Workspace')) return;
+    const reg = this.#reg;
+    const wsRow = this.#sysRow('workspaces', this.state.meta.id);
+    db.tableViews.forEach((v, i) => {
+      const want = {
+        Name: v.name,
+        Fields: v.fields.filter((id) => db.fields[id]).map((id) => db.fields[id].name).join(', '),
+        Filter: formatFilters(v.filters),
+        Sort: formatSort(v.sort),
+        Default: i === 0,
+        Position: i,
+      };
+      let row = this.#sysRow('views', v.id);
+      if (!row) {
+        row = reg.#metaSync(() => reg.createEntity(t.id, {
+          name: v.name,
+          values: { ...want, Table: tableRow.id, ...(wsRow ? { Workspace: wsRow.id } : {}) },
+        }));
+        row.sysId = v.id;
+        reg.#mark(row);
+        if (db.deletedAt) reg.#metaSync(() => reg.deleteEntity(row.id));
+        reg.save();
+        return;
+      }
+      const patch = {};
+      if (reg.entityName(row) !== v.name) patch.Name = v.name;
+      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position']) {
+        if ((row.values[this.#sysField(t, k).id] ?? (k === 'Default' ? false : '')) !== want[k]) patch[k] = want[k];
+      }
+      if (!this.#relIds(row, t, 'Table').includes(tableRow.id)) patch.Table = tableRow.id;
+      if (wsRow && !this.#relIds(row, t, 'Workspace').includes(wsRow.id)) patch.Workspace = wsRow.id;
+      if (Object.keys(patch).length) reg.#metaSync(() => reg.updateEntity(row.id, patch));
+    });
+  }
+
+  /* A view id names one view across every engine the registry serves. */
+  #viewAnywhere(viewId) {
+    for (const w of this.#engines()) {
+      for (const table of Object.values(w.state.tables)) {
+        const view = table.tableViews?.find((v) => v.id === viewId);
+        if (view) return { owner: w, table, view };
+      }
+    }
+    return null;
   }
 
   /* One row per field of every user table (Feature #52). DEFINABLE types
@@ -3273,7 +3673,7 @@ export class Weave {
     // (Workflows) are ordinary data and take the ordinary path — a blank
     // row from the grid foot included (Issue #241).
     if (db.system === 'workspaces') throw new WeaveError('A workspace is created from the hub (POST /api/workspaces), not as a row', 'invalid');
-    if (!['spaces', 'tables', 'fields'].includes(db.system)) return undefined;
+    if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     const flat = Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !['name', 'values', 'doc', 'docs'].includes(k)));
     const values = { ...flat, ...(input?.values ?? {}) };
     const name = input?.name ?? values.Name;
@@ -3328,6 +3728,16 @@ export class Weave {
       }
       const f = owner.addField(tableRow.sysId, { name, type: def.type, config: def.config ?? {} });
       made = this.#sysRow('fields', f.id);
+    } else if (db.system === 'views') {
+      const tableRef = values.Table;
+      delete values.Table;
+      if (tableRef == null) throw new WeaveError(`A Views row needs its 'Table' — which table the view is over`, 'invalid');
+      const tableRow = this.findEntity(this.#sysTable('tables').id, tableRef);
+      if (!tableRow) throw new WeaveError(`Table row '${tableRef}' not found`, 'not-found');
+      const owner = this.#ownerOf(tableRow);
+      const v = owner.tableView(`${tableRow.sysId}/${name}`, { from: 'blank', ...this.#viewRowPatch(values, null) });
+      made = this.#sysRow('views', v.id);
+      if (description) values.Description = description;
     } else {
       return undefined;
     }
@@ -3348,14 +3758,24 @@ export class Weave {
       if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(e.id, patch));
       return this.getEntity(e.id);
     }
-    if (!['spaces', 'tables', 'fields'].includes(db.system)) return undefined;
+    if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     const patch = { ...valuesByName };
     if ('Workspace' in patch) {
       const next = patch.Workspace == null ? null : this.findEntity(this.#sysTable('workspaces').id, patch.Workspace)?.id;
       if (next !== (e.values[this.#sysField(db, 'Workspace').id] ?? null)) throw new WeaveError("A row's Workspace follows the structure it describes and cannot move", 'invalid');
       delete patch.Workspace;
     }
-    if (db.system === 'fields') {
+    if (db.system === 'views') {
+      const hit = this.#viewAnywhere(e.sysId);
+      if (!hit) throw new WeaveError(`View row '${this.entityName(e)}' describes no view`, 'not-found');
+      if ('Table' in patch) {
+        const next = patch.Table == null ? null : this.findEntity(this.#sysTable('tables').id, patch.Table)?.id;
+        if (next !== (e.values[this.#sysField(db, 'Table').id] ?? null)) throw new WeaveError('A view cannot move between tables', 'invalid');
+        delete patch.Table;
+      }
+      const vp = this.#viewRowPatch(patch, hit.table.tableViews[0] === hit.view);
+      if (Object.keys(vp).length) hit.owner.tableView(`${hit.table.id}/${hit.view.id}`, vp);
+    } else if (db.system === 'fields') {
       const hit = this.#fieldAnywhere(e.sysId);
       const owner = hit?.table;
       const f = hit?.field;
@@ -3420,10 +3840,37 @@ export class Weave {
     return this.getEntity(e.id);
   }
 
+  /* A Views row's columns, spoken as the view verb's patch. Consumes the keys
+     it translates, so what is left is plain row data. */
+  #viewRowPatch(values, isDefault) {
+    const vp = {};
+    const take = (k) => { const v = values[k]; delete values[k]; return v; };
+    if ('Name' in values) vp.name = take('Name');
+    if ('Fields' in values) vp.fields = String(take('Fields') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    if ('Filter' in values) vp.filters = parseFilters(take('Filter'));
+    if ('Sort' in values) vp.sort = parseSort(take('Sort'));
+    if ('Default' in values) {
+      const on = !!take('Default');
+      if (on) vp.default = true; else if (isDefault) vp.default = false;
+    }
+    if ('Position' in values) {
+      const p = take('Position');
+      if (p != null && p !== '') vp.position = Number(p);
+    }
+    return vp;
+  }
+
   #interceptDelete(e, db, hard) {
     if (!db.system || this.#inMetaSync) return undefined;
     if (db.system === 'workspaces') throw new WeaveError('A workspace is deleted from the hub (DELETE /api/workspaces/:id), not as a row', 'invalid');
-    if (!['spaces', 'tables', 'fields'].includes(db.system)) return undefined; // ordinary rows
+    if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined; // ordinary rows
+    if (db.system === 'views') {
+      // A view has no trash: it is configuration, and Blank is always there.
+      const hit = this.#viewAnywhere(e.sysId);
+      if (hit) hit.owner.tableView(`${hit.table.id}/${hit.view.id}`, { delete: true });
+      else this.#metaSync(() => this.deleteEntity(e.id, { hard: true })); // orphaned row
+      return { id: e.id, purged: true };
+    }
 
     if (db.system === 'fields') {
       // A column has no trash — its values would dangle. Hard-only, said out loud.
@@ -3650,11 +4097,16 @@ export class Weave {
   updateField(dbRef, fieldRef, patch) {
     const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
+    let renamed = false;
     if (patch.name != null && patch.name !== field.name) {
-      // A hidden column stays hidden under its new name: hiddenFields is a
-      // list of names, and a rename used to un-hide by accident.
-      if (db.hiddenFields?.includes(field.name)) db.hiddenFields = db.hiddenFields.map((n) => (n === field.name ? patch.name : n));
+      // Views hold fields by id, so visibility survives a rename for free;
+      // their filter and sort speak names, so those follow it here.
+      for (const v of db.tableViews ?? []) {
+        if (v.filters?.[field.name]) { v.filters[patch.name] = v.filters[field.name]; delete v.filters[field.name]; }
+        for (const s of v.sort ?? []) if (s.field === field.name) s.field = patch.name;
+      }
       field.name = patch.name;
+      renamed = true;
     }
     if (patch.type != null && patch.type !== field.type && field.type === 'view') {
       throw new WeaveError(`The ${field.config.shape} is fixed as a view — rename or reconfigure it`, 'invalid');
@@ -3770,6 +4222,7 @@ export class Weave {
       }
     }
     this.#syncFieldRow(db, field);
+    if (renamed) this.#syncTableRow(db); // the names in Field Order and every view row
     this.save();
     if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) });
     return field;
@@ -4027,8 +4480,15 @@ export class Weave {
 
   #removeFieldRaw(db, fieldId) {
     if (!db.fields[fieldId]) return;
+    const gone = db.fields[fieldId].name;
     delete db.fields[fieldId];
     db.fieldOrder = db.fieldOrder.filter((id) => id !== fieldId);
+    // A view loses the column, and any filter or sort that read it.
+    for (const v of db.tableViews ?? []) {
+      v.fields = v.fields.filter((id) => id !== fieldId);
+      if (v.filters?.[gone]) { delete v.filters[gone]; if (!Object.keys(v.filters).length) delete v.filters; }
+      if (v.sort?.some((s) => s.field === gone)) { v.sort = v.sort.filter((s) => s.field !== gone); if (!v.sort.length) delete v.sort; }
+    }
     for (const e of this.listEntities(db.id)) {
       delete e.values[fieldId];
       if (e.docs) delete e.docs[fieldId];
@@ -6176,9 +6636,10 @@ export class Weave {
         ...(db.system ? { system: db.system } : {}),
         ...(db.icon ? { icon: db.icon } : {}),
         ...(db.systemFields?.length ? { systemFields: [...db.systemFields] } : {}),
-        ...(db.hiddenFields?.length ? { hiddenFields: [...db.hiddenFields] } : {}),
-        ...(db.filters ? { filters: Object.fromEntries(Object.entries(db.filters).map(([k, v]) => [k, [...v]])) } : {}),
-        ...(db.sort?.length ? { sort: db.sort.map((s) => ({ ...s })) } : {}),
+        // The default view under its pre-views spelling (Feature #229), for
+        // the entity page and older readers; `views` below is the whole set.
+        ...structuredClone(this.#defaultViewConfig(db)),
+        views: (db.tableViews ?? []).map((v, i) => this.#viewOut(db, v, i)),
         ...(typeof db.hideRollups === 'boolean' ? { hideRollups: db.hideRollups } : {}),
         bodyBlocks: this.bodyBlocks(db),
         term: this.termOf(db),
