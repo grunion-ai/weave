@@ -1377,15 +1377,30 @@ function renderMermaidIn(container) {
    [{name, cls}], current = selected name. */
 /* Anchored popover shared by the chip picker and the header field menu:
    flips above the trigger when it would overflow, closes on outside click or
-   Escape, and never leaves two popovers open at once. */
-function showPopover(trigger, rows) {
+   Escape, and never leaves two popovers open at once. A click on the trigger
+   closes it, so the trigger toggles; `owns` widens "the trigger" for a caller
+   whose trigger is redrawn while its popover is open. */
+function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) {
   document.querySelector('.chip-pop')?.remove();
   const pop = el('div', { class: 'chip-pop' }, ...rows);
   document.body.append(pop);
   const r = trigger.getBoundingClientRect();
   pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
   pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
-  const close = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); removeEventListener('click', close, true); } };
+  /* Capture phase, so this runs before the clicked control's own handler. It
+     used to count the trigger as outside: a second click on the eye closed
+     the popover and that same click's handler opened a fresh one, so the
+     dialog never closed (Issue #320). A click on what owns the popover now
+     closes it and stops there. A popover already gone (Escape, a pick, the
+     next popover) only unhooks, and the click carries on, so the eye still
+     opens on the first click after an Escape. */
+  const close = (ev) => {
+    if (pop.contains(ev.target)) return;
+    removeEventListener('click', close, true);
+    if (!pop.isConnected) return;
+    pop.remove();
+    if (owns(ev.target)) ev.stopPropagation();
+  };
   addEventListener('click', close, true);
 
   /* Keyboard: arrows move, Enter/Space commit (native <button> behaviour),
@@ -3748,7 +3763,12 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       ] : []),
     ];
   };
-  showPopover(anchor, buildRows(db));
+  /* A flip redraws the surface, eye included, so the eye that opened this
+     popover may be a detached node by the next click. Its replacement sits in
+     the same region; the other surface's eye (table vs docked entity) does
+     not, and still opens its own popover in one click (Issue #320). */
+  const home = anchor.closest('#main, #dock');
+  showPopover(anchor, buildRows(db), { owns: (t) => t.closest?.('.eye-btn')?.closest('#main, #dock') === home });
 }
 
 /* The columns a table shows: every field, minus the table's hidden set (the
