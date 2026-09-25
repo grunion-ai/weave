@@ -161,7 +161,8 @@ if (s) {
       // A FIELD header, not the corner: th.col-head used to override the sticky.
       const th = document.querySelector('.wv-grid thead tr:first-child th.col-head').getBoundingClientRect();
       const foot = document.querySelector('thead tr.wv-foot td.foot-mark').getBoundingClientRect();
-      return { pageScroll: window.scrollY, headTop: th.top, headBottom: th.bottom, footTop: foot.top, footBottom: foot.bottom, innerHeight };
+      const pin = document.querySelector('#main > .view-header').getBoundingClientRect().bottom;
+      return { pageScroll: window.scrollY, pin, headTop: th.top, headBottom: th.bottom, footTop: foot.top, footBottom: foot.bottom, innerHeight };
     });
     const before = await geo();
     assert.ok(Math.abs(before.footTop - before.headBottom) <= 1, `the Σ row sits flush under the header: ${JSON.stringify(before)}`);
@@ -169,7 +170,8 @@ if (s) {
     await page.waitForFunction(() => window.scrollY > 300);
     await page.waitForTimeout(150);
     const after = await geo();
-    assert.ok(after.headTop >= 0 && after.headTop < 40, `the field headers stick to the top edge: ${JSON.stringify(after)}`);
+    // Right under the view header, which is pinned at the top edge (Issue #321).
+    assert.ok(after.headTop > 0 && Math.abs(after.headTop - after.pin) <= 1, `the field headers stick under the pinned view header: ${JSON.stringify(after)}`);
     assert.ok(Math.abs(after.footTop - after.headBottom) <= 1, `the Σ row is still flush under them: ${JSON.stringify(after)}`);
     assert.ok(after.footBottom > 0 && after.footBottom < after.innerHeight, `on screen after a 600px scroll, not scrolled away: ${JSON.stringify(after)}`);
     assert.equal(await page.$eval('thead tr.wv-foot td.foot-mark', (td) => getComputedStyle(td).opacity), '1', 'the pinned row is opaque: rows slide under it, not through it');

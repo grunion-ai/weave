@@ -211,6 +211,24 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .view-desc-more:hover { text-decoration: underline; }
 .view-desc-empty { font-style: italic; opacity: .6; }
 .view-desc-edit { width: 100%; min-height: 38px; font: inherit; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); padding: 4px 6px; }
+/* The table page's header block stays on screen (Issue #321). A grid wider
+   than its card scrolls in its own wrap and the block never moved; a grid
+   that fits scrolls the page, and crumbs, title, description and toolbar
+   went off the top with it. Sticky in both modes, so the reader gets one
+   behaviour. The block reaches out over #main's padding and paints the
+   surface, so the rows pass under an opaque band the width of the panel,
+   and it rests 12px up, keeping half the panel's top padding as breathing
+   room. Its bottom margin becomes padding for the same reason: the column
+   header sticks at the block's bottom edge (--wv-pin-h, measured in
+   drawDatabase), and there is no gap for a row to show through. It sits
+   above every sticky layer of the grid, the clipped-cell copy (6) too. */
+.view-header.wv-pin { position: sticky; top: -12px; z-index: 7; margin: -24px -28px 0; padding: 24px 28px 16px; background: var(--tblr-bg-surface); border-radius: 16px 16px 0 0; }
+/* Taller than half the window, the block scrolls with the page instead
+   (pinViewHeader sets it): the same box, so letting go moves nothing. */
+.view-header.wv-pin.wv-pin-loose { position: static; }
+/* An opened description, or its editor, is capped so the pinned block never
+   takes the viewport from the rows; the rest scrolls inside the block. */
+.view-header.wv-pin :is(.view-desc-body:not(.clamped), .view-desc-edit) { max-height: max(20vh, calc(5 * 1.45em)); overflow-y: auto; }
 
 /* ---------- chip picker popover (replaces native selects) ---------- */
 /* A picker trigger borrows the page's family and weight but NOT its size —
@@ -288,6 +306,12 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    Ties are broken by document order, which would put a body cell over the
    Σ row it scrolls beneath, so each layer is numbered rather than shared. */
 .wv-grid thead th { position: sticky; top: 0; z-index: 4; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
+/* A grid that scrolls the page sticks its header under the pinned view
+   header (Issue #321), not at the viewport's edge, where the block would
+   cover it; the Σ row follows one header row further down. A wrap that
+   scrolls itself keeps top 0: its sticky cells hold against the wrap. */
+.view-header.wv-pin:not(.wv-pin-loose) ~ .table-wrap.wv-fit .wv-grid thead th { top: var(--wv-pin-h, 0px); }
+.view-header.wv-pin:not(.wv-pin-loose) ~ .table-wrap.wv-fit .wv-grid thead tr.wv-foot td { top: calc(var(--wv-pin-h, 0px) + var(--wv-head-h, 0px)); }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 /* The Name column opens wide enough to read (Issue #261). With no width of
    its own, auto layout handed Name the min-content of its <input>, about

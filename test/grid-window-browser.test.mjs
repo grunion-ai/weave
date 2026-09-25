@@ -209,7 +209,9 @@ if (s) {
         // A drawn row that is on screen.
         const wrap = document.querySelector('.table-wrap');
         const box = wrap.classList.contains('wv-grid-scroll') ? wrap.getBoundingClientRect() : { top: 0, bottom: innerHeight };
-        const head = document.querySelector('.wv-grid thead').getBoundingClientRect().bottom;
+        // The header's cells stick (under the pinned view header, Issue
+        // #321); the <thead> box itself scrolls away with the rows.
+        const head = Math.max(...[...document.querySelector('.wv-grid thead').rows].map((r) => r.cells[0].getBoundingClientRect().bottom));
         return [...document.querySelectorAll('.wv-grid tbody tr.entity-row')].find((tr) => { const r = tr.getBoundingClientRect(); return r.top > Math.max(box.top, head) + 5 && r.bottom < box.bottom - 5; }).dataset.eid;
       });
       const before = await page.evaluate(() => {

@@ -39,6 +39,7 @@ if (s) {
       clamped: body.classList.contains('clamped'),
       shown: body.clientHeight,
       full: body.scrollHeight,
+      overflow: getComputedStyle(body).overflowY,
       lineHeight: lh,
       more: more ? more.textContent.trim() : null,
       editing: !!desc.querySelector('.view-desc-edit'),
@@ -69,7 +70,11 @@ if (s) {
       await page.click('.view-desc-more');
       let r = await probe(page);
       assert.equal(r.clamped, false, 'the clamp is off');
-      assert.equal(r.shown, r.full, 'nothing is hidden');
+      // The table page's header is pinned (Issue #321), so an opened
+      // description is capped at a fifth of the viewport and the rest
+      // scrolls inside it: more than the five lines, and none cut away.
+      assert.ok(r.shown === r.full || (r.overflow === 'auto' && r.shown > r.lineHeight * 5 + 1),
+        `nothing is hidden: ${JSON.stringify(r)}`);
       assert.equal(r.more, 'Show less');
       assert.equal(r.editing, false, 'the control did not open the editor');
       await page.click('.view-desc-more');

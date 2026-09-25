@@ -11,12 +11,11 @@
    page-scrolled one at the Issue's 10,800px.
 
    Both scroll modes are pinned. The wide table's wrap is the scroller (Issue
-   #233), and there the toolbar stays on screen, so the flip is a real
-   pointer click. The fitting table scrolls the page, and there the toolbar
-   scrolls away with it: a pointer click has to travel back to the top first
-   (Playwright's own click does, which is how the Issue measured row 191 to
-   row 0), so there the flip is made where the reader stands, through the
-   control's own click handler, which pins the same arithmetic. */
+   #233), and the fitting table scrolls the page. The toolbar stays on
+   screen in both (Issue #321; before that it scrolled away with a page, and
+   Playwright's own click travelled back to the top to reach it, which is how
+   the Issue measured row 191 to row 0), so the flip is a real pointer click
+   where the reader stands, in both modes. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -106,7 +105,6 @@ if (s) {
     test(`a density flip keeps the row heading a wrap-scrolled grid, both ways (${theme})`, async () => {
       const page = await open({ table: wide, viewport: { width: 1470, height: 900 }, theme, mode: 'wrap', top: 6000 });
       try {
-        // The toolbar sits above the wrap and stays on screen: a real click.
         await flipBothWays(page, (sel) => page.click(sel), 'wrap');
       } finally {
         await page.close();
@@ -117,7 +115,8 @@ if (s) {
       // The Issue's own numbers: 600 rows, 2187x1359, standing at 10,800.
       const page = await open({ table: tall, viewport: { width: 2187, height: 1359 }, theme, mode: 'page', top: 10800 });
       try {
-        await flipBothWays(page, (sel) => page.$eval(sel, (b) => b.click()), 'page');
+        // The pinned toolbar is on screen far down the page: a real click.
+        await flipBothWays(page, (sel) => page.click(sel), 'page');
       } finally {
         await page.close();
       }

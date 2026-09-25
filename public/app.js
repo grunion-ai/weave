@@ -3614,6 +3614,34 @@ function gridPager(db, query, first) {
   return pager;
 }
 
+/* The table page's crumbs, title, description and toolbar stay on screen
+   however the grid scrolls (Issue #321; the CSS under .view-header.wv-pin).
+   A grid that scrolls the page sticks its column header at the block's
+   bottom edge, which is the block's height plus its sticky top, handed to
+   the grid's CSS as --wv-pin-h. Floored, so the column header tucks a
+   fraction under the block instead of leaving a hairline a row shows
+   through. Measured, because an opened description, a toolbar that wraps
+   and a resized window all move that edge.
+   A block taller than half the window lets go (.wv-pin-loose) and scrolls
+   with the page: pinned, it would leave the rows a strip under it, and in
+   a 200px window a row's checkbox could not be reached at all. */
+function fitViewHeaderPin(head, main) {
+  if (!head.isConnected) return;
+  head.classList.toggle('wv-pin-loose', head.getBoundingClientRect().height > innerHeight / 2);
+  const edge = head.getBoundingClientRect().height + (parseFloat(getComputedStyle(head).top) || 0);
+  main.style.setProperty('--wv-pin-h', `${Math.max(0, Math.floor(edge))}px`);
+}
+function pinViewHeader(head, main) {
+  head.classList.add('wv-pin');
+  new ResizeObserver(() => fitViewHeaderPin(head, main)).observe(head);
+}
+// A window resized shorter or taller changes whether the block fits pinned,
+// and the block's own box need not change for that.
+addEventListener('resize', () => {
+  const head = document.querySelector('#main > .view-header.wv-pin');
+  if (head) fitViewHeaderPin(head, head.parentElement);
+});
+
 function drawDatabase(db, items, trashCount = 0, pager = null) {
   const main = $('#main');
   // The search box is redrawn with the grid it narrows; the caret goes with it.
@@ -3715,6 +3743,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
       ], { title: 'Table actions', align: 'right' }),
     ],
   }));
+  pinViewHeader(main.lastElementChild, main);
 
   const searchInput = main.querySelector('.table-search-input');
   if (searchInput && (typing || tableSearch.focus)) {
@@ -4396,7 +4425,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   let table = null, tbody = null, topSpacer = null, bottomSpacer = null, loadedNote = null;
   const live = new Map();     // index → the <tr> in the tbody right now
   const built = new Map();    // entity id → its <tr>, for the life of this draw
-  const win = { start: 0, end: 0, lastTop: 0, dir: 1, rowH: 0, rowHAt: '' };
+  const win = { start: 0, end: 0, lastTop: 0, dir: 1, rowH: 0, rowHAt: '', pin: null };
   /* The row height: measured from a painted row, else what this table
      measured at this density last time, else the density's default. The
      memory matters on a redraw: its first paint has no real row yet (the
@@ -4446,13 +4475,23 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   // body-relative — how much of the <tbody> sits above the viewport's top
   // edge — so one arithmetic serves both.
   const scroller = () => (wrap.classList.contains('wv-grid-scroll') ? wrap : null);
+  /* On the table page the view header is pinned above a page-scrolled grid
+     (Issue #321), so the page's view of the body starts at its bottom edge,
+     not at the viewport's: read off the header cells' own sticky offset,
+     which is that edge there and 0 everywhere else. */
+  const pinTop = () => {
+    const th = table.tHead?.rows[0]?.cells[0];
+    return th ? parseFloat(getComputedStyle(th).top) || 0 : 0;
+  };
   const geometry = () => {
     const box = scroller();
-    const viewTop = box ? box.getBoundingClientRect().top : 0;
+    const pin = box ? 0 : pinTop();
+    const viewTop = box ? box.getBoundingClientRect().top : pin;
     return {
       box,
+      pin,
       scrollTop: viewTop - tbody.getBoundingClientRect().top,
-      viewportH: box ? box.clientHeight : innerHeight,
+      viewportH: box ? box.clientHeight : innerHeight - viewTop,
       headH: table.tHead?.offsetHeight ?? 0,
     };
   };
@@ -4498,6 +4537,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       win.rowH = first.getBoundingClientRect().height || win.rowH;
       if (win.rowH) GRID_ROW_H.set(rowHKey(), win.rowH);
     }
+    // The pinned header's edge moving (its description arriving, a toolbar
+    // wrapping) moves the view's top, not the reader: the anchor moves with
+    // it, or the growth reads as a row of travel down (Issue #321).
+    if (win.pin != null) win.lastTop += g.pin - win.pin;
+    win.pin = g.pin;
     // A row of travel decides the direction, never a pixel (Issue #317).
     const travel = GW().travelFor({ scrollTop: g.scrollTop, lastTop: win.lastTop, direction: win.dir, rowH: rowH() });
     win.dir = travel.direction; win.lastTop = travel.lastTop;

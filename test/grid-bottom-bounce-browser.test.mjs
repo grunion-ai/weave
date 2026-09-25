@@ -172,9 +172,9 @@ if (s) {
       const roomy = await spacerRow();
       assert.ok(Math.abs(roomy.estimate - roomy.real) < 2, `the spacer stands in at the row's own height: ${JSON.stringify(roomy)}`);
       await page.click('.seg-opt[title="Short rows, for scanning"]');
-      // The toolbar does not stick, so reaching the control scrolls the page
-      // back to the top of the table (Issue #342 keeps the place from there);
-      // going down again is what gives the spacer rows to stand in for.
+      // The toolbar sticks (Issue #321), so the click lands where the reader
+      // stands and the flip keeps the place (Issue #342); going further down
+      // gives the spacer more rows to stand in for.
       await page.waitForTimeout(600);
       for (let i = 0; i < 12; i++) { await page.mouse.wheel(0, 900); await page.waitForTimeout(25); }
       await page.waitForTimeout(600);
