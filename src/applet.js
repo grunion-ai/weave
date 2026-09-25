@@ -438,6 +438,9 @@ button,input,textarea{font:inherit; color:inherit}
 .wv-sheet .grab{width:38px; height:4px; border-radius:3px; background:var(--line); margin:2px auto 12px}
 .wv-sheet h4{margin:0; padding:0 22px 10px; font-size:11px; font-family:var(--mono); letter-spacing:.1em;
   text-transform:uppercase; color:var(--faint); font-weight:500}
+.wv-sheet h4 .wv-docstate{float:right; font-family:var(--app); font-size:12px; letter-spacing:0;
+  text-transform:none; color:var(--muted)}
+.wv-sheet h4 .wv-docstate.bad{color:var(--bad)}
 .wv-opt{display:flex; align-items:center; gap:12px; width:100%; padding:13px 22px; border:0;
   background:none; font-size:16px; color:var(--ink); text-align:left}
 .wv-opt:active{background:var(--sunk)}
@@ -631,6 +634,15 @@ const CLIENT = `
     rowChips: 4,        // how many field chips a row shows before it says "+n"
     emptyOnRow: ['date', 'multiselect'],   // types worth a tappable blank on the row
   };
+  /* How long the description sheet waits after the last keystroke before it
+     writes (Issue #247). The desktop editor waits 600 ms; a thumb types
+     slower and autocorrect stalls mid-word, so a little longer keeps one
+     sentence to one request while the text still reaches the server inside
+     a second of the last key. Revisions fold ten minutes of writes into one,
+     so the rate never becomes history. */
+  const DOC_PAUSE_MS = 800;
+  // Set while the description sheet is open: writes its text as the page hides.
+  let flushDoc = () => {};
 
   // The hue ramp is weave's own (public/chip-core.js), not a second opinion.
   const CC = globalThis.chipCore ?? {};
@@ -722,13 +734,26 @@ const CLIENT = `
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toast.classList.remove('up'), 2800);
   }
+  /* A sheet can have something to finish before it goes: the description
+     sheet writes its text (Issue #247). Every way out (the scrim, Escape,
+     its own button, another sheet taking its place) comes through
+     closeSheet, so the hook runs whichever one the thumb found. */
+  let sheetClosing = null;
   function openSheet(html, wire) {
+    if (sheetClosing) closeSheet();
     sheet.innerHTML = '<div class="grab"></div>' + html;
     sheet.classList.add('up'); scrim.classList.add('on');
     wire && wire(sheet);
   }
-  const closeSheet = () => { sheet.classList.remove('up'); scrim.classList.remove('on'); };
+  const closeSheet = () => {
+    const finish = sheetClosing;
+    sheetClosing = null;
+    sheet.classList.remove('up'); scrim.classList.remove('on');
+    if (finish) finish();
+  };
   scrim.addEventListener('click', closeSheet);
+  // A keyboard on an iPad, or the desktop: Escape is a tap on the scrim.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sheet.classList.contains('up')) scrim.click(); });
 
   // ---- writes, optimistic ------------------------------------------------
   async function setState(t, state) {
@@ -1109,25 +1134,78 @@ const CLIENT = `
 
   /* The document, written where it is read. A full-height sheet rather than
      an inline caret: a phone keyboard takes half the screen, and markdown
-     wants the other half. */
+     wants the other half.
+
+     It used to write only from its Save button (Issue #247): a scrim tap, the
+     way every other sheet here is dismissed, closed it and dropped the text,
+     and so did a trip to the app switcher. Save itself closed the sheet
+     before its request, so a failed write lost the text too. Now the text
+     goes to the server on a pause in typing, on every way out of the sheet,
+     and when the page is hidden; a write that fails leaves the text on the
+     task as a draft, and the next open starts from it. */
   function editDoc(t, full) {
-    openSheet('<h4>' + esc(full.docField || 'Description') + '</h4>'
+    const opened = full.doc || '';
+    let saved = opened;           // what the server holds
+    let sent = opened;            // the newest text asked of it
+    let chain = Promise.resolve(true);
+    let timer = null;
+    let asked = 0, answered = 0;  // write numbers: the newest asked, the newest answered
+    const start = t.docDraft != null ? t.docDraft : opened;
+    openSheet('<h4>' + esc(full.docField || 'Description') + '<span class="wv-docstate" aria-live="polite"></span></h4>'
       + '<div style="padding:0 18px 10px"><textarea id="docedit" placeholder="Markdown" '
       + 'style="width:100%;min-height:46vh;font-size:16px;line-height:1.5;padding:12px;border:1px solid var(--line);'
-      + 'border-radius:12px;background:var(--ground);font-family:var(--mono)">' + esc(full.doc || '') + '</textarea></div>'
+      + 'border-radius:12px;background:var(--ground);font-family:var(--mono)">' + esc(start) + '</textarea></div>'
       + '<button class="wv-opt" data-save style="color:var(--accent);font-weight:600">Save</button>',
       (sh) => {
         const el = sh.querySelector('#docedit');
-        setTimeout(() => el.focus(), 60);
-        sh.querySelector('[data-save]').addEventListener('click', async () => {
+        const state = sh.querySelector('.wv-docstate');
+        const show = (msg) => { state.textContent = msg; state.classList.toggle('bad', msg === 'Not saved'); };
+        /* Resolves true once the server holds what the box holds. Writes are
+           chained so an older text can never land after a newer one; a write
+           as the page goes away is the exception, because nothing queued
+           behind a request would start before the page is gone. */
+        const write = (leaving) => {
+          clearTimeout(timer);
           const md = el.value;
-          closeSheet();
-          try {
-            const res = await api('/entity/' + t.id + '/doc', { method: 'PUT', body: JSON.stringify({ doc: md }) });
-            full.doc = md; full.docHtml = res.docHtml;
-            openDetail(t); detail.classList.add('in');
-          } catch { say('Could not save the description'); }
+          if (md === sent) return chain.then(() => saved === md);
+          sent = md; t.docDraft = md;
+          show('Saving…');
+          const n = ++asked;
+          const put = () => api('/entity/' + t.id + '/doc', { method: 'PUT', body: JSON.stringify({ doc: md }), keepalive: !!leaving });
+          const landed = (res) => {
+            /* A leaving write is not chained, so an older write's answer can
+               arrive after a newer one's. The server already took the newer
+               text, so the late answer says nothing about what it holds. */
+            if (n < answered) return true;
+            answered = n;
+            saved = md; full.doc = md; full.docHtml = res.docHtml;
+            if (t.docDraft === md) delete t.docDraft;
+            if (sent === md) show('Saved');
+            return true;
+          };
+          const lost = () => {
+            if (sent === md) { sent = saved; show('Not saved'); }
+            return false;
+          };
+          if (leaving) { const now = put().then(landed, lost); chain = chain.then(() => now); return chain; }
+          chain = chain.then(put).then(landed, lost);
+          return chain;
+        };
+        el.addEventListener('input', () => {
+          clearTimeout(timer);
+          show('');
+          timer = setTimeout(() => write(false), DOC_PAUSE_MS);
         });
+        flushDoc = () => write(true);
+        sheetClosing = () => {
+          flushDoc = () => {};
+          write(false).then((ok) => {
+            if (!ok) say('Could not save the description');
+            if (saved !== opened) { openDetail(t); detail.classList.add('in'); }
+          });
+        };
+        setTimeout(() => el.focus(), 60);
+        sh.querySelector('[data-save]').addEventListener('click', closeSheet);
       });
   }
 
@@ -1333,10 +1411,13 @@ const CLIENT = `
      on hide so the next tap is a fresh focus, and re-arm the first-touch grab
      so a tap on empty space works again too. */
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { try { input.blur(); } catch {} return; }
+    if (document.hidden) { flushDoc(); try { input.blur(); } catch {} return; }
     load();
     armFirstTouch();
   });
+  // A tab closing or navigating away can skip visibilitychange; pagehide is
+  // the last word WebKit reliably gives, and a written text is not lost to it.
+  window.addEventListener('pagehide', () => flushDoc());
 
   /* Getting the keyboard up on open.
 

@@ -533,6 +533,24 @@ test('applet: the description is written from the page it is read on', async () 
   } finally { s.stop(); }
 });
 
+/* Issue #247 (Kyle, 2026-09-08: "mobile descriptions not captured on save,
+   need autosave"). The sheet wrote only from its Save button, so a scrim tap
+   or a trip to the app switcher threw the text away. The browser suite
+   (test/applet-autosave-browser.test.mjs) drives each path at 390x844; this
+   pins the wiring so a checkout without a browser still guards it. */
+test('applet: the description sheet writes on every way out, and on a pause', async () => {
+  const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
+  const doc = src.slice(src.indexOf('function editDoc('), src.indexOf('/* The bug reporter'));
+  assert.match(src, /const DOC_PAUSE_MS = \d+;/, 'the typing pause is a named constant');
+  assert.match(doc, /addEventListener\('input'/, 'typing schedules a write');
+  assert.match(doc, /sheetClosing = /, 'closing the sheet, however it closes, writes first');
+  assert.match(src, /const closeSheet = \(\) => \{[^}]*sheetClosing/, 'closeSheet runs the hook: scrim, Escape and Save all go through it');
+  assert.match(src, /key === 'Escape'[^\n]*scrim\.click\(\)/, 'Escape is a way out, the same one the scrim is');
+  assert.match(src, /addEventListener\('pagehide'/, 'the page going away writes the text');
+  assert.match(doc, /keepalive: !!leaving/, 'a write started as the page leaves outlives it');
+  assert.doesNotMatch(doc, /closeSheet\(\);\s*try/, 'Save no longer closes before it knows the write landed');
+});
+
 test('applet: the description answers to the name it has now', async () => {
   // Kyle can rename the description (2026-08-27), and the applet printed the
   // word 'Description' over whatever it was actually showing. The heading and
