@@ -3967,18 +3967,41 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const MORE_ICON = { move: 'send', rollup: 'layers', copy: 'link' };
   const puck = el('div', { class: 'sel-puck-wrap' });
 
-  const runOnSelection = async (verb, each) => {
+  // `undoable(done)` names the toast's action for the rows that landed.
+  const runOnSelection = async (verb, each, undoable = null) => {
     const ids = [...chosen()];
     const failed = [];
     for (const id of ids) {
       try { await each(id); } catch { failed.push(id); } // counted and toasted below
     }
+    const done = ids.filter((id) => !failed.includes(id));
+    const action = undoable && done.length ? undoable(done) : null;
     // What did NOT land is the part worth saying. A bulk command that half
     // works and reports success is how a row goes missing quietly.
-    if (failed.length) toast(`${verb}: ${failed.length} of ${ids.length} failed`, true);
-    else toast(`${verb} ${SEL().countLabel(ids.length, db.term)}`);
+    if (failed.length) toast(`${verb}: ${failed.length} of ${ids.length} failed`, true, action);
+    else toast(`${verb} ${SEL().countLabel(ids.length, db.term)}`, false, action);
     clearChosen();
     await onSaved?.();
+  };
+
+  /* Trash is instant and the toast takes it back (Issue #259). The bar used
+     to say "Moved to trash 1 bug" with nothing to press and drop focus on
+     <body>, while the row menu's delete already carried an Undo. The gesture
+     is remembered for ⌘Z too (undoGesture), and the cursor goes to the row
+     after the last one trashed, or the one before when nothing follows, so
+     the reader keeps a place in the grid. */
+  const trashChosen = async () => {
+    const ids = chosen(), drawn = drawnIds();
+    const last = Math.max(...[...ids].map((id) => drawn.indexOf(id)));
+    const keep = (id) => !ids.has(id);
+    const next = drawn.slice(last + 1).find(keep) ?? drawn.slice(0, last).reverse().find(keep) ?? null;
+    const gesture = { kind: 'delete', ids: [] };
+    await runOnSelection('Moved to trash', (id) => api('DELETE', `/entities/${id}`), (done) => {
+      gesture.ids = done;
+      lastGesture = gesture;
+      return { label: 'Undo', run: () => undoGesture(gesture) };
+    });
+    focusGridRow(next, main);
   };
 
   /* Slice 3: one write for the whole selection (POST /api/bulk), the engine
@@ -4094,7 +4117,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       }
       await api('POST', `/tables/${db.id}/entities`, { values });
     }),
-    trash: () => runOnSelection('Moved to trash', (id) => api('DELETE', `/entities/${id}`)),
+    trash: trashChosen,
   };
 
   const drawPuck = () => {
@@ -4410,6 +4433,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.wvRewindow = rewindow;
   wrap.wvScrollToRow = scrollToRow;
   wrap.wvPatchRows = patchRows;
+  // ⌘Z's redraw (Issue #259): the same re-read a bulk write takes.
+  wrap.wvRefresh = () => onSaved?.();
 
   const draw = () => {
     sortedItems = [...items];
@@ -9671,6 +9696,89 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     openCommandK();
   }
+});
+
+/* ---------- undo from the page (Issue #259) ----------
+   POST /api/undo steps back one entry of the workspace's undo stack, and the
+   engine keeps one entry per row, so a gesture that trashed two rows left two.
+   `lastGesture` is the most recent such gesture from this page: its kind and
+   the ids it touched. How deep it still reaches is read off the stack each
+   time, never assumed: only the run of its own entries still on TOP is ours to
+   step back, and anything written since (a cell edit here, a write from
+   another tab) breaks that run, so stepping a gesture back never reaches past
+   its own rows into somebody else's change. */
+let lastGesture = null;
+
+async function gestureTop(g) {
+  const top = await api('GET', `/undo?limit=${g.ids.length}`);
+  const ours = [];
+  for (const u of top) {
+    if (u.kind !== g.kind || !g.ids.includes(u.entityId) || ours.includes(u.entityId)) break;
+    ours.push(u.entityId);
+  }
+  return ours;
+}
+
+/* The toast's Undo: every row the gesture took comes back. The entries still
+   on top are stepped back, which leaves the stack as if the gesture never
+   happened; a row the stack cannot reach (a registry row, whose trash is
+   structure and holds no entry, or one buried under a later write) is
+   restored by id instead. */
+async function undoGesture(g) {
+  if (lastGesture === g) lastGesture = null;
+  try {
+    const ours = await gestureTop(g);
+    if (ours.length) await api('POST', '/undo', { steps: ours.length });
+    for (const id of g.ids) if (!ours.includes(id)) await api('POST', `/entities/${id}/restore`);
+    await refreshView();
+    focusGridRow(g.ids[0]);
+    toast('Restored');
+  } catch (err) { toast(err.message, true); }
+}
+
+// The grid redraws in place, keeping scroll and cursor; any other page
+// renders its route again, schema first, since a registry row brought back
+// by id is a table or a space coming back.
+async function refreshView() {
+  const grid = state.route?.page === 'db' ? $('#main .table-wrap') : null;
+  if (grid?.wvRefresh) return grid.wvRefresh();
+  await loadSchema();
+  return route();
+}
+
+/* A cursor for the grid after rows leave or come back: the row's first
+   resting cell, else the first one in the grid, so focus never falls to
+   <body>. */
+function focusGridRow(eid, scope = document) {
+  const stop = 'td[data-field]:not(.cell-nostop)';
+  const own = eid ? scope.querySelector(`tr[data-eid="${eid}"] > ${stop}`) : null;
+  // The fallback takes focus where the reader is looking, without a jump.
+  (own ?? scope.querySelector(`.table-wrap tr.entity-row > ${stop}`))?.focus({ preventScroll: !own });
+}
+
+/* ⌘Z (Ctrl+Z) steps back the last change: the whole of the last gesture when
+   it is still on top of the stack, else one entry. A text box, a document
+   editor (Vditor's own undo) and an open cell keep the key: it is their text
+   undo there. So does any overlay the dock defers Escape to, which covers the
+   cell popovers and dialogs. The grid keymap resolves ⌘Z to nothing at rest,
+   so a resting cell hands it on to here. Redo is not bound: the engine keeps
+   no redo stack. */
+document.addEventListener('keydown', async (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+  if (e.defaultPrevented || e.isComposing) return;
+  if (e.target?.isContentEditable || e.target?.closest?.('input:not([type="checkbox"]), textarea, select, [contenteditable]')) return;
+  if (document.querySelector(DOCK_ESC_OWNERS)) return;
+  e.preventDefault();
+  const g = lastGesture;
+  lastGesture = null;
+  try {
+    const ours = g ? await gestureTop(g) : [];
+    const { undone } = await api('POST', '/undo', { steps: ours.length || 1 });
+    if (!undone.length) return toast('Nothing to undo');
+    await refreshView();
+    const first = undone[0].name || undone[0].entity;
+    toast(`Undone: ${first}${undone.length > 1 ? ` and ${undone.length - 1} more` : ''}`);
+  } catch (err) { toast(err.message, true); }
 });
 
 /* ---------- page loader ---------- */

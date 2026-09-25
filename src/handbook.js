@@ -962,7 +962,7 @@ Once a row is chosen, a bar sits at the bottom centre of the window saying how m
 | **Link to…** | pick a relation, search the far table, pick one row: every chosen row is linked to it |
 | **Duplicate** | copies each row's writable fields; computed fields and documents are not copied, because a computed field is a read and recomputes itself on the copy |
 | **⋯** | the overflow below |
-| **Move to trash** | past a hairline, on its own |
+| **Move to trash** | past a hairline, on its own. It is instant: the message it raises carries **Undo**, which brings back every row it took, and the cursor moves to the row after them |
 
 | Under ⋯ | What it does |
 | --- | --- |
@@ -1076,7 +1076,7 @@ Three roles: \`admin\`, \`writer\`, \`reader\`. Tokens are \`wv_\` values hashed
 
 \`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\`, a view's share link, the task applet, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either gets a page that links to the sign-in, an API call gets a 401. People sign in with a passkey — the **Door B: passkeys** guide — and agents keep the token. A reader may read any page and write at none; a writer writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an admin token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
 
-Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard deletes and file deletions are not.
+Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard deletes and file deletions are not. In the app, \`⌘Z\` (Ctrl+Z) steps back the last change: a selection-bar trash comes back whole when nothing was written after it. A text box, an open cell and a document keep \`⌘Z\` as their own text undo. There is no redo.
 
 ## The structure is data too
 
