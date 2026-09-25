@@ -11023,6 +11023,7 @@ const KEY_SHEET_ANYWHERE = [
   { keys: '?', does: 'this sheet, from anywhere outside a text field' },
   { keys: '⌘⇧E', does: 'expand the docked record to the page, or dock it again' },
   { keys: 'Esc', does: 'close the dock, a dialog or a menu' },
+  { keys: '⌘Z', does: 'undo the last change; a trash from the selection bar comes back whole' },
   { keys: '⌘Return', does: 'send a problem report from its note' },
 ];
 const KEY_SHEET_TABLE = [
