@@ -56,7 +56,10 @@ if (s) {
     const wrap = document.querySelector('.table-wrap');
     const table = document.querySelector('.wv-grid');
     const box = wrap.classList.contains('wv-grid-scroll') ? wrap : null;
-    const edge = (box ? box.getBoundingClientRect().top : 0) + table.tHead.offsetHeight;
+    // The lower edge of a STUCK field header is where the readable body
+    // starts, in either box — and below the view header, which holds at the
+    // top of the page itself (Issue #321).
+    const edge = table.querySelector('thead th').getBoundingClientRect().bottom;
     let top = null;
     for (const tr of table.querySelectorAll('tbody tr[data-i]')) {
       if (tr.getBoundingClientRect().bottom > edge + 1) { top = Number(tr.dataset.i); break; }

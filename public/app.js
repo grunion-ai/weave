@@ -905,6 +905,39 @@ function iconButton(current, onPick) {
   return btn;
 }
 
+/* The header holds at the top of the page (Issue #321), so every sticky
+   layer beneath it has to know how tall it is — a title alone and a title
+   over four lines of description park at different heights, and the
+   description arrives from /markdown after the grid is drawn. The reading
+   goes on the root as --wv-view-h, which style.css adds to the `top` of the
+   grid's field headers and the Σ row and hands to scroll-padding.
+   The page's header is the one measured, wherever the call came from: the
+   docked pane has a header of its own, and it never pins. */
+function publishViewHeaderHeight() {
+  const box = document.querySelector('#main > .view-header');
+  if (!box) return;
+  const root = document.documentElement;
+  const h = box.getBoundingClientRect().height;
+  /* It pins while it leaves the reader something to read. Past half the
+     window it does not: a 200px-tall window, or a description expanded to
+     thirty lines, would hold nothing but header — and the Show less control
+     at its foot would sit off screen with no way to scroll to it, because a
+     pinned band does not move. */
+  const holds = h <= innerHeight / 2;
+  root.classList.toggle('view-header-loose', !holds);
+  const v = holds ? `${h}px` : '0px';
+  // Only on a change: re-writing the same value inside a ResizeObserver
+  // callback is how the "undelivered notifications" loop gets fed.
+  if (root.style.getPropertyValue('--wv-view-h') !== v) root.style.setProperty('--wv-view-h', v);
+}
+function stickViewHeader(box) {
+  new ResizeObserver(publishViewHeaderHeight).observe(box);
+  return box;
+}
+// A window resized shorter changes the verdict without changing the header,
+// which a ResizeObserver on the header alone never hears.
+addEventListener('resize', publishViewHeaderHeight);
+
 function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null }) {
   const box = el('div', { class: 'view-header' });
   const crumbKids = [];
@@ -994,7 +1027,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
     showRendered(current);
     box.append(descBox);
   }
-  return box;
+  return stickViewHeader(box);
 }
 
 function wsHomeHref() {
@@ -2134,6 +2167,18 @@ function scrollTargetIntoView(target, { block = 'start', padding = 0, bottom = 0
    watch from one Shift+Enter re-grabbed the input the next Shift+Enter had
    just blurred, and the commit's redraw restored focus to the old row. */
 let newRowTurn = 0;
+/* How much of the PAGE's top edge the view header covers for this node
+   (Issue #321): nothing where there is no pinned header, and nothing inside
+   a grid that scrolls in a box of its own, which starts below the header
+   and is never covered by it. Read off the header's box, so a description
+   that grew counts the moment it paints. */
+function stuckHeaderHeight(node) {
+  if (!node?.closest || node.closest('.wv-grid-scroll')) return 0;
+  const header = node.closest('#main')?.querySelector(':scope > .view-header');
+  // The laid-out box, not offsetHeight: a half pixel rounded away here is a
+  // row that lands one pixel off after a density flip.
+  return header && getComputedStyle(header).position === 'sticky' ? header.getBoundingClientRect().height : 0;
+}
 // How much of the bottom edge the grid's sticky foot covers — 0 where the
 // foot sits in the flow (the entity page's related sections).
 function stickyFootHeight(row) {
@@ -2154,7 +2199,7 @@ function focusNewRow(eid, { field = null, scope = '#main', select = false, frame
       // and this poll re-asserts every frame until the caret is placed.
       // The + New foot floats at the bottom edge (Feature #196): the new
       // row lands above it, not behind it.
-      scrollTargetIntoView(row, { block: 'nearest', instant: true, bottom: stickyFootHeight(row) });
+      scrollTargetIntoView(row, { block: 'nearest', instant: true, padding: stuckHeaderHeight(row), bottom: stickyFootHeight(row) });
       activateCell(input.closest('td'));
       if (select) input.select();
       if (!placed) {
@@ -4438,11 +4483,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const scroller = () => (wrap.classList.contains('wv-grid-scroll') ? wrap : null);
   const geometry = () => {
     const box = scroller();
-    const viewTop = box ? box.getBoundingClientRect().top : 0;
+    /* Where the reader's window really starts. A wrap that scrolls starts at
+       its own top edge; the page starts under the view header, which holds
+       there (Issue #321) — reading 0 instead put the window a header's
+       height too high and a commit mid-table landed the reader elsewhere. */
+    const chromeH = stuckHeaderHeight(wrap);
+    const viewTop = (box ? box.getBoundingClientRect().top : 0) + chromeH;
     return {
       box,
+      viewTop,
       scrollTop: viewTop - tbody.getBoundingClientRect().top,
-      viewportH: box ? box.clientHeight : innerHeight,
+      viewportH: (box ? box.clientHeight : innerHeight) - chromeH,
       headH: table.tHead?.offsetHeight ?? 0,
     };
   };
@@ -4595,7 +4646,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
      was twenty rows out on a 600-row grid. `scrollToRow` brings the row and
      its window into the DOM at the estimate; the correction that follows is
      under a screen and costs no extra paint. */
-  const topEdge = (g) => (g.box ? g.box.getBoundingClientRect().top : 0) + g.headH;
+  const topEdge = (g) => g.viewTop + g.headH;
   const topRowIndex = () => {
     const edge = topEdge(geometry());
     for (const tr of tbody.querySelectorAll('tr[data-i]')) {
@@ -8872,7 +8923,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     }, iconEl('✕')),
   ] : [];
   mount.append(
-    el('div', { class: 'view-header' },
+    stickViewHeader(el('div', { class: 'view-header' },
       el('div', { class: 'crumb crumb-row' },
         el('span', { class: 'crumb-path' },
         ...(inPeek
@@ -8886,7 +8937,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
           onclick: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied'),
         }, `#${entity.publicId} ⧉`)),
         el('span', { class: 'crumb-actions wv-toolbar' }, eye, dlBtn, ...poseControls)),
-      el('div', { class: 'wv-toolbar entity-head' }, nameInput)),
+      el('div', { class: 'wv-toolbar entity-head' }, nameInput))),
   );
   /* The crumb's table link on the full page means "re-dock", not "leave":
      the split shows the same table the link names, entity still in hand. */
@@ -9701,7 +9752,7 @@ async function showActivityDetail(id) {
     row('History', el('a', { href: `#/activity/${a.entityId}` }, `All activity for ${a.entityName ?? 'this record'} →`)));
 
   main.replaceChildren(
-    el('div', { class: 'view-header' },
+    stickViewHeader(el('div', { class: 'view-header' },
       el('div', { class: 'crumb' },
         el('a', { href: '#/activity' }, 'Activity'), ' › ',
         el('span', {
@@ -9709,7 +9760,7 @@ async function showActivityDetail(id) {
           onclick: () => copyText(`${location.origin}${WS_PREFIX}/#/activity/${a.id}`, 'Permalink copied'),
         }, `#${a.id} ⧉`)),
       el('div', { class: 'wv-toolbar entity-head' },
-        el('span', { class: 'name-edit activity-title' }, activitySummary(a)))),
+        el('span', { class: 'name-edit activity-title' }, activitySummary(a))))),
     el('div', { class: 'card panel' },
       el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Fields')),
       fieldsBody));

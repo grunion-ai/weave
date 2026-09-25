@@ -60,10 +60,13 @@ if (s) {
     assert.ok(inView(btn), `the foot sits inside the viewport: ${JSON.stringify(btn)}`);
     assert.ok(btn.bottom > btn.ih - 60, 'and at its bottom edge');
     // The header holds at the top edge too — the wrap no longer swallows sticky.
+    // It parks under the view header, which holds there itself (Issue #321).
     await page.evaluate(() => scrollTo(0, 2000));
     await page.waitForTimeout(150);
     const th = await rect(page, '.wv-grid thead th.col-head');
-    assert.ok(th.top >= 0 && th.top < 40, `the header stays at the top edge while scrolling: top=${th.top}`);
+    const chrome = await rect(page, '#main > .view-header');
+    assert.ok(chrome.top >= -1 && chrome.top < 2, `the view header is at the top edge: top=${chrome.top}`);
+    assert.ok(th.top >= chrome.bottom - 1 && th.top < chrome.bottom + 40, `the field headers stay under it while scrolling: top=${th.top}, view header bottom=${chrome.bottom}`);
     const mid = await rect(page, '.wv-grid .add-entity-btn');
     assert.ok(inView(mid), 'the foot is still on screen mid-table');
     await page.close();

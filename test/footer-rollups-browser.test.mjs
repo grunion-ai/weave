@@ -159,7 +159,9 @@ if (s) {
     await page.waitForFunction(() => window.scrollY > 300);
     await page.waitForTimeout(150);
     const after = await geo();
-    assert.ok(after.headTop >= 0 && after.headTop < 40, `the field headers stick to the top edge: ${JSON.stringify(after)}`);
+    // Under the view header, which holds at the top edge itself (Issue #321).
+    const chrome = await page.evaluate(() => document.querySelector('#main > .view-header').getBoundingClientRect().bottom);
+    assert.ok(after.headTop >= chrome - 1 && after.headTop < chrome + 40, `the field headers stick under the view header: ${JSON.stringify({ ...after, chrome })}`);
     assert.ok(Math.abs(after.footTop - after.headBottom) <= 1, `the Σ row is still flush under them: ${JSON.stringify(after)}`);
     assert.ok(after.footBottom > 0 && after.footBottom < after.innerHeight, `on screen after a 600px scroll, not scrolled away: ${JSON.stringify(after)}`);
     assert.equal(await page.$eval('thead tr.wv-foot td.foot-mark', (td) => getComputedStyle(td).opacity), '1', 'the pinned row is opaque: rows slide under it, not through it');

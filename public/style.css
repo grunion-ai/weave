@@ -75,6 +75,10 @@
    reload. Forbidding x-overscroll removes the state (and the accidental
    back-swipe while scrolling a wide grid, with it). Vertical bounce stays. */
 html, body { overscroll-behavior-x: none; }
+/* Anything scrolled to by the browser itself — a focused control, a hash
+   anchor, find-in-page — stops below the view header instead of behind it
+   (Issue #321). The app's own scrolls go through scrollTargetIntoView. */
+:root { scroll-padding-top: var(--wv-view-h, 0px); }
 body { font-size: 14px; background: var(--wv-canvas); }
 #app { display: flex; min-height: 100vh; }
 
@@ -197,7 +201,28 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .kind-mark { width: 13px; height: 13px; vertical-align: -2px; }
 
 /* ---------- shared view header ---------- */
-.view-header { margin-bottom: 16px; }
+/* The header never leaves the screen (Issue #321). A table page scrolls one
+   of two boxes — the grid's own wrap, when the grid outgrows its card and
+   takes a vertical scroller of its own (Issue #233), or the page itself,
+   when the grid fits and clips. In the second case the breadcrumb, title,
+   description and toolbar left with the page, which is the "sometimes" Kyle
+   reported: the two modes looked like two different products. Sticky at the
+   top of the panel makes them read the same.
+   The gap under the header is padding, not margin: a margin is transparent,
+   and rows read straight through the 16px band while the header held.
+   z-index 6 clears every sticky layer the grid has (Issue #252 tops out at
+   5) and ties with the overlays that must still open over it — the cell
+   expansion and the field menu — which a tie hands to the later element in
+   the document, and every one of them is later. */
+.view-header { padding-bottom: 16px; }
+#main > .view-header { position: sticky; top: 0; z-index: 6; background: var(--tblr-bg-surface); }
+/* A header that would take half the window does not pin: a 200px-tall
+   window, or a description the reader expanded to thirty lines, would hold
+   nothing but header, and the Show less control at its foot would sit off
+   screen with no way to scroll to it, because the pinned band does not
+   move. Over that line the header goes back in the flow and --wv-view-h
+   reads 0 — stickViewHeader() owns both. */
+html.view-header-loose #main > .view-header { position: static; }
 .view-header .crumb { margin-bottom: 4px; }
 .view-title-row { margin-bottom: 0; }
 /* Issue #267: the heading element around the title input, with none of an h1's own look. */
@@ -288,6 +313,15 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    Ties are broken by document order, which would put a body cell over the
    Σ row it scrolls beneath, so each layer is numbered rather than shared. */
 .wv-grid thead th { position: sticky; top: 0; z-index: 4; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
+/* The grid's own header sticks to whichever box scrolls, so the offset is
+   owed only where the PAGE is that box: a `.wv-fit` wrap, which clips rather
+   than scrolls. There the view header is already parked at the top, and the
+   field headers — and the Σ row under them — start where it ends instead of
+   sliding beneath it. Every other wrap scrolls itself (a wide grid on the
+   table page, the registry grids on a space page, the dock) and its header
+   belongs at ITS top edge: offsetting those pushed the header down inside a
+   box only as tall as the table, onto the rows. */
+#main .table-wrap.wv-fit .wv-grid thead th { top: var(--wv-view-h, 0px); }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* The id column carries a short "#12 ↗" link — collapse it to its content
@@ -2073,6 +2107,7 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
    through it. The rule beneath it is an inset shadow, not a thicker border: a
    collapsed 2px border lent the first body row a pixel. */
 .wv-grid thead tr.wv-foot td { position: sticky; top: var(--wv-head-h, 0px); z-index: 2; box-shadow: inset 0 -1px 0 var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); font-size: 12px; color: var(--tblr-secondary); vertical-align: top; white-space: nowrap; padding-top: 4px; padding-bottom: 4px; }
+#main .table-wrap.wv-fit .wv-grid thead tr.wv-foot td { top: calc(var(--wv-view-h, 0px) + var(--wv-head-h, 0px)); }
 /* The Σ row's own corner: frozen left as well as pinned under the header,
    and a layer above the rest of the row so the body's frozen cells pass
    beneath it rather than through it (Issue #252). */

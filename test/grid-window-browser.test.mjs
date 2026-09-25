@@ -99,7 +99,10 @@ if (s) {
         // spacer's span.
         const wrap = document.querySelector('.table-wrap');
         const box = wrap.classList.contains('wv-grid-scroll') ? wrap.getBoundingClientRect() : { top: 0, bottom: innerHeight };
-        const head = document.querySelector('.wv-grid thead').getBoundingClientRect().bottom;
+        // A field header CELL, not the <thead>: the cells are what is sticky,
+        // so their lower edge is where the readable body starts — below the
+        // view header, which holds at the top itself (Issue #321).
+        const head = document.querySelector('.wv-grid thead th').getBoundingClientRect().bottom;
         const rows = [...document.querySelectorAll('.wv-grid tbody tr')].filter((tr) => !tr.hidden);
         const inView = rows.filter((tr) => { const r = tr.getBoundingClientRect(); return r.bottom > Math.max(box.top, head) && r.top < box.bottom; });
         return inView.filter((tr) => tr.classList.contains('wv-spacer')).length;
@@ -209,7 +212,10 @@ if (s) {
         // A drawn row that is on screen.
         const wrap = document.querySelector('.table-wrap');
         const box = wrap.classList.contains('wv-grid-scroll') ? wrap.getBoundingClientRect() : { top: 0, bottom: innerHeight };
-        const head = document.querySelector('.wv-grid thead').getBoundingClientRect().bottom;
+        // A field header CELL, not the <thead>: the cells are what is sticky,
+        // so their lower edge is where the readable body starts — below the
+        // view header, which holds at the top itself (Issue #321).
+        const head = document.querySelector('.wv-grid thead th').getBoundingClientRect().bottom;
         return [...document.querySelectorAll('.wv-grid tbody tr.entity-row')].find((tr) => { const r = tr.getBoundingClientRect(); return r.top > Math.max(box.top, head) + 5 && r.bottom < box.bottom - 5; }).dataset.eid;
       });
       const before = await page.evaluate(() => {
