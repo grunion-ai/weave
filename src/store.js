@@ -38,6 +38,14 @@ CREATE TABLE IF NOT EXISTS doc_revisions (
 CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
 `;
 
+// Automations load in fire order (Issue #285): by the seq the engine mints,
+// kept in each row's json. A row written before seq existed has none; those
+// come last, in rowid order, which is the order the engine numbers them in on
+// open and the order a bare read returned them in before.
+const LOAD_ORDER = {
+  automations: " ORDER BY json_extract(json, '$.seq') IS NULL, json_extract(json, '$.seq'), rowid",
+};
+
 // The undo stack is bounded: it is a working set, not an archive (the audit
 // log is the archive). 200 steps of full before-images stays small.
 const UNDO_CAP = 200;
@@ -143,7 +151,7 @@ export class Store {
     const state = { ...JSON.parse(metaRow.json), spaces: {}, tables: {}, entities: {}, automations: {} };
     const cache = { meta: metaRow.json, spaces: new Map(), tables: new Map(), automations: new Map() };
     for (const key of ['spaces', 'tables', 'automations']) {
-      for (const row of db.prepare(`SELECT id, json FROM ${key}`).all()) {
+      for (const row of db.prepare(`SELECT id, json FROM ${key}${LOAD_ORDER[key] ?? ''}`).all()) {
         state[key][row.id] = JSON.parse(row.json);
         cache[key].set(row.id, row.json);
       }

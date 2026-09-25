@@ -420,7 +420,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'automation', name: 'Automation', storedIn: 'state.automations',
-      definition: 'A rule bound to one table: a trigger — entity-created, field-updated, state-changed — and the actions it fires: set-field, append-doc, add-comment, webhook.',
+      definition: 'A rule bound to one table: a trigger — entity-created, field-updated, state-changed — and the actions it fires: set-field, append-doc, add-comment, webhook. Every rule carries seq, a monotonic per-workspace counter minted at create: the rules on one trigger fire in seq order.',
       identity: 'uuid',
       api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
     },
@@ -980,6 +980,24 @@ export class Weave {
         for (const row of pending) row.a.seq = ++n;
         for (const e of touched) this.#mark(e);
         s.meta.activitySeq = n;
+        changed = true;
+      }
+    }
+    /* Automations gained `seq` for the same reason (Issue #285): the rules on
+       one trigger fired in whatever order the store read them back, which was
+       never stored. Numbering follows the order they load in, rowid order,
+       which is the order they fired in before seq existed, so no workspace
+       changes behaviour on this open. As above, anything unnumbered is
+       numbered and a number already handed out never moves; the counter first
+       catches up with the highest number present, so a dump that lost its
+       counter cannot reissue one. */
+    {
+      const autos = Object.values(s.automations ?? {});
+      const high = Math.max(s.meta.automationSeq ?? 0, ...autos.map((a) => a.seq ?? 0));
+      if (s.meta.automationSeq !== high) { s.meta.automationSeq = high; changed = true; }
+      for (const auto of autos) {
+        if (auto.seq != null) continue;
+        auto.seq = ++s.meta.automationSeq;
         changed = true;
       }
     }
@@ -6306,15 +6324,26 @@ export class Weave {
       throw new WeaveError(`Unknown automation action '${a.type}'`, 'invalid');
     });
     if (!acts.length) throw new WeaveError('Automation needs at least one action', 'invalid');
-    const auto = { id: uuid(), dbId: db.id, name: name ?? 'Automation', trigger: t, actions: acts, enabled };
+    this.state.meta.automationSeq = (this.state.meta.automationSeq ?? 0) + 1;
+    const auto = { id: uuid(), seq: this.state.meta.automationSeq, dbId: db.id, name: name ?? 'Automation', trigger: t, actions: acts, enabled };
     this.state.automations[auto.id] = auto;
     this.save();
     if (!db.system) this.#audit('automation-created', { table: db.name, name: auto.name, trigger: t.type });
     return auto;
   }
 
+  /* Every automation in fire order: by seq (Issue #285). The store already
+     loads them that way, but an import keeps the dump's key order and a
+     refresh can bring in a rule a pre-seq writer left unnumbered, so the
+     order is settled here rather than trusted to the object. An unnumbered
+     rule is the newest one there is, so it goes last. */
+  #automationsInOrder() {
+    const key = (a) => a.seq ?? Infinity;
+    return Object.values(this.state.automations).sort((x, y) => (key(x) === key(y) ? 0 : key(x) - key(y)));
+  }
+
   listAutomations(dbRef = null) {
-    const all = Object.values(this.state.automations);
+    const all = this.#automationsInOrder();
     if (!dbRef) return all;
     const db = this.getTable(dbRef);
     return all.filter((a) => a.dbId === db.id);
@@ -6334,6 +6363,7 @@ export class Weave {
       }
       return {
         id: auto.id,
+        seq: auto.seq,
         name: auto.name,
         table: db ? this.qualifiedName(db) : null,
         tableId: auto.dbId,
@@ -6373,7 +6403,7 @@ export class Weave {
 
   #runAutomations(db, e, event, depth) {
     if (depth >= 3) return;
-    for (const auto of Object.values(this.state.automations)) {
+    for (const auto of this.#automationsInOrder()) {
       if (!auto.enabled || auto.dbId !== db.id) continue;
       const t = auto.trigger;
       if (t.type !== event.type) continue;
