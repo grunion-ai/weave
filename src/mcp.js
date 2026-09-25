@@ -43,6 +43,8 @@ export const TOOLS = [
         limit: { type: 'number' },
         offset: { type: 'number' },
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
+        fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too; Activity brings the history). Comments, activity and files are left out. Not with select.' },
+        relations: { type: 'string', enum: ['full', 'chip'], description: 'chip: a relation value is { id, publicId, name } and each related row\'s summary is sent once, in chips (keyed by id). Default full: every row embeds its related rows\' summaries.' },
         includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
         trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
         search: { type: 'string', description: 'Keep only the rows the weave_search matcher finds in this table: name, publicId (#143), text fields, documents, comments. Composes with where and sort; total counts the matches.' },
@@ -439,7 +441,8 @@ export function dispatchTool(weave, name, args = {}) {
     case 'weave_query':
       return weave.query(args.db, {
         where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null,
-        offset: args.offset ?? 0, select: args.select ?? null, includeDeleted: Boolean(args.includeDeleted),
+        offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'full',
+        includeDeleted: Boolean(args.includeDeleted),
         trashCount: Boolean(args.trashCount), search: args.search ?? '',
       });
     case 'weave_get_entity':

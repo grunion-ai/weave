@@ -132,6 +132,7 @@ Schema
 
 Entities
   query <db> [--where '[["Field","=",1]]'] [--search text] [--select 'A,B'] [--sort Field] [--limit n]
+        [--fields 'A,B'] [--relations chip]   Entity rows cut to these fields; related rows as references + chips
   get <ref> [--db name]               Read one entity ("Task#3" or id)
   create <db> <name> [--values '{json}'] [--doc 'markdown']
   update <ref> --values '{json}'
@@ -752,6 +753,8 @@ async function main() {
       const result = w.query(db, {
         where: parseJsonFlag('where') ?? [],
         select: flags.select ? String(flags.select).split(',').map((s) => s.trim()) : null,
+        fields: flags.fields ? String(flags.fields).split(',').map((s) => s.trim()) : null,
+        relations: flags.relations ? String(flags.relations) : 'full',
         sort: flags.sort ? [String(flags.sort)] : [],
         limit: flags.limit ? Number(flags.limit) : null,
         offset: flags.offset ? Number(flags.offset) : 0,

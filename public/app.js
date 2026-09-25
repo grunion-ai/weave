@@ -3931,13 +3931,19 @@ async function showDatabase(dbId, view) {
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
     ...(search ? { search } : {}),
     ...(showDeleted ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
+    /* What the grid draws, and no more (Issue #272): its columns, and each
+       related row's chip once per page rather than once per row. A hidden
+       field is not fetched; the eye's flip comes back through here, so the
+       field is named on the re-read that shows it. */
+    fields: gridFields(db),
+    relations: 'chip',
   };
   /* The trash list only when it is shown (Issue #270): the open used to read
      the whole trash — every trashed row in full — to print one number in the
      eyeball. The count rides on the query (`trashCount`); the rows are asked
      for only when "Deleted rows" puts them in the grid. */
   const [result, trash] = await Promise.all([
-    api('POST', `/tables/${db.id}/query`, { ...query, trashCount: true }),
+    api('POST', `/tables/${db.id}/query`, { ...query, trashCount: true }).then((res) => graftChips(db, res)),
     showDeleted
       ? api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0, items: [] }))
       : null,
@@ -3965,6 +3971,35 @@ function gridMoves(db, field) {
   if (!field) return true;
   if ((gridSort(db) ?? []).some((s) => s.field === field || s.field === 'Modified At' || s.field === 'Modified By')) return true;
   return Object.keys(tableFilters(db) ?? {}).includes(field);
+}
+
+/* The fields a table page asks its query for (Issue #272): the columns it
+   shows, the fields it is sorted by (a grid holding every row sorts itself,
+   off those values), and the system columns it shows. The stamps ride on
+   every row anyway; Activity is named because it brings the history the
+   column counts. The row's id, #id and name are the row's own, always sent. */
+function gridFields(db) {
+  const names = new Set(visibleCols(db));
+  for (const s of gridSort(db) ?? []) if (db.fields.some((f) => f.name === s.field)) names.add(s.field);
+  for (const n of db.systemFields ?? []) names.add(n);
+  return [...names];
+}
+
+/* A chip-level answer carries each related row's summary once, in `chips`,
+   and a reference in the row. The summary goes back onto the reference, so
+   every relation cell draws the chip a full read would have handed it. Only
+   the table's relation fields: a view field's value is an object with an id
+   too, and it is not a reference. */
+function graftChips(db, res) {
+  if (!res?.chips) return res;
+  const rels = db.fields.filter((f) => f.type === 'relation').map((f) => f.name);
+  for (const item of res.items ?? []) {
+    for (const name of rels) {
+      const v = item.fields?.[name];
+      for (const ref of Array.isArray(v) ? v : [v]) if (ref?.id && res.chips[ref.id]) Object.assign(ref, res.chips[ref.id]);
+    }
+  }
+  return res;
 }
 
 /* The table's sort as the query takes it: only fields that still exist, so a
@@ -3995,7 +4030,7 @@ function gridPager(db, query, first) {
   };
   const fetch = (offset) => {
     if (pages.has(offset)) return pages.get(offset);
-    const p = api('POST', `/tables/${db.id}/query`, { ...query, limit: GW.PAGE, offset }).then((res) => put(offset, res));
+    const p = api('POST', `/tables/${db.id}/query`, { ...query, limit: GW.PAGE, offset }).then((res) => put(offset, graftChips(db, res)));
     // A read that failed is not a page: the next window asks again.
     p.catch(() => pages.delete(offset));
     pages.set(offset, p);
