@@ -966,7 +966,7 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
      since Issue #240 the rows are taught rather than swapped, so this tail
      landing mid-gesture cannot orphan the row under the cursor —
      test/eye-live-rows-browser.test.mjs is the behavioural gate. */
-  assert.match(eyeFn, /relearnRows\(pop, buildRows\(fresh\)/, 'a flip teaches the rows in place');
+  assert.match(eyeFn, /relearnRows\(pop, buildRows\(liveTable\(\)\)/, 'a flip teaches the rows in place');
   assert.doesNotMatch(eyeFn, /replaceChildren/, 'and never swaps them wholesale');
   assert.doesNotMatch(eyeFn, /fieldVisibilityPopover\(again/, 'the close-and-reopen dance is gone');
   const relearn = fnBody('relearnRows');
@@ -1696,15 +1696,25 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
   assert.match(eye, /hiddenFields: \[\.\.\.next\]/, 'hidden fields persist on the table');
   assert.match(eye, /systemFields: \[\.\.\.next\]/, 'system columns toggle from the same list');
   assert.match(eye, /state\.showDeleted/, 'deleted rows are a session switch');
-  assert.match(eye, /hideRollups: liveTable\(\)\.hideRollups === false/, 'the Σ row switch is table truth (Issue #233), read live (Issue #240)');
+  assert.match(eye, /hideRollups: t\.hideRollups === false/, 'the Σ row switch is table truth (Issue #233), read live (Issue #240)');
   // Issue #249: hidden is the default, so both the switch and the grid read
   // the opt-in explicitly — the absence is off, never on.
   assert.match(eye, /row\(cur\.hideRollups === false, 'Σ rollup row'/, 'the switch reads on only when the table opted in');
   assert.match(fnBody('renderTable'), /db\.system \|\| db\.hideRollups !== false \? null : renderFooter/, 'no Σ row until the table opts in (Issue #249)');
   // A taught row keeps the handler it was built with, so every handler reads
-  // the table at click time instead of a set captured at build time.
-  assert.match(eye, /new Set\(liveTable\(\)\.hiddenFields \?\? \[\]\)/, 'the hidden set is read at click time');
-  assert.match(eye, /new Set\(liveTable\(\)\.systemFields \?\? \[\]\)/, 'so is the system set');
+  // the live table instead of a set captured at build time, and reads it
+  // when its write's turn comes rather than at the click (Issue #243).
+  assert.match(eye, /new Set\(t\.hiddenFields \?\? \[\]\)/, 'the hidden set is read from the table the turn hands over');
+  assert.match(eye, /new Set\(t\.systemFields \?\? \[\]\)/, 'so is the system set');
+  assert.match(eye, /eyeWrites\.then\(async \(\) => \{\s*const patch = patchOf\(liveTable\(\)\);/,
+    'every switch writes through one queue, reading the table only when its turn comes');
+  assert.match(eye, /if \(patch\.view\) await gridConfigWrite\(db, null, patch\.view\);\s*else \{ await api\('PATCH', `\/tables\/\$\{db\.id\}`, patch\); await loadSchema\(\); \}/,
+    "a field flip on a view writes the view (Feature #229), inside the same queue");
+  assert.match(eye, /turn\.then\(\(\) => \{\s*if \(eyeTails\.get\(db\.id\) !== turn\) return;\s*eyeTails\.delete\(db\.id\);\s*paint\(\);/,
+    "the paint runs off the queue, once, after the last write of a burst on this table");
+  assert.match(eye, /if \(pop\?\.eyeOf === db\.id\) pop\.relearnEye\(\)/,
+    "a late paint teaches only an eye on this table, never a ⋮ menu opened since");
+  assert.match(eye, /if \(stillShown\(\)\) redraw \?/, 'and redraws its page only while that page is on screen');
   assert.match(fnBody('renderTable'), /let cols = visibleCols\(db\)/, 'the grid honours the hidden set');
   assert.match(fnBody('reorderField'), /const cols = visibleCols\(db\)/, 'reorder mirrors the same columns');
   assert.doesNotMatch(APP, /row\('⚙ Manage fields'/, 'the Manage fields row is gone');
