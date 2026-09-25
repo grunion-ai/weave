@@ -3532,7 +3532,12 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
         (mode) => {
           gridDensity(db.id, mode);
           const grid = document.querySelector('.wv-grid');
-          if (grid) { grid.dataset.density = mode; markClippedCells(grid); }
+          if (!grid) return;
+          // The reader stays on the row they were reading (Issue #342).
+          const flip = () => { grid.dataset.density = mode; };
+          const keep = grid.closest('.table-wrap')?.wvKeepPlace;
+          keep ? keep(flip) : flip();
+          markClippedCells(grid);
         },
       ),
       // Export and delete are occasional and one of them is irreversible, so
@@ -4381,6 +4386,52 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (want !== g.scrollTop) (g.box ?? window).scrollBy({ top: want - g.scrollTop, left: 0, behavior: 'instant' });
     rewindow();
   };
+  /* Run `change` (a density flip) and leave the reader on the row they were
+     reading (Issue #342). The spacers stand in for the rows not drawn at
+     one measured height, and the flip changes that height, so the same
+     scroll position in pixels is a different row: Comfortable to Compact
+     with row 222 of a 600-row grid heading the view put row 326 there. The
+     row heading the view, and how far into it the header's edge sat, are
+     read before the flip; after it the row height is measured again, the
+     box is scrolled to where that row should be at the new height, and then
+     corrected by where the row actually painted, since the rows above it in
+     the window are not all that height. The header's edge is read off its
+     cells: they stick, and the <thead> box itself scrolls away with the
+     rows. */
+  const keepPlace = (change) => {
+    if (!tbody?.isConnected) return change();
+    const line = () => Math.max(scroller()?.getBoundingClientRect().top ?? 0,
+      ...[...(table.tHead?.rows ?? [])].map((r) => r.cells[0]?.getBoundingClientRect().bottom ?? 0));
+    const at = line();
+    const head = [...tbody.querySelectorAll('tr[data-i]')].find((tr) => tr.getBoundingClientRect().bottom > at + 1);
+    if (!head) return change();
+    const i = Number(head.dataset.i);
+    const r = head.getBoundingClientRect();
+    const into = r.height ? (at - r.top) / r.height : 0;
+    change();
+    rewindow();
+    // Where that row goes back to: the header's edge after the flip.
+    const edge = line();
+    const move = (top) => { if (top) (scroller() ?? window).scrollBy({ top, left: 0, behavior: 'instant' }); };
+    move(tbody.getBoundingClientRect().top + (i + into) * rowH() - edge);
+    rewindow();
+    /* A correction is the grid settling, not the reader travelling, so it
+       re-anchors the direction (Issue #317): read as travel, a correction
+       of more than a row flipped the buffer to the other side of the
+       window, and the spacer that swapped in for those rows did not weigh
+       what they did, which moved the row again. It can still move the
+       window's edge by a row, so it is read again until it holds. */
+    for (let k = 0; k < 3; k++) {
+      const tr = live.get(i);
+      if (!tr) break;
+      const now = tr.getBoundingClientRect();
+      const off = now.top + into * now.height - edge;
+      if (Math.abs(off) < 1) break;
+      move(off);
+      win.lastTop = geometry().scrollTop;
+      rewindow();
+    }
+  };
   // The <tr> for row i, drawn — fetched, scrolled to and painted if it must be.
   const ensureRow = async (i) => {
     if (i < 0 || i >= total()) return null;
@@ -4445,6 +4496,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   };
   wrap.wvRewindow = rewindow;
   wrap.wvScrollToRow = scrollToRow;
+  wrap.wvKeepPlace = keepPlace;
   wrap.wvPatchRows = patchRows;
   // ⌘Z's redraw (Issue #259): the same re-read a bulk write takes.
   wrap.wvRefresh = () => onSaved?.();
