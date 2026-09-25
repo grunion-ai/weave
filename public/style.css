@@ -1532,10 +1532,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    the screen: the pane is its own scroll box, pinned to the viewport.
    Default is an equal split — #main and #dock each flex to half the room
    left of the nav (Kyle, 2026-09-02). A dragged divider pins the dock to a
-   px width (inline flex: none); double-click hands it back to the flex.
+   px flex basis it may shrink from (Issue #326); double-click hands it back
+   to the even split.
    Side padding matches #main's 28px, so the entity reads on the page's
    grid (Kyle, 2026-09-02: padding on either edge of the split dock). */
-#dock { flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: 14px 28px 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 360px; min-height: calc(100vh - 16px); max-height: calc(100vh - 16px); overflow-y: auto; position: sticky; top: 8px; align-self: flex-start; }
+#dock { flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: 14px 28px 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: calc(100vh - 16px); max-height: calc(100vh - 16px); overflow-y: auto; position: sticky; top: 8px; align-self: flex-start; }
 #dock .dock-head { display: flex; align-items: center; min-height: 26px; margin-bottom: 2px; }
 /* The divider is the canvas gap itself: a 16px flex column between the two
    panels (Kyle, 2026-09-02 — never a strip inside either panel). Its
@@ -1545,6 +1546,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* The gutter supplies the whole gap while it is up; #main's own right
    margin would double it. */
 #main:has(+ #dock-gutter:not([hidden])) { margin-right: 0; }
+/* The table beside the dock keeps a readable floor at every window and
+   every pin (Issue #326). The dock is the one that yields: its pin is a
+   shrinkable flex basis (pinDock in app.js) and its own floor is 0, so a
+   window too narrow for both takes room from the dock, never the table,
+   and never spills into a sideways page scroll. */
+#main:has(+ #dock-gutter:not([hidden])) { min-width: 320px; }
 #dock-gutter::after { content: ""; position: absolute; left: 50%; top: 50%; height: 44px; width: 3px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--tblr-border-color); opacity: 0; transition: opacity .12s ease; }
 #dock-gutter:hover::after, body.dock-resizing #dock-gutter::after { opacity: 1; }
 body.dock-resizing { user-select: none; cursor: col-resize; }
