@@ -156,6 +156,64 @@ function toast(msg, isErr = false, action = null) {
   setTimeout(() => t.remove(), action ? 7000 : isErr ? 4200 : 1400);
 }
 
+/* A centred dialog holds the page while it is open (Issue #263). The audit
+   found Tab walking out of every dialog into the grid behind the backdrop,
+   and nothing telling a screen reader a dialog had opened. holdPage() makes
+   `box` a modal dialog named by its <h2>, puts `back` on the page, marks
+   every other body child `inert` (no focus, no clicks, hidden from the
+   accessibility tree: Chromium 102 and Safari 15.5 on), and keeps Tab and
+   Shift+Tab cycling inside the box. It moves every Tab itself rather than
+   catching only the ends: Safari's default Tab skips buttons, so its last
+   stop is not the box's last control, and a trap that waited there would
+   let the reader walk out to the address bar. The toasts and the problem
+   reporter stay live: a toast's Undo is pressed while a dialog is open, and
+   the reporter floats above dialogs on purpose. Popovers a dialog opens are appended
+   after the hold, so they are live too, and a Tab inside one is theirs.
+   Callers close a dialog by removing its backdrop as often as through
+   modal()'s own close (a Restore, a Clear, tray() opening over it), so the
+   page comes back on the removal itself, and focus that fell to the body
+   goes back to whatever opened the dialog. */
+const MODAL_LIVE = '#wv-toasts, .bug-fab, #bug-panel';
+const MODAL_STOPS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+let pageHeld = [];
+// A modal replacing a modal keeps the page held: only the last one out frees it.
+function releasePage() {
+  if (document.querySelector('#modal-back')) return;
+  for (const n of pageHeld) n.inert = false;
+  pageHeld = [];
+}
+function holdPage(back, box) {
+  const opener = document.activeElement;
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  const heading = box.querySelector('h2');
+  if (heading) { heading.id = 'modal-title'; box.setAttribute('aria-labelledby', 'modal-title'); }
+  document.body.append(back);
+  for (const n of document.body.children) {
+    if (n === back || n.inert || n.matches(MODAL_LIVE)) continue;
+    n.inert = true;
+    pageHeld.push(n);
+  }
+  addEventListener('keydown', function trap(e) {
+    if (!back.isConnected) return removeEventListener('keydown', trap);
+    const at = document.activeElement ?? document.body;
+    if (e.key !== 'Tab' || (at !== document.body && !back.contains(at))) return;
+    const stops = [...box.querySelectorAll(MODAL_STOPS)].filter((n) => n.getClientRects().length);
+    if (!stops.length) return;
+    e.preventDefault();
+    const i = stops.indexOf(at);
+    const next = i === -1 ? (e.shiftKey ? -1 : 0) : i + (e.shiftKey ? -1 : 1);
+    stops.at(next % stops.length).focus();
+  });
+  new MutationObserver((_, watch) => {
+    if (back.isConnected) return;
+    watch.disconnect();
+    releasePage();
+    const at = document.activeElement;
+    if ((!at || at === document.body) && opener?.isConnected) opener.focus();
+  }).observe(document.body, { childList: true });
+}
+
 /* onSubmit null is a dialog that only shows something (the key sheet, Issue
    #268): one button closes it, and it takes focus, so the keys a reader
    presses next reach the dialog and not the grid behind it. */
@@ -170,6 +228,8 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   const close = () => {
     const held = back.contains(document.activeElement);
     back.remove();
+    // The opener is behind the hold: free the page before focusing it.
+    releasePage();
     if (held && opener?.isConnected) opener.focus();
   };
   const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) close(); } });
@@ -187,8 +247,9 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
       toast(err.message, true);
     }
   });
-  back.append(el('div', { id: 'modal' }, el('h2', {}, title), form));
-  document.body.append(back);
+  const box = el('div', { id: 'modal' }, el('h2', {}, title), form);
+  back.append(box);
+  holdPage(back, box);
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
     if (e.key === 'Escape') { close(); removeEventListener('keydown', esc); }
@@ -7193,7 +7254,7 @@ async function columnStatsPanel(db) {
         el('button', { class: 'btn btn-sm', type: 'button', onclick: () => back.remove() }, 'Close'))),
     body);
   back.append(panel);
-  document.body.append(back);
+  holdPage(back, panel);
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
     if (e.key === 'Escape') { back.remove(); removeEventListener('keydown', esc); }
@@ -10479,7 +10540,7 @@ function wireWsNew() {
   if (!btn) return;
   btn.replaceChildren(iconEl('+', 'wv-icon'));
   btn.addEventListener('click', () => {
-    modal('New workspace', [el('input', { name: 'name', class: 'form-control', placeholder: 'Workspace name (e.g. dos)', style: 'width:100%' })],
+    modal('New workspace', [el('input', { name: 'name', class: 'form-control', placeholder: 'Workspace name (e.g. dos)' })],
       async (fd) => {
         const created = await api('POST', '/workspaces', { name: fd.get('name') });
         location.href = created.url;

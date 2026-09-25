@@ -133,6 +133,16 @@ if (s) {
     await page.waitForSelector('#modal.wv-stats h3:has-text("By Kind")');
     const rows = await page.$$eval('#modal.wv-stats h3:has-text("By Kind") + .table-wrap tbody tr', (trs) => trs.map((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent)));
     assert.deepEqual(rows, [['interactive', '2', '$4.00'], ['scheduled', '2', '$10.00']]);
+    // The panel is a modal dialog like modal()'s (Issue #263): named by its
+    // title, the table behind it inert, and the page back once Escape closes it.
+    const held = await page.evaluate(() => {
+      const m = document.querySelector('#modal.wv-stats');
+      return { role: m.getAttribute('role'), label: document.getElementById(m.getAttribute('aria-labelledby'))?.textContent, appInert: document.querySelector('#app').inert };
+    });
+    assert.deepEqual(held, { role: 'dialog', label: 'Sessions · statistics', appInert: true });
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#modal-back', { state: 'detached' });
+    assert.equal(await page.evaluate(() => document.querySelector('#app').inert), false, 'Escape frees the table');
     await page.close();
   });
 
