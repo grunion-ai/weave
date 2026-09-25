@@ -1579,6 +1579,14 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
    a dashed edge that says "nothing behind this", and the word in plain text.
    No new hue — a lost file is a state, not a category. */
 .attach-item.is-missing { color: var(--tblr-secondary); background: none; border: 1px dashed var(--tblr-border-color); padding: 0 3px 0 6px; }
+/* Files over a file cell (Issue #85): the zone says "let go here" with a
+   ring and a tint in the primary token, both inset, so nothing around it
+   moves and the chips stay readable in either theme. */
+.wv-grid td.is-file-drop, .attach-box.is-file-drop {
+  box-shadow: inset 0 0 0 2px var(--tblr-primary);
+  background: rgba(var(--tblr-primary-rgb), .08);
+}
+.attach-box.is-file-drop { border-radius: 6px; }
 .attach-gone { margin-left: 4px; font-variant: small-caps; letter-spacing: .03em; opacity: .85; }
 /* ---------- fullscreen viewer + whiteboard (Features #47, #46) ---------- */
 #fsv-back { position: fixed; inset: 0; z-index: 90; background: var(--tblr-bg-surface); display: flex; flex-direction: column; }

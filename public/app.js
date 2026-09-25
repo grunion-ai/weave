@@ -2701,6 +2701,45 @@ function toggleSwitch(f, val, patch) {
   return wrap;
 }
 
+/* A file dropped from the desktop (Issue #85). `zone` lights while a drag
+   that carries files is over it and hands the files to `take` on the drop.
+   Only a drag whose types include 'Files' is taken: text, a header or a row
+   being moved passes through with its default intact, so this never
+   swallows another surface's drag. The depth count is how a zone with
+   children knows it was really left: dragenter on the chip fires before
+   dragleave on the cell, and the class must survive that crossing. */
+function fileDropZone(zone, take) {
+  let depth = 0;
+  const carriesFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
+  const off = () => { depth = 0; zone.classList.remove('is-file-drop'); };
+  zone.addEventListener('dragenter', (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    depth += 1;
+    zone.classList.add('is-file-drop');
+  });
+  zone.addEventListener('dragover', (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    zone.classList.add('is-file-drop');
+  });
+  zone.addEventListener('dragleave', (e) => {
+    if (!carriesFiles(e)) return;
+    depth = Math.max(0, depth - 1);
+    if (!depth) off();
+  });
+  zone.addEventListener('drop', (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    off();
+    const files = [...(e.dataTransfer.files ?? [])];
+    if (files.length) take(files);
+  });
+  return zone;
+}
+
 function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
@@ -2977,9 +3016,35 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   // the entity page manages the list — upload lands blob and column together.
   if (f.type === 'attachments') {
     const ids = item.raw?.[f.name] ?? [];
+    /* One upload path for the `+ file` button and a drop (Issue #85): each
+       file lands blob and column together through the field's files route,
+       in order, and the row is re-read once at the end. A refusal (a
+       one-file field given a second) stops the run and says why; whatever
+       landed before it still shows. */
+    const upload = async (files) => {
+      let landed = 0;
+      try {
+        for (const file of files) {
+          const bytes = await new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = () => res(String(reader.result).split(',')[1] ?? '');
+            reader.onerror = () => rej(reader.error);
+            reader.readAsDataURL(file);
+          });
+          await api('POST', `/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, {
+            name: file.name, mime: file.type || 'application/octet-stream', bytes,
+          });
+          landed += 1;
+        }
+      } catch (err) { toast(err.message, true); }
+      if (landed) await saved().catch((err) => toast(err.message, true));
+    };
     const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: 'attachments' },
       el('span', { class: 'ico' }, iconEl('lucide:file', 'wv-icon')),
       ids.length ? String(val ?? `${ids.length}`) : '—');
+    /* The grid's drop zone is the whole cell, which this function never
+       sees: the grid wires the <td> and hands a drop to the chip's upload. */
+    chip.dropFiles = upload;
     if (compact) return chip;
     const box = el('span', { class: 'attach-box' });
     const files = (item.files ?? []).filter((x) => ids.includes(x.id));
@@ -3001,24 +3066,13 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     const input = el('input', { type: 'file', style: 'display:none' });
     input.addEventListener('change', () => {
       const file = input.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          await api('POST', `/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, {
-            name: file.name, mime: file.type || 'application/octet-stream',
-            bytes: String(reader.result).split(',')[1],
-          });
-          await saved();
-        } catch (err) { toast(err.message, true); }
-      };
-      reader.readAsDataURL(file);
+      if (file) upload([file]);
     });
     box.append(input, el('button', {
-      class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Upload a file into this field',
+      class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Upload a file into this field, or drop files here',
       onclick: () => input.click(),
     }, '+ file'));
-    return box;
+    return fileDropZone(box, upload);
   }
   // Type-or-pick dates (Feature #44): one control that is both a text input
   // ('next friday', 'jun 21' — parsed by nl-date.js) and a native calendar.
@@ -4228,7 +4282,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
              (Feature #134, the open question, decided 2026-09-05). The
              description is the row's own prose and stays a stop. */
           : (f.type === 'document' && f.role !== 'description') ? ' cell-nostop' : '';
-        return el('td', {
+        const td = el('td', {
           dataset: { ftype: f.type, field: f.name },
           // The leading column carries the row's identity — Name by default,
           // whatever the reader put first after a reorder — so it is set
@@ -4239,6 +4293,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           // header widens and the cells keep ellipsising at the old width.
           style: f.width ? columnWidthStyle(f.width) : null,
         }, editorFor(f, item, db, onSaved, { compact: true }));
+        /* A file cell takes a dropped file (Issue #85). The cell is the
+           zone, not the chip, so the whole box lights; the chip it holds
+           now (repaintRow swaps it) does the upload. */
+        return f.type === 'attachments'
+          ? fileDropZone(td, (files) => td.querySelector('.k-attach')?.dropFiles?.(files))
+          : td;
       }),
       ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')));
     /* Cells rest as values (Feature #134): the CELL is the focus stop and
