@@ -598,12 +598,18 @@ test('every column header carries a field menu; a header click edits, sorting li
   assert.match(head, /fieldMenuButton\(/, 'each column th mounts the field menu');
   assert.match(head, /onclick: \(e\) => \{ const th = e\.currentTarget; if \(!th\.dataset\.resized && !th\.dataset\.gesture\) editFieldDialog\(db, colField\(db, c\)\); \}/,
     'the header click opens the field editor — unless it is the click a resize or reorder gesture leaves behind (Issue #98, Feature #233)');
-  assert.match(head, /onSort: \(dir\) =>/, 'the menu is handed the sort control');
+  assert.match(head, /onSort: sortBy\(c\)/, 'the menu is handed the sort control');
+  // The # column and the system columns sort through the same path (Issue #254).
+  assert.match(head, /systemMenu\('Public Id', '#'\)/, 'the # header mounts a sort menu');
+  assert.match(head, /systemMenu\(n, n\)/, 'each system header mounts one too');
   const menu = fnBody('fieldMenuButton');
   assert.match(menu, /showPopover\(/, 'the menu reuses the chip popover, not a new overlay');
   assert.match(menu, /stopPropagation/, 'opening the menu must not also open the editor');
-  assert.match(menu, /Sort ascending/, 'sort ascending is in the menu');
-  assert.match(menu, /Sort descending/, 'sort descending is in the menu');
+  // The two rows are worded by the column's type (Issues #254, #318);
+  // test/sort-labels.test.mjs pins the words for every type.
+  assert.match(menu, /const words = sortLabelsFor\(db, f\)/, 'the sort rows take their words from the field');
+  assert.match(menu, /words\.asc/, 'ascending is in the menu');
+  assert.match(menu, /words\.desc/, 'descending is in the menu');
 });
 
 test('the field menu edits a field rather than dropping and rebuilding it', () => {

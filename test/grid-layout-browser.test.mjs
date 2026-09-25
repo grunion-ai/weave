@@ -271,7 +271,7 @@ if (s) {
       const want = ['Due', 'Name', 'Description', 'Status', 'Owner', 'Points', 'Price', 'Done', 'Link', 'Approved by finance'];
       assert.deepEqual(await order(page), want);
       await head(page, 'Points').locator('.field-menu').click();
-      await page.locator('.chip-pop .wv-menu-row', { hasText: 'Sort descending' }).click();
+      await page.locator('.chip-pop .wv-menu-row', { hasText: 'Largest to smallest' }).click(); // a number's descending row (Issue #254)
       await page.waitForTimeout(400);
       assert.deepEqual(await order(page), want, 'the redraw kept the moved column');
       const rows = await page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.map((r) => [...r.children].filter((c) => c.dataset.field).map((c) => c.dataset.field)));

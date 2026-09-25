@@ -183,7 +183,7 @@ if (s) {
       // Sort by Name: a short table sorts in place and redraws from the rows
       // it was handed, without asking the server for them again.
       await page.click('.wv-grid thead button[aria-label="Configure field Name"]');
-      await page.locator('.chip-pop .wv-menu-row', { hasText: 'Sort ascending' }).first().click();
+      await page.locator('.chip-pop .wv-menu-row', { hasText: 'A to Z' }).first().click();
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row')[0]?.querySelector('td[data-field="Name"] input')?.value === 'a row', null, { timeout: 5000 });
       assert.equal(
         await page.inputValue(`tr[data-eid="${smallIds[0]}"] td[data-field="Note"] input`),

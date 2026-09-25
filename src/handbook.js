@@ -1049,6 +1049,7 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 | Alt+\u2190 / \u2192 on a focused header | table view | narrows or widens the column by 8px, down to its label |
 | Double-click that edge | table view | fits the column to its longest value, up to the type's maximum and never under its label |
 | Click a header, or Return on a focused one | table view | opens the field tray to rename, retype or reconfigure. The click that ends a drag or a resize opens nothing |
+| ⋮ on a header | table view | sorts by that column, stored on the table for everyone. The two rows read by type: **Oldest to newest** for a date, **Smallest to largest** for a number, **A to Z** for text, **Option order** for a select and **State order** for a workflow (the order the definition lists them in), plain **Ascending** where no one reading fits. The **#** column and the system columns carry a sort-only ⋮ of their own |
 | 👁 | view toolbar | show or hide any field, the system columns, and deleted rows |
 | Drag the grip | entity page | reorders fields; the table's columns follow |
 | Fold FIELDS | entity page | the caret beside FIELDS folds the value rows into one line of label · value chips, so a long field list stops pushing the documents down; the chips still edit in place, and the fold is remembered per row in this browser |
@@ -1059,7 +1060,7 @@ Fields dropped across the seam beside **#** freeze with it, and stay put while t
 
 Every field type opens at a default width: Name 220px, text, links and multi-selects 180, long text 280, selects and workflows 124, relations 136, dates 112, numbers 88, currency 104, checkboxes 56. A header label never clips: a label longer than its default widens that column, and no drag, nudge or fit goes under it. Widths belong to the view, so each view keeps its own. Showing, hiding, adding or removing a field never resizes another one; the neighbours slide, and the space at the right of the grid takes up the difference. A hidden field keeps its width and its place for when it comes back.
 
-The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record.
+The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record. Every one but Activity sorts from its ⋮; the stored sort names it (\`Created At desc\`), and \`Public Id\` is the name the # column sorts under.
 
 Hide rather than delete when a column matters to a machine and not to a reader. Hiding keeps the data and the API surface; a delete needs \`hard\` and does not come back.
 
