@@ -989,7 +989,7 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 
 The **#** column takes none of this. It is frozen to the grid's left edge, so a wide table scrolls sideways underneath it and the row keeps its id and its \`\u2197\` permalink whatever column you have read your way out to; the selection checkbox travels with it. No drag moves it, and no field can be ordered ahead of it.
 
-Two facts about width decide how a table reads: **an unset column caps at 260px and ellipsises**, and **a set width is a floor as well as a ceiling** (60px minimum, and never narrower than the header's label), so the column holds its width in a grid wider than its card. Set one only where the default clips something a reader needs.
+Two facts about width decide how a table reads: **an unset column caps at 260px and ellipsises** (and an unset Name column opens at 260px wherever the card has that room to spare, taking it ahead of the columns beside it, and never widens the grid past its card), and **a set width is a floor as well as a ceiling** (60px minimum, and never narrower than the header's label), so the column holds its width in a grid wider than its card. Set one only where the default clips something a reader needs.
 
 The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record.
 

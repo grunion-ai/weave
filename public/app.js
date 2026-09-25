@@ -3860,6 +3860,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   // Full-width rows span it, so it is derived once rather than restated per
   // call site.
   const colCount = cols.length + 3;
+  // The field that names a row, whose column carries the grid's default
+  // floor (Issue #261): marked by role, so a renamed or reordered Name keeps it.
+  const nameF = nameFieldOf(db);
   // Sort is table truth (2026-08-28): read from the schema, written back on
   // change, mirrored to the Tables registry row's Sort field. The grid still
   // sorts locally for the instant redraw; the PATCH makes it survive.
@@ -4231,7 +4234,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           // whatever the reader put first after a reorder — so it is set
           // heavier than the fields that qualify it.
           class: (f.type === 'number' ? 'num' : '')
-            + (c === cols[0] ? ' name-cell' : '') + kind,
+            + (c === cols[0] ? ' name-cell' : '') + (f === nameF ? ' name-col' : '') + kind,
           // A resized column overrides the shared 260px cap — otherwise the
           // header widens and the cells keep ellipsising at the old width.
           style: f.width ? columnWidthStyle(f.width) : null,
@@ -4570,7 +4573,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
             }))),
         el('th', { class: 'pid-head' }, '#'),
         ...cols.map((c, i) => el('th', {
-          class: 'col-head',
+          class: colField(db, c) === nameF ? 'col-head name-col' : 'col-head',
           draggable: 'true',
           // The field's description is the header's tooltip (Issue #209).
           title: fieldDescription(colField(db, c)) || null,

@@ -289,6 +289,19 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    Σ row it scrolls beneath, so each layer is numbered rather than shared. */
 .wv-grid thead th { position: sticky; top: 0; z-index: 4; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+/* The Name column opens wide enough to read (Issue #261). With no width of
+   its own, auto layout handed Name the min-content of its <input>, about
+   70 px beside a few prose columns, and gave the slack to the columns that
+   qualify it. A bare `width` is the right strength: auto layout treats it
+   as the column's preferred width and fills it from spare room first, but
+   squeezes it when the card has none, so Name reaches 260px (the cap above)
+   wherever it fits and never pushes the grid past its card. A `min-width`
+   did push it past, which flipped a docked table from page scroll to the
+   wrap's own scroller. The cost is a ceiling: a sparse table's Name stops
+   at 260px instead of taking the slack. A stored width is inline
+   width/min-width/max-width on the same cells, so a resize or a fit,
+   narrower included, overrides this without a special case. */
+.wv-grid :is(th, td).name-col { width: 260px; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* The id column carries a short "#12 ↗" link — collapse it to its content
    instead of letting the table hand it an equal share of the width. */
