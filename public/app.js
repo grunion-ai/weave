@@ -593,10 +593,21 @@ async function drawDock() {
    side), clamped so neither panel collapses. Double-click clears the pin
    and the halves are equal again. */
 const DOCK_MIN = 360;
+/* The one clamp (Issue #326). A pin is the dock's flex basis, never a
+   fixed width: the stylesheet gives a docked #main its 320px floor, and
+   when the room runs short the browser takes the difference out of the
+   dock. A pin pulled wide on a big screen used to come back unclamped on
+   a smaller one and crush the table to 230px at 1470. The same rule
+   holds while dragging, on a window resize and when the nav opens, with
+   no listener, and it never writes the stored pin, so the dock grows back
+   to it as soon as the window does. */
+function pinDock(panel, px) {
+  panel.style.width = '';
+  panel.style.flex = px ? `0 1 ${px}px` : '';
+}
 function applyDockWidth(panel) {
   const px = Number(localStorage.getItem('wv-dock-width'));
-  if (px >= DOCK_MIN) { panel.style.width = `${px}px`; panel.style.flex = 'none'; }
-  else { panel.style.width = ''; panel.style.flex = ''; }
+  pinDock(panel, px >= DOCK_MIN ? px : 0);
 }
 /* The gutter IS the divider (Kyle, 2026-09-02): the 16px canvas gap
    between the panels, a static sibling in index.html — never a strip
@@ -611,21 +622,16 @@ function wireDockGutter(panel) {
     grip.setPointerCapture(e.pointerId);
     document.body.classList.add('dock-resizing');
     const right = panel.getBoundingClientRect().right;
-    const roomFor = (want) => {
-      // The table keeps at least its own minimum beside the pin.
-      const mainLeft = $('#main').getBoundingClientRect().left;
-      return Math.min(want, right - mainLeft - 320);
-    };
-    const move = (ev) => {
-      const want = Math.max(DOCK_MIN, roomFor(Math.round(right - ev.clientX)));
-      panel.style.width = `${want}px`;
-      panel.style.flex = 'none';
-    };
+    const move = (ev) => pinDock(panel, Math.max(DOCK_MIN, Math.round(right - ev.clientX)));
     const up = () => {
       document.body.classList.remove('dock-resizing');
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
-      const px = Math.round(panel.getBoundingClientRect().width);
+      // The width the table left the dock, not the pointer's reach: an
+      // over-drag stores what it shows. Floored at DOCK_MIN, because a
+      // window too narrow for the dock squeezes it below the smallest pin
+      // applyDockWidth keeps, and a drag there must still leave a pin.
+      const px = Math.max(DOCK_MIN, Math.round(panel.getBoundingClientRect().width));
       localStorage.setItem('wv-dock-width', String(px));
     };
     grip.addEventListener('pointermove', move);
