@@ -940,6 +940,8 @@ The magnifier in the table's toolbar opens a search box; \`/\` or \`⌘F\` opens
 
 Cells **rest as values** and open on purpose. The cursor is a ring on one cell; the arrows and Tab move it, and a cell opens when you ask. That is what gives ← and → to navigation: a text caret only owns them while a cell is open, and hands them back when you Tab, Return or Esc out.
 
+\`?\` shows these keys. Press it on a resting cell, or anywhere outside a text field and the document editor, or click the \`?\` chip at the foot of the workspace rail: a sheet lists every key below, read from the grid's own keymap so it cannot promise a key the grid has dropped (Issue #268). \`Esc\` closes it and puts focus back where it was. Inside an open cell, \`?\` is a character like any other.
+
 | At rest | What it does |
 | --- | --- |
 | \`← → ↑ ↓\` | move the cursor |
@@ -955,6 +957,7 @@ Cells **rest as values** and open on purpose. The cursor is a ring on one cell; 
 | \`⇧Return\` | make the next row, open on its name |
 | \`⌘Return\` | open the record in the dock |
 | \`Esc\` | let the selection go |
+| \`?\` | the sheet of these keys |
 
 | In an open cell | What it does |
 | --- | --- |
@@ -1853,7 +1856,7 @@ The bug glyph in the bottom-right corner of every page opens a small panel besid
 
 ## Send: an Issue on this instance
 
-**Send** files a row into this instance's \`Development/Issue\` table, in the \`weave\` docs workspace, with the symptoms in the \`Symptom\` multiselect and a **Replay** section built from the recorder every session runs: routes entered, controls clicked, requests that failed, anything that threw. The recorder keeps control names, never what was typed into them. The server stamps its own version and start time on the row, so a stale build cannot report itself as current.
+**Send**, or \`⌘Return\` from the note (the \`⌘↵\` beside the button says so), files a row into this instance's \`Development/Issue\` table, in the \`weave\` docs workspace, with the symptoms in the \`Symptom\` multiselect and a **Replay** section built from the recorder every session runs: routes entered, controls clicked, requests that failed, anything that threw. The recorder keeps control names, never what was typed into them. The server stamps its own version and start time on the row, so a stale build cannot report itself as current.
 
 That row lives where the instance lives. On the canonical instance it is read every night. On a self-hosted weave it is on your disk, and an instance without a docs workspace cannot file it at all.
 

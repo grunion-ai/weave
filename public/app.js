@@ -156,20 +156,33 @@ function toast(msg, isErr = false, action = null) {
   setTimeout(() => t.remove(), action ? 7000 : isErr ? 4200 : 1400);
 }
 
+/* onSubmit null is a dialog that only shows something (the key sheet, Issue
+   #268): one button closes it, and it takes focus, so the keys a reader
+   presses next reach the dialog and not the grid behind it. */
 function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   // One dialog at a time: a second open replaces the first instead of stacking
   // another backdrop (and another set of blank inputs) on top of it.
   document.querySelector('#modal-back')?.remove();
-  const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) back.remove(); } });
+  /* Focus goes back where it came from, but only when the dialog still holds
+     it: a submit that has already moved focus on (a new row's name cell)
+     keeps its choice. */
+  const opener = document.activeElement;
+  const close = () => {
+    const held = back.contains(document.activeElement);
+    back.remove();
+    if (held && opener?.isConnected) opener.focus();
+  };
+  const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) close(); } });
+  const done = el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel);
   const form = el('form', {}, ...bodyNodes,
     el('div', { class: 'actions' },
-      el('button', { class: 'btn', type: 'button', onclick: () => back.remove() }, 'Cancel'),
-      el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
+      onSubmit ? el('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel') : null,
+      done));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
-      await onSubmit(new FormData(form));
-      back.remove();
+      await onSubmit?.(new FormData(form));
+      close();
     } catch (err) {
       toast(err.message, true);
     }
@@ -178,9 +191,9 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
   document.body.append(back);
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape') { back.remove(); removeEventListener('keydown', esc); }
+    if (e.key === 'Escape') { close(); removeEventListener('keydown', esc); }
   });
-  const first = form.querySelector('input,select,textarea');
+  const first = form.querySelector('input,select,textarea') ?? (onSubmit ? null : done);
   if (first) first.focus();
 }
 
@@ -5572,6 +5585,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         return true;
       }
       case 'selectAll': anchor = null; setChosen(SEL().selectAll(loadedIds())); return true;
+      case 'help': openKeySheet(); return true;
       // Escape with a selection is the standing listener's (above); with none,
       // the browser's. Either way the keymap lets it through.
       default: return false;
@@ -10886,6 +10900,59 @@ document.addEventListener('keydown', async (e) => {
   } catch (err) { toast(err.message, true); }
 });
 
+
+/* ---------- the key sheet (Issue #268) ----------
+   ? outside a text field, or the rail's ? chip, lists every key weave
+   answers. The grid's rows come from public/grid-keymap.js itself
+   (WeaveGridKeymap.bindings), which test/grid-keymap.test.mjs holds to the
+   keymap, so the sheet cannot promise a key the grid has dropped or miss one
+   it has grown. The few keys app.js handles itself, outside the keymap,
+   are listed by hand below. */
+const KEY_SHEET_ANYWHERE = [
+  { keys: '⌘K', does: 'search every record, table and document' },
+  { keys: '?', does: 'this sheet, from anywhere outside a text field' },
+  { keys: '⌘⇧E', does: 'expand the docked record to the page, or dock it again' },
+  { keys: 'Esc', does: 'close the dock, a dialog or a menu' },
+  { keys: '⌘Return', does: 'send a problem report from its note' },
+];
+const KEY_SHEET_TABLE = [
+  { keys: '/ or ⌘F', does: 'search this table' },
+  { keys: '⌘C / ⌘V', does: 'copy or paste the cell or the range' },
+];
+
+function openKeySheet() {
+  const rows = (list) => el('table', { class: 'key-sheet-table' },
+    el('tbody', {}, list.map((b) => el('tr', {},
+      el('th', { scope: 'row' }, el('kbd', {}, b.keys)),
+      el('td', {}, b.does)))));
+  const grid = globalThis.WeaveGridKeymap?.bindings ?? [];
+  const section = (title, list) => el('section', { class: 'key-sheet-section' }, el('h3', {}, title), rows(list));
+  modal('Keyboard shortcuts', [el('div', { class: 'key-sheet' },
+    section('Anywhere', KEY_SHEET_ANYWHERE),
+    section('On a table, a cell at rest', [...grid.filter((b) => b.mode === 'rest'), ...KEY_SHEET_TABLE]),
+    section('In an open cell', grid.filter((b) => b.mode === 'edit')))], null, 'Done');
+  $('#modal')?.classList.add('wv-keys');
+}
+
+/* ? is a character wherever something is being written, so the sheet only
+   answers it outside every text field, the document editor included. A
+   resting grid cell is not a text field: the grid's keymap claims ? itself
+   and stops it before it gets here. An overlay that is up keeps its keys. */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== '?' || e.metaKey || e.ctrlKey || e.altKey || e.isComposing || e.defaultPrevented) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable], .vditor') || e.target.isContentEditable) return;
+  if (document.querySelector(DOCK_ESC_OWNERS) || $('#bug-panel')) return;
+  e.preventDefault();
+  openKeySheet();
+});
+
+function wireKeySheet() {
+  const btn = $('#rail-help');
+  if (!btn) return;
+  btn.replaceChildren(iconEl('lucide:circle-question-mark') ?? '?');
+  btn.addEventListener('click', openKeySheet);
+}
+
 /* ---------- page loader ---------- */
 
 /* The weave-on rope (brand decision 7) covers any load expected to run
@@ -11634,7 +11701,7 @@ function openBugPanel(fab) {
   const c = bugRecorder.counts();
   let picked = bugDraft.categories.slice();
 
-  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '' }, 'Send');
+  const send = el('button', { class: 'btn btn-primary btn-sm bug-send', type: 'submit', disabled: '', title: 'Send (⌘Return)' }, 'Send');
   const note = el('textarea', {
     class: 'form-control bug-note', rows: '2', maxlength: '600',
     placeholder: 'What went wrong?',
@@ -11693,6 +11760,9 @@ function openBugPanel(fab) {
       // session is not something to attach quietly.
       el('span', { class: 'bug-captured', title: 'Recent routes, clicks, requests and errors — never anything you typed into a field' },
         `${c.actions + c.errors + c.failedRequests} steps captured`),
+      // ⌘Return sends from the note (below). Kyle filed a report that way
+      // and said so in it: a shortcut nobody can see is one nobody finds.
+      el('kbd', { class: 'bug-kbd', title: '⌘Return (Ctrl+Return) sends the report' }, '⌘↵'),
       send),
     // Its own row under the foot, with the address printed beside it so a
     // device with no mail handler still has something to copy.
@@ -11771,6 +11841,7 @@ installBugReporter();
    otherwise be born light and stay light under a dark page. */
 wireThemeToggle();
 wireSkipLink();
+wireKeySheet();
 withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError));
 wireSearchButton();
 buildWsRail();

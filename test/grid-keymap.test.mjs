@@ -254,3 +254,62 @@ test('on a rating cell a digit sets it and Backspace clears it to 0 (Feature #23
   assert.equal(act('ArrowRight', {}, { rate: 5 }), 'move', 'the arrows still walk the grid');
   assert.equal(act('3', {}, { mode: 'edit', rate: 5 }), 'none');
 });
+
+/* ── the key sheet reads the keymap's own rows (Issue #268) ─────────────── */
+
+/* The sheet a reader opens on ? renders KM.bindings, so the two are one list
+   only if nothing the keymap answers is missing from it and nothing on it is
+   a key the keymap no longer answers. The probe presses every key the
+   keymap names, plus a spread of characters, under ⌘ and ⇧ in each state
+   that changes an answer (rows picked up, a range, a toggle cell, read-only).
+   ⌥ is left out: the keymap only reads it to hand a key back to the browser.
+   A character is a character: the sheet's "any character" row stands for
+   every printable key, so the comparison is on (key, verb) with every
+   printable key but ? folded into one. */
+const PROBE_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', 'Escape', 'Home', 'End',
+  ' ', 'Backspace', 'Delete', 'PageUp', 'PageDown', 'F2', 'a', 'x', 'Q', '1', '/', '?', ';'];
+const PROBE_MODS = [{}, { meta: true }, { shift: true }, { meta: true, shift: true }];
+const PROBE_STATES = [{}, { sel: new Set(['r1']) }, { range: true }, { flip: true }, { readonly: true }];
+const folded = (key) => (key.length === 1 && key !== ' ' && key !== '?' ? 'char' : key);
+const answers = (mode, presses) => {
+  const out = new Set();
+  for (const p of presses) for (const s of PROBE_STATES) {
+    const type = KM.keymap(k(p.key, p), st({ ...s, mode })).type;
+    if (type !== 'none') out.add(`${folded(p.key)} → ${type}`);
+  }
+  return out;
+};
+
+test('at rest, ? opens the key sheet; in an open cell it is typed (Issue #268)', () => {
+  assert.equal(act('?', { shift: true }), 'help', 'the ? a keyboard sends carries ⇧');
+  assert.equal(act('?'), 'help');
+  assert.equal(act('?', {}, { readonly: true }), 'help', 'a read-only cell still answers ?');
+  assert.equal(act('?', { shift: true }, { mode: 'edit' }), 'none', 'open, ? is a character like any other');
+  assert.equal(act('?', { meta: true }), 'none', '⌘? is not the sheet');
+});
+
+test('the key sheet lists every key the keymap answers, in both modes (Issue #268)', () => {
+  assert.ok(Array.isArray(KM.bindings) && KM.bindings.length > 0, 'the keymap exports its rows');
+  for (const mode of ['rest', 'edit']) {
+    const probe = PROBE_KEYS.flatMap((key) => PROBE_MODS.map((m) => ({ key, ...m })));
+    const rows = KM.bindings.filter((b) => b.mode === mode);
+    const listed = answers(mode, rows.flatMap((b) => b.press));
+    for (const hit of answers(mode, probe)) {
+      assert.ok(listed.has(hit), `${mode}: the keymap answers ${hit} and no row on the sheet says so`);
+    }
+  }
+});
+
+test('every row on the key sheet is a key the keymap still answers, with words to print (Issue #268)', () => {
+  for (const b of KM.bindings) {
+    assert.ok(['rest', 'edit'].includes(b.mode), `${b.keys}: a known mode`);
+    assert.ok(b.keys && b.does, `${JSON.stringify(b)}: keys and what they do, as the sheet prints them`);
+    assert.ok(b.press.length > 0, `${b.keys}: at least one press`);
+    // A row the browser keeps (the caret's ← →, a typed space) says so, and
+    // the keymap must still be letting those keys through.
+    const live = answers(b.mode, b.press).size > 0;
+    assert.equal(live, !b.browser, b.browser
+      ? `${b.mode} ${b.keys} is marked the browser's, but the keymap now claims it`
+      : `${b.mode} ${b.keys} is on the sheet, but the keymap no longer answers it`);
+  }
+});
