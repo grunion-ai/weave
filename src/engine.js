@@ -5113,25 +5113,62 @@ export class Weave {
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
     try { return this.#readEntityIn(id); } finally { this.viewerZone = prev; }
   }
-  #readEntityIn(id) {
+  /* `pick` and `chips` are the table query's cut (Issue #272), never a
+     caller's: `pick` is the set of field ids to read (null reads them all)
+     plus whether the history rides along, and `chips` collects each far
+     row's summary once, the relation value carrying only a reference. */
+  #readEntityIn(id, { pick = null, chips = null } = {}) {
     const e = this.getEntity(id);
     const db = this.state.tables[e.dbId];
     const fields = {};
     const raw = {};
     for (const fid of db.fieldOrder) {
+      if (pick && !pick.ids.has(fid)) continue;
       const f = db.fields[fid];
       const resolved = this.#resolve(e, db, f, 0);
       raw[f.name] = resolved;
       if (f.type === 'relation') {
-        const summaries = resolved.map((rid) => this.#summary(rid)).filter(Boolean);
+        const summaries = resolved.map((rid) => {
+          if (!chips) return this.#summary(rid);
+          const s = chips[rid] ?? this.#summary(rid);
+          if (!s) return null;
+          chips[rid] = s;
+          return { id: s.id, publicId: s.publicId, name: s.name };
+        }).filter(Boolean);
         fields[f.name] = f.config.many ? summaries : (summaries[0] ?? null);
       } else {
         fields[f.name] = this.#displayValue(db, f, resolved, e);
       }
     }
     const docs = {};
-    for (const f of this.documentFields(db)) docs[f.name] = e.docs?.[f.id] ?? '';
+    for (const f of this.documentFields(db)) if (!pick || pick.ids.has(f.id)) docs[f.name] = e.docs?.[f.id] ?? '';
     const defaultDocField = this.descriptionField(db) ?? this.documentFields(db)[0];
+    if (pick) {
+      /* The cut row: identity, stamps and the named fields. The comments,
+         the files and the history are the entity page's, and they were most
+         of a wide table's bytes; the history comes back when the grid's
+         Activity column is showing, since that column counts it. */
+      const docNamed = defaultDocField && pick.ids.has(defaultDocField.id);
+      return {
+        id: e.id,
+        publicId: e.publicId,
+        db: this.qualifiedName(db),
+        dbId: db.id,
+        name: this.entityName(e),
+        fields,
+        raw,
+        ...(docNamed ? { doc: e.docs?.[defaultDocField.id] ?? '', docField: defaultDocField.name } : {}),
+        docs,
+        ...(pick.activity ? { activity: e.activity, activityDropped: e.activityDropped ?? 0 } : {}),
+        createdAt: e.createdAt,
+        updatedAt: e.updatedAt,
+        createdBy: e.createdBy ?? null,
+        modifiedBy: e.modifiedBy ?? null,
+        deletedAt: e.deletedAt ?? null,
+        url: `/e/${e.id}`,
+        ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
+      };
+    }
     return {
       id: e.id,
       publicId: e.publicId,
@@ -5186,8 +5223,27 @@ export class Weave {
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
     try { return this.#queryIn(dbRef, opts); } finally { this.viewerZone = prev; }
   }
-  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, includeDeleted = false, trashCount = false, search = '' } = {}) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, search = '' } = {}) {
     const db = this.getTable(dbRef);
+    /* What the reader draws, and no more (Issue #272). `select` is the flat
+       projection an agent asks a narrow question with; `fields` keeps the
+       entity shape a grid draws from and cuts it to the named fields (and a
+       system column: the stamps always ride, Activity brings the history).
+       `relations: 'chip'` answers a relation as a reference and sends each
+       far row's summary once in `chips`: a Case page embedded the same forty
+       suites two hundred times, each with its chip's segments. */
+    if (fields != null && !Array.isArray(fields)) throw new WeaveError('fields must be a list of field names', 'invalid');
+    if (fields && select) throw new WeaveError('Ask for select or fields, not both: select is a flat projection, fields cuts the entity', 'invalid');
+    if (relations != null && relations !== 'full' && relations !== 'chip') throw new WeaveError(`relations must be 'full' or 'chip' (got '${relations}')`, 'invalid');
+    const pick = fields && { ids: new Set(), activity: false };
+    for (const name of fields ?? []) {
+      // The Activity column counts the history, even beside a field of that name.
+      if (name === 'Activity') pick.activity = true;
+      const f = this.findField(db, name);
+      if (f) pick.ids.add(f.id);
+      else if (name !== 'Activity' && !Object.hasOwn(SYSTEM_SORT_KEYS, name)) this.getField(db.id, name);
+    }
+    const chips = relations === 'chip' && !select ? Object.create(null) : null;
     let rows = this.listEntities(db.id, { includeDeleted });
     /* `search` is the ⌘K matcher scoped to this table (Feature #228): it
        narrows whatever the where-clause and the sort make of the table, and
@@ -5224,12 +5280,12 @@ export class Weave {
     const total = rows.length;
     rows = rows.slice(offset, limit != null ? offset + limit : undefined);
     const items = rows.map((e) => {
-      if (!select) return this.readEntity(e.id);
+      if (!select) return this.#readEntityIn(e.id, { pick, chips });
       const out = { id: e.id, publicId: e.publicId, name: this.entityName(e) };
       for (const path of select) out[path] = this.#pathValue(e, db, path);
       return out;
     });
-    return trashCount ? { total, items, trashCount: trashed } : { total, items };
+    return { total, items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}) };
   }
 
   #matchNode(e, db, node) {

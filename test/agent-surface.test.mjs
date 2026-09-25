@@ -290,3 +290,27 @@ test('every checkFormula option reaches every door', () => {
   }
   assert.match(AGENTS, /scan/, 'AGENTS.md must say what scan returns');
 });
+
+/* Issue #272: the grid asks for its columns (`fields`) and chip-level
+   relations (`relations: 'chip'`), and an agent can ask the same narrow
+   question on every door. Read off the engine's own signature, so the next
+   query option fails here until it reaches MCP and the CLI too. The CLI's
+   two exemptions predate this gate and have their own command: `weave trash`
+   lists the trashed rows and counts them. */
+test('every query option reaches every door', () => {
+  const ENGINE = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
+  const sig = ENGINE.match(/\n  #queryIn\(dbRef, \{([^}]*)\}/)?.[1] ?? '';
+  const options = sig.split(',').map((p) => p.trim().split(/[=\s]/)[0]).filter(Boolean);
+  assert.ok(options.includes('fields') && options.includes('relations'), `the engine takes fields and relations: ${options.join(', ')}`);
+  const tool = TOOLS.find((t) => t.name === 'weave_query');
+  const mcpBlock = MCP.slice(MCP.indexOf("case 'weave_query'"), MCP.indexOf("case 'weave_query'") + 600);
+  const cliBlock = CLI.slice(CLI.indexOf("case 'query'"), CLI.indexOf("case 'query'") + 900);
+  const CLI_EXEMPT = { includeDeleted: 'weave trash', trashCount: 'weave trash' };
+  for (const k of options) {
+    assert.ok(tool.inputSchema.properties[k], `weave_query schema lacks ${k}`);
+    assert.ok(mcpBlock.includes(`args.${k}`), `weave_query drops ${k}`);
+    if (!CLI_EXEMPT[k]) assert.ok(cliBlock.includes(`${k}:`), `weave query lacks --${k}`);
+  }
+  assert.match(CLI, /--fields 'A,B'\] \[--relations chip\]/, 'the usage names the two flags');
+  assert.match(ROUTES, /weave\.query\(m\[1\], \{ \.\.\.body, viewerZone \}\)/, 'POST /api/tables/:ref/query passes its body through');
+});
