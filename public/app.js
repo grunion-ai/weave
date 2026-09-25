@@ -1918,9 +1918,18 @@ function searchPicker({ anchor = null, title = '', placeholder = 'Search…', op
   // #221): focus sits in the popover, off the grid, and the cell is still
   // what the reader is looking at.
   pop.cellFrom = anchor?.closest?.('tr[data-eid] > td') ?? null;
+  /* Capture phase, so this runs before the clicked control's own handler.
+     It counted the anchor as outside, the loop Issue #320 took out of
+     showPopover(): a second click on a chip, a select face or the icon button
+     closed the picker and that same click's handler opened a fresh one. A
+     click on the anchor now closes it (a multi picker commits, as on any way
+     out) and stops there, so the trigger toggles. A picker already gone
+     (Escape, a pick, the next popover) only unhooks and lets the click
+     through, so the trigger opens on the first click after an Escape. */
   const close = (ev) => {
     if (pop.contains(ev.target)) return;
     removeEventListener('click', close, true);
+    if (pop.isConnected && anchor?.contains?.(ev.target)) ev.stopPropagation();
     if (multi && pop.isConnected) { commit(); return; }
     pop.remove();
   };
@@ -6799,7 +6808,19 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
   const r = anchor.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
   pop.style.top = (r.bottom + 6 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
-  const close = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); removeEventListener('click', close, true); } };
+  /* Capture phase, so this runs before the calendar button's own handler.
+     It counted the button as outside, the loop Issue #320 took out of
+     showPopover(): a second click closed the dialog and that same click's
+     handler opened a fresh one, so it never closed. A click on the button
+     now closes it and stops there. A dialog already gone (Escape, a pick)
+     only unhooks, and the click carries on to open a fresh one. */
+  const close = (ev) => {
+    if (pop.contains(ev.target)) return;
+    removeEventListener('click', close, true);
+    if (!pop.isConnected) return;
+    pop.remove();
+    if (anchor.contains(ev.target)) ev.stopPropagation();
+  };
   addEventListener('click', close, true);
   pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); pop.remove(); anchor.focus(); } });
   smarts[0].querySelector('.date-smart').focus();
