@@ -8876,6 +8876,7 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
   const t = vditorTheme();
   const chips = attachRefChips(host);
   attachCodeAuto(host);
+  attachCodeRawToggle(host);
   attachTableKeys(host);
   attachHintClamp(host);
   const editor = new Vditor(host, {
@@ -9130,7 +9131,7 @@ const refResolveCache = new Map(); // ref → { href, label, kind } | null (miss
 
 // Kick every decoration pass attached to one editor host (chips, rail, folds).
 function scheduleDecorFor(host) {
-  for (const s of [...refChipLayers, ...docRails, ...docFolds, ...docCodeAuto]) {
+  for (const s of [...refChipLayers, ...docRails, ...docFolds, ...docCodeAuto, ...docCodeRaw]) {
     if (s.host === host) s.schedule();
   }
 }
@@ -9202,6 +9203,89 @@ function refreshCodeAuto(st) {
      the counter stops the two of us trading renders forever. */
   if (applied && (st.rechecks = (st.rechecks ?? 0) + 1) <= 3) st.schedule();
   else if (!applied) st.rechecks = 0;
+}
+
+/* ---------- a code block's markdown behind </> (Issue #96) ----------
+   Vditor expands a fenced block into its markdown the moment the caret enters
+   it: the ``` fence and language above the code, the closing fence below, and
+   for a diagram the source in place of the drawing. Kyle clicked a mermaid
+   diagram six times watching it turn back into text, and asked for "show raw"
+   to live behind a code icon in the panel's upper right instead.
+
+   So the block the caret is in keeps looking like itself (code stays code, a
+   diagram stays a diagram) and one </> button per editor, floated over that
+   block's panel, shows and hides the raw lines. The state is a class on the
+   host, not on the block: Vditor rebuilds a block's DOM as it is typed in,
+   and a class on the block would vanish mid-edit. It resets when the caret
+   leaves the block, so every block opens clean. The button lives beside the
+   IR surface, never inside it, where Lute would serialise it. */
+const docCodeRaw = new Set();
+
+const codeRawNode = (host) =>
+  host.querySelector('.vditor-ir .vditor-reset .vditor-ir__node--expand[data-type="code-block"]');
+// A preview that holds no <code> is a rendering (mermaid, math), not code.
+const codeRawIsDrawing = (node) => !node.querySelector(':scope > .vditor-ir__preview > code');
+
+function setCodeRaw(st, on) {
+  st.host.classList.toggle('wv-code-raw', on);
+  st.btn.setAttribute('aria-pressed', String(on));
+  st.btn.title = on ? 'Hide markdown source' : 'Show markdown source';
+  st.place();
+}
+
+function attachCodeRawToggle(host) {
+  const btn = el('button', { type: 'button', class: 'doc-code-raw', 'aria-pressed': 'false', title: 'Show markdown source' },
+    iconEl('lucide:code-xml', 'wv-icon'));
+  const st = { host, btn, key: -1, timer: 0 };
+  st.place = () => placeCodeRaw(st);
+  st.schedule = () => queueMicrotask(st.place);
+  // Teardown: the button leaves with its editor, and a pass already queued
+  // (a microtask, the focusout timer) finds the state dead and does nothing.
+  st.stop = () => {
+    st.dead = true;
+    clearTimeout(st.timer);
+    btn.remove();
+    host.classList.remove('wv-code-raw');
+  };
+  // Focus stays in the document: a blur is what makes Vditor fold the block
+  // up under the button before its click lands.
+  btn.addEventListener('mousedown', (e) => e.preventDefault());
+  btn.addEventListener('click', () => setCodeRaw(st, !host.classList.contains('wv-code-raw')));
+  // Vditor expands a block on click and keyup, after the selection has moved.
+  host.addEventListener('click', st.schedule);
+  host.addEventListener('keyup', st.schedule);
+  host.addEventListener('focusout', () => { clearTimeout(st.timer); st.timer = setTimeout(st.place); });
+  /* A diagram's source is off screen while the drawing shows, and the caret
+     sits in it. A keystroke there would change text nobody can see, so an
+     edit opens the source first and then lands where the writer can watch. */
+  host.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.altKey || ((e.metaKey || e.ctrlKey) && e.key !== 'v')) return;
+    if (e.key.length !== 1 && !['Enter', 'Backspace', 'Delete', 'Tab'].includes(e.key)) return;
+    const node = codeRawNode(host);
+    if (node && codeRawIsDrawing(node) && !host.classList.contains('wv-code-raw')) setCodeRaw(st, true);
+  }, { capture: true });
+  docCodeRaw.add(st);
+  return st;
+}
+
+function placeCodeRaw(st) {
+  if (st.dead) return; // torn down (st.stop)
+  if (!document.body.contains(st.host)) { docCodeRaw.delete(st); return; }
+  const node = codeRawNode(st.host);
+  // Blocks are told apart by position: typing rebuilds the element itself.
+  const key = node ? [...node.parentElement.querySelectorAll(':scope > [data-type="code-block"]')].indexOf(node) : -1;
+  if (key !== st.key) {
+    st.key = key;
+    if (st.host.classList.contains('wv-code-raw')) { setCodeRaw(st, false); return; }
+  }
+  // Whichever of the block's two copies is on screen is the panel.
+  const panel = node && [...node.querySelectorAll(':scope > pre')].find((p) => p.getClientRects().length);
+  if (!panel) { st.btn.remove(); return; }
+  if (!st.btn.isConnected) st.host.append(st.btn); // Vditor clears the host when it builds
+  const r = panel.getBoundingClientRect();
+  const base = st.host.getBoundingClientRect();
+  st.btn.style.top = `${r.top - base.top + 6}px`;
+  st.btn.style.right = `${base.right - r.right + 6}px`;
 }
 
 function attachRefChips(host) {
@@ -9629,6 +9713,8 @@ function teardownDocEditors() {
   docFolds.clear();
   for (const st of docCodeAuto) clearTimeout(st.timer);
   docCodeAuto.clear();
+  for (const st of docCodeRaw) st.stop();
+  docCodeRaw.clear();
 }
 
 // Collapse state per entity+field: read with two args, write with three.

@@ -90,6 +90,8 @@ test('the document-formatting guide covers the surface the editor offers', () =>
     'slash menu', 'Task list', 'mermaid', 'KaTeX', 'mhchem', 'highlight.js',
     '[[Task#12]]', '[[table:Task]]', '[[space:Handbook]]', 'fold', 'dash rail',
     'Raw HTML', 'full screen', 'markdown',
+    // Issue #96: the fences and a diagram's source live behind this button.
+    '**</>** button',
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the formatting guide never mentions ${topic}`);
   }
