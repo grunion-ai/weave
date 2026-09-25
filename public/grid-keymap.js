@@ -20,6 +20,7 @@
      newRow {at,focus}                · create an item
      toggleSelect / extendSelect {dir} / selectAll / clearSelect
      extendRange {dr,dc} / clearRange  · the cell range of Feature #220
+     help                             · the key sheet (Issue #268)
      none                             · the browser keeps it */
 (() => {
   const printable = (key) => key.length === 1 && key !== ' ';
@@ -55,6 +56,9 @@
     // Escape lets go of one thing at a time, rows before cells: the puck is
     // the louder state and the one a reader means when both are up.
     if (k.key === 'Escape') return s.sel.size ? { type: 'clearSelect' } : s.range ? { type: 'clearRange' } : { type: 'none' };
+    // ? is the one character that does not open the cell: it opens the sheet
+    // of these keys, as it does everywhere outside a text field (Issue #268).
+    if (k.key === '?' && !k.meta) return { type: 'help' };
     if (printable(k.key) && !k.meta) return s.readonly ? { type: 'none' } : { type: 'edit', select: 'replace' };
     return { type: 'none' };
   };
@@ -87,7 +91,41 @@
     return { type: 'none' };
   };
 
+  /* The rows of the key sheet (Issue #268): what each key does, in the words
+     the sheet prints, and the presses that reach it. The sheet renders these
+     and nothing else, and test/grid-keymap.test.mjs presses every row through
+     keymap() and probes keymap() for any key no row names, so a key added
+     above without a row here fails the suite. `browser` marks a row whose
+     keys the keymap deliberately lets through. */
+  const c = (key, mod = {}) => ({ key, ...mod });
+  const BINDINGS = [
+    { mode: 'rest', keys: '← → ↑ ↓', does: 'move the cursor', press: [c('ArrowLeft'), c('ArrowRight'), c('ArrowUp'), c('ArrowDown')] },
+    { mode: 'rest', keys: 'Tab / ⇧Tab', does: 'along the row, wrapping into the next or previous row', press: [c('Tab'), c('Tab', { shift: true })] },
+    { mode: 'rest', keys: 'Return', does: 'open the cell', press: [c('Enter')] },
+    { mode: 'rest', keys: 'any character', does: 'open the cell and type over the value', press: [c('x'), c('X', { shift: true })] },
+    { mode: 'rest', keys: 'Space', does: 'pick the row up, or flip a toggle cell', press: [c(' ')] },
+    { mode: 'rest', keys: '⇧↑ / ⇧↓', does: 'extend the chosen rows, or grow a range of cells', press: [c('ArrowUp', { shift: true }), c('ArrowDown', { shift: true })] },
+    { mode: 'rest', keys: '⇧← / ⇧→', does: 'grow a range of cells sideways', press: [c('ArrowLeft', { shift: true }), c('ArrowRight', { shift: true })] },
+    { mode: 'rest', keys: '⌘A', does: 'take every loaded row', press: [c('a', { meta: true })] },
+    { mode: 'rest', keys: 'Home / End', does: 'the first or the last row of the table', press: [c('Home'), c('End')] },
+    { mode: 'rest', keys: '⇧Return', does: 'make the next row, open on its name', press: [c('Enter', { shift: true })] },
+    { mode: 'rest', keys: '⌘Return', does: 'open the record in the dock', press: [c('Enter', { meta: true })] },
+    { mode: 'rest', keys: 'Esc', does: 'let the chosen rows go, then the range', press: [c('Escape')] },
+    { mode: 'rest', keys: '?', does: 'this sheet', press: [c('?', { shift: true })] },
+    { mode: 'edit', keys: '← →', does: 'the caret’s; they never step out of the cell', press: [c('ArrowLeft'), c('ArrowRight')], browser: true },
+    { mode: 'edit', keys: 'Home / End', does: 'the start or the end of the value', press: [c('Home'), c('End')] },
+    { mode: 'edit', keys: 'Return', does: 'commit, move down the column', press: [c('Enter')] },
+    { mode: 'edit', keys: 'Tab / ⇧Tab', does: 'commit, move across', press: [c('Tab'), c('Tab', { shift: true })] },
+    { mode: 'edit', keys: '↑ / ↓', does: 'commit, move up or down', press: [c('ArrowUp'), c('ArrowDown')] },
+    { mode: 'edit', keys: '⇧Return', does: 'commit and make the next row', press: [c('Enter', { shift: true })] },
+    { mode: 'edit', keys: '⌘Return', does: 'open the record in the dock', press: [c('Enter', { meta: true })] },
+    { mode: 'edit', keys: 'Esc', does: 'put the value back and rest', press: [c('Escape')] },
+    { mode: 'edit', keys: 'Space, ?', does: 'typed, like any character', press: [c(' '), c('?', { shift: true })], browser: true },
+  ];
+
   globalThis.WeaveGridKeymap = {
+    bindings: BINDINGS,
+
     keymap(k, s) {
       return s.mode === 'edit' ? openKeys(k, s) : restKeys(k, s);
     },
