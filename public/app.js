@@ -3685,19 +3685,60 @@ function eyeGlyph() {
   return svg;
 }
 
+/* The eye's table writes, one at a time in click order (Issue #243). Every
+   switch PATCHes a whole setting (the hidden set, the system set, the Σ
+   flag), so two flips whose PATCHes overlap both read the pre-flip table and
+   the later write drops the earlier one. Queued, each flip reads the table
+   only when its turn comes, after the flip before it has landed and the
+   schema has been reloaded. Module-wide rather than per popover, so a
+   popover closed and reopened mid-write still waits its turn. */
+let eyeWrites = Promise.resolve();
+/* The last queued flip per table. Only it paints, and "last" is judged per
+   table: a flip in the dock's eye for another table's record queues behind
+   this table's write but must not cancel this table's repaint. */
+const eyeTails = new Map();
+
 function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
   // Each row is a toggle switch: the whole row flips it.
   const row = (on, label, run) => el('button', {
     class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
     onclick: (e) => { e.stopPropagation(); run(); },
   }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
-  const save = async (patch) => {
-    try {
-      await api('PATCH', `/tables/${db.id}`, patch);
+  /* A flip is a write and a paint (Issue #243). The write (PATCH, then the
+     schema reload that lets the next flip read what this one did) waits its
+     turn on eyeWrites; `patchOf` is handed the table as it stands then, never
+     as it stood at the click. The paint stays off the queue, so a PATCH never
+     waits on a grid render, and only the last flip of a burst paints: the
+     ones before it would draw a state that is already out of date. A failed
+     write still paints if it is last, so the switches fall back to the
+     table's truth. */
+  const save = (patchOf) => {
+    const turn = eyeWrites.then(async () => {
+      await api('PATCH', `/tables/${db.id}`, patchOf(liveTable()));
       await loadSchema();
+    }).catch((err) => toast(err.message, true));
+    eyeWrites = turn;
+    eyeTails.set(db.id, turn);
+    turn.then(() => {
+      if (eyeTails.get(db.id) !== turn) return;
+      eyeTails.delete(db.id);
+      paint();
+    });
+  };
+  /* A queued paint can land after the reader has moved on. The eye's own
+     page is redrawn only while it is still the page on screen: a table eye
+     whose reader went to another table would otherwise draw its grid over
+     that page. The dock redraws itself, and drawDock already knows when
+     there is no dock. */
+  const home = anchor.closest('#main, #dock');
+  const pageOf = (r) => (r?.page === 'db' ? `db:${r.dbId}` : r?.page === 'entity' ? `entity:${r.id}` : r?.page);
+  const openedOn = pageOf(state.route);
+  const stillShown = () => home?.id !== 'main' || pageOf(state.route) === openedOn;
+  const paint = async () => {
+    try {
       const fresh = allTables().find((d) => d.id === db.id);
       // The entity page opens this too (Feature #117): it redraws itself.
-      redraw ? await redraw() : await keepScroll(() => showDatabase(db.id, state.route.view));
+      if (stillShown()) redraw ? await redraw() : await keepScroll(() => showDatabase(db.id, state.route.view));
       /* One hidden set, possibly two visible surfaces: the split shows the
          table AND an entity of the same table, so a flip on either eye must
          reach both (Kyle, 2026-09-02: visibility in the pane diverged from
@@ -3715,39 +3756,36 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
          against an anchor mid-relayout, so every flip made the dialog jump
          (Kyle, 2026-09-02). Read literally, since a swap landing mid-gesture
          swallowed the next flip outright (Issue #240; relearnRows carries the
-         mechanism). */
+         mechanism). The popover open now may not be this one: the reader can
+         close the eye and open a column's ⋮ before a queued paint lands, and
+         relearning would swap the eye's switches into that menu. So only an
+         eye on this table learns, and it learns its own rows (the table's eye
+         has a Rows section, the entity's does not). */
       const pop = document.querySelector('.chip-pop');
-      if (pop) {
-        const wasFocused = document.activeElement?.closest?.('.eye-row')?.querySelector('.eye-label')?.textContent ?? null;
-        // On a rebuild the pressed row is a new node; focus follows it so
-        // Escape still closes and the arrows still move (Issue #223).
-        relearnRows(pop, buildRows(fresh), (p) => {
-          if (wasFocused != null) [...p.querySelectorAll('.eye-row')].find((r) => r.querySelector('.eye-label')?.textContent === wasFocused)?.focus();
-        });
-      }
+      if (pop?.eyeOf === db.id) pop.relearnEye();
     } catch (err) { toast(err.message, true); }
   };
   /* A taught row keeps the handler it was built with, so the handler reads
-     the table at click time. A set captured when the row was built would be
-     one flip out of date, and the second flip would drop the first one back
-     out of the hidden set (Issue #240). */
+     the table live, when its write's turn comes (Issue #243). A set captured
+     when the row was built would be one flip out of date, and the second
+     flip would drop the first one back out of the hidden set (Issue #240). */
   const liveTable = () => allTables().find((d) => d.id === db.id) ?? db;
   const buildRows = (cur) => {
     const hidden = new Set(cur.hiddenFields ?? []);
     const sysOn = new Set(cur.systemFields ?? []);
     return [
       el('div', { class: 'eye-head' }, 'Fields'),
-      ...cur.fields.map((f) => row(!hidden.has(f.name), f.name, () => {
-        const next = new Set(liveTable().hiddenFields ?? []);
+      ...cur.fields.map((f) => row(!hidden.has(f.name), f.name, () => save((t) => {
+        const next = new Set(t.hiddenFields ?? []);
         if (next.has(f.name)) next.delete(f.name); else next.add(f.name);
-        save({ hiddenFields: [...next] });
-      })),
+        return { hiddenFields: [...next] };
+      }))),
       el('div', { class: 'eye-head' }, 'System'),
-      ...Object.keys(SYSTEM_COLS).map((n) => row(sysOn.has(n), n, () => {
-        const next = new Set(liveTable().systemFields ?? []);
+      ...Object.keys(SYSTEM_COLS).map((n) => row(sysOn.has(n), n, () => save((t) => {
+        const next = new Set(t.systemFields ?? []);
         if (next.has(n)) next.delete(n); else next.add(n);
-        save({ systemFields: [...next] });
-      })),
+        return { systemFields: [...next] };
+      }))),
       ...(rowsSection ? [
         el('div', { class: 'eye-head' }, 'Rows'),
         row(state.showDeleted.has(cur.id), `Deleted ${cur.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => {
@@ -3759,7 +3797,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
         // the next reader inherits it. Registry grids have no rollups. Off
         // until this table opts in (Issue #249), so the switch reads and
         // writes `hideRollups === false` rather than its absence.
-        ...(cur.system ? [] : [row(cur.hideRollups === false, 'Σ rollup row', () => save({ hideRollups: liveTable().hideRollups === false }))]),
+        ...(cur.system ? [] : [row(cur.hideRollups === false, 'Σ rollup row', () => save((t) => ({ hideRollups: t.hideRollups === false })))]),
       ] : []),
     ];
   };
@@ -3767,8 +3805,16 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
      popover may be a detached node by the next click. Its replacement sits in
      the same region; the other surface's eye (table vs docked entity) does
      not, and still opens its own popover in one click (Issue #320). */
-  const home = anchor.closest('#main, #dock');
-  showPopover(anchor, buildRows(db), { owns: (t) => t.closest?.('.eye-btn')?.closest('#main, #dock') === home });
+  const pop = showPopover(anchor, buildRows(db), { owns: (t) => t.closest?.('.eye-btn')?.closest('#main, #dock') === home });
+  pop.eyeOf = db.id;
+  pop.relearnEye = () => {
+    const wasFocused = document.activeElement?.closest?.('.eye-row')?.querySelector('.eye-label')?.textContent ?? null;
+    // On a rebuild the pressed row is a new node; focus follows it so
+    // Escape still closes and the arrows still move (Issue #223).
+    relearnRows(pop, buildRows(liveTable()), (p) => {
+      if (wasFocused != null) [...p.querySelectorAll('.eye-row')].find((r) => r.querySelector('.eye-label')?.textContent === wasFocused)?.focus();
+    });
+  };
 }
 
 /* The columns a table shows: every field, minus the table's hidden set (the
