@@ -737,6 +737,8 @@ weave file delete Task#5 <fileId>
 
 Renders as file chips; images preview in the fullscreen viewer.
 
+In the app, drop files from your desktop onto the field's cell in the grid, or onto its files on the record: the cell lights while files hover it, and every file you let go of uploads into the field. **+ file** on the record picks one from a dialog. A single-file field refuses a second file and says so.
+
 ## Gotchas
 
 Files are not documents. A document is written and rendered; an attachment is stored and handed back. Copying the \`.db\` on its own drops every attachment — back up \`files/\` beside it, or take a \`weave export\`, whose JSON carries the bytes inline and lands them in \`files/\` again on import.
