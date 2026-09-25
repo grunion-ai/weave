@@ -72,8 +72,31 @@ cannot pass the gate.
 # 1. write the Release row (notes in Description) on the canonical workspace, :4400
 # 2. bump package.json
 node scripts/export-development.mjs        # 3. docs/development.json gains the release
-# 4. paste the notes as the CHANGELOG.md digest; land through Gerrit as one change
+# 4. paste the notes as the CHANGELOG.md digest under a `## v<version>` heading;
+#    land through Gerrit as one change
+# 5. automatic: the main watcher tags and publishes it. Then confirm it did:
+gh release list -R grunion-ai/weave --limit 1   # the new version, marked Latest
 ```
+
+Step 5 is the one users see. After the change lands and the main watcher mirrors the
+green gerrit/main to GitHub (rule 7), it runs `harness/scripts/weave-release-tags.mjs`:
+every version in the landed range with no `v<version>` tag gets an annotated
+`v<version>` tag on the commit that introduced it, pushed to GitHub, and a GitHub Release
+titled `weave v<version>` whose notes are that version's `## v<version>` section of
+CHANGELOG.md. A normal landing needs no hand on it. Without the tag and the Release a bump is
+invisible: `gh release list`, the repo's Releases sidebar and `git describe` keep naming
+the last tagged build, which is how an install sat on 0.4.4 while main was at 0.4.15
+(Issue #253). The notes are mandatory here too: a version with no `## v<version>`
+section is skipped rather than published empty, and the watcher files a weave Issue
+named `weave v<version> did not publish a GitHub Release`.
+
+The check is not automatic. Whoever lands the bump confirms, the same day, that
+`gh release list -R grunion-ai/weave` names the new version as Latest. The watcher runs
+on the Mac that hosts Gerrit, from the harness checkout at `~/Documents/harness.nosync`,
+and publishes only while that checkout is on `main`: v0.4.16 went out untagged on
+2026-09-10 because it was not. When the Release is missing,
+`node scripts/weave-release-tags.mjs --dry-run` in that checkout prints what is owed;
+write the missing CHANGELOG section or fix the push, then run it without `--dry-run`.
 
 ## Service operations
 

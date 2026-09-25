@@ -141,6 +141,26 @@ test('the shipped manifest carries release notes for the package version', () =>
   }
 });
 
+/* Issue #253: a bump reaches users only as a `v<version>` tag and a GitHub
+   Release. The main watcher publishes both (harness
+   `scripts/weave-release-tags.mjs`), taking the notes from the version's
+   `## v<version>` CHANGELOG section, so the written release order has to say
+   so: a digest under any other heading ships no Release, and the check that
+   one did is a person's or an agent's, not this gate's. */
+test('the written release order ends with the tag and the GitHub Release', () => {
+  const dev = readFileSync(join(ROOT, 'DEVELOPMENT.md'), 'utf8');
+  const start = dev.indexOf('## Releasing');
+  assert.ok(start >= 0, 'DEVELOPMENT.md has a Releasing section');
+  const releasing = dev.slice(start, dev.indexOf('\n## ', start + 1));
+  assert.match(releasing, /`## v<version>`/, 'the CHANGELOG heading the notes are read from');
+  assert.match(releasing, /`v<version>` tag/, 'the tag');
+  assert.match(releasing, /GitHub Release/, 'the Release');
+  assert.match(releasing, /weave-release-tags\.mjs/, 'the script that publishes them');
+  assert.match(releasing, /gh release list -R grunion-ai\/weave/, 'the check a person or agent runs');
+  const rule5 = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8').split('\n').find((l) => l.startsWith('5. **Every release'));
+  assert.match(rule5, /land through Gerrit → .*`v<version>` tag.*GitHub Release/, 'CLAUDE.md rule 5 ends on the same step');
+});
+
 /* Issue #229: nine watcher rows were linked `Fixed in → v0.4.5` in a closing
    sweep, and the manifest shipped that claim to every instance. The main
    watcher files `gerrit/main @ <sha> did not reach …` rows about its own
