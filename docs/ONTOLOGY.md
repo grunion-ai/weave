@@ -250,6 +250,15 @@ A rule bound to one table: a trigger — entity-created, field-updated,
 state-changed — and the actions it fires: set-field, append-doc, add-comment,
 webhook.
 
+Every rule carries `seq`, a monotonic counter over the whole workspace
+(`meta.automationSeq`), minted when the rule is created and never reused after
+a delete. The rules on one trigger fire in `seq` order, and the store, the API
+(`GET /api/automations`), MCP, the CLI and the relation map's pills all list
+them that way. Every open numbers whatever rule it finds unnumbered, in rowid
+order (the order such rules fired in before `seq` existed), and never moves a
+number already handed out. `weave export` carries `seq` and the counter, and
+`weave import` keeps them as written.
+
 ### Account
 A named token holder with a role: admin, writer, or reader. The workspace stores
 the token's hash, never the token. An "account" row in a CRM table is a Row like

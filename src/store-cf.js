@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS doc_revisions (
 CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
 `;
 
+// Mirrors src/store.js: automations load in seq order (Issue #285).
+const LOAD_ORDER = {
+  automations: " ORDER BY json_extract(json, '$.seq') IS NULL, json_extract(json, '$.seq'), rowid",
+};
+
 const UNDO_CAP = 200;
 const DOC_REVISION_CAP = 200; // mirrors src/store.js (Feature #225)
 
@@ -75,7 +80,7 @@ export class CFStore {
     const state = { ...JSON.parse(metaRow.json), spaces: {}, tables: {}, entities: {}, automations: {} };
     const cache = { meta: metaRow.json, spaces: new Map(), tables: new Map(), automations: new Map() };
     for (const key of ['spaces', 'tables', 'automations']) {
-      for (const row of this.#all(`SELECT id, json FROM ${key}`)) {
+      for (const row of this.#all(`SELECT id, json FROM ${key}${LOAD_ORDER[key] ?? ''}`)) {
         state[key][row.id] = JSON.parse(row.json);
         cache[key].set(row.id, row.json);
       }
