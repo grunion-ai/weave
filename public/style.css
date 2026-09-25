@@ -1402,6 +1402,20 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .doc-editor .vditor-ir pre.vditor-ir__preview > code,
 .doc-editor .vditor-ir pre.vditor-ir__marker--pre > code { background: transparent; color: inherit; }
 .doc-editor .vditor-ir__node--expand[data-type="code-block"] .vditor-ir__preview { display: none; }
+/* The markdown of the block being edited stays behind the </> button until
+   the writer asks for it (Issue #96): the ``` fences (Vditor draws them as
+   the node's ::before and ::after), the language, and a diagram's whole
+   source. attachCodeRawToggle sets .wv-code-raw on the host; without it, code
+   stays code and a diagram stays its drawing. */
+.doc-editor:not(.wv-code-raw) .vditor-ir__node--expand[data-type="code-block"]::before,
+.doc-editor:not(.wv-code-raw) .vditor-ir__node--expand[data-type="code-block"]::after { content: none; }
+.doc-editor:not(.wv-code-raw) .vditor-ir__node--expand[data-type="code-block"] > .vditor-ir__marker--info { display: none; }
+.doc-editor:not(.wv-code-raw) .vditor-ir__node--expand[data-type="code-block"]:not(:has(> .vditor-ir__preview > code)) > pre.vditor-ir__marker--pre { display: none; }
+.doc-editor:not(.wv-code-raw) .vditor-ir__node--expand[data-type="code-block"]:not(:has(> .vditor-ir__preview > code)) > .vditor-ir__preview { display: block; }
+.doc-code-raw { position: absolute; z-index: 5; display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px; border: 0; border-radius: 4px; background: transparent; color: var(--tblr-secondary); cursor: pointer; }
+.doc-code-raw:hover { color: var(--tblr-body-color); background: rgba(127, 127, 127, .18); }
+.doc-code-raw[aria-pressed="true"] { color: var(--tblr-primary); }
 /* Vditor hides the copy button until the block is hovered, which leaves it
    undiscoverable and unreachable by touch. It is always there, upper right,
    quiet until you go for it. */

@@ -773,9 +773,13 @@ An unlabelled fence detects its own language — JSON, HTML, a mermaid source, a
 
 Highlighting is the vendored highlight.js: github in light, github-dark in dark. The block chrome belongs to weave, so a code block reads like the rest of the page in both themes.
 
+Click into a block and you edit the code itself; the fences and the language stay out of sight. The **</>** button in the block's upper right shows them, so you can rename the language, and a second click hides them. Leave the block and it closes again.
+
 ## Diagrams
 
 A \`mermaid\` or \`mmd\` fence renders as a diagram — in the editor, and in every export. \`.mmd\` is a first-class download format beside \`.md\`, \`.html\` and \`.pdf\`.
+
+Clicking a diagram keeps the drawing on screen. Its source sits behind the same **</>** button, and typing into the block opens the source first, so you never edit text you cannot see.
 
 Graphviz, PlantUML, echarts, mindmap, abc and flowchart fences are deliberately **not** vendored. They degrade to plain code blocks rather than pulling six renderers into the tree.
 
