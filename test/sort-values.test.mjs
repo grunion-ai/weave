@@ -7,9 +7,10 @@
    `$9.50` and `15,829,984` below `900`.
 
    The rule is the one a formula already reads by (#resolve): a number stays a
-   number, a date stays its stored instant, and everything else — option and
-   state names, joined relations — sorts by what the reader sees, because
-   that IS its value. */
+   number, a date stays its stored instant, and everything else — joined
+   relations, a multiselect's names — sorts by what the reader sees, because
+   that IS its value. A select and a workflow are the exception since Issue
+   #318: they sort by where the option or state sits in the definition. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -85,7 +86,7 @@ test('half a range is still refused, so an open end is only ever imported data',
   assert.deepEqual(names(w.query(t, { sort: [{ field: 'Window' }] })), ['closed', 'open']);
 });
 
-test('a select still sorts by the option name the reader sees, not by its id', () => {
+test('a select sorts by its option, not by the id it stores', () => {
   const { w, t } = build();
   w.createEntity(t, { name: 'g', values: { Stage: 'gamma' } });
   w.createEntity(t, { name: 'a', values: { Stage: 'alpha' } });
@@ -106,4 +107,129 @@ test('a filter still reads the costume: `contains "Sep"` finds the painted month
   w.createEntity(t, { name: 'sep', values: { Created: '2026-09-12T07:32' } });
   w.createEntity(t, { name: 'oct', values: { Created: '2026-10-01T00:05' } });
   assert.deepEqual(names(w.query(t, { where: [['Created', 'contains', 'Sep']] })), ['sep']);
+});
+
+/* ---------- Issues #254, #273 and #318: sorting reads the field ----------
+   Kyle, 2026-09-09: "sort should just be by ascending descending. but also
+   largest smallest most recent to oldest or alphabetical." The stored
+   direction stays `asc` / `desc`; what moved is what a status and a select
+   order by (the order their definition lists them in, 2026-09-18), and which
+   columns may sort at all (the system columns, 2026-09-12). */
+
+function planning() {
+  const w = new Weave();
+  w.createSpace({ name: 'Plan' });
+  const t = w.createTable({ space: 'Plan', name: 'Item' });
+  // Definition order is deliberately NOT alphabetical, so a name sort and an
+  // option-order sort cannot pass for each other.
+  w.addField(t, { name: 'When', type: 'select', config: { options: ['Now', 'Next', 'Later'] } });
+  w.addField(t, { name: 'Tags', type: 'multiselect', config: { options: ['zeta', 'alpha', 'mid'] } });
+  w.addField(t, {
+    name: 'State', type: 'workflow', config: {
+      states: [
+        { name: 'Open', category: 'not-started', default: true },
+        { name: 'Doing', category: 'in-progress' },
+        { name: 'Closed', category: 'done' },
+      ],
+    },
+  });
+  return { w, t };
+}
+
+test('a select sorts in the order its options are defined, and descending reverses it (Issue #318)', () => {
+  const { w, t } = planning();
+  w.createEntity(t, { name: 'later', values: { When: 'Later' } });
+  w.createEntity(t, { name: 'now', values: { When: 'Now' } });
+  w.createEntity(t, { name: 'next', values: { When: 'Next' } });
+  w.createEntity(t, { name: 'unset' });
+  // By name this read later, next, now: "L" < "N".
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'When' }] })), ['now', 'next', 'later', 'unset']);
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'When', dir: 'desc' }] })), ['later', 'next', 'now', 'unset'],
+    'reversed, and the empty cell still last');
+});
+
+test('a workflow sorts in the order its states are defined (Issue #318)', () => {
+  const { w, t } = planning();
+  const closed = w.createEntity(t, { name: 'closed' });
+  w.createEntity(t, { name: 'open' });
+  const doing = w.createEntity(t, { name: 'doing' });
+  w.setState(closed.id, 'State', 'Closed');
+  w.setState(doing.id, 'State', 'Doing');
+  // By name this read closed, doing, open.
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'State' }] })), ['open', 'doing', 'closed']);
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'State', dir: 'desc' }] })), ['closed', 'doing', 'open']);
+});
+
+test('a multiselect and a relation keep sorting by the names they paint (Issue #318)', () => {
+  // Kyle left references open ("for references its not clear what it should
+  // be"), and a multiselect holds several options, so neither has one place
+  // in a definition to sort by. Both keep the order they had: the painted
+  // names, joined, compared as text.
+  const { w, t } = planning();
+  const other = w.createTable({ space: 'Plan', name: 'Owner' });
+  w.addRelation(t, { name: 'Owners', targetDb: other, cardinality: 'many-to-many', inverseName: 'Items' });
+  const apple = w.createEntity(other, { name: 'apple' });
+  const zebra = w.createEntity(other, { name: 'zebra' });
+  w.createEntity(t, { name: 'z', values: { Tags: ['zeta'], Owners: [zebra.id] } });
+  w.createEntity(t, { name: 'az', values: { Tags: ['alpha', 'zeta'], Owners: [apple.id, zebra.id] } });
+  w.createEntity(t, { name: 'm', values: { Tags: ['mid'], Owners: [apple.id] } });
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'Tags' }] })), ['az', 'm', 'z'], 'alpha,zeta < mid < zeta, never the definition order zeta, alpha, mid');
+  assert.deepEqual(names(w.query(t, { sort: [{ field: 'Owners' }] })), ['m', 'az', 'z'], 'apple < apple, zebra < zebra');
+});
+
+/* The system columns (Issues #254, #273). The engine could always read them
+   (#pathValue knew createdAt, updatedAt and publicId); the table's stored
+   sort refused them, because its check asked getField(), which only knows
+   the table's own fields. */
+function stamped() {
+  const w = new Weave();
+  w.createSpace({ name: 'Log' });
+  const t = w.createTable({ space: 'Log', name: 'Entry' });
+  const rows = [
+    { name: 'middle', by: 'mia', at: '2026-09-10T08:00:00.000Z', mod: '2026-09-20T08:00:00.000Z' },
+    { name: 'oldest', by: 'zed', at: '2026-09-01T08:00:00.000Z', mod: '2026-09-02T08:00:00.000Z' },
+    { name: 'newest', by: 'amy', at: '2026-09-12T08:00:00.000Z', mod: '2026-09-13T08:00:00.000Z' },
+  ];
+  for (const r of rows) {
+    w.actor = r.by;
+    const e = w.createEntity(t, { name: r.name });
+    // Rows made in one test land in the same millisecond; the stamps are set
+    // by hand so the order is the stamps' and not the clock's.
+    w.state.entities[e.id].createdAt = r.at;
+    w.state.entities[e.id].updatedAt = r.mod;
+  }
+  return { w, t };
+}
+
+test('a table sorts by Created At, Modified At, Created By, Modified By and its # (Issues #254, #273)', () => {
+  const { w, t } = stamped();
+  const by = (field, dir) => {
+    w.updateTable(t, { sort: [{ field, dir }] });
+    assert.deepEqual(w.getTable(t).sort, [{ field, dir }], `${field} is stored under its own name`);
+    return names(w.query(t, { sort: w.getTable(t).sort }));
+  };
+  assert.deepEqual(by('Created At', 'asc'), ['oldest', 'middle', 'newest']);
+  assert.deepEqual(by('Created At', 'desc'), ['newest', 'middle', 'oldest']);
+  assert.deepEqual(by('Modified At', 'desc'), ['middle', 'newest', 'oldest']);
+  assert.deepEqual(by('Created By', 'asc'), ['newest', 'middle', 'oldest'], 'amy < mia < zed');
+  assert.deepEqual(by('Modified By', 'desc'), ['oldest', 'middle', 'newest']);
+  // The # column: rows were made middle, oldest, newest, so #1, #2, #3.
+  assert.deepEqual(by('Public Id', 'desc'), ['newest', 'oldest', 'middle']);
+  // The schema the browser reads carries it, so the grid opens sorted.
+  const schema = w.describeSchema().flatMap((s) => s.tables).find((x) => x.id === w.getTable(t).id);
+  assert.deepEqual(schema.sort, [{ field: 'Public Id', dir: 'desc' }]);
+});
+
+test('Activity and unknown names are still refused as a sort, and a field of that name wins (Issue #254)', () => {
+  const { w, t } = stamped();
+  // Activity is a count that links to the history, not a value to order by.
+  assert.throws(() => w.updateTable(t, { sort: [{ field: 'Activity' }] }), /not found/);
+  assert.throws(() => w.updateTable(t, { sort: [{ field: 'Nope' }] }), /not found/);
+  // A table that has its own field called Created At (an import, say) sorts
+  // by that field: the table's fields are asked first.
+  w.addField(t, { name: 'Created At', type: 'number' });
+  const rows = w.query(t, {}).items;
+  rows.forEach((r, i) => w.updateEntity(r.id, { 'Created At': 10 - i }));
+  w.updateTable(t, { sort: [{ field: 'Created At' }] });
+  assert.deepEqual(names(w.query(t, { sort: w.getTable(t).sort })), rows.map((r) => r.name).reverse());
 });

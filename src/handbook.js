@@ -985,6 +985,7 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 | Drag a header's right edge | table view | sets a width — the column follows the pointer and stops at its own label |
 | Double-click that edge | table view | fits the column to its content, no cutoff |
 | Click a header | table view | opens the field tray — rename, retype, reconfigure |
+| ⋮ on a header | table view | sorts by that column, stored on the table for everyone. The two rows read by type: **Oldest to newest** for a date, **Smallest to largest** for a number, **A to Z** for text, **Option order** for a select and **State order** for a workflow (the order the definition lists them in), plain **Ascending** where no one reading fits. The **#** column and the system columns carry a sort-only ⋮ of their own |
 | 👁 | view toolbar | show or hide any field, the system columns, and deleted rows |
 | Drag the grip | entity page | reorders fields; the table's columns follow |
 | Fold FIELDS | entity page | the caret beside FIELDS folds the value rows into one line of label · value chips, so a long field list stops pushing the documents down; the chips still edit in place, and the fold is remembered per row in this browser |
@@ -993,7 +994,7 @@ The **#** column takes none of this. It is frozen to the grid's left edge, so a 
 
 Two facts about width decide how a table reads: **an unset column caps at 260px and ellipsises** (and an unset Name column opens at 260px wherever the card has that room to spare, taking it ahead of the columns beside it, and never widens the grid past its card), and **a set width is a floor as well as a ceiling** (60px minimum, and never narrower than the header's label), so the column holds its width in a grid wider than its card. Set one only where the default clips something a reader needs.
 
-The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record.
+The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record. Every one but Activity sorts from its ⋮; the stored sort names it (\`Created At desc\`), and \`Public Id\` is the name the # column sorts under.
 
 Hide rather than delete when a column matters to a machine and not to a reader. Hiding keeps the data and the API surface; a delete needs \`hard\` and does not come back.
 

@@ -160,7 +160,7 @@ if (s) {
       // Sorting redraws every row from scratch. A selection keyed on index
       // would move onto different records here without saying so.
       await page.locator('.wv-grid thead .col-head').first().locator('.field-menu').click();
-      await page.locator('.chip-pop .chip-pop-row', { hasText: 'Sort descending' }).click();
+      await page.locator('.chip-pop .chip-pop-row', { hasText: 'Z to A' }).click();
       await page.waitForTimeout(120);
       assert.deepEqual(await chosen(), before, 'the same entity ids survive the sort');
     } finally { await page.close(); }

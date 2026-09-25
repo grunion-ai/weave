@@ -3466,17 +3466,20 @@ async function showDatabase(dbId, view) {
    A paged grid has one page of the server's order, so where the row belongs
    now is the server's question — which is what sends the commit back to the
    full re-read (Issue #257). A write that names no field (a bulk command, an
-   undo) is that question too. */
+   undo) is that question too. So is any write on a table sorted by Modified
+   At or Modified By (Issue #254): every edit rewrites the stamp, whatever
+   field it touched, so the edited row belongs somewhere else now. */
 function gridMoves(db, field) {
   if (!field) return true;
-  if ((gridSort(db) ?? []).some((s) => s.field === field)) return true;
+  if ((gridSort(db) ?? []).some((s) => s.field === field || s.field === 'Modified At' || s.field === 'Modified By')) return true;
   return Object.keys(tableFilters(db) ?? {}).includes(field);
 }
 
 /* The table's sort as the query takes it: only fields that still exist, so a
-   sort left pointing at a dropped column cannot keep the table from opening. */
+   sort left pointing at a dropped column cannot keep the table from opening.
+   A system column always exists (Issue #254). */
 function gridSort(db) {
-  const sort = (db.sort ?? []).filter((s) => db.fields.some((f) => f.name === s.field));
+  const sort = (db.sort ?? []).filter((s) => db.fields.some((f) => f.name === s.field) || fieldDialogCore.SYSTEM_SORT[s.field]);
   return sort.length ? sort : null;
 }
 
@@ -4574,15 +4577,24 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
          "15,829,984" loses to "900" — so a number sorts as a number, a date
          as its stored instant, and a range by its start then its end (Issue
          #287), all read off item.raw. Everything else sorts by its display
-         form, because for an option, a state or a joined relation the name
-         IS the value. Mirrors the engine's own comparator (#pathValue's
+         form, because for a multiselect or a joined relation the names ARE
+         the value. Mirrors the engine's own comparator (#pathValue's
          `undressed`) through the same weaveDateGrain.rangeKey, so a grid
          that holds every row lands in the same order as the paged one
          beside it. */
-      const sortType = db.fields.find((f) => f.name === sortKey)?.type;
+      const sortField = db.fields.find((f) => f.name === sortKey);
+      const sortType = sortField?.type;
+      // A system column reads its entity key (Issue #254); a select and a
+      // workflow read where the value sits in the definition (Issue #318),
+      // as the engine's #definitionRank does.
+      const system = sortField ? null : fieldDialogCore.SYSTEM_SORT[sortKey];
+      const order = sortType === 'select' ? (sortField.optionsFull ?? []).map((o) => o.id)
+        : sortType === 'workflow' ? (sortField.states ?? []).map((st) => st.id) : null;
       const val = (item) => {
+        if (system) return item[system.key] ?? null;
         const raw = item.raw?.[sortKey];
         if (sortType === 'daterange') return weaveDateGrain.rangeKey(raw);
+        if (order) return raw == null ? null : (order.indexOf(raw) + 1 || order.length + 1);
         return typeof raw === 'number' || sortType === 'date' ? raw : item.fields[sortKey];
       };
       sortedItems.sort((a, b) => {
@@ -4612,6 +4624,28 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           loadedNote)));
     }
 
+    /* One sort path for every header that sorts: a field's, the # column's
+       and a system column's (Issue #254). `key` is the name the table
+       stores, which for # is `Public Id`. */
+    const sortBy = (key) => (dir) => {
+      sortKey = dir ? key : null; sortDir = dir || 1;
+      const saved = api('PATCH', `/tables/${db.id}`, { sort: dir ? [{ field: key, dir: dir > 0 ? 'asc' : 'desc' }] : [] }).then(loadSchema);
+      // A paged grid sorts on the server: page 1 is re-read in the
+      // new order once the sort is the table's. The rest sort in
+      // place for the instant redraw, as before.
+      if (pager) saved.then(() => keepScroll(() => showDatabase(db.id, state.route.view)));
+      else draw();
+    };
+    const sortMark = (key) => (sortKey === key ? iconEl(sortDir > 0 ? '↑' : '↓', 'wv-icon wv-icon-xs') : null);
+    /* A system column has no definition to edit, so its ⋮ carries the sort
+       rows alone (Kyle, 2026-09-12: "system fields need the same 3 dots menu
+       for sorting"). Activity has none: it links to the history. */
+    const systemMenu = (key, label) => {
+      const sys = fieldDialogCore.SYSTEM_SORT[key];
+      return sys ? fieldMenuButton(db, { ...sys, name: label, system: true },
+        { sorted: sortKey === key ? sortDir : 0, onSort: sortBy(key) }) : null;
+    };
+
     table = el('table', {
       class: 'table table-sm table-vcenter card-table table-hover wv-grid',
       dataset: { density: gridDensity(db.id) },
@@ -4631,7 +4665,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
                   ? new Set() : L.selectAll(loaded));
               },
             }))),
-        el('th', { class: 'pid-head' }, '#'),
+        el('th', { class: 'pid-head' }, '#', sortMark('Public Id'), systemMenu('Public Id', '#')),
         ...cols.map((c, i) => el('th', {
           class: colField(db, c) === nameF ? 'col-head name-col' : 'col-head',
           draggable: 'true',
@@ -4667,22 +4701,15 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         },
           el('span', { class: 'col-label' },
             fieldNameLabel(colField(db, c), c),
-            sortKey === c ? iconEl(sortDir > 0 ? '↑' : '↓', 'wv-icon wv-icon-xs') : null),
+            sortMark(c)),
           fieldMenuButton(db, colField(db, c), {
             sorted: sortKey === c ? sortDir : 0,
-            onSort: (dir) => {
-              sortKey = dir ? c : null; sortDir = dir || 1;
-              const saved = api('PATCH', `/tables/${db.id}`, { sort: dir ? [{ field: c, dir: dir > 0 ? 'asc' : 'desc' }] : [] }).then(loadSchema);
-              // A paged grid sorts on the server: page 1 is re-read in the
-              // new order once the sort is the table's. The rest sort in
-              // place for the instant redraw, as before.
-              if (pager) saved.then(() => keepScroll(() => showDatabase(db.id, state.route.view)));
-              else draw();
-            },
+            onSort: sortBy(c),
           }),
           columnResizeGrip(db, colField(db, c)))),
         ...(db.systemFields ?? []).map((n) => el('th', { class: 'sys-head', title: `${n} — system field, read-only` },
-          el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·')))),
+          el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·'), sortMark(n)),
+          systemMenu(n, n))),
         // Adding a field lives where the fields are: the end of the header bar.
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db))),
       // The Σ row (Issue #233): this table's space rollups, one cell per
@@ -5407,10 +5434,26 @@ function fieldMenuRow(icon, label, run, { current = false } = {}) {
   return row;
 }
 
+/* The two sort labels a column's menu offers (Issues #254, #318). The words
+   are fieldDialogCore.sortLabels'; this finds the type a lookup or a rollup
+   reads, which only the schema around the field knows. */
+function sortLabelsFor(db, f) {
+  let targetType = null;
+  if ((f.type === 'lookup' || f.type === 'rollup') && f.targetField) {
+    const rel = f.via ? db.fields.find((x) => x.name === f.via) : null;
+    const target = allTables().find((t) => t.id === (f.viaTableId ?? rel?.targetDbId));
+    targetType = target?.fields.find((x) => x.name === f.targetField)?.type ?? null;
+  }
+  return fieldDialogCore.sortLabels(f, { targetType });
+}
+
+/* `f.system` is a system column (Issue #254): the menu names it and sorts
+   it, and has nothing to edit, insert beside or delete. */
 function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
   const btn = el('button', {
     class: 'field-menu', type: 'button',
-    title: `Configure ${f.name}`, 'aria-label': `Configure field ${f.name}`,
+    title: f.system ? `Sort by ${f.name}` : `Configure ${f.name}`,
+    'aria-label': f.system ? `Sort by ${f.name}` : `Configure field ${f.name}`,
   }, iconEl('lucide:ellipsis-vertical', 'wv-icon'));
   btn.addEventListener('click', (e) => {
     e.stopPropagation();   // configuring a column must not also sort it
@@ -5421,17 +5464,23 @@ function fieldMenuButton(db, f, { sorted = 0, onSort = null } = {}) {
     const rows = [
       el('div', { class: 'wv-menu-head' },
         el('span', { class: 'wv-menu-title', title: f.name }, f.name),
-        el('span', { class: 'wv-menu-kind' }, fieldDialogCore.typeLabel(f.type))),
-      row(FIELD_MENU_ICONS.edit, 'Edit field…', () => editFieldDialog(db, f)),
-      row(FIELD_MENU_ICONS.insert, 'Insert field…', () => addFieldDialog(db)),
+        el('span', { class: 'wv-menu-kind' }, f.system ? 'system' : fieldDialogCore.typeLabel(f.type))),
     ];
+    if (!f.system) {
+      rows.push(row(FIELD_MENU_ICONS.edit, 'Edit field…', () => editFieldDialog(db, f)),
+        row(FIELD_MENU_ICONS.insert, 'Insert field…', () => addFieldDialog(db)));
+    }
     if (onSort) {
-      rows.push(el('div', { class: 'wv-menu-sep' }),
-        row(FIELD_MENU_ICONS.asc, 'Sort ascending', () => onSort(1), { current: sorted > 0 }),
-        row(FIELD_MENU_ICONS.desc, 'Sort descending', () => onSort(-1), { current: sorted < 0 }));
+      /* The direction is still asc/desc underneath; the words say what that
+         means for this column: oldest first, smallest first, A to Z, the
+         option order (Kyle, 2026-09-09 and 2026-09-18). */
+      const words = sortLabelsFor(db, f);
+      if (!f.system) rows.push(el('div', { class: 'wv-menu-sep' }));
+      rows.push(row(FIELD_MENU_ICONS.asc, words.asc, () => onSort(1), { current: sorted > 0 }),
+        row(FIELD_MENU_ICONS.desc, words.desc, () => onSort(-1), { current: sorted < 0 }));
       if (sorted) rows.push(row(FIELD_MENU_ICONS.clear, 'Clear sort', () => onSort(0)));
     }
-    if (f.role !== 'name') {
+    if (f.role !== 'name' && !f.system) {
       rows.push(el('div', { class: 'wv-menu-sep' }));
       rows.push(holdToConfirm('Delete field', async () => {
         document.querySelector('.chip-pop')?.remove();

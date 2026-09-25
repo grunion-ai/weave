@@ -112,6 +112,58 @@
     return (FIELD_TYPES.find((t) => t.id === type) ?? {}).label ?? String(type);
   }
 
+  /* The two sort rows of a column's ⋮ menu, worded for what the column
+     holds (Issues #254, #318). Kyle, 2026-09-09: "sort should just be by
+     ascending descending. but also largest smallest most recent to oldest or
+     alphabetical." The stored direction stays asc/desc; only the reading
+     changes. A select and a workflow sort by their definition (the engine's
+     #definitionRank), so the words name that order. A type with no single
+     reading (several values, a reference, a yes/no) keeps the plain pair.
+     `targetType` is the type a lookup or a rollup reads, when the caller
+     knows it: a looked-up value sorts by its display form, so only a number
+     keeps its own reading through one. */
+  const SORT_WORDS = {
+    date: ['Oldest to newest', 'Newest to oldest'],
+    number: ['Smallest to largest', 'Largest to smallest'],
+    text: ['A to Z', 'Z to A'],
+    select: ['Option order', 'Reverse option order'],
+    workflow: ['State order', 'Reverse state order'],
+    plain: ['Ascending', 'Descending'],
+  };
+  const TEXT_LIKE = ['text', 'url', 'email', 'key'];
+  // Mirrors src/stats.js: every rollup but min, max and join yields a number.
+  const NUMBER_AGGREGATES = ['count', 'sum', 'avg', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'];
+  function sortReading(f, targetType) {
+    const type = f?.type;
+    if (type === 'date' || type === 'daterange') return 'date';
+    if (type === 'number') return 'number';
+    if (type === 'select' || type === 'workflow') return type;
+    if (TEXT_LIKE.includes(type)) return 'text';
+    if (type === 'rollup') {
+      if (NUMBER_AGGREGATES.includes(f.aggregate)) return 'number';
+      if (f.aggregate === 'join') return 'text';
+      return (f.aggregate === 'min' || f.aggregate === 'max') && targetType === 'number' ? 'number' : 'plain';
+    }
+    if (type === 'lookup') return targetType === 'number' ? 'number' : TEXT_LIKE.includes(targetType) || targetType === 'select' || targetType === 'workflow' ? 'text' : 'plain';
+    // A formula wearing a number costume computes a number.
+    if (type === 'formula') return ['format', 'unit', 'currency', 'decimals'].some((k) => f[k] != null) ? 'number' : 'plain';
+    return 'plain';
+  }
+  function sortLabels(f, { targetType = null } = {}) {
+    const [asc, desc] = SORT_WORDS[sortReading(f, targetType)];
+    return { asc, desc };
+  }
+  /* The system columns a grid may sort by, the entity key each reads and
+     the type it sorts as. Mirrors the engine's SYSTEM_SORT_KEYS
+     (test/sort-labels.test.mjs); `Public Id` is the # column. */
+  const SYSTEM_SORT = {
+    'Created At': { name: 'Created At', key: 'createdAt', type: 'date' },
+    'Modified At': { name: 'Modified At', key: 'updatedAt', type: 'date' },
+    'Created By': { name: 'Created By', key: 'createdBy', type: 'text' },
+    'Modified By': { name: 'Modified By', key: 'modifiedBy', type: 'text' },
+    'Public Id': { name: 'Public Id', key: 'publicId', type: 'number' },
+  };
+
   /* Grid tiles to offer: every type for a new field; for an existing one its
      current type first, then the compatible migrations in matrix order.
      Computed types (formula/lookup/rollup/relation) have no tile set — their
@@ -737,7 +789,7 @@
 
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
-    ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
+    ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, sortLabels, SYSTEM_SORT, migrateState, moveItem,
     NUMBER_FORMATS, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     blankState, definitionFromState, stateFromDefinition,

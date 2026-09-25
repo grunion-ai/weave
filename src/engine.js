@@ -75,6 +75,15 @@ const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 /* checkbox and toggle store the same boolean; the toggle names its two states (Feature #202). */
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
+/* The system columns a table may sort by (Issues #254, #273), each against
+   the entity key that holds it. `Public Id` is the grid's # column. Activity
+   is absent: it is a count that links to the history, not a value to order
+   by. public/field-dialog-core.js mirrors the names (test/sort-labels). */
+export const SYSTEM_SORT_KEYS = {
+  'Created At': 'createdAt', 'Modified At': 'updatedAt',
+  'Created By': 'createdBy', 'Modified By': 'modifiedBy',
+  'Public Id': 'publicId',
+};
 /* Chip and Card (Kyle, 2026-09-04): every table carries two `view` fields
    that say how one of its rows appears elsewhere — the chip inline (a
    relation cell, a doc mention, a reference card) and the card as a tile (a
@@ -1443,10 +1452,13 @@ export class Weave {
     if (patch.sort != null) {
       if (!Array.isArray(patch.sort)) throw new WeaveError('sort is a list of { field, dir }', 'invalid');
       const out = patch.sort.map((s) => {
-        const f = this.getField(db.id, s.field);
+        // The table's own fields first, so a field an import named
+        // `Created At` keeps its column; then the system columns.
+        const f = this.findField(db, s.field);
+        const name = f ? f.name : Object.hasOwn(SYSTEM_SORT_KEYS, s.field) ? s.field : this.getField(db.id, s.field).name;
         const dir = s.dir ?? 'asc';
         if (!['asc', 'desc'].includes(dir)) throw new WeaveError(`Sort direction is asc or desc, got '${s.dir}'`, 'invalid');
-        return { field: f.name, dir };
+        return { field: name, dir };
       });
       if (out.length) db.sort = out; else delete db.sort;
     }
@@ -5250,6 +5262,19 @@ export class Weave {
     }
   }
 
+  /* Where a select's option or a workflow's state sits in its definition
+     (Issue #318, Kyle: "for status it should be in the order of the status
+     field definition in config or reverse, same with single select"). A
+     value the definition no longer lists goes after every one it does. */
+  #definitionRank(f, resolved) {
+    if (resolved == null || isCycle(resolved)) return null;
+    const list = f.type === 'workflow' ? f.config.states : f.config.options;
+    const at = f.type === 'workflow'
+      ? list.findIndex((s) => s.id === resolved)
+      : list.indexOf(this.#findOption(list, resolved));
+    return at < 0 ? list.length : at;
+  }
+
   #looseEq(a, b) {
     return a === b || String(a) === String(b);
   }
@@ -5258,9 +5283,12 @@ export class Weave {
      `undressed` takes the costume off the three types whose painted form does
      not order the way the value does (Issue #279): a number stays a number, a
      date stays its stored instant, and a daterange becomes its start then its
-     end (DG.rangeKey, Issue #287). Everything else keeps its display form,
-     because for an option, a state or a joined relation the name IS the
-     value. Same rule a formula reads by (#resolve, the 'formula' case). */
+     end (DG.rangeKey, Issue #287). A select and a workflow become the place
+     their option or state holds in the definition (Issue #318), so a status
+     column reads in its own order rather than alphabetically. Everything else
+     keeps its display form, because for a multiselect or a joined relation
+     the names ARE the value. Same rule a formula reads by (#resolve, the
+     'formula' case), less the definition order. */
   #pathValue(e, db, path, { undressed = false } = {}) {
     const parts = String(path).split('.');
     let current = [{ e, db }];
@@ -5276,11 +5304,15 @@ export class Weave {
         if (parts[i] === 'createdAt') { results.push(ce.createdAt); continue; }
         if (parts[i] === 'updatedAt') { results.push(ce.updatedAt); continue; }
         const f = this.findField(cdb, parts[i]);
+        // A system column by its grid name (Issue #254), asked after the
+        // table's own fields so a field of the same name wins.
+        if (!f && Object.hasOwn(SYSTEM_SORT_KEYS, parts[i])) { results.push(ce[SYSTEM_SORT_KEYS[parts[i]]] ?? null); continue; }
         if (!f) throw new WeaveError(`Field '${parts[i]}' not found in table '${cdb.name}'`, 'not-found');
         const resolved = this.#resolve(ce, cdb, f, 0);
         if (isLast) {
           results.push(undressed && (typeof resolved === 'number' || f.type === 'date') ? resolved
             : undressed && f.type === 'daterange' ? DG.rangeKey(resolved)
+            : undressed && (f.type === 'select' || f.type === 'workflow') ? this.#definitionRank(f, resolved)
             : this.#displayValue(cdb, f, resolved));
         } else {
           if (f.type !== 'relation') throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');

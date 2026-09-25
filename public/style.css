@@ -538,6 +538,11 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    affordance belongs to. */
 .wv-grid th.col-head:hover { background: var(--tblr-bg-surface); }
 .wv-grid th.col-head:hover .field-menu, .field-menu:focus-visible { opacity: 1; }
+/* The # column and a system column carry a sort-only ⋮ (Issue #254), on the
+   same terms: room kept for it, shown on hover or focus. */
+.wv-grid :is(th.pid-head, th.sys-head) { padding-right: 24px; }
+.wv-grid :is(th.pid-head, th.sys-head):hover { background: var(--tblr-bg-surface); }
+.wv-grid :is(th.pid-head, th.sys-head):hover .field-menu { opacity: 1; }
 .field-menu:hover, .field-menu:focus-visible { color: var(--tblr-primary); background: var(--tblr-bg-surface); }
 /* Resize grip (Feature #42): the column's own right edge. It spans the full
    header height so the target is a line, not a dot, and it only shows its

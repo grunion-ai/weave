@@ -166,18 +166,21 @@ if (s) {
   test('a live sort is the popover check, and the menu opens on it', async () => {
     const page = await grid();
     try {
+      // Priority is a select, so its rows read in its option order (Issue
+      // #318). "Reverse option order" contains the other label, hence exact.
+      const sortRow = (pop, label) => pop.locator('.wv-menu-row').filter({ has: page.getByText(label, { exact: true }) });
       let pop = await openMenu(page);
-      await pop.locator('.wv-menu-row', { hasText: 'Sort ascending' }).click();
+      await sortRow(pop, 'Option order').click();
       await page.waitForTimeout(250);
       pop = await openMenu(page);
-      const asc = pop.locator('.wv-menu-row', { hasText: 'Sort ascending' });
+      const asc = sortRow(pop, 'Option order');
       assert.equal(await asc.locator('.chip-pop-check').count(), 1, 'the live sort wears the check');
-      assert.equal(await pop.locator('.wv-menu-row', { hasText: 'Sort descending' })
+      assert.equal(await sortRow(pop, 'Reverse option order')
         .locator('.chip-pop-check').count(), 0, 'and only it does');
       // No '✓ ' shunting the label right: the check is a trailing slot.
-      assert.equal((await asc.locator('.wv-menu-label').textContent()).trim(), 'Sort ascending');
+      assert.equal((await asc.locator('.wv-menu-label').textContent()).trim(), 'Option order');
       // Free consequence of using the house cue: focus opens on the live sort.
-      assert.match(await page.evaluate(() => document.activeElement?.textContent ?? ''), /Sort ascending/);
+      assert.match(await page.evaluate(() => document.activeElement?.textContent ?? ''), /^Option order/);
       assert.equal(await pop.locator('.wv-menu-row', { hasText: 'Clear sort' }).count(), 1);
     } finally { await page.close(); }
   });
