@@ -78,7 +78,7 @@ if (s) {
           assert.ok(sheet.keys.includes(b.keys), `the sheet prints ${b.keys}`);
           assert.ok(sheet.does.includes(b.does), `and what it does: ${b.does}`);
         }
-        for (const k of ['⌘K', '⌘Return', '/ or ⌘F', '?']) assert.ok(sheet.keys.includes(k), `the sheet prints ${k}`);
+        for (const k of ['⌘K', '⌘Return', '/ or ⌘F', '?', '⌘Z']) assert.ok(sheet.keys.includes(k), `the sheet prints ${k}`);
         assert.ok(sheet.contrast >= 4.5, `the sheet's text is legible in ${theme}, contrast ${sheet.contrast.toFixed(2)}`);
         assert.equal((await page.$eval(cell, (td) => td.querySelector('input')?.value)), 'a', 'the ? opened no edit and typed nothing');
 
