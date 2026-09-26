@@ -2208,8 +2208,6 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .opt-grip { color: var(--tblr-secondary); cursor: grab; font-size: 12px; user-select: none; }
 .opt-row.dragging { opacity: .4; }
 .opt-row.drop-target { box-shadow: 0 -2px 0 var(--tblr-primary); }
-.opt-icon { width: 24px; height: 24px; flex-shrink: 0; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 13px; cursor: pointer; padding: 0; }
-.opt-icon.none { color: var(--tblr-secondary); }
 /* The chip the row will actually produce, shown where the choice is made. */
 /* The preview yields before the name input does — it is a reassurance, not
    a column, and the tray is only 480px wide. */

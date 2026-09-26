@@ -7229,13 +7229,9 @@ function optionListEditor(state, onChange) {
       ...state.options.map((o, i) => {
         const hue = o.hue ?? chipCore.hueFromHex(o.color);
         return el('div', { class: 'opt-row' },
-          (() => {
-            const b = el('button', {
-              type: 'button', class: 'opt-icon' + (o.icon ? '' : ' none'), title: 'Choose a glyph',
-              onclick: () => glyphPopover(b, o.icon ?? '', (g) => { o.icon = g; draw(); onChange(); }),
-            }, o.icon || '—');
-            return b;
-          })(),
+          // The same slot a table or a space wears (Issue #419): a ghost ring
+          // when unset, the drawn icon when set — never a dash, never the name.
+          iconButton(o.icon || null, (id) => { o.icon = id ?? ''; draw(); onChange(); }),
           el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; onChange(); } }),
           (() => {
             const b = el('button', {
@@ -7286,13 +7282,7 @@ function stateListEditor(state, onChange) {
           },
         },
         el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
-        (() => {
-          const b = el('button', {
-            type: 'button', class: 'opt-icon' + (s.icon ? '' : ' none'), title: 'Choose a glyph',
-            onclick: () => glyphPopover(b, s.icon ?? '', (g) => { s.icon = g; draw(); onChange(); }),
-          }, s.icon || '—');
-          return b;
-        })(),
+        iconButton(s.icon || null, (id) => { s.icon = id ?? ''; draw(); onChange(); }),
         el('input', { class: 'opt-name', value: s.name, placeholder: 'State', oninput: (e) => { s.name = e.target.value; onChange(); } }),
         (() => {
           const cat = pickerSelect({ name: `wf-cat-${i}`, options: fdc.STATE_CATEGORIES.map((c) => ({ id: c, label: c })), value: chipCore.categoryOrDefault(s.category ?? 'in-progress') });

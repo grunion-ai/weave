@@ -294,7 +294,8 @@ test('the colour control opens the ramp instead of cycling seven hexes', () => {
 
 test('a select option can wear a glyph, not just a workflow state', () => {
   const ed = fnBodyOf('optionListEditor');
-  assert.match(ed, /opt-icon/, 'the option row offers the glyph button');
+  // The same iconButton() a table and a space wear (Issue #419).
+  assert.match(ed, /iconButton\(/, 'the option row offers the icon button');
 });
 
 test('every option row previews the chip it produces', () => {

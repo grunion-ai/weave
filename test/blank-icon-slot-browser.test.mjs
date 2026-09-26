@@ -1,0 +1,82 @@
+/* One blank-icon slot across weave (Issue #419).
+
+   A select option or a workflow state with no icon drew its icon button as a
+   grey bordered box holding an em dash, while a table or a space with no icon
+   draws a ghost ring on a borderless button. Kyle, 2026-09-26: "update blank
+   icons for options to be the same as table and space icons". The option and
+   state rows now use the same iconButton() the table and space headers use,
+   so the unset slot is the same element, class, size and glyph everywhere.
+
+   Playwright is NOT a dependency of weave; it is imported dynamically and the
+   suite skips when absent, so `node --test` stays green on a bare checkout. */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { launch } from './lib/browser.mjs';
+
+let tasks;
+const s = await launch('blank icon slot', (weave) => {
+  weave.createSpace({ name: 'Ops' });
+  tasks = weave.createTable({ space: 'Ops', name: 'Task' });
+  weave.createEntity(tasks, { name: 'Ship it' });
+});
+
+if (s) {
+  const { base, browser } = s;
+
+  // What a reader sees of an icon slot: the element, its glyph, and the box.
+  const look = (btn) => btn.evaluate((b) => {
+    const cs = getComputedStyle(b);
+    return {
+      cls: b.className, text: b.textContent.trim(),
+      ghost: !!b.querySelector('.icon-ghost'),
+      width: b.getBoundingClientRect().width, height: b.getBoundingClientRect().height,
+      border: cs.borderTopWidth, background: cs.backgroundColor, font: cs.fontSize,
+    };
+  });
+
+  const openTray = async (theme, type) => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
+    await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
+    const table = await look(page.locator('.view-title-row .icon-btn'));
+    await page.click('.add-field-head .add-field-btn');
+    await page.waitForSelector('#tray-back .type-tile');
+    await page.click(`#tray-back .type-tile[title="${type}"]`);
+    await page.waitForSelector('#tray-back .opt-list');
+    return { page, table };
+  };
+
+  for (const theme of ['light', 'dark']) {
+    test(`an option with no icon draws the table's blank slot (${theme})`, async () => {
+      const { page, table } = await openTray(theme, 'select');
+      assert.ok(table.ghost, 'the table header draws the ghost ring');
+      await page.click('#tray-back .opt-add');
+      const opt = await look(page.locator('#tray-back .opt-row').first().locator('button').first());
+      assert.doesNotMatch(opt.text, /—/, 'no em dash');
+      assert.deepEqual(opt, table, 'same element, glyph and box as the table slot');
+      await page.close();
+    });
+
+    test(`a state with no icon draws the table's blank slot (${theme})`, async () => {
+      const { page, table } = await openTray(theme, 'workflow');
+      const st = await look(page.locator('#tray-back .opt-row').first().locator('button').first());
+      assert.doesNotMatch(st.text, /—/, 'no em dash');
+      assert.deepEqual(st, table, 'same element, glyph and box as the table slot');
+      await page.close();
+    });
+  }
+
+  test('picking an icon on an option draws the icon, not its stored name', async () => {
+    const { page } = await openTray('light', 'select');
+    await page.click('#tray-back .opt-add');
+    await page.locator('#tray-back .opt-row').first().locator('button').first().click();
+    const cell = page.locator('.picker-pop .picker-cell:not(.picker-none)').first();
+    await cell.waitFor();
+    await cell.click();
+    const btn = page.locator('#tray-back .opt-row').first().locator('button').first();
+    assert.equal(await btn.locator('.icon-ghost').count(), 0, 'the ghost ring is gone');
+    assert.ok(await btn.locator('svg').count() > 0, 'the icon draws');
+    assert.doesNotMatch(await btn.textContent(), /\w+:\w/, 'the stored name is not printed');
+    await page.close();
+  });
+}
