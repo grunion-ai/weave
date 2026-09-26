@@ -276,12 +276,12 @@ export const TOOLS = [
   },
   {
     name: 'weave_table_view',
-    description: 'A table\'s views (the tabs over its grid). view "Task" lists them; "Task/Open" reads one; "Task/blank" is the raw table, read-only. Any other key writes, creating the view if new (from: a view to copy, else Blank). fields: visible columns in order, unlisted hidden. show/hide: names. move: {field, before|after}. filters: {WorkflowField: [states]}. sort: [{field, dir}]. default: true stars it (first in the strip); position: its place. name renames; delete: true. Returns the view.',
+    description: 'A table\'s views (tabs over its grid), in order: the first opens by default. view "Task" lists them; "Task/Open" reads one; "Task/blank" is the raw table, read-only. Any other key writes, creating the view if new (from: a view to copy, else all fields). fields: visible columns in order, unlisted hidden. show/hide: names. move: {field, before|after}. filters: {WorkflowField: [states]}. sort: [{field, dir}]. position: its place, 0 = default. name renames; delete: true. Returns the view.',
     inputSchema: {
       type: 'object',
       properties: {
         view: { type: 'string' }, fields: { type: 'array' }, show: { type: 'array' }, hide: { type: 'array' },
-        move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, default: { type: 'boolean' },
+        move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' },
         position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
       },
       required: ['view'],

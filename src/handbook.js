@@ -1879,26 +1879,26 @@ The mail app opens with the To, Subject and body already there. If nothing opens
     order: 20,
     doc: `# Table views
 
-A table can be read several ways. The strip of tabs under the table title holds its **views**: each one keeps which columns show, in what order, the state filter and the sort. The starred view is the **default**. It sits first and opens with the table.
+A table can be read several ways. The strip of tabs under the table title holds its **views**: each one keeps which columns show, in what order, the state filter and the sort. The **leftmost** view is the default: it opens with the table. The order of the tabs is the only thing that says so.
 
-**Blank** closes the strip. It is the raw table: every row, every field in schema order, no filter, no sort. Blank is never stored and never changes, so it is always one click away.
+A table always keeps at least one view.
 
 ## Using the strip
 
 | You do | What happens |
 | --- | --- |
 | Click a filter chip, a sort, a column drag or the eye | The change saves into the view on screen. There is no Save button. |
-| **+** | Makes a new view from Blank and opens it. |
-| **⋮ → Save as view…** | Copies the view on screen under a new name. On Blank this is how you start a view from the raw table. |
-| **⋮ → Make default** | Stars the view; it moves to the front and opens with the table. |
-| **⋮ → Rename view… / Delete view** | Renames or removes the view. Deleting the default passes the star to the next view. |
-| Change anything on Blank | Refused with a note: Blank is read-only. Use Save as view. |
+| Drag a tab | Reorders the strip. Drop a tab first and it opens with the table from then on. With a mouse, press and move; on a phone, hold the tab still for a moment, then slide. |
+| **Alt+←** / **Alt+→** on a focused tab | Moves the tab one place, the keyboard spelling of a drag. |
+| Double-click a tab | Renames it in place. **Enter** or clicking away saves, **Escape** cancels. |
+| Right-click a tab (or **Shift+F10**, or hold it on a phone and let go) | **Rename…**, **Duplicate view…** (copies the view under a new name and opens the copy) and **Delete view** (hold to confirm). The last view cannot be deleted. |
+| **+** | Makes a new view with every field in schema order, no filter and no sort, and opens it. This is how you get back to the raw table. |
 
-A view's link is \`#/table/<table>/view/<view id>\`; \`…/view/blank\` opens Blank.
+A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` link still opens the raw table, read-only, with no tab lit.
 
 ## For agents
 
-One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the strip; \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
+One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the strip in order, and the first view is the default; \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
   },
   {
     name: 'Chip and card anatomy',

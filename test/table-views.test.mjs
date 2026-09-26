@@ -1,6 +1,9 @@
-/* Table views (Feature #229, Kyle's ruling 2026-09-23): a strip of named views
-   over one table, one of them the default, and Blank — the raw table — at the
-   end, computed and never stored.
+/* Table views (Feature #229, Kyle's rulings 2026-09-23 and 2026-09-25): a
+   strip of named views over one table. Order is the only signal of the
+   default: the leftmost view opens with the table. Blank — the raw table —
+   is no longer a tab; it stays readable as 'Task/blank' (and the old
+   …/view/blank link), computed and never stored. A table keeps at least one
+   view.
 
    The agent surface is the primary door, so it is tested first and hardest:
    one verb (`tableView` / `weave_table_view` / `weave table view` /
@@ -40,15 +43,14 @@ const names = (list) => list.map((v) => v.name);
 
 /* ---------- reads ---------- */
 
-test('a new table has one view, Default, starred; Blank closes the list', () => {
+test('a new table has one view, Default; the list is the strip, in order, and Blank is not in it', () => {
   const w = fresh();
   const list = w.tableView('Task');
   assert.equal(list.table, 'Dev/Task');
-  assert.deepEqual(names(list.views), ['Default', 'Blank']);
-  assert.equal(list.views[0].default, true);
+  assert.deepEqual(names(list.views), ['Default']);
+  assert.deepEqual(Object.keys(list.views[0]).sort(), ['fields', 'id', 'name'], 'no default flag: the first view is the default');
   assert.deepEqual(list.views[0].fields, ['Name', 'Description', 'State', 'Due', 'Points'],
     'every field in schema order; the chip and card stay hidden as before');
-  assert.deepEqual(list.views[1], { name: 'Blank', blank: true });
 });
 
 test('reads are compact: names, default flag, fields, filters, sort — never rows or field definitions', () => {
@@ -62,7 +64,7 @@ test('reads are compact: names, default flag, fields, filters, sort — never ro
   assert.ok(!list.includes('"type"') && !list.includes('"items"') && !list.includes('one'), `no field types, no rows: ${list}`);
 });
 
-test('Blank is computed: the raw table, schema order, no filter, no sort', () => {
+test('Blank is still readable by name: the raw table, schema order, no filter, no sort', () => {
   const w = fresh();
   w.tableView('Task/Default', { hide: ['Due'], filters: { State: ['Done'] }, sort: [{ field: 'Due' }] });
   assert.deepEqual(w.tableView('Task/blank'), {
@@ -78,15 +80,15 @@ test('one call defines a view: fields carry visibility and order together', () =
   const v = w.tableView('Task/Triage', { fields: ['State', 'Name', 'Points'] });
   assert.equal(v.created, true);
   assert.deepEqual(v.fields, ['State', 'Name', 'Points'], 'listed = visible, in that order; unlisted = hidden');
-  assert.deepEqual(names(w.tableView('Task').views), ['Default', 'Triage', 'Blank']);
+  assert.deepEqual(names(w.tableView('Task').views), ['Default', 'Triage']);
   assert.equal(w.tableView('Task/Triage').created, undefined, 'a read never says created');
 });
 
-test('a view starts from Blank unless `from` names another; from copies (Save as view)', () => {
+test('a view starts from the system default unless `from` names another; from copies (Duplicate view)', () => {
   const w = fresh();
   w.tableView('Task/Default', { hide: ['Points'], filters: { State: ['Open'] } });
   assert.deepEqual(w.tableView('Task/Fresh', { sort: [{ field: 'Name' }] }).fields,
-    ['Name', 'Description', 'State', 'Due', 'Points'], 'a new name without from starts from Blank');
+    ['Name', 'Description', 'State', 'Due', 'Points'], 'a new name without from starts from every field, no filter, no sort');
   const copy = w.tableView('Task/Copy', { from: 'Default' });
   assert.deepEqual(copy.fields, ['Name', 'Description', 'State', 'Due']);
   assert.deepEqual(copy.filters, { State: ['Open'] });
@@ -125,7 +127,7 @@ test('bad field references and shapes are refused, and nothing is half-written',
   assert.throws(() => w.tableView('Task/V', { show: ['Due'], filters: { State: ['Bogus'] } }), /Bogus/);
   assert.equal(JSON.stringify(w.tableView('Task/V')), before, 'a refused write leaves the view as it was');
   assert.throws(() => w.tableView('Task/Never', { fields: ['Nope'] }), /Nope/);
-  assert.deepEqual(names(w.tableView('Task').views), ['Default', 'V', 'Blank'], 'a refused create creates nothing');
+  assert.deepEqual(names(w.tableView('Task').views), ['Default', 'V'], 'a refused create creates nothing');
 });
 
 test('filters and sort are updateTable\'s shapes through updateTable\'s validators', () => {
@@ -164,24 +166,25 @@ test('Blank is read-only and its name is reserved', () => {
   assert.deepEqual(v.fields, ['Name', 'State', 'Due', 'Points']);
 });
 
-test('positioning: default stars a view to the front; position places it in the strip', () => {
+test('position is the single source of the default: position 0 opens first; default: true is an alias for it', () => {
   const w = fresh();
   w.tableView('Task/A', { from: 'blank' });
   w.tableView('Task/B', { from: 'blank' });
-  assert.deepEqual(names(w.tableView('Task').views), ['Default', 'A', 'B', 'Blank']);
-  const b = w.tableView('Task/B', { default: true });
-  assert.equal(b.default, true);
-  assert.deepEqual(names(w.tableView('Task').views), ['B', 'Default', 'A', 'Blank'], 'the default sorts first');
-  assert.equal(w.tableView('Task/Default').default, undefined, 'one default per table');
-  w.tableView('Task/Default', { position: 2 });
-  assert.deepEqual(names(w.tableView('Task').views), ['B', 'A', 'Default', 'Blank']);
-  w.tableView('Task/Default', { position: 99 });
-  assert.deepEqual(names(w.tableView('Task').views), ['B', 'A', 'Default', 'Blank'], 'clamped to the end; Blank stays last');
-  assert.throws(() => w.tableView('Task/B', { default: false }), /star another/);
+  assert.deepEqual(names(w.tableView('Task').views), ['Default', 'A', 'B']);
+  const b = w.tableView('Task/B', { position: 0 });
+  assert.equal(b.default, undefined, 'reads carry no default flag; order says it');
+  assert.deepEqual(names(w.tableView('Task').views), ['B', 'Default', 'A'], 'position 0 is the default');
+  w.tableView('Task/A', { default: true });
+  assert.deepEqual(names(w.tableView('Task').views), ['A', 'B', 'Default'], 'old callers: default: true moves the view to position 0');
+  w.tableView('Task/A', { position: 2 });
+  assert.deepEqual(names(w.tableView('Task').views), ['B', 'Default', 'A']);
+  w.tableView('Task/B', { position: 99 });
+  assert.deepEqual(names(w.tableView('Task').views), ['Default', 'A', 'B'], 'clamped to the end');
+  assert.throws(() => w.tableView('Task/Default', { default: false }), /position/, 'the first view is the default until another moves ahead of it');
   assert.throws(() => w.tableView('Task/A', { position: -1 }), /position/);
 });
 
-test('rename, and delete: the next view inherits the star; no views left means Blank', () => {
+test('rename, and delete: the next view becomes the default; the last view cannot be deleted', () => {
   const w = fresh();
   w.tableView('Task/A', { from: 'blank' });
   assert.equal(w.tableView('Task/A', { name: 'Alpha' }).name, 'Alpha');
@@ -189,11 +192,12 @@ test('rename, and delete: the next view inherits the star; no views left means B
   assert.throws(() => w.tableView('Task/Alpha', { name: 'a/b' }), /\//);
   assert.throws(() => w.tableView('Task/Nope'), /not found/);
   assert.deepEqual(w.tableView('Task/Default', { delete: true }), { name: 'Default', deleted: true });
-  assert.equal(w.tableView('Task/Alpha').default, true, 'the next view takes the star');
-  w.tableView('Task/Alpha', { delete: true });
-  assert.deepEqual(names(w.tableView('Task').views), ['Blank']);
+  assert.deepEqual(names(w.tableView('Task').views), ['Alpha'], 'the next view is first, so it is the default');
+  assert.throws(() => w.tableView('Task/Alpha', { delete: true }),
+    (e) => e instanceof WeaveError && /at least one view/.test(e.message) && /Alpha/.test(e.message));
+  assert.deepEqual(names(w.tableView('Task').views), ['Alpha'], 'the refusal changed nothing');
   w.updateTable('Task', { filters: { State: ['Open'] } });
-  assert.deepEqual(names(w.tableView('Task').views), ['Default', 'Blank'], 'the legacy verb re-creates the default it writes to');
+  assert.deepEqual(w.tableView('Task/Alpha').filters, { State: ['Open'] }, 'the legacy verb writes the leftmost view');
 });
 
 /* ---------- the legacy table verbs are the default view ---------- */
@@ -234,7 +238,7 @@ test('a new field shows in every view; a dropped field leaves them; a rename kee
 
 /* ---------- migration ---------- */
 
-test('a workspace from before views: each table\'s filter, sort and hidden set become a starred Default view', () => {
+test('a workspace from before views: each table\'s filter, sort and hidden set become a Default view, first in the strip', () => {
   const w = fresh();
   const dump = w.exportJSON();
   const task = Object.values(dump.tables).find((t) => t.name === 'Task');
@@ -247,9 +251,9 @@ test('a workspace from before views: each table\'s filter, sort and hidden set b
   const w2 = new Weave();
   w2.importJSON(dump);
   const list = w2.tableView('Task');
-  assert.deepEqual(names(list.views), ['Default', 'Blank']);
+  assert.deepEqual(names(list.views), ['Default']);
   assert.deepEqual(list.views[0], {
-    id: list.views[0].id, name: 'Default', default: true,
+    id: list.views[0].id, name: 'Default',
     fields: ['Due', 'Name', 'Description', 'State'],
     filters: { State: ['Open', 'Doing'] }, sort: [{ field: 'Due', dir: 'desc' }],
   }, 'no one loses what they saw: same columns, same order, same filter, same sort');
@@ -262,11 +266,11 @@ test('a workspace from before views: each table\'s filter, sort and hidden set b
 test('describeSchema emits views compactly and applySchema round-trips them', () => {
   const w = fresh();
   w.tableView('Task/Open work', { fields: ['State', 'Name'], filters: { State: ['Open'] }, sort: [{ field: 'Due', dir: 'desc' }] });
-  w.tableView('Task/Open work', { default: true });
+  w.tableView('Task/Open work', { position: 0 });
   const doc = w.describeSchema();
   const t = doc.flatMap((s) => s.tables).find((x) => x.name === 'Task');
   assert.deepEqual(t.views.map(({ id, ...v }) => v), [
-    { name: 'Open work', default: true, fields: ['State', 'Name'], filters: { State: ['Open'] }, sort: [{ field: 'Due', dir: 'desc' }] },
+    { name: 'Open work', fields: ['State', 'Name'], filters: { State: ['Open'] }, sort: [{ field: 'Due', dir: 'desc' }] },
     { name: 'Default', fields: ['Name', 'Description', 'State', 'Due', 'Points'] },
   ]);
   assert.deepEqual(w.applySchema(doc), [], 'an untouched document is a no-op');
@@ -282,7 +286,25 @@ test('describeSchema emits views compactly and applySchema round-trips them', ()
   t.views.splice(2, 1);
   assert.throws(() => w.applySchema(doc), /allowDestructive/, 'an omitted view is a deletion');
   w.applySchema(doc, { allowDestructive: true });
-  assert.deepEqual(names(w.tableView('Task').views), ['Open work', 'Default', 'Blank']);
+  assert.deepEqual(names(w.tableView('Task').views), ['Open work', 'Default']);
+});
+
+test('applySchema round-trips the order, and can replace every view without tripping the last-view rule', () => {
+  const w = fresh();
+  w.tableView('Task/A', { fields: ['Name'] });
+  w.tableView('Task/B', { fields: ['Name', 'Due'] });
+  const doc = w.describeSchema();
+  const t = doc.flatMap((s) => s.tables).find((x) => x.name === 'Task');
+  t.views = [t.views[2], t.views[0], t.views[1]];
+  w.applySchema(doc);
+  assert.deepEqual(names(w.tableView('Task').views), ['B', 'Default', 'A'], 'the document order is the strip order');
+  assert.deepEqual(w.applySchema(w.describeSchema()), [], 'and it reads back unchanged');
+  t.views = [{ name: 'Only', fields: ['Name', 'State'] }];
+  w.applySchema(doc, { allowDestructive: true });
+  assert.deepEqual(names(w.tableView('Task').views), ['Only'], 'the new view lands before the old ones go');
+  t.views = [];
+  assert.throws(() => w.applySchema(doc, { allowDestructive: true }), /at least one view/);
+  assert.deepEqual(names(w.tableView('Task').views), ['Only']);
 });
 
 test('duplicate and export/import carry the views', () => {
@@ -329,7 +351,8 @@ test('editing a Views row writes through the verb, with the verb\'s validation',
   assert.throws(() => w.updateEntity(rowId, { Fields: 'Name, Nope' }), /Nope/);
   assert.throws(() => w.updateEntity(rowId, { Filter: 'State: Bogus' }), /Bogus/);
   w.updateEntity(rowId, { Default: true });
-  assert.equal(w.tableView('Task/V').default, true);
+  assert.equal(w.tableView('Task').views[0].name, 'V', 'Default on the row moves the view to position 0');
+  assert.equal(Number(w.readEntity(rowId).fields.Position), 0);
   w.updateEntity(rowId, { Name: 'Renamed' });
   assert.equal(w.tableView('Task/Renamed').name, 'Renamed');
   const tableRow = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Task');
@@ -338,6 +361,9 @@ test('editing a Views row writes through the verb, with the verb\'s validation',
   assert.equal(w.entityName(made), 'By row');
   w.deleteEntity(made.id);
   assert.throws(() => w.tableView('Task/By row'), /not found/, 'deleting the row deletes the view');
+  for (const v of w.tableView('Task').views.slice(1)) w.tableView(`Task/${v.id}`, { delete: true });
+  const last = viewRows(w).find((r) => r.name === w.tableView('Task').views[0].name);
+  assert.throws(() => w.deleteEntity(last.id), /at least one view/, 'the row door keeps the last view too');
 });
 
 /* ---------- MCP ---------- */
@@ -346,12 +372,17 @@ const call = (w, name, args) => dispatchTool(w, name, args ?? {});
 
 test('weave_table_view: one tool reads, defines, edits and deletes', () => {
   const w = fresh();
-  assert.deepEqual(names(call(w, 'weave_table_view', { view: 'Task' }).views), ['Default', 'Blank']);
+  assert.deepEqual(names(call(w, 'weave_table_view', { view: 'Task' }).views), ['Default']);
   const v = call(w, 'weave_table_view', { view: 'Task/Open bugs', fields: ['Name', 'State'], filters: { State: ['Open'] } });
   assert.deepEqual(v.fields, ['Name', 'State']);
   assert.deepEqual(call(w, 'weave_table_view', { view: 'Task/Open bugs', move: { field: 'State', before: 'Name' } }).fields, ['State', 'Name']);
   assert.throws(() => call(w, 'weave_table_view', { view: 'Task/blank', hide: ['Due'] }), /read-only/);
+  call(w, 'weave_table_view', { view: 'Task/Open bugs', position: 0 });
+  assert.deepEqual(names(call(w, 'weave_table_view', { view: 'Task' }).views), ['Open bugs', 'Default'], 'position 0 is the default');
+  call(w, 'weave_table_view', { view: 'Task/Default', default: true });
+  assert.deepEqual(names(call(w, 'weave_table_view', { view: 'Task' }).views), ['Default', 'Open bugs'], 'default: true still works, as position 0');
   assert.deepEqual(call(w, 'weave_table_view', { view: 'Task/Open bugs', delete: true }), { name: 'Open bugs', deleted: true });
+  assert.throws(() => call(w, 'weave_table_view', { view: 'Task/Default', delete: true }), /at least one view/);
 });
 
 test('the view tool stays small: one tool, a lean schema', () => {
@@ -374,7 +405,7 @@ test('REST: the same verb at /api/tables/:table/views[/:view]', async () => {
   };
   try {
     const list = await req('GET', '/api/tables/Task/views');
-    assert.deepEqual(names(list.body.views), ['Default', 'Blank']);
+    assert.deepEqual(names(list.body.views), ['Default']);
     const made = await req('PATCH', '/api/tables/Task/views/Open%20work', { fields: ['Name', 'State'], sort: [{ field: 'Due' }] });
     assert.equal(made.status, 200);
     assert.deepEqual(made.body.fields, ['Name', 'State']);
@@ -405,8 +436,10 @@ test('CLI: weave table view reads and writes with the same keys', () => {
     assert.deepEqual(cli('table', 'view', 'Task/Soon', '--fields', 'Name,Due', '--sort', '[{"field":"Due"}]').fields, ['Name', 'Due']);
     assert.deepEqual(cli('table', 'view', 'Task/Soon', '--move', 'Due', '--before', 'Name').fields, ['Due', 'Name']);
     assert.deepEqual(cli('table', 'view', 'Task/Soon', '--show', 'Description').fields, ['Due', 'Name', 'Description']);
-    assert.deepEqual(cli('table', 'view', 'Task/Soon', '--hide', 'Name', '--default').default, true);
-    assert.deepEqual(names(cli('table', 'view', 'Task').views), ['Soon', 'Default', 'Blank']);
+    cli('table', 'view', 'Task/Soon', '--hide', 'Name', '--default');
+    assert.deepEqual(names(cli('table', 'view', 'Task').views), ['Soon', 'Default'], '--default moves it to position 0');
+    cli('table', 'view', 'Task/Default', '--position', '0');
+    assert.deepEqual(names(cli('table', 'view', 'Task').views), ['Default', 'Soon']);
     assert.deepEqual(cli('table', 'view', 'Task/Soon', '--delete'), { name: 'Soon', deleted: true });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -1882,24 +1882,27 @@ export class Weave {
      `/api/tables/:t/views`.
 
      One verb, because every agent turn pays for every tool it can see:
-       tableView('Issue')                    the strip: compact, Blank last
+       tableView('Issue')                    the strip, in order: compact
        tableView('Issue/Open bugs')          one view
        tableView('Issue/Open bugs', patch)   write it, creating it if new
      A patch names only what changes: `fields` (the visible columns in
      order — listed shows, unlisted hides), `show` / `hide` (names), `move`
      ({field, before|after}, or a list of them), `filters` and `sort`
-     (updateTable's shapes and validators), `default: true` (star it: the
-     default is the first view), `position` (its place in the strip),
-     `name` (rename), `from` (the view a new one copies — Blank when
-     omitted), `delete: true`. Blank is the raw table: readable as
-     'Issue/blank', never written, never stored. */
+     (updateTable's shapes and validators), `position` (its place in the
+     strip; 0 is the default, Kyle's ruling 2026-09-25: order is the only
+     signal), `default: true` (the old spelling of position 0), `name`
+     (rename), `from` (the view a new one copies — every field, no filter,
+     no sort when omitted), `delete: true` (never the last view: a table
+     keeps one). Blank, the raw table, left the strip on 2026-09-25; it is
+     still readable as 'Issue/blank' so old links and agents keep working,
+     never written, never stored. */
   tableView(ref, patch = null) {
     const { db, name } = this.#viewTarget(ref);
     this.#ensureTableViews(db);
     const keys = patch ? Object.keys(patch).filter((k) => patch[k] !== undefined) : [];
     if (name == null) {
       if (keys.length) throw new WeaveError(`Name the view to write: '${this.qualifiedName(db)}/<view>'`, 'invalid');
-      return { table: this.qualifiedName(db), views: [...db.tableViews.map((v, i) => this.#viewOut(db, v, i)), { name: 'Blank', blank: true }] };
+      return { table: this.qualifiedName(db), views: db.tableViews.map((v) => this.#viewOut(db, v)) };
     }
     if (name.toLowerCase() === 'blank') {
       if (keys.length) throw new WeaveError(`Blank is read-only: it is the raw table — every field in schema order, no filter, no sort. Start a view from it instead: {from: 'blank'} under a new name`, 'invalid');
@@ -1908,7 +1911,7 @@ export class Weave {
     const i = this.#viewIndex(db, name);
     if (!keys.length) {
       if (i < 0) throw this.#noView(db, name);
-      return this.#viewOut(db, db.tableViews[i], i);
+      return this.#viewOut(db, db.tableViews[i]);
     }
     return this.#writeView(db, name, patch);
   }
@@ -1937,7 +1940,7 @@ export class Weave {
   }
 
   #noView(db, name) {
-    const have = [...db.tableViews.map((v) => v.name), 'Blank'].join(', ');
+    const have = db.tableViews.map((v) => v.name).join(', ');
     return new WeaveError(`View '${name}' not found on ${this.qualifiedName(db)} — it has: ${have}`, 'not-found');
   }
 
@@ -1945,9 +1948,10 @@ export class Weave {
     return db.fieldOrder.filter((id) => db.fields[id] && db.fields[id].type !== 'view');
   }
 
-  #viewOut(db, v, i) {
+  /* No default flag: the list's order says it, the first view is the default,
+     and a flag would be a second source that could disagree. */
+  #viewOut(db, v) {
     const out = { id: v.id, name: v.name };
-    if (i === 0) out.default = true;
     out.fields = v.fields.filter((id) => db.fields[id]).map((id) => db.fields[id].name);
     if (v.filters) out.filters = structuredClone(v.filters);
     if (v.sort) out.sort = structuredClone(v.sort);
@@ -1958,7 +1962,7 @@ export class Weave {
     const n = typeof name === 'string' ? name.trim() : '';
     if (!n) throw new WeaveError('A view needs a name', 'invalid');
     if (n.includes('/')) throw new WeaveError(`A view name cannot hold '/' — it separates the table from the view: '${n}'`, 'invalid');
-    if (n.toLowerCase() === 'blank') throw new WeaveError("'Blank' is reserved: it is the raw table every strip ends with", 'invalid');
+    if (n.toLowerCase() === 'blank') throw new WeaveError("'Blank' is reserved: 'Table/blank' reads the raw table", 'invalid');
     const clash = db.tableViews.find((v) => v !== self && v.name.toLowerCase() === n.toLowerCase());
     if (clash) throw new WeaveError(`${this.qualifiedName(db)} already has a view named '${clash.name}'`, 'conflict');
     return n;
@@ -1976,6 +1980,9 @@ export class Weave {
     let i = this.#viewIndex(db, name);
     if (patch.delete) {
       if (i < 0) throw this.#noView(db, name);
+      if (views.length === 1) {
+        throw new WeaveError(`'${views[i].name}' is the only view of ${this.qualifiedName(db)}, and a table keeps at least one view — make another first (a new name with no from starts from every field, no filter, no sort)`, 'invalid');
+      }
       const [gone] = views.splice(i, 1);
       this.#dropSysRow('views', gone.id);
       this.save();
@@ -2019,7 +2026,7 @@ export class Weave {
     }
     if (patch.filters != null) { const f = this.#checkFilters(db, patch.filters); if (f) next.filters = f; else delete next.filters; }
     if (patch.sort != null) { const s = this.#checkSort(db, patch.sort); if (s) next.sort = s; else delete next.sort; }
-    if (patch.default === false && i === 0) throw new WeaveError(`'${next.name}' is the default — star another view instead`, 'invalid');
+    if (patch.default === false && i === 0) throw new WeaveError(`'${next.name}' is the default because it is first — move another view to position 0 instead`, 'invalid');
     if (patch.position != null && !(Number.isInteger(patch.position) && patch.position >= 0)) {
       throw new WeaveError('position is a whole number: 0 is the first place in the strip (the default)', 'invalid');
     }
@@ -2031,11 +2038,12 @@ export class Weave {
     this.save();
     this.#syncTableRow(db);
     this.#audit(created ? 'table-view-created' : 'table-view-updated', { table: this.qualifiedName(db), name: next.name });
-    return { ...this.#viewOut(db, next, i), ...(created ? { created: true } : {}) };
+    return { ...this.#viewOut(db, next), ...(created ? { created: true } : {}) };
   }
 
   /* updateTable's filters / sort / hiddenFields, spoken to the default view
-     (a table whose views were all deleted gets its Default back). */
+     (the leftmost; a table always has one, and a legacy table gets its
+     Default from #ensureTableViews). */
   #writeDefaultView(db, { filters, sort, hiddenFields }) {
     this.#ensureTableViews(db);
     const cur = db.tableViews[0];
@@ -2474,23 +2482,40 @@ export class Weave {
       for (const k of ['filters', 'sort']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
       return out;
     };
+    /* Writes land before deletions, because a table keeps at least one view:
+       a document that replaces every view must add the new one before the
+       last old one can go. The order is placed last, once the strip holds
+       exactly the document's views. */
     const named = new Set(docViews.map((v) => String(v?.name ?? '').toLowerCase()));
-    for (const v of [...db.tableViews]) {
-      if (named.has(v.name.toLowerCase())) continue;
-      if (!allowDestructive) throw new WeaveError(`Applying this document would delete view '${q}/${v.name}' — a destructive change needs allowDestructive`, 'invalid');
-      act('delete-view', `${q}/${v.name}`, () => this.tableView(`${db.id}/${v.id}`, { delete: true }));
+    const doomed = db.tableViews.filter((v) => !named.has(v.name.toLowerCase()));
+    if (doomed.length && !allowDestructive) {
+      throw new WeaveError(`Applying this document would delete view '${q}/${doomed[0].name}' — a destructive change needs allowDestructive`, 'invalid');
     }
-    docViews.forEach((raw, k) => {
+    if (!docViews.length && db.tableViews.length) {
+      throw new WeaveError(`A table keeps at least one view — the document lists none for ${q}`, 'invalid');
+    }
+    for (const raw of docViews) {
       const vDoc = { name: raw.name, ...clean(raw) };
       const i = this.#viewIndex(db, vDoc.name);
-      const have = i >= 0 ? this.#viewOut(db, db.tableViews[i], i) : null;
+      const have = i >= 0 ? this.#viewOut(db, db.tableViews[i]) : null;
       const patch = {};
       if (vDoc.fields && JSON.stringify(vDoc.fields) !== JSON.stringify(have?.fields)) patch.fields = vDoc.fields;
       if (JSON.stringify(vDoc.filters ?? null) !== JSON.stringify(have?.filters ?? null)) patch.filters = vDoc.filters ?? {};
       if (JSON.stringify(vDoc.sort ?? null) !== JSON.stringify(have?.sort ?? null)) patch.sort = vDoc.sort ?? [];
-      if (i !== k) patch.position = k;
-      if (!Object.keys(patch).length) return;
+      if (!Object.keys(patch).length) continue;
       act(have ? 'update-view' : 'create-view', `${q}/${vDoc.name}`, () => this.tableView(`${db.id}/${vDoc.name}`, patch));
+    }
+    for (const v of doomed) act('delete-view', `${q}/${v.name}`, () => this.tableView(`${db.id}/${v.id}`, { delete: true }));
+    // The order: what the strip holds once the writes and deletions above
+    // land (on a dry run, what it would hold), placed view by view.
+    const strip = [...db.tableViews.filter((v) => named.has(v.name.toLowerCase())).map((v) => v.name.toLowerCase())];
+    for (const raw of docViews) if (!strip.includes(String(raw.name).toLowerCase())) strip.push(String(raw.name).toLowerCase());
+    docViews.forEach((raw, k) => {
+      const at = strip.indexOf(String(raw.name).toLowerCase());
+      if (at === k) return;
+      strip.splice(at, 1);
+      strip.splice(k, 0, String(raw.name).toLowerCase());
+      act('update-view', `${q}/${raw.name}`, () => this.tableView(`${db.id}/${raw.name}`, { position: k }));
     });
   }
 
@@ -3881,7 +3906,7 @@ export class Weave {
     if (db.system === 'workspaces') throw new WeaveError('A workspace is deleted from the hub (DELETE /api/workspaces/:id), not as a row', 'invalid');
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined; // ordinary rows
     if (db.system === 'views') {
-      // A view has no trash: it is configuration, and Blank is always there.
+      // A view has no trash: it is configuration. The verb keeps the last one.
       const hit = this.#viewAnywhere(e.sysId);
       if (hit) hit.owner.tableView(`${hit.table.id}/${hit.view.id}`, { delete: true });
       else this.#metaSync(() => this.deleteEntity(e.id, { hard: true })); // orphaned row
@@ -6657,7 +6682,7 @@ export class Weave {
         // The default view under its pre-views spelling (Feature #229), for
         // the entity page and older readers; `views` below is the whole set.
         ...structuredClone(this.#defaultViewConfig(db)),
-        views: (db.tableViews ?? []).map((v, i) => this.#viewOut(db, v, i)),
+        views: (db.tableViews ?? []).map((v) => this.#viewOut(db, v)),
         ...(typeof db.hideRollups === 'boolean' ? { hideRollups: db.hideRollups } : {}),
         bodyBlocks: this.bodyBlocks(db),
         term: this.termOf(db),

@@ -1519,18 +1519,22 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-grid td.sys-cell { color: var(--tblr-secondary); font-size: var(--wv-grid-font); white-space: nowrap; }
 /* ---------- view strip (Feature #229) ----------
    Tabs under the table title, Attio/Airtable style: an underline marks the
-   view on screen, the star marks the default, Blank sits last in italics
-   because it is the raw table rather than a view someone made. A long strip
-   scrolls sideways inside itself; the page never does. */
+   view on screen, and the leftmost tab is the default (Kyle, 2026-09-25:
+   order is the only signal, so there is no star). A tab being dragged lifts
+   onto a soft fill. A long strip scrolls sideways inside itself; the page
+   never does. The tabs refuse text selection and the iOS link callout so a
+   held finger is a drag, not a selection. */
 .view-strip { display: flex; align-items: center; gap: 2px; margin: 0 0 10px; border-bottom: 1px solid var(--tblr-border-color);
   overflow-x: auto; scrollbar-width: none; }
 .view-strip::-webkit-scrollbar { display: none; }
 .view-tab { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: var(--wv-grid-font, 13px); line-height: 20px;
-  color: var(--tblr-secondary); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  color: var(--tblr-secondary); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; border-radius: 4px 4px 0 0; }
 .view-tab:hover { color: var(--tblr-body-color); text-decoration: none; }
 .view-tab.active { color: var(--tblr-body-color); font-weight: 600; border-bottom-color: var(--tblr-primary); }
-.view-tab.blank { font-style: italic; }
-.view-star { color: var(--tblr-yellow); font-size: 11px; }
+.view-tab.dragging { background: var(--tblr-primary-lt); color: var(--tblr-body-color); cursor: grabbing; }
+.view-rename { font: inherit; color: inherit; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-primary);
+  border-radius: 4px; padding: 0 4px; margin: -1px -5px; min-width: 4ch; outline: none; }
 .view-add { padding: 0 8px; margin-left: 2px; }
 /* ---------- filter strip (Feature #38) ---------- */
 .filter-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }

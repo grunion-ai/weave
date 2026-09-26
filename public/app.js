@@ -3330,16 +3330,17 @@ async function showTrash(dbId) {
 }
 
 /* ---------- table views (Feature #229) ----------
-   A strip of named views under the table title; the first is the default and
-   opens with the table, and Blank — the raw table — closes the strip. The
-   schema carries each table's `views` (names, fields, filters, sort); Blank
-   is computed here as the engine computes it, never stored. The grid below
-   draws the table AS the view: `viewed()` lays the view's columns, filter and
-   sort over the table object, so every grid path reads them unchanged, and
+   A strip of named views under the table title; the leftmost is the default
+   and opens with the table. The schema carries each table's `views` in strip
+   order (names, fields, filters, sort). The grid below draws the table AS
+   the view: `viewed()` lays the view's columns, filter and sort over the
+   table object, so every grid path reads them unchanged, and
    `gridConfigWrite()` sends every change back to that view — the same
-   tableView verb an agent calls. Kyle's ruling (2026-09-23): a change
-   autosaves into the view; Blank is read-only; Save as view duplicates. */
-const BLANK_READ_ONLY = 'Blank is read-only: it is the raw table. Save as view to keep a change.';
+   tableView verb an agent calls. Kyle's rulings: a change autosaves into the
+   view (2026-09-23); drag order is the default and Blank leaves the strip
+   (2026-09-25). The raw table is still computed here for the old
+   …/view/blank link, read-only and never stored. */
+const BLANK_READ_ONLY = 'The raw table is read-only. Press + for a new view, or right-click a tab to duplicate it.';
 function blankView(db) {
   return { id: 'blank', name: 'Blank', blank: true, fields: db.fields.filter((f) => f.type !== 'view').map((f) => f.name) };
 }
@@ -3381,49 +3382,171 @@ function newViewDialog(db, { title, from }) {
     location.hash = `#/table/${db.id}/view/${made.id}`;
   }, 'Create');
 }
+/* The strip (Kyle's rulings 2026-09-23 and 2026-09-25). Order is the only
+   signal of the default: the leftmost tab opens with the table. No star, no
+   ⋯ button and no Blank tab. A tab reorders by drag — a mouse press that
+   moves, or a finger held still for a moment and then slid, so a quick
+   swipe still scrolls the strip — or by Alt+Left / Alt+Right. Double-click
+   renames in place. Right-click, Shift+F10 or the ContextMenu key (or a
+   finger held and let go without sliding) opens Rename…, Duplicate view…
+   and a hold-to-delete Delete view. The old …/view/blank link still opens
+   the raw table, read-only, with no tab lit. */
+let viewRenamePending = null; // a view id whose tab opens its name editor once drawn
+let viewTabClick = null; // {id, at}: the tab the last click landed on
+const VIEW_TOUCH_HOLD = 350; // ms a finger rests on a tab before it lifts
+/* Double-click renames. The first click of the pair opens that view, and
+   the strip redraws while the second click is on its way: Safari lands the
+   second click on whatever is mid-paint, not on a tab. So one listener on
+   the document takes the double-click wherever it lands and renames the tab
+   the first click hit, now or once the redraw has drawn it. */
+document.addEventListener('dblclick', (e) => {
+  const hit = e.target.closest?.('.view-strip .view-tab');
+  const id = hit?.dataset.view ?? (viewTabClick && performance.now() - viewTabClick.at < 800 ? viewTabClick.id : null);
+  if (!id) return;
+  e.preventDefault();
+  viewTabClick = null;
+  const now = document.querySelector(`.view-strip .view-tab[data-view="${CSS.escape(id)}"]`);
+  if (now?.classList.contains('active') && now.renameView) now.renameView();
+  else viewRenamePending = id;
+});
 function viewStrip(db) {
   const cur = db.view;
-  const views = [...(db.views ?? []), blankView(db)];
+  const views = db.views ?? [];
   const strip = el('div', { class: 'view-strip', role: 'tablist', 'aria-label': 'Views' });
-  for (const v of views) {
-    const active = cur && (cur.blank ? v.blank : v.id === cur.id);
-    strip.append(el('a', {
-      class: 'view-tab' + (active ? ' active' : '') + (v.blank ? ' blank' : ''),
+  const at = (id) => `/tables/${db.id}/views/${encodeURIComponent(id)}`;
+  // Every write keeps the view on screen, even when the bare route's
+  // leftmost view changes under it; a refusal says why and redraws.
+  const write = async (fn, { focus } = {}) => {
+    try { await fn(); } catch (err) { toast(err.message, true); }
+    await loadSchema();
+    await showDatabase(db.id);
+    if (focus) document.querySelector(`.view-strip .view-tab[data-view="${CSS.escape(focus)}"]`)?.focus();
+  };
+  const move = (v, to) => write(() => api('PATCH', at(v.id), { position: to }), { focus: v.id });
+  const rename = (a, v) => {
+    if (a.querySelector('input')) return;
+    const input = el('input', { class: 'view-rename', value: v.name, 'aria-label': 'View name', size: Math.max(4, v.name.length) });
+    let done = false;
+    const finish = async (commit) => {
+      if (done) return;
+      done = true;
+      const name = input.value.trim();
+      if (!commit || !name || name === v.name) { a.replaceChildren(v.name); return; }
+      await write(() => api('PATCH', at(v.id), { name }));
+    };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    for (const ev of ['click', 'pointerdown', 'dblclick']) input.addEventListener(ev, (e) => { e.stopPropagation(); if (ev === 'click') e.preventDefault(); });
+    a.replaceChildren(input);
+    input.focus();
+    input.select();
+  };
+  const menu = (e, a, v) => contextMenu(e, [
+    { label: 'Rename…', run: () => rename(a, v) },
+    { label: 'Duplicate view…', run: () => newViewDialog(db, { title: 'Duplicate view', from: v.id }) },
+    'divider',
+    { hold: 'Delete view', holdingLabel: 'Hold to delete view…', run: async () => {
+      // The last view is refused by the engine, which says why.
+      try { await api('DELETE', at(v.id)); } catch (err) { toast(err.message, true); return; }
+      await loadSchema();
+      if (cur?.id !== v.id) return showDatabase(db.id);
+      // The view on screen went: the bare route opens the leftmost.
+      const bare = `#/table/${db.id}`;
+      if (location.hash === bare) showDatabase(db.id, null); else location.hash = bare;
+    } },
+  ], 'view-ctx');
+  // From the keyboard the menu opens under the tab, with focus on its first item.
+  const menuAtTab = (a, v) => {
+    const r = a.getBoundingClientRect();
+    menu({ clientX: r.left, clientY: r.bottom + 2 }, a, v).querySelector('button')?.focus();
+  };
+  views.forEach((v, i) => {
+    const active = cur && !cur.blank && v.id === cur.id;
+    const a = el('a', {
+      class: 'view-tab' + (active ? ' active' : ''),
       role: 'tab', 'aria-selected': active ? 'true' : 'false', href: viewHref(db, v),
-      title: v.blank ? 'The raw table: every field, no filter, no sort (read-only)' : v.default ? 'The default view: it opens with the table' : v.name,
-    }, v.default ? el('span', { class: 'view-star', 'aria-label': 'default' }, '★') : null, v.name));
-  }
+      draggable: 'false', dataset: { view: v.id },
+      title: i === 0 ? `${v.name}: the default, it opens with the table. Drag a tab here to change it.` : `${v.name}. Drag to reorder; double-click to rename; right-click for more.`,
+    }, v.name);
+    let gesture = null; // {id, x, y, touch, timer, lifted, moved}
+    let swallowClick = false;
+    const lift = () => { gesture.lifted = true; a.classList.add('dragging'); };
+    const drop = async () => {
+      const g = gesture;
+      gesture = null;
+      clearTimeout(g?.timer);
+      a.classList.remove('dragging');
+      if (!g?.lifted) return;
+      swallowClick = true;
+      const to = [...strip.querySelectorAll('.view-tab')].indexOf(a);
+      if (g.moved && to !== i) await move(v, to);
+      else if (!g.moved && g.touch) menuAtTab(a, v); // a finger held and let go: the menu
+    };
+    a.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || a.querySelector('input')) return;
+      swallowClick = false;
+      const touch = e.pointerType !== 'mouse';
+      gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, touch, lifted: false, moved: false };
+      if (touch) gesture.timer = setTimeout(() => { if (gesture) lift(); }, VIEW_TOUCH_HOLD);
+    });
+    a.addEventListener('pointermove', (e) => {
+      const g = gesture;
+      if (!g || e.pointerId !== g.id) return;
+      const dist = Math.hypot(e.clientX - g.x, e.clientY - g.y);
+      if (!g.lifted) {
+        // A finger that slides before the hold is a scroll; a mouse that
+        // slides a few pixels is a drag.
+        if (g.touch) { if (dist > 8) { clearTimeout(g.timer); gesture = null; } return; }
+        if (dist < 5) return;
+        lift();
+        try { a.setPointerCapture(e.pointerId); } catch { /* gone mid-press */ }
+      }
+      g.moved = g.moved || dist >= 5;
+      // The tab takes the place of whichever tabs' middles the pointer has
+      // crossed. Its neighbours move, never the tab itself: moving a node
+      // drops its pointer capture and the drag would die mid-gesture.
+      const all = [...strip.querySelectorAll('.view-tab')];
+      const want = all.filter((t) => { if (t === a) return false; const r = t.getBoundingClientRect(); return e.clientX > r.left + r.width / 2; }).length;
+      for (let k = all.indexOf(a); k > want; k--) a.after(a.previousElementSibling);
+      for (let k = all.indexOf(a); k < want; k++) a.before(a.nextElementSibling);
+    });
+    a.addEventListener('pointerup', drop);
+    a.addEventListener('pointercancel', () => { if (gesture?.lifted) drop(); else { clearTimeout(gesture?.timer); gesture = null; } });
+    // A lifted finger owns the gesture: the page must not scroll under it.
+    a.addEventListener('touchmove', (e) => { if (gesture?.lifted) e.preventDefault(); }, { passive: false });
+    a.renameView = () => rename(a, v);
+    a.addEventListener('click', (e) => {
+      if (swallowClick || a.querySelector('input')) { e.preventDefault(); e.stopPropagation(); swallowClick = false; return; }
+      viewTabClick = { id: v.id, at: performance.now() };
+      // The view on screen is already open: a click that re-routed to it
+      // would redraw the strip between the two clicks of a double-click.
+      if (active) e.preventDefault();
+    });
+    a.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (gesture?.touch) return; // a touch hold is the drag-or-menu gesture above
+      e.stopPropagation();
+      if (e.clientX || e.clientY) menu(e, a, v); else menuAtTab(a, v);
+    });
+    a.addEventListener('keydown', (e) => {
+      if ((e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu') { e.preventDefault(); menuAtTab(a, v); return; }
+      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        const to = i + (e.key === 'ArrowLeft' ? -1 : 1);
+        if (to >= 0 && to < views.length) move(v, to);
+      }
+    });
+    strip.append(a);
+    if (viewRenamePending === v.id && active) { viewRenamePending = null; setTimeout(() => rename(a, v)); }
+  });
   strip.append(el('button', {
-    class: 'btn btn-sm btn-ghost-secondary view-add', type: 'button', title: 'New view', 'aria-label': 'New view',
+    class: 'btn btn-sm btn-ghost-secondary view-add', type: 'button', title: 'New view: every field, no filter, no sort', 'aria-label': 'New view',
     onclick: () => newViewDialog(db, { title: 'New view', from: 'blank' }),
   }, '+'));
-  if (!cur) return strip;
-  const items = [{ label: 'Save as view…', run: () => newViewDialog(db, { title: 'Save as view', from: cur.blank ? 'blank' : cur.id }) }];
-  if (!cur.blank) {
-    items.push({
-      label: 'Rename view…',
-      run: () => modal('Rename view', [el('input', { name: 'name', value: cur.name, class: 'form-control full' })], async (fd) => {
-        await api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(cur.id)}`, { name: String(fd.get('name') ?? '').trim() });
-        await loadSchema();
-        showDatabase(db.id, cur.id);
-      }, 'Rename'),
-    });
-    if (!cur.default) {
-      items.push({ label: 'Make default', run: async () => {
-        await api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(cur.id)}`, { default: true });
-        await loadSchema();
-        showDatabase(db.id, cur.id);
-      } });
-    }
-    items.push('divider', { hold: 'Delete view', holdingLabel: 'Hold to delete view…', run: async () => {
-      try {
-        await api('DELETE', `/tables/${db.id}/views/${encodeURIComponent(cur.id)}`);
-        await loadSchema();
-        location.hash = `#/table/${db.id}`;
-      } catch (err) { toast(err.message, true); }
-    } });
-  }
-  strip.append(dotsMenu(items, { title: 'View actions' }));
   return strip;
 }
 /* Issue #341: a row made on a filtered grid starts inside the filter, or the
@@ -10376,7 +10499,8 @@ async function buildWsRail() {
 }
 
 /* A menu at the pointer, in the dots-menu costume: Escape, a click
-   elsewhere, or picking an item closes it. */
+   elsewhere, or picking an item closes it. Items are dotsMenu's: a button,
+   'divider', or {hold: label, run} for a hold-to-confirm. */
 function contextMenu(e, items, extraClass = '') {
   contextMenu.close?.();
   const menu = el('div', { class: `dl-menu wv-ctx ${extraClass}`, style: `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:120` });
@@ -10384,6 +10508,11 @@ function contextMenu(e, items, extraClass = '') {
   const away = (ev) => { if (!menu.contains(ev.target)) close(); };
   const esc = (ev) => { if (ev.key === 'Escape') close(); };
   for (const it of items) {
+    if (it === 'divider') { menu.append(el('div', { class: 'dropdown-divider' })); continue; }
+    if (it.hold) {
+      menu.append(holdToConfirm(it.hold, async () => { close(); await it.run(); }, { holdingLabel: it.holdingLabel ?? 'Hold to confirm…' }));
+      continue;
+    }
     menu.append(el('button', {
       class: 'dropdown-item' + (it.danger ? ' text-danger' : ''), type: 'button',
       onclick: async () => { close(); await it.run(); },
