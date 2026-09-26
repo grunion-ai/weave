@@ -72,11 +72,20 @@ cannot pass the gate.
 # 1. write the Release row (notes in Description) on the canonical workspace, :4400
 # 2. bump package.json
 node scripts/export-development.mjs        # 3. docs/development.json gains the release
-# 4. paste the notes as the CHANGELOG.md digest under a `## v<version>` heading;
-#    land through Gerrit as one change
+node scripts/changelog-fold.mjs            # 4. every changelog.d/ fragment moves under
+#    `## v<version>` in CHANGELOG.md and the fragments are deleted; edit the digest if
+#    needed, then land through Gerrit as one change
 # 5. automatic: the main watcher tags and publishes it. Then confirm it did:
 gh release list -R grunion-ai/weave --limit 1   # the new version, marked Latest
 ```
+
+Between releases nothing edits CHANGELOG.md. Each change adds its own fragment,
+`changelog.d/<short-slug>-<Issue or Feature number>.md`, holding its bullet(s), so no two
+open changes touch the same file and Gerrit rebases them without a hand (Issue #408: when
+every change added a bullet under `## Unreleased`, each landing sent every open change
+back for a hand rebase and a fresh gate). Step 4 folds the fragments, sorted by file name;
+it is idempotent, so a second run changes nothing. `test/changelog-fragments.test.mjs`
+fails a commit that adds lines to CHANGELOG.md without changing the package.json version.
 
 Step 5 is the one users see. After the change lands and the main watcher mirrors the
 green gerrit/main to GitHub (rule 7), it runs `harness/scripts/weave-release-tags.mjs`:
