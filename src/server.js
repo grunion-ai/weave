@@ -203,7 +203,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
           url: `/w/${w.state.meta.id}/`,
           default: name === defaultName,
           spaces: w.listSpaces().length,
-          tables: w.listTables().length,
+          tables: w.userTables().length,
           entities: Object.keys(w.state.entities).length,
           logo: !!w.state.meta.logo,
           deletedAt: w.state.meta.deletedAt ?? null,
@@ -266,10 +266,9 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
       const w = new Weave({ path: join(dataDir, `${name}.db`) });
       w.state.meta.name = name;
-      // A fresh workspace opens on its own page: say what the reader is
-      // looking at and what to do first, instead of bare registry scaffolding
-      // (Issue #123). The description is theirs to rewrite or clear.
-      w.state.meta.description = 'A fresh workspace. Create a **space** from the sidebar, add a **table** to it, and rows take it from there.\n\nEvery space, table and field you create appears as a row in the registry at the weave root — the *Workspace* space of the default workspace — and editing those rows edits the schema here.';
+      // A fresh workspace opens on its own page, and the page's empty state
+      // says what to do first (Issue #386) — the job a default description
+      // did since Issue #123. The description starts empty and is theirs.
       w.save();
       instances.set(name, enroll(w));
       adoptedPaths.add(w.store.path);

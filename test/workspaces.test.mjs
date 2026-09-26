@@ -151,9 +151,13 @@ test('workspace delete: trash move, guards, and the fresh-workspace description'
       const list = await (await fetch(`${base}/api/workspaces`)).json();
       const scratch = list.find((w) => w.name === 'scratch');
       assert.ok(scratch, 'created and listed');
-      // Issue #123: the newcomer is told what they are looking at.
+      // Issue #386: the home page's empty state tells the newcomer what to
+      // do (Issue #123's default description did it before), and the hub
+      // counts only tables a person made — the root's registry is not one.
       const meta = await (await fetch(`${base}/w/${scratch.id}/api/workspace`)).json();
-      assert.match(meta.description ?? '', /space/i, 'a fresh workspace explains itself');
+      assert.equal(meta.description ?? '', '', 'a fresh workspace starts with no description');
+      assert.equal(scratch.tables, 0, 'a fresh member counts no tables');
+      assert.equal(list.find((w) => w.name === 'main').tables, 0, 'nor does the root, registry and all');
 
       // Soft by default (lifecycle gate): a tombstone, the file stays put.
       const gone = await fetch(`${base}/api/workspaces/${scratch.id}`, { method: 'DELETE' });

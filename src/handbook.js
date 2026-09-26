@@ -899,6 +899,16 @@ weave workspace require-auth
 
 The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for its menu: **Update logo…** picks an image for that workspace, whether or not it has one yet; **Remove logo** clears it; **Delete workspace…** asks you to type its name to confirm, and it moves to the trash — a small trash glyph in the bottom-right corner, under the bug button beside the version tag, that appears only while something is in it and opens a sheet with a Restore per workspace; the default and the \`weave\` docs workspaces cannot be deleted. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
 
+## The home page and a space page
+
+A workspace with no tables of your own opens its home page on an empty state: one line on spaces and tables, a **New table** button, and three templates (**Tasks**, **CRM**, **Docs**). The system **Workspace** space (**Spaces**, **Tables**, **Fields**, **Views**, **Workflows**, **Workspaces**) doesn't count as yours.
+
+**New table** asks for a name and a space, offering **General** if you have none. A template builds its space, tables and fields through the sidebar's create calls, links **Companies** to **Contacts** for **CRM**, and opens its first table. The empty state ends with your first table.
+
+Then the home page shows the relation map. A space page shows a **+ New table** button, the space's relation map, and its tables with record counts.
+
+On both pages the grid (**Spaces** on home, **Tables** on a space page) sits under a collapsed **Schema** disclosure; opened, it stays open in that browser until you close it. Every column is editable in place, including the **Tables** grid's **Field Order**, **Hidden Fields**, **Filter** and **Sort**.
+
 ## Icons and nouns
 
 A space and a table are born with an icon and can be given a better one:

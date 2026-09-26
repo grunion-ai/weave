@@ -1480,6 +1480,13 @@ export class Weave {
     return spaceId ? all.filter((d) => d.spaceId === spaceId) : all;
   }
 
+  /* The tables a person made (Issue #386): the registry — any system table,
+     or a table in a system space — is weave's own, and every root carries it
+     from birth, so a count that includes it is never zero. */
+  userTables() {
+    return this.listTables().filter((d) => !d.system && !this.state.spaces[d.spaceId]?.system);
+  }
+
   qualifiedName(db) {
     const sp = this.state.spaces[db.spaceId];
     return `${sp ? sp.name : '?'}/${db.name}`;

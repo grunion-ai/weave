@@ -45,7 +45,7 @@ export class WeaveWorkspace {
         return [{
           name: self, default: true,
           spaces: weave.listSpaces().length,
-          tables: weave.listTables().length,
+          tables: weave.userTables().length,
           entities: Object.keys(weave.state.entities).length,
           logo: !!weave.state.meta.logo,
         }];

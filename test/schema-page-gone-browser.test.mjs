@@ -39,6 +39,12 @@ const s = await launch('schema page gone', (weave) => {
 
 if (s) {
   const { base, browser, weave } = s;
+  // The registry grids fold under Schema (Issue #386); these pages open it.
+  const schemaOpen = async () => {
+    const page = await browser.newPage();
+    await page.addInitScript(() => localStorage.setItem('weave-schema-open', '1'));
+    return page;
+  };
   const addField = async (page, name) => {
     await page.click('.wv-grid .add-field-btn');
     await page.waitForSelector('#tray');
@@ -48,7 +54,7 @@ if (s) {
   };
 
   test('adding a column to the Spaces registry from the workspace home redraws the home, not the schema page', async () => {
-    const page = await browser.newPage();
+    const page = await schemaOpen();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await addField(page, 'Region');
@@ -61,7 +67,7 @@ if (s) {
   });
 
   test('the same from a space page: the Tables registry redraws in place', async () => {
-    const page = await browser.newPage();
+    const page = await schemaOpen();
     await page.goto(`${base}/#/space/${sales.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await addField(page, 'Owner');

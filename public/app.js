@@ -8031,20 +8031,22 @@ async function showSpace(spaceId) {
       ],
     }),
   );
-  // The tables of this space, AS the Tables registry grid (Kyle, 2026-08-24):
-  // the same rows the engine syncs, with every field — Description, Field
-  // Order, Hidden Fields, the Fields relation — editable in place. Opening a
-  // row opens the table, because the row IS the table.
   // The space's own figures first: every space rollup over one of its
   // tables, as tiles read off its registry row.
   const tiles = await spaceStatTiles(space);
   if (tiles) main.append(tiles);
+  main.append(spaceTablesCard(space));
+  // A space draws its own map — itself and whatever it touches — instead of
+  // sending the reader to the workspace-wide one (Kyle, 2026-08-24).
+  const card = await relationMapCard('Relation map', { spaceId });
+  if (card) main.append(card);
+  // The tables of this space, AS the Tables registry grid (Kyle, 2026-08-24):
+  // the same rows the engine syncs, with every field — Description, Field
+  // Order, Hidden Fields, the Fields relation — editable in place; opening a
+  // row opens the table, because the row IS the table. Folded under Schema
+  // (Issue #386): the plain list above is what a reader opens tables from.
   const reg = registryTable('tables');
   if (reg) {
-    const res = await api('POST', `/tables/${reg.id}/query`, {});
-    // Scoped by id (universal reference rule): a registry row belongs to this
-    // space iff its sysId names one of the space's tables. Names can drift.
-    const items = res.items.filter((i) => space.tables.some((t) => t.id === i.sysId));
     const onSaved = async () => {
       rememberGridFocus();
       await loadSchema();
@@ -8061,12 +8063,31 @@ async function showSpace(spaceId) {
         focusNewRow(made.id, { field: 'Name', select: true });
       } catch (err) { toast(err.message, true); }
     };
-    renderTable(main, reg, items, onSaved, onAdd);
+    await schemaDisclosure(main, async (body) => {
+      const res = await api('POST', `/tables/${reg.id}/query`, {});
+      // Scoped by id (universal reference rule): a registry row belongs to
+      // this space iff its sysId names one of the space's tables. Names drift.
+      const items = res.items.filter((i) => space.tables.some((t) => t.id === i.sysId));
+      renderTable(body, reg, items, onSaved, onAdd);
+    });
   }
-  // A space draws its own map — itself and whatever it touches — instead of
-  // sending the reader to the workspace-wide one (Kyle, 2026-08-24).
-  const card = await relationMapCard('Relation map', { spaceId });
-  if (card) main.append(card);
+}
+
+/* The space's tables in plain words: a name and a record count each,
+   opening the table; an empty space says so and offers New table. */
+function spaceTablesCard(space) {
+  const add = space.system ? null
+    : el('button', { class: 'btn btn-sm wv-start-new', onclick: () => startTableDialog({ spaceId: space.spaceId }) }, '+ New table');
+  if (!space.tables.length) {
+    return el('div', { class: 'card wv-start space-tables' },
+      el('div', { class: 'card-body' }, el('p', { class: 'wv-start-lead' }, 'No tables in this space yet.'), add));
+  }
+  return el('div', { class: 'card list-rows space-tables' },
+    ...space.tables.map((t) => el('div', { class: 'list-row', dataset: { href: `#/table/${t.id}` }, onclick: () => { location.hash = `#/table/${t.id}`; } },
+      el('span', {}, t.name),
+      el('span', { class: 'spacer' }),
+      el('span', { class: 'pid' }, WeaveTerm.count(t.entityCount ?? 0, t.term)))),
+    add ? el('div', { class: 'list-row list-row-add' }, add) : null);
 }
 
 /* ---------- relation map (tables, relations, automations) ----------
@@ -10042,6 +10063,108 @@ function newTableDialog(reg, after) {
   });
 }
 
+/* ---------- first run: New table, templates, the Schema fold (Issue #386) ----------
+   A workspace with no tables of its own opens on one primary action and three
+   starting templates; the registry grids fold under a Schema disclosure on
+   the home and space pages. "Its own" is starter-core's userTables — the
+   engine's system flag, never a name. */
+
+/* A table needs a space. With `spaceId` the dialog asks only for the name;
+   otherwise it offers the person's spaces, or names a first one when there
+   are none. Plain create calls, then the reader lands on the new table. */
+function startTableDialog({ spaceId = null } = {}) {
+  const spaces = state.schema.filter((s) => !s.system);
+  const fixed = spaceId ? spaces.find((s) => s.spaceId === spaceId) : null;
+  const spaceInput = fixed ? null
+    : spaces.length ? pickerSelect({ name: 'space', title: 'Space', options: spaces.map((s) => ({ id: s.space, label: s.space })), value: spaces[0].space })
+      : el('input', { name: 'space', value: 'General', class: 'form-control full', style: 'width:100%', required: '' });
+  modal('New table', [
+    el('input', { name: 'name', placeholder: 'Table name', class: 'form-control full', style: 'width:100%', required: '' }),
+    ...(spaceInput ? [
+      el('label', { class: 'form-label wv-start-label' }, 'Space'),
+      spaceInput,
+      el('div', { class: 'form-hint' }, 'Every table needs a space; related tables share one.'),
+    ] : []),
+  ], async (fd) => {
+    const space = fixed?.space ?? String(fd.get('space')).trim();
+    if (!spaces.some((s) => s.space === space)) await api('POST', '/spaces', { name: space });
+    const made = await api('POST', '/tables', { space, name: String(fd.get('name')).trim() });
+    await loadSchema();
+    location.hash = `#/table/${made.id}`;
+  });
+}
+
+/* A template walks starter-core's steps over the same REST doors the
+   sidebar and the field dialog use, then opens its first table. A space the
+   person already made under the template's name is reused. */
+async function runStarter(template) {
+  const hasSpace = state.schema.some((s) => !s.system && s.space === template.space);
+  toast(`Setting up ${template.title}…`);
+  // The route splits on "/", so a later step names its table by the id the
+  // table step answered with, not by its Space/Name.
+  const ids = {};
+  try {
+    for (const step of WeaveStarters.steps(template, { hasSpace })) {
+      if (step.op === 'space') await api('POST', '/spaces', step.body);
+      else if (step.op === 'table') ids[`${step.body.space}/${step.body.name}`] = (await api('POST', '/tables', step.body)).id;
+      else await api('POST', `/tables/${ids[step.table]}/${step.op === 'field' ? 'fields' : 'relations'}`, step.body);
+    }
+  } catch (err) {
+    toast(`Couldn't set up ${template.title}: ${err.message}`, true);
+    await loadSchema();
+    return showHome();
+  }
+  await loadSchema();
+  const first = allTables().find((t) => !t.system && t.space === template.space && t.name === template.tables[0].name);
+  location.hash = first ? `#/table/${first.id}` : '#/';
+}
+
+function emptyWorkspace() {
+  return el('div', { class: 'card wv-start' },
+    el('div', { class: 'card-body' },
+      el('p', { class: 'wv-start-lead' }, 'Tables hold records, one per line, with the fields you choose. Related tables share a space. Start with a table or a template.'),
+      el('button', { class: 'btn btn-primary wv-start-new', onclick: () => startTableDialog() }, '+ New table'),
+      el('div', { class: 'wv-start-label' }, 'Templates'),
+      el('div', { class: 'wv-start-templates' },
+        ...WeaveStarters.TEMPLATES.map((t) => el('button', {
+          class: 'wv-start-template', dataset: { template: t.id },
+          // One build at a time: a second click would race the first to the
+          // same space. A failure redraws home, buttons and all.
+          onclick: (e) => {
+            for (const b of e.currentTarget.closest('.wv-start').querySelectorAll('button')) b.disabled = true;
+            runStarter(t);
+          },
+        },
+        el('span', { class: 'wv-start-title' }, t.title),
+        el('span', { class: 'wv-start-blurb' }, t.blurb))))));
+}
+
+/* The registry grid under a Schema disclosure: one click away for whoever
+   edits structure as rows, out of a first-timer's first screen. Open or shut
+   is remembered per browser; the grid is drawn on first open, so a closed
+   fold costs no registry read. Appended to `parent` before it draws, so the
+   grid's row window measures a live box. Resolves once an open fold has
+   drawn. */
+const SCHEMA_OPEN_KEY = 'weave-schema-open';
+async function schemaDisclosure(parent, draw) {
+  let open = false;
+  try { open = localStorage.getItem(SCHEMA_OPEN_KEY) === '1'; } catch { /* storage blocked: shut */ }
+  const body = el('div', { class: 'wv-schema-body' });
+  const box = el('details', { class: 'wv-schema' }, el('summary', {}, 'Schema'), body);
+  let drawn = null;
+  const fill = () => (drawn ??= Promise.resolve(draw(body)).catch((err) => toast(err.message, true)));
+  box.addEventListener('toggle', () => {
+    try { localStorage.setItem(SCHEMA_OPEN_KEY, box.open ? '1' : '0'); } catch { /* private mode */ }
+    if (box.open) fill();
+  });
+  parent.append(box);
+  if (open) {
+    box.open = true;
+    await fill();
+  }
+  return box;
+}
+
 /* + New field on the Workspace/Fields page (Issue #241): a field lands on a
    table and carries a definition, so the foot asks which table and hands
    over to that table's own field dialog. */
@@ -10380,7 +10503,9 @@ async function showHome() {
   syncDocTitle(null);
   renderNav();
   const main = $('#main');
-  const dbs = allTables();
+  // The person's own tables: the registry every root carries is not one
+  // (Issue #386), or the empty state could never show.
+  const mine = WeaveStarters.userTables(state.schema);
   // Two independent reads, asked for together (Issue #258).
   const [wsRead, listRead] = await Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces')]);
   // An older server has no /workspace; the header's name stands in.
@@ -10410,9 +10535,7 @@ async function showHome() {
         }], { title: 'Workspace actions', align: 'right' })],
       } : {}),
     }),
-    ...(dbs.length
-      ? []
-      : [el('div', { class: 'wv-empty' }, 'Welcome to Weave. Create a space and a table to get started.')]),
+    ...(mine.length ? [] : [emptyWorkspace()]),
     /* The system tables live below the workspace's own, marked as weave's
        rather than the user's — they are reached from here because they belong
        to no space. */
@@ -10421,33 +10544,6 @@ async function showHome() {
         el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
         el('span', { class: 'spacer' }),
         el('span', { class: 'pid' }, 'every event in this workspace'))));
-  // The spaces of this workspace, AS the Spaces registry grid (Kyle,
-  // 2026-08-24): every field of the registry, editable in place; opening a
-  // row opens the space, because the row IS the space.
-  const reg = registryTable('spaces');
-  if (reg && dbs.length) {
-    const res = await api('POST', `/tables/${reg.id}/query`, {});
-    res.items = mineOnly(res.items);
-    const onSaved = async () => {
-      rememberGridFocus();
-      await loadSchema();
-      await showHome();
-      restoreGridFocus();
-    };
-    const onAdd = async () => {
-      try {
-        const made = await api('POST', `/tables/${reg.id}/entities`, { name: 'New space' });
-        await loadSchema();
-        await showHome();
-        focusNewRow(made.id, { field: 'Name', select: true });
-      } catch (err) { toast(err.message, true); }
-    };
-    const sysCard = main.querySelector('.system-tables');
-    renderTable(main, reg, res.items, onSaved, onAdd);
-    // renderTable appends; the registry grid belongs above the system card.
-    const wrap = main.lastElementChild;
-    if (sysCard && wrap && wrap !== sysCard) main.insertBefore(wrap, sysCard);
-  }
   // Saved views (Feature #17): named cross-table slices; share mints a
   // read-only capability URL that outlives the auth wall until revoked.
   try {
@@ -10463,9 +10559,34 @@ async function showHome() {
   } catch { /* older server */ }
   // The workspace's shape, read-only (Feature #51) — the same view #/map and
   // every space page draw, so there is one map to learn, not three.
-  if (dbs.some((d) => !d.system)) {
+  if (mine.length) {
     const card = await relationMapCard('Relation map');
     if (card) main.append(card);
+  }
+  // The spaces of this workspace, AS the Spaces registry grid (Kyle,
+  // 2026-08-24): every field of the registry, editable in place; opening a
+  // row opens the space, because the row IS the space. Folded under Schema
+  // (Issue #386): structure as rows is one click away, not the first screen.
+  const reg = registryTable('spaces');
+  if (reg) {
+    const onSaved = async () => {
+      rememberGridFocus();
+      await loadSchema();
+      await showHome();
+      restoreGridFocus();
+    };
+    const onAdd = async () => {
+      try {
+        const made = await api('POST', `/tables/${reg.id}/entities`, { name: 'New space' });
+        await loadSchema();
+        await showHome();
+        focusNewRow(made.id, { field: 'Name', select: true });
+      } catch (err) { toast(err.message, true); }
+    };
+    await schemaDisclosure(main, async (body) => {
+      const res = await api('POST', `/tables/${reg.id}/query`, {});
+      renderTable(body, reg, mineOnly(res.items), onSaved, onAdd);
+    });
   }
 }
 

@@ -127,6 +127,8 @@ if (s) {
 
   test('+ New table on the space page creates the table here, not a row in the last table visited', async () => {
     const page = await browser.newPage({ viewport: FIT });
+    // The Tables registry grid folds under Schema (Issue #386); open it.
+    await page.addInitScript(() => localStorage.setItem('weave-schema-open', '1'));
     // Visit a user table first: the old add button called whatever inlineAdd
     // that page had left behind.
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
