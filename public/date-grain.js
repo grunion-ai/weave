@@ -131,13 +131,44 @@
 
   /* ---------- zones ---------- */
 
+  /* One formatter per zone, kept (Issues #211, #234, #278). A formatter
+     depends only on its zone, and building one costs far more than using
+     it: an instant column built two per value it dressed, three per row of
+     a grid page. A zone Intl refuses throws on construction and is never
+     kept, so it throws every time, as before.
+
+     The zone can come off a request (X-Weave-Zone), and Intl takes a zone in
+     any letter case and any offset, so a cache keyed on the spelling let one
+     client grow it without end. The formatters are keyed on the zone Intl
+     resolves the spelling to, and every cache here clears when it reaches
+     ZONE_CAP, the way src/formula.js bounds its tokens: a workspace reads a
+     handful of zones, and a flood of distinct ones costs rebuilds, never
+     memory. */
+  const ZONE_CAP = 128;
+  const CANON = new Map();
+  const WALL = new Map();
+  const ABBR = new Map();
+  const bounded = (cache, key, make) => {
+    let v = cache.get(key);
+    if (v === undefined) {
+      v = make();
+      if (cache.size >= ZONE_CAP) cache.clear();
+      cache.set(key, v);
+    }
+    return v;
+  };
+  const canonZone = (zone) => bounded(CANON, zone, () => new Intl.DateTimeFormat('en-US', { timeZone: zone }).resolvedOptions().timeZone);
+  const kept = (cache, zone, make) => {
+    const z = canonZone(zone);
+    return bounded(cache, z, () => make(z));
+  };
   /* Wall-clock parts of an instant as read in a zone. */
   function wallIn(date, zone) {
-    const f = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const f = kept(WALL, zone, (z) => new Intl.DateTimeFormat('en-US', { timeZone: z, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
     const p = Object.fromEntries(f.formatToParts(date).map((x) => [x.type, x.value]));
     return { y: +p.year, m: +p.month, d: +p.day, t: `${p.hour === '24' ? '00' : p.hour}:${p.minute}`, z: null };
   }
-  const zoneAbbr = (date, zone) => new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'short' })
+  const zoneAbbr = (date, zone) => kept(ABBR, zone, (z) => new Intl.DateTimeFormat('en-US', { timeZone: z, timeZoneName: 'short' }))
     .formatToParts(date).find((x) => x.type === 'timeZoneName')?.value ?? zone;
   function isZone(zone) {
     try { new Intl.DateTimeFormat('en-US', { timeZone: zone }); return true; } catch { return false; }
@@ -329,5 +360,6 @@
     normalizeGrain, grainOf, legalFormats, formatProblem,
     partsOf, storeOf, coerce, coerceInstant, isZone, toInstant, fromInstant, wallIn, zoneAbbr,
     formatDate, formatDateRange, clockText, parseClock, elapsedText, ordinal, rangeKey,
+    ZONE_CAP, zoneCaches: () => ({ canon: CANON.size, wall: WALL.size, abbr: ABBR.size }),
   };
 })(globalThis);
