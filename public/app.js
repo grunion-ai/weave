@@ -7037,21 +7037,14 @@ async function showSpace(spaceId) {
         await api('PATCH', `/spaces/${spaceId}`, { description: md });
         await loadSchema();
       },
-      actions: [
-        // A space has no CSV of its own — it is a container — so the menu
-        // offers one export per table it holds, then the destructive act.
+      // The menu holds space actions only: one export row per table turned an
+      // 18-table space's menu into a table list (Kyle, 2026-09-26); each
+      // table's own ⋮ exports its CSV. The system Workspace space is never
+      // deletable (Issue #126), so it has nothing to offer and draws no ⋮
+      // (Issue #248) — the sidebar does the same for system tables.
+      actions: space.system ? [] : [
         dotsMenu([
-          ...space.tables.map((d) => ({
-            label: `Export ${d.name}.csv`,
-            href: `${WS_PREFIX}/api/tables/${d.id}/export.csv`,
-            download: `${d.name}.csv`,
-          })),
-          // The system Workspace space is never deletable (Issue #126), so
-          // the item that could only ever produce a refusal toast is not
-          // rendered there (Issue #248) — the sidebar does the same for
-          // system tables.
-          space.tables.length && !space.system ? 'divider' : null,
-          space.system ? null : {
+          {
             hold: space.tables.length
               ? `Delete space + ${space.tables.length} table${space.tables.length > 1 ? 's' : ''}`
               : 'Delete space',

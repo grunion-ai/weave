@@ -442,10 +442,11 @@ test('one dotsMenu implementation serves entity, table and space', () => {
   }
 });
 
-test('table and space menus carry CSV export and delete', () => {
+test('the table menu carries CSV export; table and space menus carry delete', () => {
   assert.ok(APP.includes("label: 'Export CSV'"), 'the table menu exports CSV');
-  // A space has no CSV of its own, so it offers one export per table it holds.
-  assert.match(APP, /space\.tables\.map\(\(d\) => \(\{[\s\S]{0,40}label: `Export \$\{d\.name\}\.csv`/);
+  // A space's menu holds space actions only (Kyle, 2026-09-26): one export
+  // row per table turned an 18-table space's menu into a table list.
+  assert.doesNotMatch(APP, /label: `Export \$\{d\.name\}\.csv`/);
   assert.match(APP, /api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
   assert.match(APP, /api\('DELETE', `\/spaces\/\$\{spaceId\}`\)/);
   // The toolbar CSV button moved into the menu — it must not remain in both.
