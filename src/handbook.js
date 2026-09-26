@@ -75,6 +75,8 @@ Finite numeric value. One type, four costumes — plain, currency, percent, and 
   "config": { "format": "currency", "currency": "USD", "decimals": 2 } }
 \`\`\`
 
+Under \`display\` the field's settings tray draws a **Sample**: this column's own smallest, middle and largest figures in the chosen costume, measured against the chosen scale, so a bar on \`column\` shows what the column will look like. A column holding no numbers yet samples a quarter, three fifths and the whole of the scale instead, labelled as examples.
+
 ## Usage
 
 \`\`\`bash

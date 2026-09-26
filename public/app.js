@@ -2724,6 +2724,7 @@ function viewFieldOf(db, shape) {
    rides beside the graphic and is what a screen reader reads; the SVG is
    aria-hidden. The cell never measures as clipped (markClippedCells). */
 const cellGraphics = globalThis.weaveCellGraphics;
+const numberCore = globalThis.weaveNumberCore;
 function scaleText(f, scale) {
   if (scale == null) return null;
   return f?.format === 'percent' ? `${Math.round(scale * 1e4) / 100}%` : Number(scale).toLocaleString();
@@ -7400,7 +7401,7 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
   return kids;
 }
 
-function numberCostumeControls(state, redraw, changed, { label = 'Format' } = {}) {
+function numberCostumeControls(state, redraw, changed, { label = 'Format', column = null } = {}) {
   const fdc = fieldDialogCore;
   const n = state.number;
   const kids = [];
@@ -7431,7 +7432,7 @@ function numberCostumeControls(state, redraw, changed, { label = 'Format' } = {}
       el('input', { type: 'checkbox', class: 'form-check-input', checked: n.accounting ? '' : undefined, onchange: (e) => { n.accounting = e.target.checked; changed(); } }),
       el('span', { class: 'form-check-label' }, 'Accounting negatives ', el('span', { class: 'date-format-eg' }, '($1,234.57)'))));
   }
-  kids.push(...numberDisplayControls(n, redraw, changed));
+  kids.push(...numberDisplayControls(n, redraw, changed, column));
   return kids;
 }
 
@@ -7453,9 +7454,13 @@ function sparklineControls(n, redraw, changed) {
 }
 
 /* The display picker (Feature #230): text, bar, ring or heat, then what
-   100% is — the column's max, or a fixed number — and a live preview of
-   three rows at a quarter, three fifths and the whole of the scale. */
-function numberDisplayControls(n, redraw, changed) {
+   100% is — the column's max, or a fixed number — and a live Sample.
+   The Sample draws the column's own smallest, middle and largest figures
+   (Issue #388), dressed in the costume the form holds and measured against
+   the scale it holds, so the choice is judged against values the field
+   actually carries. A column with nothing in it falls back to a quarter,
+   three fifths and the whole of the scale, labelled as examples. */
+function numberDisplayControls(n, redraw, changed, column = null) {
   const display = n.display ?? 'text';
   const out = [dsection('Display', segCtl(fieldDialogCore.NUMBER_DISPLAYS, display, (v) => { n.display = v; redraw(); changed(); }))];
   if (!cellGraphics.isGraphic(display)) return out;
@@ -7466,23 +7471,30 @@ function numberDisplayControls(n, redraw, changed) {
     oninput: (e) => { const v = Number(e.target.value); n.scale = e.target.value !== '' && v > 0 ? v : 'column'; drawPreview(); changed(); },
   });
   const preview = el('div', { class: 'cg-preview', 'aria-label': 'Sample rows' });
+  const noteBox = el('div');
   const drawPreview = () => {
-    const scale = typeof n.scale === 'number' ? n.scale : 1;
-    const f = { format: n.format };
-    preview.replaceChildren(...[0.25, 0.6, 1].map((share) => {
-      const value = share * scale;
-      const text = n.format === 'percent' ? `${Math.round(value * 1e4) / 100}%` : String(Math.round(value * 100) / 100);
-      return el('div', { class: 'cg-preview-row' }, numberGraphic(display, value, scale, text, f));
-    }));
+    // Nothing until the column answers: a figure the field never holds is
+    // the very thing Issue #388 is about, and a flash of one is still one.
+    if (column && !column.answered) { preview.replaceChildren(); noteBox.replaceChildren(); return; }
+    const summary = column?.summary ?? null;
+    const scale = numberCore.sampleScale(summary, n.scale, n);
+    const { values, example } = numberCore.sampleFigures(summary, n.scale, n);
+    preview.replaceChildren(...values.map((value) => el('div', { class: 'cg-preview-row' },
+      numberGraphic(display, value, scale, String(numberCore.dressNumber(n, value)), n))));
+    noteBox.replaceChildren(example
+      ? el('div', { class: 'hintnote cg-preview-note' }, 'Example figures. This column holds no numbers yet.')
+      : '');
   };
   drawPreview();
+  // The column answers on its own time; the Sample redraws when it does.
+  if (column) column.load().then(drawPreview, () => {});
   out.push(dsection('Scale',
     segCtl([{ id: 'column', label: 'column max' }, { id: 'fixed', label: 'fixed' }], fixed ? 'fixed' : 'column', (v) => {
       n.scale = v === 'fixed' ? (n.format === 'percent' ? 1 : 100) : 'column';
       redraw(); changed();
     }),
     fixed ? scaleBox : el('div', { class: 'hintnote' }, "100% is the column's largest value")));
-  out.push(dsection('Sample', preview));
+  out.push(dsection('Sample', preview, noteBox));
   return out;
 }
 
@@ -7494,6 +7506,22 @@ function fieldDialog(db, existing, after) {
   // to the canonical {type, config} lives in field-dialog-core — tested there.
   const state = isEdit ? fdc.stateFromDefinition(fdc.definitionFromFieldView(existing)) : fdc.blankState('text');
   if (isEdit && existing.type === 'formula') state.computed = 'formula';
+
+  /* The figures the number Sample draws (Issue #388): this column's own
+     five-number summary, from the same stats the grid's rollup row reads.
+     Fetched once per dialog, and only when a graphic display asks for it. A
+     field being created has no column, so it samples examples. */
+  const column = isEdit && existing?.name ? {
+    summary: null,
+    answered: false,
+    pending: null,
+    load() {
+      return (this.pending ??= api('GET', `/tables/${db.id}/stats`)
+        .then((st) => { this.summary = st.columns?.find((c) => c.name === existing.name)?.summary ?? null; })
+        .catch(() => { this.summary = null; })
+        .then(() => { this.answered = true; }));
+    },
+  } : null;
 
   const nameInput = el('input', {
     name: 'name', placeholder: 'Field name', class: 'form-control',
@@ -7587,7 +7615,7 @@ function fieldDialog(db, existing, after) {
       let resultType = null;
       const drawCostume = () => costumeWrap.replaceChildren(...(resultType === 'list' || state.number.display === 'sparkline'
         ? sparklineControls(state.number, drawCostume, changed)
-        : resultType === null || resultType === 'number' ? numberCostumeControls(state, drawCostume, changed, { label: 'Result format' }) : []));
+        : resultType === null || resultType === 'number' ? numberCostumeControls(state, drawCostume, changed, { label: 'Result format', column }) : []));
       kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null, fieldName: () => nameInput.value, onType: (t) => { resultType = t; drawCostume(); } })));
       drawCostume();
       kids.push(costumeWrap);
@@ -7600,7 +7628,7 @@ function fieldDialog(db, existing, after) {
       } else if (t === 'workflow') {
         kids.push(dsection('States', stateListEditor(state, changed)));
       } else if (t === 'number') {
-        kids.push(...numberCostumeControls(state, drawCfg, changed));
+        kids.push(...numberCostumeControls(state, drawCfg, changed, { column }));
       } else if (t === 'date' || t === 'daterange') {
         kids.push(...dateCostumeControls(state, drawCfg, changed, { type: t }));
       } else if (t === 'relation') {

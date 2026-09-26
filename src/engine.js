@@ -1,4 +1,5 @@
 import '../public/date-grain.js';
+import '../public/number-core.js';
 import '../public/term-core.js';
 import '../public/icon-registry.js';
 import '../public/mark-icons.js';
@@ -475,43 +476,9 @@ export const ONTOLOGY = {
   ],
 };
 
-/* The number costume (#97): decimals, thousands separator, then one of
-   percent / currency (ISO code through Intl — '$149.50', '€1,200') / a
-   free-text unit appended ('12 days'). Used by number fields and by
-   formulas whose result is a number. */
-function dressNumber(c, value) {
-  // No costume at all: the raw number, untouched (formulas, sorting, the
-  // API all rely on it). Any costume: decimals default to 0, currency to 2.
-  if (c.format == null && c.unit == null && c.currency == null && c.decimals == null && !c.separator) return value;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return value;
-  if (c.format === 'compact') {
-    // 1.2M / 4.8K — a figure that would outgrow its column; composes with a currency.
-    const o = { notation: 'compact', maximumFractionDigits: c.decimals ?? 1 };
-    if (c.currency) { o.style = 'currency'; o.currency = c.currency; }
-    try { return new Intl.NumberFormat('en-US', o).format(n); } catch { /* fall through to the plain figure */ }
-  }
-  if (c.format === 'currency') {
-    const currency = c.currency ?? 'USD';
-    const digits = c.decimals ?? 2;
-    try {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits, ...(c.accounting ? { currencySign: 'accounting' } : {}) }).format(n);
-    } catch { return `${currency} ${n.toFixed(digits)}`; }
-  }
-  // Percent follows the spreadsheet convention (Issue #127): the stored
-  // value is the fraction, the display is ×100 — 0.325 reads "32.5%". The
-  // scale is rounded before toFixed so float noise (0.1 × 100 =
-  // 10.000000000000002) never reaches the reader.
-  const scaled = c.format === 'percent' ? Math.round(n * 100 * 1e8) / 1e8 : n;
-  // Zero decimals unless the field says otherwise (currency above: two).
-  let text = scaled.toFixed(c.decimals ?? 0);
-  if (c.separator) {
-    const [int, frac] = text.split('.');
-    text = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (frac ? '.' + frac : '');
-  }
-  if (c.format === 'percent') return `${text}%`;
-  return c.unit ? `${text} ${c.unit}` : text;
-}
+/* The number costume (#97) lives in public/number-core.js, so the field
+   dialog's Sample dresses a figure exactly as the cell does. */
+const { dressNumber } = globalThis.weaveNumberCore;
 
 /* The date costume, mirrored in public/date-core.js and contract-tested
    against it. Format the stored wall-clock parts, never the local zone's

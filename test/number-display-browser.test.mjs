@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let deals, accounts, acme, big, small;
+let deals, accounts, acme, big, small, sprints;
 const s = await launch('number display costume', (weave) => {
   weave.createSpace({ name: 'Sales' });
   deals = weave.createTable({ space: 'Sales', name: 'Deal' });
@@ -23,6 +23,15 @@ const s = await launch('number display costume', (weave) => {
   acme = weave.createEntity(accounts, { name: 'Acme' });
   big = weave.createEntity(deals, { name: 'Big', values: { Progress: 0.6, Score: 8, Heat: 9, Plain: 3, Account: acme.id } });
   small = weave.createEntity(deals, { name: 'Small', values: { Progress: 0.2, Score: 2, Heat: 1, Plain: 4, Account: acme.id } });
+  /* Issue #388: the Showcase column the tray got wrong — three figures, a
+     bar, and the column's own max as 100%. `Unset` is the same column with
+     nothing in it. */
+  sprints = weave.createTable({ space: 'Sales', name: 'Sprint' });
+  weave.addField(sprints, { name: 'Points', type: 'number', config: { display: 'bar' } });
+  weave.addField(sprints, { name: 'Unset', type: 'number', config: { display: 'bar' } });
+  weave.createEntity(sprints, { name: 'One', values: { Points: 72 } });
+  weave.createEntity(sprints, { name: 'Two', values: { Points: 100 } });
+  weave.createEntity(sprints, { name: 'Three', values: { Points: 15 } });
   // The chip of a deal shows its progress; the account grid shows it on the relation.
   weave.updateField(deals, 'Chip', { config: { fields: ['Progress'] } });
 });
@@ -36,6 +45,14 @@ if (s) {
     await page.goto(`${base}/#/table/${tableId}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     return page;
+  }
+  /* The field's settings tray, opened from its column header. */
+  async function openFieldDialog(page, field) {
+    const th = page.locator('.wv-grid thead th.col-head', { hasText: field }).first();
+    await th.hover();
+    await th.locator('.field-menu').click();
+    await page.locator('.chip-pop .wv-menu-row', { hasText: 'Edit field' }).click();
+    await page.waitForSelector('.tray-form');
   }
   const fill = (page, sel) => page.$eval(`${sel} .cg-fill`, (n) => ({ width: n.getAttribute('width'), dash: n.getAttribute('stroke-dasharray'), opacity: n.getAttribute('fill-opacity') }));
 
@@ -116,10 +133,7 @@ if (s) {
     test(`the field dialog's Display picker previews the choice live and saves it (${colorScheme})`, async () => {
       const page = await grid(deals.id, colorScheme);
       try {
-        const th = page.locator('.wv-grid thead th.col-head', { hasText: 'Plain' }).first();
-        await th.hover();
-        await th.locator('.field-menu').click();
-        await page.locator('.chip-pop .wv-menu-row', { hasText: 'Edit field' }).click();
+        await openFieldDialog(page, 'Plain');
         const display = page.locator('.tray-form .dlg-sec', { has: page.locator('.dlg-lbl', { hasText: /^Display$/ }) });
         await display.waitFor();
         assert.equal(await page.locator('.tray-form .cg-preview').count(), 0, 'text has nothing to preview');
@@ -144,6 +158,39 @@ if (s) {
         await page.close();
         weave.updateField(deals, 'Plain', { config: { display: 'text', scale: null } });
       }
+    });
+
+    /* Issue #388: the Sample used to draw 0.25, 0.6 and 1 whatever the column
+       held, so a reader could not judge the scale from the tray. */
+    test(`the Sample draws the column's own figures against the column's max (${colorScheme})`, async () => {
+      const page = await grid(sprints.id, colorScheme);
+      try {
+        await openFieldDialog(page, 'Points');
+        await page.waitForSelector('.tray-form .cg-preview .cg-wrap.cg-bar');
+        assert.deepEqual(await page.$$eval('.tray-form .cg-preview .cg-wrap', (ns) => ns.map((n) => n.getAttribute('aria-label'))),
+          ['15', '72', '100'], "the field's own values, smallest first");
+        assert.deepEqual(await page.$$eval('.tray-form .cg-preview .cg-fill', (ns) => ns.map((n) => n.getAttribute('width'))),
+          ['15', '72', '100'], '100% is the column max of 100');
+        assert.equal(await page.locator('.tray-form .cg-preview-note').count(), 0, 'real values are not examples');
+        // A fixed scale moves the bars and leaves the figures alone.
+        const scale = page.locator('.tray-form .dlg-sec', { has: page.locator('.dlg-lbl', { hasText: /^Scale$/ }) });
+        await scale.locator('.seg-opt', { hasText: 'fixed' }).click();
+        await page.locator('.tray-form input[aria-label="Fixed scale"]').fill('200');
+        await page.waitForFunction(() => document.querySelector('.tray-form .cg-preview .cg-fill')?.getAttribute('width') === '7.5');
+        assert.deepEqual(await page.$$eval('.tray-form .cg-preview .cg-wrap', (ns) => ns.map((n) => n.getAttribute('aria-label'))), ['15', '72', '100']);
+        if (shots) await page.locator('.tray-form').screenshot({ path: `${shots}/number-display-sample-${colorScheme}.png` });
+      } finally { await page.close(); }
+    });
+
+    test(`an empty column samples examples and says so (${colorScheme})`, async () => {
+      const page = await grid(sprints.id, colorScheme);
+      try {
+        await openFieldDialog(page, 'Unset');
+        await page.waitForSelector('.tray-form .cg-preview .cg-wrap.cg-bar');
+        assert.deepEqual(await page.$$eval('.tray-form .cg-preview .cg-wrap', (ns) => ns.map((n) => n.getAttribute('aria-label'))),
+          ['25', '60', '100'], 'a quarter, three fifths and the whole of the scale');
+        assert.match(await page.textContent('.tray-form .cg-preview-note'), /[Ee]xample/, 'labelled as an example, not read as a value');
+      } finally { await page.close(); }
     });
   }
 }

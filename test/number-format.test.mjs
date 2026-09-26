@@ -198,3 +198,25 @@ test('accounting parenthesises a negative currency amount', () => {
   assert.equal(field.config.accounting, undefined, 'null clears the lane');
   assert.equal(field.config.currency, 'USD', 'without touching the rest of the costume');
 });
+
+/* Issue #388: the field dialog's Sample dresses a figure in the browser, so
+   the costume cannot live in the engine alone. It lives in
+   public/number-core.js and the engine reads it from there — this holds the
+   two to one answer. */
+test('the cell and the settings tray dress a figure through one costume', async () => {
+  await import('../public/number-core.js');
+  const { dressNumber } = globalThis.weaveNumberCore;
+  for (const config of [
+    {},
+    { unit: 'days', decimals: 0 },
+    { format: 'percent', decimals: 1 },
+    { format: 'currency', currency: 'EUR', decimals: 0 },
+    { format: 'compact', currency: 'USD' },
+    { format: 'number', separator: true, decimals: 2 },
+  ]) {
+    const w = fresh(config);
+    for (const value of [0, 15, 149.5, 1234567.891]) {
+      assert.equal(shown(w, value), dressNumber(config, value), `${JSON.stringify(config)} on ${value}`);
+    }
+  }
+});
