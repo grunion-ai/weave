@@ -955,7 +955,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
     el('span', { class: 'crumb-actions wv-toolbar' }, ...actions.filter(Boolean))));
 
   syncDocTitle(title);
-  const titleInput = el('input', { class: 'view-title', value: title, title: onRename ? 'Click to rename' : '' });
+  const titleInput = el('input', { class: 'view-title', value: title, 'aria-label': 'Title', title: onRename ? 'Click to rename' : '' });
   if (onRename) {
     titleInput.addEventListener('change', async () => {
       const name = titleInput.value.trim();
@@ -1164,8 +1164,10 @@ function renderNav() {
 
 /* The bottom-right utility cluster's lower row: the workspace trash glyph,
    then the instance tag. One fixed flex box, created by whichever renders
-   first, so the two stay side by side however wide the tag reads. */
-const hubFoot = () => document.querySelector('#hub-foot') ?? document.body.appendChild(el('div', { id: 'hub-foot' }));
+   first, so the two stay side by side however wide the tag reads.
+   It is a landmark (Issue #378): outside one, a screen reader's region
+   list never reaches the instance tag or the trash. */
+const hubFoot = () => document.querySelector('#hub-foot') ?? document.body.appendChild(el('aside', { id: 'hub-foot', 'aria-label': 'This instance' }));
 
 /* ---------- shared value rendering ---------- */
 
@@ -2799,6 +2801,20 @@ function toggleSwitch(f, val, patch) {
   return wrap;
 }
 
+/* Every control a cell or a field row holds carries a name (Issue #378):
+   axe counted 40 unnamed inputs on the Issue table, each read aloud as a
+   bare "edit text". A grid control is named by column and row ("Points,
+   Grid is slow"); a field row on the entity page passes its field name. */
+function labeledEditorFor(f, item, db, onSaved, { compact = false, label } = {}) {
+  const node = editorFor(f, item, db, onSaved, { compact });
+  if (node instanceof Element) {
+    const name = label ?? `${f.name}, ${item.name || `#${item.publicId}`}`;
+    for (const n of [node, ...node.querySelectorAll('*')]) {
+      if (n.matches('input, select, textarea') && !n.hasAttribute('aria-label') && !n.hasAttribute('aria-labelledby')) n.setAttribute('aria-label', name);
+    }
+  }
+  return node;
+}
 function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
@@ -4535,7 +4551,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           // A resized column overrides the shared 260px cap — otherwise the
           // header widens and the cells keep ellipsising at the old width.
           style: f.width ? columnWidthStyle(f.width) : null,
-        }, editorFor(f, item, db, onSaved, { compact: true }));
+        }, labeledEditorFor(f, item, db, onSaved, { compact: true }));
       }),
       ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')));
     /* Cells rest as values (Feature #134): the CELL is the focus stop and
@@ -4714,7 +4730,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       // painted it already, and the round trip must not take it back.
       if (td !== document.activeElement && td.contains(document.activeElement)) continue;
       if (was && JSON.stringify(was.fields?.[f.name] ?? null) === JSON.stringify(item.fields?.[f.name] ?? null)) continue;
-      td.replaceChildren(editorFor(f, item, db, onSaved, { compact: true }));
+      td.replaceChildren(labeledEditorFor(f, item, db, onSaved, { compact: true }));
       for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     }
     const sys = tr.querySelectorAll(':scope > td.sys-cell');
@@ -8942,7 +8958,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
      It sizes to its content and Enter commits — a name has no second line
      of its own. */
   const nameInput = el('textarea', {
-    class: 'name-edit' + (computed ? ' computed' : ''), rows: '1',
+    class: 'name-edit' + (computed ? ' computed' : ''), rows: '1', 'aria-label': 'Name',
     readonly: computed ? '' : undefined,
     title: computed ? `computed name — ƒ ${nameF.expression ?? ''}` : null,
     onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } },
@@ -9381,7 +9397,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
       el('label', { class: 'fieldrow-label', title: fieldDescription(f) ? `${fieldDescription(f)}\n\nEdit field` : 'Edit field', onclick: () => editFieldDialog(db, f) },
         fieldNameLabel(f), fieldDescription(f) ? el('span', { class: 'fieldrow-desc' }, fieldDescription(f)) : null),
-      editorFor(f, entity, db, () => refresh()));
+      labeledEditorFor(f, entity, db, () => refresh(), { label: f.name }));
     if (f.type === 'attachments') {
       // An attachment row is a block: it is as wide as its chips, and it
       // belongs wherever the reader put it, not always last.
@@ -9419,7 +9435,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         const label = row.querySelector('.fieldrow-label');
         return el('span', { class: 'wv-sum' + (system ? ' wv-sum-system' : ''), dataset: { field: row.dataset.field }, title: fieldDescription(f) || null },
           el('span', { class: 'wv-sum-label', onclick: f ? () => editFieldDialog(db, f) : null }, system ? label.textContent : fieldNameLabel(f)),
-          system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : editorFor(f, entity, db, () => refresh(), { compact: true }));
+          system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : labeledEditorFor(f, entity, db, () => refresh(), { compact: true, label: f.name }));
       }));
     /* The field block folds like a document section (Kyle, 2026-09-03): the
        same caret, in the same place in the head, remembered per entity the
@@ -9667,7 +9683,7 @@ async function relatedGrid(entity, f, onSaved) {
       ...cols.map((c) => el('td', {
         class: (c.type === 'number' ? 'num' : '')
           + (PICKER_FIELD_TYPES.includes(c.type) ? ' cell-pick' : READONLY_FIELD_TYPES.includes(c.type) ? ' cell-computed' : ''),
-      }, editorFor(c, item, target, onSaved, { compact: true }))),
+      }, labeledEditorFor(c, item, target, onSaved, { compact: true }))),
       el('td', {}, el('button', {
         class: 'btn btn-sm btn-ghost-secondary tiny unlink-btn', title: `Unlink from ${f.name}`,
         onclick: async (e) => {
@@ -10669,6 +10685,21 @@ function wireNavCollapse() {
 /* Theme toggle: auto (follow OS, live) → dark → light.
    Tabler themes via data-bs-theme on <html>; data-theme kept for legacy
    custom scopes. Auto resolves from the OS and tracks OS changes live. */
+/* Skip to content (Issue #378): the first Tab stop, ahead of the rail and
+   the sidebar, which spend 30 stops before the content does. The href is
+   what it means without script; the router owns the hash, so a click moves
+   focus into #main instead of navigating, and #main is focusable only for
+   that moment, so a click inside it never parks focus on the panel. */
+function wireSkipLink() {
+  $('.skip-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    const main = $('#main');
+    main.tabIndex = -1;
+    main.addEventListener('blur', () => main.removeAttribute('tabindex'), { once: true });
+    main.focus();
+  });
+}
+
 function wireThemeToggle() {
   const btn = $('#theme-toggle');
   if (!btn) return;
@@ -10982,6 +11013,7 @@ installBugReporter();
    document editors, and the mermaid diagrams they render once — would
    otherwise be born light and stay light under a dark page. */
 wireThemeToggle();
+wireSkipLink();
 withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError));
 wireSearchButton();
 buildWsRail();

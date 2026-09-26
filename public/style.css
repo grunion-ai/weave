@@ -34,7 +34,14 @@
 }
 :root, [data-bs-theme="light"] {
   --wv-canvas: #f3f1ec;                      /* Kami Paper Tint */
-  --wv-canvas-muted: #7e8394;                /* Kami Muted Tertiary */
+  /* Kami Muted Tertiary was #7e8394, 3.35:1 on the canvas. Muted text is
+     still text, so it clears WCAG AA's 4.5:1 (Issue #378): 5.2:1 here. */
+  --wv-canvas-muted: #5f6474;
+  --tblr-secondary: #5f6474;                 /* Tabler's #6b7280 is 4.28:1 on the canvas */
+  --tblr-secondary-rgb: 95, 100, 116;
+  /* A form control's outline is how you find it: 3:1 against the surface
+     (WCAG 1.4.11). --tblr-border-color stays the quiet divider. */
+  --wv-control-border: #858a97;
   --wv-pill-hover: rgba(12, 27, 51, .06);    /* ink tint on paper */
   --wv-pill-active: rgba(12, 27, 51, .12);
   --wv-panel-shadow: 0 1px 3px rgba(12, 27, 51, .08);
@@ -48,11 +55,11 @@
   /* An icon accompanying a label rests lighter than the label (Kyle,
      2026-09-02). Same ink as the text at a fraction of it, so the grey carries
      the kit's blue bias instead of reading as a flat neutral. */
-  --wv-icon-rest: rgba(12, 27, 51, .34);
+  --wv-icon-rest: rgba(12, 27, 51, .55);    /* .34 was 2.14:1; .55 clears 3:1 */
 }
 [data-bs-theme="dark"] {
   --wv-canvas: #0c1b33;                      /* Kami Deep Navy Canvas */
-  --wv-canvas-muted: #7e8394;
+  --wv-canvas-muted: #9aa0ae;                /* 5.9:1 on the panel, 5:1 on a kbd */
   --wv-pill-hover: rgba(224, 220, 212, .07); /* cream tint on navy */
   --wv-pill-active: rgba(224, 220, 212, .14);
   --wv-panel-shadow: 0 1px 3px rgba(0, 0, 0, .35);
@@ -63,7 +70,18 @@
   --tblr-border-color: #24375e;
   --tblr-body-color: #e0dcd4;                /* Kami Cream Primary */
   --wv-code-bg: #0d1117;                     /* github-dark's own ground */
-  --wv-icon-rest: rgba(224, 220, 212, .38);
+  --wv-icon-rest: rgba(224, 220, 212, .55);
+  /* Tabler's #066fd1 is a light-theme blue: 3.08:1 on the navy panel, so every
+     crumb, link and focus ring read dim (Issue #378). This one is 6.4:1, and
+     the text on a primary button turns navy to stay legible on it. */
+  --tblr-primary: #6ea8ff;
+  --tblr-primary-rgb: 110, 168, 255;
+  --tblr-primary-fg: #0c1b33;
+  --tblr-link-color: #6ea8ff;
+  --tblr-link-color-rgb: 110, 168, 255;
+  --tblr-link-hover-color: #9cc4ff;
+  --tblr-link-hover-color-rgb: 156, 196, 255;
+  --wv-control-border: #687896;
   --tblr-secondary: #b4b8c4;                 /* Kami Silver Secondary */
   --tblr-body-bg: var(--wv-canvas);
 }
@@ -234,7 +252,7 @@ html.view-header-loose #main > .view-header { position: static; }
 .view-desc-body.clamped { max-height: calc(5 * 1.45em); overflow: hidden; }
 .view-desc-more { display: inline-block; margin-top: 2px; padding: 0; border: 0; background: none; font: inherit; font-size: 12px; color: var(--tblr-primary); cursor: pointer; }
 .view-desc-more:hover { text-decoration: underline; }
-.view-desc-empty { font-style: italic; opacity: .6; }
+.view-desc-empty { font-style: italic; color: var(--wv-canvas-muted); }
 .view-desc-edit { width: 100%; min-height: 38px; font: inherit; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); padding: 4px 6px; }
 
 /* ---------- chip picker popover (replaces native selects) ---------- */
@@ -246,7 +264,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .chip-pop-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: none; border: 0; border-radius: var(--tblr-border-radius); cursor: pointer; text-align: left; color: var(--tblr-body-color); }
 .chip-pop-row:hover, .chip-pop-row:focus { background: var(--tblr-active-bg, rgba(0,0,0,.05)); outline: none; }
 /* Keyboard focus needs to be as loud as hover — arrows move focus, not hover. */
-.chip-pop-row:focus-visible { box-shadow: inset 0 0 0 2px var(--tblr-primary); }
+.chip-pop-row:focus-visible { outline-offset: -2px; }
 .chip-pop-check { margin-left: auto; color: var(--tblr-primary); font-weight: 700; }
 /* The popover arrives rather than appears — the same idiom as the selection
    puck's rise, at half the distance because it hangs off a 18px ⋮ and a big
@@ -542,7 +560,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .cell-pop .inline-edit { border-color: transparent; background: none; width: auto; }
 .cell-pop .ms-box > .btn, .cell-pop .chip .x, .cell-pop .k .x, .cell-pop .date-pick-btn { display: none; }
 .computed { cursor: default; }
-.computed-mark { margin-right: 5px; opacity: .55; font-size: 11px; }
+.computed-mark { margin-right: 5px; color: var(--tblr-secondary); font-size: 11px; }
 /* Column header = the field's control (Feature #41). The ⋮ is absolutely
    positioned so it costs the label no width: a header sized to its text does
    not jump when the affordance appears. It stays invisible until the header is
@@ -657,7 +675,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .k-state.cat-done        { --fill: rgba(46, 160, 67, .14);  --text: #218358; }
 .k-state.cat-canceled    { --fill: rgba(229, 72, 77, .12);  --text: #ce2c31; text-decoration: line-through; }
 [data-bs-theme="dark"] .k-state.cat-not-started { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
-[data-bs-theme="dark"] .k-state.cat-in-progress { --fill: rgba(99, 140, 245, .18);  --text: #9eb1ff; }
+[data-bs-theme="dark"] .k-state.cat-in-progress { --fill: rgba(99, 140, 245, .18);  --text: #bccaff; }
 [data-bs-theme="dark"] .k-state.cat-done        { --fill: rgba(70, 180, 110, .16);  --text: #71d083; }
 [data-bs-theme="dark"] .k-state.cat-canceled    { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
 .k-key { font-family: var(--tblr-font-monospace); font-size: 11px; letter-spacing: .02em; }
@@ -722,7 +740,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    badge and the ↗ stay visible at the right end. The full name is the title. */
 .mention-wrap, .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
 .k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; opacity: .6; }
+.k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; color: var(--tblr-secondary); }
 /* Target-set chips carry their home table: a Task and a Space can share a
    name, and the table is what tells them apart. */
 .k-rel .k-home { font-family: var(--tblr-font-monospace); font-size: .78em; opacity: .55; }
@@ -786,7 +804,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .hue-teal   { --fill: rgba(18, 165, 148, .14);  --text: #10695c; --dot: #12a594; }
 .hue-orange { --fill: rgba(247, 107, 21, .14);  --text: #9a4310; --dot: #f76b15; }
 [data-bs-theme="dark"] .hue-slate  { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
-[data-bs-theme="dark"] .hue-blue   { --fill: rgba(99, 140, 245, .18);  --text: #9eb1ff; }
+[data-bs-theme="dark"] .hue-blue   { --fill: rgba(99, 140, 245, .18);  --text: #bccaff; }
 [data-bs-theme="dark"] .hue-green  { --fill: rgba(70, 180, 110, .16);  --text: #71d083; }
 [data-bs-theme="dark"] .hue-amber  { --fill: rgba(240, 190, 80, .18);  --text: #f2c968; }
 [data-bs-theme="dark"] .hue-red    { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
@@ -1499,13 +1517,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* The corner cluster's lower row (Issue #204): the workspace trash glyph,
    then the instance tag, pinned bottom-right under the bug button. */
 #hub-foot { position: fixed; right: 12px; bottom: 10px; z-index: 55; display: flex; align-items: center; gap: 6px; }
-.nav-health { font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 5px; padding: 2px 8px; opacity: .85; }
+.nav-health { font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 5px; padding: 2px 8px; }
 /* The workspace trash (Issues #190, #204): the bug button's size and costume,
    muted at rest, red only on hover so the corner says what it is. Present only
    while a workspace is in the trash. */
 .ws-trash { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; color: var(--tblr-secondary); cursor: pointer; opacity: .85; transition: color .12s, border-color .12s; }
 .ws-trash:hover, .ws-trash:focus-visible { color: var(--tblr-danger); border-color: var(--tblr-danger); opacity: 1; }
-.ws-trash:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
 .ws-trash-icon { display: flex; width: var(--wv-icon-md); height: var(--wv-icon-md); margin: 0; }
 .ws-trash-icon svg { width: 100%; height: 100%; }
 /* A stale instance wears the warning: the chip is how you notice without
@@ -1685,7 +1702,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
   color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .10);
   box-shadow: inset 0 0 0 1px var(--tblr-primary);
 }
-.picker-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--tblr-primary); color: var(--tblr-body-color); }
+.picker-cell:focus-visible { outline-offset: -2px; color: var(--tblr-body-color); }
 .picker-cell .wv-icon { margin-right: 0; }
 /* Clearing leads the grid, drawn as the same ghost ring the unset icon button
    wears, so "none" is picked with the gesture every other icon is picked with. */
@@ -2000,7 +2017,7 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .wv-toggle:hover .wv-toggle-track { background: var(--tblr-secondary); }
 .wv-toggle.on .wv-toggle-track { background: var(--tblr-primary); }
 .wv-toggle.on .wv-toggle-knob { transform: translateX(12px); }
-.wv-toggle-input:focus-visible + .wv-toggle-track { outline: 2px solid rgba(var(--tblr-primary-rgb), .35); outline-offset: 1px; }
+.wv-toggle-input:focus-visible + .wv-toggle-track { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
 .wv-toggle-word { font-size: var(--wv-chip-font); color: var(--tblr-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wv-toggle.on .wv-toggle-word { color: var(--tblr-body-color); }
 [data-bs-theme="dark"] .wv-toggle-knob { background: #e0dcd4; box-shadow: 0 1px 2px rgba(0, 0, 0, .45); }
@@ -2020,7 +2037,6 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
    follow. */
 .bug-fab { position: fixed; right: 12px; bottom: 40px; z-index: 1150; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.10); cursor: pointer; opacity: .62; transition: opacity .12s, border-color .12s; }
 .bug-fab:hover, .bug-fab[aria-expanded="true"] { opacity: 1; border-color: var(--tblr-secondary); }
-.bug-fab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
 .bug-fab-icon { display: flex; width: var(--wv-icon-md); height: var(--wv-icon-md); color: var(--tblr-body-color); }
 .bug-fab-icon svg { width: 100%; height: 100%; }
 
@@ -2036,7 +2052,6 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .bug-cat > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bug-cat:hover { color: var(--tblr-body-color); }
 .bug-cat.picked { background: var(--tblr-primary-lt, rgba(71,105,235,.12)); color: var(--tblr-primary); font-weight: 600; }
-.bug-cat:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--tblr-primary); }
 .bug-cat-icon { display: flex; flex: 0 0 auto; width: var(--wv-icon-sm); height: var(--wv-icon-sm); }
 .bug-cat-icon svg { width: 100%; height: 100%; }
 
@@ -2218,3 +2233,39 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .wv-grid .k-computed:has(.cg-sparkwrap) { display: flex; width: 100%; }
 .wv-grid .k-computed .cg-sparkwrap { flex: 1 1 auto; width: auto; }
 .cg-spark-preview .cg-sparkwrap { width: 200px; height: 28px; }
+
+/* ---------- accessibility baseline (Issue #378) ----------
+   Finding F2 of the 2026-09-26 design pass, gated by
+   test/a11y-browser.test.mjs (axe-core, both themes). */
+
+/* One focus ring, everywhere: 2px of the primary, clear of the control.
+   Nav rows wore the browser's default, toolbar buttons Tabler's 25% halo
+   (2.16:1 light, 1.45:1 dark), and the name and title fields none at all.
+   !important because Tabler and a dozen weave rules set `outline: 0` on
+   focus; the grid keeps its inset cell ring, which is this ring drawn in. */
+:focus-visible { outline: 2px solid var(--tblr-primary) !important; outline-offset: 2px; }
+.btn { --tblr-btn-focus-box-shadow: 0 0 0 0 transparent; }
+.wv-grid :focus-visible, .nav-caret:focus-visible, .nav-db:focus-visible { outline-offset: -2px; }
+.wv-grid tbody td[tabindex]:focus-visible,
+#main:focus-visible, .vditor-reset:focus-visible { outline: none !important; }
+
+/* Skip to content: the first Tab stop, out of sight until it has focus. */
+.skip-link { position: fixed; left: 12px; top: -48px; z-index: 1000; padding: 8px 14px; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); box-shadow: var(--wv-panel-shadow); text-decoration: none; font-weight: 600; }
+.skip-link:focus { top: 12px; }
+
+/* A control you type into or tick shows its edge at 3:1. The grid's cells
+   rest as values and keep their borderless costume. */
+.form-control:not(.inline-edit), .form-select:not(.inline-edit), .form-check-input { border-color: var(--wv-control-border); }
+
+/* 24px targets (WCAG 2.5.8). The glyph keeps its size; an invisible ::after
+   grows the part that takes the click. */
+.doc-caret, .mention-caret, .add-field-btn, #nav-collapse, .nav-db-menu .dots-btn, td.pid-cell a.open-link { position: relative; }
+.doc-caret::after, .mention-caret::after, .add-field-btn::after, #nav-collapse::after,
+.nav-db-menu .dots-btn::after, td.pid-cell a.open-link::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: max(100%, 24px); height: max(100%, 24px); transform: translate(-50%, -50%);
+}
+/* The mention caret sits inside its chip's link, between the label and the
+   ↗: a wider target would take the link's clicks, so it grows only in height
+   until the chip gives it room of its own (Issue #397). */
+.mention-caret::after { width: 100%; }

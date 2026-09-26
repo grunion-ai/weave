@@ -290,7 +290,8 @@ test('every grid redraw remembers where focus was before it runs (Issue #83)', (
 
 test('the focused popover row is as visible as the hovered one', () => {
   assert.ok(rulesFor('.chip-pop-row:focus').background, 'focus must be styled, not only hover');
-  assert.ok(rulesFor('.chip-pop-row:focus-visible')['box-shadow']);
+  // The keyboard gets the one focus ring (Issue #378), drawn inside the row.
+  assert.equal(rulesFor('.chip-pop-row:focus-visible')['outline-offset'], '-2px');
 });
 
 /* ---------- destructive actions confirm in-place, not via the browser ---------- */
@@ -1196,7 +1197,7 @@ test('the field dialogs offer a default value for the types that can hold one', 
 
 test('a collection relation renders as the target table grid, in the body', () => {
   const grid = fnBody('relatedGrid');
-  assert.match(grid, /editorFor\(/, 'cells are the same editors the table view uses');
+  assert.match(grid, /labeledEditorFor\(/, 'cells are the same named editors the table view uses (Issue #378)');
   assert.match(grid, /PICKER_FIELD_TYPES\.includes/, 'and carry the same picker/computed cell classes');
   assert.match(grid, /rowClickTarget\(e\)/, 'so a click on a picker opens the picker, not the entity');
   assert.match(grid, /openEntity\(item\.id\)/, 'and a click elsewhere opens the row\'s page (Feature #117)');

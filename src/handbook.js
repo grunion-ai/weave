@@ -955,6 +955,8 @@ Cells **rest as values** and open on purpose. The cursor is a ring on one cell; 
 
 Every field cell is a stop, select, multi-select, checkbox and date included. A document chip column is not: it is a door to the record, not a value, so the cursor passes over it. The checkbox column and the \`#id\` link are pointer targets; \`Space\` and \`⌘Return\` are their keys.
 
+The first \`Tab\` on any page lands on **Skip to content**, which moves focus past the rail and the sidebar into the page. Wherever focus goes, it wears one ring: 2px of the brand blue, drawn clear of the control and at 3:1 or better against it in both themes (Issue #378).
+
 ## Ranges, fill and paste
 
 A rectangle of cells is a **range**. Grow one with \`⇧\` and the arrows, or drag the pointer across the cells; the range is what a fill and a paste act on, and drawing one writes nothing.

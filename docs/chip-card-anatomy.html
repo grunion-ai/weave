@@ -75,7 +75,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .k-state.cat-done { --fill: rgba(46, 160, 67, .14); --text: #218358; }
 .k-state.cat-canceled { --fill: rgba(229, 72, 77, .12); --text: #ce2c31; text-decoration: line-through; }
 [data-bs-theme="dark"] .k-state.cat-not-started { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
-[data-bs-theme="dark"] .k-state.cat-in-progress { --fill: rgba(99, 140, 245, .18); --text: #9eb1ff; }
+[data-bs-theme="dark"] .k-state.cat-in-progress { --fill: rgba(99, 140, 245, .18); --text: #bccaff; }
 [data-bs-theme="dark"] .k-state.cat-done { --fill: rgba(70, 180, 110, .16); --text: #71d083; }
 [data-bs-theme="dark"] .k-state.cat-canceled { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
 .k-key { font-family: var(--tblr-font-monospace); font-size: 11px; letter-spacing: .02em; }
@@ -88,7 +88,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .k-rel > .x { margin: 0 6px 0 -3px; padding: 0 2px; }
 .mention-wrap, .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
 .k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; opacity: .6; }
+.k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; color: var(--tblr-secondary); }
 .k-rel .k-home { font-family: var(--tblr-font-monospace); font-size: .78em; opacity: .55; }
 .k-more { font-family: var(--tblr-font-monospace); font-size: 10.5px; }
 .k-add, .k-doc.is-empty, .k-attach.is-empty { background: none; border: 1px dashed var(--tblr-border-color); color: var(--tblr-secondary); cursor: pointer; }
@@ -113,7 +113,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .hue-teal { --fill: rgba(18, 165, 148, .14); --text: #10695c; --dot: #12a594; }
 .hue-orange { --fill: rgba(247, 107, 21, .14); --text: #9a4310; --dot: #f76b15; }
 [data-bs-theme="dark"] .hue-slate { --fill: rgba(255, 255, 255, .07); --text: #b0b7c3; }
-[data-bs-theme="dark"] .hue-blue { --fill: rgba(99, 140, 245, .18); --text: #9eb1ff; }
+[data-bs-theme="dark"] .hue-blue { --fill: rgba(99, 140, 245, .18); --text: #bccaff; }
 [data-bs-theme="dark"] .hue-green { --fill: rgba(70, 180, 110, .16); --text: #71d083; }
 [data-bs-theme="dark"] .hue-amber { --fill: rgba(240, 190, 80, .18); --text: #f2c968; }
 [data-bs-theme="dark"] .hue-red { --fill: rgba(255, 100, 100, .16); --text: #ff9592; }
@@ -145,6 +145,9 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .wv-card-fields dt { color: var(--tblr-secondary); font-weight: 400; opacity: .8; }
 .wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wv-card-fields dd .cg-wrap.cg-bar, .mention-f .cg-wrap.cg-bar { width: 96px; min-width: 64px; }
+.mention-caret { position: relative; }
+.mention-caret::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 24px); height: max(100%, 24px); transform: translate(-50%, -50%); }
+.mention-caret::after { width: 100%; }
 
 :root, [data-bs-theme="light"] {
   --tblr-border-color: #e6e3dc; --tblr-body-color: #1a1d23; --tblr-secondary: #6b7280;
