@@ -854,6 +854,18 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 /* An empty chip invites writing; the arrow promises navigation. Only one
    can be true (Issue #93 — "the empty doc chip"). */
 .k-doc.is-empty::after, .k-attach.is-empty::after { content: "+"; opacity: .55; }
+/* An empty grid cell at rest is blank (Issue #420, Kyle 2026-09-26: "make
+   empty cells blank to cut noise"). The invitations above — the dashed chip,
+   "Add description…", the "—" of an unset select or state, a date box's
+   placeholder — show only on the cell that holds the focus, the cell itself
+   or the control being edited in it. Opacity, not visibility: the invisible
+   chip is still the click target that opens its picker. This supersedes the
+   2026-08-24 "empty is dashed, never dimmed" ruling for cells at rest; the
+   entity page, footers and stat tiles keep their marks. */
+.wv-grid tbody td:not(:focus):not(:focus-within) .is-empty,
+.wv-grid tbody td:not(:focus):not(:focus-within) .k-empty,
+.wv-grid tbody td:not(:focus):not(:focus-within) .k-add { opacity: 0; }
+.wv-grid tbody td:not(:focus):not(:focus-within) ::placeholder { color: transparent; }
 
 /* tier 3 — computed. Never a chip: the glyph says "not editable" before a
    click has to prove it. */

@@ -251,19 +251,26 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('an empty description is a dashed invitation, not a dim', async () => {
+  /* Blank at rest, a dashed invitation on the focused cell (Issue #420,
+     superseding the 2026-08-24 "dashed, never dimmed" ruling for cells at
+     rest): "Add description…" in every row was a wall of repeated text. */
+  test('an empty description is blank at rest and a dashed invitation on focus', async () => {
     const page = await grid();
     try {
-      const look = await page.evaluate(() => {
+      const look = () => page.evaluate(() => {
         const box = [...document.querySelectorAll('.wv-grid tbody .doc-preview.is-empty')][0];
         if (!box) return null;
         const cs = getComputedStyle(box.querySelector('.doc-preview-line'));
         return { style: cs.borderTopStyle, opacity: getComputedStyle(box).opacity, framework: box.classList.contains('empty') };
       });
-      assert.ok(look, 'an unwritten description still draws something');
-      assert.equal(look.style, 'dashed', 'dashed says "write here"');
-      assert.equal(look.opacity, '1', 'opacity would say "you may not"');
-      assert.equal(look.framework, false, 'never Tabler’s global `.empty`');
+      const rest = await look();
+      assert.ok(rest, 'an unwritten description still has its box to click');
+      assert.equal(rest.opacity, '0', 'nothing shows at rest');
+      assert.equal(rest.framework, false, 'never Tabler’s global `.empty`');
+      await page.evaluate(() => document.querySelector('.wv-grid tbody .doc-preview.is-empty').closest('td').focus());
+      const on = await look();
+      assert.equal(on.style, 'dashed', 'dashed says "write here" on the focused cell');
+      assert.equal(on.opacity, '1', 'at full strength, not dimmed');
     } finally { await page.close(); }
   });
 

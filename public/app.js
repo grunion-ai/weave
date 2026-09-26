@@ -3119,14 +3119,17 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
   if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
     // Read-only: the glyph says "computed, not editable" at a glance so these
     // are not mistaken for the chips and inputs beside them.
-    const box = el('span', { class: 'computed k k-computed', title: `${f.type} — read-only` },
-      el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
-      // A formula's list wears its sparkline (#232).
-      (f.type === 'formula' && f.display === 'sparkline' && Array.isArray(item?.raw?.[f.name]) ? sparkEl(f.style, item.raw[f.name]) : null)
+    const text = fieldValueCell(val);
+    // A formula's list wears its sparkline (#232).
+    const graphic = (f.type === 'formula' && f.display === 'sparkline' && Array.isArray(item?.raw?.[f.name]) ? sparkEl(f.style, item.raw[f.name]) : null)
       // A lookup or a rollup that reads a rating draws its icons (#231).
       ?? (f.rating && typeof item?.raw?.[f.name] === 'number'
-        ? ratingEl(f.rating.max, f.rating.icon, item.raw[f.name], { title: `${f.name}: ${fieldValueCell(val)}` }) : null)
-      ?? numberGraphicFor(f, item, fieldValueCell(val)) ?? (fieldValueCell(val) || '—'));
+        ? ratingEl(f.rating.max, f.rating.icon, item.raw[f.name], { title: `${f.name}: ${text}` }) : null)
+      ?? numberGraphicFor(f, item, text);
+    // Nothing computed: the dash is the empty hint, blank at rest in a grid (Issue #420).
+    const box = el('span', { class: 'computed k k-computed' + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
+      el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
+      graphic ?? (text || '—'));
     if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
     return box;
   }
@@ -3136,8 +3139,9 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     return box;
   }
   if (f.type === 'workflow') {
-    const trigger = el('button', { class: stateChipClass(f, val), type: 'button', title: f.name }, ...stateNodes(f, val));
-    const paint = (name) => { trigger.className = `${stateChipClass(f, name)} chip-trigger`; trigger.replaceChildren(...stateNodes(f, name)); };
+    const unset = (v) => (v == null ? ' is-empty' : '');
+    const trigger = el('button', { class: stateChipClass(f, val) + unset(val), type: 'button', title: f.name }, ...stateNodes(f, val));
+    const paint = (name) => { trigger.className = `${stateChipClass(f, name)}${unset(name)} chip-trigger`; trigger.replaceChildren(...stateNodes(f, name)); };
     return chipPicker({
       trigger,
       /* The picker paints a row or a staged chip with the class it is handed,
@@ -3155,9 +3159,10 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     });
   }
   if (f.type === 'select') {
-    const trigger = el('button', { class: `k k-select ${optionHue(f, val)}`, type: 'button', title: f.name },
+    const unset = (v) => (v == null ? ' is-empty' : '');
+    const trigger = el('button', { class: `k k-select ${optionHue(f, val)}${unset(val)}`, type: 'button', title: f.name },
       optionIcon(f, val), val ?? '—');
-    const paint = (v) => { trigger.className = `k k-select ${optionHue(f, v)} chip-trigger`; trigger.replaceChildren(...[optionIcon(f, v), v ?? '—'].filter(Boolean)); };
+    const paint = (v) => { trigger.className = `k k-select ${optionHue(f, v)}${unset(v)} chip-trigger`; trigger.replaceChildren(...[optionIcon(f, v), v ?? '—'].filter(Boolean)); };
     return chipPicker({
       trigger,
       // Each option is its own chip in the list, in the hue it wears in the
@@ -3202,7 +3207,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
        mask comes off here and the glyph carries it alone. */
     const shown = String(fieldValueCell(val) ?? '').replace(/^✱+\s*/, '');
     const chip = el('span', {
-      class: 'k k-key hue-slate',
+      class: 'k k-key hue-slate' + (shown ? '' : ' is-empty'),
       title: `${f.name} — ${CREDENTIAL_KIND_LABELS[kind] ?? kind} in ${KEYSTORE_LABELS[store] ?? store}`,
     }, iconEl(CREDENTIAL_GLYPHS[kind] ?? CREDENTIAL_GLYPHS.apikey, 'ico wv-icon'), shown || '—');
     if (store !== 'local' && val) chip.append(el('span', { class: 'store' }, KEYSTORE_LABELS[store]));
@@ -3312,7 +3317,7 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     // `val` (item.fields) is the engine's display sentence — 'select · 3
     // options'; the definition itself rides in item.raw.
     const def = item.raw?.[f.name] ?? null;
-    const chip = el('span', { class: 'computed k k-computed', title: compact ? `field definition — edit on the ${db?.term?.singular ?? 'record'} page` : 'field definition — click to edit' },
+    const chip = el('span', { class: 'computed k k-computed' + (def == null ? ' is-empty' : ''), title: compact ? `field definition — edit on the ${db?.term?.singular ?? 'record'} page` : 'field definition — click to edit' },
       el('span', { class: 'computed-mark' }, computedMarkNode('field')),
       def == null ? '—' : String(val));
     if (compact) return chip;
