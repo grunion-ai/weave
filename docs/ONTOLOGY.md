@@ -320,7 +320,7 @@ A validated number, dressed by its costume: decimals, thousands separator, and
 one of percent, an ISO currency, or a free-text unit.
 
 ### `rating`
-A whole number from 0 to the field's `max` (1 to 10), drawn as `max` icons
+A whole number from 0 to the field's `max` (1 to 100, 5 unless named), drawn as `max` icons
 from the inventory with the first ones filled. A number to every reader.
 
 ### `date`

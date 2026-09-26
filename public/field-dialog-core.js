@@ -285,10 +285,44 @@
   const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
   // A formula that returns a list can also wear a sparkline (Feature #232).
   const SPARKLINE_STYLES = ['line', 'column', 'winloss'];
-  /* A rating's scale (Feature #231): the dialog offers three, the engine
-     takes any whole number 1..RATING_MAX. */
+  /* A rating's scale (Feature #231, #234): any whole number from 1, five
+     unless named, with 3, 5 and 7 as shortcuts. RATING_MAX mirrors the
+     engine's guard (contract-tested): every icon is a button in every
+     visible cell, so a max in the thousands would stall the grid's paint. */
   const RATING_PRESETS = [3, 5, 7];
-  const RATING_MAX = 10;
+  const RATING_MAX = 100;
+  // The typed max box: a whole number 1..RATING_MAX, else null (not saved).
+  const ratingMaxValue = (raw) => {
+    const s = String(raw ?? '').trim();
+    const n = Number(s);
+    return s !== '' && Number.isInteger(n) && n >= 1 && n <= RATING_MAX ? n : null;
+  };
+  /* The default is picked on a row of the field's own icons (Feature #234).
+     It rides the dialog state as text like every default: '' is none. */
+  const ratingNum = (v) => (String(v ?? '').trim() === '' ? null : Number(v));
+  const ratingText = (n) => (n == null || n <= 0 ? '' : String(n));
+  const clampRatingDefault = (v, max) => {
+    const n = ratingNum(v);
+    return n == null || !Number.isFinite(n) ? '' : ratingText(Math.min(max, Math.round(n)));
+  };
+  // Clicking the nth icon sets n; clicking the current default clears it.
+  const ratingDefaultClick = (v, n) => (ratingNum(v) === n ? '' : String(n));
+  const ratingDefaultLabel = (v, max) => {
+    const n = ratingNum(v);
+    return n == null ? `Default: none, of ${max}` : `Default: ${n} of ${max}`;
+  };
+  /* The focused row's keys: arrows move by one (below 1 is none), Home is
+     none, End the max, a digit sets it (past the max sets the max, 0
+     clears), Backspace/Delete clear. undefined = not the preview's key. */
+  function ratingDefaultKey(v, max, key) {
+    const n = ratingNum(v) ?? 0;
+    if (key === 'ArrowRight' || key === 'ArrowUp') return ratingText(Math.min(max, n + 1));
+    if (key === 'ArrowLeft' || key === 'ArrowDown') return ratingText(n - 1);
+    if (key === 'Home' || key === 'Backspace' || key === 'Delete') return '';
+    if (key === 'End') return String(max);
+    if (/^[0-9]$/.test(key)) return ratingText(Math.min(max, Number(key)));
+    return undefined;
+  }
   // ISO 4217 codes offered in the picker (any valid code types in too).
   const CURRENCIES = [
     ['USD', 'US dollar'], ['EUR', 'Euro'], ['MXN', 'Mexican peso'], ['CNY', 'Chinese yuan'], ['JPY', 'Japanese yen'],
@@ -484,7 +518,7 @@
       // No editor writes a filter yet; a column that has one keeps it.
       if (state.via && state.where) config.where = state.where;
     }
-    const dflt = typedDefault(t, state.default);
+    const dflt = typedDefault(t, t === 'rating' ? clampRatingDefault(state.default, config.max) : state.default);
     if (dflt !== undefined) config.default = dflt;
     if (state.term && state.term.singular) config.term = { ...state.term };
     return { type: t, config };
@@ -777,7 +811,7 @@
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, migrateState, moveItem,
-    NUMBER_FORMATS, NUMBER_DISPLAYS, SPARKLINE_STYLES, RATING_PRESETS, RATING_MAX, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
+    NUMBER_FORMATS, NUMBER_DISPLAYS, SPARKLINE_STYLES, RATING_PRESETS, RATING_MAX, ratingMaxValue, clampRatingDefault, ratingDefaultClick, ratingDefaultLabel, ratingDefaultKey, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     blankState, definitionFromState, stateFromDefinition,
     definitionFromFieldView, editPatchConfig,

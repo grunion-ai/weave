@@ -6609,6 +6609,7 @@ function segCtl(options, value, onPick) {
   const mark = (current) => btns.forEach((b, i) => b.classList.toggle('on', norm[i].id === current));
   mark(value);
   wrap.append(...btns);
+  wrap.mark = mark; // a value set elsewhere (a typed box beside it) moves the mark too
   return wrap;
 }
 
@@ -7445,30 +7446,54 @@ function fieldDialog(db, existing, after) {
           onChange: (r) => { state.default = r ? JSON.stringify(r) : ''; changed(); },
         })));
       } else if (t === 'rating') {
-        /* The scale and its icon (Feature #231): 3, 5 or 7 at a click, any
-           whole number to 10 typed, one icon from the inventory, and a
-           sample row drawn with both so the choice is seen before it saves. */
+        /* The scale, its icon and the default (Feature #231, #234): any whole
+           number typed, 3, 5 or 7 at a click; one icon from the inventory; and
+           the default picked on a live row of the field's own icons, the same
+           control the grid cell wears. Click the nth to set n, click it again
+           to clear; focused, the arrows move it, a digit sets it and
+           Backspace clears. The row redraws with the icon and the max, and a
+           default above a lowered max comes down with it. */
         const r = state.rating ?? (state.rating = { max: 5, icon: 'lucide:star' });
-        const sample = el('div', { class: 'wv-rating-sample' });
-        const drawSample = () => sample.replaceChildren(ratingEl(r.max, r.icon, Math.ceil(r.max * 0.6)));
+        const preview = el('div', { class: 'wv-rating-default' });
+        const drawDefault = () => {
+          state.default = fdc.clampRatingDefault(state.default, r.max);
+          const cur = state.default;
+          const box = ratingEl(r.max, r.icon, cur === '' ? null : Number(cur), { onSet: (v) => setDefault(v ? String(v) : '') });
+          const label = fdc.ratingDefaultLabel(cur, r.max);
+          box.setAttribute('aria-label', label);
+          box.title = `${label} · click an icon, or use the arrow keys`;
+          box.tabIndex = 0;
+          box.addEventListener('keydown', (e) => {
+            const v = fdc.ratingDefaultKey(state.default, r.max, e.key);
+            if (v === undefined || e.metaKey || e.ctrlKey || e.altKey) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setDefault(v);
+          });
+          const had = preview.contains(document.activeElement);
+          preview.replaceChildren(box);
+          if (had) box.focus();
+        };
+        const setDefault = (v) => { state.default = v; drawDefault(); changed(); };
+        const setMax = (n) => { r.max = n; presets.mark?.(String(n)); drawDefault(); changed(); };
         const maxBox = el('input', {
           type: 'number', min: 1, max: fdc.RATING_MAX, step: 1, class: 'form-control dlg-narrow', 'aria-label': 'Max', value: r.max,
-          oninput: (e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1 && v <= fdc.RATING_MAX) { r.max = v; drawSample(); changed(); } },
+          oninput: (e) => {
+            const n = fdc.ratingMaxValue(e.target.value);
+            e.target.classList.toggle('is-invalid', n == null && e.target.value !== '');
+            if (n != null) setMax(n);
+          },
+          onchange: (e) => { if (fdc.ratingMaxValue(e.target.value) == null) { e.target.value = r.max; e.target.classList.remove('is-invalid'); } },
         });
-        kids.push(dsection('Max', el('div', { class: 'wv-rating-max' },
-          segCtl(fdc.RATING_PRESETS.map((n) => ({ id: String(n), label: String(n) })), String(r.max), (v) => { r.max = Number(v); maxBox.value = v; drawSample(); changed(); }),
-          maxBox)));
+        const presets = segCtl(fdc.RATING_PRESETS.map((n) => ({ id: String(n), label: String(n) })), String(r.max), (v) => { maxBox.value = v; maxBox.classList.remove('is-invalid'); setMax(Number(v)); });
+        kids.push(dsection('Max', el('div', { class: 'wv-rating-max' }, maxBox, presets)));
         const iconBtn = el('button', {
           type: 'button', class: 'btn btn-sm wv-rating-icon', title: 'Pick the icon', 'aria-label': 'Icon',
           onclick: (e) => glyphPopover(e.currentTarget, r.icon, (id) => { r.icon = id || 'lucide:star'; drawCfg(); changed(); }),
         }, iconEl(r.icon, 'wv-icon'), el('span', {}, String(r.icon).replace(/^lucide:/, '')));
         kids.push(dsection('Icon', iconBtn));
-        drawSample();
-        kids.push(dsection('Sample', sample));
-        kids.push(dsection('Default', el('input', {
-          type: 'number', min: 0, max: r.max, step: 1, class: 'form-control dlg-narrow', value: state.default ?? '', placeholder: 'none',
-          oninput: (e) => { state.default = e.target.value; changed(); },
-        })));
+        drawDefault();
+        kids.push(dsection('Default', preview));
       } else if (t === 'toggle') {
         /* Two words and a starting state (Feature #202): the labels the
            switch wears, and which of them a new row begins on. The default

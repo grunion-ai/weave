@@ -2265,6 +2265,11 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--wv-rate-on); }
 .wv-rating-max { display: flex; gap: 8px; align-items: center; }
 .wv-rating-icon { display: inline-flex; gap: 6px; align-items: center; }
+/* The default picker (Feature #234): the field's own icons, a size up from
+   the grid cell, wrapping when the max is long; focusable for the keys
+   (the one focus ring, Issue #378, draws its focus). */
+.wv-rating-default .wv-rating { flex-wrap: wrap; white-space: normal; border-radius: 4px; padding: 2px; }
+.wv-rating-default .wv-rate-ico { font-size: 19px; }
 
 /* ---------- the sparkline (Feature #232) ----------
    A formula's list drawn in the cell's own box: a line with a dot on the

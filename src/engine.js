@@ -167,8 +167,13 @@ export const SPARKLINE_STYLES = ['line', 'column', 'winloss'];
 /* The last number in a series: what a sort or a filter on a sparkline reads. */
 const lastNumber = (list) => { for (let i = list.length - 1; i >= 0; i--) if (typeof list[i] === 'number' && Number.isFinite(list[i])) return list[i]; return null; };
 /* A rating (Feature #231): a whole number from 0 to `max`, drawn as `max`
-   icons. The dialog offers 3, 5 and 7; the engine takes 1..10. */
-const RATING_MAX = 10;
+   icons. The max is any whole number from 1 (Feature #234 lifted the old cap
+   of 10); 5 unless named, and the dialog offers 3, 5 and 7 as shortcuts.
+   The guard of 100 exists because every icon is a DOM node in every visible
+   grid cell: a max in the thousands would put tens of thousands of buttons in
+   one screen of rows and stall the paint, and a row of more than 100 icons is
+   already wider than any screen, so nobody can read or click it as a rating. */
+export const RATING_MAX = 100;
 const RATING_DEFAULTS = { max: 5, icon: 'lucide:star' };
 /* The aggregates whose answer stays on a rating's scale, so a rollup over a
    rating can draw the same icons. A sum or a spread leaves the scale. */
@@ -4278,6 +4283,17 @@ export class Weave {
         const description = fieldDescriptionValue(patch.config.description);
         if (description) field.config.description = description; else delete field.config.description;
       }
+      if (field.type === 'rating' && ('max' in patch.config || 'icon' in patch.config)) {
+        // One key at a time: the other keeps. A lower max holds every
+        // stored value to the new ceiling on read (#resolve). The scale
+        // moves BEFORE the default lane reads it, so a default sent with a
+        // new max is judged against that max (Feature #234), and a standing
+        // default above a lowered max clamps down with it.
+        const { max, icon } = normalizeSelfContainedConfig('rating', { max: field.config.max, icon: field.config.icon, ...patch.config });
+        field.config.max = max;
+        field.config.icon = icon;
+        if (typeof field.config.default === 'number') field.config.default = ratingValue(field.config.default, max);
+      }
       // The default rides alongside the type config for the same reason width
       // does: editing one must not clobber the other. null clears it.
       if ('default' in patch.config) {
@@ -4300,13 +4316,6 @@ export class Weave {
       if (field.type === 'view') field.config = this.#normalizeViewConfig(db, field, patch.config);
       if (field.type === 'text' && 'literal' in patch.config) {
         if (normalizeSelfContainedConfig('text', patch.config).literal) field.config.literal = true; else delete field.config.literal;
-      }
-      if (field.type === 'rating' && ('max' in patch.config || 'icon' in patch.config)) {
-        // One key at a time: the other keeps. A lower max holds every
-        // stored value to the new ceiling on read (#resolve).
-        const { max, icon } = normalizeSelfContainedConfig('rating', { max: field.config.max, icon: field.config.icon, ...patch.config });
-        field.config.max = max;
-        field.config.icon = icon;
       }
       if (field.type === 'toggle' && ('on' in patch.config || 'off' in patch.config)) {
         // One label at a time: the other keeps its word.

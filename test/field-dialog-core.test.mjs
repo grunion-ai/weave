@@ -871,13 +871,71 @@ test('the dialog refuses a rating max in the words the engine would', async () =
   const w = new Weave();
   w.createSpace({ name: 'S' });
   w.createTable({ space: 'S', name: 'T' });
-  for (const max of [0, 11, 2.5]) {
+  for (const max of [0, 101, 2.5]) {
     const mirrored = core.parseDefinition(JSON.stringify({ type: 'rating', config: { max } }));
     assert.equal(mirrored.ok, false, String(max));
     let message = null;
     try { w.addField('T', { name: `R${max}`, type: 'rating', config: { max } }); } catch (e) { message = e.message; }
     assert.equal(mirrored.error, message, 'the dialog repeats the engine verbatim');
   }
+});
+
+/* ---------- the rating: any max, a clickable default (Feature #234) ---------- */
+
+test('the dialog takes any whole-number max up to the engine\'s guard, five unless named', async () => {
+  const { RATING_MAX } = await import('../src/engine.js');
+  assert.equal(core.RATING_MAX, RATING_MAX, 'the dialog mirrors the engine guard');
+  assert.equal(core.blankState('rating').rating.max, 5, 'a fresh rating is out of five');
+  for (const max of [1, 12, 40, 100]) {
+    const parsed = core.parseDefinition(JSON.stringify({ type: 'rating', config: { max } }));
+    assert.equal(parsed.ok, true, `max ${max} parses`);
+    const state = core.blankState('rating');
+    state.rating.max = max;
+    assert.equal(core.definitionFromState(state).config.max, max);
+  }
+  assert.equal(core.ratingMaxValue('12'), 12, 'the typed box reads a whole number');
+  assert.equal(core.ratingMaxValue('0'), null);
+  assert.equal(core.ratingMaxValue('4.5'), null);
+  assert.equal(core.ratingMaxValue('101'), null, 'past the guard is refused, not clamped silently');
+  assert.equal(core.ratingMaxValue(''), null);
+});
+
+test('the default preview: a click sets n, the same click clears, the label says "Default: n of max"', () => {
+  assert.equal(core.ratingDefaultClick('', 3), '3');
+  assert.equal(core.ratingDefaultClick('3', 4), '4');
+  assert.equal(core.ratingDefaultClick('3', 3), '', 'clicking the current default clears it: no default');
+  assert.equal(core.ratingDefaultLabel('3', 5), 'Default: 3 of 5');
+  assert.equal(core.ratingDefaultLabel('', 5), 'Default: none, of 5');
+});
+
+test('the default preview keys: arrows move it, a digit sets it, Backspace clears, the rest pass', () => {
+  const k = core.ratingDefaultKey;
+  assert.equal(k('', 5, 'ArrowRight'), '1', 'from none, right is 1');
+  assert.equal(k('3', 5, 'ArrowRight'), '4');
+  assert.equal(k('3', 5, 'ArrowUp'), '4');
+  assert.equal(k('5', 5, 'ArrowRight'), '5', 'held at the max');
+  assert.equal(k('3', 5, 'ArrowLeft'), '2');
+  assert.equal(k('3', 5, 'ArrowDown'), '2');
+  assert.equal(k('1', 5, 'ArrowLeft'), '', 'below 1 is none');
+  assert.equal(k('', 5, 'ArrowLeft'), '', 'none stays none');
+  assert.equal(k('', 5, 'Home'), '');
+  assert.equal(k('2', 5, 'End'), '5');
+  assert.equal(k('', 5, '4'), '4', 'a digit sets it');
+  assert.equal(k('', 3, '9'), '3', 'a digit past the max sets the max');
+  assert.equal(k('3', 5, '0'), '', '0 clears, like Backspace');
+  assert.equal(k('3', 5, 'Backspace'), '');
+  assert.equal(k('3', 5, 'Delete'), '');
+  assert.equal(k('3', 5, 'Tab'), undefined, 'Tab is not the preview\'s');
+  assert.equal(k('3', 5, 'a'), undefined);
+});
+
+test('a default above a lowered max clamps down, in the state and in the definition', () => {
+  assert.equal(core.clampRatingDefault('7', 5), '5');
+  assert.equal(core.clampRatingDefault('3', 5), '3');
+  assert.equal(core.clampRatingDefault('', 5), '');
+  const state = core.stateFromDefinition({ type: 'rating', config: { max: 7, icon: 'lucide:heart', default: 6 } });
+  state.rating.max = 4;
+  assert.equal(core.definitionFromState(state).config.default, 4, 'the code pane shows the clamped default');
 });
 
 /* ---------- formula lists and the sparkline (Feature #232) ---------- */

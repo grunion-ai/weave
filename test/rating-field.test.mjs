@@ -1,13 +1,20 @@
 /* The `rating` field type (Feature #231): a whole number from 0 to the
    field's max, drawn as that many icons you click to fill. The config is
-   `{ max, icon }` (max 1..10, the dialog offering 3, 5 and 7; one icon from
+   `{ max, icon }` (max any whole number 1..100 since #234, 5 unless named, the dialog offering 3, 5 and 7 as shortcuts; one icon from
    the inventory per field, a star unless said). The value is a number to
    everything that reads it: formulas, sort, filter, CSV, the API. A lookup
    or a rollup over a rating reads its max and icon, so it can draw the same
    icons, read-only. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave, FIELD_TYPES, DEFINABLE_TYPES, TYPE_MIGRATIONS } from '../src/engine.js';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Weave, FIELD_TYPES, DEFINABLE_TYPES, TYPE_MIGRATIONS, RATING_MAX } from '../src/engine.js';
+import { startServer } from '../src/server.js';
+import { dispatchTool, TOOLS } from '../src/mcp.js';
 import { VOCABULARY } from '../src/vocabulary.js';
 
 function ws(config = {}) {
@@ -32,17 +39,50 @@ test('rating is a field type: registered, definable, in the vocabulary, star out
   assert.equal(d.icon, 'lucide:star');
 });
 
-test('max is a whole number 1..10 and the icon comes from the inventory', () => {
+test('max is any whole number from 1 up to the rendering guard, and the icon comes from the inventory (Feature #234)', () => {
   const { w, t } = ws({ max: 7, icon: 'lucide:heart' });
   assert.deepEqual(w.getField(t, 'Fit').config, { max: 7, icon: 'lucide:heart' });
-  assert.throws(() => w.addField(t, { name: 'Zero', type: 'rating', config: { max: 0 } }), /A rating's max is a whole number from 1 to 10, got '0'/);
-  assert.throws(() => w.addField(t, { name: 'Big', type: 'rating', config: { max: 11 } }), /from 1 to 10/);
-  assert.throws(() => w.addField(t, { name: 'Half', type: 'rating', config: { max: 4.5 } }), /from 1 to 10/);
+  assert.equal(RATING_MAX, 100, 'the guard is generous: #234 lifted the old 1..10 cap');
+  for (const max of [1, 11, 12, 50, 100]) {
+    assert.equal(w.addField(t, { name: `M${max}`, type: 'rating', config: { max } }).config.max, max, `max ${max} is legal`);
+  }
+  assert.throws(() => w.addField(t, { name: 'Zero', type: 'rating', config: { max: 0 } }), /A rating's max is a whole number from 1 to 100, got '0'/);
+  assert.throws(() => w.addField(t, { name: 'Big', type: 'rating', config: { max: 101 } }), /from 1 to 100/);
+  assert.throws(() => w.addField(t, { name: 'Half', type: 'rating', config: { max: 4.5 } }), /from 1 to 100/);
   assert.throws(() => w.addField(t, { name: 'Emoji', type: 'rating', config: { icon: '🔥' } }), /not in the inventory/);
   w.updateField(t, 'Fit', { config: { max: 3 } });
   assert.deepEqual(w.getField(t, 'Fit').config, { max: 3, icon: 'lucide:heart' }, 'one key at a time: the icon keeps');
   w.updateField(t, 'Fit', { config: { icon: 'lucide:flag' } });
   assert.deepEqual(w.getField(t, 'Fit').config, { max: 3, icon: 'lucide:flag' });
+  w.updateField(t, 'Fit', { config: { max: 20 } });
+  const e = w.createEntity(t, { name: 'x', values: { Fit: 17 } });
+  assert.equal(w.readEntity(e.id).raw.Fit, 17, 'a value above the old cap of 10 stores');
+});
+
+test('a rating made with no max is out of five on every surface: engine, route, MCP, CLI (Feature #234)', async () => {
+  const { w, t } = ws();
+  assert.equal(w.getField(t, 'Fit').config.max, 5, 'engine');
+  const { server } = await startServer(w, { port: 0 });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const res = await fetch(`${base}/api/tables/${t.id}/fields`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Route', type: 'rating' }) });
+    assert.equal(res.status < 300, true, `POST fields answered ${res.status}`);
+    assert.equal(w.getField(t, 'Route').config.max, 5, 'POST /api/tables/:id/fields');
+  } finally { server.close(); }
+  dispatchTool(w, 'weave_add_field', { db: 'Vendor', name: 'Mcp', type: 'rating' });
+  assert.equal(w.getField(t, 'Mcp').config.max, 5, 'weave_add_field');
+  assert.match(TOOLS.find((x) => x.name === 'weave_add_field').description, /max 1-100, default 5/, 'the MCP tool names the range');
+  const dir = mkdtempSync(join(tmpdir(), 'weave-rating-'));
+  try {
+    const data = join(dir, 'ws.db');
+    const fw = new Weave({ path: data });
+    fw.createSpace({ name: 'Ops' });
+    fw.createTable({ space: 'Ops', name: 'Vendor' });
+    fw.save?.();
+    const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
+    const cli = (...a) => JSON.parse(execFileSync('node', [BIN, ...a, '--data', data], { encoding: 'utf8', maxBuffer: 64 << 20 }));
+    assert.equal(cli('field', 'add', 'Vendor', 'Cli', 'rating').config.max, 5, 'weave field add');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('a value is a whole number held to 0..max: rounded, clamped, numeric text accepted', () => {
@@ -73,6 +113,18 @@ test('a default is a rating like any other', () => {
   const e = w.createEntity(t, { name: 'a' });
   assert.equal(w.readEntity(e.id).raw.Fit, 2);
   assert.throws(() => w.updateField(t, 'Fit', { config: { default: 'lots' } }), /not a rating/);
+});
+
+test('a default rides with the max: raised together it keeps, lowered it clamps down (Feature #234)', () => {
+  const { w, t } = ws({ default: 4 });
+  // The field dialog sends max and default in one patch; the default is read
+  // against the NEW max, not the old one.
+  w.updateField(t, 'Fit', { config: { max: 12, default: 11 } });
+  assert.equal(w.getField(t, 'Fit').config.default, 11, 'a default above the old max, sent with the new max, keeps');
+  assert.equal(w.readEntity(w.createEntity(t, { name: 'a' }).id).raw.Fit, 11, 'a new row starts at it');
+  w.updateField(t, 'Fit', { config: { max: 3 } });
+  assert.equal(w.getField(t, 'Fit').config.default, 3, 'a default above a lowered max clamps down');
+  assert.equal(w.readEntity(w.createEntity(t, { name: 'b' }).id).raw.Fit, 3);
 });
 
 test('formulas, sort, filter, stats and CSV read a number', () => {

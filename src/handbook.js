@@ -244,11 +244,11 @@ A whole number from 0 to the field's \`max\`, drawn as \`max\` icons with the fi
 
 ## Config
 
-\`max\` — how many icons, a whole number from 1 to 10; \`5\` unless named. The field dialog offers 3, 5 and 7.
+\`max\` — how many icons, any whole number from 1 to 100; \`5\` unless named (Feature #234). The field dialog takes any number and offers 3, 5 and 7 as shortcuts. The ceiling of 100 keeps a screen of rows paintable: every icon is a button in every visible cell.
 
 \`icon\` — one icon for the field, picked from the inventory (\`lucide:<name>\`, or a mark): \`lucide:star\` unless named. \`{ "name": "Fit", "type": "rating", "config": { "max": 7, "icon": "lucide:heart" } }\`.
 
-\`default\` — the rating a new row starts with.
+\`default\` — the rating a new row starts with. In the field dialog it is picked on a row of the field's own icons: click the nth to set n, click it again to clear; with the row focused, the arrow keys move it, a digit sets it and \`Backspace\` clears it. Lowering \`max\` below the default brings the default down with it.
 
 ## Usage
 

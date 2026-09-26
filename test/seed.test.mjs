@@ -92,6 +92,17 @@ test('the Showcase wears every number display, on the column scale and a fixed o
   }
 });
 
+test('the Showcase rates past the old cap of 10 and starts new rows at a default (Feature #234)', () => {
+  const w = seedWeaver(new Weave());
+  const ft = w.findTable('Showcase/Field Types');
+  const f = w.findField(ft, 'Brightness');
+  assert.ok(f, 'a Brightness rating');
+  assert.deepEqual(f.config, { max: 12, icon: 'lucide:sun', default: 6 });
+  const fresh = w.createEntity(ft, { name: 'scratch' });
+  assert.equal(w.readEntity(fresh.id).raw.Brightness, 6, 'a new row starts at the default');
+  assert.equal(w.readEntity(w.findEntity(ft, 'Sync service').id).raw.Brightness, 12, 'a row rated at the top of a twelve-point scale');
+});
+
 test('the Showcase rates at max 3, 5 and 7 with two icons, and rolls a rating up (Feature #231)', () => {
   const w = seedWeaver(new Weave());
   const sc = w.describeSchema().find((s) => s.space === 'Showcase');
