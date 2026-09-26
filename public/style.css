@@ -1437,26 +1437,40 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .fielddef-clear { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--tblr-border-color); }
 .fielddef-clear .hold-btn { display: inline-flex; width: auto; }
 
-/* ---------- universal search results ---------- */
-#search-results { background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-box-shadow); max-height: 300px; overflow-y: auto; }
-.result { padding: 7px 10px; cursor: pointer; border-bottom: 1px solid var(--tblr-border-color); }
-.result:hover { background: var(--tblr-active-bg); }
-.result .snip { color: var(--tblr-secondary); font-size: 12px; }
-.result-main { display: flex; align-items: center; gap: 7px; }
 .copy-btn { margin-left: auto; }
-.snip.mono { font-family: var(--tblr-font-monospace); font-size: 10.5px; color: var(--tblr-secondary); }
 .kbd-hint { color: var(--tblr-secondary); font-size: 12px; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); padding: 2px 8px; }
 
-/* ---------- ⌘K palette ---------- */
+/* ---------- ⌘K palette ----------
+   Option A, "Grouped results" (Issue #382, Kyle 2026-09-26). One 36px line
+   per hit under 11px group headers. The type scale is Kyle's of the same
+   day: input 16, rows 14, where-text and chips 12, headers and tags 11.
+   Muted text is --tblr-secondary, the post-F2 #5f6474 in light. */
 #cmdk-back { position: fixed; inset: 0; background: rgba(15, 20, 25, .48); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; z-index: 1060; }
-#cmdk { background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); width: 560px; max-width: 92vw; box-shadow: var(--tblr-box-shadow-lg); overflow: hidden; }
-#cmdk-input { width: 100%; border: none; border-bottom: 1px solid var(--tblr-border-color); border-radius: 0; padding: 13px 16px; font-size: 15px; font-family: inherit; background: var(--tblr-bg-surface); color: var(--tblr-body-color); }
+#cmdk { background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); width: 620px; max-width: 92vw; box-shadow: var(--tblr-box-shadow-lg); overflow: hidden; display: flex; flex-direction: column; }
+.cmdk-inp { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px; border-bottom: 1px solid var(--tblr-border-color); }
+.cmdk-inp .cmdk-ic { font-size: 18px; }
+#cmdk-input { flex: 1 1 auto; min-width: 0; border: 0; padding: 0; font-size: 16px; font-family: inherit; background: transparent; color: var(--tblr-body-color); }
+#cmdk-input::placeholder { color: var(--tblr-secondary); opacity: 1; }
 #cmdk-input:focus { outline: none; }
-#cmdk-results { max-height: 46vh; overflow-y: auto; }
-#cmdk-results .result { padding: 8px 14px; }
-#cmdk-results .result.active { background: var(--tblr-active-bg); box-shadow: inset 2px 0 0 var(--tblr-primary); }
-#cmdk-results .cmdk-error { color: var(--tblr-danger); cursor: default; } /* a failed search, named under the input (Issue #265) */
-.cmdk-foot { padding: 7px 14px; color: var(--tblr-secondary); font-size: 11.5px; background: var(--tblr-bg-surface-secondary); }
+.cmdk-ws { flex: none; font-size: 11px; line-height: 18px; padding: 0 6px; border: 1px solid var(--tblr-border-color); border-radius: 4px; color: var(--tblr-secondary); white-space: nowrap; }
+#cmdk-results { max-height: 46vh; overflow-y: auto; padding-bottom: 6px; }
+.cmdk-hdr { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--tblr-secondary); padding: 12px 16px 4px; }
+#cmdk-results .result { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 16px; font-size: 14px; cursor: pointer; }
+#cmdk-results .result.active { background: color-mix(in srgb, var(--tblr-primary) 9%, transparent); box-shadow: inset 2px 0 0 var(--tblr-primary); }
+.cmdk-ic { flex: none; font-size: 16px; color: var(--tblr-secondary); }
+.cmdk-text { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmdk-ctx { color: var(--tblr-secondary); }
+#cmdk mark { background: rgba(245, 159, 0, .24); color: inherit; border-radius: 2px; padding: 0 1px; }
+#cmdk .k { flex: none; font-size: 12px; line-height: 20px; }
+.cmdk-where { flex: none; font-size: 12px; color: var(--tblr-secondary); white-space: nowrap; }
+/* Copy link stays on every hit and shows where the reader is: the selected
+   row or the one under the pointer. */
+#cmdk .copy-btn { flex: none; margin-left: 0; opacity: 0; }
+#cmdk .result.active .copy-btn, #cmdk .result:hover .copy-btn, #cmdk .copy-btn:focus-visible { opacity: 1; }
+.cmdk-empty { padding: 12px 16px; font-size: 13px; color: var(--tblr-secondary); }
+#cmdk-results .cmdk-error { padding: 12px 16px; font-size: 13px; color: var(--tblr-danger); } /* a failed search, named under the input (Issue #265) */
+.cmdk-foot { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--tblr-border-color); font-size: 12px; color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); }
+.cmdk-foot kbd { font: 11px var(--tblr-font-monospace); border: 1px solid var(--tblr-border-color); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); box-shadow: none; }
 
 /* ---------- relation map ---------- */
 .map-wrap { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); background: var(--tblr-bg-surface); overflow: auto; }
@@ -2630,12 +2644,15 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
    Nav rows wore the browser's default, toolbar buttons Tabler's 25% halo
    (2.16:1 light, 1.45:1 dark), and the name and title fields none at all.
    !important because Tabler and a dozen weave rules set `outline: 0` on
-   focus; the grid keeps its inset cell ring, which is this ring drawn in. */
+   focus; the grid keeps its inset cell ring, which is this ring drawn in.
+   The ⌘K input is the one control its dialog has and holds focus the whole
+   time it is open; its caret and the selected row say where you are
+   (Issue #382). */
 :focus-visible { outline: 2px solid var(--tblr-primary) !important; outline-offset: 2px; }
 .btn { --tblr-btn-focus-box-shadow: 0 0 0 0 transparent; }
 .wv-grid :focus-visible, .nav-caret:focus-visible, .nav-db:focus-visible { outline-offset: -2px; }
 .wv-grid tbody td[tabindex]:focus-visible,
-#main:focus-visible, .vditor-reset:focus-visible { outline: none !important; }
+#main:focus-visible, .vditor-reset:focus-visible, #cmdk-input:focus-visible { outline: none !important; }
 
 /* Skip to content: the first Tab stop, out of sight until it has focus. */
 .skip-link { position: fixed; left: 12px; top: -48px; z-index: 1000; padding: 8px 14px; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); box-shadow: var(--wv-panel-shadow); text-decoration: none; font-weight: 600; }

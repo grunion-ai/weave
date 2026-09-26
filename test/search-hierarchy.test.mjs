@@ -77,3 +77,15 @@ test('GET /api/search keeps hierarchy past the limit, scoped and across workspac
     server.close();
   }
 });
+
+test('a registry row never shadows its own space or table hit (Issue #382)', () => {
+  // The Workspace space holds a row per space and table; that row IS the
+  // container hit above it, so ⌘K listed "Guide" twice: the table, and the
+  // Workspace/Tables row of the same name under Records.
+  const { w } = crowded('Onboarding', 0);
+  const hits = w.universalSearch('onboarding');
+  assert.deepEqual(hits.map((h) => `${h.kind}:${h.db ?? ''}${h.name}`), ['table:Issue desk/Onboarding']);
+  const desk = w.universalSearch('issue desk');
+  assert.deepEqual(desk.map((h) => h.kind), ['space', 'table'].filter((k) => desk.some((h) => h.kind === k)));
+  assert.ok(!desk.some((h) => h.kind === 'entity' && /^Workspace\//.test(h.db)), `no registry rows: ${desk.map((h) => h.db ?? h.kind)}`);
+});

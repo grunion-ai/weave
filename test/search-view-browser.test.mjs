@@ -23,8 +23,8 @@ if (s) {
     await page.goto(`${base}/`, { waitUntil: 'networkidle' });
     await page.click('#search-btn');
     await page.fill('#cmdk-input', 'triage');
-    await page.waitForSelector('#cmdk-results .result .result-main');
-    const label = await page.locator('#cmdk-results .result .k').first().textContent();
+    await page.waitForSelector('#cmdk-results[data-query="triage"] .result');
+    const label = await page.locator('#cmdk-results .result .cmdk-where').first().textContent();
     assert.match(label, /view/, `the hit says what it is (got "${label}")`);
     await page.keyboard.press('Enter');
     await page.waitForFunction((id) => location.hash === `#/view/${id}`, s.view.id, { timeout: 5000 });

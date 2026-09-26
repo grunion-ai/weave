@@ -73,6 +73,8 @@ const isBodyBlock = (f) => f.type === 'document' || f.type === 'attachments'
 const VALUE_TYPES = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect', 'workflow', 'relation', 'field', 'key', 'attachments'];
 // The stored values search reads as text (Feature #228). `key` is a secret and stays out.
 const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
+// Registry tables whose rows are containers universalSearch already returns.
+const REGISTRY_HITS = new Set(['workspaces', 'spaces', 'tables', 'views']);
 /* checkbox and toggle store the same boolean; the toggle names its two states (Feature #202). */
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
@@ -6942,10 +6944,15 @@ export class Weave {
         results.push({ kind: 'view', id: v.id, name: v.name, url: `${prefix}/#/view/${v.id}`, score: 8 });
       }
     }
-    for (const hit of this.search(text, { limit })) {
-      // The Workspaces registry row IS the workspace hit above (Feature #219).
-      if (this.state.tables[this.state.entities[hit.id]?.dbId]?.system === 'workspaces') continue;
-      results.push({ kind: 'entity', url: `${prefix}/e/${hit.id}`, ...hit });
+    // A registry row IS the container hit above it: the Workspaces row is the
+    // workspace (Feature #219), a Spaces, Tables or Views row the space, table
+    // or view. Listing both showed ⌘K every table twice (Issue #382). They go
+    // before the limit, so they never take a real row's place.
+    const rows = this.#searchHits(text)
+      .filter(({ e }) => !REGISTRY_HITS.has(this.state.tables[e.dbId]?.system))
+      .sort((a, b) => b.score - a.score).slice(0, limit);
+    for (const { e, score, snippet } of rows) {
+      results.push({ kind: 'entity', url: `${prefix}/e/${e.id}`, ...this.#summary(e.id), score, snippet });
     }
     return Weave.capRows(results, limit);
   }

@@ -159,8 +159,8 @@ if (s) {
     const page = await open(ctx, `#/table/${s.deals.id}`, '.wv-grid tbody tr.entity-row');
     await page.click('#search-btn');
     await page.fill('#cmdk-input', 'Acme');
-    await page.waitForSelector('#cmdk-results .result');
-    const r = await modifierClick(ctx, page, '#cmdk-results .result .result-main span:nth-child(2)');
+    await page.waitForSelector('#cmdk-results[data-query="Acme"] .result');
+    const r = await modifierClick(ctx, page, '#cmdk-results .result .cmdk-name');
     assert.ok(r.tab?.includes(s.acme.id), `a tab opened on the hit (got ${r.tab})`);
     assert.ok(await page.locator('#cmdk-back').count(), 'the palette is still open');
     await ctx.close();

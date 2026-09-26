@@ -64,7 +64,7 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.click('#search-btn');
     await page.fill('#cmdk-input', 'Bluefin');
-    await page.waitForSelector('#cmdk-results .result.active');
+    await page.waitForSelector('#cmdk-results[data-query="Bluefin"] .result.active');
     await page.keyboard.press('Enter');
     await docked(page, 'Bluefin Renewal');
     assert.equal(await page.evaluate(() => location.hash), `#/table/${contacts.id}?e=${bluefin.id}`);
@@ -78,7 +78,7 @@ if (s) {
     const before = await page.evaluate(() => history.length);
     await page.click('#search-btn');
     await page.fill('#cmdk-input', 'Bluefin');
-    await page.waitForSelector('#cmdk-results .result.active');
+    await page.waitForSelector('#cmdk-results[data-query="Bluefin"] .result.active');
     await page.keyboard.press('Enter');
     await docked(page, 'Bluefin Renewal');
     assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${bluefin.id}`);

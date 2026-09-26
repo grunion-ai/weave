@@ -185,9 +185,9 @@ if (s) {
     // than inserting a placeholder the writer has to fix up by hand.
     await page.waitForSelector('#cmdk', { state: 'visible' });
     await page.keyboard.type('Zebrafish');
-    // .result-main, not .result — the "No results" placeholder is also a
-    // .result, and waiting on it would let Enter fire against an empty list.
-    await page.waitForSelector('#cmdk-results .result-main');
+    // An option of THIS search, not a Recent row the empty palette opened
+    // on: Enter against either would insert the wrong target.
+    await page.waitForSelector('#cmdk-results[data-query="Zebrafish"] [role="option"]');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(150);
     const markdown = await page.evaluate(() =>
@@ -520,7 +520,7 @@ if (s) {
     await page.keyboard.press('Enter');
     await page.waitForSelector('#cmdk', { state: 'visible' });
     await page.keyboard.type('Note');
-    await page.waitForSelector('#cmdk-results .result-main');
+    await page.waitForSelector('#cmdk-results[data-query="Note"] [role="option"]');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(150);
     const markdown = await page.evaluate(() =>

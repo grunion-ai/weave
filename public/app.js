@@ -739,6 +739,7 @@ async function drawDock() {
   // The frame learns its name here, for the crumb of the next hop; the
   // dock's table follows the frame on top (its eye, its fields).
   top.name = entity.name;
+  noteEntityRecent(entity);
   syncDocTitle();
   dock.db = allTables().find((d) => d.id === top.tableId) ?? dock.db;
   const tableOf = (tid) => allTables().find((d) => d.id === tid);
@@ -4182,6 +4183,8 @@ async function showDatabase(dbId, view) {
   // A redraw that names no view keeps the one on screen; the router always
   // names one (null for the bare table route, which opens the default).
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
+  // Arriving at a table is a visit for ⌘K's Recent group; a redraw is not.
+  if (!(state.route?.page === 'db' && state.route.dbId === dbId)) noteRecent({ kind: 'table', id: table.id, name: table.qualified ?? table.name, url: `${WS_PREFIX}/#/table/${table.id}` });
   const db = viewed(table, pickTableView(table, view));
   if (tableSearch.dbId !== dbId) { stopTableSearchTimer(); tableSearch = { dbId, text: '', open: false, focus: false, only: null }; }
   const search = tableSearch.text.trim();
@@ -10822,6 +10825,7 @@ async function showEntity(id) {
   // The crumb is the path taken: an entity reached from another entity
   // keeps that entity in the trail (breadcrumbs.js); any other origin
   // starts it fresh.
+  noteEntityRecent(entity);
   const hop = entityHop(entity);
   state.trail = weaveBreadcrumbs.pushTrail(state.trail, state.route, hop);
   state.route = { page: 'entity', id, dbId: entity.dbId, entity: hop };
@@ -12089,9 +12093,10 @@ async function showHome() {
   }
 }
 
-/* ---------- universal search (sidebar + ⌘K palette) ---------- */
-
-const KIND_ICON = { workspace: '', space: '▣', table: '▦', view: '▤', entity: '●' };
+/* ---------- universal search (sidebar + ⌘K palette) ----------
+   Option A, "Grouped results" (Issue #382, Kyle 2026-09-26): one 36px line
+   per hit under Records, In documents and Tables headers; Recent when the
+   input is empty. public/palette-core.js holds the pure half. */
 
 function navigateToResult(hit) {
   // Results can come from another workspace: follow the permalink's path.
@@ -12107,24 +12112,70 @@ function navigateToResult(hit) {
   else location.hash = '#/';
 }
 
-function resultRow(hit, onPick, { href = null } = {}) {
-  const permalink = location.origin + hit.url;
-  return el('div', { class: 'result', ...(href ? { dataset: { href } } : {}), onclick: () => onPick(hit) },
-    el('div', { class: 'result-main' },
-      el('span', { class: 'k k-sys' },
-        ...(hit.kind === 'workspace'
-          ? [el('img', { class: 'kind-mark', src: '/brand/weave-favicon.svg', alt: '' }), ` ${hit.kind}`]
-          : [`${KIND_ICON[hit.kind] ?? ''} ${hit.kind}`])),
-      el('span', {}, hit.kind === 'entity' ? `${hit.db} #${hit.publicId} — ${hit.name}` : hit.name),
-      el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny copy-btn', title: 'Copy permalink',
-        onclick: (e) => {
-          e.stopPropagation();
-          copyText(permalink, 'Permalink copied');
-        },
-      }, iconEl('⧉'))),
-    el('div', { class: 'snip mono' }, permalink),
-    hit.snippet ? el('div', { class: 'snip' }, hit.snippet) : null);
+// The workspace this page is, by name: the rail's wordmark once it has
+// loaded, the URL segment until then.
+function currentWsName() {
+  return $('#ws-name')?.textContent || (WS_PREFIX ? decodeURIComponent(WS_PREFIX.slice(3)) : '');
+}
+
+/* Recent: what this browser opened in this workspace, newest first. Kept
+   client-side per workspace; a blocked store just means no Recent group.
+   ponytail: names and states are as they were when opened; a renamed or
+   trashed row shows its old name until it is opened again. */
+const RECENT_KEY = `weave-recent:${WS_PREFIX || '/'}`;
+function readRecents() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) ?? []; } catch { return []; } // blocked or garbled store: no Recent group
+}
+function noteRecent(item) {
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(weavePalette.pushRecent(readRecents(), item))); } catch { /* storage blocked */ }
+}
+function noteEntityRecent(entity) {
+  const wf = allTables().find((d) => d.id === entity.dbId)?.fields.find((f) => f.type === 'workflow');
+  const st = wf ? entity.fields?.[wf.name] : null;
+  noteRecent({
+    kind: 'entity', id: entity.id, name: entity.name, db: entity.db, publicId: entity.publicId,
+    url: `${WS_PREFIX}/e/${entity.id}`,
+    ...(st ? { chip: { state: { name: st, category: stateCategory(wf, st) } } } : {}),
+  });
+}
+
+function paletteIcon(hit, group) {
+  const name = hit.kind === 'table' ? 'table'
+    : hit.kind === 'view' ? 'eye'
+    : hit.kind === 'space' ? 'layout-grid'
+    : hit.kind === 'workspace' ? 'layers'
+    : PERSON_TABLE.test(String(hit.db ?? '').split('/').pop()) ? 'user'
+    : group === 'docs' ? 'file-text' : 'file';
+  return iconEl(`lucide:${name}`, 'wv-icon cmdk-ic');
+}
+
+const marked = (text, needle) => weavePalette.highlight(text, needle).map((s) => (s.hit ? el('mark', {}, s.text) : s.text));
+
+function paletteRow(hit, i, { needle, group, here, onPick, href }) {
+  const P = weavePalette;
+  // A hit from another workspace says which; a hit at home says nothing.
+  const foreign = hit.workspace && (here ? hit.workspace !== here : !hit.url.startsWith(`${WS_PREFIX}/`));
+  const state = hit.chip?.state;
+  const cat = state && chipCore.categoryOrDefault(state.category);
+  return el('div', {
+    class: 'result', id: `cmdk-opt-${i}`, role: 'option', 'aria-selected': 'false',
+    ...(href ? { dataset: { href } } : {}), onclick: () => onPick(hit),
+  },
+  paletteIcon(hit, group),
+  el('span', { class: 'cmdk-text' },
+    el('span', { class: 'cmdk-name' }, ...marked(P.displayName(hit), needle)),
+    group === 'docs' ? [' ', el('span', { class: 'cmdk-ctx' }, ...marked(P.excerpt(hit.snippet, needle), needle))] : null),
+  foreign ? el('span', { class: 'cmdk-ws' }, hit.workspace) : null,
+  state ? el('span', { class: `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}` }, state.name) : null,
+  el('span', { class: 'cmdk-where' }, P.whereText(hit)),
+  el('button', {
+    class: 'btn btn-sm btn-ghost-secondary tiny copy-btn', type: 'button', tabindex: '-1',
+    title: 'Copy link', 'aria-label': 'Copy link',
+    onclick: (e) => {
+      e.stopPropagation();
+      copyText(location.origin + hit.url, 'Permalink copied');
+    },
+  }, iconEl('⧉')));
 }
 
 // The sidebar search control IS the ⌘K palette — one search surface.
@@ -12135,18 +12186,23 @@ function wireSearchButton() {
 /* One search surface. By default a pick navigates; callers that need a
    reference rather than a jump — the editor's reference commands, which ask
    for one kind of target each — pass their own onPick and get the hit back
-   instead. */
+   instead. The input is a combobox over a listbox of grouped options, and
+   focus never leaves it: arrows, Tab and Enter all act on the selection. */
 function openCommandK({ onPick = null, onDismiss = null, kinds = null, placeholder = null } = {}) {
   if ($('#cmdk-back')) return;
+  const P = weavePalette;
+  const here = currentWsName();
   let picked = false;
   const dismiss = () => { back.remove(); if (!picked) onDismiss?.(); };
   const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
   const input = el('input', {
-    id: 'cmdk-input', autocomplete: 'off',
-    placeholder: placeholder ?? 'Search workspace, spaces, tables, views, entities…',
+    id: 'cmdk-input', autocomplete: 'off', spellcheck: 'false',
+    role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'cmdk-results', 'aria-autocomplete': 'list',
+    placeholder: placeholder ?? (here ? `Search ${here}` : 'Search'),
   });
-  const list = el('div', { id: 'cmdk-results' });
-  let hits = [], rowEls = [], sel = 0;
+  input.setAttribute('aria-label', input.placeholder);
+  const list = el('div', { id: 'cmdk-results', role: 'listbox', 'aria-label': 'Results' });
+  let groups = [], flat = [], rowEls = [], sel = 0;
   let timer, inflight = null;
   const pick = (hit) => {
     picked = true;
@@ -12155,52 +12211,86 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     else navigateToResult(hit);
   };
   const setSel = (i, scroll = true) => {
-    if (!rowEls.length) return;
+    if (!rowEls.length) { input.removeAttribute('aria-activedescendant'); return; }
     sel = ((i % rowEls.length) + rowEls.length) % rowEls.length; // wrap at ends
-    rowEls.forEach((r, j) => r.classList.toggle('active', j === sel));
+    rowEls.forEach((r, j) => {
+      r.classList.toggle('active', j === sel);
+      r.setAttribute('aria-selected', String(j === sel));
+    });
+    input.setAttribute('aria-activedescendant', rowEls[sel].id);
     if (scroll) scrollTargetIntoView(rowEls[sel], { block: 'nearest' });
+  };
+  const render = (q, gs, empty) => {
+    groups = gs;
+    flat = gs.flatMap((g) => g.hits);
+    rowEls = [];
+    const needle = q.toLowerCase();
+    const nodes = gs.map((g, gi) => el('div', { class: 'cmdk-group', role: 'group', 'aria-labelledby': `cmdk-g${gi}` },
+      el('div', { class: 'cmdk-hdr', id: `cmdk-g${gi}` }, g.label, g.key === 'recent' ? null : ` · ${g.hits.length}`),
+      g.hits.map((h) => {
+        const i = rowEls.length;
+        const row = paletteRow(h, i, { needle, group: g.key, here, onPick: pick, href: onPick ? null : h.url });
+        row.addEventListener('mouseenter', () => setSel(i, false));
+        rowEls.push(row);
+        return row;
+      })));
+    list.replaceChildren(...(nodes.length ? nodes : [el('div', { class: 'cmdk-empty' }, empty)]));
+    list.dataset.query = q;
+    input.setAttribute('aria-expanded', String(rowEls.length > 0));
+    setSel(0); // highlight resets to the top on every re-render
+  };
+  const showRecent = () => {
+    const recent = readRecents().filter((h) => !kinds || kinds.includes(h.kind));
+    render('', recent.length ? [{ key: 'recent', label: 'Recent', hits: recent }] : [], 'Records and tables you open show up here.');
   };
   input.addEventListener('input', () => {
     clearTimeout(timer);
+    const q = input.value.trim();
+    if (!q) { inflight?.abort(); showRecent(); return; }
     timer = setTimeout(async () => {
       // One request in flight: a newer keystroke aborts the older one, so a
       // slow earlier answer cannot land on top of a newer one (Issue #265).
       inflight?.abort();
       const ctl = inflight = new AbortController();
-      const q = input.value.trim();
-      if (!q) { hits = []; rowEls = []; list.replaceChildren(); return; }
+      let hits;
       try {
         hits = await api('GET', `/search?q=${encodeURIComponent(q)}&all=1`, undefined, { signal: ctl.signal });
       } catch (err) {
         if (ctl.signal.aborted) return; // replaced by a newer keystroke
-        hits = []; rowEls = [];
-        list.replaceChildren(el('div', { class: 'result cmdk-error', role: 'alert' }, `Couldn't search: ${err.message}`));
+        groups = []; flat = []; rowEls = [];
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
+        list.replaceChildren(el('div', { class: 'cmdk-error', role: 'alert' }, `Couldn't search: ${err.message}`));
         return;
       }
       if (ctl.signal.aborted) return;
       // A reference command asks for one kind of target; the palette itself
       // asks for all of them.
       if (kinds) hits = hits.filter((h) => kinds.includes(h.kind));
-      rowEls = hits.map((h, i) => {
-        const row = resultRow(h, pick, { href: onPick ? null : h.url });
-        row.addEventListener('mouseenter', () => setSel(i, false));
-        return row;
-      });
-      list.replaceChildren(...(rowEls.length ? rowEls : [el('div', { class: 'result' }, 'No results')]));
-      setSel(0); // highlight resets to the top on every re-render
+      render(q, P.groupHits(hits, q), `No matches for “${q}”.`);
     }, 150);
   });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setSel(sel + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(sel - 1); }
-    else if (e.key === 'Enter' && hits.length) pick(hits[sel] ?? hits[0]);
+    else if (e.key === 'Tab') { e.preventDefault(); setSel(P.groupJump(groups, sel, e.shiftKey ? -1 : 1)); }
+    else if (e.key === 'Enter' && flat.length) pick(flat[sel] ?? flat[0]);
     else if (e.key === 'Escape') dismiss();
   });
-  back.append(el('div', { id: 'cmdk' },
-    input,
+  const cap = (k) => el('kbd', {}, k);
+  back.append(el('div', { id: 'cmdk', role: 'dialog', 'aria-label': 'Search' },
+    el('div', { class: 'cmdk-inp' },
+      iconEl('lucide:search', 'wv-icon cmdk-ic'),
+      input,
+      here ? el('span', { class: 'cmdk-ws', title: 'This workspace' }, here) : null),
     list,
-    el('div', { class: 'cmdk-foot' }, 'Enter opens top result • ⧉ copies a permalink • Esc closes')));
+    el('div', { class: 'cmdk-foot', 'aria-hidden': 'true' },
+      el('span', {}, cap('↑'), ' ', cap('↓'), ' move'),
+      el('span', {}, cap('↵'), ' open'),
+      el('span', {}, cap('tab'), ' next group'),
+      el('span', {}, cap('esc'), ' close'))));
   document.body.append(back);
+  showRecent();
   input.focus();
 }
 
