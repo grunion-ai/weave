@@ -8300,6 +8300,29 @@ function footAggregatesFor(db, f) {
 }
 
 const spaceRollupName = (db, col, agg) => (agg === 'count' ? `${db.name} · count` : `${db.name} · ${col} · ${agg}`);
+/* The schema's entry for a space rollup the picker just made, in the shape
+   and key order describeSchema() gives it. The Spaces table gained one field,
+   which is all a schema reload would have taught the tab (Issue #235); a
+   later reload (a refocus, Feature #33) then finds nothing changed and
+   redraws nothing. A rollup wears its column's costume there, so the entry
+   copies it by the engine's rules (src/engine.js #numberDisplay and
+   #ratingOf): a numeric aggregate of a bar, ring or heat number or formula
+   takes its `display`, and its `scale` when that is a fixed number; an avg,
+   min, max or median of a rating takes the rating's `max` and `icon`. */
+const RATING_SCALE_FOOT = ['avg', 'min', 'max', 'median'];
+const spaceRollupEntry = (db, col, agg, made) => {
+  const out = {
+    id: made.id, name: made.name, type: 'rollup', viaTable: db.qualified, viaTableId: db.id,
+    ...(agg === 'count' ? {} : { targetField: col }), aggregate: agg,
+  };
+  const f = agg === 'count' ? null : colField(db, col);
+  if ((f?.type === 'number' || f?.type === 'formula') && FOOT_NUMERIC.includes(agg) && ['bar', 'ring', 'heat'].includes(f.display)) {
+    out.display = f.display;
+    if (typeof f.scale === 'number') out.scale = f.scale;
+  }
+  if (f?.type === 'rating' && RATING_SCALE_FOOT.includes(agg)) out.rating = { max: f.max, icon: f.icon };
+  return out;
+};
 
 /* The Σ row: one cell per column, painted from the table's stats once they
    arrive. Empty cells still take a click, which is how the first Σ is added.
@@ -8329,8 +8352,10 @@ function renderFooter(db, cols) {
 }
 
 /* Paint the Σ row from the live rollups. `rollups` may be handed in by a
-   caller that already fetched them; otherwise one read. */
-async function fillFooter(db, foot, rollups = null) {
+   caller that already fetched them; otherwise one read. With `col`, the
+   rollups are that column's alone and only its cell repaints (Issue #235):
+   the other cells keep what they show. */
+async function fillFooter(db, foot, rollups = null, { col = null } = {}) {
   if (!foot) return;
   try {
     rollups ??= (await api('GET', `/tables/${db.id}/stats`)).rollups;
@@ -8339,20 +8364,35 @@ async function fillFooter(db, foot, rollups = null) {
   // the read, not before; a row a redraw replaced meanwhile is left alone.
   if (!foot.isConnected) return;
   const nameCol = db.fields.find((f) => f.role === 'name')?.name ?? 'Name';
+  const colOf = (r) => r.targetField ?? nameCol;
+  foot.rollups = col == null ? rollups : [...(foot.rollups ?? []).filter((r) => colOf(r) !== col), ...rollups];
   for (const td of foot.querySelectorAll('td.foot-cell')) {
-    const col = td.dataset.col;
-    const mine = rollups.filter((r) => (r.targetField ?? nameCol) === col && FOOT_LABELS[r.aggregate]);
+    if (col != null && td.dataset.col !== col) continue;
+    const mine = rollups.filter((r) => colOf(r) === td.dataset.col && FOOT_LABELS[r.aggregate]);
     td.replaceChildren(...mine.map((r) => el('span', { class: 'foot-stat', title: r.name + (r.where ? ' (filtered)' : '') },
       el('span', { class: 'foot-agg' }, FOOT_LABELS[r.aggregate]),
       el('span', { class: 'foot-val' }, r.display ?? '—'))));
     td.classList.toggle('has-stats', mine.length > 0);
   }
-  foot.dataset.rollups = String(rollups.length);
+  foot.dataset.rollups = String(foot.rollups.length);
 }
 
 /* The picker: one switch per aggregate the column can wear. On creates the
    space rollup, off deletes it. The popover stays put and its rows relearn
-   the truth, the way the eye does. */
+   the truth, the way the eye does.
+
+   A switch flips on the click (Issue #235). It used to wait on its POST,
+   then on a read of every column's stats and every rollup of the table,
+   then on a schema reload: 1 to 1.5 s a click on uno. A flip is now a
+   paint, a write and a read-back. The write waits its turn on eyeWrites, the
+   eye's queue (Issue #243), and decides at its turn, from the rollups the
+   writes before it left, whether there is anything to create or delete, so
+   a switch flicked on and off before the first write answers ends off with
+   no duplicate field. Each write keeps `rollups` and the tab's schema in step
+   itself. The last flip of a burst reads back this column's figures alone,
+   still on the queue so no write lands between that read and the rows it
+   teaches, then relearns the rows and repaints this one footer cell. A
+   failed write toasts, and the relearn puts its switch back. */
 async function footerPicker(anchor, db, col) {
   const spacesT = registryTable('spaces');
   const f = colField(db, col);
@@ -8360,29 +8400,70 @@ async function footerPicker(anchor, db, col) {
   if (!spacesT || !aggs.length) return;
   const nameCol = db.fields.find((x) => x.role === 'name')?.name ?? 'Name';
   let rollups = [];
-  const load = async () => { rollups = (await api('GET', `/tables/${db.id}/stats`)).rollups; };
+  const load = async () => { rollups = (await api('GET', `/tables/${db.id}/stats?field=${encodeURIComponent(f.id)}`)).rollups; };
   const have = (agg) => rollups.find((r) => (r.targetField ?? nameCol) === col && r.aggregate === agg && !r.where);
+  // "Last flip of a burst" is judged per column, beside the eye's per-table tails.
+  const tailKey = `Σ ${db.id} ${col}`;
+  const write = async (agg, on) => {
+    const cur = have(agg);
+    if (on && !cur) {
+      const made = await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
+      rollups = [...rollups, { fieldId: made.id, name: made.name, targetField: agg === 'count' ? null : col, aggregate: agg, where: null, value: null, display: null }];
+      // Looked up again: a schema reload queued ahead (an eye flip) replaced
+      // the table object this picker opened with. A new field shows in every
+      // view of the Spaces table (Feature #229), so the views learn it too.
+      const reg = registryTable('spaces');
+      if (reg) {
+        reg.fields.push(spaceRollupEntry(db, col, agg, made));
+        for (const v of reg.views ?? []) if (!v.fields.includes(made.name)) v.fields.push(made.name);
+      }
+    } else if (!on && cur) {
+      await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
+      rollups = rollups.filter((r) => r !== cur);
+      // The server refuses the delete while a lookup or rollup reads this
+      // figure (deleteField does not cascade), and the refusal toasts; a
+      // delete that lands takes this one field and nothing else.
+      const reg = registryTable('spaces');
+      if (reg) {
+        reg.fields = reg.fields.filter((x) => x.id !== cur.fieldId);
+        for (const v of reg.views ?? []) {
+          v.fields = v.fields.filter((n) => n !== cur.name);
+          // A view's widths are keyed by field name (Feature #233) and
+          // describeSchema() drops a deleted field's entry, and the key with it.
+          if (v.widths && cur.name in v.widths) {
+            delete v.widths[cur.name];
+            if (!Object.keys(v.widths).length) delete v.widths;
+          }
+        }
+      }
+    }
+  };
+  const flip = (node) => {
+    const agg = node.dataset.agg;
+    const on = node.getAttribute('aria-checked') !== 'true';
+    node.setAttribute('aria-checked', on ? 'true' : 'false');
+    node.querySelector('.switch')?.classList.toggle('on', on);
+    const turn = eyeWrites.then(async () => {
+      try { await write(agg, on); } catch (err) { toast(err.message, true); }
+      if (eyeTails.get(tailKey) === turn) await load().catch(() => {}); // a missed read leaves the figures as they were
+    });
+    eyeWrites = turn;
+    eyeTails.set(tailKey, turn);
+    turn.then(() => {
+      if (eyeTails.get(tailKey) !== turn) return;
+      eyeTails.delete(tailKey);
+      // Same tail, same hazard as the eye's (Issue #240): teach the rows, and
+      // only while this picker is still the one open.
+      if (pop.isConnected) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"]`)?.focus());
+      fillFooter(db, anchor.closest('tr.wv-foot'), rollups, { col });
+    });
+  };
   const row = (agg) => {
     const on = !!have(agg);
     return el('button', {
       class: 'chip-pop-row eye-row foot-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
       dataset: { agg },
-      onclick: async (e) => {
-        e.stopPropagation();
-        try {
-          const cur = have(agg);
-          if (cur) await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
-          else await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
-          await load();
-          // Same tail, same hazard as the eye's (Issue #240): teach the rows.
-          const pop = document.querySelector('.chip-pop');
-          // On a rebuild the pressed row is a new node; focus follows it so
-          // Escape still closes and the arrows still move.
-          if (pop) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"]`)?.focus());
-          fillFooter(db, anchor.closest('tr.wv-foot'), rollups);
-          loadSchema();
-        } catch (err) { toast(err.message, true); }
-      },
+      onclick: (e) => { e.stopPropagation(); flip(e.currentTarget); },
     }, el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg),
     el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
   };
@@ -8391,8 +8472,12 @@ async function footerPicker(anchor, db, col) {
     ...aggs.map(row),
     el('div', { class: 'chip-pop-note' }, 'Each switch is a rollup field on this space\'s row'),
   ];
-  try { await load(); } catch (err) { toast(err.message, true); return; }
-  showPopover(anchor, build());
+  // The opening read queues too: a picker reopened mid-burst reads what the
+  // writes ahead of it stored, not what they are about to replace.
+  const opened = eyeWrites.then(load);
+  eyeWrites = opened.catch(() => {});
+  try { await opened; } catch (err) { toast(err.message, true); return; }
+  const pop = showPopover(anchor, build());
 }
 
 /* The space page's tiles: every space rollup pointed at one of its tables,

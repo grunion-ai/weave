@@ -17,7 +17,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let sessions, wide, spacesT, quiet;
+let sessions, wide, spacesT, quiet, scores;
 const s = await launch('grid footer reads space rollups', (weave) => {
   weave.createSpace({ name: 'Agent' });
   sessions = weave.createTable({ space: 'Agent', name: 'Sessions' });
@@ -43,6 +43,13 @@ const s = await launch('grid footer reads space rollups', (weave) => {
   weave.addField(quiet, { name: 'Cost', type: 'number' });
   weave.createEntity('Quiet', { name: 'q', values: { Cost: 3 } });
   weave.addField(spacesT.id, { name: 'Quiet · Cost · sum', type: 'rollup', config: { via: 'Agent/Quiet', targetField: 'Cost', aggregate: 'sum' } });
+  // Columns whose Σ wears the column's own graphic: a bar on a fixed scale,
+  // and a rating's icons.
+  scores = weave.createTable({ space: 'Agent', name: 'Scores' });
+  weave.addField(scores, { name: 'Progress', type: 'number', config: { display: 'bar', scale: 10 } });
+  weave.addField(scores, { name: 'Fit', type: 'rating', config: { max: 5 } });
+  for (const [n, p, f] of [['x', 3, 4], ['y', 8, 2]]) weave.createEntity('Scores', { name: n, values: { Progress: p, Fit: f } });
+  weave.updateTable(scores.id, { hideRollups: false });
 });
 
 if (s) {
@@ -257,4 +264,152 @@ if (s) {
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats', { timeout: 10000 });
     await page.close();
   });
+
+  /* Issue #235 (Kyle: "visibility toggles are slow to switch"). The trace's
+     clicks were in this picker: every switch waited on its POST, then on a
+     read of every column's stats and every rollup, then on a schema reload,
+     1 to 1.5 s a click on uno. A switch now flips on the click, its write
+     waits its turn on the eye's write queue, and only the column it changed
+     is read back. */
+  const costId = () => Object.values(weave.getTable(sessions.id).fields).find((f) => f.name === 'Cost').id;
+  const until = async (ok, what) => {
+    for (const t0 = Date.now(); !ok();) {
+      if (Date.now() - t0 > 5000) throw new Error(`timed out waiting for ${what}`);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  };
+  const apiLog = (page) => {
+    const seen = [];
+    page.on('request', (r) => {
+      const u = new URL(r.url());
+      if (u.pathname.includes('/api/')) seen.push(`${r.method()} ${u.pathname}${u.search}`);
+    });
+    return seen;
+  };
+  const aria = (page, agg) => page.getAttribute(`.chip-pop .foot-row[data-agg="${agg}"]`, 'aria-checked');
+  const costFigures = (page) => footCell(page, 'Cost').locator('.foot-stat').count();
+
+  test('a Σ switch flips before its write answers, and only its column is read back (Issue #235)', async () => {
+    const page = await open(`/table/${sessions.id}`);
+    await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
+    const seen = apiLog(page);
+    await footCell(page, 'Cost').click();
+    await page.waitForSelector('.chip-pop .foot-row');
+    assert.deepEqual(seen.filter((r) => r.includes('/stats')), [`GET /api/tables/${sessions.id}/stats?field=${costId()}`],
+      'the picker opens on its own column, not the whole table');
+    // Hold every stats read from here on: the switch must not be waiting on it.
+    let release, reads = 0;
+    const held = new Promise((r) => { release = r; });
+    await page.route('**/api/tables/*/stats*', async (route) => { reads++; await held; await route.continue(); });
+    const before = await costFigures(page);
+    await page.evaluate(() => { window.gridBody = document.querySelector('.wv-grid tbody'); });
+    seen.length = 0;
+    await page.click('.chip-pop .foot-row[data-agg="median"]');
+    assert.equal(await aria(page, 'median'), 'true', 'the switch flipped on the click');
+    assert.ok(await page.$('.chip-pop .foot-row[data-agg="median"] .switch.on'), 'and wears it');
+    await until(() => reads === 1, 'the read-back');
+    assert.ok(spaceRollups().includes('Sessions · Cost · median'), 'the write landed while the read is still out');
+    assert.equal(await aria(page, 'median'), 'true', 'still on while the figures are out');
+    release();
+    await page.waitForFunction((n) => document.querySelectorAll('thead tr.wv-foot td.foot-cell[data-col="Cost"] .foot-stat').length === n, before + 1);
+    const want = weave.tableRollups(sessions.id).filter((r) => r.targetField === 'Cost').map((r) => r.display);
+    assert.deepEqual(await footCell(page, 'Cost').locator('.foot-val').allInnerTexts(), want, 'the new figure painted beside the old ones');
+    await page.waitForTimeout(300);
+    assert.deepEqual(seen, [`POST /api/tables/${spacesT.id}/fields`, `GET /api/tables/${sessions.id}/stats?field=${costId()}`],
+      'one write and one narrow read: no schema reload, no row query');
+    assert.ok(await page.evaluate(() => document.querySelector('.wv-grid tbody') === window.gridBody), 'the grid body was not redrawn');
+    // The tab's schema learned the new field without a reload: a focus
+    // re-reads it (Feature #33) and finds nothing to redraw.
+    seen.length = 0;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await until(() => seen.some((r) => r.startsWith('GET /api/schema')), 'the focus re-read');
+    await page.waitForTimeout(400);
+    assert.ok(!seen.some((r) => r.endsWith('/query')), `the schema the tab kept matches the server's: ${seen}`);
+    assert.ok(await page.evaluate(() => document.querySelector('.wv-grid tbody') === window.gridBody), 'still the same grid body');
+    await page.click('.chip-pop .foot-row[data-agg="median"]');
+    await page.waitForFunction((n) => document.querySelectorAll('thead tr.wv-foot td.foot-cell[data-col="Cost"] .foot-stat').length === n, before);
+    assert.ok(!spaceRollups().includes('Sessions · Cost · median'));
+    await page.close();
+  });
+
+  test('a Σ switch flicked on and off before its write answers ends off, with one write each (Issue #235)', async () => {
+    const page = await open(`/table/${sessions.id}`);
+    await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
+    await footCell(page, 'Cost').click();
+    await page.waitForSelector('.chip-pop .foot-row');
+    const before = await costFigures(page);
+    let release, writes = 0;
+    const held = new Promise((r) => { release = r; });
+    await page.route(`**/api/tables/${spacesT.id}/fields**`, async (route) => { if (++writes === 1) await held; await route.continue(); });
+    await page.click('.chip-pop .foot-row[data-agg="stdev"]');
+    await until(() => writes === 1, 'the first write');
+    await page.click('.chip-pop .foot-row[data-agg="stdev"]');
+    assert.equal(await aria(page, 'stdev'), 'false', 'the second click flipped it straight back');
+    await page.waitForTimeout(300);
+    assert.equal(writes, 1, 'the second write waits for the first');
+    release();
+    await until(() => writes === 2, 'the second write');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(200);
+    assert.equal(await aria(page, 'stdev'), 'false');
+    assert.ok(!spaceRollups().includes('Sessions · Cost · stdev'), `the off landed after the on: ${spaceRollups()}`);
+    assert.equal(await page.locator('.wv-toast.err').count(), 0, 'no conflict to report');
+    assert.equal(await costFigures(page), before);
+    await page.close();
+  });
+
+  test('a Σ write that fails puts the switch back and says why (Issue #235)', async () => {
+    const page = await open(`/table/${sessions.id}`);
+    await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
+    await footCell(page, 'Cost').click();
+    await page.waitForSelector('.chip-pop .foot-row');
+    const before = await costFigures(page);
+    let release;
+    const held = new Promise((r) => { release = r; });
+    await page.route(`**/api/tables/${spacesT.id}/fields`, async (route) => {
+      await held;
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'the disk is full' }) });
+    });
+    await page.click('.chip-pop .foot-row[data-agg="range"]');
+    assert.equal(await aria(page, 'range'), 'true', 'optimistic: on at the click');
+    release();
+    await page.waitForFunction(() => document.querySelector('.chip-pop .foot-row[data-agg="range"]')?.getAttribute('aria-checked') === 'false');
+    assert.equal(await page.$('.chip-pop .foot-row[data-agg="range"] .switch.on'), null, 'the knob went back too');
+    assert.match(await page.locator('.wv-toast.err').first().innerText(), /the disk is full/);
+    assert.ok(!spaceRollups().includes('Sessions · Cost · range'));
+    assert.equal(await costFigures(page), before, 'the footer kept its figures');
+    await page.close();
+  });
+
+  /* The tab's copy of the new Spaces field has to be the entry the server
+     describes, keys and all: a rollup over a bar column wears `display` and
+     `scale`, one over a rating wears `rating`. Without them the refocus saw
+     a different schema and redrew the page. */
+  for (const [col, agg] of [['Progress', 'avg'], ['Fit', 'max']]) {
+    test(`a Σ over a ${col === 'Fit' ? 'rating' : 'bar'} column, flipped on, leaves a refocus nothing to redraw (Issue #235)`, async () => {
+      const page = await open(`/table/${scores.id}`);
+      await page.waitForSelector('thead tr.wv-foot');
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      const seen = apiLog(page);
+      await footCell(page, col).click();
+      await page.waitForSelector('.chip-pop .foot-row');
+      await page.click(`.chip-pop .foot-row[data-agg="${agg}"]`);
+      await page.waitForFunction((c) => document.querySelectorAll(`thead tr.wv-foot td.foot-cell[data-col="${c}"] .foot-stat`).length === 1, col);
+      await page.waitForLoadState('networkidle');
+      const entry = await page.evaluate((n) => registryTable('spaces').fields.find((f) => f.name === n), `Scores · ${col} · ${agg}`);
+      const res = await fetch(`${base}/api/schema`);
+      const server = (await res.json()).flatMap((sp) => sp.tables).find((t) => t.system === 'spaces').fields.find((f) => f.name === `Scores · ${col} · ${agg}`);
+      assert.deepEqual(entry, server, 'the tab holds the entry describeSchema gives');
+      await page.evaluate(() => { window.gridBody = document.querySelector('.wv-grid tbody'); });
+      seen.length = 0;
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await until(() => seen.some((r) => r.startsWith('GET /api/schema')), 'the focus re-read');
+      await page.waitForTimeout(400);
+      assert.ok(!seen.some((r) => r.endsWith('/query')), `the refocus redrew the page: ${seen}`);
+      assert.ok(await page.evaluate(() => document.querySelector('.wv-grid tbody') === window.gridBody), 'the same grid body');
+      await page.click(`.chip-pop .foot-row[data-agg="${agg}"]`);
+      await page.waitForFunction((c) => !document.querySelector(`thead tr.wv-foot td.foot-cell[data-col="${c}"] .foot-stat`), col);
+      await page.close();
+    });
+  }
 }
