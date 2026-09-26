@@ -1534,6 +1534,8 @@ test('resize and reorder commit in place — the grid never tears down mid-gestu
   const commit = head.slice(head.indexOf('const commitWidth'), head.indexOf('// What the resize grip needs'));
   assert.ok(commit.includes('paintLayout()'), 'the commit paints through the same function the drag paints with');
   assert.ok(!commit.includes('showDatabase(db.id') || commit.includes('catch'), 'redraw only on failure');
+  assert.equal(commit.split('paintLayout(); markClippedCells(table);').length - 1, 2,
+    'and asks the cells again on both commit paths, so a clipped marker follows the new width (Issue #217)');
   const order = head.slice(head.indexOf('const applyOrder'), head.indexOf('const columnDrag'));
   assert.ok(order.includes('anchorCell.after(cell)'), 'a grid column moves as DOM cells, not a redraw');
   assert.ok(order.includes('built.values()'), 'rows built this draw but off screen move too');

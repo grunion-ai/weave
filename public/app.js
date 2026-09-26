@@ -5154,18 +5154,24 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     toast(BLANK_READ_ONLY, true);
     return true;
   };
+  /* The cells are asked again once the column has its width (Issue #217):
+     an in-place commit repaints no row, so a date clipped before a widening
+     kept its marker over a value that now showed whole, and a narrowing left
+     a cut date unmarked until the next redraw. The marker reads scrollWidth,
+     which lays the new width out first, so it cannot measure the column as
+     it was. */
   const commitWidth = async (c, w) => {
     override.delete(c);
     const f = colField(db, c);
     try {
       if (canFreezeHere()) {
         db.view.widths = { ...(db.view.widths ?? {}), [c]: w };
-        refreeze(); paintLayout();
+        refreeze(); paintLayout(); markClippedCells(table);
         await gridConfigWrite(db, null, { widths: { [c]: w } });
       } else {
         // A registry grid has no views: the width stays the field's own.
         f.width = Math.max(MIN_COLUMN_WIDTH, w);
-        refreeze(); paintLayout();
+        refreeze(); paintLayout(); markClippedCells(table);
         await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, { config: { width: f.width } });
         loadSchema().catch(() => {});
       }
