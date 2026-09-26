@@ -34,8 +34,10 @@ to [Using weave as an agent](#using-weave-as-an-agent).
 
 ## Rules for changing this repo
 
-1. **Tests first.** `npm test` must be green before any commit, and new engine
-   or server behavior lands with tests in the same change.
+1. **Tests first.** Run targeted tests for the changed behavior before committing.
+   New engine or server behavior lands with tests in the same change. Push once
+   to Gerrit, self-review and cast Code-Review +2; the poller runs the authoritative full gate before landing. Parallel
+   workers must not each run `npm test` or invoke a duplicate manual gate.
 2. **Zero runtime dependencies.** Never add a package to `dependencies`. Storage
    is `node:sqlite`, built into Node. Third-party browser code is vendored and
    pinned into `public/vendor/` (mermaid 11.4.1, @tabler/core 1.4.0) — never

@@ -19,15 +19,13 @@ jj describe -m "viewer: fix X (#NN)"   # describe current change
 # send for review — every commit needs a Change-Id (hook installed)
 git push gerrit HEAD:refs/for/main
 
-# verify + vote (the TDD gate as a Gerrit vote)
-~/Documents/harness.nosync/scripts/weave-review.sh <change-number>          # tests -> Verified ±1
-~/Documents/harness.nosync/scripts/weave-review.sh <change-number> --submit # also submit on green
-
 # approve + land — the shipping agent does this itself (Kyle, 2026-09-02)
 # after its own review pass; the +2 message names what was reviewed and
 # which tests were added. UI: http://localhost:8282  — or REST:
 #   POST /a/changes/<n>/revisions/current/review {"labels":{"Code-Review":2},"message":"..."}
-#   POST /a/changes/<n>/submit        # 409 = main moved: rebase, re-push, re-gate
+# after Code-Review +2, the poller verifies the exact patchset and casts Verified ±1
+# wait for Verified +1; do not launch a second manual gate
+#   POST /a/changes/<n>/submit        # 409 = main moved: rebase, re-push, await gate
 
 # sync landed work back
 git fetch gerrit && jj rebase -d main@gerrit   # or: git pull gerrit main
@@ -38,17 +36,24 @@ git fetch gerrit && jj rebase -d main@gerrit   # or: git pull gerrit main
 1. **Never push directly to `refs/heads/main`.** All work goes through `refs/for/main`.
 2. **One logical change per push.** Re-push amended commits to iterate the same change
    (the Change-Id keeps them together) instead of opening new ones.
-3. **Verified is earned, not asserted**: run `weave-review.sh` (it runs `npm test` on the
-   exact patchset in an isolated worktree). A red suite votes −1 and blocks submit.
+3. **Verified is earned, not asserted**: the poller runs `weave-review.sh`, which runs
+   the authoritative full `npm test` gate on the exact patchset in an isolated
+   worktree. A red suite votes −1 and blocks submit. Workers run targeted tests
+   before committing, then push once, self-review and cast Code-Review +2. The
+   poller selects reviewed stack tips without a Verified vote. Wait for its result. Do not launch a
+   duplicate manual gate while the poller owns the queue.
    The `*-browser.test.mjs` suites `import('playwright')` and skip on a bare checkout;
    the gate links its shared install (`~/.gerrit/weave/pw/node_modules`) into the
-   worktree and votes −1 if they skipped anyway. Run them locally the same way:
-   `ln -s ~/.gerrit/weave/pw/node_modules node_modules` (gitignored) before `npm test`.
+   worktree and votes −1 if they skipped anyway. For targeted browser tests, link
+   `~/.gerrit/weave/pw/node_modules` as `node_modules` (gitignored), then name the
+   test files explicitly: `node scripts/test.mjs test/<name>.test.mjs`. An empty
+   dynamic file selection must stop; bare `node --test` discovers extra scripts.
    A browser case that is red in the gate and green alone is almost always a
    read taken after a fixed sleep; `WEAVE_CPU_THROTTLE=4 node --test <file>`
    slows each page fourfold and usually turns it red on a quiet machine.
-4. Working in parallel with other agents? You don't need to coordinate — Gerrit
-   serializes at submit; rebase conflicts surface as a new patchset, not a broken tree.
+4. Parallel workers use separate worktrees and coordinate file ownership. Gerrit
+   serializes submit; the poller owns full verification. Keep local checks targeted
+   so workers do not compete with the gate for CPU, memory, or browser capacity.
 5. jj is the local safety net: after any suspected clobber, `jj op log` + `jj undo`.
 6. **The shipping agent lands its own change.** Before +2: read the whole diff again,
    check tombstone/undo/lifecycle paths, CLI + route + MCP parity for any new engine
