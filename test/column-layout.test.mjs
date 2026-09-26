@@ -13,8 +13,10 @@ const CR = globalThis.WeaveColumnResize;
 
 test('every field type has a default width; the mockup values hold exactly', () => {
   const d = (type, extra = {}) => CR.defaultWidth({ type, ...extra });
-  assert.equal(d('text', { role: 'name' }), 220, 'Name');
-  assert.equal(d('formula', { role: 'name' }), 220, 'a computed Name is still the Name');
+  // Name is the one departure from the mockup's 220: Kyle raised it to 260
+  // on 2026-09-26 so a thirty-character name reads whole (Issues #261, #414).
+  assert.equal(d('text', { role: 'name' }), 260, 'Name');
+  assert.equal(d('formula', { role: 'name' }), 260, 'a computed Name is still the Name');
   assert.equal(d('text'), 180);
   assert.equal(d('document'), 280, 'long text');
   assert.equal(d('document', { role: 'description' }), 280);
@@ -27,7 +29,7 @@ test('every field type has a default width; the mockup values hold exactly', () 
   assert.equal(d('url'), 180);
   const types = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect',
     'workflow', 'relation', 'field', 'key', 'attachments', 'lookup', 'rollup', 'formula', 'view', 'document'];
-  const mockup = [220, 180, 280, 124, 136, 112, 88, 104, 56];
+  const mockup = [260, 180, 280, 124, 136, 112, 88, 104, 56];
   for (const t of types) {
     const w = d(t);
     assert.ok(mockup.includes(w), `${t} maps to one of the mockup widths, got ${w}`);

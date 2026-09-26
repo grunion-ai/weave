@@ -36,7 +36,7 @@ if (s) {
 
   // Long tasks are collected from before the app script runs, so the open
   // itself is measured.
-  // Feature #233: every field keeps its default width (Name 220, Description 280, …), so this table fits its card from 1600px, not 1280.
+  // Feature #233: every field keeps its default width (Name 260, Description 280, …), so this table fits its card from 1600px, not 1280.
   const open = async ({ viewport = { width: 1600, height: 800 } } = {}) => {
     const page = await browser.newPage({ viewport });
     await page.addInitScript(() => {

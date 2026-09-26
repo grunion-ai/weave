@@ -30,7 +30,10 @@
     rating: 104,
     checkbox: 56,
   };
-  const NAME_WIDTH = 220;
+  /* Name opens at 260, past the mockup's 220 (Kyle, 2026-09-26; Issues
+     #261, #414): at 240 a thirty-character name had one pixel of room in
+     Chromium's fallback face. */
+  const NAME_WIDTH = 260;
   const CURRENCY_WIDTH = 104;
   const FALLBACK_WIDTH = 136;
   /* Where a double-click fit stops: a long value is read in its cell's pop,

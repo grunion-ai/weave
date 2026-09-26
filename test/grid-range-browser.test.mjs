@@ -131,6 +131,9 @@ if (s) {
     const { ctx, page } = await grid();
     try {
       await page.focus(sel(0, 'Kind'));
+      // Kind sits near the card's right edge since Name opens at 260 (Issues
+      // #261, #414): bring it into the wrap's view so the handle is on screen.
+      await page.locator(sel(0, 'Kind')).evaluate((td) => td.scrollIntoView({ block: 'nearest', inline: 'center' }));
       const handle = await page.locator(`${sel(0, 'Kind')} .wv-fill-handle`).boundingBox();
       assert.ok(handle, 'the resting cell wears the handle — a fill needs no range first');
       const last = await page.locator(sel(19, 'Kind')).boundingBox();

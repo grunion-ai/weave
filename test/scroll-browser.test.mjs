@@ -33,7 +33,8 @@ if (s) {
     // Wide enough that the grid beside the dock fits its card and the PAGE
     // is what scrolls: every field keeps its default width now (Feature
     // #233), so Name and Description no longer squeeze into a narrow card.
-    await page.setViewportSize({ width: 1800, height: 700 });
+    // 1900 since Name opens at 260 (Issues #261, #414).
+    await page.setViewportSize({ width: 1900, height: 700 });
     await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.click(`tr[data-eid="${target.id}"] .open-link`);

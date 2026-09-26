@@ -47,8 +47,8 @@ const s = await launch('grid footer reads space rollups', (weave) => {
 
 if (s) {
   const { base, browser, weave } = s;
-  const open = async (hash) => {
-    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  const open = async (hash, width = 1400) => {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
     await page.goto(`${base}/#${hash}`, { waitUntil: 'load' });
     return page;
   };
@@ -149,7 +149,9 @@ if (s) {
   test('the Σ row is pinned right under the field headers and no tfoot paints it (Issue #233)', async () => {
     // Enough rows that the body scrolls past the viewport.
     for (let i = 0; i < 40; i++) weave.createEntity('Sessions', { name: `row ${i}`, values: { Cost: 1 } });
-    const page = await open(`/table/${sessions.id}`);
+    // 1480 so the grid fits its card and the PAGE scrolls: Name opens at 260
+    // since Issues #261 and #414, which put Sessions 34px past a 1400 card.
+    const page = await open(`/table/${sessions.id}`, 1480);
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
     assert.equal(await page.locator('tfoot').count(), 0, 'the footer is gone');
     assert.equal(await page.$eval('.wv-grid thead', (h) => h.rows.length), 2, 'header row, then the Σ row');
