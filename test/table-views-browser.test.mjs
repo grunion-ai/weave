@@ -181,6 +181,25 @@ if (s) {
     } finally { reset(); await page.close(); }
   });
 
+  test('a drag whose first move already lands on another tab still picks the tab up (Issue #400)', async () => {
+    reset();
+    weave.tableView(`${jobs.id}/A`, { from: 'blank' });
+    const page = await open();
+    try {
+      const from = await tab(page, 'A').boundingBox();
+      const to = await tab(page, 'Default').boundingBox();
+      await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+      await page.mouse.down();
+      // One jump, as a fast flick or an automation driver sends it: the first
+      // move the page sees is already over Default, never over A.
+      await page.mouse.move(to.x + 2, to.y + to.height / 2);
+      await page.mouse.up();
+      await waitOrder(page, ['A', 'Default']);
+      await page.waitForLoadState('networkidle');
+      assert.deepEqual(order(), ['A', 'Default']);
+    } finally { reset(); await page.close(); }
+  });
+
   // CDP's touch input is Chromium's; WEAVE_BROWSER=webkit runs the rest.
   const cdpTouch = !process.env.WEAVE_BROWSER || process.env.WEAVE_BROWSER === 'chromium';
   test('drag with a finger: press and hold a tab, then slide it; a quick swipe does not reorder', { skip: cdpTouch ? false : 'CDP touch input is Chromium-only' }, async () => {
@@ -245,6 +264,20 @@ if (s) {
       await input.blur();
       await waitOrder(page, ['Default', 'Again']);
       assert.deepEqual(order(), ['Default', 'Again'], 'the menu\'s Rename… is the same editor; blur commits');
+    } finally { reset(); await page.close(); }
+  });
+
+  test('a click on a tab, then a double-click elsewhere, renames nothing', async () => {
+    reset();
+    weave.tableView(`${jobs.id}/A`, { from: 'blank' });
+    const page = await open();
+    try {
+      await tab(page, 'A').click();
+      await page.waitForFunction(() => document.querySelector('.view-tab.active')?.textContent.trim() === 'A');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#main h1, #main .page-title, #main h2').first().dblclick();
+      await page.waitForTimeout(400);
+      assert.equal(await page.locator('.view-strip .view-tab input').count(), 0, 'the earlier tab click does not ride along into an unrelated double-click');
     } finally { reset(); await page.close(); }
   });
 

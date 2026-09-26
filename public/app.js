@@ -3408,16 +3408,22 @@ function newViewDialog(db, { title, from }) {
    and a hold-to-delete Delete view. The old …/view/blank link still opens
    the raw table, read-only, with no tab lit. */
 let viewRenamePending = null; // a view id whose tab opens its name editor once drawn
-let viewTabClick = null; // {id, at}: the tab the last click landed on
+let viewTabClick = null; // the view id of the tab the last single click landed on
 const VIEW_TOUCH_HOLD = 350; // ms a finger rests on a tab before it lifts
 /* Double-click renames. The first click of the pair opens that view, and
    the strip redraws while the second click is on its way: Safari lands the
    second click on whatever is mid-paint, not on a tab. So one listener on
    the document takes the double-click wherever it lands and renames the tab
-   the first click hit, now or once the redraw has drawn it. */
+   the first click hit, now or once the redraw has drawn it. The browser's
+   click count ties the pair together, never a clock: on a busy page the
+   double-click can be handled seconds after the first click was. Any other
+   single click forgets the tab. */
+document.addEventListener('click', (e) => {
+  if (e.detail <= 1 && !e.target.closest?.('.view-strip .view-tab')) viewTabClick = null;
+}, true);
 document.addEventListener('dblclick', (e) => {
   const hit = e.target.closest?.('.view-strip .view-tab');
-  const id = hit?.dataset.view ?? (viewTabClick && performance.now() - viewTabClick.at < 800 ? viewTabClick.id : null);
+  const id = hit?.dataset.view ?? viewTabClick;
   if (!id) return;
   e.preventDefault();
   viewTabClick = null;
@@ -3508,6 +3514,10 @@ function viewStrip(db) {
       const touch = e.pointerType !== 'mouse';
       gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, touch, lifted: false, moved: false };
       if (touch) gesture.timer = setTimeout(() => { if (gesture) lift(); }, VIEW_TOUCH_HOLD);
+      // A mouse is captured at the press (Issue #400): a fast flick's first
+      // move can land on the next tab over, and would never reach this one.
+      // A finger is captured implicitly.
+      else try { a.setPointerCapture(e.pointerId); } catch { /* gone mid-press */ }
     });
     a.addEventListener('pointermove', (e) => {
       const g = gesture;
@@ -3519,7 +3529,6 @@ function viewStrip(db) {
         if (g.touch) { if (dist > 8) { clearTimeout(g.timer); gesture = null; } return; }
         if (dist < 5) return;
         lift();
-        try { a.setPointerCapture(e.pointerId); } catch { /* gone mid-press */ }
       }
       g.moved = g.moved || dist >= 5;
       // The tab takes the place of whichever tabs' middles the pointer has
@@ -3537,7 +3546,7 @@ function viewStrip(db) {
     a.renameView = () => rename(a, v);
     a.addEventListener('click', (e) => {
       if (swallowClick || a.querySelector('input')) { e.preventDefault(); e.stopPropagation(); swallowClick = false; return; }
-      viewTabClick = { id: v.id, at: performance.now() };
+      if (e.detail <= 1) viewTabClick = v.id;
       // The view on screen is already open: a click that re-routed to it
       // would redraw the strip between the two clicks of a double-click.
       if (active) e.preventDefault();
