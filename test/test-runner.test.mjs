@@ -90,12 +90,18 @@ test('the retry breadcrumb is on stdout, where the gate quotes it', () => {
      message. The retry runs last, so a suite that keeps needing a second
      chance says so in the review it passed. */
   const f = fixture('flaky');
+  // The CLI queues through the test manager (Feature #236); a private one here.
+  const env = { ...childEnv(), WEAVE_TEST_MANAGER_DIR: join(f.dir, 'manager'), WEAVE_TEST_JOB: '',
+    WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999' };
   try {
     const out = execFileSync(process.execPath, ['scripts/test.mjs', f.good, f.subject],
-      { cwd: ROOT, encoding: 'utf8', env: childEnv() });
+      { cwd: ROOT, encoding: 'utf8', env });
     assert.match(out, /# RETRYING 1 file\(s\) that failed:/);
     assert.match(out, /# RETRIED and green:/);
-  } finally { rmSync(f.dir, { recursive: true, force: true }); }
+  } finally {
+    execFileSync(process.execPath, ['scripts/test.mjs', '--stop'], { cwd: ROOT, env });
+    rmSync(f.dir, { recursive: true, force: true });
+  }
 });
 
 test('importing the runner does not start the suite', () => {
@@ -177,4 +183,8 @@ test('both lanes run, and a red one lane is red overall', () => {
     assert.equal(code, 1, 'the unit lane\'s red is the verdict');
     assert.ok(readdirSync(f.dir).includes('late-ran'), 'the browser lane still ran, so one gate names every red');
   } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('an empty selection is refused instead of voting on nothing (Feature #236)', () => {
+  assert.throws(() => run([]), /Empty test selection/);
 });

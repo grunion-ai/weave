@@ -169,3 +169,68 @@ GitHub main into gerrit/main in a temp worktree and pushing both, never force.
 `launchctl bootout gui/501/ai.grunion.gerrit-weave`, delete `~/.gerrit/`, delete the
 `gerrit` remote and `.git/hooks/commit-msg`, `rm -rf .jj/`. The git repo is untouched
 by all of this — colocation and Gerrit are both additive.
+
+## Shared test manager
+
+Use `npm test` for full verification and pass several filenames to batch related
+regression checks. Every CLI request enters one per-user FIFO queue shared across
+worktrees, and one job runs at a time, in `scripts/test.mjs`'s two lanes (unit suites
+at node's default, browser suites at half the cores). A persistent browser
+server supplies fresh Playwright connections and contexts to each browser suite;
+closing one suite cannot close another suite's contexts. Direct browser-harness
+callers also lease this queue. Use the CLI for predictable whole-job admission.
+
+| Operation | Command |
+| --- | --- |
+| Batch targeted regressions | `npm test -- --targeted test/formula.test.mjs test/rehearse.test.mjs` |
+| Inspect affected selection | `npm test -- --affected --base=HEAD --plan` |
+| Run affected selection | `npm test -- --affected --base=HEAD` |
+| Full landing verification | Gerrit poller runs `npm test` on the reviewed patchset |
+| Queue and browser status | `npm test -- --status` |
+| Cancel one queued or active job | `npm test -- --cancel=<id>` |
+| Stop owned jobs and browser | `npm test -- --stop` |
+| Bound one job, milliseconds | `npm test -- --timeout=120000 test/formula.test.mjs` |
+
+Affected selection includes staged, unstaged and untracked files relative to the
+base. Changed tests and the reviewed isolated rehearsal-module mapping can narrow
+it; shared code, UI, configuration and unknown paths require the full suite. The
+printed plan explains the decision. Full landing verification remains mandatory.
+An empty explicit selection fails. File lists must name existing files; use
+`--test-name-pattern='pattern'` or its separate-value form to filter test names.
+
+The manager hashes source files and selected tests at enqueue, start and finish.
+A changed worktree invalidates the result. Results are never cached, and duplicate
+requests remain separate jobs. Keep the worktree unchanged while tests run. An
+agent may assess scope or propose redundant-test removal, but cannot omit required
+verification. Existing `run()` imports are the low-level synchronous fixture API;
+agents submit work through the CLI.
+
+The browser recycles between jobs after 20 browser jobs or 15 minutes, after job
+failure/cancellation, and when admission is blocked by resource pressure. The
+manager exits after five idle minutes. It starts automatically on the next request.
+Browser versions and browser kinds use separate lifetimes. `WEAVE_BROWSER=webkit`
+uses the same queue. No npm dependency or launchd job is installed.
+
+Admission waits below 10 GB available disk, below 10% available memory, or above a
+one-minute load average of twice the CPU count. Status and waiting messages name
+the reason. An admitted job times out after one hour by default, the gate's 3600 s
+cap, which is also the maximum `--timeout`. Queue waiting expires after
+`WEAVE_TEST_QUEUE_WAIT_MS` (default 30 minutes). A job that is never admitted, because
+its wait ran out or the manager stopped first, prints
+`# TEST MANAGER NOT ADMITTED: <reason>` and exits 75: its tests did not run, so a gate
+skips its vote rather than rejecting. A disconnect cancels its job. A responsive
+supervisor reaps the owned process group if the manager dies. Job temp directories
+are removed after process cleanup; stale manager-owned temp directories older than
+24 hours are pruned on startup. Other agents' files and processes are untouched.
+
+`WEAVE_TEST_MIN_FREE_GB`, `WEAVE_TEST_MIN_MEMORY_PERCENT`, `WEAVE_TEST_MAX_LOAD` and
+`WEAVE_TEST_QUEUE_WAIT_MS` override admission for a deliberately sized CI machine, or
+for a caller that is already serial, such as the Gerrit gate. A raw `node --test`
+browser suite sends them with its lease. Keep the defaults for ad hoc runs on this
+shared workstation. One process holds one browser lease however many times its suites
+call `launch()`, and releases it when the last connection closes.
+`WEAVE_TEST_MANAGER_DIR` selects a private socket directory for isolated manager
+integration tests; ordinary jobs use the shared default, which is keyed on a hash of
+`scripts/test-manager.mjs`. Worktrees on the same manager code share one queue; a
+worktree with changed manager code gets its own manager, and the old one exits after
+five idle minutes. `--stop` cancels active work, so inspect `--status` first.
