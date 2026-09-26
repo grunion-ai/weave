@@ -70,7 +70,9 @@ test('.hidden beats id-selector display rules', () => {
 test('wireNavCollapse wires both directions and persists the state', () => {
   const fn = APP.slice(APP.indexOf('function wireNavCollapse'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
-  assert.match(body, /collapse\.addEventListener\('click',\s*\(\)\s*=>\s*apply\(true\)\)/);
+  // Below 900px the ‹ only closes the phone drawer (Issue #262); the
+  // browser suite phone-shell pins that it persists nothing there.
+  assert.match(body, /collapse\.addEventListener\('click',\s*\(\)\s*=>\s*\(narrowShell\.matches \? app\.classList\.remove\('nav-peek'\) : apply\(true\)\)\)/);
   assert.match(body, /expand\.addEventListener\('click',\s*\(\)\s*=>\s*apply\(false\)\)/);
   assert.match(body, /localStorage\.setItem\('weave-nav-collapsed'/);
   assert.match(body, /localStorage\.getItem\('weave-nav-collapsed'\)/);
@@ -936,7 +938,7 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   // the table's do (Kyle, 2026-08-23: "move the entity 3 dots menu to be in
   // line with the breadcrumbs and include the show/hide eye just like on the
   // table view"). The title row is the title.
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*el\('span', \{ class: 'crumb-path' \},[\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, eye, dlBtn, \.\.\.poseControls\)/,
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*inPeek \? null : navMenuButton\(\),\s*\n\s*el\('span', \{ class: 'crumb-path' \},[\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, eye, dlBtn, \.\.\.poseControls\)/,
     'the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
   /* The side column (comments, activity, references) follows the table's own
      Activity system toggle — the same switch that adds the ⚡ column to the
@@ -1315,7 +1317,9 @@ test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #
   assert.match(wire, /nav-hot-strip/, 'a hot strip guards the left edge while collapsed');
   assert.match(wire, /nav-peek/, 'resting on it slides the nav out as an overlay');
   assert.match(wire, /strip\.addEventListener\('click'/, 'clicking the edge pins the nav open');
-  assert.match(CSS, /#app\.nav-collapsed\.nav-peek #sidebar \{[^}]*position: fixed/,
+  // The selector drops .nav-collapsed: the phone drawer (Issue #262) is this
+  // same overlay, opened from the crumb bar while the nav is not collapsed.
+  assert.match(CSS, /#app\.nav-peek #sidebar \{[^}]*position: fixed/,
     'the peek overlays the page instead of reflowing it');
   assert.match(CSS, /#app\.nav-collapsed #nav-hot-strip \{[^}]*position: fixed/,
     'the strip only exists while the nav is collapsed');

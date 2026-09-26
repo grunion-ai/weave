@@ -197,12 +197,46 @@ a.nav-space:hover { color: var(--tblr-primary); }
    overlay needs the canvas color it normally borrows by being transparent. */
 #nav-hot-strip { display: none; }
 #app.nav-collapsed #nav-hot-strip { display: block; position: fixed; left: 52px; top: 0; width: 14px; height: 100vh; z-index: 55; cursor: e-resize; }
-#app.nav-collapsed.nav-peek #sidebar { display: flex; position: fixed; left: 52px; top: 0; z-index: 70; background: var(--wv-canvas); box-shadow: var(--wv-panel-shadow); border-radius: 0 14px 14px 0; animation: nav-peek-slide .16s ease; }
+/* Not scoped to .nav-collapsed: the phone drawer below is this same overlay,
+   opened by the crumb bar's menu button while the nav is not collapsed. */
+#app.nav-peek #sidebar { display: flex; position: fixed; left: 52px; top: 0; z-index: 70; background: var(--wv-canvas); box-shadow: var(--wv-panel-shadow); border-radius: 0 14px 14px 0; animation: nav-peek-slide .16s ease; }
 @keyframes nav-peek-slide { from { transform: translateX(-16px); opacity: .5; } to { transform: none; opacity: 1; } }
 /* Expand control keeps the collapse chevron's upper-left position (fixed
    beside the rail) instead of stacking as a workspace chip. */
 #nav-expand { position: fixed; top: 10px; left: 60px; z-index: 60; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
 #nav-expand:hover { color: var(--tblr-primary); border-color: var(--tblr-primary); }
+/* Phone and narrow-window shell (Issues #262, #326). At 390px the 52px rail
+   and 264px sidebar stayed in the flow and left #main ~66px, so every view
+   scrolled sideways. Below 900px the sidebar leaves the flow and becomes a
+   drawer: the peek overlay above, opened by the menu button in the crumb bar
+   rather than by hover, over a scrim that closes it. Below 600px the rail
+   folds into the same drawer. Everything in the drawer is a 32px target. */
+.nav-menu, .nav-menu-row { display: none; }
+@media (max-width: 900px) {
+  .nav-menu-row { display: block; }
+  #sidebar { display: none; height: 100dvh; }
+  #nav-hot-strip, #nav-expand { display: none !important; }
+  .nav-menu { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; margin: -6px 4px -6px -6px; padding: 0; vertical-align: middle; }
+  .nav-menu svg { width: 18px; height: 18px; }
+  #app.nav-peek::after { content: ""; position: fixed; inset: 0; z-index: 65; background: rgba(12, 27, 51, .32); }
+  #sidebar .nav-db, #sidebar a.nav-space, #sidebar .search-like, #sidebar .btn { min-height: 32px; }
+  #sidebar a.nav-space { display: flex; align-items: center; }
+  #sidebar button.btn-icon, #sidebar .nav-caret { min-width: 32px; min-height: 32px; }
+  /* The ⋮ grows to 32px inside the row's own padding, so the row stays 32. */
+  #sidebar .nav-db-menu .dots-btn { min-width: 32px; min-height: 32px; margin: -6px 0; }
+  /* The wordmark's box grows 10px; the sidebar's top padding gives back 5 so
+     the text stays centred on the rail's weave chip (the #ws-rail note). */
+  #sidebar { padding-top: 9px; }
+  #sidebar .ws-wordmark { padding: 5px 0; }
+  .nav-add-table { opacity: 1; }
+  .crumb-row { flex-wrap: wrap; row-gap: 6px; }
+  .crumb-actions { flex-wrap: wrap; margin-bottom: 0; }
+}
+@media (max-width: 600px) {
+  #ws-rail { display: none; }
+  #app.nav-peek #ws-rail { display: flex; position: fixed; left: 0; top: 0; height: 100dvh; z-index: 71; background: var(--wv-canvas); }
+  #main { margin-left: 8px; padding: 16px 14px; }
+}
 /* Disclosure caret: a hairline chevron in a full 24px target, TRAILING the
    space label — "Routines ›" (UAT round 2, Kyle, 2026-08-16). It points right
    at rest and turns down when open, so one glyph covers both states.

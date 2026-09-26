@@ -285,7 +285,10 @@ if (s) {
   test('the scroller is measured, not assumed: the same window arithmetic serves the page and the wrap', async () => {
     // A narrow viewport makes the grid wider than its card, so the wrap is
     // the scroller (Issue #233); the wide one leaves the page to scroll.
-    const narrow = await open({ viewport: { width: 700, height: 700 } });
+    // Phone width since the drawer (Issue #262): at 700px the sidebar left
+    // the flow, the card grew to ~584px and the grid only just overflows it,
+    // which is Issue #402, a separate bug the old 700px case never met.
+    const narrow = await open({ viewport: { width: 390, height: 700 } });
     const wide = await open({ viewport: { width: 1600, height: 900 } });
     try {
       assert.equal(await scrollBox(narrow), 'wrap');

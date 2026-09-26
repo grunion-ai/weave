@@ -951,6 +951,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
   // The view's controls sit on the crumb line, right-aligned (Kyle,
   // 2026-08-23), leaving the title row to the title.
   box.append(el('div', { class: 'crumb crumb-row' },
+    navMenuButton(),
     el('span', { class: 'crumb-path' }, ...crumbKids),
     el('span', { class: 'crumb-actions wv-toolbar' }, ...actions.filter(Boolean))));
 
@@ -9486,6 +9487,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   mount.append(
     stickViewHeader(el('div', { class: 'view-header' },
       el('div', { class: 'crumb crumb-row' },
+        inPeek ? null : navMenuButton(),
         el('span', { class: 'crumb-path' },
         ...(inPeek
           /* The dock's crumb is its chain (Issue #276); a caller without
@@ -10315,6 +10317,7 @@ async function showActivityDetail(id) {
   main.replaceChildren(
     stickViewHeader(el('div', { class: 'view-header' },
       el('div', { class: 'crumb' },
+        navMenuButton(),
         el('a', { href: '#/activity' }, 'Activity'), ' › ',
         el('span', {
           class: 'permalink-copy', title: 'Copy permalink',
@@ -10797,9 +10800,17 @@ const renderRouteSafely = () => {
     .catch(() => {})
     .then(() => schemaFetch)
     .then(renderRoute)
-    .catch(paintRouteError);
+    .catch(paintRouteError)
+    .then(ensureNavMenu);
   return renderChain;
 };
+/* Every page carries the drawer's handle (Issue #262): the crumb bar holds it
+   where the page has one, and a page without one gets it on a line of its own. */
+function ensureNavMenu() {
+  const main = $('#main');
+  if (!main || main.querySelector('.nav-menu')) return;
+  main.prepend(el('div', { class: 'crumb nav-menu-row' }, navMenuButton()));
+}
 // Every route change may earn the rope, but only past LOADER_SHOW_AFTER_MS
 // (500ms): the skeleton covers the wait until a load proves it is genuinely
 // long (Feature #148). At the old 200ms threshold the full-cycle rule WAS
@@ -11067,6 +11078,7 @@ function wireWsNew() {
    While collapsed, resting on the left edge slides the nav out as an
    overlay and clicking the edge pins it open (Kyle, 2026-08-25, Issue #77);
    the workspace rail keeps its ordinary hover behaviour. */
+const narrowShell = matchMedia('(max-width: 900px)');
 function wireNavCollapse() {
   const app = $('#app');
   const collapse = $('#nav-collapse');
@@ -11079,7 +11091,9 @@ function wireNavCollapse() {
     expand.classList.toggle('hidden', !collapsed);
     localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
   };
-  collapse.addEventListener('click', () => apply(true));
+  // In the phone drawer the ‹ only closes it: collapsing there would persist
+  // and greet the next desktop visit with the nav gone.
+  collapse.addEventListener('click', () => (narrowShell.matches ? app.classList.remove('nav-peek') : apply(true)));
   expand.addEventListener('click', () => apply(false));
   // The hot strip sits where the sidebar's edge used to be. The overlay
   // covers it once open, so "left the sidebar" is the one closing signal —
@@ -11099,15 +11113,35 @@ function wireNavCollapse() {
   // Once the overlay is out it covers the strip, so the pinning click lands
   // on the sidebar itself: any press on a non-interactive spot pins the nav.
   sidebar.addEventListener('click', (e) => {
-    if (!app.classList.contains('nav-peek')) return;
+    if (!app.classList.contains('nav-peek') || narrowShell.matches) return;
     if (e.target.closest('a,button,input,textarea,select,label')) return;
     apply(false);
   });
   sidebar.addEventListener('mouseleave', () => {
-    if (app.classList.contains('nav-peek')) app.classList.remove('nav-peek');
+    if (app.classList.contains('nav-peek') && !narrowShell.matches) app.classList.remove('nav-peek');
   });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') app.classList.remove('nav-peek'); });
   apply(localStorage.getItem('weave-nav-collapsed') === '1');
+  // The phone drawer (Issues #262, #326) is the same overlay, opened by the
+  // crumb bar's menu button. It closes on Esc (above), on a tap on the scrim
+  // (#app's ::after, so the target is #app itself), and on navigation; a
+  // pointer leaving it or a press on its blank space means nothing here.
+  const shut = () => app.classList.remove('nav-peek');
+  app.addEventListener('click', (e) => { if (e.target === app) shut(); });
+  addEventListener('hashchange', shut);
+  sidebar.addEventListener('click', (e) => { if (narrowShell.matches && e.target.closest('a[href]')) shut(); }, true);
+  narrowShell.addEventListener('change', shut);
+}
+
+/* The drawer's handle, first in every crumb bar; CSS shows it below 900px. */
+function navMenuButton() {
+  const btn = el('button', {
+    class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button',
+    title: 'Open navigation', 'aria-label': 'Open navigation', 'aria-controls': 'sidebar',
+    onclick: () => $('#app').classList.add('nav-peek'),
+  });
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+  return btn;
 }
 
 /* Theme toggle: auto (follow OS, live) → dark → light.
