@@ -5612,10 +5612,12 @@ function dateControl({ value = '', time = false, format = 'iso', costume = null,
      box cut an ordinal date — "Wednesday 30th September 2026" — off inside
      its own control. The text is measured in the box's own font once it is
      on the page (a detached input has no font to measure with), and again
-     whenever the value changes; the stylesheet width stays as the floor. */
+     whenever the value changes; the stylesheet width stays as the floor.
+     The fit is a width, not a min-width (Issue #372): a narrow column (the
+     dock at 360 px) may still shrink the box instead of scrolling sideways. */
   const fit = () => {
     const w = textWidth(text.value || text.placeholder, text);
-    if (w) text.style.minWidth = `${Math.ceil(w) + 22}px`;
+    if (w) text.style.setProperty('--date-fit', `${Math.ceil(w) + 22}px`);
   };
   requestAnimationFrame(fit);
   const set = (iso) => { current = iso ?? ''; text.value = show(current); fit(); onChange(current || null); };

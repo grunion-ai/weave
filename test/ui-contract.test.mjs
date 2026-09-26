@@ -2113,7 +2113,7 @@ test('dock: the panel is styled as the table\'s twin, sticky, and lights its row
   const light = CSS.match(/tr\.entity-row\.row-docked td \{[^}]+\}/)?.[0];
   assert.ok(light, 'the docked row has a light');
   assert.match(light, /var\(--tblr-active-bg/, 'the light is a theme token, so dark mode gets its own tint');
-  assert.match(CSS, /#dock \.dock-entity \.entity-grid \{ grid-template-columns: 1fr; \}/, 'the field grid single-columns in the narrow pane');
+  assert.match(CSS, /#dock \.dock-entity \.entity-grid \{ grid-template-columns: minmax\(0, 1fr\); \}/, 'the field grid single-columns in the narrow pane, and its track never grows past the pane (Issue #372)');
 });
 
 test('dock: the Handbook ledger page teaches the new contract', () => {

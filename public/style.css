@@ -906,7 +906,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
 .entity-grid.side-open { grid-template-columns: minmax(0, 1fr) 320px; }
 .entity-grid:not(.side-open) > .entity-side { display: none; }
-@media (max-width: 900px) { .entity-grid.side-open { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .entity-grid.side-open { grid-template-columns: minmax(0, 1fr); } }
 .panel { margin-bottom: 16px; }
 .fieldrow { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: center; padding: 4px 0; }
 .fieldrow label { color: var(--tblr-secondary); font-size: 12.5px; }
@@ -1570,7 +1570,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 body.dock-resizing { user-select: none; cursor: col-resize; }
 /* The pane is narrower than a page: the field grid single-columns and the
    sticky header sits still, same as the peek before it. */
-#dock .dock-entity .entity-grid { grid-template-columns: 1fr; }
+#dock .dock-entity .entity-grid { grid-template-columns: minmax(0, 1fr); }
 #dock .dock-entity .view-header { position: static; }
 /* The docked row stays lit in the table — selection follows the pane. */
 .wv-grid tbody tr.entity-row.row-docked td { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
@@ -1867,8 +1867,8 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 
 /* ---------- dates: smart input + calendar popover (2026-08-23) ---------- */
 .date-cell { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
-.date-cell .date-text { min-width: 0; width: 120px; }
-.date-cell .date-text-wide { width: 200px; }
+.date-cell .date-text { min-width: 0; width: max(120px, var(--date-fit, 0px)); }
+.date-cell .date-text-wide { width: max(200px, var(--date-fit, 0px)); }
 /* A range is two date controls sharing one dash (Issue #91). */
 /* The range control (Issue #197): one box, one calendar button — the same
    .date-cell the single date wears, wide enough for both ends. */
