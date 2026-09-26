@@ -420,13 +420,16 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    A sticky cell floats over moving content, so it has to paint its own
    ground: a token background in both themes, never a tint mixed against
    `transparent`, and the layer numbers from the header rule above. */
-/* The checkbox column's width, in the two numbers that make it: Tabler's
-   .card-table inset on a first child, and our own hit box. It is not padding
-   we own — the grid is a card table and the inset is what keeps the box off
-   the card's edge — so it is named here rather than overridden. The suite
-   asserts the # lands exactly at the checkbox column's rendered right edge,
-   so a drift in either number fails the build rather than opening a gap. */
-.wv-grid { --wv-sel-lead: 1.25rem; --wv-sel-hit: 30px; }
+/* The checkbox column's width, in the two numbers that make it: a lead inset
+   and our own hit box. The lead used to be Tabler's .card-table first-child
+   inset, 20px of empty space left of a box that only shows on hover; Kyle
+   called it padding to clean up (Issue #410), and the grid's cards lost
+   their box on 2026-08-28, so there is no card edge left to keep it off. It
+   is the 4px every other cell pads with, set on the checkbox column below.
+   The suite asserts the box sits 4px in on the header, body and Σ rows, and
+   that the # lands exactly at the checkbox column's rendered right edge, so a
+   drift in either number fails the build rather than opening a gap. */
+.wv-grid { --wv-sel-lead: 4px; --wv-sel-hit: 30px; }
 .wv-grid :is(th.sel-head, td.sel-cell, th.pid-head, td.pid-cell) { position: sticky; left: 0; }
 .wv-grid :is(th.pid-head, td.pid-cell) { border-right: 1px solid transparent; }
 /* The # clears the checkbox column wherever there is one. The registry,
@@ -460,7 +463,10 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    disappears while a selection is live and a chosen row stays openable.
    The column holds its width at rest and reveals its box on row hover, or on
    every row once anything is selected — an idle grid stays clean. */
-.wv-grid th.sel-head, .wv-grid td.sel-cell { width: 1%; padding: 0 0 0 4px; text-align: left; }
+.wv-grid th.sel-head, .wv-grid td.sel-cell { width: 1%; padding: 0 0 0 var(--wv-sel-lead); text-align: left; }
+/* Out-ranks Tabler's `.card-table tr td:first-child { padding-left: 1.25rem }`
+   (Issue #410): the checkbox column is always the first child. */
+.wv-grid tr > :is(th.sel-head, td.sel-cell):first-child { padding-left: var(--wv-sel-lead); }
 /* One padding rule at equal specificity for head and body, inside an
    identical hit target, so the select-all box lands on the same vertical
    line as every row's box (Kyle's second pass, 2026-08-24). */

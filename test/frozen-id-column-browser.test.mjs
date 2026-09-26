@@ -133,6 +133,62 @@ if (s) {
     });
   }
 
+  test('the checkbox sits a small inset from the grid edge, the select-all box on the same line (Issue #410)', async () => {
+    /* The checkbox column wore Tabler's .card-table first-child inset, 20px
+       of empty space left of a box that only shows on hover. Kyle called it
+       padding to clean up: the column is now a 4px inset, the one every
+       other cell pads with, and the 30px hit box. Header, body and the Σ
+       row keep one vertical line, and the # still sits right behind it. */
+    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    try {
+      await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      await page.evaluate(async (id) => {
+        await fetch(`/api/tables/${id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hideRollups: false }),
+        });
+      }, wide.id);
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForSelector('.wv-grid tr.wv-foot');
+      const g = await page.evaluate(() => {
+        const wrapLeft = document.querySelector('.table-wrap').getBoundingClientRect().left;
+        const read = (tr) => {
+          const cell = tr.querySelector('.sel-cell, .sel-head');
+          const hit = cell.querySelector('.sel-hit');
+          const pid = tr.querySelector('.pid-cell, .pid-head');
+          return {
+            cell: Math.round(cell.getBoundingClientRect().left - wrapLeft),
+            width: Math.round(cell.getBoundingClientRect().width),
+            hit: hit ? Math.round(hit.getBoundingClientRect().left - wrapLeft) : null,
+            pid: Math.round(pid.getBoundingClientRect().left - wrapLeft),
+          };
+        };
+        return {
+          head: read(document.querySelector('.wv-grid thead tr:first-child')),
+          foot: read(document.querySelector('.wv-grid tr.wv-foot')),
+          body: read(document.querySelector('.wv-grid tbody tr.entity-row')),
+        };
+      });
+      assert.equal(g.body.cell, 0, 'the checkbox column starts at the grid edge');
+      assert.equal(g.body.hit, 4, `its box sits 4px in, not behind Tabler's 20px card inset: ${JSON.stringify(g.body)}`);
+      assert.equal(g.head.hit, g.body.hit, `the select-all box is on the rows' line: ${JSON.stringify(g.head)}`);
+      assert.equal(g.body.width, 34, 'the column is the inset and the 30px hit box, nothing else');
+      for (const [name, row] of Object.entries(g)) {
+        assert.equal(row.width, g.body.width, `${name}: one checkbox column width down the grid`);
+        assert.equal(row.pid, row.width, `${name}: the # sits right behind the checkbox column`);
+      }
+    } finally {
+      await page.evaluate(async (id) => {
+        await fetch(`/api/tables/${id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hideRollups: true }),
+        });
+      }, wide.id).catch(() => {});
+      await page.close();
+    }
+  });
+
   test('the seam appears only once something is passing under the frozen column', async () => {
     const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
     try {
