@@ -1425,12 +1425,19 @@ function stateLabel(fieldSchema, stateName) {
    not spelled (Issue #87). The picker's list keeps the string above, because
    that is what its search ranks against. */
 function stateNodes(fieldSchema, stateName) {
-  if (stateName == null) return ['—'];
+  if (stateName == null) return [chipLabel('—')];
   const icon = fieldSchema.states?.find((s) => s.name === stateName)?.icon;
-  if (!icon) return [stateName];
+  if (!icon) return [chipLabel(stateName)];
   return isIconRef(icon)
-    ? [iconEl(icon, 'ico wv-icon'), stateName]
-    : [`${icon} ${stateName}`];
+    ? [iconEl(icon, 'ico wv-icon'), chipLabel(stateName)]
+    : [chipLabel(`${icon} ${stateName}`)];
+}
+/* A value chip's text is its own span (Issue #423). Bare, it was an anonymous
+   flex item that could not shrink, so in a narrow column it ran past the
+   chip's fill and the cell cut it mid-letter; as a span it truncates with an
+   ellipsis inside the fill, the way a relation chip's label already did. */
+function chipLabel(text) {
+  return el('span', { class: 'k-label' }, text);
 }
 function stateCategory(fieldSchema, stateName) {
   const found = fieldSchema.states?.find((s) => s.name === stateName)?.category;
@@ -2680,6 +2687,13 @@ function markClippedCells(grid) {
   for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
     if (overflowsX(c)) cutOff.add(c.closest('td'));
   }
+  // A value chip's label truncates inside the chip, so the chip never
+  // outgrows the cell either (Issue #423). A cut label marks its cell and
+  // carries the whole value as its title; a label that fits carries none.
+  for (const label of grid.querySelectorAll('tbody td .k > .k-label')) {
+    if (overflowsX(label)) { cutOff.add(label.closest('td')); label.title = label.textContent; }
+    else label.removeAttribute('title');
+  }
   for (const td of grid.querySelectorAll('tbody td')) {
     // A description holds lines the row has no height for; they are in the
     // cell, hidden, and only the pop can show them. Width alone would call
@@ -3281,8 +3295,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   if (f.type === 'select') {
     const unset = (v) => (v == null ? ' is-empty' : '');
     const trigger = el('button', { class: `k k-select ${optionHue(f, val)}${unset(val)}`, type: 'button', title: f.name },
-      optionIcon(f, val), val ?? '—');
-    const paint = (v) => { trigger.className = `k k-select ${optionHue(f, v)}${unset(v)} chip-trigger`; trigger.replaceChildren(...[optionIcon(f, v), v ?? '—'].filter(Boolean)); };
+      optionIcon(f, val), chipLabel(val ?? '—'));
+    const paint = (v) => { trigger.className = `k k-select ${optionHue(f, v)}${unset(v)} chip-trigger`; trigger.replaceChildren(...[optionIcon(f, v), chipLabel(v ?? '—')].filter(Boolean)); };
     return chipPicker({
       trigger,
       // Each option is its own chip in the list, in the hue it wears in the
@@ -3298,7 +3312,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const box = el('span', { class: 'ms-box', title: 'Edit selections' });
     const paint = (ids) => {
       box.replaceChildren();
-      for (const v of ids ?? []) box.append(el('span', { class: `k k-multi ${optionHue(f, v)}` }, optionIcon(f, v), v), ' ');
+      for (const v of ids ?? []) box.append(el('span', { class: `k k-multi ${optionHue(f, v)}` }, optionIcon(f, v), chipLabel(v)), ' ');
       if (!ids?.length) box.append(el('span', { class: 'k k-add' }, iconEl('+', 'wv-icon wv-icon-xs')));
     };
     paint(current);
@@ -3329,7 +3343,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const chip = el('span', {
       class: 'k k-key hue-slate' + (shown ? '' : ' is-empty'),
       title: `${f.name} — ${CREDENTIAL_KIND_LABELS[kind] ?? kind} in ${KEYSTORE_LABELS[store] ?? store}`,
-    }, iconEl(CREDENTIAL_GLYPHS[kind] ?? CREDENTIAL_GLYPHS.apikey, 'ico wv-icon'), shown || '—');
+    }, iconEl(CREDENTIAL_GLYPHS[kind] ?? CREDENTIAL_GLYPHS.apikey, 'ico wv-icon'), chipLabel(shown || '—'));
     if (store !== 'local' && val) chip.append(el('span', { class: 'store' }, KEYSTORE_LABELS[store]));
     /* The NAME, not the dressed cell. `val` arrives masked and may carry
        ' (unset)', and posting that to /reveal asked the keystore for a

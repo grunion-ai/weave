@@ -650,6 +650,17 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    stops wearing a box inside the grid. */
 .wv-grid .chip { border-color: transparent; }
 .wv-grid .k { max-width: 100%; }
+/* A value chip clips at its fill (Issue #423). A relation chip is left out:
+   its label already truncates inside its link, and clipping the chip would
+   also clip the mention caret's 24px hit area, an ::after that reaches past
+   the chip (Issue #397, test/a11y-browser.test.mjs). */
+.wv-grid .k:not(.k-rel) { overflow: hidden; }
+/* A multi-select's box is capped at its column, so a lone chip longer than
+   the column truncates like a select chip. Several chips keep their own
+   widths and the cell clips the row: shrinking them all to fit would cut
+   every label short (Issue #423). */
+.wv-grid tbody .ms-box.chip-trigger { max-width: 100%; }
+.wv-grid tbody .ms-box > .k { flex-shrink: 0; }
 /* Computed / read-only cells must not read as editable — the glyph says so,
    a tinted box only added another rectangle to a row full of them. */
 .wv-grid td.cell-computed { background: none; color: var(--tblr-secondary); cursor: default; }
@@ -936,6 +947,10 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
    badge and the ↗ stay visible at the right end. The full name is the title. */
 .mention-wrap, .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
 .k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A value chip's label follows the same rule (Issue #423): in a column
+   narrower than the value, it ends in an ellipsis inside the chip's fill
+   instead of running past it to be cut mid-letter by the cell. */
+.k > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: .8em; color: var(--tblr-secondary); }
 /* Target-set chips carry their home table: a Task and a Space can share a
    name, and the table is what tells them apart. */
