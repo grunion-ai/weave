@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { ROOT } from './lib/source.mjs';
+import { bootAndStop } from './lib/serve-fixture.mjs';
 import { GUIDES, FIELD_DOCS, applyHandbook, handbookDrift, handbookHash, syncHandbook } from '../src/handbook.js';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
@@ -157,18 +158,7 @@ test('serve brings an existing docs workspace up to the current Handbook on boot
   const sub = mkdtempSync(join(dir, 'boot-'));
   const docs = staleDb(join(sub, 'weave.db'));
   const child = spawn('node', [BIN, 'serve', '--port', '0', '--data', join(sub, 'ws.db')], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });
-  let log = '';
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`serve never came up:\n${log}`)), 20000);
-    const onData = (d) => { log += d; if (/Weave running/.test(log)) { clearTimeout(timer); resolve(); } };
-    child.stdout.on('data', onData);
-    child.stderr.on('data', onData);
-    child.on('exit', (code) => { clearTimeout(timer); reject(new Error(`serve exited ${code}:\n${log}`)); });
-  });
-  child.removeAllListeners('exit');
-  const exited = new Promise((r) => child.on('exit', r));
-  child.kill('SIGTERM');
-  await exited;
+  const log = await bootAndStop(child);
   assert.match(log, /Handbook sync: 1 created, 2 updated/);
   const w = new Weave({ path: docs });
   try {
