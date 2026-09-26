@@ -19,12 +19,27 @@ export const HTML = read('public/index.html');
    its selector list. */
 export const CSS = read('public/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
 
+/* A selector list split on its own commas, never on those inside :is(),
+   :where() or :not() (the phone rules of Issue #262 list selectors inside
+   :is(...)::before). */
+export function selectorParts(sels) {
+  const parts = [];
+  let depth = 0, cur = '';
+  for (const ch of sels) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; } else cur += ch;
+  }
+  parts.push(cur);
+  return parts.map((s) => s.trim()).filter(Boolean);
+}
+
 /* Minimal CSS reader: every declaration block whose selector list contains
    `selector` as a whole comma-separated part, merged in source order. */
 export function rulesFor(selector, css = CSS) {
   const out = {};
   for (const [, sels, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    if (!sels.split(',').map((s) => s.trim()).includes(selector)) continue;
+    if (!selectorParts(sels).includes(selector)) continue;
     for (const decl of body.split(';')) {
       const i = decl.indexOf(':');
       if (i > 0) out[decl.slice(0, i).trim()] = decl.slice(i + 1).trim();

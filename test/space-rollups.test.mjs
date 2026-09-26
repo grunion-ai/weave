@@ -5,7 +5,14 @@
    the rows, `aggregate` is any of the engine's list. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
+import { startServer } from '../src/server.js';
+import { TOOLS, dispatchTool } from '../src/mcp.js';
 
 function build() {
   const w = new Weave();
@@ -212,4 +219,63 @@ test('tableStats carries the space rollups pointed at the table', () => {
   const { w, t, spacesT } = build();
   w.addField(spacesT.id, { name: 'N', type: 'rollup', config: { via: 'Sessions', aggregate: 'count' } });
   assert.deepEqual(w.tableStats(t.id).rollups.map((r) => [r.name, r.value]), [['N', 4]]);
+});
+
+/* Issue #235: a Σ switch in the grid's picker used to re-read the whole
+   table's stats, every column summarised and every rollup resolved, to
+   repaint the one footer cell it changed. `field` narrows the answer to one
+   column: its summary, and the space rollups the footer draws under it (the
+   row count sits under the name column, the way the footer draws it). */
+test('tableStats narrowed to one field summarises that column and only the rollups under it (Issue #235)', () => {
+  const { w, t, spacesT } = build();
+  w.addField(spacesT.id, { name: 'Cost sum', type: 'rollup', config: { via: 'Sessions', targetField: 'Cost', aggregate: 'sum' } });
+  w.addField(spacesT.id, { name: 'N', type: 'rollup', config: { via: 'Sessions', aggregate: 'count' } });
+  w.addField(spacesT.id, { name: 'Kinds', type: 'rollup', config: { via: 'Sessions', targetField: 'Kind', aggregate: 'distinct' } });
+  w.addField(spacesT.id, { name: 'Cost max', type: 'rollup', config: { via: 'Sessions', targetField: 'Cost', aggregate: 'max' } });
+  const cost = w.tableStats(t.id, { field: 'Cost' });
+  assert.equal(cost.rows, 4);
+  assert.deepEqual(cost.columns.map((c) => c.name), ['Cost']);
+  assert.equal(cost.columns[0].summary.sum, 14);
+  assert.deepEqual(cost.rollups.map((r) => [r.name, r.value]), [['Cost sum', 14], ['Cost max', 10]]);
+  // The same figures the whole-table read carries, just fewer of them.
+  const whole = w.tableStats(t.id);
+  assert.deepEqual(cost.columns[0], whole.columns.find((c) => c.name === 'Cost'));
+  assert.deepEqual(cost.rollups, whole.rollups.filter((r) => r.targetField === 'Cost'));
+  const nameId = Object.values(w.getTable(t.id).fields).find((f) => f.name === 'Name').id;
+  assert.deepEqual(w.tableStats(t.id, { field: nameId }).rollups.map((r) => r.name), ['N'], 'by id, and the count rides with the name column');
+  assert.deepEqual(w.tableStats(t.id, { field: 'Kind', where: [['Kind', '=', 'scheduled']] }).columns[0].distribution, [{ value: 'scheduled', count: 2 }]);
+  assert.throws(() => w.tableStats(t.id, { field: 'Nope' }), /not found/);
+});
+
+test('REST, MCP and CLI carry the stats field narrowing (Issue #235)', async () => {
+  const { w, t, spacesT } = build();
+  w.addField(spacesT.id, { name: 'Cost sum', type: 'rollup', config: { via: 'Sessions', targetField: 'Cost', aggregate: 'sum' } });
+  w.addField(spacesT.id, { name: 'N', type: 'rollup', config: { via: 'Sessions', aggregate: 'count' } });
+  assert.ok(TOOLS.find((x) => x.name === 'weave_stats').inputSchema.properties.field, 'weave_stats advertises field');
+  const m = dispatchTool(w, 'weave_stats', { table: 'Agent/Sessions', field: 'Cost' });
+  assert.deepEqual([m.columns.map((c) => c.name), m.rollups.map((r) => r.name)], [['Cost'], ['Cost sum']]);
+
+  const { server } = await startServer(w, { port: 0 });
+  try {
+    const body = await (await fetch(`http://127.0.0.1:${server.address().port}/api/tables/${t.id}/stats?field=Cost`)).json();
+    assert.deepEqual([body.columns.map((c) => c.name), body.rollups.map((r) => r.name)], [['Cost'], ['Cost sum']]);
+  } finally {
+    server.close();
+  }
+
+  const dir = mkdtempSync(join(tmpdir(), 'weave-stats-field-'));
+  try {
+    const data = join(dir, 'ws.db');
+    const d = new Weave({ path: data });
+    const sp = d.createSpace({ name: 'Agent' });
+    const dt = d.createTable({ space: sp.id, name: 'Sessions' });
+    d.addField(dt.id, { name: 'Cost', type: 'number' });
+    d.createEntity(dt.id, { values: { Name: 'a', Cost: 3 } });
+    d.close?.();
+    const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
+    const out = JSON.parse(execFileSync('node', [BIN, 'stats', 'Agent/Sessions', '--field', 'Cost', '--data', data], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+    assert.deepEqual(out.columns.map((c) => [c.name, c.summary.sum]), [['Cost', 3]]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

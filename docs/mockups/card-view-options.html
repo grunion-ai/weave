@@ -62,6 +62,17 @@
 [data-bs-theme="dark"] .hue-pink { --fill: rgba(240, 120, 170, .18); --text: #f79ec0; }
 [data-bs-theme="dark"] .hue-teal { --fill: rgba(70, 200, 180, .16); --text: #6fdcc8; }
 [data-bs-theme="dark"] .hue-orange { --fill: rgba(250, 150, 80, .18); --text: #ffb183; }
+.k-inline { display: inline; font-size: inherit; line-height: inherit; padding: 0; white-space: normal; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.k-inline > a { display: inline; padding: 0 5px 0 4px; }
+.k-inline > a::after { margin-left: 3px; font-size: .7em; }
+.mention-wrap:has(> .k-inline) { display: inline; white-space: normal; }
+.k-inline .mention-caret { vertical-align: middle; }
+.k-rel > a.mention, .k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; }
+.k-rel > a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
+.k-rel > .mention-entity::before { content: "#"; }
+.k-rel > .mention-table::before { content: "▦"; }
+.k-rel > .mention-space::before { content: "◇"; }
+.k-rel > .mention-workspace::before { content: "⬡"; }
 .mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
 .mention-fields { display: none; }
 .mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: .85em; }

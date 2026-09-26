@@ -145,8 +145,26 @@ function tokenize(src) {
   return tokens;
 }
 
+/* The tokens of an expression, kept (Issues #211, #234, #278). A formula is
+   evaluated once per row it is read on, and its text is the field's config:
+   a stats report over a few thousand rows tokenized the same few expressions
+   thousands of times. Tokens are never written after tokenize returns them.
+   An expression that fails to tokenize is not kept, so it throws every time.
+   The builder checks a draft on every keystroke, so the map starts over at a
+   thousand texts rather than keeping every draft a long-lived server saw. */
+const TOKENS = new Map();
+function tokensOf(expression) {
+  let t = TOKENS.get(expression);
+  if (!t) {
+    t = tokenize(expression);
+    if (TOKENS.size >= 1000) TOKENS.clear();
+    TOKENS.set(expression, t);
+  }
+  return t;
+}
+
 export function evaluate(expression, getField) {
-  const tokens = tokenize(expression);
+  const tokens = tokensOf(expression);
   let pos = 0;
   const peek = () => tokens[pos];
   const next = () => tokens[pos++];

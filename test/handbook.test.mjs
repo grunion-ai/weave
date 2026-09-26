@@ -92,6 +92,8 @@ test('the document-formatting guide covers the surface the editor offers', () =>
     'Raw HTML', 'full screen', 'markdown',
     // Issue #96: the fences and a diagram's source live behind this button.
     '**</>** button',
+    // Issue #97: a reference is the pointer chip, and says so.
+    'same pointer chip a relation cell wears',
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the formatting guide never mentions ${topic}`);
   }
@@ -336,6 +338,19 @@ test('the figures are the real chip and the real card, with each hitbox drawn as
     assert.ok(/^<\w/.test(block) && /<\/(div|figure)>\s*$/.test(block), 'each figure is one unbroken raw-HTML block');
   }
   assert.doesNotMatch(doc, /<style|<script|src="http|href="http/, 'no stylesheet, script or external asset — the app draws it');
+});
+
+test('the chip export lifts no rule out of an @media block: a phone-only rule stays on the phone', async () => {
+  const { chipCss } = await import('../scripts/export-chip-card-anatomy.mjs');
+  const css = `.k-rel > a { color: inherit; }
+@media (max-width: 767.98px) {
+  .k-rel > a.mention { padding-block: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .k { transition: none; } }`;
+  const out = chipCss(css);
+  assert.match(out, /\.k-rel > a \{ color: inherit; \}/, 'a top-level chip rule is lifted');
+  assert.doesNotMatch(out, /padding-block: 14px/, 'a rule inside @media never comes out bare');
+  assert.doesNotMatch(out, /transition: none/, 'nor does any other media-scoped rule');
 });
 
 test('docs/chip-card-anatomy.html is the exported page, self-contained, and current', () => {

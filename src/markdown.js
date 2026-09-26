@@ -85,7 +85,10 @@ function renderInline(text, resolveMention) {
           if (resolved) {
             /* A chip with preview fields collapses to its name behind a caret
                (Kyle, 2026-09-01): the whole chip stays a link to the entity;
-               only the caret toggles the field segments open. */
+               only the caret toggles the field segments open. The chip is
+               the pointer tier a relation cell draws (Issue #97): `.k.k-rel`
+               around the link, the caret and segments inside the link in the
+               grid chip's order, and `k-inline` sizes it to running text. */
             const fields = (resolved.fields ?? []).filter((f) => f && f.value != null && f.value !== '').slice(0, 3);
             // data-name carries the target's own name for a surface that shows
             // the name alone (the editor's live chip) under a longer label.
@@ -93,13 +96,13 @@ function renderInline(text, resolveMention) {
               + (resolved.name ? ` data-name="${escapeHtml(resolved.name)}">` : '>')
               + `${escapeHtml(label ?? resolved.label)}`
               + (fields.length
-                ? `<span class="mention-fields">${fields.map((f) =>
-                  `<span class="mention-f"><span class="mention-f-label">${escapeHtml(f.label)}</span>${escapeHtml(String(f.value))}</span>`).join('')}</span>`
+                ? `<button type="button" class="mention-caret" aria-expanded="false" aria-label="Show fields">${ICON_SVG?.['chevron-right'] ?? '▸'}</button>`
+                  + `<span class="mention-fields">${fields.map((f) =>
+                    `<span class="mention-f"><span class="mention-f-label">${escapeHtml(f.label)}</span>${escapeHtml(String(f.value))}</span>`).join('')}</span>`
                 : '')
               + '</a>';
-            out += fields.length
-              ? `<span class="mention-wrap">${a}<button type="button" class="mention-caret" aria-expanded="false" aria-label="Show fields">${ICON_SVG?.['chevron-right'] ?? '▸'}</button></span>`
-              : a;
+            const chip = `<span class="k k-rel k-inline${fields.length ? ' has-segs' : ''}">${a}</span>`;
+            out += fields.length ? `<span class="mention-wrap">${chip}</span>` : chip;
             i = end + 2;
             continue;
           }
@@ -387,7 +390,13 @@ h1, h2, h3, h4 { line-height: 1.25; margin: 1.4em 0 0.5em; }
 h1:first-child { margin-top: 0; }
 .doc-meta { color: var(--muted); font-size: 13px; margin-bottom: 2em; border-bottom: 1px solid var(--line); padding-bottom: 1em; }
 a { color: var(--accent); }
-a.mention { background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; text-decoration: none; }
+/* A reference is the pointer chip a relation cell draws in the app (Issue
+   #97): a 1px outline, no fill, the ↗ inside the link, sized to the running
+   text so a line holding one is as tall as a line without. */
+.k-rel { border: 1px solid var(--line); border-radius: 4px; color: var(--fg); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.k-rel > a { color: inherit; text-decoration: none; padding: 0 5px 0 4px; }
+.k-rel > a::after { content: "↗"; opacity: .42; font-size: .7em; margin-left: 3px; }
+.k-rel:hover { border-color: var(--accent); color: var(--accent); }
 .md-icon { display: inline-flex; width: 1em; height: 1em; vertical-align: -.15em; margin-right: .15em; }
 .md-icon svg { width: 1em; height: 1em; }
 .mention.broken { color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 0 4px; }
@@ -401,11 +410,12 @@ a.mention { background: var(--soft); border: 1px solid var(--line); border-radiu
 .mention-workspace::before { content: "⬡"; }
 /* Collapsed chip shows the name; the caret opens the preview segments. The
    whole chip is the link — the caret is the only non-navigating pixel. */
-.mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
+.mention-wrap { display: inline; }
 .mention-fields { display: none; }
 .mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--line); color: var(--muted); font-size: .85em; }
 .mention-f-label { opacity: .65; margin-right: 3px; }
-.mention-caret { border: 1px solid var(--line); background: none; border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
+.mention-caret { border: 1px solid var(--line); background: none; border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; vertical-align: middle; }
+.mention-caret svg { width: 12px; height: 12px; display: block; }
 .mention-wrap.open .mention-caret { transform: rotate(180deg); }
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 /* A code block sits on the ground its palette was drawn for — white for
@@ -456,6 +466,7 @@ for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
 document.addEventListener('click', (ev) => {
   const caret = ev.target.closest('.mention-caret');
   if (!caret) return;
+  ev.preventDefault(); // the caret rides inside the chip's link and never follows it
   const open = caret.closest('.mention-wrap').classList.toggle('open');
   caret.setAttribute('aria-expanded', String(open));
 });

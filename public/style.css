@@ -1163,14 +1163,35 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-head .activity-title { font-size: 24px; font-weight: 700; padding: 2px 4px; flex: 1; min-width: 0; }
 .chip.rel.deleted a { text-decoration: line-through; color: var(--tblr-secondary); }
 
-/* ---------- entity doc preview panels ---------- */
-.doc-preview a.mention, .doc-ref-layer a.mention { background: rgba(var(--tblr-primary-rgb), .08); border-radius: 4px; padding: 0 4px; text-decoration: none; color: var(--tblr-primary); }
+/* ---------- a reference in a document (Issue #97) ----------
+   `[[Table#12]]` is the pointer chip a relation cell draws (the anatomy
+   guide: "the same chip, from the same config; no ×, no avatar"), so it
+   takes the tier 2 rules above whole: the 1px outline, no fill, the ↗ inside
+   the link. It wore a brand-blue tint of its own, which is the value tier's
+   channel and read as a styled link rather than a record. What k-inline adds
+   is the size of running text: the chip stays an inline box at the text's
+   own font and line, so its outline paints round the words without growing
+   the line box (an inline-flex chip of the grid's 24px would push a 16px
+   line apart), and a long name wraps rather than overflowing the column. */
+.k-inline { display: inline; font-size: inherit; line-height: inherit; padding: 0; white-space: normal;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.k-inline > a { display: inline; padding: 0 5px 0 4px; }
+.k-inline > a::after { margin-left: 3px; font-size: .7em; }
+.mention-wrap:has(> .k-inline) { display: inline; white-space: normal; }
+.k-inline .mention-caret { vertical-align: middle; }
+/* Tabler ships a global `.mention` (a grey pill: inline-block, a shadow ring,
+   pill radius, .857em medium) and `a.mention:hover` (a fill and an
+   underline). A reference's link keeps the class, which the overlay's
+   resolver reads, so the chip takes that costume back off here: the same
+   trap as `.empty` and `.toast`. */
+.k-rel > a.mention, .k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none;
+  font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; }
 /* Kind glyphs match the standalone document page (src/markdown.js). */
-.doc-preview a.mention::before, .doc-ref-layer a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
-.doc-preview .mention-entity::before, .doc-ref-layer .mention-entity::before { content: "#"; }
-.doc-preview .mention-table::before, .doc-ref-layer .mention-table::before { content: "▦"; }
-.doc-preview .mention-space::before, .doc-ref-layer .mention-space::before { content: "◇"; }
-.doc-preview .mention-workspace::before, .doc-ref-layer .mention-workspace::before { content: "⬡"; }
+.k-rel > a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
+.k-rel > .mention-entity::before { content: "#"; }
+.k-rel > .mention-table::before { content: "▦"; }
+.k-rel > .mention-space::before { content: "◇"; }
+.k-rel > .mention-workspace::before { content: "⬡"; }
 /* Backlink chips on the entity page (References section): same chip costume,
    laid out as a wrapping row. wv- prefix on the container, chip classes reuse
    the mention costume above. */
@@ -1191,29 +1212,38 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* ---------- live [[…]] chips over the IR editor (Issue #86) ----------
    The layer never eats a click meant for the text — only the chips are
    interactive. A chip covers its literal reference exactly (the pass sizes
-   it to the text's rect), so the chip needs an opaque ground under the
-   mention tint or the literal shows through. */
+   it to the text's rect), so the chip needs an opaque ground or the literal
+   shows through. Inside that cover the reference is the pointer chip the
+   rendered document draws (Issue #97), `.k.k-rel` round the name: an outline
+   that ends where the name ends (F6), no fill, and the name alone ellipsizes
+   when the record's name is longer than the literal it covers, so the ↗ stays
+   the last pixel. The cover's ground is the editor's own surface, which reads
+   as the pointer tier's "no fill" and still hides the literal; the tint it
+   wore before (and the `a.mention` rule that outranked a plain
+   `.doc-ref-chip`, letting `[[Table#12|Name]]` show straight through) is
+   gone. */
 .doc-editor { position: relative; }
 .doc-ref-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 4; }
-/* `a.mention` (above) sets a transparent tint and outranks a plain
-   `.doc-ref-chip`, so the literal `[[Table#12|Name]]` showed straight through
-   the chip that was meant to hide it. The chip is an anchor too: same
-   specificity, later in the file, opaque ground. */
-.doc-ref-layer a.doc-ref-chip { background: var(--tblr-bg-surface); padding: 0; }
-.doc-ref-layer .doc-ref-chip { position: absolute; pointer-events: auto; box-sizing: border-box;
-  display: inline-flex; align-items: center; white-space: nowrap; overflow: hidden;
-  background: var(--tblr-bg-surface); box-shadow: none; }
-/* The tint hugs the label (F6, 2026-09-26): the anchor is only the opaque
-   cover over the literal, so `[[Project#2|Hermes Docs]]` no longer trails a
-   tinted box the width of its source. The kind glyph moves inside with it. */
+/* The anchor is the opaque cover over the literal and nothing else (F6,
+   2026-09-26): Tabler's global `.mention` pill and the kind glyph come off it,
+   so `[[Project#2|Hermes Docs]]` no longer trails a tinted box the width of
+   its source. The pointer chip inside it hugs the name. */
+.doc-ref-layer a.doc-ref-chip { position: absolute; pointer-events: auto; box-sizing: border-box;
+  display: flex; align-items: center; white-space: nowrap; overflow: hidden; margin: 0; padding: 0;
+  border-radius: 0; font-size: inherit; font-weight: inherit; line-height: 1; text-decoration: none;
+  color: var(--tblr-body-color); background: var(--tblr-bg-surface); box-shadow: none; }
 .doc-ref-layer a.doc-ref-chip::before { content: none; }
-.doc-ref-layer .doc-ref-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
-  border-radius: 4px; background: rgba(var(--tblr-primary-rgb), .08); box-shadow: var(--tblr-shadow-border); }
-.doc-ref-layer .doc-ref-label::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
+.doc-ref-layer .doc-ref-label { flex: 0 1 auto; min-width: 0; max-width: 100%; gap: 0; padding: 0 5px 0 4px;
+  font-size: inherit; line-height: 1.2; }
+.doc-ref-layer .doc-ref-label > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-ref-layer .doc-ref-label::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; flex: none; }
 .doc-ref-layer .mention-entity .doc-ref-label::before { content: "#"; }
 .doc-ref-layer .mention-table .doc-ref-label::before { content: "▦"; }
 .doc-ref-layer .mention-space .doc-ref-label::before { content: "◇"; }
 .doc-ref-layer .mention-workspace .doc-ref-label::before { content: "⬡"; }
+/* The ↗ is the pointer's last pixel, inside the link like every pointer's. */
+.doc-ref-layer .doc-ref-label::after { content: "↗"; opacity: .42; font-size: .7em; margin-left: 3px; flex: none; }
+.doc-ref-layer a.doc-ref-chip:hover .doc-ref-label { border-color: var(--tblr-primary); color: var(--tblr-primary); }
 /* `:bell:` in a document is Lute's own shortcode node — an <img> of the icon
    under /vendor/icons, serialised back as the token. Sized to the line; the
    ink is recoloured for the dark theme since an <img> cannot inherit
@@ -1861,6 +1891,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .attach-gone { margin-left: 4px; font-variant: small-caps; letter-spacing: .03em; opacity: .85; }
 /* ---------- fullscreen viewer + whiteboard (Features #47, #46) ---------- */
 #fsv-back { position: fixed; inset: 0; z-index: 90; background: var(--tblr-bg-surface); display: flex; flex-direction: column; }
+#fsv-back:focus { outline: none; } /* the box takes focus on open so Tab and Esc start inside it (Issue #263); a ring round the viewport says nothing */
 .fsv-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--tblr-border-color); }
 .fsv-title { font-weight: 600; font-size: 14px; margin-left: 6px; }
 .fsv-frame { flex: 1; border: 0; width: 100%; background: #fff; }
@@ -2511,3 +2542,90 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
    ↗: a wider target would take the link's clicks, so it grows only in height
    until the chip gives it room of its own (Issue #397). */
 .mention-caret::after { width: 100%; }
+
+/* ---------- phone width: the page, the sheet and 40px targets (Issue #262) ----------
+   The shell's drawer is the narrow-window rule near the top of this file
+   (below 900px the sidebar is a drawer, below 600px the rail folds into
+   it); wireNavHold in app.js holds the page and the keyboard while it is
+   open. Under 768px the page is the whole window, a docked entity opens as
+   a full-width sheet over the table, and buttons, chips and row controls
+   carry a hit area of at least 40px. Nothing here applies above 767.98px,
+   so the desktop and the tablet layouts do not move. */
+@media (max-width: 767.98px) {
+  /* The page is the whole window: no floating margin, and a smaller
+     padding. The view header holds at the top as it does on a desktop
+     (Issue #321), inside that padding. */
+  #main { margin: 0; padding: 16px; border-radius: 0; box-shadow: none; min-height: 100dvh; }
+  /* The crumbs take the line beside the menu button and the view controls
+     wrap under them; beside the controls the trail had 80px and broke a
+     word a line. The menu button keeps its whole 32px in its line (the
+     shell's negative margins let it hang into the controls' row), and the
+     rows keep 12px apart, so the button's 40px hit box and the controls'
+     below do not overlap. */
+  .crumb-row { flex-wrap: wrap; row-gap: 12px; }
+  .crumb-row > .nav-menu { margin-block: 0; }
+  .crumb-path { flex: 1 1 calc(100% - 48px); min-width: 0; }
+  /* A docked entity is a sheet over the table, not a column beside it, so
+     the divider goes and the table's 320px floor (Issue #326) has nothing
+     to hold against. A stored pin is a flex basis, which a fixed box
+     ignores. align-self goes back to normal: a positioned box honours it,
+     and the desktop's flex-start shrank the sheet to its content.
+     The sheet is a layer of the page, so it sits in the page's band of the
+     window's stacking order, over the page's own floating chrome and under
+     everything that opens over the page:
+       page (sticky header, grid layers, cell pops: 30 and under)
+       < #hub-foot 55 < the selection puck 62 < the sheet 65 (the drawer's
+       scrim, #app::after, is 65 too and paints later) < #page-loader and
+       the drawer's sidebar 70 < its rail 71 < the full-screen viewer 90
+       < a context menu 120 < Tabler dropdowns 1000 < the tray 1040
+       < a modal 1050 < ⌘K 1060 < the bug button 1150 < pickers 1200
+       < toasts 2000.
+     At 1025 it covered the viewer, so a whiteboard opened from a docked
+     record showed the sheet, made inert by the viewer's hold; and the
+     puck, at 1030, floated over the sheet and acted on rows behind it. */
+  #dock { position: fixed; inset: 0; z-index: 65; align-self: normal; margin: 0; padding: 8px 16px 24px; border-radius: 0; box-shadow: none; min-height: 0; max-height: none; }
+  #dock-gutter { display: none; }
+  #main:has(+ #dock-gutter:not([hidden])) { min-width: 0; margin-right: 0; }
+  #tray { width: 100vw; border-left: 0; }
+  .sel-puck-wrap { z-index: 62; }
+  /* 40px hit areas. A box the size of the control or a 40px square,
+     whichever is larger, centred on it and invisible, so a finger meets the
+     control without the control growing: the inset is half the shortfall
+     on each axis, a percentage of the control's own box. ::before, because
+     some of these controls already draw with ::after. A control that is
+     not positioned becomes the box's anchor; :where keeps that at zero
+     specificity so an absolute or fixed one keeps its own position. The
+     box is square, so a rounded control's corners count as well: hit
+     testing follows border-radius. The box rule is a :where too: at zero
+     specificity it cannot outrank a control's own ::before, and the one
+     control here that draws with ::before, a reference's link (its # ▦ ◇ ⬡
+     kind glyph), is left out of the list rather than overwritten (an :is
+     with the menu button's id in it once took every glyph off). */
+  :where(.ws-icon, .nav-caret, .btn, .icon-btn, .add-field-btn, .field-menu, .seg-opt, .tray-close, .dots-btn, .open-link, .filter-chip, button.k, a.k, .k-rel > a, .chip-trigger, .view-desc-more, .bug-fab, .ws-trash) { position: relative; }
+  :where(.ws-icon, .nav-caret, .btn, .icon-btn, .add-field-btn, .field-menu, .seg-opt, .tray-close, .dots-btn, .open-link, .filter-chip, button.k, a.k, .k-rel > a:not(.mention), .chip-trigger, .view-desc-more, .bug-fab, .ws-trash)::before { content: ""; position: absolute; inset: min(0px, calc(50% - 20px)); }
+  /* A reference's link has both pseudo-elements taken (the kind glyph and
+     the ↗), so its hit box is its own padding: 20px less half an em above
+     and below a text box about an em tall, 40px or a little more, given
+     straight back by a negative margin so nothing moves. In running text
+     the link is an inline box, whose vertical padding never touches the
+     line; a reference is wider than 40px. */
+  .k-rel > a.mention { padding-block: max(0px, calc(20px - .5em)); margin-block: min(0px, calc(.5em - 20px)); }
+  /* Rows stacked with no gap cannot share a 40px box without stealing from
+     each other, so the rows themselves are 40px: the nav rows, the space
+     rows whose caret and + sit on them, and the grid's checkbox column,
+     whose label is the checkbox's hit target. */
+  #sidebar .nav-db, #sidebar .nav-space-row { min-height: 40px; }
+  .wv-grid { --wv-sel-hit: 40px; }
+  .wv-grid .sel-hit { height: 40px; }
+  /* The density switch clips its options to its rounded border, and the
+     clip took their hit boxes with it: the end options round their own
+     corners instead, which draws the same control. */
+  .seg-ctl { overflow: visible; }
+  .seg-opt:first-child { border-radius: 5px 0 0 5px; }
+  .seg-opt:last-child { border-radius: 0 5px 5px 0; }
+  /* The # link is text on no fill: its own box grows to 40px from where
+     the text starts, which moves nothing, and a hit box hanging out of it
+     would be clipped by its cell or reach over the checkbox beside it. */
+  .wv-grid .open-link { display: inline-flex; align-items: center; min-width: 40px; min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) { #app.nav-peek #sidebar { animation: none; } }

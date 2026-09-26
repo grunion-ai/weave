@@ -275,38 +275,59 @@ addEventListener('keydown', (e) => {
    Callers close a dialog by removing its backdrop as often as through
    modal()'s own close (a Restore, a Clear, tray() opening over it), so the
    page comes back on the removal itself, and focus that fell to the body
-   goes back to whatever opened the dialog. */
+   goes back to whatever opened the dialog.
+   The tray, the full-screen viewer and the ⌘K palette hold the page the same
+   way, and holds stack: ⌘K opens over a dialog, tray() replaces a modal. Each
+   hold keeps the list of what it made inert. When one lets go, what it held
+   passes to the hold still on top, except that hold's own backdrop, which
+   comes back to life; the last one out frees the page. A dialog with no <h2>
+   passes the element that names it, or the name itself. */
 const MODAL_LIVE = '#wv-toasts, .bug-fab, #bug-panel';
-const MODAL_STOPS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-let pageHeld = [];
-// A modal replacing a modal keeps the page held: only the last one out frees it.
+const MODAL_STOPS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
+const holds = [];
+// Idempotent: lets go of every hold whose backdrop has left the page.
 function releasePage() {
-  if (document.querySelector('#modal-back')) return;
-  for (const n of pageHeld) n.inert = false;
-  pageHeld = [];
+  for (const gone of holds.filter((h) => !h.back.isConnected)) {
+    holds.splice(holds.indexOf(gone), 1);
+    const top = holds.at(-1);
+    for (const n of gone.held) {
+      if (top && n !== top.back) top.held.push(n); else n.inert = false;
+    }
+  }
 }
-function holdPage(back, box) {
+function holdPage(back, box, label = box.querySelector('h2')) {
   const opener = document.activeElement;
   box.setAttribute('role', 'dialog');
   box.setAttribute('aria-modal', 'true');
-  const heading = box.querySelector('h2');
-  if (heading) { heading.id = 'modal-title'; box.setAttribute('aria-labelledby', 'modal-title'); }
+  if (typeof label === 'string') box.setAttribute('aria-label', label);
+  else if (label) { label.id ||= `${back.id}-title`; box.setAttribute('aria-labelledby', label.id); }
+  /* A framed page takes Tab itself, and past its last stop the browser moves
+     on to whatever follows the frame in this document. A stop after the frame
+     catches that and sends it back to the dialog's first control. */
+  const wrap = box.querySelector('iframe') ? el('span', { class: 'hold-wrap', tabindex: '0' }) : null;
+  if (wrap) box.append(wrap);
+  const stops = () => [...box.querySelectorAll(MODAL_STOPS)].filter((n) => n !== wrap && n.getClientRects().length);
+  wrap?.addEventListener('focus', () => stops()[0]?.focus());
   document.body.append(back);
+  const hold = { back, held: [] };
   for (const n of document.body.children) {
     if (n === back || n.inert || n.matches(MODAL_LIVE)) continue;
     n.inert = true;
-    pageHeld.push(n);
+    hold.held.push(n);
   }
+  holds.push(hold);
   addEventListener('keydown', function trap(e) {
     if (!back.isConnected) return removeEventListener('keydown', trap);
+    // Only the hold on top moves Tab: a dialog under the palette is inert.
+    if (holds.at(-1) !== hold) return;
     const at = document.activeElement ?? document.body;
     if (e.key !== 'Tab' || (at !== document.body && !back.contains(at))) return;
-    const stops = [...box.querySelectorAll(MODAL_STOPS)].filter((n) => n.getClientRects().length);
-    if (!stops.length) return;
+    const all = stops();
+    if (!all.length) return;
     e.preventDefault();
-    const i = stops.indexOf(at);
+    const i = all.indexOf(at);
     const next = i === -1 ? (e.shiftKey ? -1 : 0) : i + (e.shiftKey ? -1 : 1);
-    stops.at(next % stops.length).focus();
+    all.at(next % all.length).focus();
   });
   new MutationObserver((_, watch) => {
     if (back.isConnected) return;
@@ -384,11 +405,13 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
       toast(err.message, true);
     }
   });
-  back.append(el('div', { id: 'tray' },
+  const box = el('div', { id: 'tray' },
     el('div', { class: 'tray-head' }, el('h2', {}, title),
       el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: () => back.remove() }, iconEl('✕'))),
-    form));
-  document.body.append(back);
+    form);
+  back.append(box);
+  // The table stays in view but out of reach: a slide-over is still a dialog.
+  holdPage(back, box);
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
     if (e.key === 'Escape' && !document.querySelector('.chip-pop')) { back.remove(); removeEventListener('keydown', esc); }
@@ -823,8 +846,11 @@ document.addEventListener('keydown', (e) => {
 // dock only hears it bare. Every
 // overlay app.js raises (a *-back backdrop, a *-pop popover, an open doc
 // rail) owns the key while it is up — test/ui-contract.test.mjs derives
-// that list from the source and checks this selector covers it.
-const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back';
+// that list from the source and checks this selector covers it. The phone
+// nav drawer (Issue #262) is one too: while it holds the page (#app.nav-held)
+// it closes itself on Escape in capture, and ⌘Z and ? stand down, as they
+// do for a dialog.
+const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back, #app.nav-held';
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !dock) return;
   if (document.querySelector(DOCK_ESC_OWNERS)) return;
@@ -1505,7 +1531,12 @@ function fullscreenViewer(title, { url = null, mount = null } = {}) {
       url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')) : null,
       el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, iconEl('✕'))),
     frame ?? el('div', { class: 'fsv-body' }));
-  document.body.append(back);
+  /* The viewer is its own dialog box, named by its title. Nothing in it is a
+     field to start in, so the box itself takes focus: the next Tab lands on
+     the toolbar, and Esc reaches the listener below. */
+  holdPage(back, back, back.querySelector('.fsv-title'));
+  back.tabIndex = -1;
+  back.focus();
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
@@ -5154,18 +5185,24 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     toast(BLANK_READ_ONLY, true);
     return true;
   };
+  /* The cells are asked again once the column has its width (Issue #217):
+     an in-place commit repaints no row, so a date clipped before a widening
+     kept its marker over a value that now showed whole, and a narrowing left
+     a cut date unmarked until the next redraw. The marker reads scrollWidth,
+     which lays the new width out first, so it cannot measure the column as
+     it was. */
   const commitWidth = async (c, w) => {
     override.delete(c);
     const f = colField(db, c);
     try {
       if (canFreezeHere()) {
         db.view.widths = { ...(db.view.widths ?? {}), [c]: w };
-        refreeze(); paintLayout();
+        refreeze(); paintLayout(); markClippedCells(table);
         await gridConfigWrite(db, null, { widths: { [c]: w } });
       } else {
         // A registry grid has no views: the width stays the field's own.
         f.width = Math.max(MIN_COLUMN_WIDTH, w);
-        refreeze(); paintLayout();
+        refreeze(); paintLayout(); markClippedCells(table);
         await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, { config: { width: f.width } });
         loadSchema().catch(() => {});
       }
@@ -8294,6 +8331,29 @@ function footAggregatesFor(db, f) {
 }
 
 const spaceRollupName = (db, col, agg) => (agg === 'count' ? `${db.name} · count` : `${db.name} · ${col} · ${agg}`);
+/* The schema's entry for a space rollup the picker just made, in the shape
+   and key order describeSchema() gives it. The Spaces table gained one field,
+   which is all a schema reload would have taught the tab (Issue #235); a
+   later reload (a refocus, Feature #33) then finds nothing changed and
+   redraws nothing. A rollup wears its column's costume there, so the entry
+   copies it by the engine's rules (src/engine.js #numberDisplay and
+   #ratingOf): a numeric aggregate of a bar, ring or heat number or formula
+   takes its `display`, and its `scale` when that is a fixed number; an avg,
+   min, max or median of a rating takes the rating's `max` and `icon`. */
+const RATING_SCALE_FOOT = ['avg', 'min', 'max', 'median'];
+const spaceRollupEntry = (db, col, agg, made) => {
+  const out = {
+    id: made.id, name: made.name, type: 'rollup', viaTable: db.qualified, viaTableId: db.id,
+    ...(agg === 'count' ? {} : { targetField: col }), aggregate: agg,
+  };
+  const f = agg === 'count' ? null : colField(db, col);
+  if ((f?.type === 'number' || f?.type === 'formula') && FOOT_NUMERIC.includes(agg) && ['bar', 'ring', 'heat'].includes(f.display)) {
+    out.display = f.display;
+    if (typeof f.scale === 'number') out.scale = f.scale;
+  }
+  if (f?.type === 'rating' && RATING_SCALE_FOOT.includes(agg)) out.rating = { max: f.max, icon: f.icon };
+  return out;
+};
 
 /* The Σ row: one cell per column, painted from the table's stats once they
    arrive. Empty cells still take a click, which is how the first Σ is added.
@@ -8323,8 +8383,10 @@ function renderFooter(db, cols) {
 }
 
 /* Paint the Σ row from the live rollups. `rollups` may be handed in by a
-   caller that already fetched them; otherwise one read. */
-async function fillFooter(db, foot, rollups = null) {
+   caller that already fetched them; otherwise one read. With `col`, the
+   rollups are that column's alone and only its cell repaints (Issue #235):
+   the other cells keep what they show. */
+async function fillFooter(db, foot, rollups = null, { col = null } = {}) {
   if (!foot) return;
   try {
     rollups ??= (await api('GET', `/tables/${db.id}/stats`)).rollups;
@@ -8333,20 +8395,35 @@ async function fillFooter(db, foot, rollups = null) {
   // the read, not before; a row a redraw replaced meanwhile is left alone.
   if (!foot.isConnected) return;
   const nameCol = db.fields.find((f) => f.role === 'name')?.name ?? 'Name';
+  const colOf = (r) => r.targetField ?? nameCol;
+  foot.rollups = col == null ? rollups : [...(foot.rollups ?? []).filter((r) => colOf(r) !== col), ...rollups];
   for (const td of foot.querySelectorAll('td.foot-cell')) {
-    const col = td.dataset.col;
-    const mine = rollups.filter((r) => (r.targetField ?? nameCol) === col && FOOT_LABELS[r.aggregate]);
+    if (col != null && td.dataset.col !== col) continue;
+    const mine = rollups.filter((r) => colOf(r) === td.dataset.col && FOOT_LABELS[r.aggregate]);
     td.replaceChildren(...mine.map((r) => el('span', { class: 'foot-stat', title: r.name + (r.where ? ' (filtered)' : '') },
       el('span', { class: 'foot-agg' }, FOOT_LABELS[r.aggregate]),
       el('span', { class: 'foot-val' }, r.display ?? '—'))));
     td.classList.toggle('has-stats', mine.length > 0);
   }
-  foot.dataset.rollups = String(rollups.length);
+  foot.dataset.rollups = String(foot.rollups.length);
 }
 
 /* The picker: one switch per aggregate the column can wear. On creates the
    space rollup, off deletes it. The popover stays put and its rows relearn
-   the truth, the way the eye does. */
+   the truth, the way the eye does.
+
+   A switch flips on the click (Issue #235). It used to wait on its POST,
+   then on a read of every column's stats and every rollup of the table,
+   then on a schema reload: 1 to 1.5 s a click on uno. A flip is now a
+   paint, a write and a read-back. The write waits its turn on eyeWrites, the
+   eye's queue (Issue #243), and decides at its turn, from the rollups the
+   writes before it left, whether there is anything to create or delete, so
+   a switch flicked on and off before the first write answers ends off with
+   no duplicate field. Each write keeps `rollups` and the tab's schema in step
+   itself. The last flip of a burst reads back this column's figures alone,
+   still on the queue so no write lands between that read and the rows it
+   teaches, then relearns the rows and repaints this one footer cell. A
+   failed write toasts, and the relearn puts its switch back. */
 async function footerPicker(anchor, db, col) {
   const spacesT = registryTable('spaces');
   const f = colField(db, col);
@@ -8354,29 +8431,70 @@ async function footerPicker(anchor, db, col) {
   if (!spacesT || !aggs.length) return;
   const nameCol = db.fields.find((x) => x.role === 'name')?.name ?? 'Name';
   let rollups = [];
-  const load = async () => { rollups = (await api('GET', `/tables/${db.id}/stats`)).rollups; };
+  const load = async () => { rollups = (await api('GET', `/tables/${db.id}/stats?field=${encodeURIComponent(f.id)}`)).rollups; };
   const have = (agg) => rollups.find((r) => (r.targetField ?? nameCol) === col && r.aggregate === agg && !r.where);
+  // "Last flip of a burst" is judged per column, beside the eye's per-table tails.
+  const tailKey = `Σ ${db.id} ${col}`;
+  const write = async (agg, on) => {
+    const cur = have(agg);
+    if (on && !cur) {
+      const made = await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
+      rollups = [...rollups, { fieldId: made.id, name: made.name, targetField: agg === 'count' ? null : col, aggregate: agg, where: null, value: null, display: null }];
+      // Looked up again: a schema reload queued ahead (an eye flip) replaced
+      // the table object this picker opened with. A new field shows in every
+      // view of the Spaces table (Feature #229), so the views learn it too.
+      const reg = registryTable('spaces');
+      if (reg) {
+        reg.fields.push(spaceRollupEntry(db, col, agg, made));
+        for (const v of reg.views ?? []) if (!v.fields.includes(made.name)) v.fields.push(made.name);
+      }
+    } else if (!on && cur) {
+      await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
+      rollups = rollups.filter((r) => r !== cur);
+      // The server refuses the delete while a lookup or rollup reads this
+      // figure (deleteField does not cascade), and the refusal toasts; a
+      // delete that lands takes this one field and nothing else.
+      const reg = registryTable('spaces');
+      if (reg) {
+        reg.fields = reg.fields.filter((x) => x.id !== cur.fieldId);
+        for (const v of reg.views ?? []) {
+          v.fields = v.fields.filter((n) => n !== cur.name);
+          // A view's widths are keyed by field name (Feature #233) and
+          // describeSchema() drops a deleted field's entry, and the key with it.
+          if (v.widths && cur.name in v.widths) {
+            delete v.widths[cur.name];
+            if (!Object.keys(v.widths).length) delete v.widths;
+          }
+        }
+      }
+    }
+  };
+  const flip = (node) => {
+    const agg = node.dataset.agg;
+    const on = node.getAttribute('aria-checked') !== 'true';
+    node.setAttribute('aria-checked', on ? 'true' : 'false');
+    node.querySelector('.switch')?.classList.toggle('on', on);
+    const turn = eyeWrites.then(async () => {
+      try { await write(agg, on); } catch (err) { toast(err.message, true); }
+      if (eyeTails.get(tailKey) === turn) await load().catch(() => {}); // a missed read leaves the figures as they were
+    });
+    eyeWrites = turn;
+    eyeTails.set(tailKey, turn);
+    turn.then(() => {
+      if (eyeTails.get(tailKey) !== turn) return;
+      eyeTails.delete(tailKey);
+      // Same tail, same hazard as the eye's (Issue #240): teach the rows, and
+      // only while this picker is still the one open.
+      if (pop.isConnected) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"]`)?.focus());
+      fillFooter(db, anchor.closest('tr.wv-foot'), rollups, { col });
+    });
+  };
   const row = (agg) => {
     const on = !!have(agg);
     return el('button', {
       class: 'chip-pop-row eye-row foot-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
       dataset: { agg },
-      onclick: async (e) => {
-        e.stopPropagation();
-        try {
-          const cur = have(agg);
-          if (cur) await api('DELETE', `/tables/${spacesT.id}/fields/${cur.fieldId}`);
-          else await api('POST', `/tables/${spacesT.id}/fields`, { name: spaceRollupName(db, col, agg), type: 'rollup', config: { via: db.id, aggregate: agg, ...(agg === 'count' ? {} : { targetField: col }) } });
-          await load();
-          // Same tail, same hazard as the eye's (Issue #240): teach the rows.
-          const pop = document.querySelector('.chip-pop');
-          // On a rebuild the pressed row is a new node; focus follows it so
-          // Escape still closes and the arrows still move.
-          if (pop) relearnRows(pop, build(), (p) => p.querySelector(`[data-agg="${agg}"]`)?.focus());
-          fillFooter(db, anchor.closest('tr.wv-foot'), rollups);
-          loadSchema();
-        } catch (err) { toast(err.message, true); }
-      },
+      onclick: (e) => { e.stopPropagation(); flip(e.currentTarget); },
     }, el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg),
     el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
   };
@@ -8385,8 +8503,12 @@ async function footerPicker(anchor, db, col) {
     ...aggs.map(row),
     el('div', { class: 'chip-pop-note' }, 'Each switch is a rollup field on this space\'s row'),
   ];
-  try { await load(); } catch (err) { toast(err.message, true); return; }
-  showPopover(anchor, build());
+  // The opening read queues too: a picker reopened mid-burst reads what the
+  // writes ahead of it stored, not what they are about to replace.
+  const opened = eyeWrites.then(load);
+  eyeWrites = opened.catch(() => {});
+  try { await opened; } catch (err) { toast(err.message, true); return; }
+  const pop = showPopover(anchor, build());
 }
 
 /* The space page's tiles: every space rollup pointed at one of its tables,
@@ -9615,16 +9737,19 @@ async function refreshRefChips(st) {
     const rects = range.getClientRects();
     if (rects.length !== 1) continue; // wrapped across lines: leave literal
     const r = rects[0];
-    // The anchor covers the literal on an opaque ground; the tint is the
-    // label's own, so it ends where the words end (F6). A name longer than
-    // its literal ellipsizes inside it; the tooltip has the rest.
+    /* The anchor covers the literal on an opaque ground, with no tint or
+       ring of its own (F6); inside it the reference is the pointer chip a
+       relation cell and the rendered document draw (Issue #97): `.k.k-rel`,
+       an outline and no fill that ends where the name ends, the ↗ its last
+       pixel, and the name in `.k-label` so it alone ellipsizes when it is
+       longer than its literal. The tooltip has the rest. */
     st.layer.append(el('a', {
       class: `mention mention-${hit.kind} doc-ref-chip`,
       href: hit.href,
       title: hit.title,
       // 2px over and under: a bracket's tail drops below the text box.
       style: `left:${r.left - base.left}px; top:${r.top - base.top - 2}px; width:${r.width}px; height:${r.height + 4}px;`,
-    }, el('span', { class: 'doc-ref-label' }, s.label ?? hit.label)));
+    }, el('span', { class: 'k k-rel doc-ref-label' }, el('span', { class: 'k-label' }, s.label ?? hit.label))));
   }
 }
 
@@ -9828,9 +9953,10 @@ async function resolveRefs(refs) {
       const ent = href.match(/\/e\/([^/]+)\/doc\.html$/);
       if (ent) href = `#/entity/${ent[1]}`;
       const kind = [...a.classList].find((c) => c.startsWith('mention-'))?.slice('mention-'.length) ?? 'entity';
-      // The anchor may carry collapsed preview segments (.mention-fields);
-      // the overlay chip's label is the name alone, never the hidden fields.
+      // The anchor may carry collapsed preview segments (.mention-fields)
+      // behind their caret; the overlay chip's label is the name alone.
       a.querySelector('.mention-fields')?.remove();
+      a.querySelector('.mention-caret')?.remove();
       // The chip reads as the record's name (F6): `Task#1 — Name` is the
       // export's label, and it stays on as the tooltip.
       refResolveCache.set(ref, { href, label: a.dataset.name ?? a.textContent, title: a.textContent, kind });
@@ -11274,7 +11400,10 @@ function wireSearchButton() {
 function openCommandK({ onPick = null, onDismiss = null, kinds = null, placeholder = null } = {}) {
   if ($('#cmdk-back')) return;
   let picked = false;
-  const dismiss = () => { back.remove(); if (!picked) onDismiss?.(); };
+  // The page is freed before a caller's own refocus runs (a reference
+  // command puts the cursor back in its editor), or that focus would land on
+  // an inert page.
+  const dismiss = () => { back.remove(); releasePage(); if (!picked) onDismiss?.(); };
   const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
   const input = el('input', {
     id: 'cmdk-input', autocomplete: 'off',
@@ -11286,6 +11415,7 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
   const pick = (hit) => {
     picked = true;
     back.remove();
+    releasePage();
     if (onPick) onPick(hit);
     else navigateToResult(hit);
   };
@@ -11331,11 +11461,13 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     else if (e.key === 'Enter' && hits.length) pick(hits[sel] ?? hits[0]);
     else if (e.key === 'Escape') dismiss();
   });
-  back.append(el('div', { id: 'cmdk' },
+  const box = el('div', { id: 'cmdk' },
     input,
     list,
-    el('div', { class: 'cmdk-foot' }, 'Enter opens top result • ⧉ copies a permalink • Esc closes')));
-  document.body.append(back);
+    el('div', { class: 'cmdk-foot' }, 'Enter opens top result • ⧉ copies a permalink • Esc closes'));
+  back.append(box);
+  // A dialog around the search box; the box keeps its own arrows and Escape.
+  holdPage(back, box, 'Search');
   input.focus();
 }
 
@@ -11760,7 +11892,10 @@ document.addEventListener('keydown', (e) => {
   // The grid's own rows only: a relation grid docked beside the table now
   // carries data-eid too (Issue #195), and its editors keep their keys.
   if (editing && !editing.closest('.wv-grid tr[data-eid]')) return;
-  if ($('#modal-back') || $('#cmdk-back')) return;
+  // Every dialog that holds the page keeps the key, the tray, the viewer
+  // and the phone nav drawer too: a tile, a toolbar button or a nav row
+  // focused there is not the grid.
+  if ($('#modal-back, #cmdk-back, #tray-back, #fsv-back, #app.nav-held')) return;
   const db = allTables().find((d) => d.id === state.route.dbId);
   if (!db) return;
   e.preventDefault();
@@ -12030,10 +12165,90 @@ function navMenuButton() {
   const btn = el('button', {
     class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button',
     title: 'Open navigation', 'aria-label': 'Open navigation', 'aria-controls': 'sidebar',
+    'aria-expanded': $('#app')?.classList.contains('nav-held') ? 'true' : 'false',
     onclick: () => $('#app').classList.add('nav-peek'),
   });
   btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
   return btn;
+}
+
+/* The phone drawer holds the page (Issue #262). Below 900px the sidebar is
+   a drawer, and below 600px the rail rides in it (wireNavCollapse: the
+   crumb bar's menu button opens the peek overlay over a scrim). Open there,
+   it holds the page the way holdPage holds it for a dialog: everything but
+   the drawer and the live corners (MODAL_LIVE) is inert, and Tab and
+   Shift+Tab cycle inside the drawer. holdPage itself does not fit, because
+   it inerts every child of <body> but its backdrop and the drawer lives
+   inside #app with the page it covers. The drawer opens and closes by the
+   `nav-peek` class, from the menu button, Escape, the scrim, its ‹, a link
+   followed in it, a hash change and the window growing past 900px, so the
+   hold follows the class rather than any one of those paths. A desktop
+   peek (a collapsed nav's hover overlay) is no drawer and holds nothing.
+   Focus goes into the drawer on open and back to the button that opened it
+   on close; `#app.nav-held` marks the hold for the keys that stand down. */
+const railFolds = matchMedia('(max-width: 600px)');
+function wireNavHold() {
+  const app = $('#app');
+  const rail = $('#ws-rail');
+  const sidebar = $('#sidebar');
+  if (!app || !rail || !sidebar) return;
+  const drawer = () => (railFolds.matches ? [rail, sidebar] : [sidebar]);
+  const stops = () => drawer().flatMap((n) => [...n.querySelectorAll(MODAL_STOPS)])
+    .filter((n) => n.getClientRects().length);
+  const expanded = (on) => { for (const b of document.querySelectorAll('.nav-menu')) b.setAttribute('aria-expanded', on ? 'true' : 'false'); };
+  let held = null;
+  const hold = () => {
+    const opener = document.activeElement;
+    const members = drawer();
+    const nodes = [];
+    for (const n of [...app.children, ...document.body.children]) {
+      if (n === app || members.includes(n) || n.inert || n.matches(MODAL_LIVE)) continue;
+      n.inert = true;
+      nodes.push(n);
+    }
+    held = { nodes, opener };
+    app.classList.add('nav-held');
+    expanded(true);
+    stops()[0]?.focus();
+  };
+  const release = () => {
+    const { nodes, opener } = held;
+    held = null;
+    const at = document.activeElement;
+    const inside = !at || at === document.body || rail.contains(at) || sidebar.contains(at);
+    app.classList.remove('nav-held');
+    for (const n of nodes) n.inert = false;
+    expanded(false);
+    if (!inside) return;
+    const back = opener?.isConnected && opener.closest?.('#main') ? opener : $('#main .nav-menu');
+    back?.focus();
+  };
+  new MutationObserver(() => {
+    const open = app.classList.contains('nav-peek') && narrowShell.matches;
+    if (open && !held) hold();
+    else if (!open && held) release();
+  }).observe(app, { attributes: true, attributeFilter: ['class'] });
+  // Capture, so Escape closes the drawer before the dock or the grid behind
+  // it hears the key. A dialog, a popover or a field inside the drawer owns
+  // its own keys.
+  addEventListener('keydown', (e) => {
+    if (!held || document.querySelector('#modal-back, #tray-back, #cmdk-back, .chip-pop, .dl-menu:not(.hidden)')) return;
+    const at = document.activeElement;
+    if (e.key === 'Escape') {
+      if (at?.matches('input, textarea, select') && drawer().some((n) => n.contains(at))) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      app.classList.remove('nav-peek');
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const list = stops();
+    if (!list.length) return;
+    e.preventDefault();
+    const i = list.indexOf(at);
+    const next = i === -1 ? (e.shiftKey ? -1 : 0) : i + (e.shiftKey ? -1 : 1);
+    list.at(next % list.length).focus();
+  }, true);
 }
 
 /* Theme toggle: auto (follow OS, live) → dark → light.
@@ -12379,3 +12594,4 @@ wireSearchButton();
 buildWsRail();
 wireWsNew();
 wireNavCollapse();
+wireNavHold();

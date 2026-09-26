@@ -6,6 +6,22 @@
    through it — one costume, so the tray's Sample and the grid cell can never
    disagree. */
 (function (root) {
+  /* One Intl.NumberFormat per set of options (Issues #211, #234, #278).
+     Building one costs tens of microseconds and formatting with it well
+     under one, while a table's values share a handful of costumes: one page
+     of 200 grid rows built 2,200 of them, and every request in flight waited
+     behind the page on the one event loop. Options that throw (a bad
+     currency code) are never kept, so they throw every time, as before.
+     ponytail: unbounded, keyed by the options; the distinct costumes in a
+     workspace are the bound. */
+  const NUMBER_FORMATS = new Map();
+  function numberFormat(o) {
+    const key = JSON.stringify(o);
+    let f = NUMBER_FORMATS.get(key);
+    if (!f) NUMBER_FORMATS.set(key, (f = new Intl.NumberFormat('en-US', o)));
+    return f;
+  }
+
   /* The number costume (#97): decimals, thousands separator, then one of
      percent / currency (ISO code through Intl — '$149.50', '€1,200') / a
      free-text unit appended ('12 days'). Used by number fields and by
@@ -20,13 +36,13 @@
       // 1.2M / 4.8K — a figure that would outgrow its column; composes with a currency.
       const o = { notation: 'compact', maximumFractionDigits: c.decimals ?? 1 };
       if (c.currency) { o.style = 'currency'; o.currency = c.currency; }
-      try { return new Intl.NumberFormat('en-US', o).format(n); } catch { /* fall through to the plain figure */ }
+      try { return numberFormat(o).format(n); } catch { /* fall through to the plain figure */ }
     }
     if (c.format === 'currency') {
       const currency = c.currency ?? 'USD';
       const digits = c.decimals ?? 2;
       try {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits, ...(c.accounting ? { currencySign: 'accounting' } : {}) }).format(n);
+        return numberFormat({ style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits, ...(c.accounting ? { currencySign: 'accounting' } : {}) }).format(n);
       } catch { return `${currency} ${n.toFixed(digits)}`; }
     }
     // Percent follows the spreadsheet convention (Issue #127): the stored
