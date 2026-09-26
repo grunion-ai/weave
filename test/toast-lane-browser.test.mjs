@@ -25,6 +25,8 @@ const s = await launch('toast lane', (weave) => {
   weave.state.meta.name = 'main';
   weave.createSpace({ name: 'S' });
   weave.createTable({ space: 'S', name: 'Task' });
+  // Enough tables that the nav scrolls under the sidebar foot at 900px.
+  for (let i = 1; i <= 30; i++) weave.createTable({ space: 'S', name: `Table ${i}` });
   scratch = new Weave();
   scratch.state.meta.name = 'scratch';
 }, { server: () => ({ workspaces: { scratch } }) });
@@ -123,6 +125,22 @@ if (s) {
       await page.evaluate(() => loadSchema());
       assert.equal(await page.locator('#sidebar .nav-health').count(), 1);
       assert.equal(await page.locator('#hub-foot .nav-health').count(), 0);
+    } finally { await page.close(); }
+  });
+
+  test('the sidebar foot is solid to the bottom edge: no nav row shows under it', async () => {
+    const page = await open(1440, 900);
+    try {
+      const g = await page.evaluate(() => {
+        const side = document.querySelector('#sidebar').getBoundingClientRect();
+        const foot = document.querySelector('.nav-stats').getBoundingClientRect();
+        const below = document.elementFromPoint(foot.x + 40, side.bottom - 3);
+        return { footBottom: foot.bottom, sideBottom: side.bottom, scrolls: document.querySelector('#sidebar').scrollHeight > document.querySelector('#sidebar').clientHeight,
+          below: below?.closest('.nav-stats') ? 'foot' : (below?.className || below?.tagName) };
+      });
+      assert.ok(g.scrolls, 'the seed makes the nav scroll');
+      assert.ok(g.footBottom >= g.sideBottom - 0.5, `the foot reaches the sidebar's bottom edge (${g.footBottom} vs ${g.sideBottom})`);
+      assert.equal(g.below, 'foot', 'the last pixels of the sidebar belong to the foot, not a nav row');
     } finally { await page.close(); }
   });
 

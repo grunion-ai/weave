@@ -71,6 +71,11 @@ test('the strip pins to the sidebar bottom and style.css dresses it', () => {
   assert.ok(APP.includes("$('#sidebar').append(stats)"), 'the strip is a sidebar sibling after #nav, not a foot child');
   const CSS = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   const rule = CSS.match(/\.nav-stats\s*{([^}]*)}/)?.[1] ?? '';
-  assert.ok(/position:\s*sticky/.test(rule) && /bottom:\s*0/.test(rule), 'sticky at the bottom edge');
+  assert.ok(/position:\s*sticky/.test(rule), 'sticky');
+  // Its ground reaches past the sidebar's 14px bottom padding, so no nav row
+  // shows in that band (Issue #380): bottom and padding cancel the padding.
+  const pad = CSS.match(/#sidebar\s*{[^}]*padding:\s*(\d+)px/)[1];
+  assert.match(rule, new RegExp(`bottom:\\s*-${pad}px`), 'stuck to the sidebar\'s outer bottom edge');
+  assert.ok(Number(rule.match(/padding:\s*\d+px \d+px (\d+)px/)[1]) >= Number(pad), 'and padded over the band it covers');
   assert.ok(/margin-top:\s*auto/.test(rule), 'pushed to the bottom when the nav is short');
 });
