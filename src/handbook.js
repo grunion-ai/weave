@@ -1024,17 +1024,21 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 
 | Control | Where | What it does |
 | --- | --- | --- |
-| Drag a header | table view | reorders columns, stored on the schema for everyone |
-| Drag a header's right edge | table view | sets a width — the column follows the pointer and stops at its own label |
-| Double-click that edge | table view | fits the column to its content, no cutoff |
-| Click a header | table view | opens the field tray — rename, retype, reconfigure |
+| Drag a header | table view | moves the column: a line marks where it lands, and the view keeps the order. Drop it across the seam beside **#** to freeze it; drop a frozen one back across to unfreeze it |
+| Alt+Shift+\u2190 / \u2192 on a focused header | table view | moves the field one place. Crossing the seam freezes or unfreezes it where it stands |
+| Drag a header's right edge | table view | sets the width. Only that column changes; the columns to its right slide over, and a readout shows the width and the change. It stops at its own label |
+| Alt+\u2190 / \u2192 on a focused header | table view | narrows or widens the column by 8px, down to its label |
+| Double-click that edge | table view | fits the column to its longest value, up to the type's maximum and never under its label |
+| Click a header, or Return on a focused one | table view | opens the field tray to rename, retype or reconfigure. The click that ends a drag or a resize opens nothing |
 | 👁 | view toolbar | show or hide any field, the system columns, and deleted rows |
 | Drag the grip | entity page | reorders fields; the table's columns follow |
 | Fold FIELDS | entity page | the caret beside FIELDS folds the value rows into one line of label · value chips, so a long field list stops pushing the documents down; the chips still edit in place, and the fold is remembered per row in this browser |
 
 The **#** column takes none of this. It is frozen to the grid's left edge, so a wide table scrolls sideways underneath it and the row keeps its id and its \`\u2197\` permalink whatever column you have read your way out to; the selection checkbox travels with it. No drag moves it, and no field can be ordered ahead of it.
 
-Two facts about width decide how a table reads: **an unset column caps at 260px and ellipsises**, and **a set width is a floor as well as a ceiling** (60px minimum, and never narrower than the header's label), so the column holds its width in a grid wider than its card. Set one only where the default clips something a reader needs.
+Fields dropped across the seam beside **#** freeze with it, and stay put while the rest of the grid scrolls. The frozen zone stops at 60% of the visible grid: a drop past that lands on the scrolling side, and a narrow window draws fewer fields frozen without forgetting the rest. The hairline at the seam shows only while something scrolls under it.
+
+Every field type opens at a default width: Name 220px, text, links and multi-selects 180, long text 280, selects and workflows 124, relations 136, dates 112, numbers 88, currency 104, checkboxes 56. A header label never clips: a label longer than its default widens that column, and no drag, nudge or fit goes under it. Widths belong to the view, so each view keeps its own. Showing, hiding, adding or removing a field never resizes another one; the neighbours slide, and the space at the right of the grid takes up the difference. A hidden field keeps its width and its place for when it comes back.
 
 The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record.
 
@@ -1900,7 +1904,7 @@ A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` l
 
 ## For agents
 
-One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the strip in order, and the first view is the default; \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
+One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the strip in order, and the first view is the default; \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); a read carries both only when they are set. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
   },
   {
     name: 'Chip and card anatomy',

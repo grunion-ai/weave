@@ -15,6 +15,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
+// Feature #233: every field keeps its default width (Name 220, Description 280, …), so this table fits its card from 1600px, not 1280.
+const FIT = { width: 1600, height: 720 };
+
 let tasks, projects, alpha, seeded;
 const s = await launch('new record focus', (weave) => {
   weave.createSpace({ name: 'Work' });
@@ -61,7 +64,7 @@ if (s) {
 
   for (const theme of ['light', 'dark']) {
     test(`${theme}: + New record on the table page lands the caret in the new row's Name cell`, async () => {
-      const page = await browser.newPage();
+      const page = await browser.newPage({ viewport: FIT });
       await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector(`tr[data-eid="${seeded[0]}"] td[data-field="Name"] input`);
       await setTheme(page, theme);
@@ -88,7 +91,7 @@ if (s) {
   }
 
   test('Shift+Enter from a row commits it and lands in the next new row', async () => {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: FIT });
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
     const first = seeded[0];
     await page.waitForSelector(`tr[data-eid="${first}"] td[data-field="Name"] input`);
@@ -123,7 +126,7 @@ if (s) {
   });
 
   test('+ New table on the space page creates the table here, not a row in the last table visited', async () => {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: FIT });
     // Visit a user table first: the old add button called whatever inlineAdd
     // that page had left behind.
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
@@ -155,7 +158,7 @@ if (s) {
   });
 
   test('+ New on a relation grid of the entity page creates, links and lands in the new row', async () => {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: FIT });
     await page.goto(`${base}/#/entity/${alpha.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.related-block .add-entity-btn');
 

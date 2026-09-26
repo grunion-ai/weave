@@ -21,6 +21,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
+// Feature #233: every field keeps its default width (Name 220, Description 280, …), so this table fits its card from 1600px, not 1280.
+const FIT = { width: 1600, height: 720 };
+
 let tasks, wide, projects, alpha, seeded;
 const s = await launch('sticky add row', (weave) => {
   weave.createSpace({ name: 'Work' });
@@ -52,7 +55,7 @@ if (s) {
   };
 
   test('the + New row is on screen from the top of a 200-row table, once', async () => {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: FIT });
     await openTasks(page);
     assert.equal(await page.evaluate(() => scrollY), 0, 'the page opens at the top');
     assert.equal(await page.locator('.wv-grid .add-entity-btn').count(), 1, 'one foot button');
@@ -73,7 +76,7 @@ if (s) {
   });
 
   test('at the end of the table the foot rests in its natural place, the last row of the grid', async () => {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: FIT });
     await openTasks(page);
     await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
     await page.waitForTimeout(150);
@@ -89,7 +92,7 @@ if (s) {
   });
 
   test('clicking it creates the row, focuses its Name cell, and the row is not under the foot', async () => {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: FIT });
     await openTasks(page);
     await page.click('.wv-grid .add-entity-btn');
     await page.waitForFunction((ids) => {
@@ -113,7 +116,7 @@ if (s) {
   });
 
   test('a grid wider than its card keeps its horizontal scroll', async () => {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: FIT });
     await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid .add-entity-btn');
     await page.waitForTimeout(300);
@@ -130,7 +133,7 @@ if (s) {
   });
 
   test('the related-section foot on an entity page stays in the flow', async () => {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: FIT });
     await page.goto(`${base}/#/entity/${alpha.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.related-section .add-entity-row td');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.related-section .add-entity-row td')).position), 'static');

@@ -84,7 +84,7 @@ human.
 | Documents & comments | `weave_get_doc`, `weave_set_doc`, `weave_doc_revisions`, `weave_doc_restore`, `weave_add_comment`, `weave_delete_comment` |
 | Search & data | `weave_search`, `weave_export_csv`, `weave_import_csv`, `weave_export_json`, `weave_import_json` |
 | Files | `weave_attach_file`, `weave_files` |
-| Table views | `weave_table_view` — the tabs over one table's grid: which columns show, in what order, the state filter, the sort, and the default. One tool reads and writes them; see [Views over a table](#views-over-a-table) |
+| Table views | `weave_table_view` — the tabs over one table's grid: which columns show, in what order and how wide, how many are frozen beside #, the state filter, the sort, and the default. One tool reads and writes them; see [Views over a table](#views-over-a-table) |
 | Share pages | `weave_views` — Feature #17's saved multi-table pages with share links (not table views) |
 | Automations | `weave_create_automation`, `weave_automations` |
 | History | `weave_activity`, `weave_audit` |
@@ -166,14 +166,20 @@ weave_table_view {view: "Issue/Open bugs", move: {field: "Status", before: "Name
 - `fields` is the visible columns in order: listed shows, unlisted hides.
   `show` / `hide` take names and `move` takes `{field, before|after}` (or a
   list of them), so a wide table never has to be resent. `show` puts a field
-  back at its schema position.
+  back where it was hidden from (its schema position when that neighbour is
+  gone).
+- `widths` (`{Name: 240}`) sets column widths by name, merged into the
+  view's; `null` clears one. `frozen` is how many leading fields stay frozen
+  beside # (0, the default, freezes only #). A read carries either only
+  when it is set (Feature #233).
 - `filters` (`{WorkflowOrToggleField: [states]}`) and `sort`
   (`[{field, dir}]`) are `weave_update_table`'s shapes and validators.
 - `default: true` stars a view (the default is the first view); `position`
   sets its place in the strip; `name` renames; `delete: true` removes it.
 - The same verb is `weave table view Issue/Open --fields Name,Status`
   (`--show`, `--hide`, `--move F --before G`, `--filters JSON`, `--sort JSON`,
-  `--default`, `--position N`, `--from V`, `--name N`, `--delete`) and
+  `--widths JSON`, `--frozen N`, `--default`, `--position N`, `--from V`,
+  `--name N`, `--delete`) and
   `GET` / `PATCH` / `DELETE /api/tables/:table/views/:view`
   (`GET /api/tables/:table/views` lists). `weave_schema` emits every table's
   `views` and `weave_apply_schema` round-trips them.

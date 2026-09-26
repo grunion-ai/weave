@@ -133,16 +133,28 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the # column takes no drag: not draggable, and a drop on it goes nowhere', async () => {
+  test('the # column takes no drag, and nothing lands before it: a drop on # freezes the field just after it', async () => {
     const db = ownTable();
     const page = await openGrid(db);
     try {
       const pidDraggable = await page.$eval('.wv-grid thead .pid-head', (h) => h.draggable);
       assert.equal(pidDraggable, false, 'the # header is not a drag handle');
+      // Dragging # itself moves nothing.
+      const pid = await page.locator('.wv-grid thead .pid-head').boundingBox();
+      await page.mouse.move(pid.x + pid.width / 2, pid.y + pid.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(pid.x + 300, pid.y + pid.height / 2, { steps: 5 });
+      await page.mouse.up();
+      await page.waitForTimeout(150);
+      assertShape(await gridShape(page), BASE, 'a drag on # moves nothing');
+      // Feature #233: # is the frozen zone's seam, so a field dropped across
+      // it freezes — landing AFTER #, never before it.
       await dragHeader(page, 'Batch', '#');
-      assertShape(await gridShape(page), BASE, 'unchanged');
-      assert.deepEqual(orderOf(db),
-        BASE, 'the view untouched');
+      const expected = ['Batch', 'Name', 'Description', 'Vendor', 'Price', 'Stage'];
+      assertShape(await gridShape(page), expected, '# stays first');
+      await page.waitForTimeout(150);
+      assert.deepEqual(orderOf(db), expected, 'the view saved the move');
+      assert.equal(weave.tableView(db).views[0].frozen, 1, 'and the freeze');
     } finally { await page.close(); }
   });
 }

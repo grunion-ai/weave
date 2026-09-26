@@ -677,7 +677,8 @@ async function main() {
         const patch = {};
         for (const k of ['fields', 'show', 'hide']) if (flags[k] != null && flags[k] !== true) patch[k] = splitList(flags[k]);
         if (flags.move != null) patch.move = { field: flags.move, ...(flags.before != null ? { before: flags.before } : { after: flags.after }) };
-        for (const k of ['filters', 'sort']) if (flags[k] != null) patch[k] = parseJsonFlag(k);
+        for (const k of ['filters', 'sort', 'widths']) if (flags[k] != null) patch[k] = parseJsonFlag(k);
+        if (flags.frozen != null) patch.frozen = Number(flags.frozen);
         if (flags.name != null) patch.name = flags.name;
         if (flags.from != null) patch.from = flags.from;
         if (flags.position != null) patch.position = Number(flags.position);

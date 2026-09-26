@@ -197,7 +197,9 @@ test('full-width grid rows derive their span from one column count', () => {
 });
 
 test('grid create controls are styled', () => {
-  assert.equal(rulesFor('.wv-grid th.add-field-head').width, '1%', 'the "+" cell must not eat column width');
+  // Feature #233: the "+" column is the one column without a width, so it
+  // takes the card's slack and no field is ever stretched to fill it.
+  assert.equal(rulesFor('.wv-grid th.add-field-head').width, undefined, 'the "+" cell takes the slack, not a share');
   assert.ok(rulesFor('.add-field-btn').cursor);
   assert.ok(rulesFor('.add-entity-btn').width, 'the new-entity row spans the grid');
 });
@@ -592,8 +594,8 @@ test('every column header carries a field menu; a header click edits, sorting li
   // moved into the ⋮ menu (asc / desc / clear) so it is still one click away.
   const head = fnBody('renderTable');
   assert.match(head, /fieldMenuButton\(/, 'each column th mounts the field menu');
-  assert.match(head, /onclick: \(e\) => \{ if \(!e\.currentTarget\.dataset\.resized\) editFieldDialog\(db, colField\(db, c\)\); \}/,
-    'the header click opens the field editor — unless it is the click a resize gesture leaves behind (Issue #98)');
+  assert.match(head, /onclick: \(e\) => \{ const th = e\.currentTarget; if \(!th\.dataset\.resized && !th\.dataset\.gesture\) editFieldDialog\(db, colField\(db, c\)\); \}/,
+    'the header click opens the field editor — unless it is the click a resize or reorder gesture leaves behind (Issue #98, Feature #233)');
   assert.match(head, /onSort: \(dir\) =>/, 'the menu is handed the sort control');
   const menu = fnBody('fieldMenuButton');
   assert.match(menu, /showPopover\(/, 'the menu reuses the chip popover, not a new overlay');
@@ -724,16 +726,20 @@ test('column reorder is persisted as fieldOrder, not page state', () => {
   assert.doesNotMatch(menu, /reorderField\(/, 'and no wiring left behind for one');
 });
 
-test('a column header is a drag handle for reorder', () => {
+test('a column header is a drag handle for reorder (Feature #233: pointer events, one insertion line)', () => {
   const head = fnBody('renderTable');
-  assert.match(head, /draggable: 'true'/, 'the th must be draggable');
-  for (const ev of ['dragstart', 'dragover', 'drop']) {
-    assert.match(head, new RegExp(ev), `the th must handle ${ev}`);
-  }
-  assert.match(head, /reorderField\(/, 'a drop commits through the same schema write as the menu');
-  const drop = rulesFor('.wv-grid th.drop-target');
-  assert.ok(drop['box-shadow'] || drop['border-left'] || drop.outline,
-    'the drop target needs a visible insertion cue');
+  // A pointer drag, not HTML5 drag and drop: the ghost, the line and the
+  // auto-scroll are the grid's own, and Safari's native drag no longer
+  // fights the resize grip (Issue #46).
+  assert.doesNotMatch(head, /draggable: 'true'/, 'the th is not a native drag source');
+  assert.match(head, /onpointerdown: \(e\) => headPointerDown\(e, c\)/, 'the header starts the drag');
+  assert.match(head, /onkeydown: \(e\) => headKey\(e, c\)/, 'and takes the keyboard moves');
+  assert.match(head, /CR\.target\(/, 'the drop point comes from the pure core');
+  assert.match(head, /CR\.plan\(/, 'and so does what the drop does');
+  assert.match(head, /gridConfigWrite\(db, null, patch\)/, 'a view grid saves the move into its view');
+  const line = rulesFor('.wv-col-insert');
+  assert.ok(line.background, 'the drop point is a visible line');
+  assert.equal(rulesFor('.wv-grid th.drop-target').background, undefined, 'and never a tint on the displaced header');
 });
 
 test('the field menu affordance does not squeeze the column label', () => {
@@ -779,34 +785,33 @@ test('a hovered header is tinted so the menu has a visible owner', () => {
 
 test('a stored column width reaches both the header and its cells', () => {
   const head = fnBody('renderTable');
-  assert.match(head, /f\.width/, 'the header applies the field width');
-  assert.match(head, /columnWidthStyle\(f\.width\)/,
-    'cells need a matching max-width or the 260px cap still ellipsises them');
+  // Feature #233: the view's width, else the field's legacy schema width,
+  // else the type default — never under the rendered label.
+  assert.match(head, /db\.view\?\.widths\?\.\[c\] \?\? colField\(db, c\)\?\.width/, 'the view width wins, the schema width is the fallback');
+  assert.match(head, /CR\.layout\(/, 'the default and the floor come from the pure core');
   // Kyle, 2026-08-24: a resized column snapped back. Auto table layout drops a
-  // bare `width` the moment the grid is wider than its card, so the stored
-  // width has to be a floor too, on the header and on every cell.
-  const style = APP.match(/const columnWidthStyle = .*/)?.[0] ?? '';
-  assert.match(style, /min-width:/, 'a stored width must hold the column open');
-  assert.match(style, /max-width:/, 'and still cap it so cells ellipsise');
-  const apply = fnBody('applyColumnWidth');
-  assert.match(apply, /minWidth/, 'the in-place commit sets the same floor');
+  // bare `width` the moment the grid is wider than its card, so the width has
+  // to be a floor and a cap too, on the header and on every cell — one rule
+  // in the grid's layout sheet reaches both, and rows built later.
+  assert.match(head, /width:\$\{w\}px;min-width:\$\{w\}px;max-width:\$\{w\}px/, 'width, min-width and max-width together');
+  assert.match(head, /:not\(\[colspan\]\)/, 'a spanning row takes no column width');
 });
 
 test('a resize grip commits once, on release', () => {
   const grip = fnBody('columnResizeGrip');
   assert.match(grip, /pointerdown/, 'the grip drags');
   assert.match(grip, /pointermove/, 'and tracks the pointer');
-  assert.match(grip, /setColumnWidth\(/, 'and commits through one writer');
-  const commits = [...grip.matchAll(/setColumnWidth\(/g)];
+  assert.match(grip, /grid\.commit\(/, 'and commits through one writer');
+  const commits = [...grip.matchAll(/grid\.commit\(/g)];
   assert.equal(commits.length, 2, 'exactly two commits: release and auto-fit — never per move');
   assert.match(grip, /dblclick/, 'double-click auto-fits');
   assert.match(grip, /stopPropagation/, 'grabbing the grip must not sort the column');
   // Issues #98, #100, #160 (2026-09-05): the drag paints header AND cells on
   // every move through the same helper the commit uses, the floor is the
   // label's own width, and the header is marked so the gesture's click is inert.
-  assert.match(grip, /paintColumnWidth\(th, width\)/, 'every move paints the column the way release will');
-  assert.match(grip, /WeaveColumnResize\.floor\(/, 'the floor is measured from the label');
-  assert.match(grip, /WeaveColumnResize\.width\(/, 'one width rule, shared with the pure core');
+  assert.match(grip, /grid\.paint\(f\.name, width\)/, 'every move paints the column the way release will');
+  assert.match(fnBody('renderTable'), /CR\.floor\(\{\s*label: label\.getBoundingClientRect\(\)\.width/, 'the floor is measured from the rendered label');
+  assert.match(grip, /CR\.width\(/, 'one width rule, shared with the pure core');
   assert.match(grip, /th\.dataset\.resized = '1'/, 'the header wears the gesture mark');
   assert.match(grip, /delete th\.dataset\.resized/, 'and sheds it on the next press');
   assert.match(readFileSync(join(ROOT, 'public/index.html'), 'utf8'), /<script src="\/column-resize\.js" defer><\/script>/, 'the pure core is loaded');
@@ -816,11 +821,13 @@ test('double-click fits the column to its content (measured), a schema write lik
   // Superseded 2026-08-23 (Kyle): the browser's auto width still cut text
   // off; fit is now measured on the cells and written like a drag.
   const grip = fnBody('columnResizeGrip');
-  assert.match(grip, /setColumnWidth\(db, f, fitColumnWidth\(th\), th\)/,
-    'double-click writes the measured fit');
-  const writer = fnBody('setColumnWidth');
-  assert.match(writer, /'PATCH'/, 'width is a schema write');
-  assert.match(writer, /config: \{ width/, 'through the field config');
+  assert.match(grip, /grid\.commit\(f\.name, CR\.fit\(\{ content: fitColumnWidth\(th\), floor: grid\.floor\(f\.name\), max: CR\.maxWidth\(f\) \}\)\)/,
+    'double-click writes the measured fit, between the label floor and the type cap');
+  // Feature #233: a view grid writes the width into its view; a registry
+  // grid, which has no views, keeps the field's schema width.
+  const head = fnBody('renderTable');
+  assert.match(head, /gridConfigWrite\(db, null, \{ widths: \{ \[c\]: w \} \}\)/, 'a view width is a view write');
+  assert.match(head, /config: \{ width: f\.width \}/, 'a registry grid falls back to the field config');
 });
 
 test('a fit measures the content, not the box the column already has', () => {
@@ -1510,22 +1517,23 @@ test('a select clears through its own empty option; a state cannot be emptied', 
 
 test('resize and reorder commit in place — the grid never tears down mid-gesture', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
-  const resize = app.slice(app.indexOf('function paintColumnWidth'), app.indexOf('function fieldMenuButton'));
-  assert.ok(!resize.includes('showDatabase(db.id);\n') || resize.includes('catch'), 'redraw only on failure');
-  assert.ok(resize.includes('applyColumnWidth(th, width)'), 'the header keeps its width locally');
-  assert.ok(resize.includes('applyColumnWidth(cell, width)'), 'cells follow without a repaint');
-  assert.ok(resize.includes('if (th) paintColumnWidth(th, width)'), 'the commit paints through the same helper the drag paints with (Issue #160)');
-  const apply = fnBody('applyColumnWidth');
-  assert.ok(apply.includes('style.width') && apply.includes('style.maxWidth'),
-    'and the width is written as inline style, not a redraw');
+  // Feature #233: widths and the frozen zone paint through one function, the
+  // grid's layout sheet, during a drag and on the commit alike (Issue #160).
+  const head = fnBody('renderTable');
+  const commit = head.slice(head.indexOf('const commitWidth'), head.indexOf('// What the resize grip needs'));
+  assert.ok(commit.includes('paintLayout()'), 'the commit paints through the same function the drag paints with');
+  assert.ok(!commit.includes('showDatabase(db.id') || commit.includes('catch'), 'redraw only on failure');
+  const order = head.slice(head.indexOf('const applyOrder'), head.indexOf('const columnDrag'));
+  assert.ok(order.includes('anchorCell.after(cell)'), 'a grid column moves as DOM cells, not a redraw');
+  assert.ok(order.includes('built.values()'), 'rows built this draw but off screen move too');
+  assert.ok(order.includes('cols = next'), 'rows built later, and the next draw, read the new order');
+  assert.ok(order.includes('showDatabase(db.id, state.route?.view); // the move did not hold'), 'failure falls back to truth');
+  // The entity page's field blocks still reorder through reorderField.
   const rStart = app.indexOf('async function reorderField');
   const reorder = app.slice(rStart, rStart + 2600);
   assert.ok(reorder.includes('insertAdjacentElement'), 'columns move as DOM cells, not a redraw');
   assert.ok(reorder.includes('db.fields.splice'), 'the local schema order follows the move');
   assert.ok(reorder.includes('onFail(); // the move did not hold'), 'failure falls back to truth');
-  // The resize grip hands its th through so the local commit can find cells.
-  assert.ok(app.includes('setColumnWidth(db, f, width, th)'));
-  assert.ok(app.includes('setColumnWidth(db, f, fitColumnWidth(th), th)'));
 });
 
 /* ---------- unified field dialog (A+E, 2026-08-22) ---------- */
@@ -1693,7 +1701,7 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
   // the table at click time instead of a set captured at build time.
   assert.match(eye, /new Set\(liveTable\(\)\.hiddenFields \?\? \[\]\)/, 'the hidden set is read at click time');
   assert.match(eye, /new Set\(liveTable\(\)\.systemFields \?\? \[\]\)/, 'so is the system set');
-  assert.match(fnBody('renderTable'), /const cols = visibleCols\(db\)/, 'the grid honours the hidden set');
+  assert.match(fnBody('renderTable'), /let cols = visibleCols\(db\)/, 'the grid honours the hidden set');
   assert.match(fnBody('reorderField'), /const cols = visibleCols\(db\)/, 'reorder mirrors the same columns');
   assert.doesNotMatch(APP, /row\('⚙ Manage fields'/, 'the Manage fields row is gone');
   assert.doesNotMatch(fnBody('addFieldMenuButton'), /showPopover/, 'the + opens the tray, not a menu');

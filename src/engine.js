@@ -761,6 +761,22 @@ const parseSort = (text) => String(text ?? '').split(',').map((x) => x.trim()).f
 
 // Narrower than this and a column can hold neither a chip nor a resize grip.
 const MIN_COLUMN_WIDTH = 60;
+/* A view's column widths (Feature #233). The grid never paints a header
+   under its own label, so the engine only refuses nonsense: the mockup's
+   checkbox default (56) is under the legacy field floor above. */
+const VIEW_MIN_WIDTH = 40;
+const VIEW_MAX_WIDTH = 4000;
+const formatWidths = (widths) => Object.entries(widths ?? {}).map(([n, px]) => `${n} ${px}`).join(', ');
+function parseWidths(text) {
+  const out = {};
+  for (const part of String(text ?? '').split(',').map((x) => x.trim()).filter(Boolean)) {
+    const m = part.match(/^(.+?)\s+(\S+)$/);
+    const px = m ? Number(m[2]) : NaN;
+    if (!m || !Number.isFinite(px)) throw new WeaveError(`Widths reads 'Name 240, Due 112' — a field name, a space, its width in pixels; got '${part}'`, 'invalid');
+    out[m[1]] = px;
+  }
+  return out;
+}
 
 /* A field's description (Issue #209) is plain text, trimmed; blank means
    none. Anything but a string is refused rather than stringified. */
@@ -1651,7 +1667,12 @@ export class Weave {
       ...structuredClone({ description: src.description, icon: src.icon, noun: src.noun,
         systemFields: src.systemFields, hideRollups: src.hideRollups }),
       // The copy keeps the source's views, re-pointed at its own fields.
-      tableViews: (src.tableViews ?? []).map((v) => ({ ...structuredClone(v), id: uuid(), fields: v.fields.map(mapId) })),
+      tableViews: (src.tableViews ?? []).map((v) => {
+        const copy = { ...structuredClone(v), id: uuid(), fields: v.fields.map(mapId) };
+        if (copy.widths) copy.widths = Object.fromEntries(Object.entries(copy.widths).map(([k, px]) => [mapId(k), px]));
+        delete copy.parked;
+        return copy;
+      }),
       id: newId,
       spaceId: src.spaceId,
       name,
@@ -1893,7 +1914,9 @@ export class Weave {
      signal), `default: true` (the old spelling of position 0), `name`
      (rename), `from` (the view a new one copies — every field, no filter,
      no sort when omitted), `delete: true` (never the last view: a table
-     keeps one). Blank, the raw table, left the strip on 2026-09-25; it is
+     keeps one), `widths` ({field: px}, merged; null clears one) and
+     `frozen` (how many leading fields stay frozen beside #; Feature #233).
+     Blank, the raw table, left the strip on 2026-09-25; it is
      still readable as 'Issue/blank' so old links and agents keep working,
      never written, never stored. */
   tableView(ref, patch = null) {
@@ -1955,6 +1978,12 @@ export class Weave {
     out.fields = v.fields.filter((id) => db.fields[id]).map((id) => db.fields[id].name);
     if (v.filters) out.filters = structuredClone(v.filters);
     if (v.sort) out.sort = structuredClone(v.sort);
+    // Feature #233: column widths by name (a hidden field keeps its width)
+    // and how many leading fields stay frozen beside #. Absent when unset.
+    const widths = {};
+    for (const [id, px] of Object.entries(v.widths ?? {})) if (db.fields[id]) widths[db.fields[id].name] = px;
+    if (Object.keys(widths).length) out.widths = widths;
+    if (v.frozen) out.frozen = v.frozen;
     return out;
   }
 
@@ -1973,7 +2002,7 @@ export class Weave {
      at the end, so a refused write leaves the view (or its absence) as it
      was. */
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete', 'widths', 'frozen'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -2009,9 +2038,32 @@ export class Weave {
       const ids = patch.fields.map(fid);
       if (new Set(ids).size !== ids.length) throw new WeaveError('fields names each field once', 'invalid');
       next.fields = ids;
+      for (const id of ids) if (next.parked) delete next.parked[id];
     }
-    for (const n of list(patch.hide)) { const id = fid(n); next.fields = next.fields.filter((x) => x !== id); }
-    for (const n of list(patch.show)) { const id = fid(n); if (!next.fields.includes(id)) showBySchema(db, next.fields, id); }
+    /* A hidden field keeps its place (Feature #233, Kyle's rule 2): hide
+       notes the field it followed and whether it was frozen, and show puts
+       it back there — the schema position is the fallback when that
+       neighbour is gone. The zone keeps its other members either way. */
+    for (const n of list(patch.hide)) {
+      const id = fid(n);
+      const k = next.fields.indexOf(id);
+      if (k < 0) continue;
+      const fz = next.frozen ?? 0;
+      (next.parked ??= {})[id] = { after: k > 0 ? next.fields[k - 1] : '', frozen: k < fz };
+      next.fields.splice(k, 1);
+      if (k < fz) next.frozen = fz - 1;
+    }
+    for (const n of list(patch.show)) {
+      const id = fid(n);
+      if (next.fields.includes(id)) continue;
+      const p = next.parked?.[id];
+      if (next.parked) delete next.parked[id];
+      const fz = next.frozen ?? 0;
+      let at = p && (p.after === '' || next.fields.includes(p.after)) ? (p.after === '' ? 0 : next.fields.indexOf(p.after) + 1) : null;
+      if (at == null) { showBySchema(db, next.fields, id); at = next.fields.indexOf(id); next.fields.splice(at, 1); }
+      if (p?.frozen) { at = Math.min(at, fz); next.frozen = fz + 1; } else at = Math.max(at, fz);
+      next.fields.splice(at, 0, id);
+    }
     for (const m of list(patch.move)) {
       if (!m || typeof m !== 'object' || m.field == null || (m.before == null) === (m.after == null)) {
         throw new WeaveError('move is {field, before: <field>} or {field, after: <field>}', 'invalid');
@@ -2023,7 +2075,29 @@ export class Weave {
       next.fields = next.fields.filter((x) => x !== id);
       const k = next.fields.indexOf(anchor);
       next.fields.splice(m.before != null ? k : k + 1, 0, id);
+      if (next.parked) delete next.parked[id];
     }
+    if (patch.widths != null) {
+      if (typeof patch.widths !== 'object' || Array.isArray(patch.widths)) throw new WeaveError('widths is an object of { fieldName: pixels } — null clears one', 'invalid');
+      const widths = { ...(next.widths ?? {}) };
+      for (const [n, px] of Object.entries(patch.widths)) {
+        const id = fid(n);
+        if (px === null) { delete widths[id]; continue; }
+        if (typeof px !== 'number' || !Number.isFinite(px) || px < VIEW_MIN_WIDTH || px > VIEW_MAX_WIDTH) {
+          throw new WeaveError(`A column width is a number of pixels from ${VIEW_MIN_WIDTH} to ${VIEW_MAX_WIDTH} — got ${JSON.stringify(px)} for '${n}'`, 'invalid');
+        }
+        widths[id] = Math.round(px);
+      }
+      if (Object.keys(widths).length) next.widths = widths; else delete next.widths;
+    }
+    if (patch.frozen != null) {
+      if (!Number.isInteger(patch.frozen) || patch.frozen < 0) throw new WeaveError('frozen is a whole number: how many of the leading fields stay frozen beside # (0 — only #)', 'invalid');
+      if (patch.frozen > next.fields.length) throw new WeaveError(`frozen is at most the ${next.fields.length} fields this view shows`, 'invalid');
+      next.frozen = patch.frozen;
+    }
+    if ((next.frozen ?? 0) > next.fields.length) next.frozen = next.fields.length;
+    if (!next.frozen) delete next.frozen;
+    if (next.parked && !Object.keys(next.parked).length) delete next.parked;
     if (patch.filters != null) { const f = this.#checkFilters(db, patch.filters); if (f) next.filters = f; else delete next.filters; }
     if (patch.sort != null) { const s = this.#checkSort(db, patch.sort); if (s) next.sort = s; else delete next.sort; }
     if (patch.default === false && i === 0) throw new WeaveError(`'${next.name}' is the default because it is first — move another view to position 0 instead`, 'invalid');
@@ -2479,7 +2553,9 @@ export class Weave {
       }
       if (vDoc.filters) out.filters = Object.fromEntries(Object.entries(vDoc.filters).filter(([k]) => has(k)));
       if (vDoc.sort) out.sort = vDoc.sort.filter((s) => has(s.field));
-      for (const k of ['filters', 'sort']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
+      if (vDoc.widths) out.widths = Object.fromEntries(Object.entries(vDoc.widths).filter(([k]) => has(k)));
+      if (vDoc.frozen) out.frozen = vDoc.frozen;
+      for (const k of ['filters', 'sort', 'widths']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
       return out;
     };
     /* Writes land before deletions, because a table keeps at least one view:
@@ -2502,6 +2578,11 @@ export class Weave {
       if (vDoc.fields && JSON.stringify(vDoc.fields) !== JSON.stringify(have?.fields)) patch.fields = vDoc.fields;
       if (JSON.stringify(vDoc.filters ?? null) !== JSON.stringify(have?.filters ?? null)) patch.filters = vDoc.filters ?? {};
       if (JSON.stringify(vDoc.sort ?? null) !== JSON.stringify(have?.sort ?? null)) patch.sort = vDoc.sort ?? [];
+      // The document's widths are the whole set: a name it drops is unsized.
+      if (JSON.stringify(vDoc.widths ?? {}) !== JSON.stringify(have?.widths ?? {})) {
+        patch.widths = { ...Object.fromEntries(Object.keys(have?.widths ?? {}).map((n) => [n, null])), ...(vDoc.widths ?? {}) };
+      }
+      if ((vDoc.frozen ?? 0) !== (have?.frozen ?? 0)) patch.frozen = vDoc.frozen ?? 0;
       if (!Object.keys(patch).length) continue;
       act(have ? 'update-view' : 'create-view', `${q}/${vDoc.name}`, () => this.tableView(`${db.id}/${vDoc.name}`, patch));
     }
@@ -3360,7 +3441,7 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
-    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number']]) {
+    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text']]) {
       if (!this.#sysField(viewsT, n)) this.addField(viewsT.id, { name: n, type, ...(type === 'number' ? { config: { decimals: 0 } } : {}) }).system = true;
     }
     /* Workflows (Kyle, 2026-08-24): a system table whose rows are DATA —
@@ -3598,6 +3679,9 @@ export class Weave {
         Sort: formatSort(v.sort),
         Default: i === 0,
         Position: i,
+        // Feature #233: the frozen count and the widths, as the verb reads them.
+        Frozen: v.frozen ?? 0,
+        Widths: formatWidths(this.#viewOut(db, v).widths),
       };
       let row = this.#sysRow('views', v.id);
       if (!row) {
@@ -3613,8 +3697,10 @@ export class Weave {
       }
       const patch = {};
       if (reg.entityName(row) !== v.name) patch.Name = v.name;
-      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position']) {
-        if ((row.values[this.#sysField(t, k).id] ?? (k === 'Default' ? false : '')) !== want[k]) patch[k] = want[k];
+      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position', 'Frozen', 'Widths']) {
+        const f = this.#sysField(t, k);
+        if (!f) continue;
+        if ((row.values[f.id] ?? (k === 'Default' ? false : k === 'Frozen' ? 0 : '')) !== want[k]) patch[k] = want[k];
       }
       if (!this.#relIds(row, t, 'Table').includes(tableRow.id)) patch.Table = tableRow.id;
       if (wsRow && !this.#relIds(row, t, 'Workspace').includes(wsRow.id)) patch.Workspace = wsRow.id;
@@ -3814,7 +3900,7 @@ export class Weave {
         if (next !== (e.values[this.#sysField(db, 'Table').id] ?? null)) throw new WeaveError('A view cannot move between tables', 'invalid');
         delete patch.Table;
       }
-      const vp = this.#viewRowPatch(patch, hit.table.tableViews[0] === hit.view);
+      const vp = this.#viewRowPatch(patch, hit.table.tableViews[0] === hit.view, hit.owner.#viewOut(hit.table, hit.view));
       if (Object.keys(vp).length) hit.owner.tableView(`${hit.table.id}/${hit.view.id}`, vp);
     } else if (db.system === 'fields') {
       const hit = this.#fieldAnywhere(e.sysId);
@@ -3883,7 +3969,7 @@ export class Weave {
 
   /* A Views row's columns, spoken as the view verb's patch. Consumes the keys
      it translates, so what is left is plain row data. */
-  #viewRowPatch(values, isDefault) {
+  #viewRowPatch(values, isDefault, cur = null) {
     const vp = {};
     const take = (k) => { const v = values[k]; delete values[k]; return v; };
     if ('Name' in values) vp.name = take('Name');
@@ -3897,6 +3983,14 @@ export class Weave {
     if ('Position' in values) {
       const p = take('Position');
       if (p != null && p !== '') vp.position = Number(p);
+    }
+    if ('Frozen' in values) {
+      const n = take('Frozen');
+      vp.frozen = n == null || n === '' ? 0 : Number(n);
+    }
+    // The Widths text is the whole set: a name it no longer lists is unsized.
+    if ('Widths' in values) {
+      vp.widths = { ...Object.fromEntries(Object.keys(cur?.widths ?? {}).map((n) => [n, null])), ...parseWidths(take('Widths')) };
     }
     return vp;
   }
@@ -4526,6 +4620,10 @@ export class Weave {
     db.fieldOrder = db.fieldOrder.filter((id) => id !== fieldId);
     // A view loses the column, and any filter or sort that read it.
     for (const v of db.tableViews ?? []) {
+      const k = v.fields.indexOf(fieldId);
+      if (k >= 0 && k < (v.frozen ?? 0)) { v.frozen -= 1; if (!v.frozen) delete v.frozen; }
+      if (v.widths) { delete v.widths[fieldId]; if (!Object.keys(v.widths).length) delete v.widths; }
+      if (v.parked) { delete v.parked[fieldId]; if (!Object.keys(v.parked).length) delete v.parked; }
       v.fields = v.fields.filter((id) => id !== fieldId);
       if (v.filters?.[gone]) { delete v.filters[gone]; if (!Object.keys(v.filters).length) delete v.filters; }
       if (v.sort?.some((s) => s.field === gone)) { v.sort = v.sort.filter((s) => s.field !== gone); if (!v.sort.length) delete v.sort; }

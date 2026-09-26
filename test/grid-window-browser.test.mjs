@@ -36,7 +36,8 @@ if (s) {
 
   // Long tasks are collected from before the app script runs, so the open
   // itself is measured.
-  const open = async ({ viewport = { width: 1280, height: 800 } } = {}) => {
+  // Feature #233: every field keeps its default width (Name 220, Description 280, …), so this table fits its card from 1600px, not 1280.
+  const open = async ({ viewport = { width: 1600, height: 800 } } = {}) => {
     const page = await browser.newPage({ viewport });
     await page.addInitScript(() => {
       window.__long = [];
@@ -268,7 +269,7 @@ if (s) {
   });
 
   test('a short table is drawn whole and says nothing in its foot', async () => {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: { width: 1600, height: 800 } });
     try {
       await page.goto(`${base}/#/table/${suites.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');

@@ -30,7 +30,10 @@ if (s) {
 
   async function dockedDoc() {
     const page = await browser.newPage();
-    await page.setViewportSize({ width: 1280, height: 700 });
+    // Wide enough that the grid beside the dock fits its card and the PAGE
+    // is what scrolls: every field keeps its default width now (Feature
+    // #233), so Name and Description no longer squeeze into a narrow card.
+    await page.setViewportSize({ width: 1800, height: 700 });
     await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.click(`tr[data-eid="${target.id}"] .open-link`);

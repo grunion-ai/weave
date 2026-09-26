@@ -372,6 +372,9 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid tbody :is(td.sel-cell, td.pid-cell) { z-index: 1; background: var(--tblr-bg-surface); }
 .wv-grid thead :is(th.sel-head, th.pid-head) { z-index: 5; }
 .table-wrap.wv-scrolled-x .wv-grid :is(th.pid-head, td.pid-cell) { border-right-color: var(--tblr-border-color); }
+/* With fields frozen beside it (Feature #233) the seam belongs to the last
+   of them, which the grid's layout sheet draws; the # keeps its reserve. */
+.table-wrap.wv-scrolled-x .wv-grid.wv-frozen-fields :is(th.pid-head, td.pid-cell) { border-right-color: transparent; }
 /* A chosen row's tint is 9% of the accent over nothing at all, which a
    frozen cell cannot use — the same 9% is mixed against the surface here so
    the colour matches and the cell stays opaque. */
@@ -571,6 +574,10 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    is positioned too, so the menu and the resize grip still anchor to it. */
 .wv-grid th.col-head { position: sticky; padding-right: 24px; }
 .wv-grid th.col-head .col-label { pointer-events: none; }
+/* A label is one unbroken box (Feature #233, Kyle's rule 1): it never wraps
+   and never ellipsises, and the grid measures it to set the column's floor. */
+.wv-grid thead th .col-label { display: inline-block; white-space: nowrap; }
+.wv-grid th.col-head:focus-visible { outline-offset: -2px; }
 .field-menu { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 18px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; transition: opacity .12s ease; }
 /* The ⋮ sits at its column's right edge — hard against the next column's
    label — so the hovered header tints too: the tint says which column the
@@ -588,13 +595,26 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .col-resize { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize; user-select: none; touch-action: none; }
 .wv-grid th.col-head:hover .col-resize { background: var(--tblr-border-color); }
 .col-resize:hover { background: var(--tblr-primary) !important; }
-/* Drop cue for a dragged column: an insertion edge, not a filled cell — the
-   column lands where the line is. */
-.wv-grid th.drop-target { box-shadow: inset 2px 0 0 var(--tblr-primary); }
+/* Reordering a column (Feature #233): a ghost of the header follows the
+   pointer, the column it came from dims (the grid's layout sheet), and one
+   vertical line marks where it lands — never a tint on the field it
+   displaces. The line carries a tag when the drop freezes or unfreezes. It
+   sits in the wrap's own layer order: over the header row, under the view
+   header (z-index 6). */
+.wv-col-ghost { position: fixed; left: 0; top: 0; z-index: 1080; pointer-events: none; padding: 3px 10px; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); border: 1px solid var(--tblr-border-color); box-shadow: var(--tblr-box-shadow-dropdown, 0 8px 24px rgba(0, 0, 0, .12)); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.wv-col-insert { position: absolute; width: 2px; margin-left: -1px; z-index: 5; pointer-events: none; background: var(--tblr-primary); }
+.wv-col-insert-tag { position: absolute; top: 6px; left: 6px; padding: 1px 6px; border-radius: var(--tblr-border-radius); background: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); font-size: 11px; line-height: 16px; white-space: nowrap; }
+body.wv-col-dragging, body.wv-col-dragging * { cursor: grabbing !important; user-select: none; }
+/* The resize readout: the field, its width and the change, above the grip. */
+.wv-col-readout { position: fixed; z-index: 1080; pointer-events: none; transform: translateX(-50%); padding: 2px 8px; border-radius: var(--tblr-border-radius); background: var(--tblr-dark, #182433); color: #fff; font-family: var(--tblr-font-monospace); font-size: 11px; white-space: nowrap; }
+[data-bs-theme="dark"] .wv-col-readout { background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); border: 1px solid var(--tblr-border-color); }
 .modal-note { color: var(--tblr-secondary); font-size: 12px; margin-top: 2px; }
 
 /* "+" closing the header bar: adds a field where the fields live. */
-.wv-grid th.add-field-head { width: 1%; white-space: nowrap; padding-left: 4px; padding-right: 8px; cursor: default; }
+/* The one column without a width of its own: it takes whatever the fields
+   leave of the card, so no field is ever stretched or squeezed to fill it
+   (Feature #233, Kyle's rule 2). */
+.wv-grid th.add-field-head { white-space: nowrap; padding-left: 4px; padding-right: 8px; cursor: default; }
 .add-field-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; }
 .add-field-btn:hover { color: var(--tblr-primary); border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
 /* Creating an entity is the grid's last row, so the table reads as one

@@ -4202,8 +4202,12 @@ function visibleCols(db) {
    table the reader had visited last (Issue #195). */
 // Measured row heights, per table and density, for a redraw's first paint.
 const GRID_ROW_H = new Map();
+// Each grid scopes its layout sheet to its own table (Feature #233).
+let GRID_SEQ = 0;
 function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
-  const cols = visibleCols(db);
+  // Reassigned when a column moves in place (Feature #233): rows built after
+  // the move, and the next draw, read the order the reader now sees.
+  let cols = visibleCols(db);
   // Header bar = checkbox + id + one per field + the "+" field control.
   // Full-width rows span it, so it is derived once rather than restated per
   // call site.
@@ -4230,6 +4234,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
        flow. Fitting grids clip and stick to the page as before. */
     wrap.classList.toggle('wv-grid-scroll', !fit && state.route?.page === 'db');
     fitGridScroller(wrap);
+    // The frozen zone's cap is a share of the visible grid: a narrower
+    // window can leave fewer fields frozen, never a clipped label.
+    settle();
     // The box that scrolls may have just changed hands, and a density flip
     // lands here too: the row window is re-measured against whichever it is.
     rewindow();
@@ -4557,9 +4564,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           // heavier than the fields that qualify it.
           class: (f.type === 'number' ? 'num' : '')
             + (c === cols[0] ? ' name-cell' : '') + kind,
-          // A resized column overrides the shared 260px cap — otherwise the
-          // header widens and the cells keep ellipsising at the old width.
-          style: f.width ? columnWidthStyle(f.width) : null,
+          // The width is the column's, painted by the grid's layout sheet
+          // (Feature #233), so a row built later wears it too.
         }, labeledEditorFor(f, item, db, onSaved, { compact: true }));
       }),
       ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')));
@@ -4580,6 +4586,398 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const live = new Map();     // index → the <tr> in the tbody right now
   const built = new Map();    // entity id → its <tr>, for the life of this draw
   const win = { start: 0, end: 0, lastTop: 0, dir: 1, rowH: 0, rowHAt: '' };
+
+  /* ---------- column layout: resize, reorder, freeze (Feature #233) ----------
+     Kyle's rules (2026-09-25): a header label never truncates; one field's
+     change never moves another field's width; every type has a default
+     width, raised only by its own label; the click that ends a gesture never
+     opens the field menu. The numbers and the drop plan are the pure half in
+     public/column-resize.js; this half measures, paints and persists.
+
+     Widths and the frozen zone paint through ONE function (Issue #160),
+     paintLayout, as a small style sheet scoped to this grid: header, Σ row
+     and every body row — drawn now or built later as the window moves — take
+     the column's width from the same rule, and a drag rewrites one rule
+     rather than every cell. Every field column carries a fixed width; the
+     "+" column is the only one that takes the slack, so showing, hiding,
+     adding or dropping a field slides its neighbours and resizes none.
+
+     A view's grid persists widths, order and the frozen count on its view
+     (the tableView verb, Feature #229's autosave). Blank is read-only. A
+     registry grid has no views: its widths stay the field's schema width,
+     its order the table's, and only # freezes. */
+  const CR = globalThis.WeaveColumnResize;
+  const gid = `g${++GRID_SEQ}`;
+  const layoutSheet = el('style', { class: 'wv-grid-layout' });
+  const floors = new Map();        // column → its label floor, measured off the rendered header
+  const valueFloors = new Map();   // date column → the width its widest date needs (Issue #159)
+  const override = new Map();      // column → the width a gesture is painting right now
+  let frozenShown = 0;             // frozen fields drawn: the stored count, capped at 60%
+  let lead = 0;                    // the checkbox and # columns, in px
+  let pidWidth = 0;                // the # column, held at the widest id this table can show
+  let grabbed = null;              // the column a reorder drag holds
+  const nudgeTimers = new Map();  // column → its pending keyboard-nudge commit
+  const SYS_WIDTHS = { 'Created At': 150, 'Modified At': 150, 'Created By': 124, 'Modified By': 124, Activity: 88 };
+  const canFreezeHere = () => !!db.view && !db.view.blank;
+  const storedFrozen = () => (canFreezeHere() ? db.view.frozen ?? 0 : 0);
+  const storedWidth = (c) => db.view?.widths?.[c] ?? colField(db, c)?.width;
+  const widthOf = (c) => override.get(c)
+    ?? CR.layout([{ ...colField(db, c), name: c, stored: storedWidth(c), floor: floors.get(c) }])[c];
+  const headOf = (c) => table?.tHead?.rows[0]?.querySelector(`th.col-head[data-col="${CSS.escape(c)}"]`) ?? null;
+  // The cells before the first field: the checkbox and the # link.
+  const leadCount = () => {
+    const head = table?.tHead?.rows[0];
+    const i = head ? [...head.children].findIndex((h) => !h.classList.contains('sel-head') && !h.classList.contains('pid-head')) : -1;
+    return i < 0 ? 2 : i;
+  };
+  const refreeze = () => {
+    const n = storedFrozen();
+    frozenShown = CR.frozenFit({ lead, widths: cols.slice(0, n).map(widthOf), frozen: n, viewport: wrap.clientWidth || Infinity });
+  };
+  const layoutCss = () => {
+    const at = leadCount();
+    const scope = `.wv-grid[data-gid="${gid}"]`;
+    const cell = (k, section = '*') => `${scope} > ${section} > tr > :nth-child(${k}):not([colspan])`;
+    const fixed = (w) => `{width:${w}px;min-width:${w}px;max-width:${w}px}`;
+    const out = [];
+    /* The # column is held at the widest id the table can show. Sized by its
+       content, it widened by a digit whenever the window scrolled onto
+       longer ids, and in a grid that just fits its card that one digit
+       flipped the wrap into its scrolling mode and back, throwing the
+       page's scroll away (Feature #233: every other column is fixed now, so
+       nothing else absorbs it). */
+    if (pidWidth) out.push(`${scope} > * > tr > :is(th.pid-head, td.pid-cell){min-width:${pidWidth}px}`);
+    cols.forEach((c, i) => out.push(cell(at + i + 1) + fixed(widthOf(c))));
+    (db.systemFields ?? []).forEach((n, j) => out.push(cell(at + cols.length + j + 1) + fixed(Math.max(SYS_WIDTHS[n] ?? 136, floors.get(`sys:${n}`) ?? 0))));
+    // The frozen fields stick beside #, each at the sum of what is left of
+    // it, with the # column's own layers (Issue #252): opaque in the body,
+    // over the Σ row, under the header corner.
+    let left = lead;
+    for (let i = 0; i < frozenShown; i++) {
+      const k = at + i + 1;
+      out.push(`${cell(k)}{position:sticky;left:${left}px}`,
+        `${cell(k, 'tbody')}{z-index:1;background:var(--tblr-bg-surface)}`,
+        `${scope} > tbody > tr.row-selected > :nth-child(${k}):not([colspan]){background:color-mix(in srgb,var(--tblr-primary) 9%,var(--tblr-bg-surface))}`,
+        `${scope} > thead > tr > th:nth-child(${k}){z-index:5}`,
+        `${scope} > thead > tr.wv-foot > td:nth-child(${k}){z-index:3}`);
+      left += widthOf(cols[i]);
+    }
+    // The seam moves to the last frozen field, and keeps Issue #252's
+    // manners: reserved at rest, drawn only while something passes under.
+    if (frozenShown) {
+      const k = at + frozenShown;
+      out.push(`${cell(k)}{border-right:1px solid transparent}`,
+        `.table-wrap.wv-scrolled-x ${cell(k)}{border-right-color:var(--tblr-border-color)}`);
+    }
+    if (grabbed && cols.includes(grabbed)) out.push(`${cell(at + cols.indexOf(grabbed) + 1)}{opacity:.4}`);
+    return out.join('\n');
+  };
+  const paintLayout = () => {
+    if (!table) return;
+    table.dataset.gid = gid;
+    table.classList.toggle('wv-frozen-fields', frozenShown > 0);
+    const css = layoutCss();
+    if (layoutSheet.textContent !== css) layoutSheet.textContent = css;
+  };
+  /* Measure what only the rendered grid knows — each label's floor (icon,
+     label, marks, the padding the ⋮ and the grip sit in) and the width of
+     the # lead — then paint. Reads first, one write at the end. */
+  const settle = () => {
+    if (!table?.isConnected) return;
+    const head = table.tHead.rows[0];
+    for (const th of head.querySelectorAll('th.col-head, th.sys-head')) {
+      const label = th.querySelector('.col-label');
+      if (!label) continue;
+      const cs = getComputedStyle(th);
+      floors.set(th.classList.contains('sys-head') ? `sys:${th.dataset.col}` : th.dataset.col, CR.floor({
+        label: label.getBoundingClientRect().width,
+        padLeft: parseFloat(cs.paddingLeft) || 0, padRight: parseFloat(cs.paddingRight) || 0,
+      }));
+    }
+    /* A date's format knows how wide its widest value is ("Wednesday 30th
+       September 2026" against "Sep 30, 2026"), so a date column never clips
+       one (Issue #159): measured once per draw, off a rendered cell holding
+       a sample, and it raises only that column, as a long label does. */
+    for (const c of cols) {
+      const f = colField(db, c);
+      if (f?.type !== 'date' || valueFloors.has(c)) continue;
+      const td = table.querySelector(`:scope > tbody > tr.entity-row > td[data-field="${CSS.escape(c)}"]`);
+      const input = td?.querySelector('input.date-text');
+      if (!input) continue;
+      const was = input.value;
+      input.value = weaveDateCore.formatDate(f.time ? '2026-09-30T23:45' : '2026-09-30', { ...f, viewerZone: LOCAL_ZONE });
+      const probe = cellFitProbe(td);
+      input.value = was;
+      const measure = el('div', { class: 'wv-measure' }, probe);
+      document.body.append(measure);
+      const cs = getComputedStyle(td);
+      const box = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
+      valueFloors.set(c, Math.ceil(probe.getBoundingClientRect().width + box));
+      measure.remove();
+    }
+    for (const [c, w] of valueFloors) floors.set(c, Math.max(floors.get(c) ?? 0, w));
+    const pidCell = table.querySelector(':scope > tbody > tr.entity-row > td.pid-cell');
+    if (pidCell) {
+      let top = db.entityCount ?? 0;
+      for (const it of ordered()) if (it?.publicId > top) top = it.publicId;
+      // Measured as painted: the cell's own link, cloned off the grid with
+      // the widest id of that many digits in it.
+      const probe = cellFitProbe(pidCell);
+      const link = probe.querySelector('a') ?? probe;
+      link.textContent = `#${'0'.repeat(String(top).length)} \u2197`;
+      const measure = el('div', { class: 'wv-measure' }, probe);
+      document.body.append(measure);
+      const cs = getComputedStyle(pidCell);
+      const box = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
+      pidWidth = Math.ceil(probe.getBoundingClientRect().width + box);
+      measure.remove();
+    }
+
+    lead = [...head.children].slice(0, leadCount()).reduce((sum, h) => sum + h.getBoundingClientRect().width, 0);
+    refreeze();
+    paintLayout();
+  };
+  const blocked = () => {
+    if (!db.view?.blank) return false;
+    toast(BLANK_READ_ONLY, true);
+    return true;
+  };
+  const commitWidth = async (c, w) => {
+    override.delete(c);
+    const f = colField(db, c);
+    try {
+      if (canFreezeHere()) {
+        db.view.widths = { ...(db.view.widths ?? {}), [c]: w };
+        refreeze(); paintLayout();
+        await gridConfigWrite(db, null, { widths: { [c]: w } });
+      } else {
+        // A registry grid has no views: the width stays the field's own.
+        f.width = Math.max(MIN_COLUMN_WIDTH, w);
+        refreeze(); paintLayout();
+        await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, { config: { width: f.width } });
+        loadSchema().catch(() => {});
+      }
+    } catch (err) { toast(err.message, true); showDatabase(db.id, state.route?.view); }
+  };
+  // What the resize grip needs from the grid it sits in.
+  const grid = {
+    blocked,
+    width: widthOf,
+    floor: (c) => floors.get(c) ?? 0,
+    paint: (c, w) => { override.set(c, w); refreeze(); paintLayout(); },
+    cancel: (c) => { override.delete(c); refreeze(); paintLayout(); },
+    commit: commitWidth,
+  };
+
+  /* Slide every column that moved from where it was to where it is (FLIP,
+     ~180 ms). Only a transform: nothing is laid out again frame by frame. */
+  const flip = (before) => {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const at = leadCount();
+    const rows = [...table.querySelectorAll('tr')].filter((r) => r.children.length >= at + cols.length && r.children[0].colSpan === 1);
+    const moving = [];
+    cols.forEach((c, i) => {
+      const dx = (before.get(c) ?? 0) - (headOf(c)?.getBoundingClientRect().left ?? 0);
+      if (Math.abs(dx) >= 1) for (const r of rows) moving.push([r.children[at + i], dx]);
+    });
+    if (!moving.length) return;
+    for (const [cell, dx] of moving) { cell.style.transition = 'none'; cell.style.transform = `translateX(${dx}px)`; }
+    void table.offsetWidth;
+    for (const [cell] of moving) { cell.style.transition = 'transform 180ms ease'; cell.style.transform = ''; }
+    setTimeout(() => { for (const [cell] of moving) cell.style.transition = ''; }, 240);
+  };
+
+  /* A new column order and frozen count, applied in place — cells move,
+     nothing repaints, scroll and focus stay (Kyle, 2026-08-22) — then saved
+     behind the move. Exactly one field moves: the dragged or nudged one. */
+  const applyOrder = async (next, shownFrozen, moved) => {
+    const at = leadCount();
+    /* The plan speaks the zone as drawn; a narrow window can draw fewer
+       fields frozen than the view stores (the 60% cap). The drop changes the
+       stored count by what it changed on screen, so a move on the scrolling
+       side never unfreezes fields the cap is only hiding. */
+    const nextFrozen = Math.min(next.length, Math.max(0, storedFrozen() + shownFrozen - frozenShown));
+    const before = new Map(cols.map((c) => [c, headOf(c)?.getBoundingClientRect().left ?? 0]));
+    const prev = cols;
+    const prevFrozen = storedFrozen();
+    const reordered = next.some((c, i) => c !== prev[i]);
+    if (reordered) {
+      // Every row that holds a cell per column: the header, the Σ row, and
+      // every body row built this draw — drawn now or waiting off screen.
+      for (const row of new Set([...table.querySelectorAll('tr'), ...built.values()])) {
+        const cells = row.children;
+        if (cells.length < at + prev.length || cells[0].colSpan > 1) continue;
+        const byName = new Map(prev.map((c, i) => [c, cells[at + i]]));
+        let anchorCell = cells[at - 1];
+        for (const c of next) {
+          const cell = byName.get(c);
+          anchorCell.after(cell);
+          anchorCell = cell;
+          // The leading column carries the row's identity, set heavier.
+          if (cell.dataset.field) cell.classList.toggle('name-cell', c === next[0]);
+        }
+      }
+      const i = next.indexOf(moved);
+      const anchor = i > 0 ? next[i - 1] : next[1];
+      const fi = db.fields.findIndex((f) => f.name === moved);
+      const [mf] = db.fields.splice(fi, 1);
+      const ti = db.fields.findIndex((f) => f.name === anchor);
+      db.fields.splice(i > 0 ? ti + 1 : ti, 0, mf);
+      cols = next;
+    }
+    if (canFreezeHere()) { db.view.fields = [...next]; if (nextFrozen) db.view.frozen = nextFrozen; else delete db.view.frozen; }
+    refreeze();
+    paintLayout();
+    flip(before);
+    try {
+      if (canFreezeHere()) {
+        const patch = {};
+        if (reordered) {
+          const i = next.indexOf(moved);
+          patch.move = i > 0 ? { field: moved, after: next[i - 1] } : { field: moved, before: next[1] };
+        }
+        if (nextFrozen !== prevFrozen) patch.frozen = nextFrozen;
+        if (Object.keys(patch).length) await gridConfigWrite(db, null, patch);
+      } else if (reordered) {
+        await api('PATCH', `/tables/${db.id}`, { fieldOrder: db.fields.map((f) => f.name) });
+        await loadSchema();
+      }
+    } catch (err) {
+      toast(err.message, true);
+      showDatabase(db.id, state.route?.view); // the move did not hold — show the truth
+    }
+  };
+
+  /* Drag a header to move its column. A ghost follows the pointer, the
+     column it came from dims, and ONE vertical line marks where it lands —
+     never a highlight on the field it displaces. Where the drop changes the
+     frozen zone the line says so. Near the wrap's edges the grid scrolls. */
+  const columnDrag = (c) => {
+    const head = table.tHead.rows[0];
+    const pidHead = head.querySelector('th.pid-head');
+    const order = [...cols];
+    const fz = frozenShown;
+    const ghost = el('div', { class: 'wv-col-ghost', 'aria-hidden': 'true' }, c);
+    const tag = el('span', { class: 'wv-col-insert-tag', hidden: '' });
+    const line = el('div', { class: 'wv-col-insert', hidden: '' }, tag);
+    document.body.append(ghost);
+    wrap.append(line);
+    document.body.classList.add('wv-col-dragging');
+    grabbed = c;
+    paintLayout();
+    let plan = null, px = 0, raf = 0;
+    const boxes = () => order.map((n) => {
+      const r = headOf(n).getBoundingClientRect();
+      return { name: n, left: r.left, right: r.right };
+    });
+    const leadRight = () => pidHead?.getBoundingClientRect().right ?? wrap.getBoundingClientRect().left;
+    const aim = () => {
+      const b = boxes();
+      const seam = fz ? b[fz - 1].right : leadRight();
+      const mine = order.indexOf(c) < fz;
+      const capOk = canFreezeHere() && (mine || CR.canFreeze({ lead, widths: order.slice(0, fz).map(widthOf), add: widthOf(c), viewport: wrap.clientWidth }));
+      const t = CR.target({ cols: b, frozen: fz, lead: leadRight(), seam, x: px, dragged: c, capOk });
+      plan = CR.plan({ order, frozen: fz, dragged: c, gap: t.gap, side: t.side });
+      // A drop that changes nothing draws nothing.
+      line.hidden = plan.noop;
+      if (plan.noop) return;
+      const wr = wrap.getBoundingClientRect();
+      line.style.left = `${t.x - wr.left - wrap.clientLeft + wrap.scrollLeft}px`;
+      line.style.top = `${table.offsetTop}px`;
+      line.style.height = `${table.offsetHeight}px`;
+      tag.hidden = !plan.tag;
+      tag.textContent = plan.tag ?? '';
+    };
+    const EDGE = 48;
+    const tick = () => {
+      raf = 0;
+      if (wrap.scrollWidth <= wrap.clientWidth + 1) return;
+      const wr = wrap.getBoundingClientRect();
+      const lo = fz ? boxes()[fz - 1].right : leadRight();
+      let dx = 0;
+      if (px > wr.right - EDGE) dx = Math.ceil((px - (wr.right - EDGE)) / 3);
+      else if (px >= lo && px < lo + EDGE) dx = -Math.ceil((lo + EDGE - px) / 3);
+      if (!dx) return;
+      const was = wrap.scrollLeft;
+      wrap.scrollLeft += dx;
+      if (wrap.scrollLeft === was) return;
+      aim();
+      raf = requestAnimationFrame(tick);
+    };
+    return {
+      update(x, y) {
+        px = x;
+        ghost.style.transform = `translate(${Math.round(x + 12)}px, ${Math.round(y + 14)}px)`;
+        aim();
+        if (!raf) raf = requestAnimationFrame(tick);
+      },
+      finish(drop) {
+        cancelAnimationFrame(raf);
+        ghost.remove(); line.remove();
+        document.body.classList.remove('wv-col-dragging');
+        grabbed = null;
+        paintLayout();
+        if (drop && plan && !plan.noop) applyOrder(plan.order, plan.frozen, c);
+      },
+    };
+  };
+  const headPointerDown = (e, c) => {
+    if (e.button !== 0 || e.target.closest('.field-menu, .col-resize')) return;
+    const th = e.currentTarget;
+    const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
+    let drag = null;
+    const move = (ev) => {
+      if (ev.pointerId !== id) return;
+      if (!drag) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+        if (blocked()) return end(false);
+        try { th.setPointerCapture(id); } catch { /* released already */ }
+        drag = columnDrag(c);
+      }
+      drag.update(ev.clientX, ev.clientY);
+    };
+    const end = (drop) => {
+      document.removeEventListener('pointermove', move, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', cancel, true);
+      if (!drag) return;
+      // Rule 4: the click this gesture ends with opens nothing.
+      th.dataset.gesture = '1';
+      document.addEventListener('pointerdown', () => { delete th.dataset.gesture; }, { capture: true, once: true });
+      const d = drag;
+      drag = null;
+      d.finish(drop);
+    };
+    const up = (ev) => { if (ev.pointerId === id) end(true); };
+    const cancel = (ev) => { if (ev.pointerId === id) end(false); };
+    document.addEventListener('pointermove', move, true);
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', cancel, true);
+  };
+  const headKey = (e, c) => {
+    const th = e.currentTarget;
+    if (e.target !== th) return;
+    if (e.key === 'Enter' && !e.altKey) { e.preventDefault(); editFieldDialog(db, colField(db, c)); return; }
+    if (!e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (blocked()) return;
+    const dir = e.key === 'ArrowLeft' ? -1 : 1;
+    if (e.shiftKey) {
+      const fz = frozenShown;
+      const may = canFreezeHere() && CR.canFreeze({ lead, widths: cols.slice(0, fz).map(widthOf), add: widthOf(c), viewport: wrap.clientWidth });
+      const s = CR.step({ order: cols, frozen: fz, name: c, dir, canFreeze: may });
+      if (!s) return;
+      applyOrder(s.order, s.frozen, c);
+      th.focus({ preventScroll: true });
+      return;
+    }
+    const w = CR.nudge({ width: widthOf(c), delta: 8 * dir, floor: floors.get(c) ?? 0 });
+    grid.paint(c, w);
+    // One write per burst of presses, per column.
+    clearTimeout(nudgeTimers.get(c));
+    nudgeTimers.set(c, setTimeout(() => { nudgeTimers.delete(c); commitWidth(c, w); }, 350));
+  };
   /* The row height: measured from a painted row, else what this table
      measured at this density last time, else the density's default. The
      memory matters on a redraw: its first paint has no real row yet (the
@@ -4889,38 +5287,26 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
               },
             }))),
         el('th', { class: 'pid-head' }, '#'),
-        ...cols.map((c, i) => el('th', {
+        ...cols.map((c) => el('th', {
           class: 'col-head',
-          draggable: 'true',
+          // A header is a stop: Alt+Shift+←/→ moves the field, Alt+←/→
+          // sizes it, Return opens it (Feature #233).
+          tabindex: '0',
+          'aria-keyshortcuts': 'Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+ArrowLeft Alt+ArrowRight',
+          dataset: { col: c },
           // The field's description is the header's tooltip (Issue #209).
           title: fieldDescription(colField(db, c)) || null,
-          style: colField(db, c).width ? columnWidthStyle(colField(db, c).width) : null,
           // Click opens the field in the tray (Kyle, 2026-08-23: editing is
           // what a header click should mean); sorting lives in the ⋮ menu.
-          // A resize's own click lands here in Safari (the click of a captured
-          // drag resolves to the header under the pointer) — the grip marks
-          // the gesture and this click is inert (Issue #98).
-          onclick: (e) => { if (!e.currentTarget.dataset.resized) editFieldDialog(db, colField(db, c)); },
-          // Dragging a header moves the column. The drop lands before the
-          // target when the column travels left, after it when it travels
-          // right — the same "insert where the gap opened" reading as a
-          // dragged card.
-          ondragstart: (e) => { e.dataTransfer.setData('text/plain', c); e.dataTransfer.effectAllowed = 'move'; },
-          ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add('drop-target'); },
-          ondragleave: (e) => e.currentTarget.classList.remove('drop-target'),
-          ondrop: (e) => {
-            e.preventDefault();
-            e.currentTarget.classList.remove('drop-target');
-            const from = e.dataTransfer.getData('text/plain');
-            // The side is judged against the LIVE order, not the order this
-            // header was drawn with: a previous drag moves columns in place
-            // without a redraw, so `cols` and `i` here can be stale and a
-            // second drag would land on the wrong side of the target.
-            const live = visibleCols(db);
-            if (from && from !== c && live.includes(from) && live.includes(c)) {
-              reorderField(db, from, c, { after: live.indexOf(from) < live.indexOf(c) });
-            }
-          },
+          // The click that ends a resize, a reorder or a freeze drop lands
+          // here too (Safari resolves a captured drag's click to the header
+          // under the pointer): the gesture marks the header and its click
+          // is inert (Issue #98; Kyle's rule 4, Feature #233).
+          onclick: (e) => { const th = e.currentTarget; if (!th.dataset.resized && !th.dataset.gesture) editFieldDialog(db, colField(db, c)); },
+          // Dragging a header moves the column: a ghost follows the pointer
+          // and one insertion line marks where it lands (Feature #233).
+          onpointerdown: (e) => headPointerDown(e, c),
+          onkeydown: (e) => headKey(e, c),
         },
           el('span', { class: 'col-label' },
             fieldNameLabel(colField(db, c), c),
@@ -4938,8 +5324,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
               else draw();
             },
           }),
-          columnResizeGrip(db, colField(db, c)))),
-        ...(db.systemFields ?? []).map((n) => el('th', { class: 'sys-head', title: `${n} — system field, read-only` },
+          columnResizeGrip(db, colField(db, c), grid))),
+        ...(db.systemFields ?? []).map((n) => el('th', { class: 'sys-head', title: `${n} — system field, read-only`, dataset: { col: n } },
           el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·')))),
         // Adding a field lives where the fields are: the end of the header bar.
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db))),
@@ -4952,7 +5338,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       db.system || db.hideRollups !== false ? null : renderFooter(db, cols)),
       tbody);
     const kept = wrap.scrollTop;
-    wrap.replaceChildren(table, puck);
+    wrap.replaceChildren(table, puck, layoutSheet);
+    // Widths and the frozen zone, painted before the first frame and then
+    // measured against the rendered headers (Feature #233).
+    paintLayout();
+    settle();
     // A redraw is not a scroll: a wrap that scrolls (wide grid) is clamped
     // to 0 for the instant it is empty.
     wrap.scrollTop = kept;
@@ -5423,6 +5813,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.addEventListener('mousedown', dropCellPop, true);
   wrap.addEventListener('focusin', dropCellPop);
   main.append(wrap);
+  settle();
+  // A web font that lands after the first paint changes every label's
+  // width, so the floors are measured again once the fonts are in.
+  document.fonts?.ready?.then(() => { if (wrap.isConnected) settle(); });
+  // …and once the first window of rows is in: a date column measures a cell.
+  requestAnimationFrame(() => { if (wrap.isConnected) settle(); });
   // The first window is painted once the wrap is in the document: before
   // that there is no geometry to measure, and a draw that painted nothing
   // left the page 800px tall for the frame in which keepScroll put the
@@ -5490,8 +5886,9 @@ function fitColumnWidth(th) {
   const measure = el('div', { class: 'wv-measure' });
   document.body.append(measure);
   const probes = [];
-  const rows = [th.parentElement, ...table.querySelectorAll(':scope > tbody > tr')];
-  for (const row of rows) {
+  // The body's values only: the header is the floor's business, measured
+  // off the rendered label (Feature #233), and the fit never goes under it.
+  for (const row of table.querySelectorAll(':scope > tbody > tr')) {
     const cell = row.children[idx];
     // A colspan cell (the "+ New" row, an expanded document) is the whole
     // grid, not this column — measuring it fits the column to the table.
@@ -5508,47 +5905,58 @@ function fitColumnWidth(th) {
     widest = Math.max(widest, probe.getBoundingClientRect().width + box);
   }
   measure.remove();
-  return Math.max(MIN_COLUMN_WIDTH, Math.ceil(widest));
+  return Math.ceil(widest);
 }
 
-function columnResizeGrip(db, f) {
+/* The grip on a header's right edge. `grid` is the layout of the grid it
+   sits in (renderTable): the width painted now, the label floor, and the
+   one paint function header and cells share. A drag moves only this column
+   — the ones to its right slide by the delta, their widths untouched — and
+   a small readout names the field, its width and the change. */
+function columnResizeGrip(db, f, grid) {
+  const CR = globalThis.WeaveColumnResize;
   const grip = el('span', { class: 'col-resize', title: 'Drag to resize — double-click to fit the content' });
   grip.addEventListener('click', (e) => e.stopPropagation());        // resizing is not opening the editor
-  grip.addEventListener('dblclick', (e) => { e.stopPropagation(); const th = grip.closest('th'); setColumnWidth(db, f, fitColumnWidth(th), th); });
+  grip.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    if (grid.blocked()) return;
+    const th = grip.closest('th');
+    // The longest value, between the label floor and the type's cap.
+    grid.commit(f.name, CR.fit({ content: fitColumnWidth(th), floor: grid.floor(f.name), max: CR.maxWidth(f) }));
+  });
   grip.addEventListener('dragstart', (e) => { e.preventDefault(); e.stopPropagation(); });
   grip.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     e.preventDefault();
+    if (e.button !== 0 || grid.blocked()) return;
     const th = grip.closest('th');
-    // The th is draggable for column reorder; Safari and Firefox start
-    // that native drag a few pixels into a resize and the pointer stream
-    // dies — the "stuck" resize. Suspend draggable for the duration and
-    // capture the pointer on the grip so every move reaches us.
-    const wasDraggable = th.draggable;
-    th.draggable = false;
     try { grip.setPointerCapture(e.pointerId); } catch { /* older engines */ }
     // The gesture's own click must not open the field dialog (Issue #98):
     // the header wears the mark until the next press anywhere.
     th.dataset.resized = '1';
     document.addEventListener('pointerdown', () => { delete th.dataset.resized; }, { capture: true, once: true });
     const startX = e.clientX;
-    const base = th.getBoundingClientRect().width;
-    // The header can never hide its own label (Issue #100): the floor is the
-    // label plus the padding around it, and the engine's minimum under that.
-    const cs = getComputedStyle(th);
-    const floor = WeaveColumnResize.floor({
-      label: th.querySelector('.col-label')?.getBoundingClientRect().width ?? 0,
-      padLeft: parseFloat(cs.paddingLeft) || 0, padRight: parseFloat(cs.paddingRight) || 0,
-      min: MIN_COLUMN_WIDTH,
-    });
-    let width = Math.round(base);
+    const base = grid.width(f.name);
+    // The header can never hide its own label (Issue #100, Kyle's rule 1):
+    // the floor is the rendered label plus the padding the ⋮ and grip use.
+    const floor = grid.floor(f.name);
+    let width = base;
+    const readout = el('div', { class: 'wv-col-readout', role: 'status' });
+    document.body.append(readout);
+    const show = () => {
+      const d = width - base;
+      readout.textContent = `${f.name} ${width}px ${d < 0 ? '−' : '+'}${Math.abs(d)}`;
+      const r = th.getBoundingClientRect();
+      readout.style.left = `${Math.round(r.right)}px`;
+      readout.style.top = `${Math.round(r.top - 30)}px`;
+    };
+    show();
     const move = (ev) => {
-      width = WeaveColumnResize.width({ base, startX, x: ev.clientX, floor });
-      // Painted the way it will be stored — header AND cells, width with its
-      // floor and cap. A stored width leaves min/max-width on the column, so
-      // a bare style.width could not move it and the column only jumped on
-      // release (Issue #160).
-      paintColumnWidth(th, width);
+      width = CR.width({ base, startX, x: ev.clientX, floor });
+      // Painted the way it will be stored — header AND cells through one
+      // rule, so release repaints nothing (Issue #160).
+      grid.paint(f.name, width);
+      show();
     };
     let done = false;
     const up = () => {
@@ -5558,8 +5966,8 @@ function columnResizeGrip(db, f) {
       grip.removeEventListener('pointerup', up);
       grip.removeEventListener('pointercancel', up);
       grip.removeEventListener('lostpointercapture', up);
-      th.draggable = wasDraggable;
-      if (width !== Math.round(base)) setColumnWidth(db, f, width, th);
+      readout.remove();
+      if (width !== base) grid.commit(f.name, width); else grid.cancel(f.name);
     };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
@@ -5567,41 +5975,6 @@ function columnResizeGrip(db, f) {
     grip.addEventListener('lostpointercapture', up);
   });
   return grip;
-}
-
-/* A column width is a floor as well as a ceiling. Auto table layout treats a
-   bare `width` as a suggestion and squeezes it away as soon as the grid is
-   wider than its card — which is every grid with a document column — so a
-   resized or fitted column visibly refused to move (Kyle, 2026-08-24).
-   min-width holds the column open; max-width keeps the cells ellipsising. */
-const columnWidthStyle = (width) => `width:${width}px;min-width:${width}px;max-width:${width}px`;
-
-function applyColumnWidth(cell, width) {
-  cell.style.width = width ? `${width}px` : '';
-  cell.style.minWidth = width ? `${width}px` : '';
-  cell.style.maxWidth = width ? `${width}px` : '';
-}
-
-/* The header and every cell under it take one width — during a drag and on
-   the commit alike, so release repaints nothing (Issue #160). */
-function paintColumnWidth(th, width) {
-  applyColumnWidth(th, width);
-  const idx = [...th.parentElement.children].indexOf(th);
-  for (const row of th.closest('table')?.querySelectorAll('tbody tr') ?? []) {
-    const cell = row.children[idx];
-    if (cell && cell.colSpan === 1) applyColumnWidth(cell, width);
-  }
-}
-
-async function setColumnWidth(db, f, width, th = null) {
-  try {
-    await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, { config: { width } });
-    // Commit in place: the header keeps (or sheds) its width and the cells
-    // follow, without tearing the grid down mid-gesture (Kyle, 2026-08-22).
-    f.width = width ?? undefined;
-    if (th) paintColumnWidth(th, width);
-    loadSchema().catch(() => {}); // background truth refresh, no repaint
-  } catch (err) { toast(err.message, true); showDatabase(db.id); }
 }
 
 /* ---------- the column header as a control (Feature #41, option A) ----------

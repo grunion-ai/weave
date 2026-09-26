@@ -29,11 +29,18 @@ const s = await launch('column fit', (weave) => {
 });
 if (s) {
   const { base, browser, weave } = s;
-  // Widths are per-field schema, so one test's fit is the next test's start
+  // Widths live on the grid's view (Feature #233; the field's schema width
+  // is the legacy fallback), so one test's fit is the next test's start
   // width. Every test opens on an unsized grid.
+  const viewWidths = (table) => weave.tableView(table.id).views[0].widths ?? {};
+  function clearViewWidths(table) {
+    const v = weave.tableView(table.id).views[0];
+    if (v.widths) weave.tableView(`${table.id}/${v.id}`, { widths: Object.fromEntries(Object.keys(v.widths).map((n) => [n, null])) });
+  }
   function resetWidths() {
     const t = weave.getTable(db.id);
     for (const f of Object.values(t.fields)) weave.updateField(db.id, f.id, { config: { width: null } });
+    clearViewWidths(db);
   }
 
   async function openGrid() {
@@ -108,6 +115,7 @@ if (s) {
   test('a fit holds in a grid wider than its card', async () => {
     const t = weave.getTable(wide.id);
     for (const f of Object.values(t.fields)) weave.updateField(wide.id, f.id, { config: { width: null } });
+    clearViewWidths(wide);
     const page = await browser.newPage({ viewport: { width: 700, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'networkidle' });
@@ -119,23 +127,27 @@ if (s) {
       assert.equal(overflows, true, 'the fixture must actually overflow, or it guards nothing');
       await page.dblclick(gripFor('C'));
       await page.waitForTimeout(400);
-      const got = await page.locator(headFor('C')).evaluate((th) => ({
-        rendered: Math.round(th.getBoundingClientRect().width),
-        asked: Math.round(parseFloat(th.style.width) || 0),
-      }));
+      const got = {
+        rendered: await page.locator(headFor('C')).evaluate((th) => Math.round(th.getBoundingClientRect().width)),
+        asked: viewWidths(wide).C ?? 0,
+      };
       assert.ok(got.asked > 0, 'the fit was committed to the header');
       assert.ok(Math.abs(got.rendered - got.asked) <= 2,
         `the column must render the width it was given, asked ${got.asked}px, got ${got.rendered}px`);
     } finally { await page.close(); }
   });
 
-  test('the fit is a schema write, so it survives a reload', async () => {
+  test('the fit is a view write, so it survives a reload', async () => {
     const page = await openGrid();
     try {
       await page.dblclick(gripFor('Name'));
       await page.waitForTimeout(300);
-      const width = weave.getTable(db.id).fields[weave.getTable(db.id).nameFieldId].config.width;
-      assert.ok(width >= 200, `the measured fit reached the schema, got ${width}`);
+      const width = viewWidths(db).Name;
+      assert.ok(width >= 200, `the measured fit reached the view, got ${width}`);
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('table.wv-grid th.col-head');
+      const rendered = await page.locator(headFor('Name')).evaluate((th) => Math.round(th.getBoundingClientRect().width));
+      assert.ok(Math.abs(rendered - width) <= 1, `the reload paints the stored fit: ${width} vs ${rendered}`);
     } finally { await page.close(); }
   });
 
@@ -167,10 +179,7 @@ if (s) {
     return { y };
   }
   const widthOf = (page, label) => page.locator(headFor(label)).evaluate((th) => th.getBoundingClientRect().width);
-  const storedWidth = (label) => {
-    const t = weave.getTable(db.id);
-    return Object.values(t.fields).find((f) => f.name === label).config.width;
-  };
+  const storedWidth = (label) => viewWidths(db)[label];
 
   test('the column follows the pointer while the button is down, and release stores what was painted (Issue #160)', async () => {
     const page = await openGrid();
