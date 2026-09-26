@@ -133,28 +133,131 @@ async function copyText(text, label = 'Copied') {
   toast(ok ? label : text, !ok);
 }
 
-/* action = { label, run } adds an inline button and holds the toast open long
-   enough to use it — the undo affordance for recoverable actions. */
-function toast(msg, isErr = false, action = null) {
-  // `wv-toast`, not `toast`: Tabler ships `.toast:not(.show){display:none}` —
-  // Bootstrap's toast, waiting for JS to reveal it — so weave's hand-rolled
-  // toast inherited that switch and every message it raised was invisible
-  // (Issue #92, the sibling of the `.empty` collision).
-  const t = el('div', { class: 'wv-toast' + (isErr ? ' err' : '') }, msg);
+/* ---------- toasts (Issue #380) ----------
+   One behaviour for every caller, decided once here (Kyle approved the
+   mockup 2026-09-26). The stack lives in a lane: at 1000px and wider it
+   centres at the bottom between the content panel and a 300px corner
+   reserve, where the bug button, its panel and the trash sit; below that it
+   moves to the top of the screen (style.css, #wv-toasts). A toast used to
+   land on the bug panel, the version chip and Save changes.
+
+   action = { label, run } adds an inline button and holds the toast open long
+   enough to use it: the undo affordance for recoverable actions. The fourth
+   argument can name the kind outright; otherwise an error is `err`, a toast
+   with an action is `success`, and the rest are `info`.
+
+   Life is the kind's floor or 60 ms a character, whichever is longer, capped
+   at 20 s: a long server error stays long enough to read. The clock stops
+   while the pointer is over the stack, while focus is in it and while the
+   tab is hidden. Three at most: a fourth pushes out the oldest non-error.
+   The same text again counts on the toast already up (×2) instead of
+   stacking a copy. Screen readers hear the text through two live regions
+   inside the layer; the toast itself never takes focus. */
+const TOAST_MS = { info: 4000, action: 8000, err: 10000, perChar: 60, max: 20000 };
+const TOAST_LIMIT = 3;
+const TOAST_ICON = { info: 'lucide:info', success: 'lucide:check', err: 'lucide:circle-alert' };
+const toastsUp = [];
+
+function toastLayer() {
+  let layer = document.querySelector('#wv-toasts');
+  if (layer) return layer;
+  // `wv-toast`, not `toast`: Tabler ships `.toast:not(.show){display:none}`,
+  // Bootstrap's toast waiting for JS to reveal it, so a hand-rolled `.toast`
+  // was invisible (Issue #92).
+  layer = el('div', { id: 'wv-toasts', role: 'region', 'aria-label': 'Notifications' },
+    el('div', { id: 'wv-live-status', class: 'visually-hidden', role: 'status', 'aria-live': 'polite' }),
+    el('div', { id: 'wv-live-alert', class: 'visually-hidden', role: 'alert' }));
+  layer.held = { hover: false, focus: false };
+  layer.addEventListener('pointerenter', () => { layer.held.hover = true; });
+  layer.addEventListener('pointerleave', () => { layer.held.hover = false; });
+  layer.addEventListener('focusin', () => { layer.held.focus = true; });
+  layer.addEventListener('focusout', (e) => { layer.held.focus = layer.contains(e.relatedTarget); });
+  document.body.append(layer);
+  return layer;
+}
+
+function toast(msg, isErr = false, action = null, { kind } = {}) {
+  kind ??= isErr ? 'err' : action ? 'success' : 'info';
+  const text = String(msg);
+  const layer = toastLayer();
+  // A repeat counts on the toast already up. Never one with an action: two
+  // Undos are two different rows.
+  const same = !action && toastsUp.find((t) => !t.action && t.kind === kind && t.msg === text);
+  if (same) {
+    same.count += 1;
+    same.countEl.textContent = `×${same.count}`;
+    same.countEl.hidden = false;
+    same.left = same.life;
+    return same.node;
+  }
+  const floor = action ? TOAST_MS.action : kind === 'err' ? TOAST_MS.err : TOAST_MS.info;
+  const life = Math.min(TOAST_MS.max, Math.max(floor, text.length * TOAST_MS.perChar));
+  const countEl = el('span', { class: 'wv-toast-count' });
+  countEl.hidden = true;
+  const node = el('div', { class: `wv-toast ${kind}` },
+    iconEl(TOAST_ICON[kind], 'wv-toast-icon'),
+    el('span', { class: 'wv-toast-msg' }, text, countEl));
+  const item = { msg: text, kind, action, node, countEl, count: 1, life, left: life };
   if (action) {
-    t.append(el('button', {
+    node.append(el('button', {
       class: 'wv-toast-action', type: 'button',
-      onclick: async () => { t.remove(); await action.run(); },
+      onclick: async () => { dropToast(item); await action.run(); },
     }, action.label));
   }
-  // One layer, so a second message stacks above the first instead of landing
-  // on top of it — invisible toasts could overlap unnoticed, visible ones
-  // cannot (Issue #92).
-  let layer = document.querySelector('#wv-toasts');
-  if (!layer) document.body.append(layer = el('div', { id: 'wv-toasts' }));
-  layer.append(t);
-  setTimeout(() => t.remove(), action ? 7000 : isErr ? 4200 : 1400);
+  node.append(el('button', {
+    class: 'wv-toast-close', type: 'button', 'aria-label': 'Dismiss', title: 'Dismiss',
+    onclick: () => dropToast(item),
+  }, iconEl('lucide:x', 'wv-toast-x')));
+  // A sideways swipe of 48px dismisses on touch; the text stays selectable.
+  let x0 = null;
+  node.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') x0 = e.clientX; });
+  node.addEventListener('pointerup', (e) => { if (x0 != null && Math.abs(e.clientX - x0) >= 48) dropToast(item); x0 = null; });
+  toastsUp.push(item);
+  layer.append(node);
+  while (toastsUp.length > TOAST_LIMIT) dropToast(toastsUp.find((t) => t.kind !== 'err') ?? toastsUp[0]);
+  // Emptied, then written a beat later, so the same words twice in a row are
+  // announced twice.
+  const live = layer.querySelector(kind === 'err' ? '#wv-live-alert' : '#wv-live-status');
+  live.textContent = '';
+  setTimeout(() => { live.textContent = text; }, 50);
+  toastClock();
+  return node;
 }
+
+function dropToast(item) {
+  const i = toastsUp.indexOf(item);
+  if (i === -1) return;
+  toastsUp.splice(i, 1);
+  item.node.remove();
+}
+
+// One clock for the stack, running only while a toast is up.
+let toastTick = null;
+function toastClock() {
+  if (toastTick) return;
+  let last = performance.now();
+  toastTick = setInterval(() => {
+    const now = performance.now(), dt = now - last;
+    last = now;
+    const held = document.querySelector('#wv-toasts')?.held;
+    if (!(held?.hover || held?.focus || document.hidden)) {
+      for (const t of [...toastsUp]) if ((t.left -= dt) <= 0) dropToast(t);
+    }
+    if (!toastsUp.length) { clearInterval(toastTick); toastTick = null; }
+  }, 100);
+}
+
+/* Esc closes the newest toast when focus is in the stack, or when nothing
+   else could want it: focus on the page itself and no dialog, tray, menu,
+   popover or bug panel open. Capture phase, so a tray's own Esc handler has
+   not yet closed the tray when this looks. */
+addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !toastsUp.length) return;
+  const at = document.activeElement;
+  const inStack = at?.closest?.('#wv-toasts');
+  const claimed = document.querySelector('#modal-back, #tray-back, #bug-panel, .chip-pop, .dl-menu:not(.hidden), [role="menu"], [role="dialog"]');
+  if (inStack || ((!at || at === document.body) && !claimed)) dropToast(toastsUp.at(-1));
+}, true);
 
 /* A centred dialog holds the page while it is open (Issue #263). The audit
    found Tab walking out of every dialog into the grid behind the backdrop,
@@ -1200,23 +1303,28 @@ function renderNav() {
   // the same per-table figure the rows above show, summed; size arrives with
   // /api/health (one shared fetch — the instance chip drinks from it too).
   const entityTotal = state.schema.reduce((n, s) => n + s.tables.reduce((m, d) => m + (d.entityCount ?? 0), 0), 0);
-  const stats = el('div', { class: 'nav-stats', title: 'Records in this workspace · storage on disk' },
+  const line = el('span', { class: 'nav-stats-line', title: 'Records in this workspace · storage on disk' },
     `${entityTotal.toLocaleString()} ${entityTotal === 1 ? 'record' : 'records'}`);
+  const stats = el('div', { class: 'nav-stats' }, line);
   // Pinned to the sidebar's bottom edge — a sibling AFTER #nav (which carries
   // flex:1), sticky so a long nav scrolls under it rather than pushing it away.
   document.querySelector('#sidebar .nav-stats')?.remove();
   $('#sidebar').append(stats);
   (state.healthP ??= api('GET', '/health')).then((h) => {
-    if (h.sizeBytes != null) stats.append(` · ${fmtSize(h.sizeBytes)}`);
+    if (h.sizeBytes != null) line.append(` · ${fmtSize(h.sizeBytes)}`);
   }).catch(() => {});
   // Instance status (Feature #54): version + uptime from /api/health, so a
   // stale server is visible at a glance instead of masquerading as a broken
   // feature. startedAt arrives with the same payload for tooling to compare.
   nav.append(foot);
-  // The instance chip lives in the bottom-right corner of the pane (Kyle,
-  // 2026-08-22) — out of the nav, always visible, never in the way.
-  if (!document.querySelector('.nav-health')) {
-    const status = el('div', { class: 'nav-health', title: 'This weave instance' }, '…');
+  // The instance chip sits under the stats line (Issue #380). In the
+  // bottom-right corner, where it lived from 2026-08-22, it covered the grid's
+  // "200 of 333 loaded" note and every error toast. It is built once per load
+  // and carried into each re-rendered strip, so its verdict and its one toast
+  // survive a nav refresh.
+  if (state.healthChip) stats.append(state.healthChip);
+  else {
+    const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' }, '…');
     (state.healthP ??= api('GET', '/health')).then((h) => {
       const up = h.uptime == null ? '' : ` · up ${h.uptime < 3600 ? Math.round(h.uptime / 60) + 'm' : Math.round(h.uptime / 3600) + 'h'}`;
       state.health = h; // the email report reads version + stale from here (Feature #223)
@@ -1243,16 +1351,15 @@ function renderNav() {
         toast(`This instance is behind main (${h.sha} → ${h.latestSha}) — run weave service promote`, true);
       }
     }).catch(() => { status.textContent = 'offline'; });
-    hubFoot().append(status);
+    stats.append(status);
   }
 }
 
 /* The bottom-right utility cluster's lower row: the workspace trash glyph,
-   then the instance tag. One fixed flex box, created by whichever renders
-   first, so the two stay side by side however wide the tag reads.
-   It is a landmark (Issue #378): outside one, a screen reader's region
-   list never reaches the instance tag or the trash. */
-const hubFoot = () => document.querySelector('#hub-foot') ?? document.body.appendChild(el('aside', { id: 'hub-foot', 'aria-label': 'This instance' }));
+   under the bug button. The instance tag left it for the sidebar (Issue
+   #380). It is a landmark (Issue #378): outside one, a screen reader's
+   region list never reaches the trash. */
+const hubFoot = () => document.querySelector('#hub-foot') ?? document.body.appendChild(el('aside', { id: 'hub-foot', 'aria-label': 'Workspace trash' }));
 
 /* ---------- shared value rendering ---------- */
 
@@ -11651,8 +11758,8 @@ async function buildWsRail() {
         if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) openMenu(e); });
         return chip;
       }));
-    // The trash: a utility glyph in the corner cluster — under the bug button,
-    // beside the version/uptime tag — only while something is in it, opening
+    // The trash: a utility glyph in the corner cluster, under the bug button,
+    // only while something is in it, opening
     // a sheet with a Restore per workspace. It left the chip column because a
     // chip-sized tile there read as one more workspace (Issue #204).
     $('#ws-trash')?.remove();
@@ -12187,6 +12294,8 @@ initPageLoader();
    bug too, and by the time a user reaches for the button the actions that
    caused it are already history. */
 installBugReporter();
+// The live regions exist before the first message, or a reader misses it.
+toastLayer();
 /* Theme first: the first render must not paint an unthemed frame. Anything
    that reads the theme when it is built rather than on every paint — the
    document editors, and the mermaid diagrams they render once — would

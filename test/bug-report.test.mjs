@@ -537,23 +537,25 @@ test('the report button wears the vendored bug, drawn through iconEl like every 
 });
 
 /* Issue #119: the "Issue #N" receipt toast landed on the report button, so a
-   second report meant waiting the toast out. The toast layer now stacks to the
-   left of the button: its right inset clears the button's right inset plus
-   its width. */
+   second report meant waiting the toast out. Since Issue #380 the stack lives
+   in a lane that ends at a 300px corner reserve, wider than the button's
+   inset plus the 252px panel, so neither the button nor its open panel can
+   meet a toast. toast-lane-browser.test.mjs checks the pixels. */
 test('a toast never covers the report button', () => {
   const fab = CSS.match(/\.bug-fab\s*{([^}]*)}/)[1];
+  const panel = CSS.match(/#bug-panel\s*{([^}]*)}/)[1];
   const toasts = CSS.match(/#wv-toasts\s*{([^}]*)}/)[1];
   const px = (block, prop) => Number(block.match(new RegExp(`(?:^|;)\\s*${prop}:\\s*(\\d+)px`))[1]);
-  assert.ok(px(toasts, 'right') >= px(fab, 'right') + px(fab, 'width'),
-    'the toast stack starts left of the button’s left edge');
+  assert.ok(px(toasts, '--wv-lane-r') >= px(fab, 'right') + px(panel, 'width'),
+    'the lane ends left of the open panel, which is wider than the button');
 });
 
-test('the panel does not sit on top of the instance chip it shares a corner with', () => {
+test('the report button stacks above the trash it shares a corner with', () => {
   const fab = CSS.match(/\.bug-fab\s*{([^}]*)}/)[1];
-  // The version chip sits in the corner cluster's lower row, #hub-foot (Issue #204).
-  const health = CSS.match(/#hub-foot\s*{([^}]*)}/)[1];
+  // The trash glyph is the corner cluster's lower row, #hub-foot (Issue #204).
+  const foot = CSS.match(/#hub-foot\s*{([^}]*)}/)[1];
   const bottom = (decl) => Number(decl.match(/bottom:\s*(\d+)px/)[1]);
-  assert.ok(bottom(fab) > bottom(health), 'the report button stacks above the version chip');
+  assert.ok(bottom(fab) > bottom(foot), 'the report button stacks above the trash');
 });
 
 test('a quiet successful read is not evidence, and does not crowd out what is', () => {

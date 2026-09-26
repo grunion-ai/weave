@@ -56,6 +56,18 @@
      2026-09-02). Same ink as the text at a fraction of it, so the grey carries
      the kit's blue bias instead of reading as a flat neutral. */
   --wv-icon-rest: rgba(12, 27, 51, .55);    /* .34 was 2.14:1; .55 clears 3:1 */
+  /* Amber text on the paper canvas: Tabler's #f59f00 reads 1.9:1, this 4.9:1
+     (Issue #380). The border keeps the brighter amber. */
+  --wv-warn-text: #a35200;
+  /* The toast surface is the kit's ink in light theme and its cream in dark:
+     system chrome in either, one surface for every kind (Issue #380). */
+  --wv-toast-bg: #0c1b33;
+  --wv-toast-fg: #f3f1ec;
+  --wv-toast-muted: rgba(243, 241, 236, .66);
+  --wv-toast-line: rgba(243, 241, 236, .18);
+  --wv-toast-info: #9eb1ff;
+  --wv-toast-ok: #71d083;
+  --wv-toast-err: #ff9592;
 }
 [data-bs-theme="dark"] {
   --wv-canvas: #0c1b33;                      /* Kami Deep Navy Canvas */
@@ -71,6 +83,14 @@
   --tblr-body-color: #e0dcd4;                /* Kami Cream Primary */
   --wv-code-bg: #0d1117;                     /* github-dark's own ground */
   --wv-icon-rest: rgba(224, 220, 212, .55);
+  --wv-warn-text: #f59f00;
+  --wv-toast-bg: #e0dcd4;
+  --wv-toast-fg: #0c1b33;
+  --wv-toast-muted: rgba(12, 27, 51, .62);
+  --wv-toast-line: rgba(12, 27, 51, .14);
+  --wv-toast-info: #2f55c9;
+  --wv-toast-ok: #1f7a35;
+  --wv-toast-err: #b42318;
   /* Tabler's #066fd1 is a light-theme blue: 3.08:1 on the navy panel, so every
      crumb, link and focus ring read dim (Issue #378). This one is 6.4:1, and
      the text on a primary button turns navy to stay legible on it. */
@@ -125,7 +145,7 @@ a.nav-space:hover { color: var(--tblr-primary); }
 /* The stats strip: workspace entity count + on-disk size, pinned to the
    sidebar's bottom edge — quiet metadata, same register as the version chip.
    Sticky with the canvas behind it, so a long nav scrolls under the strip. */
-.nav-stats { position: sticky; bottom: 0; margin-top: auto; padding: 6px 10px 2px; font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--wv-canvas); }
+.nav-stats { position: sticky; bottom: 0; margin-top: auto; padding: 6px 10px 2px; font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--wv-canvas); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 /* Nav rows are soft ink-tint pills on the canvas — the active row darkens
    the cream rather than turning brand-blue (Buzz idiom; blue stays for
    accents inside the content panel). */
@@ -1209,7 +1229,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ---------- modal (custom overlay, Tabler-card look) ---------- */
 #modal-back { position: fixed; inset: 0; background: rgba(15, 20, 25, .48); display: flex; align-items: center; justify-content: center; z-index: 1050; }
-#modal { background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); padding: 20px; width: 440px; max-width: 92vw; max-height: 85vh; overflow-y: auto; box-shadow: var(--tblr-box-shadow-lg); }
+/* The bottom 88px stay free, so a toast or the bug button never sits on
+   Create (Issue #380). */
+#modal { background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg); padding: 20px; width: 440px; max-width: 92vw; max-height: min(85vh, calc(100vh - 176px)); overflow-y: auto; box-shadow: var(--tblr-box-shadow-lg); }
 #modal h2 { margin: 0 0 12px; font-size: 16px; }
 #modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 #modal input, #modal select { margin-bottom: 6px; }
@@ -1232,14 +1254,42 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-route-error { max-width: 560px; margin: 48px auto; background: var(--tblr-bg-surface); }
 .wv-route-error-title { margin: 0 0 8px; font-size: 16px; }
 .wv-route-error-msg { color: var(--tblr-secondary); margin: 0 0 16px; overflow-wrap: anywhere; }
-/* Toasts stack to the LEFT of the report button, never over it: a filed
-   report's own receipt used to cover the button the next report needs
-   (Issue #119). 48px clears the 26px button at right:12px with room. */
-#wv-toasts { position: fixed; bottom: 18px; right: 48px; z-index: 2000; display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 8px; }
-.wv-toast { background: var(--tblr-body-color); color: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius); padding: 9px 16px; box-shadow: var(--tblr-box-shadow); }
-.wv-toast.err { background: var(--tblr-danger); color: #fff; }
+/* Toasts live in a lane (Issue #380). At 1000px and wider it runs from the
+   content panel's left edge plus 24px to a 300px reserve at the right edge,
+   where the bug button (Issue #119), its 252px panel and the trash sit; the
+   stack centres at the lane's bottom, newest nearest the edge. A collapsed
+   nav lets the lane out, a tray pulls its right edge in to the tray's own.
+   Below 1000px the reserve leaves no useful width at the bottom, so the lane
+   moves to the top of the screen, newest on top. */
+#wv-toasts { --wv-lane-l: 340px; --wv-lane-r: 300px; position: fixed; left: var(--wv-lane-l); right: var(--wv-lane-r); bottom: 24px; z-index: 2000; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+body:has(#app.nav-collapsed) #wv-toasts { --wv-lane-l: 76px; }
+body:has(#tray-back) #wv-toasts { --wv-lane-r: calc(min(480px, 94vw) + 24px); }
+/* Over a dialog, the newest toast only. */
+body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
+@media (max-width: 999.98px) {
+  #wv-toasts { left: 16px; right: 16px; bottom: auto; top: calc(12px + env(safe-area-inset-top, 0px)); flex-direction: column-reverse; align-items: stretch; }
+  /* Under a tray's head, so its close button stays in reach. */
+  body:has(#tray-back) #wv-toasts { top: 60px; }
+}
+/* One surface for every kind; the icon carries the kind. The text wraps and
+   never truncates: a server error is read whole or not at all. */
+.wv-toast { display: flex; align-items: flex-start; gap: 10px; max-width: min(440px, 100%); padding: 10px 6px 10px 12px; background: var(--wv-toast-bg); color: var(--wv-toast-fg); border-radius: var(--tblr-border-radius); box-shadow: 0 8px 24px rgba(12, 27, 51, .22); font-size: 13px; line-height: 20px; pointer-events: auto; touch-action: pan-y; animation: wv-toast-in .16s ease-out; }
+.wv-toast-icon { flex: 0 0 16px; display: flex; width: 16px; height: 16px; margin-top: 2px; color: var(--wv-toast-info); }
+.wv-toast-icon svg { width: 100%; height: 100%; }
+.wv-toast.success .wv-toast-icon { color: var(--wv-toast-ok); }
+.wv-toast.err .wv-toast-icon { color: var(--wv-toast-err); }
+.wv-toast-msg { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.wv-toast-count { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--wv-toast-line); font: 600 11px/16px var(--tblr-font-monospace); }
 /* Undo sits inside the toast: the action and the way back are one object. */
-.wv-toast-action { margin-left: 12px; padding: 0; background: none; border: 0; border-bottom: 1px solid currentColor; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.wv-toast-action { flex: 0 0 auto; padding: 0 4px; background: none; border: 0; border-radius: 4px; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.wv-toast-close { flex: 0 0 24px; width: 24px; height: 24px; margin-top: -2px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; border-radius: 5px; color: var(--wv-toast-muted); cursor: pointer; }
+.wv-toast-close:hover { color: var(--wv-toast-fg); background: var(--wv-toast-line); }
+.wv-toast-x { display: flex; width: 12px; height: 12px; }
+.wv-toast-x svg { width: 100%; height: 100%; }
+.wv-toast-action:focus-visible, .wv-toast-close:focus-visible { outline: 2px solid var(--wv-toast-info); outline-offset: 1px; }
+@keyframes wv-toast-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes wv-toast-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .wv-toast { animation: wv-toast-fade .12s linear; } }
 
 /* ---------- trash ---------- */
 .empty-note { padding: 18px; color: var(--tblr-secondary); }
@@ -1657,9 +1707,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 @media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }
 .fielddef-edit { display: inline-flex; align-items: center; gap: 4px; }
 /* The corner cluster's lower row (Issue #204): the workspace trash glyph,
-   then the instance tag, pinned bottom-right under the bug button. */
+   pinned bottom-right under the bug button. A tray reaches the bottom edge,
+   so the trash steps away while one is open (Issue #380). */
 #hub-foot { position: fixed; right: 12px; bottom: 10px; z-index: 55; display: flex; align-items: center; gap: 6px; }
-.nav-health { font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 5px; padding: 2px 8px; }
+body:has(#tray-back) #hub-foot { display: none; }
+/* The instance tag, under the stats line in the sidebar foot (Issue #380).
+   It wraps inside the foot rather than running past it. */
+.nav-health { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 5px; padding: 2px 8px; }
 /* The workspace trash (Issues #190, #204): the bug button's size and costume,
    muted at rest, red only on hover so the corner says what it is. Present only
    while a workspace is in the trash. */
@@ -1669,7 +1723,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .ws-trash-icon svg { width: 100%; height: 100%; }
 /* A stale instance wears the warning: the chip is how you notice without
    the toast (Kyle, 2026-09-02). */
-.nav-health.is-behind { color: var(--tblr-warning); border-color: var(--tblr-warning); }
+.nav-health.is-behind { color: var(--wv-warn-text); border-color: var(--tblr-warning); }
 /* A stale PROCESS is worse than a stale checkout — the page and the engine
    disagree and saving can fail silently (Issue #114) — so it wears the danger
    tint and full opacity, a step louder than merely behind. Both tokens flip
@@ -2192,7 +2246,7 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 
 /* ---------- bug reporter (Feature #141) ----------
    The button lives in the bottom-right corner, stacked above the row it
-   shares that corner with (#hub-foot — trash glyph + instance chip — sits at
+   shares that corner with (#hub-foot — the trash glyph — sits at
    bottom: 10px, 26px tall; 40px clears it by 4px). The
    panel floats beside it rather than over the page: reporting a bug must not
    cover the bug. Small on purpose (Kyle, 2026-08-25) — this is a corner
@@ -2200,6 +2254,9 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
    follow. */
 .bug-fab { position: fixed; right: 12px; bottom: 40px; z-index: 1150; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.10); cursor: pointer; opacity: .62; transition: opacity .12s, border-color .12s; }
 .bug-fab:hover, .bug-fab[aria-expanded="true"] { opacity: 1; border-color: var(--tblr-secondary); }
+/* A tray's action bar runs along the bottom edge: the button rises above it
+   instead of sitting on Save changes (Issue #380). */
+body:has(#tray-back) .bug-fab { bottom: 72px; }
 .bug-fab-icon { display: flex; width: var(--wv-icon-md); height: var(--wv-icon-md); color: var(--tblr-body-color); }
 .bug-fab-icon svg { width: 100%; height: 100%; }
 

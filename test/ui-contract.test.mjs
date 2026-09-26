@@ -357,7 +357,8 @@ test('the entity menu moves to trash with an undo, not a hold-to-confirm', () =>
   assert.doesNotMatch(APP, /holdToConfirm\('Delete entity'/,
     'a recoverable delete must not demand a hold');
   assert.match(APP, /label: 'Undo'[\s\S]{0,200}\/restore/, 'the toast must offer restore');
-  assert.match(APP, /function toast\(msg, isErr = false, action = null\)/);
+  assert.match(APP, /function toast\(msg, isErr = false, action = null(, \{ kind \} = \{\})?\)/,
+    'every caller keeps the (msg, isErr, action) shape (Issue #380 added an optional kind)');
   assert.ok(rulesFor('.wv-toast-action').cursor, '.wv-toast-action must be styled as a control');
 });
 
