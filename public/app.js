@@ -5630,6 +5630,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       out.push(`${cell(k)}{position:sticky;left:${left}px}`,
         `${cell(k, 'tbody')}{z-index:1;background:var(--tblr-bg-surface)}`,
         `${scope} > tbody > tr.row-selected > :nth-child(${k}):not([colspan]){background:color-mix(in srgb,var(--tblr-primary) 9%,var(--tblr-bg-surface))}`,
+        // The docked row's light, over the surface rather than over nothing (Issue #409).
+        `${scope} > tbody > tr.row-docked > :nth-child(${k}):not([colspan]){background:linear-gradient(var(--tblr-active-bg),var(--tblr-active-bg)) var(--tblr-bg-surface)}`,
         `${scope} > thead > tr > th:nth-child(${k}){z-index:5}`,
         `${scope} > thead > tr.wv-foot > td:nth-child(${k}){z-index:3}`);
       left += widthOf(cols[i]);

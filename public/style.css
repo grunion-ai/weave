@@ -446,6 +446,15 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid tbody tr.row-selected:hover > :is(td.sel-cell, td.pid-cell) {
   background: color-mix(in srgb, var(--tblr-primary) 9%, var(--tblr-bg-surface));
 }
+/* The row open in the dock is lit with --tblr-active-bg on every cell (the
+   row-docked rule, further down), and in the light theme that token is 4% of
+   the accent over nothing. It out-ranked the ground above, and on a frozen
+   cell a tint over nothing is a window: Kyle read `$1,119` through `#1 ↗`
+   (Issue #409). The same light is laid over the surface here instead, so the
+   pair matches the row and stays opaque in both themes. */
+.wv-grid tbody tr.entity-row.row-docked > :is(td.sel-cell, td.pid-cell) {
+  background: linear-gradient(var(--tblr-active-bg), var(--tblr-active-bg)) var(--tblr-bg-surface);
+}
 /* ---------- row selection (Feature #132) ----------
    The checkbox is its own column, LEFT of the # link, so the link never
    disappears while a selection is live and a chosen row stays openable.
