@@ -89,8 +89,18 @@ if (s) {
         const wrap = document.querySelector('.table-wrap');
         (wrap.classList.contains('wv-grid-scroll') ? wrap : document.scrollingElement).scrollTo({ top: 3000, behavior: 'instant' });
       });
-      await page.waitForFunction(() => !document.querySelector('.wv-grid tbody tr.entity-row-pending'), null, { timeout: 8000 });
-      const eid = await page.evaluate(() => [...document.querySelectorAll('.wv-grid tbody tr.entity-row')][4].dataset.eid);
+      const target = await page.waitForFunction(() => {
+        const wrap = document.querySelector('.table-wrap');
+        const edge = Math.max(0, document.querySelector('.wv-grid thead th').getBoundingClientRect().bottom);
+        const bottom = Math.min(innerHeight, wrap.getBoundingClientRect().bottom);
+        const visible = [...document.querySelectorAll('.wv-grid tbody tr.entity-row')].filter(row => {
+          const r = row.getBoundingClientRect();
+          return Number(row.dataset.i) > 10 && r.top >= edge && r.bottom <= bottom;
+        });
+        return !document.querySelector('.wv-grid tbody tr.entity-row-pending') && visible[3]?.dataset.eid;
+      }, null, { timeout: 8000 });
+      const eid = await target.jsonValue();
+      await target.dispose();
       await page.click(`tr[data-eid="${eid}"] td[data-field="Name"] input`);
       // Read from where the reader actually IS — inside the open cell. What
       // this Issue owns is the commit, not how a click places the window.

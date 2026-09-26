@@ -3637,7 +3637,7 @@ async function showTrash(dbId) {
    view (2026-09-23); drag order is the default and Blank leaves the strip
    (2026-09-25). The raw table is still computed here for the old
    …/view/blank link, read-only and never stored. */
-const BLANK_READ_ONLY = 'The raw table is read-only. Press + for a new view, or right-click a tab to duplicate it.';
+const BLANK_READ_ONLY = 'The raw table is read-only. Open Views and choose + Add view, or right-click a view to duplicate it.';
 function blankView(db) {
   return { id: 'blank', name: 'Blank', blank: true, fields: db.fields.filter((f) => f.type !== 'view').map((f) => f.name) };
 }
@@ -3678,6 +3678,7 @@ async function gridConfigWrite(db, tablePatch, viewPatch = tablePatch) {
 const viewHref = (db, v) => `#/table/${db.id}/view/${v.blank ? 'blank' : v.id}`;
 /* A name for a new view, asked once; the view is made and opened. */
 function newViewDialog(db, { title, from }) {
+  document.querySelector('.table-view-popover')?.remove();
   modal(title, [
     el('input', { name: 'name', placeholder: 'View name', class: 'form-control full', required: true }),
   ], async (fd) => {
@@ -3724,7 +3725,7 @@ document.addEventListener('dblclick', (e) => {
 function viewStrip(db) {
   const cur = db.view;
   const views = db.views ?? [];
-  const strip = el('div', { class: 'view-strip', role: 'tablist', 'aria-label': 'Views' });
+  const strip = el('div', { class: 'view-strip', role: 'tablist', 'aria-label': 'Views', 'aria-orientation': 'vertical' });
   const at = (id) => `/tables/${db.id}/views/${encodeURIComponent(id)}`;
   // Every write keeps the view on screen, even when the bare route's
   // leftmost view changes under it; a refusal says why and redraws.
@@ -3744,6 +3745,7 @@ function viewStrip(db) {
       done = true;
       const name = input.value.trim();
       if (!commit || !name || name === v.name) { a.replaceChildren(v.name); return; }
+      a.replaceChildren(name);
       await write(() => api('PATCH', at(v.id), { name }));
     };
     input.addEventListener('keydown', (e) => {
@@ -3757,7 +3759,8 @@ function viewStrip(db) {
     input.focus();
     input.select();
   };
-  const menu = (e, a, v) => contextMenu(e, [
+  const menu = (e, a, v) => {
+    const pop = contextMenu(e, [
     { label: 'Rename…', run: () => rename(a, v) },
     { label: 'Duplicate view…', run: () => newViewDialog(db, { title: 'Duplicate view', from: v.id }) },
     'divider',
@@ -3770,7 +3773,10 @@ function viewStrip(db) {
       const bare = `#/table/${db.id}`;
       if (location.hash === bare) showDatabase(db.id, null); else location.hash = bare;
     } },
-  ], 'view-ctx');
+    ], 'view-ctx');
+    pop.style.zIndex = '1210';
+    return pop;
+  };
   // From the keyboard the menu opens under the tab, with focus on its first item.
   const menuAtTab = (a, v) => {
     const r = a.getBoundingClientRect();
@@ -3780,7 +3786,7 @@ function viewStrip(db) {
     const active = cur && !cur.blank && v.id === cur.id;
     const a = el('a', {
       class: 'view-tab' + (active ? ' active' : ''),
-      role: 'tab', 'aria-selected': active ? 'true' : 'false', href: viewHref(db, v),
+      role: 'tab', 'aria-label': v.name, 'aria-selected': active ? 'true' : 'false', href: viewHref(db, v),
       draggable: 'false', dataset: { view: v.id },
       title: i === 0 ? `${v.name}: the default, it opens with the table. Drag a tab here to change it.` : `${v.name}. Drag to reorder; double-click to rename; right-click for more.`,
     }, v.name);
@@ -3825,7 +3831,7 @@ function viewStrip(db) {
       // crossed. Its neighbours move, never the tab itself: moving a node
       // drops its pointer capture and the drag would die mid-gesture.
       const all = [...strip.querySelectorAll('.view-tab')];
-      const want = all.filter((t) => { if (t === a) return false; const r = t.getBoundingClientRect(); return e.clientX > r.left + r.width / 2; }).length;
+      const want = all.filter((t) => { if (t === a) return false; const r = t.getBoundingClientRect(); return strip.closest('.table-view-popover') ? e.clientY > r.top + r.height / 2 : e.clientX > r.left + r.width / 2; }).length;
       for (let k = all.indexOf(a); k > want; k--) a.after(a.previousElementSibling);
       for (let k = all.indexOf(a); k < want; k++) a.before(a.nextElementSibling);
     });
@@ -3849,9 +3855,9 @@ function viewStrip(db) {
     });
     a.addEventListener('keydown', (e) => {
       if ((e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu') { e.preventDefault(); menuAtTab(a, v); return; }
-      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      if (e.altKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         e.preventDefault();
-        const to = i + (e.key === 'ArrowLeft' ? -1 : 1);
+        const to = i + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1);
         if (to >= 0 && to < views.length) move(v, to);
       }
     });
@@ -3861,7 +3867,7 @@ function viewStrip(db) {
   strip.append(el('button', {
     class: 'btn btn-sm btn-ghost-secondary view-add', type: 'button', title: 'New view: every field, no filter, no sort', 'aria-label': 'New view',
     onclick: () => newViewDialog(db, { title: 'New view', from: 'blank' }),
-  }, '+'));
+  }, '+ Add view'));
   return strip;
 }
 /* Issue #341: a row made on a filtered grid starts inside the filter, or the
@@ -3918,57 +3924,70 @@ function filterWhere(db) {
    more instead of racing it. The rows still come from the engine's
    where-language (Feature #38); the grid never filters client-side. */
 const FILTER_DEBOUNCE = 250;
+let filterWrites = Promise.resolve();
 function filterStrip(db, onChange) {
   const wfFields = db.fields.filter(isFilterField);
   if (!wfFields.length) return null;
-  const active = { ...tableFilters(db) };
+  const active = Object.fromEntries(Object.entries(tableFilters(db)).map(([k, v]) => [k, [...v]]));
   const strip = el('div', { class: 'filter-strip' });
   const chips = [];
-  let timer = 0;
-  let flushing = Promise.resolve();
+  let timer = 0, dirty = false;
+  const note = el('span', { role: 'status', 'aria-live': 'polite' }, 'Applies immediately');
+  const clear = el('button', { class: 'btn btn-sm btn-ghost-primary tiny filter-clear', type: 'button', onclick: () => {
+    if (db.view?.blank) return toast(BLANK_READ_ONLY, true);
+    for (const k of Object.keys(active)) delete active[k];
+    dirty = true; paint(); flush();
+  } }, 'Clear all');
+  const paint = () => {
+    for (const { chip, field, name } of chips) {
+      const on = (active[field] || []).includes(name);
+      chip.classList.toggle('on', on); chip.setAttribute('aria-pressed', String(on));
+    }
+    const count = Object.values(active).filter((v) => v.length).length;
+    clear.disabled = !count;
+    const trigger = document.querySelector('.table-filter-btn');
+    trigger?.querySelector('.table-filter-count')?.remove();
+    if (count) trigger?.append(el('span', { class: 'table-filter-count' }, count));
+  };
   const flush = () => {
     clearTimeout(timer);
-    const next = { ...active };
-    flushing = flushing.catch(() => {}).then(async () => {
+    if (!dirty) return filterWrites;
+    dirty = false;
+    const next = Object.fromEntries(Object.entries(active).map(([k, v]) => [k, [...v]]));
+    note.textContent = 'Applying…'; strip.setAttribute('aria-busy', 'true');
+    filterWrites = filterWrites.catch(() => {}).then(async () => {
       await setTableFilters(db, next);
-      // A reader who left the table in the pause keeps the saved filter but
-      // is not pulled back to the grid by its redraw.
-      if (strip.isConnected) await onChange();
-    });
-    return flushing;
+      if (state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id) await onChange();
+    }).catch((err) => {
+      toast(err.message, true);
+      const view = allTables().find((t) => t.id === db.id)?.views?.find((v) => v.id === db.view?.id);
+      if (!dirty) { for (const k of Object.keys(active)) delete active[k]; Object.assign(active, view?.filters || {}); paint(); }
+    }).finally(() => { if (!dirty) { note.textContent = 'Applies immediately'; strip.setAttribute('aria-busy', 'false'); } });
+    return filterWrites;
   };
-  const schedule = () => { clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE); };
+  strip.flushPending = flush;
   for (const f of wfFields) {
-    const row = el('span', { class: 'filter-group' },
-      el('span', { class: 'filter-label' }, f.name));
+    const row = el('div', { class: 'filter-group', role: 'group', 'aria-label': f.name },
+      el('div', { class: 'filter-label' }, lucideEl(f.type === 'toggle' ? 'square-check' : 'refresh-cw'), f.name,
+        el('span', { class: 'filter-type' }, f.type === 'toggle' ? 'Toggle' : 'Workflow')));
+    const values = el('div', { class: 'filter-values' });
     for (const st of filterStates(f)) {
-      const on = (active[f.name] ?? []).includes(st.name);
       const chip = el('button', {
-        class: `filter-chip cat-${st.category}${on ? ' on' : ''}`,
+        class: `filter-chip cat-${st.category}`, type: 'button', 'aria-label': st.name,
         onclick: () => {
           if (db.view?.blank) return toast(BLANK_READ_ONLY, true);
-          const cur = new Set(active[f.name] ?? []);
+          const cur = new Set(active[f.name] || []);
           cur.has(st.name) ? cur.delete(st.name) : cur.add(st.name);
           if (cur.size) active[f.name] = [...cur]; else delete active[f.name];
-          chip.classList.toggle('on', cur.has(st.name));
-          schedule();
+          dirty = true; paint(); note.textContent = 'Applying…';
+          clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE);
         },
       }, st.name);
-      chips.push(chip);
-      row.append(chip);
+      chips.push({ chip, field: f.name, name: st.name }); values.append(chip);
     }
-    strip.append(row);
+    row.append(values); strip.append(row);
   }
-  if (Object.keys(active).length) {
-    strip.append(el('button', {
-      class: 'btn btn-sm btn-ghost-secondary tiny',
-      onclick: () => {
-        for (const k of Object.keys(active)) delete active[k];
-        for (const c of chips) c.classList.remove('on');
-        flush();
-      },
-    }, 'Clear'));
-  }
+  strip.append(el('div', { class: 'filter-footer' }, note, clear)); paint();
   return strip;
 }
 
@@ -4000,7 +4019,7 @@ function tableSearchBox(db) {
     placeholder: `Search ${db.term.plural}`, 'aria-label': `Search ${db.term.plural}`,
     value: tableSearchText(db) ? tableSearch.text : '',
   });
-  const box = el('span', { class: 'table-search' + (tableSearch.dbId === db.id && tableSearch.open ? ' open' : '') },
+  const box = el('span', { class: 'table-search open' },
     el('button', {
       class: 'btn btn-sm table-search-btn', type: 'button', title: 'Search this table (/)', 'aria-label': 'Search this table',
       onclick: () => openTableSearch(box.parentElement),
@@ -4009,14 +4028,14 @@ function tableSearchBox(db) {
   input.addEventListener('input', () => {
     tableSearch = { ...tableSearch, dbId: db.id, text: input.value, open: true };
     clearTimeout(tableSearchTimer);
-    tableSearchTimer = setTimeout(() => setTableSearch(db, input.value), TABLE_SEARCH_DEBOUNCE);
+    tableSearchTimer = setTimeout(() => setTableSearch(db, input.value).catch((err) => toast(err.message, true)), TABLE_SEARCH_DEBOUNCE);
   });
   input.addEventListener('keydown', async (e) => {
     if (e.isComposing) return;
     if (e.key === 'Escape') {
       e.preventDefault(); e.stopPropagation();
       const had = tableSearchText(db) || input.value.trim();
-      if (!had) { clearTimeout(tableSearchTimer); tableSearch.open = false; box.classList.remove('open'); box.querySelector('button').focus(); return; }
+      if (!had) { clearTimeout(tableSearchTimer); tableSearch.open = false; box.querySelector('button').focus(); return; }
       await setTableSearch(db, '', { open: false });
       document.querySelector('.table-search-btn')?.focus();
     } else if (e.key === 'Enter') {
@@ -4196,6 +4215,255 @@ function gridPager(db, query, first) {
   return pager;
 }
 
+/* Table controls share one anchored popover. Its trigger can be replaced by
+   a grid refresh, so ownership and focus follow the control, not its old node. */
+function tableControlPopover(anchor, db, className, rows) {
+  const selector = `.${[...anchor.classList].find((c) => /^table-.*-btn$/.test(c)) || 'eye-btn'}`;
+  const old = document.querySelector('.chip-pop');
+  const same = old?.classList.contains(className) && old.tableId === db.id;
+  old?.remove();
+  if (same) return null;
+  const pop = el('div', { class: `chip-pop table-control-popover ${className}`, role: 'dialog', 'aria-label': anchor.getAttribute('aria-label') || anchor.textContent.trim() }, ...rows);
+  pop.tableId = db.id;
+  pop.viewId = db.view?.id;
+  pop.triggerSelector = selector;
+  const trigger = () => document.querySelector(`#main ${selector}`) || anchor;
+  const position = () => {
+    const r = trigger().getBoundingClientRect();
+    pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))}px`;
+    pop.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8))}px`;
+  };
+  const outside = (e) => { if (!pop.contains(e.target) && !e.target.closest(selector) && !(className === 'table-view-popover' && e.target.closest('.view-ctx'))) pop.remove(); };
+  const remove = pop.remove.bind(pop);
+  pop.remove = () => {
+    if (!pop.isConnected) return;
+    pop.beforeClose?.();
+    if (className === 'table-view-popover' && document.querySelector('.view-ctx')) contextMenu.close?.();
+    trigger().setAttribute('aria-expanded', 'false');
+    document.removeEventListener('click', outside, true);
+    window.removeEventListener('resize', position);
+    remove();
+  };
+  // Safari does not focus a button on click. Keep Escape and arrow keys
+  // inside the open control without taking focus back from a new tray.
+  pop.addEventListener('click', (e) => {
+    const target = e.target.closest('button,a');
+    if (pop.isConnected && target && pop.contains(target) &&
+        (document.activeElement === document.body || pop.contains(document.activeElement))) target.focus({ preventScroll: true });
+  });
+  pop.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.target.matches('input') || (e.target.closest('.field-reorder-handle') && ['ArrowUp', 'ArrowDown'].includes(e.key))) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); pop.remove(); trigger().focus({ preventScroll: true }); }
+    else if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
+      const opts = [...pop.querySelectorAll('.view-tab,.seg-opt,.eye-row,.filter-chip,.chip-pop-row')].filter((b) => !b.disabled);
+      if (!opts.length) return;
+      e.preventDefault();
+      const i = opts.indexOf(document.activeElement), step = e.key === 'ArrowUp' ? -1 : 1;
+      opts[(i + step + opts.length) % opts.length].focus({ preventScroll: true });
+    }
+  });
+  pop.reposition = position;
+  document.body.append(pop);
+  trigger().setAttribute('aria-expanded', 'true');
+  position();
+  document.addEventListener('click', outside, true);
+  window.addEventListener('resize', position);
+  pop.querySelector('.view-tab.active,.seg-opt.on,.eye-row,.filter-chip,.chip-pop-row')?.focus({ preventScroll: true });
+  return pop;
+}
+function tableControlButton(className, label, icon, dropdown = false) {
+  return el('button', { class: `btn btn-sm ${className}`, type: 'button', 'aria-expanded': 'false', 'aria-haspopup': 'dialog' },
+    lucideEl(icon), el('span', { class: 'table-control-label' }, label), dropdown ? lucideEl('chevron-down') : null);
+}
+function tableControlHeader(title, close) {
+  return el('div', { class: 'table-control-head' }, el('strong', {}, title),
+    el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary', type: 'button', 'aria-label': `Close ${title.toLowerCase()}`, onclick: close }, lucideEl('x')));
+}
+function tableViewButton(db) {
+  const btn = tableControlButton('table-view-btn', db.view?.name || 'Default', 'table', true);
+  btn.setAttribute('aria-label', `View: ${db.view?.name || 'Default'}`);
+  btn.addEventListener('click', () => {
+    let pop;
+    const reset = async (raw, current) => {
+      if (current.view?.blank) return toast(BLANK_READ_ONLY, true);
+      pop?.remove();
+      try {
+        await filterWrites;
+        await eyeWrites;
+        clearTimeout(tableSearchTimer);
+        tableSearch = { ...tableSearch, text: '', focus: false, only: null };
+        const table = allTables().find((d) => d.id === db.id) || db;
+        const patch = { filters: {}, sort: [] };
+        if (raw) {
+          patch.fields = [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n] && n !== 'Activity')];
+          patch.widths = Object.fromEntries(Object.keys(current.view?.widths || {}).map((n) => [n, null]));
+          patch.frozen = 0;
+          gridDensity(db.id, 'comfortable');
+        }
+        await gridConfigWrite(current, null, patch);
+        await showDatabase(db.id, current.view?.id);
+        document.querySelector('.table-view-btn')?.focus({ preventScroll: true });
+      } catch (err) { toast(err.message, true); }
+    };
+    const build = (current) => [
+      tableControlHeader('Views', () => pop?.remove()), viewStrip(current),
+      el('hr'),
+      el('button', { class: 'chip-pop-row view-reset', type: 'button', onclick: () => reset(true, current) }, lucideEl('undo'), 'Reset view'),
+      el('button', { class: 'chip-pop-row view-clear', type: 'button', onclick: () => reset(false, current) }, lucideEl('list-filter'), 'Clear filters, search, and sorting'),
+      el('p', { class: 'table-control-note' }, 'Changes save automatically. Reset restores all columns in schema order.'),
+    ];
+    pop = tableControlPopover(btn, db, 'table-view-popover', build(db));
+    if (!pop) return;
+    pop.refresh = (current) => {
+      const focused = document.activeElement?.closest('.view-tab')?.dataset.view;
+      if (pop.querySelector('.view-rename')) return;
+      pop.replaceChildren(...build(current));
+      if (focused) pop.querySelector(`[data-view="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+    };
+    pop.querySelector('.view-tab.active, .view-tab')?.focus({ preventScroll: true });
+  });
+  return btn;
+}
+function tableDensityButton(db) {
+  const mode = gridDensity(db.id);
+  const btn = tableControlButton('table-density-btn', mode === 'compact' ? 'Compact' : 'Comfortable', 'list', true);
+  btn.setAttribute('aria-label', `Row density: ${mode === 'compact' ? 'Compact' : 'Comfortable'}`);
+  btn.addEventListener('click', () => {
+    let pop;
+    const choices = segCtl([
+      { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
+      { id: 'compact', label: 'Compact', title: 'Short rows, for scanning' },
+    ], gridDensity(db.id), (next) => {
+      const wrap = document.querySelector('.wv-grid')?.closest('.table-wrap');
+      if (wrap?.wvSetDensity) wrap.wvSetDensity(next); else gridDensity(db.id, next);
+      const label = next === 'compact' ? 'Compact' : 'Comfortable';
+      btn.querySelector('.table-control-label').textContent = label;
+      btn.setAttribute('aria-label', `Row density: ${label}`);
+      pop?.remove(); btn.focus({ preventScroll: true });
+    });
+    for (const b of choices.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.classList.contains('on')));
+    pop = tableControlPopover(btn, db, 'table-density-popover', [tableControlHeader('Row density', () => pop?.remove()), choices]);
+    pop?.querySelector('.seg-opt.on')?.focus({ preventScroll: true });
+  });
+  return btn;
+}
+function tableFilterButton(db) {
+  const btn = tableControlButton('table-filter-btn', 'Filters', 'list-filter');
+  btn.setAttribute('aria-label', 'Filters');
+  const count = Object.values(tableFilters(db)).filter((v) => v?.length).length;
+  if (count) btn.append(el('span', { class: 'table-filter-count' }, count));
+  btn.addEventListener('click', () => {
+    let pop;
+    const strip = filterStrip(db, () => keepScroll(() => showDatabase(db.id, db.view?.id)));
+    const content = strip || el('div', { class: 'table-control-note' },
+      'Workflow and toggle fields provide filters. This table has neither.',
+      el('button', { class: 'chip-pop-row table-filter-add-field', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'Add field'));
+    pop = tableControlPopover(btn, db, 'table-filter-popover', [tableControlHeader('Filters', () => pop?.remove()), content]);
+    if (pop) pop.beforeClose = () => strip?.flushPending();
+  });
+  return btn;
+}
+function tableFieldsPopover(anchor, db, trashCount) {
+  let pop;
+  const raw = () => allTables().find((t) => t.id === db.id) || db;
+  const current = () => { const t = raw(); return viewed(t, db.view?.blank ? blankView(t) : t.views.find((v) => v.id === db.view.id) || db.view); };
+  const systemColumns = Object.keys(SYSTEM_COLS).filter((n) => n !== 'Activity');
+  let order = [...new Set([...(db.columns || []), ...raw().fields.map((f) => f.name), ...systemColumns])];
+  const movedHidden = new Set();
+  const here = () => state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id;
+  const write = (make) => {
+    if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
+    const turn = eyeWrites.then(async () => {
+      const patch = make(current());
+      if (patch.table) { await api('PATCH', `/tables/${db.id}`, patch.table); await loadSchema(); }
+      else await gridConfigWrite(db, null, patch);
+    }).catch((err) => toast(err.message, true));
+    eyeWrites = turn; eyeTails.set(db.id, turn);
+    turn.then(async () => {
+      if (eyeTails.get(db.id) !== turn) return;
+      eyeTails.delete(db.id);
+      if (!here()) return;
+      try { await keepScroll(() => showDatabase(db.id, db.view.id)); if (dock?.db.id === db.id) await drawDock(); }
+      catch (err) { toast(err.message, true); }
+      if (pop?.isConnected) refresh(current());
+    });
+  };
+  const flip = (name) => write((t) => {
+    const shown = t.columns || [];
+    if (shown.includes(name)) return { hide: [name] };
+    if (!movedHidden.has(name)) return { show: [name] };
+    movedHidden.delete(name);
+    const next = order.slice(order.indexOf(name) + 1).find((n) => shown.includes(n));
+    const previous = order.slice(0, order.indexOf(name)).reverse().find((n) => shown.includes(n));
+    return { show: [name], ...(next ? { move: { field: name, before: next } } : previous ? { move: { field: name, after: previous } } : {}) };
+  });
+  const move = (from, target, after) => {
+    if (from === target || db.view?.blank) return;
+    order = order.filter((n) => n !== from);
+    order.splice(order.indexOf(target) + (after ? 1 : 0), 0, from);
+    // A hidden field keeps its place in this picker; only visible columns
+    // are a saved view's order. Showing it uses the same ordered list.
+    const list = pop.querySelector('.table-field-list');
+    for (const name of order) { const row = [...list.children].find((r) => r.dataset.field === name); if (row) list.append(row); }
+    write((t) => {
+      if (!(t.columns || []).includes(from)) movedHidden.add(from);
+      return { fields: order.filter((n) => (t.columns || []).includes(n)) };
+    });
+  };
+  let dragging = null;
+  const clearDrop = () => pop.querySelectorAll('.drop-before,.drop-after').forEach((r) => r.classList.remove('drop-before', 'drop-after'));
+  const makeRow = (name, shown) => {
+    const toggle = el('button', { class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': String(shown), onclick: () => flip(name) },
+      el('span', { class: 'field-visible-check', 'aria-hidden': 'true' }, lucideEl('check')),
+      el('span', { class: 'eye-label' }, name));
+    const handle = el('button', { class: 'field-reorder-handle', type: 'button', draggable: 'true', 'aria-label': `Reorder ${name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'));
+    const row = el('div', { class: 'table-field-row', dataset: { field: name } }, toggle, handle);
+    handle.addEventListener('dragstart', (e) => { dragging = name; e.dataTransfer.setData('text/plain', name); e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); });
+    handle.addEventListener('dragend', () => { dragging = null; row.classList.remove('dragging'); clearDrop(); });
+    row.addEventListener('dragover', (e) => {
+      if (!dragging || dragging === name) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move'; clearDrop();
+      row.classList.add(e.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2 ? 'drop-after' : 'drop-before');
+    });
+    row.addEventListener('drop', (e) => { if (!dragging) return; e.preventDefault(); const from = dragging; dragging = null; const after = row.classList.contains('drop-after'); clearDrop(); move(from, name, after); });
+    handle.addEventListener('keydown', (e) => {
+      if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+      e.preventDefault(); const i = order.indexOf(name), to = i + (e.key === 'ArrowUp' ? -1 : 1);
+      if (to >= 0 && to < order.length) { move(name, order[to], to > i); handle.focus({ preventScroll: true }); }
+    });
+    return row;
+  };
+  const refresh = (t) => {
+    if (!pop?.isConnected) return;
+    const names = new Set([...raw().fields.map((f) => f.name), ...systemColumns]);
+    const list = pop.querySelector('.table-field-list');
+    for (const row of [...list.children]) if (!names.has(row.dataset.field)) row.remove();
+    order = order.filter((n) => names.has(n));
+    for (const name of names) if (!order.includes(name)) { order.push(name); list.append(makeRow(name, (t.columns || []).includes(name))); }
+    const shown = new Set(t.columns || []);
+    for (const r of pop.querySelectorAll('.table-field-row')) r.querySelector('.eye-row').setAttribute('aria-checked', String(shown.has(r.dataset.field)));
+    pop.querySelector('[data-rollups]')?.setAttribute('aria-checked', String(t.hideRollups === false));
+  };
+  const shown = new Set(db.columns || []);
+  const rows = [tableControlHeader('Fields', () => pop?.remove()),
+    el('div', { class: 'field-visibility-actions' },
+      el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => write(() => ({ fields: [...order] })) }, 'Show all'),
+      el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => write(() => ({ fields: [] })) }, 'Hide all')),
+    el('div', { class: 'table-field-legend' }, 'Show / hide', el('span', {}, 'Drag to reorder')),
+    el('div', { class: 'table-field-list' }, ...order.map((n) => makeRow(n, shown.has(n)))),
+    el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'Add field'),
+    el('div', { class: 'eye-head' }, 'Rows'),
+    el('button', { class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': String(state.showDeleted.has(db.id)), onclick: () => {
+      state.showDeleted.has(db.id) ? state.showDeleted.delete(db.id) : state.showDeleted.add(db.id);
+      pop?.remove(); keepScroll(() => showDatabase(db.id, db.view.id));
+    } }, el('span', { class: 'eye-label' }, `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`)),
+    ...(db.system ? [] : [el('button', { class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'data-rollups': '', 'aria-checked': String(db.hideRollups === false), onclick: () => write((t) => ({ table: { hideRollups: t.hideRollups === false } })) }, el('span', { class: 'eye-label' }, 'Σ rollup row'))]),
+  ];
+  pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
+  // Teach switches only after both the grid and dock have repainted.
+  if (pop) { pop.eyeOf = db.id; pop.relearnEye = () => refresh(current()); }
+}
+
 function drawDatabase(db, items, trashCount = 0, pager = null) {
   const main = $('#main');
   // The search box is redrawn with the grid it narrows; the caret goes with it.
@@ -4228,30 +4496,15 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
     },
     actions: [
       tableSearchBox(db),
-      // Only surfaced once the table actually has deleted rows — an empty
-      // trash is not worth a permanent control.
-      // The eyeball (Feature #114): show / hide fields, system columns and
-      // deleted rows — replaces "Manage fields".
+      tableViewButton(db),
+      tableDensityButton(db),
       (() => {
-        const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields and deleted rows', 'aria-label': 'Show or hide fields' }, eyeGlyph());
-        eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, trashCount); });
+        const eye = tableControlButton('eye-btn', 'Fields', 'eye');
+        eye.setAttribute('aria-label', 'Show or hide fields');
+        eye.addEventListener('click', () => fieldVisibilityPopover(eye, db, trashCount));
         return eye;
       })(),
-      // How tall a row reads at (Kyle, 2026-08-24). A way of reading the
-      // table, so it is a control in the toolbar and a per-person memory —
-      // not schema, and not something the next reader inherits.
-      segCtl(
-        [{ id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
-          { id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }],
-        gridDensity(db.id),
-        (mode) => {
-          // The grid carries the reader's place across the flip (Issue #342);
-          // with no grid on the page there is only the preference to keep.
-          const gridWrap = document.querySelector('.wv-grid')?.closest('.table-wrap');
-          if (gridWrap?.wvSetDensity) gridWrap.wvSetDensity(mode);
-          else gridDensity(db.id, mode);
-        },
-      ),
+      tableFilterButton(db),
       // Export and delete are occasional and one of them is irreversible, so
       // they live in the overflow rather than the toolbar.
       dotsMenu([
@@ -4304,9 +4557,14 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
     if (caret) searchInput.setSelectionRange(...caret);
   }
 
-  if (db.view) main.append(viewStrip(db));
-  const strip = filterStrip(db, () => showDatabase(db.id, state.route.view));
-  if (strip) main.append(strip);
+  const controlPop = document.querySelector('.table-control-popover');
+  if (controlPop?.tableId === db.id && (controlPop.viewId === db.view?.id || controlPop.classList.contains('table-view-popover'))) {
+    controlPop.viewId = db.view?.id;
+    main.querySelector(controlPop.triggerSelector)?.setAttribute('aria-expanded', 'true');
+    controlPop.refresh?.(db);
+    // Keep the open popover still across writes, including a held pointer.
+    // Resize is the only time its anchor is measured again (Issue #240).
+  }
 
   // A search that matches nothing says so, with the way back beside it.
   const searching = tableSearchText(db);
@@ -4434,6 +4692,7 @@ let eyeWrites = Promise.resolve();
 const eyeTails = new Map();
 
 function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
+  if (db.view && rowsSection) return tableFieldsPopover(anchor, db, trashCount);
   // Each row is a toggle switch: the whole row flips it.
   const row = (on, label, run) => el('button', {
     class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
@@ -11672,16 +11931,19 @@ function syncDocTitle(pageName) {
 }
 
 function renderRoute() {
-  /* Navigating away abandons any floating chrome: a picker left open would
-     otherwise survive the route change and haunt the next page (Issue #93's
-     replay — the grid it anchored to is gone, so there is nothing to commit
-     to either). */
-  for (const pop of document.querySelectorAll('.chip-pop, .picker-pop')) pop.remove();
   // Every render replaces #main, which would strand live document editors and
   // whatever they have not written yet. Flush and destroy before the DOM goes.
   teardownDocEditors();
   // A route change leaves the view the dock belonged to.
   dockClose();
+  /* Navigating away abandons any floating chrome: a picker left open would
+     otherwise survive the route change and haunt the next page (Issue #93's
+     replay — the grid it anchored to is gone, so there is nothing to commit
+     to either). */
+  for (const pop of document.querySelectorAll('.chip-pop, .picker-pop')) {
+    const nextTable = location.hash.match(/^#\/(?:table|db)\/([^/?]+)/)?.[1];
+    if (!pop.classList.contains('table-view-popover') || pop.tableId !== nextTable) pop.remove();
+  }
   // A new place names itself as it renders (Issue #267).
   state.pageName = null;
   const hash = location.hash || '#/';

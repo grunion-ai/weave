@@ -32,6 +32,8 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      await page.click('.table-filter-btn');
+      await page.locator('.table-filter-popover').evaluate(pop => { pop.dataset.probe = 'same'; });
       const hits = { query: 0, patch: 0 };
       page.on('request', (r) => {
         if (r.method() === 'POST' && r.url().endsWith(`/tables/${tasks.id}/query`)) hits.query++;
@@ -55,6 +57,11 @@ if (s) {
       assert.deepEqual(shown, server, 'the grid shows what the engine returns for the selection');
       const on = await page.$$eval('.filter-strip .filter-chip.on', (bs) => bs.map((b) => b.textContent).sort());
       assert.deepEqual(on, ['Doing', 'Open'], 'the redrawn strip wears the saved selection');
+      assert.equal(await page.locator('.table-filter-popover').getAttribute('data-probe'), 'same', 'the open popover survives the redraw');
+      await page.click('.filter-clear');
+      await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 6);
+      assert.deepEqual(weave.tableView(tasks).views[0].filters ?? {}, {}, 'Clear all saves an empty filter');
+      assert.equal(await page.locator('.table-filter-popover').isVisible(), true);
     } finally {
       weave.updateTable(tasks, { filters: {} });
       await page.close();
@@ -66,6 +73,7 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      await page.click('.table-filter-btn');
       const saved = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes(`/tables/${tasks.id}/views/`));
       await page.evaluate(() => {
         [...document.querySelectorAll('.filter-strip .filter-chip')].find((b) => b.textContent === 'Done').click();

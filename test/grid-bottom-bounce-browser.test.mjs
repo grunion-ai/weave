@@ -171,6 +171,7 @@ if (s) {
       });
       const roomy = await spacerRow();
       assert.ok(Math.abs(roomy.estimate - roomy.real) < 2, `the spacer stands in at the row's own height: ${JSON.stringify(roomy)}`);
+      await page.click('.table-density-btn');
       await page.click('.seg-opt[title="Short rows, for scanning"]');
       // The flip leaves the reader where they were reading (Issue #342), so
       // the spacer above the window still has rows to stand in for.

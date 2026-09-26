@@ -214,7 +214,7 @@ Boolean. Null normalizes to \`false\`, so a checkbox is never empty.
 
   { name: 'toggle', kind: 'Value', doc: `# toggle
 
-Boolean, worn as a switch with two named states (Feature #202). Same storage as a checkbox — \`true\` / \`false\` is what a formula, a filter, a CSV cell, the API and MCP read — but the config names the states, and every surface that draws the value draws the switch with the label of the state it is in: the grid cell, the entity page, the chip and the card, the filter strip. Null normalizes to \`false\`, so a toggle is never empty.
+Boolean, worn as a switch with two named states (Feature #202). Same storage as a checkbox — \`true\` / \`false\` is what a formula, a filter, a CSV cell, the API and MCP read — but the config names the states, and every surface that draws the value draws the switch with the label of the state it is in: the grid cell, the entity page, the chip and the card, the Filters popover. Null normalizes to \`false\`, so a toggle is never empty.
 
 ## Config
 
@@ -1913,26 +1913,52 @@ The mail app opens with the To, Subject and body already there. If nothing opens
     order: 20,
     doc: `# Table views
 
-A table can be read several ways. The strip of tabs under the table title holds its **views**: each one keeps which columns show, in what order, the state filter and the sort. The **leftmost** view is the default: it opens with the table. The order of the tabs is the only thing that says so.
+A table can be read several ways. Each **view** keeps which columns show, their order and widths, frozen columns, filters and sorting. Open the button bearing the current view's name to choose another. The **first** view in the menu is the default and opens with the table. A table always keeps at least one view.
 
-A table always keeps at least one view.
+## The toolbar
 
-## Using the strip
+The controls sit beside the breadcrumb, in this order: **Search → View → Density → Fields → Filters → Table actions (⋮)**. The three-dot menu keeps the table's existing actions; add records from the grid.
 
-| You do | What happens |
+| Control | What it does |
 | --- | --- |
-| Click a filter chip, a sort, a column drag or the eye | The change saves into the view on screen. There is no Save button. |
-| Drag a tab | Reorders the strip. Drop a tab first and it opens with the table from then on. With a mouse, press and move; on a phone, hold the tab still for a moment, then slide. |
-| **Alt+←** / **Alt+→** on a focused tab | Moves the tab one place, the keyboard spelling of a drag. |
-| Double-click a tab | Renames it in place. **Enter** or clicking away saves, **Escape** cancels. |
-| Right-click a tab (or **Shift+F10**, or hold it on a phone and let go) | **Rename…**, **Duplicate view…** (copies the view under a new name and opens the copy) and **Delete view** (hold to confirm). The last view cannot be deleted. |
-| **+** | Makes a new view with every field in schema order, no filter and no sort, and opens it. This is how you get back to the raw table. |
+| **Search** | Narrows this table by name, public id or text. Click the visible search box or press **/** when not editing. It searches all pages, combines with filters and preserves sorting. **Escape** clears the search. **⌘K / Ctrl+K** remains workspace search. |
+| **Current view name ▾** | Selects and manages saved views. Changes save automatically. |
+| **Comfortable ▾** or **Compact ▾** | Chooses row density without moving your scroll position. This preference belongs to you and this table, rather than the shared view. |
+| **Fields** | Shows, hides and reorders columns; opens the field tray to add a field. |
+| **Filters** | Narrows rows by workflow or toggle states. The badge counts fields with active filters. |
 
-A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` link still opens the raw table, read-only, with no tab lit.
+Search is temporary: it is not saved into a view or shared with other people, and leaving the table clears it.
+
+## Managing views
+
+| You do in the view menu | What happens |
+| --- | --- |
+| Select a view | Opens its saved layout, filters and sorting. |
+| Drag a view up or down | Reorders the list. Drop it first to make it the default. With a mouse, press and move; on a phone, hold still for a moment, then slide. |
+| **Alt+↑** / **Alt+↓** on a focused view | Moves it one place; **Alt+←** / **Alt+→** also work. |
+| Double-click a view | Renames it in place. **Enter** or clicking away saves; **Escape** cancels. |
+| Right-click a view (or **Shift+F10**, or hold it on a phone and let go) | Opens **Rename…**, **Duplicate view…** and **Delete view**. Duplicate opens a named copy; deletion requires holding to confirm. The last view cannot be deleted. |
+| **+ Add view** | Creates and opens a view with every regular field in schema order, no filters and no sorting. |
+| **Reset view** | Restores regular columns in schema order and the table's default system columns, removes custom widths and frozen columns, clears filters, search and sorting, and returns density to Comfortable. The view keeps its name. |
+| **Clear filters, search, and sorting** | Removes those restrictions while keeping the column layout and density. |
+
+A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` link still opens the raw table, read-only. Choose **+ Add view** to make an editable view.
+
+## Fields
+
+Click a field's visibility control to show or hide its column. **Show all** and **Hide all** apply to the whole list. Drag the grip at a field's right edge to move it; the straight insertion line marks where it will land. With the grip focused, **↑ / ↓** moves it one place. System columns such as Created At use the same controls.
+
+These changes save into the current view. Hiding a column does not delete its data. **Add field** opens the same field tray as the **+** at the end of the grid's field headers. The **Rows** section also lets you show deleted records and the Σ rollup row.
+
+## Filters
+
+Open **Filters** and choose state chips under a workflow or toggle field. Selected chips apply automatically and save into the current view; the popover stays open as results update. Select a chip again to remove it. Selecting several states in one field includes any of those states; filters on different fields must all match. A field with no selected states adds no restriction.
+
+**Clear all** removes all filters from the view while keeping search, sorting and column layout. If the table has no workflow or toggle fields, the popover offers **Add field**, opening the usual field tray.
 
 ## For agents
 
-One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the strip in order, and the first view is the default; \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); a read carries both only when they are set. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
+One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view is the default; \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); a read carries both only when they are set. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
   },
   {
     name: 'Chip and card anatomy',

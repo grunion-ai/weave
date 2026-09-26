@@ -1779,12 +1779,14 @@ test('lookup / rollup pick their relation and target field from what exists; no 
   assert.doesNotMatch(fnBody('drawDatabase'), /🗑/, 'the eyeball shows deleted rows; the toolbar badge is gone');
 });
 
-test('the view controls sit on the crumb line; the eyeball is a flat glyph with switch rows (Kyle, 2026-08-23)', () => {
+test('the view controls sit on the crumb line; Fields has a bundled eye icon and visibility switches', () => {
   const vh = fnBody('viewHeader');
   assert.match(vh, /class: 'crumb-actions wv-toolbar' \}, \.\.\.actions\.filter\(Boolean\)/, 'actions render beside the crumb');
   assert.doesNotMatch(vh, /titleInput, \.\.\.actions/, 'and no longer on the title row');
   assert.match(fnBody('fieldVisibilityPopover'), /class: 'switch' \+ \(on \? ' on' : ''\)/, 'rows are toggle switches');
-  assert.match(APP, /eye-btn', title: 'Show \/ hide fields and deleted rows', 'aria-label': 'Show or hide fields' \}, eyeGlyph\(\)\)/, 'a flat inline glyph, not an emoji');
+  assert.match(fnBody('drawDatabase'), /tableControlButton\('eye-btn', 'Fields', 'eye'\)/, 'the Fields label carries the bundled eye icon');
+  assert.match(fnBody('tableControlButton'), /lucideEl\(icon\)/, 'toolbar controls use the bundled icon renderer');
+  assert.match(fnBody('tableFieldsPopover'), /role: 'switch', 'aria-checked': String\(shown\)/, 'table field visibility exposes switch state');
   assert.ok(rulesFor('.switch.on').background?.includes('--tblr-primary'));
 });
 

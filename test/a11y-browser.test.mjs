@@ -136,7 +136,7 @@ if (s) {
       const page = await open(`#/table/${issue.id}`, '.wv-grid tbody tr.entity-row', theme);
       try {
         await page.keyboard.press('Tab'); // keyboard modality, so .focus() reads as :focus-visible
-        for (const sel of ['.table-search-btn', '.eye-btn']) {
+        for (const sel of ['.table-view-btn', '.table-density-btn', '.eye-btn', '.table-filter-btn']) {
           const r = await ringContrast(page, sel);
           assert.ok(r.focused && r.visible, `${sel} takes keyboard focus (${JSON.stringify(r)})`);
           assert.equal(r.style, 'solid', `${sel} draws the outline ring`);

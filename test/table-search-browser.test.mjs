@@ -1,11 +1,11 @@
-/* Table search in the toolbar (Feature #228). A magnifier beside the
-   table's controls opens a search box that narrows the grid as you type,
+/* Table search in the toolbar (Feature #228). A persistent search box beside the
+   table's controls narrows the grid as you type,
    with the ⌘K matcher scoped to this table: name, publicId (#143), text
    fields. The rows come from the server (`search` on the table query), so a
    paged table narrows across every page, not only the one loaded. It is
    transient view state: it composes with the saved filter and is never
-   written to the table. Esc clears and collapses; / or ⌘F from the grid
-   opens it; Enter on a single match opens that row; a miss says so and
+   written to the table. Esc clears; / or ⌘F from the grid
+   focuses it; Enter on a single match opens that row; a miss says so and
    offers a clear.
    Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
@@ -46,7 +46,6 @@ if (s) {
     return JSON.stringify(got) === JSON.stringify(want);
   }, [...ids].sort());
   const typeSearch = async (page, text) => {
-    await page.click('.table-search-btn');
     await page.fill('.table-search-input', text);
   };
 
@@ -104,15 +103,15 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('Esc clears and collapses', async () => {
+  test('Esc clears and keeps the search available', async () => {
     const page = await open();
     try {
       await typeSearch(page, 'cleanup');
       await rowsAre(page, [named['Gamma cleanup'].id]);
       await page.press('.table-search-input', 'Escape');
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length > 3);
-      assert.equal(await page.isVisible('.table-search-input'), false, 'the box collapsed');
-      assert.equal(await page.isVisible('.table-search-btn'), true, 'the magnifier is back');
+      assert.equal(await page.isVisible('.table-search-input'), true, 'the search remains available');
+      assert.equal(await page.inputValue('.table-search-input'), '', 'Escape cleared the query');
     } finally { await page.close(); }
   });
 
@@ -128,7 +127,7 @@ if (s) {
         assert.equal(await page.inputValue('.table-search-input'), '', `${key} typed nothing into the box`);
         assert.equal(await controls(), before, `${key} opened no cell editor`);
         await page.press('.table-search-input', 'Escape');
-        await page.waitForSelector('.table-search-input', { state: 'hidden' });
+        assert.equal(await page.isVisible('.table-search-input'), true);
       }
     } finally { await page.close(); }
   });
@@ -157,7 +156,8 @@ if (s) {
       await rowsAre(page, [named['Gamma cleanup'].id]);
       await page.click('.add-entity-btn');
       await page.waitForFunction((n) => /of (\d+) loaded/.exec(document.querySelector('.wv-loaded')?.textContent ?? '')?.[1] === String(n), TOTAL + 1);
-      assert.equal(await page.isVisible('.table-search-input'), false, 'the search stepped aside');
+      assert.equal(await page.inputValue('.table-search-input'), '', 'the search cleared');
+      assert.equal(await page.isVisible('.table-search-input'), true, 'the search remains available');
       const created = weave.query(jobs, {}).items.find((e) => !e.name);
       assert.ok(created, 'the row was made');
       await page.waitForFunction((id) => document.activeElement?.closest?.('tr.entity-row')?.dataset.eid === id, created.id);

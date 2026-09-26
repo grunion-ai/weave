@@ -57,10 +57,29 @@ if (s) {
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden]) .entity-fields .fieldrow');
     assert.equal(await paneHasAmount(page), true, 'Amount starts visible in the pane');
-    await toggleAmount(page, '#main');
-    assert.equal(await gridHasAmount(page), false, 'the grid hides Amount');
-    assert.equal(await paneHasAmount(page), false, 'and the pane follows without a reopen');
-    await page.close();
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    const entityPath = `/api/entities/${a.id}`;
+    await page.route(`**${entityPath}`, async route => {
+      if (route.request().method() === 'GET') await held;
+      await route.continue();
+    });
+    const dockRead = page.waitForRequest(request => request.method() === 'GET' && new URL(request.url()).pathname === entityPath);
+    const flipping = toggleAmount(page, '#main');
+    try {
+      await dockRead;
+      assert.equal(await gridHasAmount(page), false, 'the grid has completed its half of the update');
+      assert.equal(await paneHasAmount(page), true, 'the held dock read still shows its previous field');
+      assert.equal(await page.evaluate(amountChecked), 'true', 'the switch does not signal completion before the dock is ready');
+      release();
+      await flipping;
+      assert.equal(await gridHasAmount(page), false, 'the grid hides Amount');
+      assert.equal(await paneHasAmount(page), false, 'and the pane follows without a reopen');
+    } finally {
+      release();
+      await flipping.catch(() => {});
+      await page.close();
+    }
   });
 
   test("hiding a field from the pane's eye also clears the grid column", async () => {

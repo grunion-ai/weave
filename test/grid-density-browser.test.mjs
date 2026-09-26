@@ -104,6 +104,7 @@ if (s) {
       assert.equal(before.scroller, 'wrap', 'a grid wider than its card scrolls in its own box');
       assert.ok(before.top > 100, `the reader is deep in the table: ${JSON.stringify(before)}`);
 
+      await page.click('.table-density-btn');
       await page.click(COMPACT);
       await settle(page);
       const compact = await view(page);
@@ -112,6 +113,7 @@ if (s) {
       assert.ok(compact.scrollTop > 0, `the reader is not back at the top: ${JSON.stringify(compact)}`);
       assert.equal(compact.top, before.top, `the same row heads the view: ${JSON.stringify({ before, compact })}`);
 
+      await page.click('.table-density-btn');
       await page.click(ROOMY);
       await settle(page);
       const roomy = await view(page);
@@ -133,7 +135,7 @@ if (s) {
       assert.equal(before.scroller, 'page', 'a grid that fits its card scrolls the page');
       assert.ok(before.top > 100, `the reader is deep in the table: ${JSON.stringify(before)}`);
 
-      await page.evaluate((sel) => document.querySelector(sel).click(), COMPACT);
+      await page.evaluate((sel) => { document.querySelector('.table-density-btn').click(); document.querySelector(sel).click(); }, COMPACT);
       await settle(page);
       const compact = await view(page);
       assert.equal(compact.density, 'compact');
@@ -155,7 +157,7 @@ if (s) {
         await page.waitForSelector('.wv-grid tbody tr.entity-row');
         await page.waitForTimeout(300);
         await scrollTo(page, 10800);
-        const pick = (sel) => page.evaluate((q) => document.querySelector(q).click(), sel);
+        const pick = (sel) => page.evaluate((q) => { document.querySelector('.table-density-btn').click(); document.querySelector(q).click(); }, sel);
         const roomy = await view(page);
         assert.equal(roomy.scroller, 'page', 'a grid that fits its card scrolls the page');
         assert.ok(roomy.top > 100, `the reader stands part way down: ${JSON.stringify(roomy)}`);
@@ -174,18 +176,20 @@ if (s) {
     });
   }
 
-  test('picking a density keeps the focus on the button the reader clicked', async () => {
+  test('picking a density returns focus to its dropdown button', async () => {
     const page = await open(wide);
     try {
+      await page.click('.table-density-btn');
       await page.click(COMPACT);
       await settle(page);
       const focused = await page.evaluate(() => ({
         tag: document.activeElement?.tagName ?? null,
+        density: document.activeElement?.classList.contains('table-density-btn') ?? false,
         text: document.activeElement?.textContent?.trim() ?? null,
-        on: document.activeElement?.classList.contains('on') ?? false,
       }));
-      assert.deepEqual(focused, { tag: 'BUTTON', text: 'Compact', on: true },
-        'the clicked button is still in the document, still focused, and wears the mark');
+      assert.equal(focused.tag, 'BUTTON');
+      assert.equal(focused.density, true, 'the closed dropdown returns focus to its trigger');
+      assert.match(focused.text, /Compact/, 'the trigger names the selected density');
     } finally { await page.close(); }
   });
 }

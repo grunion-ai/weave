@@ -78,6 +78,8 @@ if (s) {
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'load' });
     await page.click('.eye-btn');
     await page.waitForSelector('.chip-pop .eye-row');
+    // Measure pointer targets after the popover's entrance transform settles.
+    await page.locator('.chip-pop').evaluate(pop => Promise.all(pop.getAnimations().map(a => a.finished)));
     return page;
   };
 

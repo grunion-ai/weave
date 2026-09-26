@@ -1,6 +1,6 @@
 /* The view strip (Feature #229; Kyle's rulings 2026-09-23 and 2026-09-25):
-   tabs under the table title. Order is the only signal of the default: the
-   leftmost tab opens with the table, and dragging a tab (mouse or touch, or
+   view options in the eyebrow dropdown. Order signals the default: the
+   first option opens with the table, and dragging a tab (mouse or touch, or
    Alt+Left / Alt+Right) reorders the strip. No star, no ⋯ button, no Blank
    tab: double-click renames a tab in place; right-click (or Shift+F10)
    opens Rename…, Duplicate view… and a hold-to-delete Delete view; + makes a
@@ -41,14 +41,22 @@ if (s) {
   const open = async (hash = `#/table/${jobs.id}`, theme = 'light', opts = {}) => {
     const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, colorScheme: theme, ...opts });
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
+    await page.click('.table-view-btn');
     await page.waitForSelector('.view-strip .view-tab');
     return page;
   };
-  const tabs = (page) => page.$$eval('.view-strip .view-tab', (ts) => ts.map((t) => ({
-    name: t.textContent.trim(), active: t.classList.contains('active'),
-  })));
-  const tab = (page, name) => page.locator('.view-strip').getByRole('tab', { name, exact: true });
+  const ensureViews = async (page) => {
+    if (!await page.locator('.table-view-popover').isVisible()) await page.click('.table-view-btn');
+  };
+  const tabs = async (page) => {
+    await ensureViews(page);
+    return page.$$eval('.view-strip .view-tab', (ts) => ts.map((t) => ({
+      name: t.textContent.trim(), active: t.classList.contains('active'),
+    })));
+  };
+  const tab = (page, name) => page.locator('.view-strip .view-tab').filter({ hasText: new RegExp(`^${name}$`) });
   const waitOrder = async (page, want) => {
+    await ensureViews(page);
     await page.waitForFunction((w) => JSON.stringify([...document.querySelectorAll('.view-strip .view-tab')].map((t) => t.textContent.trim())) === JSON.stringify(w), want);
   };
   const hold = async (page, locator, ms = 1400) => {
@@ -61,7 +69,7 @@ if (s) {
   const rows = (page) => page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.length);
   const heads = (page) => page.$$eval('.wv-grid thead th .col-label', (hs) => hs.map((h) => h.textContent.trim()));
 
-  test('the strip sits under the title: the leftmost view open, then +; no star, no dots, no Blank tab', async () => {
+  test('the menu opens from the eyebrow: the first view active, then Add view; no star, no dots, no Blank tab', async () => {
     reset();
     const page = await open();
     try {
@@ -71,13 +79,7 @@ if (s) {
       assert.equal(await page.locator('.view-strip .dots-btn').count(), 0, 'no ⋯ button in the strip');
       assert.equal(await page.locator('.view-strip .view-tab.blank').count(), 0, 'no Blank tab');
       assert.ok(!/blank/i.test(await page.locator('.view-strip').textContent()), 'Blank is not in the strip at all');
-      const order = await page.evaluate(() => {
-        const title = document.querySelector('#main h1, #main .page-title, #main h2');
-        const strip = document.querySelector('.view-strip');
-        const grid = document.querySelector('.wv-grid');
-        return [!!(title.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING), !!(strip.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING)];
-      });
-      assert.deepEqual(order, [true, true], 'title, then strip, then grid');
+      assert.equal(await page.locator('.table-view-popover .view-strip').isVisible(), true, 'views live inside their eyebrow dropdown');
     } finally { await page.close(); }
   });
 
@@ -88,6 +90,7 @@ if (s) {
     const page = await open(`#/table/${jobs.id}/view/${mine.id}`);
     try {
       const patched = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes(`/tables/${jobs.id}/views/`));
+      await page.click('.table-filter-btn');
       await page.click('.filter-strip .filter-chip:text-is("Done")');
       await patched;
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
@@ -95,6 +98,7 @@ if (s) {
       assert.equal(weave.tableView(`${jobs.id}/Default`).filters, undefined, 'the default did not move');
       assert.deepEqual(await heads(page), ['Name', 'Status'], "the grid shows Mine's columns, in Mine's order");
       await page.reload({ waitUntil: 'networkidle' });
+      await page.click('.table-view-btn');
       await page.waitForSelector('.view-tab.active');
       assert.equal((await tabs(page)).find((t) => t.active).name, 'Mine', 'the permalink reopens the view');
       assert.equal(await rows(page), 1);
@@ -109,10 +113,11 @@ if (s) {
       assert.equal(await rows(page), 4, 'every row');
       assert.ok((await heads(page)).includes('Owner'), 'every field');
       assert.deepEqual(await tabs(page), [{ name: 'Default', active: false }], 'no tab is lit: the raw table has none');
+      await page.click('.table-filter-btn');
       await page.click('.filter-strip .filter-chip:text-is("Done")');
       await page.waitForFunction(() => /read-only/.test(document.body.textContent));
       const note = await page.evaluate(() => [...document.querySelectorAll('.toast, .wv-toast, [role=alert], [role=status]')].map((t) => t.textContent).join(' ') || document.body.textContent);
-      assert.match(note, /\+/, 'it points at + (a control that exists), not at a Save as view item that is gone');
+      assert.match(note, /Add view|\+/, 'it points at Add view, not at a Save as view item that is gone');
       assert.doesNotMatch(note, /Save as view/);
       await page.waitForLoadState('networkidle');
       assert.equal(await page.locator('.filter-strip .filter-chip.on').count(), 0, 'the chip did not turn on');
@@ -131,7 +136,8 @@ if (s) {
       await page.click('.view-ctx .dropdown-item:text-is("Duplicate view…")');
       await page.fill('#modal input[name=name]', 'Open copy');
       await page.click('#modal button[type=submit]');
-      await page.waitForFunction(() => document.querySelector('.view-tab.active')?.textContent.includes('Open copy'));
+      await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('Open copy'));
+      await page.click('.table-view-btn');
       const copy = weave.tableView(`${jobs.id}/Open copy`);
       assert.deepEqual(copy.filters, { Status: ['Open'] }, 'the copy carries the filter');
       assert.ok(new RegExp(`/view/${copy.id}$`).test(await page.evaluate(() => location.hash)), 'the URL names the copy');
@@ -147,7 +153,8 @@ if (s) {
       await page.click('.view-strip .view-add');
       await page.fill('#modal input[name=name]', 'Fresh');
       await page.click('#modal button[type=submit]');
-      await page.waitForFunction(() => document.querySelector('.view-tab.active')?.textContent.includes('Fresh'));
+      await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('Fresh'));
+      await page.click('.table-view-btn');
       const fresh = weave.tableView(`${jobs.id}/Fresh`);
       assert.deepEqual(fresh.fields, ['Name', 'Description', 'Status', 'Owner']);
       assert.ok(!fresh.filters && !fresh.sort, 'the system default: no filter, no sort');
@@ -167,7 +174,7 @@ if (s) {
       const to = await tab(page, 'Default').boundingBox();
       await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
       await page.mouse.down();
-      await page.mouse.move(to.x + 2, to.y + to.height / 2, { steps: 12 });
+      await page.mouse.move(to.x + to.width / 2, to.y + 2, { steps: 12 });
       await page.mouse.up();
       await waitOrder(page, ['B', 'Default', 'A']);
       await page.waitForLoadState('networkidle');
@@ -175,6 +182,7 @@ if (s) {
       assert.equal((await tabs(page)).find((t) => t.active).name, 'A', 'the drag is not a click: the view on screen stays');
       await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
       await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
+      await page.click('.table-view-btn');
       await page.waitForSelector('.view-tab.active');
       assert.equal((await tabs(page)).find((t) => t.active).name, 'B', 'the leftmost view opens with the table');
       assert.equal(await rows(page), 1, "and it is B's grid");
@@ -192,7 +200,7 @@ if (s) {
       await page.mouse.down();
       // One jump, as a fast flick or an automation driver sends it: the first
       // move the page sees is already over Default, never over A.
-      await page.mouse.move(to.x + 2, to.y + to.height / 2);
+      await page.mouse.move(to.x + to.width / 2, to.y + 2);
       await page.mouse.up();
       await waitOrder(page, ['A', 'Default']);
       await page.waitForLoadState('networkidle');
@@ -214,7 +222,7 @@ if (s) {
       const to = await tab(page, 'Default').boundingBox();
       const x0 = from.x + from.width / 2;
       const y = from.y + from.height / 2;
-      const slide = async () => { for (let k = 1; k <= 10; k++) await touch('touchMove', x0 + ((to.x + 2) - x0) * (k / 10), y); };
+      const slide = async () => { for (let k = 1; k <= 10; k++) await touch('touchMove', x0, y + ((to.y + 2) - y) * (k / 10)); };
       await touch('touchStart', x0, y);
       await slide();
       await touch('touchEnd');
@@ -273,9 +281,9 @@ if (s) {
     const page = await open();
     try {
       await tab(page, 'A').click();
-      await page.waitForFunction(() => document.querySelector('.view-tab.active')?.textContent.trim() === 'A');
+      await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('A'));
       await page.waitForLoadState('networkidle');
-      await page.locator('#main h1, #main .page-title, #main h2').first().dblclick();
+      await page.locator('#main h1, #main .page-title, #main h2').first().dblclick({ position: { x: 20, y: 10 } });
       await page.waitForTimeout(400);
       assert.equal(await page.locator('.view-strip .view-tab input').count(), 0, 'the earlier tab click does not ride along into an unrelated double-click');
     } finally { reset(); await page.close(); }
