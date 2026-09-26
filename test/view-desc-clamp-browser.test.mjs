@@ -42,6 +42,7 @@ if (s) {
       lineHeight: lh,
       more: more ? more.textContent.trim() : null,
       editing: !!desc.querySelector('.view-desc-edit'),
+      overflow: getComputedStyle(body).overflowY,
     };
   });
 
@@ -69,7 +70,10 @@ if (s) {
       await page.click('.view-desc-more');
       let r = await probe(page);
       assert.equal(r.clamped, false, 'the clamp is off');
-      assert.equal(r.shown, r.full, 'nothing is hidden');
+      // Opened past a fifth of the window, the rest scrolls inside the held
+      // header instead of pushing it off screen (Issue #412).
+      assert.ok(r.shown === r.full || (r.overflow === 'auto' && r.shown > r.lineHeight * 5 + 1),
+        `nothing is hidden: ${JSON.stringify(r)}`);
       assert.equal(r.more, 'Show less');
       assert.equal(r.editing, false, 'the control did not open the editor');
       await page.click('.view-desc-more');

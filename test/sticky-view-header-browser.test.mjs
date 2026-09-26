@@ -12,6 +12,10 @@
    page-scrolling mode they stick to the same box as the header. They start
    where it ends instead of sliding under it.
 
+   An opened long description is capped (Issue #412): it scrolls inside the
+   header, so the held block never grows taller than the screen and the
+   rows keep the viewport.
+
    Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +23,7 @@ import { launch } from './lib/browser.mjs';
 
 const DESC = 'A description with enough words in it to wrap onto a second line of the header, so the measured height is not the bare title.';
 
-let tasks, wide, alpha, essay;
+let tasks, wide, alpha, long;
 const s = await launch('sticky view header', (weave) => {
   weave.createSpace({ name: 'Work' });
   // Two columns: the grid fits its card, so the PAGE is the scroller.
@@ -37,10 +41,13 @@ const s = await launch('sticky view header', (weave) => {
   weave.updateTable(tasks.id, { hideRollups: false });
   const projects = weave.createTable({ space: 'Work', name: 'Projects' });
   alpha = weave.createEntity(projects, { name: 'Alpha' });
-  // Thirty paragraphs: expanded, this header is taller than the window.
-  essay = weave.createTable({ space: 'Work', name: 'Essay', description: Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a very long description.`).join('\n\n') });
-  weave.addField(essay, { name: 'Note', type: 'number' });
-  for (let i = 0; i < 40; i++) weave.createEntity('Essay', { name: `e${i}`, values: { Note: i } });
+  // Sixty paragraphs, far past the five-line clamp: opened in full, the
+  // header would be 1,340px tall, over a 900px window (Issue #412).
+  long = weave.createTable({
+    space: 'Work', name: 'Long',
+    description: Array.from({ length: 60 }, (_, i) => `Paragraph ${i + 1} of a description nobody should have to scroll past to reach the rows.`).join('\n\n'),
+  });
+  for (let i = 0; i < 300; i++) weave.createEntity('Long', { name: `l${String(i).padStart(4, '0')}` });
 });
 
 if (s) {
@@ -179,28 +186,63 @@ if (s) {
     await page.close();
   });
 
-  test('a header that would take half the window sits in the flow instead', async () => {
-    const page = await open(essay.id);
-    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#main > .view-header')).position), 'sticky',
-      'clamped to five lines it still pins');
-    await page.click('.view-desc-more');
-    await page.waitForTimeout(400);
-    const loose = await page.evaluate(() => ({
-      pos: getComputedStyle(document.querySelector('#main > .view-header')).position,
-      v: getComputedStyle(document.documentElement).getPropertyValue('--wv-view-h'),
-      thTop: getComputedStyle(document.querySelector('.wv-grid thead th')).top,
-      label: document.querySelector('.view-desc-more').textContent.trim(),
-    }));
-    assert.equal(loose.label, 'Show less', 'the description is open');
-    assert.equal(loose.pos, 'static', 'a header this tall does not pin');
-    assert.equal(loose.v, '0px', 'and covers nothing, so the field headers keep their own top edge');
-    assert.equal(loose.thTop, '0px');
-    // Folded back, it pins again.
-    await page.click('.view-desc-more');
-    await page.waitForTimeout(400);
-    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#main > .view-header')).position), 'sticky');
-    await page.close();
-  });
+  for (const theme of ['light', 'dark']) {
+    test(`an opened long description is capped, so the held block leaves the rows the viewport (${theme})`, async () => {
+      const page = await browser.newPage({ viewport: { width: 1470, height: 900 } });
+      try {
+        await page.goto(`${base}/#/table/${long.id}`, { waitUntil: 'networkidle' });
+        await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
+        await page.waitForSelector('.wv-grid tbody tr[data-eid]');
+        await page.waitForSelector('.view-desc-more');
+        await page.click('.view-desc-more');
+        await page.waitForTimeout(400);
+        await page.evaluate(() => scrollTo(0, 4000));
+        await page.waitForTimeout(400);
+        const m = await page.evaluate(() => {
+          const rect = (n) => n.getBoundingClientRect().toJSON();
+          const hdr = document.querySelector('#main > .view-header');
+          const th = document.querySelector('.wv-grid thead th.col-head');
+          const body = hdr.querySelector('.view-desc-body');
+          const h = rect(hdr);
+          const x = rect(th).left + 20;
+          return {
+            scrollY, ih: innerHeight, hdr: h, th: rect(th),
+            pos: getComputedStyle(hdr).position,
+            parts: Object.fromEntries(['.crumb-path', '.view-title', '.view-desc', '.crumb-actions', '.view-desc-more']
+              .map((q) => [q, rect(hdr.querySelector(q))])),
+            rowUnderHead: !!document.elementFromPoint(x, rect(th).bottom + 3)?.closest('tbody tr[data-eid]'),
+            body: { clamped: body.classList.contains('clamped'), scroll: body.scrollHeight, client: body.clientHeight, overflow: getComputedStyle(body).overflowY },
+          };
+        });
+        assert.ok(m.scrollY > 3000, `the page scrolled: ${m.scrollY}`);
+        assert.equal(m.pos, 'sticky', 'the header still holds');
+        assert.ok(m.hdr.top >= -1 && m.hdr.top < 2, `the block rests at the top of the viewport: ${JSON.stringify(m.hdr)}`);
+        for (const [q, r] of Object.entries(m.parts)) {
+          assert.ok(r.top >= -1 && r.bottom <= m.hdr.bottom + 0.5, `long description, opened: ${q} is on screen inside the header block ${JSON.stringify({ r, hdr: m.hdr })}`);
+        }
+        assert.ok(m.hdr.bottom <= m.ih * 0.45, `the held block takes under half the viewport ${JSON.stringify({ hdr: m.hdr, ih: m.ih })}`);
+        assert.ok(Math.abs(m.th.top - m.hdr.bottom) <= 2, `the field headers sit right under it: th=${m.th.top} header bottom=${m.hdr.bottom}`);
+        assert.ok(m.rowUnderHead, 'and a body row shows under them');
+        assert.equal(m.body.clamped, false, 'the description is open');
+        assert.ok(m.body.scroll > m.body.client && m.body.overflow === 'auto', `the rest of it scrolls inside the block ${JSON.stringify(m.body)}`);
+
+        // The editor opens at the full markdown's height; it is capped the same way.
+        await page.click('.view-desc-body p');
+        await page.waitForSelector('.view-desc-edit');
+        await page.waitForTimeout(300);
+        const e = await page.evaluate(() => {
+          const hdr = document.querySelector('#main > .view-header');
+          const ta = hdr.querySelector('.view-desc-edit');
+          return { hdr: hdr.getBoundingClientRect().toJSON(), ih: innerHeight, pos: getComputedStyle(hdr).position, scroll: ta.scrollHeight, client: ta.clientHeight, overflow: getComputedStyle(ta).overflowY };
+        });
+        assert.equal(e.pos, 'sticky', 'editing, the header still holds');
+        assert.ok(e.hdr.bottom <= e.ih * 0.45, `editing, the block takes under half the viewport ${JSON.stringify(e)}`);
+        assert.ok(e.scroll > e.client && e.overflow === 'auto', `the editor scrolls inside the block ${JSON.stringify(e)}`);
+      } finally {
+        await page.close();
+      }
+    });
+  }
 
   test('a window shrunk under the header lets it go, and gives it back', async () => {
     const page = await open(tasks.id);

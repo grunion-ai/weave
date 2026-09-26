@@ -1127,8 +1127,9 @@ function publishHeaderOn(holder, box, room) {
   if (!holder || !box) return;
   const h = box.getBoundingClientRect().height;
   /* It pins while it leaves the reader something to read. Past half the
-     window it does not: a 200px-tall window, or a description expanded to
-     thirty lines, would hold nothing but header — and the Show less control
+     window it does not: a 200px-tall window would hold nothing but header
+     (an opened description is capped in style.css, Issue #412, so a long
+     one alone no longer gets it here) — and the Show less control
      at its foot would sit off screen with no way to scroll to it, because a
      pinned band does not move. */
   const holds = h <= room / 2;

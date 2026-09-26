@@ -293,13 +293,17 @@ a.nav-space:hover { color: var(--tblr-primary); }
    the document, and every one of them is later. */
 .view-header { padding-bottom: 16px; }
 #main > .view-header { position: sticky; top: 0; z-index: 6; background: var(--tblr-bg-surface); }
-/* A header that would take half the window does not pin: a 200px-tall
-   window, or a description the reader expanded to thirty lines, would hold
-   nothing but header, and the Show less control at its foot would sit off
-   screen with no way to scroll to it, because the pinned band does not
-   move. Over that line the header goes back in the flow and --wv-view-h
-   reads 0 — stickViewHeader() owns both. */
+/* A header that would take half the window does not pin: in a 200px-tall
+   window it would hold nothing but header, and the Show less control at its
+   foot would sit off screen with no way to scroll to it, because the pinned
+   band does not move. Over that line the header goes back in the flow and
+   --wv-view-h reads 0 — stickViewHeader() owns both. */
 html.view-header-loose #main > .view-header { position: static; }
+/* An opened description, or its editor, stops at a fifth of the window
+   (never under the clamp's five lines) and the rest scrolls inside it
+   (Issue #412). Uncapped, sixty paragraphs opened to a 1,340px header: it
+   let go of the top, and the crumb and toolbar scrolled off with it. */
+#main > .view-header :is(.view-desc-body:not(.clamped), .view-desc-edit) { max-height: max(20vh, calc(5 * 1.45em)); overflow-y: auto; }
 .view-header .crumb { margin-bottom: 4px; }
 .view-title-row { margin-bottom: 0; }
 /* Issue #267: the heading element around the title input, with none of an h1's own look. */
