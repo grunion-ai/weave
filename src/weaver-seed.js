@@ -1,5 +1,6 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { scanSuites, syncQualityMirror } from './quality-mirror.js';
 import { SYMPTOM_FIELD, SYMPTOM_OPTIONS } from './bugreport.js';
 // The "weaver" workspace: Weave's canonical, self-referential documentation,
@@ -17,10 +18,17 @@ export { DEFINABLE_TYPES };
    lifecycle workflow and a two-state gate; rollups by count / avg / join;
    numeric, text and date formulas; a depth-1 and a nested field
    definition). A People table carries the relations the computed fields
-   hang off. Idempotent: skipped when the space already exists, so it can be
-   applied to a workspace seeded before it existed. */
+   hang off. The base is built only when the space is missing; the columns
+   added since (SHOWCASE_ADDITIONS) reach an existing Showcase through
+   syncShowcase, so a second run adds nothing and an older Showcase catches
+   up (Issue #371). */
 export function seedFieldShowcase(w) {
-  if (w.listSpaces().some((sp) => sp.name === 'Showcase')) return w;
+  if (!w.listSpaces().some((sp) => sp.name === 'Showcase')) seedShowcaseBase(w);
+  syncShowcase(w);
+  return w;
+}
+
+function seedShowcaseBase(w) {
   w.createSpace({ name: 'Showcase', icon: 'lucide:compass', description: 'Every field type, in several configurations — the range of what a field can be, visible in one grid' });
 
   const people = w.createTable({ space: 'Showcase', name: 'People', noun: 'person', icon: 'lucide:users' });
@@ -37,8 +45,8 @@ export function seedFieldShowcase(w) {
   w.addField(ft, { name: 'Price', type: 'number', config: { format: 'currency', currency: 'USD', decimals: 2 } });
   w.addField(ft, { name: 'Share', type: 'number', config: { format: 'percent', decimals: 1 } });
   w.addField(ft, { name: 'Weight', type: 'number', config: { unit: 'kg', decimals: 0 } });
-  // --- rating: icons you click to fill (Feature #231)
-  w.addField(ft, { name: 'Fit', type: 'rating', config: { max: 5, icon: 'lucide:star' } });
+  // --- the rich displays (bar/ring/heat), ratings and sparklines join
+  //     through SHOWCASE_ADDITIONS below, beside the anchors named there.
   // --- dates: three configurations + a range
   w.addField(ft, { name: 'Due', type: 'date' });
   w.addField(ft, { name: 'Start', type: 'date', config: { format: 'us' } });
@@ -89,7 +97,7 @@ export function seedFieldShowcase(w) {
   const rows = [
     { name: 'Sensor board', values: {
       Notes: 'Rev C, lead-free', Site: 'https://example.com/sensor', Contact: 'sales@example.com',
-      Count: 12, Price: 149.5, Share: 0.325, Weight: 2, Fit: 4,
+      Count: 12, Price: 149.5, Share: 0.325, Weight: 2,
       Due: '2026-09-15', Start: '2026-08-01', Published: '2026-08-20T14:30:00Z', Window: { start: '2026-08-01', end: '2026-09-15' },
       Done: false, Feed: true, Priority: 'High', Category: 'Hardware', Tags: ['alpha', 'stable'],
       Definition: { type: 'number', config: { format: 'currency', unit: 'EUR', decimals: 2 } },
@@ -119,6 +127,117 @@ export function seedFieldShowcase(w) {
   }
   w.save();
   return w;
+}
+
+/* ---------- Showcase additions (Features #230, #231, #232) ----------
+   The number displays (bar on the column scale, bar and ring on a fixed
+   one, heat), the rating at three maxes with two icons and a rollup over
+   one, and the formula lists drawn as sparklines in each style, as data.
+   The fresh seed and a workspace seeded before them both go through
+   applyShowcaseAdditions, so the two cannot drift. Additive and
+   name-matched: a missing field is added after its anchor, a value lands
+   only in an empty cell of a row the seed names, and nothing a person
+   renamed, filled or removed is touched. Boot runs it once per build
+   (syncShowcase, keyed on the hash of this list, the Handbook sync's
+   shape). */
+const SPARK_KEYS = '[Peer joined]';
+export const SHOWCASE_ADDITIONS = [
+  { table: 'People', fields: [
+    { after: 'Age', name: 'Skill', type: 'rating', config: { max: 5, icon: 'lucide:star' } },
+    { after: 'Skill', name: 'Joined', type: 'date' },
+    { after: 'Joined', name: 'Delta', type: 'number' },
+  ], rows: {
+    'Ada Chen': { Skill: 5, Joined: '2024-03-04', Delta: 4 },
+    'Leo Marsh': { Skill: 2, Joined: '2023-06-12', Delta: -3 },
+    'Mia Okafor': { Skill: 4, Joined: '2025-01-20', Delta: 2 },
+  } },
+  { table: 'Field Types', fields: [
+    // number displays: column scale, fixed scale, a percent ring, heat
+    { after: 'Weight', name: 'Progress', type: 'number', config: { display: 'bar' } },
+    { after: 'Progress', name: 'Score', type: 'number', config: { decimals: 1, display: 'bar', scale: 10 } },
+    { after: 'Score', name: 'Completion', type: 'number', config: { format: 'percent', decimals: 0, display: 'ring', scale: 1 } },
+    { after: 'Completion', name: 'Load', type: 'number', config: { display: 'heat' } },
+    // ratings: 5 stars, 3 bolts, 7 hearts
+    { after: 'Load', name: 'Fit', type: 'rating', config: { max: 5, icon: 'lucide:star' } },
+    { after: 'Fit', name: 'Effort', type: 'rating', config: { max: 3, icon: 'lucide:zap' } },
+    { after: 'Effort', name: 'Love', type: 'rating', config: { max: 7, icon: 'lucide:heart' } },
+    // a rating rollup, and the lookups the sparklines read
+    { after: 'Peer names', name: 'Peer skill', type: 'rollup', config: { relationField: 'Peers', aggregate: 'avg', targetField: 'Skill' } },
+    { after: 'Peer skill', name: 'Peer ages', type: 'lookup', config: { relationField: 'Peers', targetField: 'Age' } },
+    { after: 'Peer ages', name: 'Peer skills', type: 'lookup', config: { relationField: 'Peers', targetField: 'Skill' } },
+    { after: 'Peer skills', name: 'Peer deltas', type: 'lookup', config: { relationField: 'Peers', targetField: 'Delta' } },
+    { after: 'Peer deltas', name: 'Peer joined', type: 'lookup', config: { relationField: 'Peers', targetField: 'Joined' } },
+    // lists, oldest peer first: one sparkline per style, and a null on no peers
+    { after: 'Days left', name: 'Age trend', type: 'formula', config: { expression: `sortby([Peer ages], ${SPARK_KEYS})`, display: 'sparkline', style: 'line' } },
+    { after: 'Age trend', name: 'Delta columns', type: 'formula', config: { expression: `sortby([Peer deltas], ${SPARK_KEYS})`, display: 'sparkline', style: 'column' } },
+    { after: 'Delta columns', name: 'Wins and losses', type: 'formula', config: { expression: `sortby([Peer deltas], ${SPARK_KEYS})`, display: 'sparkline', style: 'winloss' } },
+    { after: 'Wins and losses', name: 'Skill trend', type: 'formula', config: { expression: `if(empty([Peer skills]), null, sortby([Peer skills], ${SPARK_KEYS}))`, display: 'sparkline', style: 'line' } },
+  ], rows: {
+    'Sensor board': { Progress: 72, Score: 7.5, Completion: 0.8, Load: 9, Fit: 4, Effort: 2, Love: 6 },
+    'Sync service': { Progress: 100, Score: 9.2, Completion: 1, Load: 3, Fit: 5, Effort: 1, Love: 7 },
+    'Onboarding call': { Progress: 15, Score: 2, Completion: 0.25, Load: 0, Effort: 0, Love: 3 },
+  } },
+];
+
+export function showcaseHash() {
+  return createHash('sha256').update(JSON.stringify(SHOWCASE_ADDITIONS)).digest('hex').slice(0, 16);
+}
+
+const isBlank = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
+
+/* Returns the number of fields added. */
+function applyShowcaseAdditions(w) {
+  let added = 0;
+  for (const { table, fields, rows } of SHOWCASE_ADDITIONS) {
+    const db = w.findTable(`Showcase/${table}`);
+    if (!db) continue;
+    for (const { after, ...def } of fields) {
+      if (w.findField(db, def.name)) continue;
+      const f = w.addField(db, def);
+      added++;
+      // Beside its anchor in the schema and in every view that shows the
+      // anchor; a missing or hidden anchor leaves it on the end.
+      const anchor = w.findField(db, after);
+      if (!anchor) continue;
+      const order = db.fieldOrder.filter((id) => id !== f.id);
+      order.splice(order.indexOf(anchor.id) + 1, 0, f.id);
+      w.updateTable(db.id, { fieldOrder: order });
+      for (const v of db.tableViews ?? []) {
+        if (v.fields.includes(anchor.id)) w.tableView(`Showcase/${table}/${v.id}`, { move: { field: f.name, after: anchor.name } });
+      }
+    }
+    for (const [name, values] of Object.entries(rows)) {
+      const row = w.findEntity(db, name);
+      if (!row) continue;
+      const patch = {};
+      for (const [k, v] of Object.entries(values)) {
+        const f = w.findField(db, k);
+        if (f && isBlank(row.values[f.id])) patch[k] = v;
+      }
+      if (Object.keys(patch).length) w.updateEntity(row.id, patch);
+    }
+  }
+  return added;
+}
+
+/* One pass per build: a workspace whose Showcase already carries this list's
+   hash is left alone, so a column a person removed stays removed until the
+   list itself moves. A workspace with no Showcase is never given one. */
+export function syncShowcase(w, { force = false } = {}) {
+  if (!w.listSpaces().some((sp) => sp.name === 'Showcase')) return { applied: false };
+  const hash = showcaseHash();
+  if (!force && w.state.meta.showcaseSync === hash) return { applied: false, hash };
+  const actor = w.actor;
+  w.actor = 'showcase-sync';
+  let added;
+  try {
+    added = applyShowcaseAdditions(w);
+  } finally {
+    w.actor = actor;
+  }
+  w.state.meta.showcaseSync = hash;
+  w.save();
+  return { applied: true, added, hash };
 }
 
 export function seedWeaver(w) {

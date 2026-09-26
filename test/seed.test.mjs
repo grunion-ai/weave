@@ -50,7 +50,7 @@ test('seedWeaver includes a Showcase space covering every field type and multipl
   }
   const ofType = (t) => ft.fields.filter((f) => f.type === t);
   assert.ok(ofType('number').length >= 4, 'number: plain, currency, percent, unit');
-  assert.equal(new Set(ofType('number').map((f) => `${f.format ?? 'number'}|${f.unit ?? ''}|${f.decimals ?? ''}`)).size, ofType('number').length, 'every number field is a distinct configuration');
+  assert.equal(new Set(ofType('number').map((f) => `${f.format ?? 'number'}|${f.unit ?? ''}|${f.decimals ?? ''}|${f.display ?? 'text'}|${f.scale ?? 'column'}`)).size, ofType('number').length, 'every number field is a distinct configuration');
   assert.ok(ofType('date').length >= 3, 'date: iso, us, long+time');
   assert.ok(ofType('select').length >= 2 && ofType('select').some((f) => f.optionsFull.some((o) => o.color)), 'select: colored and plain');
   assert.ok(ofType('workflow').length >= 2, 'workflow: full lifecycle and a two-state gate');
@@ -67,6 +67,69 @@ test('seedWeaver includes a Showcase space covering every field type and multipl
   assert.equal(rich.fields.Total, 1794, 'a numeric formula over two number configs');
   assert.match(String(rich.fields.Price), /149\.50/, 'currency config renders 2 decimals');
   assert.ok(rows.some((r) => r.fields['Peer count'] >= 2), 'a rollup over a many relation');
+});
+
+/* ---------- the rich displays in the Showcase (Features #230, #231, #232) ----------
+   Each display the engine can draw has a column wearing it, on rows that
+   give it something to draw. The lists come from the engine's own
+   constants, so a display or a sparkline style added later without a
+   Showcase column fails here. */
+import { NUMBER_DISPLAYS, SPARKLINE_STYLES } from '../src/engine.js';
+
+test('the Showcase wears every number display, on the column scale and a fixed one (Feature #230)', () => {
+  const w = seedWeaver(new Weave());
+  const ft = w.describeSchema().find((s) => s.space === 'Showcase').tables.find((t) => t.name === 'Field Types');
+  const numbers = ft.fields.filter((f) => f.type === 'number');
+  for (const d of NUMBER_DISPLAYS) assert.ok(numbers.some((f) => (f.display ?? 'text') === d), `a number field wears display '${d}'`);
+  const graphic = numbers.filter((f) => f.display && f.display !== 'text');
+  assert.ok(graphic.some((f) => f.display === 'bar' && f.scale == null), 'a bar on the column scale');
+  assert.ok(graphic.some((f) => ['bar', 'ring'].includes(f.display) && typeof f.scale === 'number'), 'a bar or ring on a fixed scale');
+  assert.ok(graphic.some((f) => f.display === 'ring' && f.format === 'percent'), 'a percent ring');
+  const rows = w.listEntities(ft.id).map((e) => w.getEntity(e.id));
+  for (const f of graphic) {
+    const drawn = rows.map((r) => r.values[f.id]).filter((v) => typeof v === 'number');
+    assert.ok(new Set(drawn).size >= 3, `${f.name} has at least three different values to draw`);
+  }
+});
+
+test('the Showcase rates at max 3, 5 and 7 with two icons, and rolls a rating up (Feature #231)', () => {
+  const w = seedWeaver(new Weave());
+  const sc = w.describeSchema().find((s) => s.space === 'Showcase');
+  const ft = sc.tables.find((t) => t.name === 'Field Types');
+  const people = sc.tables.find((t) => t.name === 'People');
+  const ratings = ft.fields.filter((f) => f.type === 'rating');
+  for (const max of [3, 5, 7]) assert.ok(ratings.some((f) => f.max === max), `a rating with max ${max}`);
+  assert.ok(new Set(ratings.map((f) => f.icon)).size >= 2, 'at least two different icons');
+  for (const f of ratings) {
+    assert.ok(existsSync(new URL(`../public/vendor/icons/${f.icon.slice('lucide:'.length)}.svg`, import.meta.url)), `${f.icon} is vendored`);
+  }
+  const rows = w.listEntities(ft.id).map((e) => w.getEntity(e.id));
+  const cells = ratings.flatMap((f) => rows.map((r) => r.values[f.id]));
+  assert.ok(cells.includes(0), 'a rating set to 0');
+  assert.ok(cells.some((v) => v == null), 'an unrated cell');
+  assert.ok(new Set(cells.filter((v) => v > 0)).size >= 3, 'varied ratings');
+  // A rollup over a People rating draws the same icons.
+  assert.ok(people.fields.some((f) => f.type === 'rating'), 'People carry a rating');
+  const rollup = ft.fields.find((f) => f.type === 'rollup' && f.rating && f.aggregate === 'avg');
+  assert.ok(rollup, 'an avg rollup over a rating, drawn as icons');
+  assert.ok(w.listEntities(ft.id).some((e) => w.readEntity(e.id).fields[rollup.name] > 0), 'the rating rollup resolves on a row');
+});
+
+test('the Showcase draws a sparkline in every style from sorted lookups, and shows a null list (Feature #232)', () => {
+  const w = seedWeaver(new Weave());
+  const ft = w.describeSchema().find((s) => s.space === 'Showcase').tables.find((t) => t.name === 'Field Types');
+  const sparks = ft.fields.filter((f) => f.type === 'formula' && f.display === 'sparkline');
+  for (const s of SPARKLINE_STYLES) assert.ok(sparks.some((f) => (f.style ?? 'line') === s), `a sparkline in style '${s}'`);
+  for (const f of sparks) assert.match(f.expression, /sortby\(/, `${f.name} orders its series with sortby`);
+  const rows = w.listEntities(ft.id).map((e) => w.readEntity(e.id));
+  for (const f of sparks) {
+    assert.ok(rows.some((r) => Array.isArray(r.fields[f.name]) && r.fields[f.name].length >= 2), `${f.name} draws a series of two or more on some row`);
+  }
+  const winloss = sparks.find((f) => f.style === 'winloss');
+  assert.ok(rows.some((r) => (r.fields[winloss.name] ?? []).some((v) => v < 0)), 'the win/loss series has a loss');
+  assert.ok(rows.some((r) => (r.fields[winloss.name] ?? []).some((v) => v > 0)), 'the win/loss series has a win');
+  const blank = rows.find((r) => r.name === 'Blank row');
+  assert.ok(sparks.some((f) => /null/.test(f.expression) && blank.fields[f.name] === null), 'a formula returns null on a row with no peers');
 });
 
 test('seedFieldShowcase is idempotent — a second run is a no-op', () => {

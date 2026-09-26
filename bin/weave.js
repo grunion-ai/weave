@@ -283,6 +283,18 @@ async function main() {
     } catch (err) {
       console.warn(`Handbook sync skipped: ${err.message}`);
     }
+    /* The Showcase columns a build adds (bar/ring/heat, ratings, sparklines)
+       reach a docs workspace seeded before them the same way: once per
+       build, additive, fail-open. */
+    try {
+      if (docsW) {
+        const { syncShowcase } = await import('../src/weaver-seed.js');
+        const r = syncShowcase(docsW);
+        if (r.applied) console.log(`Showcase sync: ${r.added} fields added`);
+      }
+    } catch (err) {
+      console.warn(`Showcase sync skipped: ${err.message}`);
+    }
     if (docsW && docsW !== w) docsW.store.close?.();
     const port = Number(flags.port ?? process.env.PORT ?? 4400);
     // Loopback unless asked otherwise. --host 0.0.0.0 puts every workspace on
