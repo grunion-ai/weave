@@ -1,6 +1,6 @@
 {
  "version": "0.4.39",
- "generatedAt": "2026-09-26T03:26:39.021Z",
+ "generatedAt": "2026-09-26T03:36:43.910Z",
  "issues": [
   {
    "name": "Single-writer: CLI and server must not write one workspace file concurrently",
@@ -2645,6 +2645,36 @@
     "Looks broken"
    ],
    "description": "## What was measured\n\nOn :4400 (v0.4.38, commit 4257a73), Showcase › Field Types (\"Every field type, in several configurations\") shows none of the three displays shipped on 2026-09-23: no number field wears `display: bar | ring | heat` (Feature #230), there is no `rating` field at all (Feature #231), and no formula returns a list or wears `display: sparkline` (Feature #232). `GET /w/weave/api/schema` lists 31 data fields on Field Types, all from the 2026-08-23 seed.\n\nCause: `seedFieldShowcase` in `src/weaver-seed.js` returns early when the Showcase space exists (`if (w.listSpaces().some((sp) => sp.name === 'Showcase')) return w;`), and nothing else touches the Showcase after the first seed. The v0.4.34 change added a `Fit` rating to the seed, but only a brand-new docs workspace ever gets it. The seed gate (`test/seed.test.mjs`) also did not require the displays, so a display could ship with no Showcase column.\n\n## What good looks like\n\nThe Handbook sync (Issue #255) already solves the same shape for the Handbook pages: boot re-applies generated content once per build, keyed on a hash, additive and name-matched. A product's showcase grid should demonstrate every display the engine can draw, the way Airtable's and Notion's template galleries show every field type configured.\n\n## Fix shape\n\nMove the new columns into a data list (`SHOWCASE_ADDITIONS`) that the fresh seed and an existing workspace both go through; add missing fields after their anchor, fill only empty cells on the seeded rows, never rename or remove. Boot runs `syncShowcase` on the docs workspace once per build. The seed gate derives the display and sparkline-style lists from `NUMBER_DISPLAYS` and `SPARKLINE_STYLES` in `src/engine.js`, so a future display without a Showcase column fails the build.\n\nFiled by Claude (harness session 2026-09-25, weave v0.4.38, commit 4257a73)."
+  },
+  {
+   "name": "Looks broken: the entity dock scrolls sideways when the description holds a wide table",
+   "status": "Open",
+   "severity": "High",
+   "symptom": [
+    "Looks broken"
+   ],
+   "description": "Reproduced 2026-09-25 on :4400 (v0.4.38, commit 4257a73), uno workspace, Buyer/Shopping List #1 \"Libernovo maxis\" opened in the entity dock.\n\nWhat happens: the whole dock body scrolls sideways. Paragraphs run off the right edge (unwrapped at the dock width) and a horizontal scrollbar sits at the bottom of the panel. Measured with the dock at its 360 px minimum: #dock clientWidth 360, scrollWidth 1917; each description paragraph laid out 1871 px wide.\n\nCause: public/style.css:1573 `#dock .dock-entity .entity-grid { grid-template-columns: 1fr; }` overrides the base rule at style.css:906 (`minmax(0, 1fr)`). A bare `1fr` track has an `auto` minimum, and `.entity-body` has `min-width: auto`, so the track grows to the min-content width of the widest child. The buyer research tables hold full product URLs as unbroken text (min-content 1123 to 1701 px), which drags the grid, the section body and every paragraph to that width. The full #/entity page does not break because it keeps `minmax(0, 1fr)`: there each table scrolls inside its own 626 px box. The same bare `1fr` sits in the 900 px media query at style.css:909 for `.entity-grid.side-open`.\n\nProbe: injecting `#dock .dock-entity .entity-grid { grid-template-columns: minmax(0, 1fr); }` drops scrollWidth to 384, paragraphs wrap at 286 px, and each table scrolls in its own box (clientWidth 286, overflow-x auto). The remaining 24 px comes from the Event Date / Last Researched row at 360 px: the date input plus picker button run 32 to 52 px past the padding.\n\nGood looks like: Notion and Linear side peeks wrap body text to the panel and let a wide table or code block scroll inside itself; the panel never scrolls sideways.\n\nFix shape: change style.css:1573 and :909 to `minmax(0, 1fr)`; let the date field shrink (min-width 0 on the input, or wrap the row) at dock minimum width; add a browser test that opens an entity with a wide markdown table in the dock and asserts #dock scrollWidth <= clientWidth + 1 at 360 px and at a wide split.\n\nFiled by harness session 2026-09-25 (Claude Opus 5.5), weave v0.4.38, commit 4257a73."
+  },
+  {
+   "name": "Looks broken: space ⋮ menu lists every table's CSV export instead of space actions",
+   "status": "Open",
+   "severity": "Low",
+   "symptom": [
+    "Looks broken"
+   ],
+   "description": "## Report\n\nKyle, 2026-09-26: \"these are the wrong space level menu options.\"\n\nOn a space page, the ⋮ \"Space actions\" menu lists one `Export <Table>.csv` row for every table in the space, then `Delete space + N tables`. On the weave workspace's Showcase space that is 18 export rows (People, Field Types, Formatting, Documents, Icons, Projects, Meetings, Docs, Notes, Tasks, Comments, Expenses, Contracts, Deploys, Approvals, Line Items, Tags, Activity) before the delete. The rows act on tables, not on the space, and each table's own ⋮ already carries Export CSV.\n\n## Decision (Kyle)\n\nDrop the per-table exports. The space menu keeps only `Delete space` / `Delete space + N tables` (hold to confirm, as today). No other verbs are added.\n\n## Fix shape\n\n- `public/app.js`, `showSpace`: remove the `space.tables.map(... Export ${d.name}.csv ...)` spread and the divider after it; update the comment above the call.\n- System spaces (`space.system`, for example the Workspace space; Issue #248) have no Delete, so the menu would be empty. Render no ⋮ at all there (`actions: []`); never an empty menu.\n- `test/ui-contract.test.mjs`: drop the per-table Export assertion from 'table and space menus carry CSV export and delete'; add one asserting the space menu holds no per-table export.\n- `test/system-space-menu-browser.test.mjs`: the system space shows no ⋮; the user space has no `Export …csv` items and still shows Delete space + N tables.\n- Feature row and Handbook guides that describe the old space menu get updated on :4400, then `docs/development.json` is re-exported.\n\n## Good looks like\n\nShowcase shows ⋮ with only `Delete space + 18 tables`, in both themes. The Workspace system space shows no ⋮.\n"
+  },
+  {
+   "name": "gerrit/main @ 6a2ced28 did not reach GitHub",
+   "status": "Open",
+   "severity": "High",
+   "description": "WEAVE_MIRROR=1 git -C /Users/kyle/Documents/harness.nosync/weave refused: fatal: unable to access 'https://github.com/grunion-ai/weave.git/': The requested URL returned error: 403\n\nLanded: 6a2ced28d45fefc7116aea3202d51b7f51a7a6fa\nStep: WEAVE_MIRROR=1 git -C /Users/kyle/Documents/harness.nosync/weave push https://github.com/grunion-ai/weave.git 6a2ced28d45fefc7116aea3202d51b7f51a7a6fa:refs/heads/main\n\nA 403 means gh's active account is not grunion-ai (`gh auth switch -u grunion-ai`); a non-fast-forward means someone pushed GitHub main directly (reconcile by merge, never force). Filed by the main watcher."
+  },
+  {
+   "name": "weave v0.4.39 did not publish a GitHub Release",
+   "status": "Open",
+   "severity": "High",
+   "description": "git -C /Users/kyle/Documents/harness.nosync/weave refused: fatal: unable to access 'https://github.com/grunion-ai/weave.git/': The requested URL returned error: 403\n\nLanded: 6a2ced28d45fefc7116aea3202d51b7f51a7a6fa\n\nA version with no tag and no Release is invisible to every user checking whether they are current — that is how an install sat eleven versions behind on 2026-09-09. Write the CHANGELOG section (release notes are mandatory) or fix the push, then re-run `node scripts/weave-release-tags.mjs`. Filed by the main watcher."
   }
  ],
  "features": [
@@ -3077,7 +3107,7 @@
    "name": "Table and space ⋮ overflow menus (CSV export + delete)",
    "status": "Shipped",
    "milestone": "v0.3",
-   "description": "Shipped 2026-08-16 (commit `4b6a48f`), requested by Kyle.\n\nA single `dotsMenu()` helper now builds every ⋮ menu — entity, table and space — replacing the entity page's hand-rolled one. It takes link items, button items, hold-to-confirm items and dividers; `align: 'right'` hangs the panel off the right edge so a menu at the end of the header toolbar stays on screen. Opening one closes the others; clicking away closes it.\n\n| View | Menu contents |\n| --- | --- |\n| Table | Export CSV · Delete table (hold) |\n| Space | One `Export <Table>.csv` per table it holds · Delete space (hold), labelled with the table count |\n| Entity | Download .md / .html / .pdf · Move to trash (plain, with Undo) |\n\n**Decisions.** CSV left the table toolbar entirely rather than appearing in both places. A space has no CSV of its own — it is a container — so it enumerates its tables instead of inventing a bundle format (which would need a zip dependency; the house rule forbids one). `deleteSpace` cascades to its tables, so the label says so: \"Delete space + 2 tables\".\n"
+   "description": "Shipped 2026-08-16 (commit `4b6a48f`), requested by Kyle.\n\nA single `dotsMenu()` helper now builds every ⋮ menu — entity, table and space — replacing the entity page's hand-rolled one. It takes link items, button items, hold-to-confirm items and dividers; `align: 'right'` hangs the panel off the right edge so a menu at the end of the header toolbar stays on screen. Opening one closes the others; clicking away closes it.\n\n| View | Menu contents |\n| --- | --- |\n| Table | Export CSV · Delete table (hold) |\n| Space | Delete space (hold), labelled with the table count. The system Workspace space has no Delete, so it renders no ⋮ (Issue #248, #373). |\n| Entity | Download .md / .html / .pdf · Move to trash (plain, with Undo) |\n\n**Decisions.** CSV left the table toolbar entirely rather than appearing in both places. A space has no CSV of its own, and its menu holds only what acts on the space. `deleteSpace` cascades to its tables, so the label says so: \"Delete space + 2 tables\".\n\n\n**Revised 2026-09-26 (Issue #373).** The space menu used to list one `Export <Table>.csv` per table; on the Showcase space that was 18 rows ahead of the delete. Kyle ruled that those rows act on tables, not on the space, and each table's own ⋮ already exports CSV, so they were dropped. The space menu keeps only Delete space."
   },
   {
    "name": "Entity side column: Fields → Comments → Activity",

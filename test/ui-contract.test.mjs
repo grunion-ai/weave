@@ -442,14 +442,19 @@ test('one dotsMenu implementation serves entity, table and space', () => {
   }
 });
 
-test('table and space menus carry CSV export and delete', () => {
+test('the table menu carries CSV export; table and space menus carry delete', () => {
   assert.ok(APP.includes("label: 'Export CSV'"), 'the table menu exports CSV');
-  // A space has no CSV of its own, so it offers one export per table it holds.
-  assert.match(APP, /space\.tables\.map\(\(d\) => \(\{[\s\S]{0,40}label: `Export \$\{d\.name\}\.csv`/);
   assert.match(APP, /api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
   assert.match(APP, /api\('DELETE', `\/spaces\/\$\{spaceId\}`\)/);
   // The toolbar CSV button moved into the menu — it must not remain in both.
   assert.doesNotMatch(APP, /class: 'btn btn-sm', href: `\$\{WS_PREFIX\}\/api\/tables\/\$\{db\.id\}\/export\.csv`/);
+});
+
+// Issue #373 (Kyle, 2026-09-26): one "Export <Table>.csv" row per table acted
+// on tables, not on the space, and each table's own ⋮ already exports CSV.
+test('the space menu holds no per-table export', () => {
+  assert.doesNotMatch(APP, /label: `Export \$\{d\.name\}\.csv`/);
+  assert.doesNotMatch(APP, /space\.tables\.map\(\(d\) => \(\{[\s\S]{0,80}export\.csv/);
 });
 
 test('deleting a table or a space is behind a hold', () => {
