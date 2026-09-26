@@ -5580,25 +5580,42 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
      the same height (Issue #324), and an anchor estimated from one height
      was twenty rows out on a 600-row grid. `scrollToRow` brings the row and
      its window into the DOM at the estimate; the correction that follows is
-     under a screen and costs no extra paint. */
+     under a screen and costs no extra paint.
+
+     The correction is the grid settling, not the reader travelling, so it
+     re-anchors the direction of travel (Issue #317) before the re-window.
+     Read as travel, a correction of more than a row turned the buffer to
+     the other side of the window, and the spacer that swapped in for those
+     rows did not weigh what they did: on a page-scrolled grid of uneven
+     rows the flip landed one row off (Issue #413). A re-window can still
+     move the window's edge, so the row is read again until it holds. The
+     edge keeps the same fraction of the row it cut before the flip. */
   const topEdge = (g) => g.viewTop + g.headH;
-  const topRowIndex = () => {
+  const topRow = () => {
     const edge = topEdge(geometry());
     for (const tr of tbody.querySelectorAll('tr[data-i]')) {
-      if (tr.getBoundingClientRect().bottom > edge + 1) return Number(tr.dataset.i);
+      const r = tr.getBoundingClientRect();
+      if (r.bottom > edge + 1) return { i: Number(tr.dataset.i), into: r.height ? Math.max(0, edge - r.top) / r.height : 0 };
     }
-    return win.start;
+    return { i: win.start, into: 0 };
   };
   const setDensity = (mode) => {
     if (!tbody?.isConnected) return gridDensity(db.id, mode);
-    const anchor = topRowIndex();
+    const { i: anchor, into } = topRow();
     gridDensity(db.id, mode);
     table.dataset.density = mode;
     rewindow();            // measures the row at its new height and repaints
     scrollToRow(anchor);   // and brings the reader's row back into the window
-    const g = geometry(), tr = live.get(anchor);
-    if (tr) (g.box ?? window).scrollBy({ top: tr.getBoundingClientRect().top - topEdge(g), left: 0, behavior: 'instant' });
-    rewindow();
+    for (let k = 0; k < 3; k++) {
+      const g = geometry(), tr = live.get(anchor);
+      if (!tr) break;
+      const r = tr.getBoundingClientRect();
+      const off = r.top + into * r.height - topEdge(g);
+      if (Math.abs(off) < 1) break;
+      (g.box ?? window).scrollBy({ top: off, left: 0, behavior: 'instant' });
+      win.lastTop = geometry().scrollTop;
+      rewindow();
+    }
     markClippedCells(table);
   };
   wrap.wvRewindow = rewindow;
