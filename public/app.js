@@ -3644,7 +3644,16 @@ function viewed(db, v) {
   const shown = v.fields.map((n) => by.get(n)).filter(Boolean);
   const on = new Set(shown);
   const hidden = db.fields.filter((f) => !on.has(f));
-  return { ...db, fields: [...shown, ...hidden], hiddenFields: hidden.map((f) => f.name), filters: v.filters, sort: v.sort, view: v };
+  /* The grid's columns in the view's one ordered list: fields and the system
+     columns it shows, side by side (Issue #418). Blank is the raw table and
+     keeps the table's system columns at its end, as it always drew them. */
+  const sys = (n) => !by.has(n) && !!SYSTEM_COLS[n];
+  const columns = v.blank
+    ? [...shown.map((f) => f.name), ...(db.systemFields ?? []).filter((n) => SYSTEM_COLS[n])]
+    : v.fields.filter((n) => by.has(n) || sys(n));
+  // `systemFields` stays the table's switch (Activity rides it); the system
+  // columns this view shows are the ones in `columns`.
+  return { ...db, fields: [...shown, ...hidden], hiddenFields: hidden.map((f) => f.name), filters: v.filters, sort: v.sort, view: v, columns };
 }
 /* Where a grid's filter, sort, columns and column order are saved: the view
    it shows, or — on a grid with no strip (a space page, a related grid) —
@@ -4493,7 +4502,8 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
   };
   const buildRows = (cur) => {
     const hidden = new Set(cur.hiddenFields ?? []);
-    const sysOn = new Set(cur.systemFields ?? []);
+    // A view's grid shows the system columns in its own list (Issue #418).
+    const sysOn = new Set(cur.columns ? cur.columns.filter((n) => SYSTEM_COLS[n] && !colField(cur, n)) : cur.systemFields ?? []);
     // Listed in schema order, whatever the view's column order: a flip must
     // not move the row under the pointer (Issue #240's rows are taught, not
     // swapped, and a reordered list would be a swap).
@@ -4508,6 +4518,8 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       }))),
       el('div', { class: 'eye-head' }, 'System'),
       ...Object.keys(SYSTEM_COLS).map((n) => row(sysOn.has(n), n, () => save((t) => {
+        // A view shows system columns in its own list, in its own order (#418).
+        if (db.view) return { view: { [(t.columns ?? []).includes(n) ? 'hide' : 'show']: [n] } };
         const next = new Set(t.systemFields ?? []);
         if (next.has(n)) next.delete(n); else next.add(n);
         return { systemFields: [...next] };
@@ -4552,6 +4564,8 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
    like every other field. The shared Docs cell they used to fold into is
    gone. */
 function visibleCols(db) {
+  // A view's grid: its one ordered list, system columns included (#418).
+  if (db.columns) return [...db.columns];
   const hidden = new Set(db.hiddenFields ?? []);
   return db.fields.filter((f) => !hidden.has(f.name)).map((f) => f.name);
 }
@@ -4568,6 +4582,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   // Reassigned when a column moves in place (Feature #233): rows built after
   // the move, and the next draw, read the order the reader now sees.
   let cols = visibleCols(db);
+  /* A system column (Created At, Modified By, …) in a view's grid is one of
+     the view's columns (Issue #418): it sits in `cols` and moves, freezes and
+     sizes like a field. A grid with no view (a registry grid) still draws
+     the table's system columns after its fields, fixed there. */
+  const isSysCol = (c) => !colField(db, c) && !!SYSTEM_COLS[c];
+  const sysTail = db.columns ? [] : (db.systemFields ?? []);
+  const sysCell = (n, item) => el('td', { class: 'cell-computed sys-cell', dataset: { sys: n } }, SYSTEM_COLS[n]?.(item) ?? '');
   // Header bar = checkbox + id + one per field + the "+" field control.
   // Full-width rows span it, so it is derived once rather than restated per
   // call site.
@@ -4928,6 +4949,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           },
         }, `#${item.publicId} ↗`)),
       ...cols.map((c) => {
+        if (isSysCol(c)) return sysCell(c, item);
         const f = db.fields.find((x) => x.name === c);
         /* A description is not computed. `cell-computed` dims a value to
            --tblr-secondary and says "nothing to do here"; the description is
@@ -4957,7 +4979,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           ? fileDropZone(td, (files) => td.querySelector('.k-attach')?.dropFiles?.(files))
           : td;
       }),
-      ...(db.systemFields ?? []).map((n) => el('td', { class: 'cell-computed sys-cell' }, SYSTEM_COLS[n]?.(item) ?? '')));
+      ...sysTail.map((n) => sysCell(n, item)));
     /* Cells rest as values (Feature #134): the CELL is the focus stop and
        nothing inside it is. Tab lands on every field cell — select, multi-
        select, checkbox and date included, which the browser's own order
@@ -5010,8 +5032,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const canFreezeHere = () => !!db.view && !db.view.blank;
   const storedFrozen = () => (canFreezeHere() ? db.view.frozen ?? 0 : 0);
   const storedWidth = (c) => db.view?.widths?.[c] ?? colField(db, c)?.width;
+  // A system column's default is its stamp's width; it floors like a field.
   const widthOf = (c) => override.get(c)
-    ?? CR.layout([{ ...colField(db, c), name: c, stored: storedWidth(c), floor: floors.get(c) }])[c];
+    ?? CR.layout([{ ...colField(db, c), name: c, stored: storedWidth(c) ?? (isSysCol(c) ? SYS_WIDTHS[c] : undefined), floor: floors.get(c) }])[c];
   const headOf = (c) => table?.tHead?.rows[0]?.querySelector(`th.col-head[data-col="${CSS.escape(c)}"]`) ?? null;
   // The cells before the first field: the checkbox and the # link.
   const leadCount = () => {
@@ -5037,7 +5060,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
        nothing else absorbs it). */
     if (pidWidth) out.push(`${scope} > * > tr > :is(th.pid-head, td.pid-cell){min-width:${pidWidth}px}`);
     cols.forEach((c, i) => out.push(cell(at + i + 1) + fixed(widthOf(c))));
-    (db.systemFields ?? []).forEach((n, j) => out.push(cell(at + cols.length + j + 1) + fixed(Math.max(SYS_WIDTHS[n] ?? 136, floors.get(`sys:${n}`) ?? 0))));
+    sysTail.forEach((n, j) => out.push(cell(at + cols.length + j + 1) + fixed(Math.max(SYS_WIDTHS[n] ?? 136, floors.get(n) ?? 0))));
     // The frozen fields stick beside #, each at the sum of what is left of
     // it, with the # column's own layers (Issue #252): opaque in the body,
     // over the Σ row, under the header corner.
@@ -5078,7 +5101,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const label = th.querySelector('.col-label');
       if (!label) continue;
       const cs = getComputedStyle(th);
-      floors.set(th.classList.contains('sys-head') ? `sys:${th.dataset.col}` : th.dataset.col, CR.floor({
+      floors.set(th.dataset.col, CR.floor({
         label: label.getBoundingClientRect().width,
         padLeft: parseFloat(cs.paddingLeft) || 0, padRight: parseFloat(cs.paddingRight) || 0,
       }));
@@ -5208,10 +5231,14 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       }
       const i = next.indexOf(moved);
       const anchor = i > 0 ? next[i - 1] : next[1];
+      // The local field list follows when both ends are fields; a system
+      // column (Issue #418) lives only in the view's list and in `cols`.
       const fi = db.fields.findIndex((f) => f.name === moved);
-      const [mf] = db.fields.splice(fi, 1);
-      const ti = db.fields.findIndex((f) => f.name === anchor);
-      db.fields.splice(i > 0 ? ti + 1 : ti, 0, mf);
+      if (fi >= 0 && db.fields.some((f) => f.name === anchor)) {
+        const [mf] = db.fields.splice(fi, 1);
+        const ti = db.fields.findIndex((f) => f.name === anchor);
+        db.fields.splice(i > 0 ? ti + 1 : ti, 0, mf);
+      }
       cols = next;
     }
     if (canFreezeHere()) { db.view.fields = [...next]; if (nextFrozen) db.view.frozen = nextFrozen; else delete db.view.frozen; }
@@ -5323,6 +5350,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         try { th.setPointerCapture(id); } catch { /* released already */ }
         drag = columnDrag(c);
       }
+      // A header is a control: a drag leaves no text selected (Issue #417).
+      clearSelection();
       drag.update(ev.clientX, ev.clientY);
     };
     const end = (drop) => {
@@ -5346,7 +5375,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const headKey = (e, c) => {
     const th = e.currentTarget;
     if (e.target !== th) return;
-    if (e.key === 'Enter' && !e.altKey) { e.preventDefault(); editFieldDialog(db, colField(db, c)); return; }
+    if (e.key === 'Enter' && !e.altKey) { e.preventDefault(); if (colField(db, c)) editFieldDialog(db, colField(db, c)); return; }
     if (!e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
     e.preventDefault();
     e.stopPropagation();
@@ -5529,8 +5558,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       td.replaceChildren(labeledEditorFor(f, item, db, onSaved, { compact: true }));
       for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     }
-    const sys = tr.querySelectorAll(':scope > td.sys-cell');
-    (db.systemFields ?? []).forEach((n, k) => { if (sys[k]) sys[k].textContent = SYSTEM_COLS[n]?.(item) ?? ''; });
+    for (const td of tr.querySelectorAll(':scope > td.sys-cell')) td.textContent = SYSTEM_COLS[td.dataset.sys]?.(item) ?? '';
     tr.classList.toggle('row-deleted', !!item.deleted);
   };
   /* `fresh` is the PATCH response: the edited row, plus `affected`. The rows
@@ -5707,6 +5735,22 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       return sys ? fieldMenuButton(db, { ...sys, name: label, system: true },
         { sorted: sortKey === key ? sortDir : 0, onSort: sortBy(key) }) : null;
     };
+    /* A system column's header. In a view's grid it is a column like any
+       field (Issue #418): it drags, steps with Alt+Shift+arrows, freezes
+       across the seam and sizes from its grip; it opens no field tray,
+       because there is no field to edit. */
+    const sysHead = (n, movable) => el('th', {
+      class: movable ? 'col-head sys-head' : 'sys-head', title: `${n} — system field, read-only`, dataset: { col: n },
+      ...(movable ? {
+        tabindex: '0',
+        'aria-keyshortcuts': 'Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+ArrowLeft Alt+ArrowRight',
+        onpointerdown: (e) => headPointerDown(e, n),
+        onkeydown: (e) => headKey(e, n),
+      } : {}),
+    },
+      el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·'), sortMark(n)),
+      systemMenu(n, n),
+      movable ? columnResizeGrip(db, { name: n, type: 'date' }, grid) : null);
 
     table = el('table', {
       class: 'table table-sm table-vcenter card-table table-hover wv-grid',
@@ -5728,7 +5772,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
               },
             }))),
         el('th', { class: 'pid-head' }, '#', sortMark('Public Id'), systemMenu('Public Id', '#')),
-        ...cols.map((c) => el('th', {
+        ...cols.map((c) => (isSysCol(c) ? sysHead(c, true) : el('th', {
           class: 'col-head',
           // A header is a stop: Alt+Shift+←/→ moves the field, Alt+←/→
           // sizes it, Return opens it (Feature #233).
@@ -5756,10 +5800,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
             sorted: sortKey === c ? sortDir : 0,
             onSort: sortBy(c),
           }),
-          columnResizeGrip(db, colField(db, c), grid))),
-        ...(db.systemFields ?? []).map((n) => el('th', { class: 'sys-head', title: `${n} — system field, read-only`, dataset: { col: n } },
-          el('span', { class: 'col-label' }, n, el('sup', { class: 'field-mark' }, '·'), sortMark(n)),
-          systemMenu(n, n))),
+          columnResizeGrip(db, colField(db, c), grid)))),
+        ...sysTail.map((n) => sysHead(n, false)),
         // Adding a field lives where the fields are: the end of the header bar.
         el('th', { class: 'add-field-head' }, addFieldMenuButton(db))),
       // The Σ row (Issue #233): this table's space rollups, one cell per
@@ -6342,6 +6384,11 @@ function fitColumnWidth(th) {
   return Math.ceil(widest);
 }
 
+/* Drop any live text selection (Issue #417): a header drag, a resize and a
+   fit are control gestures, and a highlight left across the header labels
+   reads as broken. */
+const clearSelection = () => { try { getSelection()?.removeAllRanges(); } catch { /* no selection API */ } };
+
 /* The grip on a header's right edge. `grid` is the layout of the grid it
    sits in (renderTable): the width painted now, the label floor, and the
    one paint function header and cells share. A drag moves only this column
@@ -6353,6 +6400,7 @@ function columnResizeGrip(db, f, grid) {
   grip.addEventListener('click', (e) => e.stopPropagation());        // resizing is not opening the editor
   grip.addEventListener('dblclick', (e) => {
     e.stopPropagation();
+    clearSelection(); // a double-click selects the word under it (Issue #417)
     if (grid.blocked()) return;
     const th = grip.closest('th');
     // The longest value, between the label floor and the type's cap.
@@ -6365,6 +6413,10 @@ function columnResizeGrip(db, f, grid) {
     if (e.button !== 0 || grid.blocked()) return;
     const th = grip.closest('th');
     try { grip.setPointerCapture(e.pointerId); } catch { /* older engines */ }
+    // A resize is a control gesture: whatever was selected goes, and nothing
+    // selects while it runs (Issue #417).
+    clearSelection();
+    document.body.classList.add('wv-col-resizing');
     // The gesture's own click must not open the field dialog (Issue #98):
     // the header wears the mark until the next press anywhere.
     th.dataset.resized = '1';
@@ -6401,6 +6453,8 @@ function columnResizeGrip(db, f, grid) {
       grip.removeEventListener('pointercancel', up);
       grip.removeEventListener('lostpointercapture', up);
       readout.remove();
+      document.body.classList.remove('wv-col-resizing');
+      clearSelection();
       if (width !== base) grid.commit(f.name, width); else grid.cancel(f.name);
     };
     grip.addEventListener('pointermove', move);

@@ -172,6 +172,11 @@ weave_table_view {view: "Issue/Open bugs", move: {field: "Status", before: "Name
   view's; `null` clears one. `frozen` is how many leading fields stay frozen
   beside # (0, the default, freezes only #). A read carries either only
   when it is set (Feature #233).
+- The system columns a view shows (`Created At`, `Modified At`,
+  `Created By`, `Modified By`) are names in the same `fields` list: they
+  `show`, `hide`, `move`, freeze and take `widths` like fields (Issue #418).
+  `weave_update_table`'s `systemFields` still works and writes the default
+  view; `Activity` stays a table-level switch.
 - `filters` (`{WorkflowOrToggleField: [states]}`) and `sort`
   (`[{field, dir}]`) are `weave_update_table`'s shapes and validators.
 - `default: true` stars a view (the default is the first view); `position`
