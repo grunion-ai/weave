@@ -846,8 +846,11 @@ document.addEventListener('keydown', (e) => {
 // dock only hears it bare. Every
 // overlay app.js raises (a *-back backdrop, a *-pop popover, an open doc
 // rail) owns the key while it is up — test/ui-contract.test.mjs derives
-// that list from the source and checks this selector covers it.
-const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back';
+// that list from the source and checks this selector covers it. The phone
+// nav drawer (Issue #262) is one too: while it holds the page (#app.nav-held)
+// it closes itself on Escape in capture, and ⌘Z and ? stand down, as they
+// do for a dialog.
+const DOCK_ESC_OWNERS = '.chip-pop, .cell-pop, .date-pop, .doc-rail.open, #tray-back, #modal-back, #cmdk-back, #fsv-back, #app.nav-held';
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !dock) return;
   if (document.querySelector(DOCK_ESC_OWNERS)) return;
@@ -11889,9 +11892,10 @@ document.addEventListener('keydown', (e) => {
   // The grid's own rows only: a relation grid docked beside the table now
   // carries data-eid too (Issue #195), and its editors keep their keys.
   if (editing && !editing.closest('.wv-grid tr[data-eid]')) return;
-  // Every dialog that holds the page keeps the key, the tray and the viewer
-  // too: a tile or a toolbar button focused there is not the grid.
-  if ($('#modal-back, #cmdk-back, #tray-back, #fsv-back')) return;
+  // Every dialog that holds the page keeps the key, the tray, the viewer
+  // and the phone nav drawer too: a tile, a toolbar button or a nav row
+  // focused there is not the grid.
+  if ($('#modal-back, #cmdk-back, #tray-back, #fsv-back, #app.nav-held')) return;
   const db = allTables().find((d) => d.id === state.route.dbId);
   if (!db) return;
   e.preventDefault();
@@ -12161,10 +12165,90 @@ function navMenuButton() {
   const btn = el('button', {
     class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button',
     title: 'Open navigation', 'aria-label': 'Open navigation', 'aria-controls': 'sidebar',
+    'aria-expanded': $('#app')?.classList.contains('nav-held') ? 'true' : 'false',
     onclick: () => $('#app').classList.add('nav-peek'),
   });
   btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
   return btn;
+}
+
+/* The phone drawer holds the page (Issue #262). Below 900px the sidebar is
+   a drawer, and below 600px the rail rides in it (wireNavCollapse: the
+   crumb bar's menu button opens the peek overlay over a scrim). Open there,
+   it holds the page the way holdPage holds it for a dialog: everything but
+   the drawer and the live corners (MODAL_LIVE) is inert, and Tab and
+   Shift+Tab cycle inside the drawer. holdPage itself does not fit, because
+   it inerts every child of <body> but its backdrop and the drawer lives
+   inside #app with the page it covers. The drawer opens and closes by the
+   `nav-peek` class, from the menu button, Escape, the scrim, its ‹, a link
+   followed in it, a hash change and the window growing past 900px, so the
+   hold follows the class rather than any one of those paths. A desktop
+   peek (a collapsed nav's hover overlay) is no drawer and holds nothing.
+   Focus goes into the drawer on open and back to the button that opened it
+   on close; `#app.nav-held` marks the hold for the keys that stand down. */
+const railFolds = matchMedia('(max-width: 600px)');
+function wireNavHold() {
+  const app = $('#app');
+  const rail = $('#ws-rail');
+  const sidebar = $('#sidebar');
+  if (!app || !rail || !sidebar) return;
+  const drawer = () => (railFolds.matches ? [rail, sidebar] : [sidebar]);
+  const stops = () => drawer().flatMap((n) => [...n.querySelectorAll(MODAL_STOPS)])
+    .filter((n) => n.getClientRects().length);
+  const expanded = (on) => { for (const b of document.querySelectorAll('.nav-menu')) b.setAttribute('aria-expanded', on ? 'true' : 'false'); };
+  let held = null;
+  const hold = () => {
+    const opener = document.activeElement;
+    const members = drawer();
+    const nodes = [];
+    for (const n of [...app.children, ...document.body.children]) {
+      if (n === app || members.includes(n) || n.inert || n.matches(MODAL_LIVE)) continue;
+      n.inert = true;
+      nodes.push(n);
+    }
+    held = { nodes, opener };
+    app.classList.add('nav-held');
+    expanded(true);
+    stops()[0]?.focus();
+  };
+  const release = () => {
+    const { nodes, opener } = held;
+    held = null;
+    const at = document.activeElement;
+    const inside = !at || at === document.body || rail.contains(at) || sidebar.contains(at);
+    app.classList.remove('nav-held');
+    for (const n of nodes) n.inert = false;
+    expanded(false);
+    if (!inside) return;
+    const back = opener?.isConnected && opener.closest?.('#main') ? opener : $('#main .nav-menu');
+    back?.focus();
+  };
+  new MutationObserver(() => {
+    const open = app.classList.contains('nav-peek') && narrowShell.matches;
+    if (open && !held) hold();
+    else if (!open && held) release();
+  }).observe(app, { attributes: true, attributeFilter: ['class'] });
+  // Capture, so Escape closes the drawer before the dock or the grid behind
+  // it hears the key. A dialog, a popover or a field inside the drawer owns
+  // its own keys.
+  addEventListener('keydown', (e) => {
+    if (!held || document.querySelector('#modal-back, #tray-back, #cmdk-back, .chip-pop, .dl-menu:not(.hidden)')) return;
+    const at = document.activeElement;
+    if (e.key === 'Escape') {
+      if (at?.matches('input, textarea, select') && drawer().some((n) => n.contains(at))) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      app.classList.remove('nav-peek');
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const list = stops();
+    if (!list.length) return;
+    e.preventDefault();
+    const i = list.indexOf(at);
+    const next = i === -1 ? (e.shiftKey ? -1 : 0) : i + (e.shiftKey ? -1 : 1);
+    list.at(next % list.length).focus();
+  }, true);
 }
 
 /* Theme toggle: auto (follow OS, live) → dark → light.
@@ -12510,3 +12594,4 @@ wireSearchButton();
 buildWsRail();
 wireWsNew();
 wireNavCollapse();
+wireNavHold();

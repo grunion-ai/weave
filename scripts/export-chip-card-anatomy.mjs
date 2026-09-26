@@ -28,13 +28,32 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'chip-card-anatomy.html');
 const CHIP_SELECTORS = /^(:root|\.k\b|\.k-|\.k\.|\.av\b|\.hue-|\.mention-|\.wv-card|\.wv-seg-state|\[data-bs-theme="dark"\] \.(k|hue|av))/;
 
+/* A selector list split on its own commas, never on those inside :is(),
+   :where() or :not(): the phone rules (Issue #262) list chip selectors
+   inside :is(...)::before, and a comma split lifted `.k-rel > a` out of
+   them as if it were a chip rule. */
+function selectorList(sels) {
+  const parts = [];
+  let depth = 0, cur = '';
+  for (const ch of sels) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; } else cur += ch;
+  }
+  parts.push(cur);
+  return parts.map((s) => s.trim()).filter(Boolean);
+}
+
 /* Every top-level rule block in style.css whose selector list has a part
    the chip needs. Comments go first so a note above a rule is not read as
-   part of its selector. */
+   part of its selector; @media blocks go next, because the rule match below
+   sees only the innermost braces and would lift a phone-only rule out of its
+   query and onto every page that embeds these chips. */
 export function chipCss(css = readFileSync(join(ROOT, 'public/style.css'), 'utf8')) {
   const out = [];
-  for (const [, sels, body] of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const parts = sels.split(',').map((s) => s.trim()).filter(Boolean);
+  const flat = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '');
+  for (const [, sels, body] of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const parts = selectorList(sels);
     const keep = parts.filter((p) => CHIP_SELECTORS.test(p));
     if (!keep.length) continue;
     // :root carries the whole theme; only the two chip tokens ride along.
