@@ -126,7 +126,9 @@ if (s) {
           text: label.textContent,
           chip: chip.getBoundingClientRect().width,
           label: label.getBoundingClientRect().width,
-          natural: label.scrollWidth,
+          // The label is the pointer chip (Issue #97): its outline is a 1px
+          // border, which scrollWidth leaves out and the box includes.
+          natural: label.scrollWidth + parseFloat(getComputedStyle(label).borderLeftWidth) + parseFloat(getComputedStyle(label).borderRightWidth),
           chipTint: getComputedStyle(chip).backgroundImage + getComputedStyle(chip).boxShadow,
         };
       });

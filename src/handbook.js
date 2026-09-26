@@ -812,7 +812,7 @@ Type \`#\` anywhere in a line and the entity search opens inline, arrow-navigabl
 [[space:Handbook]]   a space
 \`\`\`
 
-The stored form is a permalink keyed on the target's id, so renaming the target renames the chip and never breaks the link. Chips render live in the editor, in the rendered view, and in exported HTML.
+The stored form is a permalink keyed on the target's id, so renaming the target renames the chip and never breaks the link. Chips render live in the editor, in the rendered view, and in exported HTML. Each is the same pointer chip a relation cell wears (an outline, no fill, the ↗ inside the link) at the size of the text around it, so a line holding one is no taller than a line without. A reference to a missing or deleted row is never drawn as a chip, and a PDF prints the reference's words.
 
 In the editor a chip shows the target's name. Its tint stops where the name does; hover for the table and number. A bare \`[[Task#12]]\` leaves room for a few characters only, so a long name ends in an ellipsis. Picked from the \`#\` search, the reference carries the name and fits.
 

@@ -92,6 +92,8 @@ test('the document-formatting guide covers the surface the editor offers', () =>
     'Raw HTML', 'full screen', 'markdown',
     // Issue #96: the fences and a diagram's source live behind this button.
     '**</>** button',
+    // Issue #97: a reference is the pointer chip, and says so.
+    'same pointer chip a relation cell wears',
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the formatting guide never mentions ${topic}`);
   }

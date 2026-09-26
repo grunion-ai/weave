@@ -9734,16 +9734,19 @@ async function refreshRefChips(st) {
     const rects = range.getClientRects();
     if (rects.length !== 1) continue; // wrapped across lines: leave literal
     const r = rects[0];
-    // The anchor covers the literal on an opaque ground; the tint is the
-    // label's own, so it ends where the words end (F6). A name longer than
-    // its literal ellipsizes inside it; the tooltip has the rest.
+    /* The anchor covers the literal on an opaque ground, with no tint or
+       ring of its own (F6); inside it the reference is the pointer chip a
+       relation cell and the rendered document draw (Issue #97): `.k.k-rel`,
+       an outline and no fill that ends where the name ends, the ↗ its last
+       pixel, and the name in `.k-label` so it alone ellipsizes when it is
+       longer than its literal. The tooltip has the rest. */
     st.layer.append(el('a', {
       class: `mention mention-${hit.kind} doc-ref-chip`,
       href: hit.href,
       title: hit.title,
       // 2px over and under: a bracket's tail drops below the text box.
       style: `left:${r.left - base.left}px; top:${r.top - base.top - 2}px; width:${r.width}px; height:${r.height + 4}px;`,
-    }, el('span', { class: 'doc-ref-label' }, s.label ?? hit.label)));
+    }, el('span', { class: 'k k-rel doc-ref-label' }, el('span', { class: 'k-label' }, s.label ?? hit.label))));
   }
 }
 
@@ -9947,9 +9950,10 @@ async function resolveRefs(refs) {
       const ent = href.match(/\/e\/([^/]+)\/doc\.html$/);
       if (ent) href = `#/entity/${ent[1]}`;
       const kind = [...a.classList].find((c) => c.startsWith('mention-'))?.slice('mention-'.length) ?? 'entity';
-      // The anchor may carry collapsed preview segments (.mention-fields);
-      // the overlay chip's label is the name alone, never the hidden fields.
+      // The anchor may carry collapsed preview segments (.mention-fields)
+      // behind their caret; the overlay chip's label is the name alone.
       a.querySelector('.mention-fields')?.remove();
+      a.querySelector('.mention-caret')?.remove();
       // The chip reads as the record's name (F6): `Task#1 — Name` is the
       // export's label, and it stays on as the tooltip.
       refResolveCache.set(ref, { href, label: a.dataset.name ?? a.textContent, title: a.textContent, kind });

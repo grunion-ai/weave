@@ -1929,8 +1929,10 @@ test('the chrome carries flat icons rather than emoji', () => {
    meant to hide it — measured: computed background rgba(6,111,209,.08). */
 
 test('a reference chip has an opaque ground', () => {
-  assert.ok(rulesFor('.doc-ref-layer a.doc-ref-chip').background,
-    'the chip must beat a.mention on its own terms');
+  // The anchor is the cover (F6); since Issue #97 the pointer chip inside it
+  // carries the outline and no fill, so the cover alone hides the literal.
+  assert.equal(rulesFor('.doc-ref-layer a.doc-ref-chip').background, 'var(--tblr-bg-surface)',
+    'the chip covers its literal with the editor’s own surface');
 });
 
 /* ---------- # is the entity search ----------

@@ -106,8 +106,10 @@ test('mention chip with preview fields collapses behind a caret and stays a link
     ],
   });
   const html = renderMarkdown('[[Task#1]]', { resolveMention: resolver });
-  assert.match(html, /<span class="mention-wrap"><a class="mention mention-entity" href="\/w\/weave\/e\/abc\/doc.html">/);
-  assert.match(html, /<button type="button" class="mention-caret" aria-expanded="false"/);
+  // The pointer chip a relation cell draws (Issue #97): .k.k-rel round the
+  // link, the caret and segments inside the link, as viewChipEl orders them.
+  assert.match(html, /<span class="mention-wrap"><span class="k k-rel k-inline has-segs"><a class="mention mention-entity" href="\/w\/weave\/e\/abc\/doc.html">Ship the editor<button type="button" class="mention-caret" aria-expanded="false"/);
+  assert.match(html, /<\/button><span class="mention-fields">/, 'the segments follow the caret inside the link');
   assert.match(html, /mention-f-label">State<\/span>In Progress/);
   assert.match(html, /Due<\/span>Sep 12, 2026/);
   assert.ok(!html.includes('never shown'), 'preview caps at three fields');
@@ -118,7 +120,7 @@ test('mention chip without fields renders exactly as before', () => {
   const html = renderMarkdown('[[Task#1]]', { resolveMention: resolver });
   assert.equal(html.includes('mention-wrap'), false);
   assert.equal(html.includes('mention-caret'), false);
-  assert.match(html, /<a class="mention mention-entity" href="\/e\/abc\/doc.html">Plain<\/a>/);
+  assert.match(html, /<span class="k k-rel k-inline"><a class="mention mention-entity" href="\/e\/abc\/doc.html">Plain<\/a><\/span>/);
 });
 
 /* ---------- the outbound mirror: what this document mentions ----------
