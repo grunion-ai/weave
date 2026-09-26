@@ -275,38 +275,59 @@ addEventListener('keydown', (e) => {
    Callers close a dialog by removing its backdrop as often as through
    modal()'s own close (a Restore, a Clear, tray() opening over it), so the
    page comes back on the removal itself, and focus that fell to the body
-   goes back to whatever opened the dialog. */
+   goes back to whatever opened the dialog.
+   The tray, the full-screen viewer and the ⌘K palette hold the page the same
+   way, and holds stack: ⌘K opens over a dialog, tray() replaces a modal. Each
+   hold keeps the list of what it made inert. When one lets go, what it held
+   passes to the hold still on top, except that hold's own backdrop, which
+   comes back to life; the last one out frees the page. A dialog with no <h2>
+   passes the element that names it, or the name itself. */
 const MODAL_LIVE = '#wv-toasts, .bug-fab, #bug-panel';
-const MODAL_STOPS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-let pageHeld = [];
-// A modal replacing a modal keeps the page held: only the last one out frees it.
+const MODAL_STOPS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
+const holds = [];
+// Idempotent: lets go of every hold whose backdrop has left the page.
 function releasePage() {
-  if (document.querySelector('#modal-back')) return;
-  for (const n of pageHeld) n.inert = false;
-  pageHeld = [];
+  for (const gone of holds.filter((h) => !h.back.isConnected)) {
+    holds.splice(holds.indexOf(gone), 1);
+    const top = holds.at(-1);
+    for (const n of gone.held) {
+      if (top && n !== top.back) top.held.push(n); else n.inert = false;
+    }
+  }
 }
-function holdPage(back, box) {
+function holdPage(back, box, label = box.querySelector('h2')) {
   const opener = document.activeElement;
   box.setAttribute('role', 'dialog');
   box.setAttribute('aria-modal', 'true');
-  const heading = box.querySelector('h2');
-  if (heading) { heading.id = 'modal-title'; box.setAttribute('aria-labelledby', 'modal-title'); }
+  if (typeof label === 'string') box.setAttribute('aria-label', label);
+  else if (label) { label.id ||= `${back.id}-title`; box.setAttribute('aria-labelledby', label.id); }
+  /* A framed page takes Tab itself, and past its last stop the browser moves
+     on to whatever follows the frame in this document. A stop after the frame
+     catches that and sends it back to the dialog's first control. */
+  const wrap = box.querySelector('iframe') ? el('span', { class: 'hold-wrap', tabindex: '0' }) : null;
+  if (wrap) box.append(wrap);
+  const stops = () => [...box.querySelectorAll(MODAL_STOPS)].filter((n) => n !== wrap && n.getClientRects().length);
+  wrap?.addEventListener('focus', () => stops()[0]?.focus());
   document.body.append(back);
+  const hold = { back, held: [] };
   for (const n of document.body.children) {
     if (n === back || n.inert || n.matches(MODAL_LIVE)) continue;
     n.inert = true;
-    pageHeld.push(n);
+    hold.held.push(n);
   }
+  holds.push(hold);
   addEventListener('keydown', function trap(e) {
     if (!back.isConnected) return removeEventListener('keydown', trap);
+    // Only the hold on top moves Tab: a dialog under the palette is inert.
+    if (holds.at(-1) !== hold) return;
     const at = document.activeElement ?? document.body;
     if (e.key !== 'Tab' || (at !== document.body && !back.contains(at))) return;
-    const stops = [...box.querySelectorAll(MODAL_STOPS)].filter((n) => n.getClientRects().length);
-    if (!stops.length) return;
+    const all = stops();
+    if (!all.length) return;
     e.preventDefault();
-    const i = stops.indexOf(at);
+    const i = all.indexOf(at);
     const next = i === -1 ? (e.shiftKey ? -1 : 0) : i + (e.shiftKey ? -1 : 1);
-    stops.at(next % stops.length).focus();
+    all.at(next % all.length).focus();
   });
   new MutationObserver((_, watch) => {
     if (back.isConnected) return;
@@ -384,11 +405,13 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
       toast(err.message, true);
     }
   });
-  back.append(el('div', { id: 'tray' },
+  const box = el('div', { id: 'tray' },
     el('div', { class: 'tray-head' }, el('h2', {}, title),
       el('button', { class: 'tray-close', type: 'button', 'aria-label': 'Close', onclick: () => back.remove() }, iconEl('✕'))),
-    form));
-  document.body.append(back);
+    form);
+  back.append(box);
+  // The table stays in view but out of reach: a slide-over is still a dialog.
+  holdPage(back, box);
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
     if (e.key === 'Escape' && !document.querySelector('.chip-pop')) { back.remove(); removeEventListener('keydown', esc); }
@@ -1505,7 +1528,12 @@ function fullscreenViewer(title, { url = null, mount = null } = {}) {
       url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')) : null,
       el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, iconEl('✕'))),
     frame ?? el('div', { class: 'fsv-body' }));
-  document.body.append(back);
+  /* The viewer is its own dialog box, named by its title. Nothing in it is a
+     field to start in, so the box itself takes focus: the next Tab lands on
+     the toolbar, and Esc reaches the listener below. */
+  holdPage(back, back, back.querySelector('.fsv-title'));
+  back.tabIndex = -1;
+  back.focus();
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
@@ -11365,7 +11393,10 @@ function wireSearchButton() {
 function openCommandK({ onPick = null, onDismiss = null, kinds = null, placeholder = null } = {}) {
   if ($('#cmdk-back')) return;
   let picked = false;
-  const dismiss = () => { back.remove(); if (!picked) onDismiss?.(); };
+  // The page is freed before a caller's own refocus runs (a reference
+  // command puts the cursor back in its editor), or that focus would land on
+  // an inert page.
+  const dismiss = () => { back.remove(); releasePage(); if (!picked) onDismiss?.(); };
   const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
   const input = el('input', {
     id: 'cmdk-input', autocomplete: 'off',
@@ -11377,6 +11408,7 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
   const pick = (hit) => {
     picked = true;
     back.remove();
+    releasePage();
     if (onPick) onPick(hit);
     else navigateToResult(hit);
   };
@@ -11422,11 +11454,13 @@ function openCommandK({ onPick = null, onDismiss = null, kinds = null, placehold
     else if (e.key === 'Enter' && hits.length) pick(hits[sel] ?? hits[0]);
     else if (e.key === 'Escape') dismiss();
   });
-  back.append(el('div', { id: 'cmdk' },
+  const box = el('div', { id: 'cmdk' },
     input,
     list,
-    el('div', { class: 'cmdk-foot' }, 'Enter opens top result • ⧉ copies a permalink • Esc closes')));
-  document.body.append(back);
+    el('div', { class: 'cmdk-foot' }, 'Enter opens top result • ⧉ copies a permalink • Esc closes'));
+  back.append(box);
+  // A dialog around the search box; the box keeps its own arrows and Escape.
+  holdPage(back, box, 'Search');
   input.focus();
 }
 
@@ -11851,7 +11885,9 @@ document.addEventListener('keydown', (e) => {
   // The grid's own rows only: a relation grid docked beside the table now
   // carries data-eid too (Issue #195), and its editors keep their keys.
   if (editing && !editing.closest('.wv-grid tr[data-eid]')) return;
-  if ($('#modal-back') || $('#cmdk-back')) return;
+  // Every dialog that holds the page keeps the key, the tray and the viewer
+  // too: a tile or a toolbar button focused there is not the grid.
+  if ($('#modal-back, #cmdk-back, #tray-back, #fsv-back')) return;
   const db = allTables().find((d) => d.id === state.route.dbId);
   if (!db) return;
   e.preventDefault();

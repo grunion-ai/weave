@@ -1861,6 +1861,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .attach-gone { margin-left: 4px; font-variant: small-caps; letter-spacing: .03em; opacity: .85; }
 /* ---------- fullscreen viewer + whiteboard (Features #47, #46) ---------- */
 #fsv-back { position: fixed; inset: 0; z-index: 90; background: var(--tblr-bg-surface); display: flex; flex-direction: column; }
+#fsv-back:focus { outline: none; } /* the box takes focus on open so Tab and Esc start inside it (Issue #263); a ring round the viewport says nothing */
 .fsv-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--tblr-border-color); }
 .fsv-title { font-weight: 600; font-size: 14px; margin-left: 6px; }
 .fsv-frame { flex: 1; border: 0; width: 100%; background: #fff; }
