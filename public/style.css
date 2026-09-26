@@ -1345,14 +1345,15 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    sticky, so the map floats beside the reader instead of scrolling away.
    Clicking it opens the headings themselves in a panel floated at the
    viewport midpoint; hover only hints that the rail is pressable. Narrow
-   screens have no gutter, so no rail. */
+   screens have no gutter, so no rail. The track pins just under the entity
+   header, whose height --wv-view-h carries (Issue #411). */
 .doc-rail { position: absolute; left: -26px; top: 0; bottom: 0; width: 22px; cursor: pointer; }
-.doc-rail-track { position: sticky; top: 88px; width: max-content; display: flex; flex-direction: column;
+.doc-rail-track { position: sticky; top: calc(var(--wv-view-h, 0px) + 8px); width: max-content; display: flex; flex-direction: column;
   gap: 1px; align-items: flex-start; padding: 8px 10px; margin: 26px -10px 0; border-radius: 10px;
   border: 1px solid transparent; transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
   /* A long document out-maps the viewport: the track scrolls itself, and the
      active dash is kept in it. No scrollbar — this is chrome, not a pane. */
-  max-height: calc(100vh - 120px); overflow-y: auto; scrollbar-width: none; }
+  max-height: calc(100vh - var(--wv-view-h, 0px) - 40px); overflow-y: auto; scrollbar-width: none; }
 .doc-rail-track::-webkit-scrollbar { display: none; }
 .doc-rail:hover .doc-rail-track { background: var(--tblr-bg-surface); border-color: var(--tblr-border-color); }
 /* Open: the minimap widens in place into a panel — same sticky anchor, same
@@ -1393,7 +1394,14 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    chrome ABOUT the document, so it stays out of sight until the section is
    hovered or holds focus. It keeps its space in the flow: display:none would
    jump the document up by a line the moment the pointer crossed it. */
-.doc-section-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; }
+/* The head holds under the entity header while its own section is in view,
+   and leaves with the section's end, so the next document's head takes the
+   same place (Issue #411). --wv-view-h is the pinned header's height: the
+   page's on the root, the dock's on #dock. The band is opaque so the text
+   scrolls under it, z-index 5 clears the heading carets (4) and stays under
+   the entity header (6). */
+.doc-section-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px;
+  position: sticky; top: var(--wv-view-h, 0px); z-index: 5; background: var(--tblr-bg-surface); }
 .doc-section-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
 .doc-caret { border: 0; background: none; padding: 0 2px; cursor: pointer; color: var(--tblr-secondary); line-height: 1; }
 .doc-caret::before { content: "▾"; display: inline-block; transition: transform .12s ease; }
@@ -1730,10 +1738,16 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 #dock-gutter::after { content: ""; position: absolute; left: 50%; top: 50%; height: 44px; width: 3px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--tblr-border-color); opacity: 0; transition: opacity .12s ease; }
 #dock-gutter:hover::after, body.dock-resizing #dock-gutter::after { opacity: 1; }
 body.dock-resizing { user-select: none; cursor: col-resize; }
-/* The pane is narrower than a page: the field grid single-columns and the
-   sticky header sits still, same as the peek before it. */
+/* The pane is narrower than a page: the field grid single-columns. The
+   entity header pins to the top of the pane, as it does on the full page
+   (Issue #411); the pane's top padding scrolls away above it. Past half the
+   pane it sits in the flow, the page header's rule. */
 #dock .dock-entity .entity-grid { grid-template-columns: minmax(0, 1fr); }
-#dock .dock-entity .view-header { position: static; }
+#dock .dock-entity .view-header { position: sticky; top: -14px; z-index: 6; background: var(--tblr-bg-surface); }
+#dock.view-header-loose .dock-entity .view-header { position: static; }
+/* The section heads' sticky edge is the pane's content edge, 14px of
+   padding below the edge the header climbs into. */
+#dock .doc-section-head { top: calc(var(--wv-view-h, 0px) - 14px); }
 /* The docked row stays lit in the table — selection follows the pane. */
 .wv-grid tbody tr.entity-row.row-docked td { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
 .pose-glyph { display: inline-flex; line-height: 0; }

@@ -123,12 +123,13 @@ if (s) {
     }
   });
 
-  test('the docked entity pane keeps its header still', async () => {
+  test('the docked entity pane pins its header too (Issue #411)', async () => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     await page.goto(`${base}/#/entity/${alpha.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main > .view-header');
-    // On the page it holds; in the dock the pane is its own scroller and the
-    // header sits in the flow (the comment over style.css's #dock block).
+    // On the page it holds; in the dock the pane is its own scroller, and the
+    // header pins to the top of that pane (Issue #411 reversed the old rule
+    // that sat it in the flow; sticky-entity-heads-browser covers the scroll).
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#main > .view-header')).position), 'sticky');
     assert.equal(await page.evaluate(() => {
       const d = document.createElement('div');
@@ -137,7 +138,7 @@ if (s) {
       const p = getComputedStyle(d.querySelector('.view-header')).position;
       d.remove();
       return p;
-    }), 'static');
+    }), 'sticky');
     await page.close();
   });
 
@@ -158,7 +159,7 @@ if (s) {
       };
     });
     assert.equal(after.pos, 'sticky', 'the page header still holds');
-    assert.equal(after.dockPos, 'static', 'the dock\'s sits in the flow');
+    assert.equal(after.dockPos, 'sticky', 'the dock\'s holds in its own pane (Issue #411)');
     assert.equal(after.v, after.measured, 'the reading still tracks the page header, not the dock\'s');
     assert.ok(parseFloat(before) > 0 && parseFloat(after.v) > 0, `both readings are real: ${before} then ${after.v}`);
     // And it keeps tracking: a narrower window re-wraps the description, so

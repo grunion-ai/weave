@@ -568,7 +568,7 @@ weave field update Task Description --name Notes   # still the description
 
 The description takes a column of its own and previews what it says: the first line, formatted — a heading as its words, bold as bold, never a hash or a pair of asterisks — and the first few lines when you hover it. A document that is not prose is named instead of flattened: \`HTML page\` (or its own <title>), \`JSON model\`, \`graph diagram\`.
 
-Every OTHER document is a column of its own in the grid: a named chip wearing the kind it holds — the declared kind when the field declares one, the sniffed kind otherwise. It hides behind the eye, resizes and reorders like any field. All documents open in full on the entity page and in the dock.
+Every OTHER document is a column of its own in the grid: a named chip wearing the kind it holds — the declared kind when the field declares one, the sniffed kind otherwise. It hides behind the eye, resizes and reorders like any field. All documents open in full on the entity page and in the dock. While you scroll a long one, the entity header stays at the top and the document's section head (its name, history, copy link and menu) stays under it until the document ends; the next document's head takes its place.
 
 \`\`\`bash
 weave doc set Task#5 --field Spec --content '# Spec'

@@ -991,24 +991,28 @@ function iconButton(current, onPick) {
    description arrives from /markdown after the grid is drawn. The reading
    goes on the root as --wv-view-h, which style.css adds to the `top` of the
    grid's field headers and the Σ row and hands to scroll-padding.
-   The page's header is the one measured, wherever the call came from: the
-   docked pane has a header of its own, and it never pins. */
+   The docked pane is its own scroller with a header of its own (Issue
+   #411): its reading goes on #dock under the same name, so the section heads
+   inside it pin under the dock's header, and the page's stays the page's. */
 function publishViewHeaderHeight() {
-  const box = document.querySelector('#main > .view-header');
-  if (!box) return;
-  const root = document.documentElement;
+  publishHeaderOn(document.documentElement, document.querySelector('#main > .view-header'), innerHeight);
+  const dock = document.querySelector('#dock');
+  publishHeaderOn(dock, dock?.querySelector('.dock-entity > .view-header'), dock?.clientHeight ?? 0);
+}
+function publishHeaderOn(holder, box, room) {
+  if (!holder || !box) return;
   const h = box.getBoundingClientRect().height;
   /* It pins while it leaves the reader something to read. Past half the
      window it does not: a 200px-tall window, or a description expanded to
      thirty lines, would hold nothing but header — and the Show less control
      at its foot would sit off screen with no way to scroll to it, because a
      pinned band does not move. */
-  const holds = h <= innerHeight / 2;
-  root.classList.toggle('view-header-loose', !holds);
+  const holds = h <= room / 2;
+  holder.classList.toggle('view-header-loose', !holds);
   const v = holds ? `${h}px` : '0px';
   // Only on a change: re-writing the same value inside a ResizeObserver
   // callback is how the "undelivered notifications" loop gets fed.
-  if (root.style.getPropertyValue('--wv-view-h') !== v) root.style.setProperty('--wv-view-h', v);
+  if (holder.style.getPropertyValue('--wv-view-h') !== v) holder.style.setProperty('--wv-view-h', v);
 }
 function stickViewHeader(box) {
   new ResizeObserver(publishViewHeaderHeight).observe(box);
