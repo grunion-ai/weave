@@ -15,7 +15,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-// Feature #233: every field keeps its default width (Name 220, Description 280, …), so this table fits its card from 1600px, not 1280.
+// Feature #233: every field keeps its default width (Name 260, Description 280, …), so this table fits its card from 1600px, not 1280.
 const FIT = { width: 1600, height: 720 };
 
 let tasks, projects, alpha, seeded;

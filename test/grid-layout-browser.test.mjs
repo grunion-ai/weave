@@ -105,7 +105,7 @@ if (s) {
     const page = await openGrid(db);
     try {
       const l = await layout(page);
-      const want = { Name: 220, Owner: 180, Status: 124, Points: 88, Price: 104, Link: 180 };
+      const want = { Name: 260, Owner: 180, Status: 124, Points: 88, Price: 104, Link: 180 };
       for (const [name, w] of Object.entries(want)) assert.equal(Math.round(l[name].w), w, `${name} opens at ${w}px`);
       // A date opens at 112, or at what its format's widest date needs, so a
       // date is never cut (Issue #159): the format raises only its own column.
@@ -120,6 +120,53 @@ if (s) {
       assert.ok(l['Approved by finance'].w > 120, 'and it is well past the 56px default');
     } finally { await page.close(); }
   });
+
+  /* Issues #261 and #414: the Name column opens wide enough to read a
+     thirty-character name whole. Kyle raised Name's default from the
+     mockup's 220 to 260 on 2026-09-26; the dropped commit 41398c3 measured
+     240px leaving such a name one pixel of room in Chromium's fallback face.
+     The default is Feature #233's, so a stored width still wins and the "+"
+     column still takes the slack. */
+  const THIRTY = 'Quickstart for a new workspace';
+  for (const theme of ['light', 'dark']) {
+    test(`${theme}: a thirty-character name reads whole at the Name default; a stored width still wins`, async () => {
+      const db = weave.createTable({ space: 'Layout', name: `Names ${++n}` });
+      weave.createEntity(db, { name: THIRTY });
+      for (let i = 0; i < 3; i++) weave.createEntity(db, { name: `Row ${i}` });
+      const readName = (page) => page.evaluate((v) => {
+        const wrap = document.querySelector('.table-wrap');
+        const th = document.querySelector('.wv-grid thead th.col-head[data-col="Name"]');
+        const td = [...document.querySelectorAll('.wv-grid tbody tr.entity-row td[data-field="Name"]')]
+          .find((c) => (c.querySelector('input')?.value ?? c.textContent).trim() === v);
+        const box = td.querySelector('input:not([type="checkbox"])') ?? td;
+        const plus = document.querySelector('.wv-grid thead th.add-field-head').getBoundingClientRect();
+        return {
+          width: th.getBoundingClientRect().width,
+          cell: td.getBoundingClientRect().width,
+          clipped: box.scrollWidth > box.clientWidth + 1,
+          plus: plus.width,
+          gridRight: document.querySelector('.wv-grid').getBoundingClientRect().right,
+          wrapRight: wrap.getBoundingClientRect().left + wrap.clientWidth,
+        };
+      }, THIRTY);
+      let page = await openGrid(db, { width: 1440, theme });
+      try {
+        const got = await readName(page);
+        assert.equal(Math.round(got.width), 260, `Name opens at 260px, got ${got.width}`);
+        assert.ok(Math.abs(got.cell - got.width) <= 1, `the cells follow the header: ${got.cell} vs ${got.width}`);
+        assert.equal(got.clipped, false, `"${THIRTY}" reads whole in a ${Math.round(got.width)}px column`);
+        assert.ok(got.plus > 200, `the "+" column takes the slack (${got.plus}px)`);
+        assert.ok(Math.abs(got.gridRight - got.wrapRight) <= 1, `the grid fills its card (${got.gridRight} vs ${got.wrapRight})`);
+      } finally { await page.close(); }
+      weave.tableView(`${db.id}/${view(db).id}`, { widths: { Name: 180 } });
+      page = await openGrid(db, { width: 1440, theme });
+      try {
+        const got = await readName(page);
+        assert.equal(Math.round(got.width), 180, `the view's stored 180px wins over the default, got ${got.width}`);
+        assert.ok(Math.abs(got.cell - 180) <= 1, `and its cells hold it, got ${got.cell}`);
+      } finally { await page.close(); }
+    });
+  }
 
   test('a header label never truncates at the floor — drag, nudge, several types', async () => {
     const db = ownTable();
