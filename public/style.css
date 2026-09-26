@@ -1713,7 +1713,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 body:has(#tray-back) #hub-foot { display: none; }
 /* The instance tag, under the stats line in the sidebar foot (Issue #380).
    It wraps inside the foot rather than running past it. */
-.nav-health { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 5px; padding: 2px 8px; }
+.nav-health { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; line-height: 16px; color: var(--tblr-secondary); font-family: var(--tblr-font-sans-serif); font-variant-numeric: tabular-nums; background: var(--wv-pill-hover); border: 1px solid transparent; border-radius: 4px; padding: 2px 6px; }
 /* The workspace trash (Issues #190, #204): the bug button's size and costume,
    muted at rest, red only on hover so the corner says what it is. Present only
    while a workspace is in the trash. */
