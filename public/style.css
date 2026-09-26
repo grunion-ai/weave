@@ -537,6 +537,13 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    transparent until focus, so the box never changes size on the way in. */
 .wv-grid tbody .inline-edit { min-height: 0; height: auto; padding: 1px 4px;
   font-size: var(--wv-grid-font); line-height: var(--wv-grid-line); font-family: inherit; }
+/* The cell's own text-overflow never reaches text inside an input, so a long
+   value at rest was cut mid-letter at the input's padding (Issue #424). At
+   rest it ends in an ellipsis; focused it clips, so the caret can scroll. An
+   empty date cell rests blank: the same hint on every empty row was noise,
+   so it shows on focus only. */
+.wv-grid .inline-edit:not(:focus) { text-overflow: ellipsis; }
+.wv-grid .date-text:not(:focus)::placeholder { color: transparent; }
 /* A number's costume ('13 min') and a text value's marks stand in for the
    box above, so they are set exactly like it — the swap on click reflows
    nothing. */
