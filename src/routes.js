@@ -343,6 +343,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return {
           href: `${wsPrefix}/e/${entity.id}/doc.html`,
           label: `${db.name}#${m[2]} — ${weave.entityName(entity)}`,
+          name: weave.entityName(entity),
           fields: weave.previewFields(entity.id),
         };
       } catch {

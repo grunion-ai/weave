@@ -63,7 +63,7 @@ async function withServer(w, body, { workspaces = {} } = {}) {
 
 // Every resolved chip in a fragment, as [class, href, text] triples.
 const chips = (html) =>
-  [...html.matchAll(/<a class="(mention mention-\w+)" href="([^"]+)">([^<]*)<\/a>/g)]
+  [...html.matchAll(/<a class="(mention mention-\w+)" href="([^"]+)"(?: data-name="[^"]*")?>([^<]*)<\/a>/g)]
     .map((m) => [m[1], m[2], m[3]]);
 
 // The renderer is handed a resolver; these tests use a recording stub so the
@@ -255,6 +255,8 @@ test('an entity reference is labelled with its table, id and name', async () => 
   const { w } = buildWorkspace();
   await withServer(w, async ({ render }) => {
     assert.equal(chips(await render('[[Task#1]]'))[0][2], 'Task#1 — Ship it');
+    // The editor's live chip shows the name alone (F6); it reads data-name.
+    assert.match(await render('[[Task#1]]'), /data-name="Ship it"/);
   });
 });
 

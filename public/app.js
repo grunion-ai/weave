@@ -8936,11 +8936,16 @@ async function refreshRefChips(st) {
     const rects = range.getClientRects();
     if (rects.length !== 1) continue; // wrapped across lines: leave literal
     const r = rects[0];
+    // The anchor covers the literal on an opaque ground; the tint is the
+    // label's own, so it ends where the words end (F6). A name longer than
+    // its literal ellipsizes inside it; the tooltip has the rest.
     st.layer.append(el('a', {
       class: `mention mention-${hit.kind} doc-ref-chip`,
       href: hit.href,
-      style: `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px; height:${r.height}px;`,
-    }, s.label ?? hit.label));
+      title: hit.title,
+      // 2px over and under: a bracket's tail drops below the text box.
+      style: `left:${r.left - base.left}px; top:${r.top - base.top - 2}px; width:${r.width}px; height:${r.height + 4}px;`,
+    }, el('span', { class: 'doc-ref-label' }, s.label ?? hit.label)));
   }
 }
 
@@ -9058,8 +9063,8 @@ function docFoldState(entityId, field, next) {
   return next;
 }
 
-function attachHeadingFolds(host, entityId, field) {
-  const st = { host, entityId, field, layer: el('div', { class: 'doc-fold-layer' }), timer: 0 };
+function attachHeadingFolds(host, entityId, field, recordName = () => '') {
+  const st = { host, entityId, field, recordName, layer: el('div', { class: 'doc-fold-layer' }), timer: 0 };
   st.schedule = () => {
     clearTimeout(st.timer);
     st.timer = setTimeout(() => refreshHeadingFolds(st), REF_CHIP_DEBOUNCE);
@@ -9076,12 +9081,24 @@ function refreshHeadingFolds(st) {
   if (!st.layer.isConnected) st.host.append(st.layer);
   const lib = globalThis.WeaveEditorLib;
   const blocks = [...root.children];
-  const levels = blocks.map((b) => (/^H[1-6]$/.test(b.tagName) ? +b.tagName[1] : null));
+  /* A first H1 that repeats the record name is the page title twice (F6,
+     2026-09-26): hidden by a class Lute ignores, like a fold, so the markdown
+     keeps it. It is no heading to fold or map. A document that is nothing
+     but that heading keeps it, or there would be nowhere to write. */
+  const echo = blocks.length > 1 && blocks[0].tagName === 'H1'
+    && lib.isTitleEcho(headText(blocks[0]), st.recordName());
+  if (blocks[0] && blocks[0].classList.contains('wv-title-echo') !== echo) {
+    blocks[0].classList.toggle('wv-title-echo', echo);
+    for (const rail of docRails) rail.schedule(); // a hidden heading leaves the rail
+  }
+  const levels = blocks.map((b, i) => (echo && i === 0 ? null : /^H[1-6]$/.test(b.tagName) ? +b.tagName[1] : null));
   const folded = docFoldState(st.entityId, st.field);
   const headKey = (h) => `${h.tagName[1]}:${headText(h)}`;
 
   // Apply the folds first (layout settles), then place carets on whatever
   // headings are still visible.
+  // A block written above the echo makes it second: it shows again.
+  for (const b of blocks.slice(1)) b.classList.remove('wv-title-echo');
   for (const b of blocks) b.classList.remove('wv-folded');
   levels.forEach((lvl, i) => {
     if (lvl == null || !folded.has(headKey(blocks[i]))) return;
@@ -9135,7 +9152,9 @@ async function resolveRefs(refs) {
       // The anchor may carry collapsed preview segments (.mention-fields);
       // the overlay chip's label is the name alone, never the hidden fields.
       a.querySelector('.mention-fields')?.remove();
-      refResolveCache.set(ref, { href, label: a.textContent, kind });
+      // The chip reads as the record's name (F6): `Task#1 — Name` is the
+      // export's label, and it stays on as the tooltip.
+      refResolveCache.set(ref, { href, label: a.dataset.name ?? a.textContent, title: a.textContent, kind });
     });
   } catch { /* resolution is decoration; a failed fetch leaves literals */ }
 }
@@ -9353,6 +9372,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     nameInput.addEventListener('input', fit);
     requestAnimationFrame(fit);
   }
+  // A rename can make, or unmake, a document heading that echoes the title.
+  nameInput.addEventListener('input', () => { for (const st of docFolds) st.schedule(); });
   if (!computed) nameInput.addEventListener('change', async () => {
     try { await api('PATCH', `/entities/${id}`, { values: { [nameF?.name ?? 'Name']: nameInput.value } }); toast('Renamed'); }
     catch (err) { toast(err.message, true); }
@@ -9640,7 +9661,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
       caret.classList.add('closed');
     }
     const rail = attachDashRail(section, host);
-    const folds = attachHeadingFolds(host, id, f.name);
+    const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
     const mountEditor = () => {
       const ed = mountDocEditor(host, {
         value: entity.docs?.[f.name] ?? '',

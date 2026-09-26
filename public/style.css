@@ -936,7 +936,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-head .pid { color: var(--tblr-secondary); }
 /* The name grows to fill the row (capped) and the ⋮ is pushed to the right
    edge, matching where viewHeader() leaves it on every other view. */
-.entity-head textarea.name-edit { font-size: 20px; font-weight: 700; border: none; background: none; color: inherit; padding: 2px 4px; flex: 1; min-width: 0; width: 100%; resize: none; overflow: hidden; field-sizing: content; line-height: 1.25; font-family: inherit; }
+.entity-head textarea.name-edit { font-size: 24px; font-weight: 700; border: none; background: none; color: inherit; padding: 2px 4px; flex: 1; min-width: 0; width: 100%; resize: none; overflow: hidden; field-sizing: content; line-height: 1.25; font-family: inherit; }
 .entity-head .dl-wrap { margin-left: auto; }
 .entity-head textarea.name-edit:hover, .entity-head textarea.name-edit:focus { background: var(--tblr-bg-surface-secondary); border-radius: var(--tblr-border-radius); outline: none; }
 .crumb { color: var(--tblr-secondary); font-size: 12.5px; margin-bottom: 14px; }
@@ -991,6 +991,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-sum > .picker-wrap { width: auto; max-width: 260px; }
 .entity-fields .fieldrow { max-width: 720px; }
 .entity-body > .doc-section { margin: 10px 0 18px; }
+/* The head steps back out of the section's 18px text indent, so every
+   block's grip and caret share one x with the field block's (F6). */
+.entity-body > .doc-section > .doc-section-head { margin-left: -18px; }
 .entity-body > .doc-section .opt-grip { opacity: 0; transition: opacity .12s; cursor: grab; }
 .entity-body > .doc-section:hover .opt-grip { opacity: 1; }
 .entity-body .doc-section-head { cursor: grab; }
@@ -1008,6 +1011,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    not a bar; text inputs stay quiet until hovered, like the grid's. */
 .entity-fields .fieldrow { min-height: 32px; }
 .entity-fields .fieldrow > :nth-child(3) { justify-self: start; max-width: 100%; }
+/* A computed value wraps inside its cell (F6): a rollup joining a dozen
+   names printed on one line and pushed the page past the viewport. */
+.entity-fields .k-computed { white-space: normal; min-width: 0; max-width: 100%; align-items: baseline; }
 .entity-fields .fieldrow > input.inline-edit, .entity-fields .fieldrow > select.inline-edit { width: min(100%, 360px); min-height: 26px; padding: 2px 6px; margin-left: -7px; }
 .entity-fields .fieldrow > .picker-wrap { width: min(100%, 360px); }
 .entity-fields .fieldrow.dragging { opacity: .4; }
@@ -1058,7 +1064,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-note { color: var(--tblr-secondary); font-size: 12px; margin: 0 0 10px; }
 .activity-when { white-space: nowrap; color: var(--tblr-secondary); }
 .activity-row { cursor: pointer; }
-.entity-head .activity-title { font-size: 20px; font-weight: 700; padding: 2px 4px; flex: 1; min-width: 0; }
+.entity-head .activity-title { font-size: 24px; font-weight: 700; padding: 2px 4px; flex: 1; min-width: 0; }
 .chip.rel.deleted a { text-decoration: line-through; color: var(--tblr-secondary); }
 
 /* ---------- entity doc preview panels ---------- */
@@ -1097,10 +1103,21 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    `.doc-ref-chip`, so the literal `[[Table#12|Name]]` showed straight through
    the chip that was meant to hide it. The chip is an anchor too: same
    specificity, later in the file, opaque ground. */
-.doc-ref-layer a.doc-ref-chip { background: var(--tblr-bg-surface); }
+.doc-ref-layer a.doc-ref-chip { background: var(--tblr-bg-surface); padding: 0; }
 .doc-ref-layer .doc-ref-chip { position: absolute; pointer-events: auto; box-sizing: border-box;
-  display: inline-flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  background: var(--tblr-bg-surface); box-shadow: inset 0 0 0 100vmax rgba(var(--tblr-primary-rgb), .08); }
+  display: inline-flex; align-items: center; white-space: nowrap; overflow: hidden;
+  background: var(--tblr-bg-surface); box-shadow: none; }
+/* The tint hugs the label (F6, 2026-09-26): the anchor is only the opaque
+   cover over the literal, so `[[Project#2|Hermes Docs]]` no longer trails a
+   tinted box the width of its source. The kind glyph moves inside with it. */
+.doc-ref-layer a.doc-ref-chip::before { content: none; }
+.doc-ref-layer .doc-ref-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
+  border-radius: 4px; background: rgba(var(--tblr-primary-rgb), .08); box-shadow: var(--tblr-shadow-border); }
+.doc-ref-layer .doc-ref-label::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
+.doc-ref-layer .mention-entity .doc-ref-label::before { content: "#"; }
+.doc-ref-layer .mention-table .doc-ref-label::before { content: "▦"; }
+.doc-ref-layer .mention-space .doc-ref-label::before { content: "◇"; }
+.doc-ref-layer .mention-workspace .doc-ref-label::before { content: "⬡"; }
 /* `:bell:` in a document is Lute's own shortcode node — an <img> of the icon
    under /vendor/icons, serialised back as the token. Sized to the line; the
    ink is recoloured for the dark theme since an <img> cannot inherit
@@ -1379,7 +1396,19 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    it reserves for the heading-level badges weave removes — so the document sat
    35px in from its own section head, indented for chrome that is not there.
    Inline styles only yield to !important. */
-.doc-editor .vditor-ir pre.vditor-reset { padding: 0 !important; font-size: 15px; background: transparent; }
+.doc-editor .vditor-ir pre.vditor-reset { padding: 0 !important; font-size: 16px; background: transparent; }
+/* Document headings sit under the page title (F6, 2026-09-26; the scale is
+   11/12/13/14/16/18/20/24): title 24, H1 20, H2 18, H3 16 bold, text 16.
+   Vditor sizes headings in em, which put an H1 at 26px over a 20px title. */
+.doc-editor .vditor-ir .vditor-reset > h1 { font-size: 20px; }
+.doc-editor .vditor-ir .vditor-reset > h2 { font-size: 18px; }
+.doc-editor .vditor-ir .vditor-reset > h3 { font-size: 16px; font-weight: 700; }
+.doc-editor .vditor-ir .vditor-reset > h4 { font-size: 16px; }
+.doc-editor .vditor-ir .vditor-reset > h5,
+.doc-editor .vditor-ir .vditor-reset > h6 { font-size: 14px; }
+/* A first H1 that repeats the record name is the title twice: hidden here,
+   kept in the markdown (refreshHeadingFolds marks it). */
+.doc-editor .vditor-ir .vditor-reset > h1.wv-title-echo { display: none; }
 .doc-editor .vditor-ir { background: transparent; }
 /* Vditor prints the heading level in the left gutter of every heading. The
    heading itself already says how big it is; the badge only tells the writer

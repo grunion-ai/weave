@@ -87,7 +87,10 @@ function renderInline(text, resolveMention) {
                (Kyle, 2026-09-01): the whole chip stays a link to the entity;
                only the caret toggles the field segments open. */
             const fields = (resolved.fields ?? []).filter((f) => f && f.value != null && f.value !== '').slice(0, 3);
-            const a = `<a class="mention mention-${kind}" href="${escapeHtml(resolved.href)}">`
+            // data-name carries the target's own name for a surface that shows
+            // the name alone (the editor's live chip) under a longer label.
+            const a = `<a class="mention mention-${kind}" href="${escapeHtml(resolved.href)}"`
+              + (resolved.name ? ` data-name="${escapeHtml(resolved.name)}">` : '>')
               + `${escapeHtml(label ?? resolved.label)}`
               + (fields.length
                 ? `<span class="mention-fields">${fields.map((f) =>

@@ -377,4 +377,13 @@ globalThis.WeaveEditorLib = {
     }
     return out;
   },
+
+  /* A document that opens by repeating its record's name (F6, 2026-09-26):
+     the page title already says it, so the entity page hides that first H1
+     and the markdown keeps it. Trimmed, whitespace-collapsed, case-folded;
+     an empty name echoes nothing. */
+  isTitleEcho(heading, name) {
+    const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    return norm(name) !== '' && norm(heading) === norm(name);
+  },
 };

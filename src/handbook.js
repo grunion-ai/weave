@@ -810,6 +810,8 @@ Type \`#\` anywhere in a line and the entity search opens inline, arrow-navigabl
 
 The stored form is a permalink keyed on the target's id, so renaming the target renames the chip and never breaks the link. Chips render live in the editor, in the rendered view, and in exported HTML.
 
+In the editor a chip shows the target's name. Its tint stops where the name does; hover for the table and number. A bare \`[[Task#12]]\` leaves room for a few characters only, so a long name ends in an ellipsis. Picked from the \`#\` search, the reference carries the name and fits.
+
 ## Code
 
 An unlabelled fence detects its own language — JSON, HTML, a mermaid source, a shell session — and highlights it. Naming the language on the fence still wins. Anything unrecognised stays plain text, which is the right answer for a config snippet nobody has a grammar for.
@@ -837,6 +839,8 @@ Inside a table, **Enter** adds a row, **Shift+Enter** breaks a line within the c
 Click a heading's gutter to fold it. Everything down to the next heading of the same or a higher level collapses.
 
 The fold lives in an overlay layer, never inside the document itself, so **the stored markdown does not change when you fold**. Fold state is remembered per entity and field in your browser and comes back on reload.
+
+A document that opens with a level-one heading matching the record's name, ignoring case and spacing, hides that heading on the entity page, because the page title above it already says it. The heading stays in the markdown and in every export. Rename the record and the heading shows again.
 
 ## The dash rail
 
