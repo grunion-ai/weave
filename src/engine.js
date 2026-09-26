@@ -126,6 +126,16 @@ function plainLines(md, budget = 12) {
     .replace(/~~(.+?)~~/g, '$1')
     .trim()).filter(Boolean);
 }
+/* The system columns a grid can show (Feature #65). Since Issue #418 a view
+   holds the ones it shows in its one ordered field list, beside the fields,
+   as `sys:<name>` ids, so they move, freeze, size and hide like any field.
+   Activity is the entity page's history panel, not a column, and stays a
+   table-level switch in `systemFields`. */
+const GRID_SYSTEM_COLUMNS = ['Created At', 'Modified At', 'Created By', 'Modified By'];
+const sysColumnId = (name) => `sys:${name}`;
+const sysColumnName = (id) => (typeof id === 'string' && id.startsWith('sys:') && GRID_SYSTEM_COLUMNS.includes(id.slice(4)) ? id.slice(4) : null);
+/* A view entry's name: a field's, or a system column's. */
+const viewEntryName = (db, id) => db.fields[id]?.name ?? sysColumnName(id);
 /* A new column goes before the trailing chip and card: the views are
    presentation over the data columns, so they close the order. */
 function placeField(db, id) {
@@ -133,8 +143,16 @@ function placeField(db, id) {
   while (at > 0 && db.fields[db.fieldOrder[at - 1]]?.type === 'view') at--;
   db.fieldOrder.splice(at, 0, id);
   // A new column shows in every table view (Feature #229), as it showed in
-  // the one grid before views; a chip or card is minted hidden.
-  if (db.fields[id]?.type !== 'view') for (const v of db.tableViews ?? []) if (!v.fields.includes(id)) v.fields.push(id);
+  // the one grid before views; a chip or card is minted hidden. It lands
+  // before the system columns that close a view, where it always landed.
+  if (db.fields[id]?.type !== 'view') {
+    for (const v of db.tableViews ?? []) {
+      if (v.fields.includes(id)) continue;
+      let k = v.fields.length;
+      while (k > 0 && sysColumnName(v.fields[k - 1])) k--;
+      v.fields.splice(k, 0, id);
+    }
+  }
 }
 /* Put a field back where the schema order says, among the visible ones: after
    the nearest field before it that is showing, or first (Feature #229). */
@@ -888,6 +906,7 @@ export class Weave {
         if (this.#ensureViewFields(db)) changed = true;
       }
       if (this.#ensureTableViews(db)) changed = true;
+      if (this.#ensureSystemColumnsInViews(db)) changed = true;
     }
     for (const e of Object.values(s.entities ?? {})) {
       if (e.docs) continue;
@@ -1072,6 +1091,17 @@ export class Weave {
      views gets one, "Default", made of what it showed: the columns left after
      its hidden set, in its field order, with its filter and sort. The legacy
      keys go, so there is one source. Blank is never stored. */
+  /* Issue #418: the system columns a table showed (its `systemFields`, a
+     table-level switch before) join the end of every view once, so no view
+     loses a column; from then on each view shows and orders its own. */
+  #ensureSystemColumnsInViews(db) {
+    if (db.system || db.systemColumnsInViews || !Array.isArray(db.tableViews)) return false;
+    db.systemColumnsInViews = true;
+    const ids = (db.systemFields ?? []).filter((n) => GRID_SYSTEM_COLUMNS.includes(n)).map(sysColumnId);
+    for (const v of db.tableViews) for (const id of ids) if (!v.fields.includes(id)) v.fields.push(id);
+    return true;
+  }
+
   #ensureTableViews(db) {
     if (Array.isArray(db.tableViews)) return false;
     const hidden = new Set(db.hiddenFields ?? []);
@@ -1460,6 +1490,7 @@ export class Weave {
     };
     this.#ensureViewFields(db);
     this.#ensureTableViews(db);
+    this.#ensureSystemColumnsInViews(db);
     this.state.tables[db.id] = db;
     this.save();
     this.#syncTableRow(db);
@@ -1523,6 +1554,16 @@ export class Weave {
         if (!known.includes(n)) throw new WeaveError(`'${n}' is not a system field (${known.join(', ')})`, 'invalid');
       }
       db.systemFields = [...patch.systemFields];
+      /* The table-level switch is the default view's under its older name
+         (Issue #418): the grid columns it names show or hide there, in the
+         view's own order, as hiddenFields does for the fields. */
+      const cur = !db.system ? db.tableViews?.[0] : null;
+      if (cur) {
+        const want = new Set(patch.systemFields.filter((n) => GRID_SYSTEM_COLUMNS.includes(n)).map(sysColumnId));
+        const show = [...want].filter((id) => !cur.fields.includes(id)).map(sysColumnName);
+        const hide = cur.fields.filter((id) => sysColumnName(id) && !want.has(id)).map(sysColumnName);
+        if (show.length || hide.length) this.#writeView(db, cur.name, { show, hide });
+      }
     }
     // Hidden fields (Feature #114): a per-table view setting, by name, over
     // the table's own fields and the system columns. Nothing else changes.
@@ -1981,13 +2022,13 @@ export class Weave {
      and a flag would be a second source that could disagree. */
   #viewOut(db, v) {
     const out = { id: v.id, name: v.name };
-    out.fields = v.fields.filter((id) => db.fields[id]).map((id) => db.fields[id].name);
+    out.fields = v.fields.map((id) => viewEntryName(db, id)).filter(Boolean);
     if (v.filters) out.filters = structuredClone(v.filters);
     if (v.sort) out.sort = structuredClone(v.sort);
     // Feature #233: column widths by name (a hidden field keeps its width)
     // and how many leading fields stay frozen beside #. Absent when unset.
     const widths = {};
-    for (const [id, px] of Object.entries(v.widths ?? {})) if (db.fields[id]) widths[db.fields[id].name] = px;
+    for (const [id, px] of Object.entries(v.widths ?? {})) { const n = viewEntryName(db, id); if (n) widths[n] = px; }
     if (Object.keys(widths).length) out.widths = widths;
     if (v.frozen) out.frozen = v.frozen;
     return out;
@@ -2037,7 +2078,11 @@ export class Weave {
       next = structuredClone(views[i]);
     }
     const list = (x) => (x == null ? [] : Array.isArray(x) ? x : [x]);
-    const fid = (ref) => this.getField(db.id, ref).id;
+    // A field by name or id, or a system column by name (Issue #418).
+    const fid = (ref) => {
+      const sys = typeof ref === 'string' && !this.findField(db, ref) ? GRID_SYSTEM_COLUMNS.find((n) => n.toLowerCase() === ref.trim().toLowerCase()) : null;
+      return sys ? sysColumnId(sys) : this.getField(db.id, ref).id;
+    };
     if (patch.name != null && i >= 0) next.name = this.#checkViewName(db, patch.name, views[i]);
     if (patch.fields != null) {
       if (!Array.isArray(patch.fields)) throw new WeaveError('fields is the list of visible field names, in column order', 'invalid');
@@ -2066,6 +2111,8 @@ export class Weave {
       if (next.parked) delete next.parked[id];
       const fz = next.frozen ?? 0;
       let at = p && (p.after === '' || next.fields.includes(p.after)) ? (p.after === '' ? 0 : next.fields.indexOf(p.after) + 1) : null;
+      // A system column shown for the first time closes the list.
+      if (at == null && sysColumnName(id)) at = next.fields.length;
       if (at == null) { showBySchema(db, next.fields, id); at = next.fields.indexOf(id); next.fields.splice(at, 1); }
       if (p?.frozen) { at = Math.min(at, fz); next.frozen = fz + 1; } else at = Math.max(at, fz);
       next.fields.splice(at, 0, id);
@@ -2553,7 +2600,7 @@ export class Weave {
        apply just created stays where placeField put it unless the view
        names it — an agent adding a column should not have to find it in
        every view first. The verb itself stays strict. */
-    const has = (n) => !!this.findField(db, n);
+    const has = (n) => !!this.findField(db, n) || GRID_SYSTEM_COLUMNS.includes(n);
     const clean = (vDoc) => {
       const out = {};
       if (vDoc.fields) {
@@ -3683,7 +3730,7 @@ export class Weave {
     db.tableViews.forEach((v, i) => {
       const want = {
         Name: v.name,
-        Fields: v.fields.filter((id) => db.fields[id]).map((id) => db.fields[id].name).join(', '),
+        Fields: v.fields.map((id) => viewEntryName(db, id)).filter(Boolean).join(', '),
         Filter: formatFilters(v.filters),
         Sort: formatSort(v.sort),
         Default: i === 0,

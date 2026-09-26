@@ -673,7 +673,13 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-col-ghost { position: fixed; left: 0; top: 0; z-index: 1080; pointer-events: none; padding: 3px 10px; border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface); color: var(--tblr-body-color); border: 1px solid var(--tblr-border-color); box-shadow: var(--tblr-box-shadow-dropdown, 0 8px 24px rgba(0, 0, 0, .12)); font-size: 13px; font-weight: 500; white-space: nowrap; }
 .wv-col-insert { position: absolute; width: 2px; margin-left: -1px; z-index: 5; pointer-events: none; background: var(--tblr-primary); }
 .wv-col-insert-tag { position: absolute; top: 6px; left: 6px; padding: 1px 6px; border-radius: var(--tblr-border-radius); background: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); font-size: 11px; line-height: 16px; white-space: nowrap; }
-body.wv-col-dragging, body.wv-col-dragging * { cursor: grabbing !important; user-select: none; }
+body.wv-col-dragging, body.wv-col-dragging * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
+body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -webkit-user-select: none; user-select: none; }
+/* Headers are controls (Issue #417): the header row, every header cell —
+   system columns included — its label and the resize grip never select.
+   WebKit still reads only the prefixed property. Cell values below stay
+   selectable. */
+.wv-grid thead tr:first-child, .wv-grid thead tr:first-child > th, .wv-grid thead tr:first-child > th *, .col-resize { -webkit-user-select: none; user-select: none; }
 /* The resize readout: the field, its width and the change, above the grip. */
 .wv-col-readout { position: fixed; z-index: 1080; pointer-events: none; transform: translateX(-50%); padding: 2px 8px; border-radius: var(--tblr-border-radius); background: var(--tblr-dark, #182433); color: #fff; font-family: var(--tblr-font-monospace); font-size: 11px; white-space: nowrap; }
 [data-bs-theme="dark"] .wv-col-readout { background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); border: 1px solid var(--tblr-border-color); }

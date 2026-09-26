@@ -177,3 +177,66 @@ test('REST and CLI speak the same keys', async () => {
     assert.deepEqual(v.widths, { Name: 230 });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+/* Issue #418 (Kyle, 2026-09-26: "system fields should be reorderable as
+   well"). The system columns a view shows are names in its one ordered
+   field list, beside the fields: they move, freeze, size, hide and come back
+   through the same verb. Only # stays out of the list, locked first. */
+test('system columns live in the view\'s one ordered list: shown, moved, frozen, sized by name', () => {
+  const w = fresh();
+  w.updateTable('Task', { systemFields: ['Created At', 'Modified By'] });
+  const v0 = w.tableView('Task/Default');
+  assert.deepEqual(v0.fields, ['Name', 'Description', 'State', 'Due', 'Points', 'Created At', 'Modified By'],
+    'the table\'s shown system columns close the default view');
+  const moved = w.tableView('Task/Default', { move: { field: 'Created At', before: 'Name' }, frozen: 1, widths: { 'Created At': 160 } });
+  assert.deepEqual(moved.fields.slice(0, 2), ['Created At', 'Name']);
+  assert.equal(moved.frozen, 1);
+  assert.deepEqual(moved.widths, { 'Created At': 160 });
+  const hidden = w.tableView('Task/Default', { hide: ['Created At'] });
+  assert.ok(!hidden.fields.includes('Created At'));
+  assert.equal(hidden.widths['Created At'], 160, 'a hidden system column keeps its width');
+  const back = w.tableView('Task/Default', { show: ['created at'] });
+  assert.deepEqual(back.fields.slice(0, 2), ['Created At', 'Name'], 'and its place, and its freeze');
+  assert.equal(back.frozen, 1);
+  // Shown in another view by name, from the verb alone.
+  assert.deepEqual(w.tableView('Task/Stamps', { fields: ['Modified By', 'Name'] }).fields, ['Modified By', 'Name']);
+  assert.deepEqual(w.tableView('Task/Stamps', { show: ['Created By'] }).fields, ['Modified By', 'Name', 'Created By'],
+    'a system column shown for the first time closes the list');
+  assert.throws(() => w.tableView('Task/Stamps', { fields: ['Activity'] }), /Activity/, 'Activity is the entity page\'s panel, not a column');
+  assert.deepEqual(w.tableView('Task/blank').fields, ['Name', 'Description', 'State', 'Due', 'Points'], 'Blank stays the raw fields');
+});
+
+test('a new field lands before the trailing system columns; the Views row and the schema document carry them', () => {
+  const w = fresh();
+  w.updateTable('Task', { systemFields: ['Created At'] });
+  w.addField('Task', { name: 'Owner', type: 'text' });
+  assert.deepEqual(w.tableView('Task/Default').fields.slice(-2), ['Owner', 'Created At']);
+  const row = w.listEntities(w.getTable('Views').id).map((e) => w.readEntity(e.id))
+    .find((r) => r.name === 'Default' && (r.fields.Table?.[0]?.name ?? r.fields.Table?.name) === 'Task');
+  assert.match(row.fields.Fields, /Owner, Created At$/);
+  w.updateEntity(row.id, { Fields: 'Created At, Name' });
+  assert.deepEqual(w.tableView('Task/Default').fields, ['Created At', 'Name'], 'the row writes through the verb');
+  const doc = w.describeSchema();
+  assert.deepEqual(w.applySchema(doc), [], 'an untouched document is a no-op');
+  const t = doc.flatMap((s) => s.tables).find((x) => x.name === 'Task');
+  t.views[0].fields = ['Name', 'Modified At'];
+  w.applySchema(doc);
+  assert.deepEqual(w.tableView('Task/Default').fields, ['Name', 'Modified At']);
+});
+
+test('a workspace from before this change: each table\'s shown system columns join every view once', () => {
+  const w = fresh();
+  w.tableView('Task/Other', { fields: ['Name'] });
+  const dump = w.exportJSON();
+  const task = Object.values(dump.tables).find((x) => x.name === 'Task');
+  task.systemFields = ['Created At', 'Activity'];
+  delete task.systemColumnsInViews;
+  const w2 = new Weave();
+  w2.importJSON(dump);
+  assert.deepEqual(w2.tableView('Task/Default').fields.at(-1), 'Created At');
+  assert.deepEqual(w2.tableView('Task/Other').fields, ['Name', 'Created At'], 'what every view showed before, it shows now');
+  w2.tableView('Task/Other', { hide: ['Created At'] });
+  const w3 = new Weave();
+  w3.importJSON(w2.exportJSON());
+  assert.deepEqual(w3.tableView('Task/Other').fields, ['Name'], 'once: a hidden system column stays hidden after the move');
+});

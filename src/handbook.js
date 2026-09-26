@@ -1066,7 +1066,7 @@ Fields dropped across the seam beside **#** freeze with it, and stay put while t
 
 Every field type opens at a default width: Name 260px, text, links and multi-selects 180, long text 280, selects and workflows 124, relations 136, dates 112, numbers 88, currency 104, checkboxes 56. A header label never clips: a label longer than its default widens that column, and no drag, nudge or fit goes under it. Widths belong to the view, so each view keeps its own. Showing, hiding, adding or removing a field never resizes another one; the neighbours slide, and the space at the right of the grid takes up the difference. A hidden field keeps its width and its place for when it comes back.
 
-The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record. Every one but Activity sorts from its ⋮; the stored sort names it (\`Created At desc\`), and \`Public Id\` is the name the # column sorts under.
+The five system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\`, \`Activity\` — are off by default. Turn them on where provenance is part of the record. A view shows the ones you turn on in its own list: each one drags, freezes across the seam and sizes like any field, and its place and width are the view's. Activity is the history panel on the record, not a column, so it stays a switch for the whole table. Every one but Activity sorts from its ⋮; the stored sort names it (\`Created At desc\`), and \`Public Id\` is the name the # column sorts under.
 
 Hide rather than delete when a column matters to a machine and not to a reader. Hiding keeps the data and the API surface; a delete needs \`hard\` and does not come back.
 

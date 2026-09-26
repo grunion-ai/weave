@@ -435,6 +435,107 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  /* Issue #417 (Kyle, 2026-09-26): a header drag or a resize left a text
+     selection across the header labels. Headers are controls: nothing in the
+     header row selects, and a gesture clears any live selection. */
+  test('a header drag, a resize and a fit select no header text; cell values stay selectable', async () => {
+    const db = ownTable();
+    weave.updateTable(db, { systemFields: ['Created At'] });
+    const page = await openGrid(db);
+    const selected = () => page.evaluate(() => getSelection().toString());
+    try {
+      // A live selection from before the gesture goes too.
+      await page.evaluate(() => { const r = document.createRange(); r.selectNodeContents(document.querySelector('.view-header') ?? document.body); getSelection().addRange(r); });
+      await drag(page, 'Points', async () => (await layout(page)).Status.left + 12);
+      assert.equal(await selected(), '', 'nothing is selected after a header drag');
+      for (const name of ['Owner', 'Created At']) {
+        await head(page, name).evaluate((th) => th.scrollIntoView({ block: 'nearest', inline: 'center' }));
+        await page.waitForTimeout(50);
+        const grip = await head(page, name).locator('.col-resize').boundingBox();
+        const y = grip.y + grip.height / 2;
+        await page.mouse.move(grip.x + grip.width / 2, y);
+        await page.mouse.down();
+        await page.mouse.move(grip.x + 160, y + 40, { steps: 8 });
+        await page.mouse.up();
+        await page.waitForTimeout(150);
+        assert.equal(await selected(), '', `nothing is selected after resizing ${name}`);
+        const moved = await head(page, name).locator('.col-resize').boundingBox();
+        await page.mouse.dblclick(moved.x + moved.width / 2, moved.y + moved.height / 2);
+        await page.waitForTimeout(300);
+        assert.equal(await selected(), '', `nothing is selected after a fit on ${name}`);
+      }
+      // Drag across the header row from a label, the way a reader sweeps text.
+      const a = await head(page, 'Status').boundingBox();
+      const b = await head(page, 'Due').boundingBox();
+      await page.mouse.move(a.x + 6, a.y + a.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(b.x + b.width - 30, b.y + b.height / 2, { steps: 10 });
+      await page.mouse.up();
+      await page.waitForTimeout(200);
+      assert.equal(await selected(), '', 'a sweep across the header row selects nothing');
+      const css = await page.evaluate(() => {
+        const us = (n) => { const cs = getComputedStyle(n); return cs.userSelect || cs.webkitUserSelect; };
+        const q = (sel) => document.querySelector(sel);
+        return {
+          row: us(q('.wv-grid thead tr')), col: us(q('.wv-grid thead th.col-head')), label: us(q('.wv-grid thead th.col-head .col-label')),
+          sys: us(q('.wv-grid thead th.sys-head')), grip: us(q('.wv-grid .col-resize')), cell: us(q('.wv-grid tbody td.sys-cell')),
+        };
+      });
+      for (const k of ['row', 'col', 'label', 'sys', 'grip']) assert.equal(css[k], 'none', `${k}: headers are controls`);
+      assert.notEqual(css.cell, 'none', 'a cell value stays selectable');
+    } finally { await page.close(); }
+  });
+
+  /* Issue #418 (Kyle, 2026-09-26: "system fields should be reorderable as
+     well"). A shown system column is a column like any field: it drags,
+     freezes across the seam, steps with Alt+Shift+arrows, and saves into
+     the view's one ordered list. Only # stays locked first. */
+  test('system columns reorder, freeze and step like fields; every other width holds', async () => {
+    const db = ownTable();
+    weave.updateTable(db, { systemFields: ['Created At', 'Modified By'] });
+    const page = await openGrid(db, { width: 1800 });
+    const want0 = ['Name', 'Description', 'Status', 'Owner', 'Due', 'Points', 'Price', 'Done', 'Link', 'Approved by finance', 'Created At', 'Modified By'];
+    const sysCells = () => page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.map((r) => [...r.children].filter((c) => c.dataset.field || c.dataset.sys).map((c) => c.dataset.field ?? c.dataset.sys)));
+    try {
+      assert.deepEqual(await order(page), want0, 'system columns close the default view');
+      const before = await layout(page);
+      // Between two regular fields: the right half of Status.
+      const seen = await drag(page, 'Created At', async () => { const st = (await layout(page)).Status; return st.left + st.w - 10; }, () => insertLine(page));
+      assert.equal(seen.count, 1, 'one insertion line');
+      assert.equal(await trayOpen(page), 0, 'the drop opened nothing');
+      const want1 = ['Name', 'Description', 'Status', 'Created At', 'Owner', 'Due', 'Points', 'Price', 'Done', 'Link', 'Approved by finance', 'Modified By'];
+      assert.deepEqual(await order(page), want1, 'Created At landed between Status and Owner');
+      for (const r of await sysCells()) assert.deepEqual(r, want1, 'every row moved with the header');
+      assert.deepEqual(view(db).fields, want1, 'saved into the view\'s one list');
+      sameWidths(before, await layout(page), [], 'system column reorder');
+      // And back, to the end.
+      await drag(page, 'Created At', async () => { const m = (await layout(page))['Modified By']; return m.left + m.w - 6; });
+      const want2 = ['Name', 'Description', 'Status', 'Owner', 'Due', 'Points', 'Price', 'Done', 'Link', 'Approved by finance', 'Modified By', 'Created At'];
+      assert.deepEqual(await order(page), want2, 'and back past the last field');
+      sameWidths(before, await layout(page), [], 'system column back');
+      // Freeze a system column across the seam.
+      const pidX = async () => { const b = await page.locator('.wv-grid thead th.pid-head').boundingBox(); return b.x + b.width / 2; };
+      const f = await drag(page, 'Modified By', pidX, () => insertLine(page));
+      assert.equal(f.tag, 'Freeze here');
+      assert.equal((await order(page))[0], 'Modified By', 'it froze first, after #');
+      assert.equal(view(db).frozen, 1);
+      sameWidths(before, await layout(page), [], 'system column freeze');
+      // Alt+Shift+→ steps it out of the zone in place.
+      await head(page, 'Modified By').focus();
+      await page.keyboard.press('Alt+Shift+ArrowRight');
+      await page.waitForTimeout(400);
+      assert.ok(!view(db).frozen, 'the keyboard unfroze it in place');
+      await page.keyboard.press('Alt+Shift+ArrowRight');
+      await page.waitForTimeout(400);
+      assert.deepEqual((await order(page)).slice(0, 2), ['Name', 'Modified By'], 'and stepped it one place');
+      sameWidths(before, await layout(page), [], 'system column keyboard');
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      assert.deepEqual((await order(page)).slice(0, 2), ['Name', 'Modified By'], 'after a reload');
+      sameWidths(before, await layout(page), [], 'system columns, reloaded');
+    } finally { await page.close(); }
+  });
+
   for (const theme of ['light', 'dark']) {
     test(`${theme}: frozen cells paint opaque and the header row holds both ways`, async () => {
       const db = ownTable();
