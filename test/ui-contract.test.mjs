@@ -1514,16 +1514,18 @@ test('the picker numbers its rows quietly, in a column of their own', () => {
 });
 
 /* Single select overwrites, so its box carries at most one chip and taking
-   that chip out is a pick of the field's empty value — a select has one ('—'),
-   a workflow state does not. */
-test('a select clears through its own empty option; a state cannot be emptied', () => {
+   that chip out is a pick of the field's empty value ('—'). A workflow state
+   has one too since Issue #421: a row starts with none unless the field names
+   a default, so it can be put back to none. */
+test('a select and a state each clear through their own empty option', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const cell = app.slice(app.indexOf("if (f.type === 'workflow')"), app.indexOf("if (f.type === 'multiselect')"));
   const sel = cell.slice(cell.indexOf("if (f.type === 'select')"));
   assert.ok(sel.includes("clearId: '—'"), 'Backspace on the select chip picks —');
   assert.ok(sel.includes('current: val ?? null'), 'an unset select carries no chip at all');
   const wf = cell.slice(0, cell.indexOf("if (f.type === 'select')"));
-  assert.ok(!wf.includes('clearId'), 'a workflow state has no empty value to clear to');
+  assert.ok(wf.includes("clearId: '—'"), 'Backspace on the state chip picks —');
+  assert.ok(wf.includes('current: val ?? null'), 'an unset state carries no chip at all');
 });
 
 test('resize and reorder commit in place — the grid never tears down mid-gesture', () => {
@@ -1756,7 +1758,7 @@ test('workflow states: rows drag to reorder, icon instead of a default radio, an
   // through the same control a table's icon uses.
   assert.match(fnBody('iconButton'), /iconCatalogue\(\)/, 'over the shared vocabulary');
   assert.match(fnBody('iconCatalogue'), /fieldDialogCore\.iconChoices/, 'which is the one catalogue');
-  assert.doesNotMatch(ed, /type: 'radio'/, 'no default radio — the first state is the default');
+  assert.doesNotMatch(ed, /type: 'radio'/, 'no default radio — the Default picker under the list names one (Issue #422)');
   // A mark rides in the label text; a flat icon has to be drawn, so the chip
   // takes nodes and the picker's list keeps the string (Issue #87).
   assert.match(fnBody('stateLabel'), /`\$\{icon\} \$\{stateName\}`/, 'chips wear the mark');

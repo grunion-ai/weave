@@ -201,9 +201,9 @@
     if ((toType === 'select' || toType === 'multiselect') && (from === 'select' || from === 'multiselect')) {
       next.options = (state.options ?? []).map((o) => ({ ...o }));
     } else if ((toType === 'select' || toType === 'multiselect') && from === 'workflow') {
-      next.options = (state.states ?? []).map((s) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, color: '' }));
+      next.options = (state.states ?? []).map((s) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, color: '', ...(s.default ? { default: true } : {}) }));
     } else if (toType === 'workflow' && from === 'select') {
-      next.states = (state.options ?? []).map((o) => ({ ...(o.id ? { id: o.id } : {}), name: o.name, category: 'in-progress' }));
+      next.states = (state.options ?? []).map((o) => ({ ...(o.id ? { id: o.id } : {}), name: o.name, category: 'in-progress', ...(o.default ? { default: true } : {}) }));
     }
     return next;
   }
@@ -222,6 +222,25 @@
     { name: 'Canceled', category: 'canceled' },
   ];
   const defaultStates = () => DEFAULT_WORKFLOW_STATES.map((s) => ({ ...s }));
+
+  /* A choice field's Default (Issue #422) is a flag on the option or state it
+     names, so a rename carries it and a removal takes it. choiceItems lists
+     the entries a Default picker offers, keyed by position; setChoiceDefault
+     marks the picked ones: one for select and workflow, any for multi. */
+  const choiceList = (state, t) => (t === 'workflow' ? state.states : state.options) ?? [];
+  function choiceItems(state, t) {
+    return choiceList(state, t).map((x, i) => ({ id: String(i), name: x.name ?? '', default: !!x.default, color: x.color ?? '', hue: x.hue, category: x.category }));
+  }
+  function setChoiceDefault(state, t, ids) {
+    const keep = new Set(t === 'multiselect' ? ids : ids.slice(0, 1));
+    choiceList(state, t).forEach((x, i) => { if (keep.has(String(i))) x.default = true; else delete x.default; });
+  }
+  // The stored shape of the flags: an option name, several, or nothing.
+  function choiceDefault(state, t) {
+    const on = choiceList(state, t).filter((x) => x.default && String(x.name ?? '').trim()).map((x) => x.name);
+    if (!on.length) return undefined;
+    return t === 'multiselect' ? on : on[0];
+  }
   // Glyphs a state may wear in its chip; '' = none.
   // Kyle accepted five more on 2026-08-26; they sit with the meanings they
   // belong to rather than in a pile at the end.
@@ -514,9 +533,10 @@
     if (t === 'select' || t === 'multiselect') {
       config.options = (state.options ?? []).map((o) => ({ ...(o.id ? { id: o.id } : {}), name: o.name, color: o.color ?? '' }));
     } else if (t === 'workflow') {
-      // No default flag: the engine takes the first state (the list's order
-      // is the selector's order). Icons ride along when set.
-      config.states = (state.states ?? []).map((s) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}) }));
+      // The list's order is the selector's order. Icons ride along when set,
+      // and the default flag on the one state picked, if any (Issue #422).
+      const di = (state.states ?? []).findIndex((s) => s.default && String(s.name ?? '').trim());
+      config.states = (state.states ?? []).map((s, i) => ({ ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}), ...(i === di ? { default: true } : {}) }));
     } else if (t === 'number') {
       Object.assign(config, numberCostume(state.number));
     } else if (t === 'date' || t === 'daterange') {
@@ -571,7 +591,8 @@
       // No editor writes a filter yet; a column that has one keeps it.
       if (state.via && state.where) config.where = state.where;
     }
-    const dflt = typedDefault(t, t === 'rating' ? clampRatingDefault(state.default, config.max) : state.default);
+    const dflt = t === 'select' || t === 'multiselect' ? choiceDefault(state, t)
+      : typedDefault(t, t === 'rating' ? clampRatingDefault(state.default, config.max) : state.default);
     if (dflt !== undefined) config.default = dflt;
     if (state.term && state.term.singular) config.term = { ...state.term };
     return { type: t, config };
@@ -595,13 +616,18 @@
       return state;
     }
     if (def.type === 'select' || def.type === 'multiselect') {
-      state.options = (c.options ?? []).map((o) => (typeof o === 'string' ? { name: o, color: '' } : { ...(o.id ? { id: o.id } : {}), name: o.name, color: o.color ?? '' }));
+      // The stored default names an option by id or by name; it becomes that
+      // option's flag (Issue #422), one at most on a select.
+      const d = [].concat(c.default ?? []).map((x) => String(x).toLowerCase());
+      let marked = 0;
+      state.options = (c.options ?? []).map((o) => (typeof o === 'string' ? { name: o, color: '' } : { ...(o.id ? { id: o.id } : {}), name: o.name, color: o.color ?? '' }))
+        .map((o) => ((d.includes(String(o.id ?? '').toLowerCase()) || d.includes(String(o.name).toLowerCase())) && (def.type === 'multiselect' || !marked++) ? { ...o, default: true } : o));
     } else if (def.type === 'workflow') {
       // Absent states are the default lifecycle, the same as in the engine; an
       // empty array stays empty, and the validator says why.
       state.states = (c.states ?? defaultStates()).map((s) => (typeof s === 'string'
         ? { name: s, category: 'in-progress', default: false }
-        : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}) }));
+        : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}), ...(s.default ? { default: true } : {}) }));
     } else if (def.type === 'number') {
       state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column' };
     } else if (def.type === 'date' || def.type === 'daterange') {
@@ -866,7 +892,7 @@
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, sortLabels, SYSTEM_SORT, migrateState, moveItem,
     NUMBER_FORMATS, NUMBER_DISPLAYS, SPARKLINE_STYLES, RATING_PRESETS, RATING_MAX, ratingMaxValue, clampRatingDefault, ratingDefaultClick, ratingDefaultLabel, ratingDefaultKey, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, OPTION_COLORS, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
-    blankState, definitionFromState, stateFromDefinition,
+    blankState, definitionFromState, stateFromDefinition, choiceItems, setChoiceDefault,
     definitionFromFieldView, editPatchConfig,
     serializeDefinition, parseDefinition,
   };

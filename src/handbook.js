@@ -310,7 +310,7 @@ One choice from a configured list. Stored as the option **id** (a slug), read ev
 
 ## Config
 
-\`options\` — strings, or objects carrying a color and a glyph. \`default\`.
+\`options\` — strings, or objects carrying a color and a glyph. \`default\` — one option, by name or id; without it a new row's value is empty. The field dialog picks it from the options (*No default* first), and removing that option clears it.
 
 \`\`\`json
 { "name": "Priority", "type": "select", "config": { "options": [
@@ -357,7 +357,9 @@ A lifecycle. One state at a time, each state belonging to a **category**, and th
 
 \`states\` — \`[{ name, category, default, icon }]\`. Categories are exactly four: \`not-started\`, \`in-progress\`, \`done\`, \`canceled\`.
 
-**Leave \`states\` out and you get one.** A workflow whose config never mentions states arrives as \`Not started\` · \`In progress\` · \`Done\` · \`Canceled\` — one per category, \`Not started\` the default — in the tray and on \`weave field add\` alike. Rename, reorder, recolour or delete them like any others. Sending \`"states": []\` is a different thing and still refused: a list emptied on purpose is not a lifecycle.
+**Leave \`states\` out and you get one.** A workflow whose config never mentions states arrives as \`Not started\` · \`In progress\` · \`Done\` · \`Canceled\` — one per category — in the tray and on \`weave field add\` alike. Rename, reorder, recolour or delete them like any others. Sending \`"states": []\` is a different thing and still refused: a list emptied on purpose is not a lifecycle.
+
+**No state is the default unless you mark one.** A new row's state is empty until someone sets it, unless one state carries \`"default": true\` (at most one does; the first marked wins). In the field dialog that is the **Default** picker under the states: *No default* first, then the states. A state can be set back to empty (\`null\`, or the — row in the cell's picker). Fields created before 2026-09-26 stored their first state as the default and keep it until the Default is changed.
 
 \`\`\`json
 { "name": "Stage", "type": "workflow", "config": { "states": [

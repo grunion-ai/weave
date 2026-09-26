@@ -1825,7 +1825,7 @@ function restoreGridFocus({ now = false } = {}) {
    multi (multiselect, linked records) accumulates chips and commits the set.
    single (select, workflow states) overwrites — a pick commits and closes on
    the spot — and `clearId` is the empty value Backspace picks for a field
-   that has one (a select does; a workflow state does not).
+   that has one (a select does, and since Issue #421 a workflow state too).
    The keyboard grammar itself is pure and lives in public/picker-core.js. */
 function searchPicker({ anchor = null, title = '', placeholder = 'Search…', options, currentId = null, onPick, multi = null, clearId = null, grid = false, groups = false, custom = null }) {
   document.querySelector('.chip-pop')?.remove();
@@ -3147,9 +3147,14 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
       /* The picker paints a row or a staged chip with the class it is handed,
          whole: a `bare` class without the `k` base drew tinted text with no
          padding and no corners in the box and in every row (Kyle, 2026-09-02). */
-      options: f.states.map((s) => ({ name: s.name, cls: stateChipClass(f, s.name), label: stateLabel(f, s.name) })),
-      current: val,
-      onPick: async (name) => {
+      /* A state can be empty since Issue #421 (a row starts with none unless
+         the field names a default), so the list leads with the same clear
+         row a select offers. */
+      options: [{ name: '—' }, ...f.states.map((s) => ({ name: s.name, cls: stateChipClass(f, s.name), label: stateLabel(f, s.name) }))],
+      current: val ?? null,
+      clearId: '—',
+      onPick: async (picked) => {
+        const name = picked === '—' ? null : picked;
         paint(name);
         try {
           await api('POST', `/entities/${id}/state`, { field: f.name, state: name });
@@ -7263,9 +7268,56 @@ function optionListEditor(state, onChange) {
   return wrap;
 }
 
-/* States: drag ⠿ to reorder (the list's order is the selector's order and
-   the first state is the default — no radio), an icon the chip wears, the
-   name, the category through the picker dialect. */
+/* The Default of a select, multi-select or workflow (Issue #422, Kyle
+   2026-09-26: "Default config should be a drop down selection of available
+   options"). A picker face over the field's own options or states, read
+   fresh on every open and redrawn on every edit to the list above it, so a
+   rename or a removal shows at once. "No default" is the first row; a
+   multi-select stages several. The pick is a flag on the entry itself
+   (fieldDialogCore.setChoiceDefault), which is what keeps it live. */
+function choiceDefaultControl(state, t) {
+  const fdc = fieldDialogCore;
+  const multi = t === 'multiselect';
+  const chipCls = (x) => {
+    if (t !== 'workflow') return `k k-select hue-${x.hue ?? chipCore.hueFromHex(x.color)}`;
+    const cat = chipCore.categoryOrDefault(x.category ?? 'in-progress');
+    return `k k-state cat-${cat} hue-${chipCore.categoryHue(cat)}`;
+  };
+  const face = el('button', { type: 'button', class: 'form-select picker-face choice-default', 'aria-label': 'Default', 'aria-haspopup': 'listbox' });
+  const named = () => fdc.choiceItems(state, t).filter((x) => x.name.trim());
+  const draw = () => {
+    const on = named().filter((x) => x.default);
+    face.replaceChildren(...(on.length
+      ? on.map((x) => el('span', { class: chipCls(x) }, x.name))
+      : [el('span', { class: 'choice-default-none' }, 'No default')]));
+  };
+  face.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const list = named();
+    const opts = list.map((x) => ({ id: x.id, label: x.name, cls: chipCls(x), chip: true }));
+    const set = (ids) => { fdc.setChoiceDefault(state, t, ids); draw(); };
+    if (multi) {
+      searchPicker({
+        anchor: face, title: 'Default', placeholder: 'Search options…', options: opts,
+        multi: { selected: opts.filter((o) => list.find((x) => x.id === o.id).default), onCommit: set },
+      });
+    } else {
+      searchPicker({
+        anchor: face, title: 'Default', placeholder: t === 'workflow' ? 'Search states…' : 'Search options…',
+        options: [{ id: 'none', label: 'No default' }, ...opts],
+        currentId: list.find((x) => x.default)?.id ?? 'none',
+        onPick: (o) => set(o.id === 'none' ? [] : [o.id]),
+      });
+    }
+  });
+  draw();
+  face.draw = draw;
+  return face;
+}
+
+/* States: drag ⠿ to reorder (the list's order is the selector's order; the
+   Default below the list picks a start state, or none — Issue #422), an icon
+   the chip wears, the name, the category through the picker dialect. */
 function stateListEditor(state, onChange) {
   const fdc = fieldDialogCore;
   const wrap = el('div', { class: 'opt-list' });
@@ -7800,10 +7852,14 @@ function fieldDialog(db, existing, after) {
       const t = state.type;
       // The Name field carries the table's row term (Feature #40).
       if (isEdit && existing.role === 'name') kids.push(termSection(state, changed));
+      // A choice field's Default is picked from its own list (Issue #422),
+      // and redrawn on every edit to that list.
+      const choice = ['select', 'multiselect', 'workflow'].includes(t) ? choiceDefaultControl(state, t) : null;
+      const listChanged = () => { choice?.draw(); changed(); };
       if (t === 'select' || t === 'multiselect') {
-        kids.push(dsection('Options', optionListEditor(state, changed)));
+        kids.push(dsection('Options', optionListEditor(state, listChanged)));
       } else if (t === 'workflow') {
-        kids.push(dsection('States', stateListEditor(state, changed)));
+        kids.push(dsection('States', stateListEditor(state, listChanged)));
       } else if (t === 'number') {
         kids.push(...numberCostumeControls(state, drawCfg, changed, { column }));
       } else if (t === 'date' || t === 'daterange') {
@@ -7956,7 +8012,9 @@ function fieldDialog(db, existing, after) {
           kids.push(...(state.via ? overTable() : throughRelation()));
         }
       }
-      if (t === 'date') {
+      if (choice) {
+        kids.push(dsection('Default', choice));
+      } else if (t === 'date') {
         // A date default is none, the day/moment the row is created
         // (today() / now(), resolved by the engine), or a specific date.
         const dc = weaveDateCore;
@@ -10950,7 +11008,7 @@ function droppedText(n) {
 function activitySummary(a) {
   const d = a.detail ?? {};
   switch (a.kind) {
-    case 'state-changed': return `${d.field}: ${d.from ?? '—'} → ${d.to}`;
+    case 'state-changed': return `${d.field}: ${d.from ?? '—'} → ${d.to ?? '—'}`;
     case 'field-updated': return `${d.field}: ${fmtValue(d.from)} → ${fmtValue(d.to)}`;
     case 'relation-updated': return `${d.field} changed`;
     case 'moved': return `moved from ${d.from} #${d.publicId}` + (d.skipped?.length ? ` — left behind: ${d.skipped.join(', ')}` : '');

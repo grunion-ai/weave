@@ -80,10 +80,11 @@ if (s) {
     let page = await openPicker(freshTask({ State: 'Done' }), 'State');
     try {
       const chips = await dressed(page);
-      assert.deepEqual(chips.map((c) => c.text), ['Done', 'Open', 'In Progress', 'Done'], 'the staged chip, then every state as a row');
+      // A state clears through its own — row since Issue #421, the way a select does.
+      assert.deepEqual(chips.map((c) => c.text), ['Done', '—', 'Open', 'In Progress', 'Done'], 'the staged chip, the clear row, then every state as a row');
       assert.ok(chips.every((c) => c.k), 'each one carries the k base');
       assert.ok(chips.every((c) => c.pad === '8px' && c.radius === '4px'), 'so each one has a chip’s padding and corners');
-      assert.deepEqual(chips.map((c) => c.hue), ['hue-green', 'hue-slate', 'hue-blue', 'hue-green'], 'and the hue its category wears in the cell');
+      assert.deepEqual(chips.map((c) => c.hue), ['hue-green', 'hue-slate', 'hue-slate', 'hue-blue', 'hue-green'], 'and the hue its category wears in the cell');
     } finally { await page.close(); }
     page = await openPicker(freshTask({ Priority: 'P1' }), 'Priority');
     try {

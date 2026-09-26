@@ -135,12 +135,12 @@ test('duplicate copies every field with its full config, deeply (no shared objec
 
 test('duplicate preserves workflow states, the default flag, and field order', () => {
   const { w, tasks } = build();
-  w.addField(tasks, { name: 'State', type: 'workflow', config: { states: [{ name: 'Open' }, { name: 'Doing' }, { name: 'Done', final: true }] } });
+  w.addField(tasks, { name: 'State', type: 'workflow', config: { states: [{ name: 'Open', default: true }, { name: 'Doing' }, { name: 'Done', final: true }] } });
   const src = w.getTable(tasks.id);
   const copy = w.duplicateTable(tasks.id);
   const cpState = w.findField(copy, 'State');
   assert.deepEqual(cpState.config.states.map((s) => s.name), ['Open', 'Doing', 'Done']);
-  assert.ok(cpState.config.states.some((s) => s.default), 'a default state survives');
+  assert.deepEqual(cpState.config.states.map((s) => s.default), [true, false, false], 'the marked default survives');
   assert.deepEqual(
     copy.fieldOrder.map((id) => copy.fields[id].name),
     src.fieldOrder.map((id) => src.fields[id].name));

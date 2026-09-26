@@ -5,7 +5,8 @@
    type a status vocabulary before the column could exist at all, in the tray
    and on the CLI alike. The engine already knows four state categories, and
    those four ARE the sensible starting lifecycle: Not started · In progress ·
-   Done · Canceled, the first one the default.
+   Done · Canceled. None is the default since Issue #421: a new row's state
+   is empty until the author marks one.
 
    The seed sits at the point of blankness, not in a weakened validation: a
    config that OMITS states gets the four, a config that carries an empty
@@ -41,11 +42,11 @@ test('a workflow field with no config is created with the four default states', 
   const f = w.addField(t, { name: 'Status', type: 'workflow' });
   assert.deepEqual(f.config.states.map((s) => s.name), NAMES);
   assert.deepEqual(f.config.states.map((s) => s.category), CATS);
-  assert.deepEqual(f.config.states.map((s) => s.default), [true, false, false, false],
-    'Not started leads, and it is the default');
-  // A row lands on the default state like any other workflow field.
+  assert.deepEqual(f.config.states.map((s) => s.default), [false, false, false, false],
+    'Not started leads, and none is the default (Issue #421)');
+  // A row starts with no state until the author marks a default.
   const e = w.createEntity(t, { name: 'Ship it' });
-  assert.equal(w.readEntity(e.id).fields.Status, 'Not started');
+  assert.equal(w.readEntity(e.id).fields.Status, null);
 });
 
 test('an explicitly empty states array is still refused', () => {

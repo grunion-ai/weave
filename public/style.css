@@ -1965,6 +1965,10 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 
 .picker-empty { color: var(--tblr-secondary); font-size: 12.5px; padding: 8px 6px; }
 .picker-face { text-align: left; cursor: pointer; width: 100%; }
+/* A choice field's Default (Issue #422): the picked option chips, or a
+   quiet "No default". */
+.choice-default { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.choice-default-none { color: var(--tblr-secondary); }
 .picker-wrap { display: block; width: 100%; }
 .picker-centered { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); min-width: 320px; }
 .chip-add { cursor: pointer; border: 1px dashed var(--tblr-border-color); background: none; color: var(--tblr-secondary); }

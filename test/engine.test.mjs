@@ -747,7 +747,7 @@ test('select -> multiselect wraps values and keeps option ids', () => {
   assert.deepEqual(w.getEntity(a.id).values[f.id], ['high']);
 });
 
-test('select -> workflow turns options into states; empties land on the default', () => {
+test('select -> workflow turns options into states; empties stay empty (Issue #421)', () => {
   const { w, tasks } = buildWorkspace();
   const f = w.findField(tasks, 'Priority');
   const a = w.createEntity(tasks, { name: 'A', values: { Priority: 'Medium' } });
@@ -756,9 +756,9 @@ test('select -> workflow turns options into states; empties land on the default'
   const wf = w.getField(tasks, f.id);
   assert.equal(wf.type, 'workflow');
   assert.deepEqual(wf.config.states.map((s) => s.name), ['Low', 'Medium', 'High']);
-  assert.equal(wf.config.states.filter((s) => s.default).length, 1);
+  assert.equal(wf.config.states.filter((s) => s.default).length, 0, 'the select named no default, so no state is one');
   assert.equal(w.getEntity(a.id).values[f.id], 'medium');
-  assert.equal(w.getEntity(b.id).values[f.id], 'low');
+  assert.equal(w.getEntity(b.id).values[f.id], null);
 });
 
 test('text -> select builds options from the distinct values present', () => {
@@ -957,15 +957,15 @@ test("a state stored as 'other' migrates instead of failing validation (retired 
   assert.equal(f.config.states[1].category, 'in-progress');
 });
 
-test('a state carries an icon, exported to the client; order is the order given; the first state is the default when none is marked', () => {
+test('a state carries an icon, exported to the client; order is the order given; no state is the default unless marked', () => {
   const { w, tasks } = buildWorkspace();
   const f = w.addField(tasks, { name: 'Lane', type: 'workflow', config: { states: [{ name: 'B', category: 'done', icon: '✓' }, { name: 'A', category: 'not-started' }] } });
   assert.deepEqual(f.config.states.map((s) => s.name), ['B', 'A']);
   assert.equal(f.config.states[0].icon, '✓');
-  assert.equal(f.config.states.find((s) => s.default).name, 'B');
+  assert.equal(f.config.states.some((s) => s.default), false, 'the first state is not marked for the author (Issue #421)');
   const e = w.createEntity(tasks, { name: 'x' });
-  assert.equal(w.readEntity(e.id).fields.Lane, 'B');
+  assert.equal(w.readEntity(e.id).fields.Lane, null);
   w.updateField(tasks, f.id, { config: { states: [{ id: 'a', name: 'A', category: 'not-started', icon: '○' }, { id: 'b', name: 'B', category: 'done', icon: '✓' }] } });
   const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id).fields.find((x) => x.name === 'Lane');
-  assert.deepEqual(view.states.map((s) => [s.name, s.icon, s.default]), [['A', '○', true], ['B', '✓', false]]);
+  assert.deepEqual(view.states.map((s) => [s.name, s.icon, s.default]), [['A', '○', false], ['B', '✓', false]]);
 });

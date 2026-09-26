@@ -160,7 +160,7 @@ test('default value is typed per field type, empty means absent', () => {
   assert.equal(core.definitionFromState({ type: 'text', default: '' }).config.default, undefined);
   assert.equal(core.definitionFromState({ type: 'checkbox', default: 'true' }).config.default, true);
   assert.equal(core.definitionFromState({ type: 'number', default: '5' }).config.default, 5);
-  assert.deepEqual(core.definitionFromState({ type: 'multiselect', options: [], default: 'a, b' }).config.default, ['a', 'b']);
+  assert.deepEqual(core.definitionFromState({ type: 'multiselect', options: [{ name: 'a', default: true }, { name: 'b', default: true }, { name: 'c' }], default: '' }).config.default, ['a', 'b']);
 });
 
 /* ---------- toggle: two labels and a default (Feature #202) ---------- */

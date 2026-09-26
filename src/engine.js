@@ -251,9 +251,10 @@ const RETIRED_STATE_CATEGORIES = { other: 'in-progress' };
    a vocabulary before it could exist; the four categories already say what the
    four states are. Named once here, mirrored in public/field-dialog-core.js so
    the tray opens on the same list, and both are gated in
-   test/workflow-defaults.test.mjs. */
+   test/workflow-defaults.test.mjs. None is the default (Issue #421): a new
+   row's state is empty until the author marks one. */
 const DEFAULT_WORKFLOW_STATES = [
-  { name: 'Not started', category: 'not-started', default: true },
+  { name: 'Not started', category: 'not-started' },
   { name: 'In progress', category: 'in-progress' },
   { name: 'Done', category: 'done' },
   { name: 'Canceled', category: 'canceled' },
@@ -530,9 +531,11 @@ function normalizeSelfContainedConfig(type, config = {}, { formula = false } = {
       ? { id: slug(s), name: s, category: 'in-progress', default: false }
       : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(iconValue(s.icon) ? { icon: iconValue(s.icon) } : {}) }));
     if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
-    // The list's order is the order everywhere; the first state is the
-    // default unless one is marked (the tray marks none — Kyle, 2026-08-23).
-    if (!states.some((s) => s.default)) states[0].default = true;
+    // The list's order is the order everywhere. A default is only ever the
+    // one the author marked, and at most one (Issue #421): the first state
+    // used to be marked for them, so no row could start without a status.
+    let marked = false;
+    for (const s of states) { if (s.default && marked) s.default = false; marked ||= s.default; }
     for (const s of states) {
       if (!STATE_CATEGORIES.includes(s.category)) {
         throw new WeaveError(`Invalid state category '${s.category}' (use ${STATE_CATEGORIES.join(', ')})`, 'invalid');
@@ -4125,9 +4128,6 @@ export class Weave {
       // normalizeSelfContainedConfig. If these drift, a definition can describe
       // a field addField would reject.
       field.config = normalizeSelfContainedConfig(type, config);
-      if (type === 'workflow' && !field.config.states.some((s) => s.default)) {
-        field.config.states[0].default = true;
-      }
     } else if (type === 'lookup') {
       const rel = this.getField(db.id, config.relationField ?? config.relation);
       if (rel.type !== 'relation') throw new WeaveError('Lookup must point at a relation field', 'invalid');
@@ -4345,12 +4345,6 @@ export class Weave {
         field.config.icon = icon;
         if (typeof field.config.default === 'number') field.config.default = ratingValue(field.config.default, max);
       }
-      // The default rides alongside the type config for the same reason width
-      // does: editing one must not clobber the other. null clears it.
-      if ('default' in patch.config) {
-        if (patch.config.default === null) delete field.config.default;
-        else field.config.default = this.#validateDefault(field, patch.config.default);
-      }
       if (field.type === 'number' || field.type === 'formula') {
         // Merge the costume keys through the same validation addField runs;
         // absent keys keep their value, width/default ride their own lanes.
@@ -4410,10 +4404,25 @@ export class Weave {
       } else if (field.type === 'workflow') {
         if (patch.config.states) {
           // Same normaliser as addField: categories checked, icons kept,
-          // the first state the default when none is marked.
+          // the default only where the edit marks one (Issue #421).
           const states = normalizeSelfContainedConfig('workflow', { states: patch.config.states }).states;
           field.config.states = states;
         }
+      }
+      // The default rides alongside the type config for the same reason width
+      // does: editing one must not clobber the other. null clears it. It is
+      // read AFTER the options, so a default that names an option renamed in
+      // the same save is judged against the new name (Issue #422).
+      if ('default' in patch.config) {
+        if (patch.config.default === null) delete field.config.default;
+        else field.config.default = this.#validateDefault(field, patch.config.default);
+      } else if ((field.type === 'select' || field.type === 'multiselect') && patch.config.options && field.config.default != null) {
+        // An option removed takes the default with it: an id nothing names
+        // would start every new row on a value no picker can show.
+        const ids = new Set(field.config.options.map((o) => o.id));
+        const kept = [].concat(field.config.default).filter((id) => ids.has(id));
+        if (!kept.length) delete field.config.default;
+        else field.config.default = field.type === 'select' ? kept[0] : kept;
       }
     }
     this.#syncFieldRow(db, field);
@@ -4541,7 +4550,8 @@ export class Weave {
       if (config.options?.length) options = config.options;
       nextConfig = normalizeSelfContainedConfig(toType, { options });
     } else if (toType === 'workflow') {
-      const states = (from === 'select' ? field.config.options : []).map((o, i) => ({ id: o.id, name: o.name, category: 'in-progress', default: i === 0 }));
+      // A select's default, if it had one, is the state's (Issue #421).
+      const states = (from === 'select' ? field.config.options : []).map((o) => ({ id: o.id, name: o.name, category: 'in-progress', default: o.id === field.config.default }));
       // Nothing to carry across (an option-less select) leaves `states` unsent,
       // so the conversion lands on the default lifecycle instead of a refusal.
       nextConfig = normalizeSelfContainedConfig('workflow', { states: config.states?.length ? config.states : (states.length ? states : undefined) });
@@ -4564,7 +4574,8 @@ export class Weave {
     const coerce = (raw, e) => {
       if (frozen) return toType === 'text' ? frozen.get(e.id) : null;
       if (toType === 'formula') return null;
-      if (raw == null || raw === '') return toType === 'workflow' ? nextConfig.states.find((s) => s.default).id : isBoolType(toType) ? false : null;
+      // An empty cell stays empty, a workflow included (Issue #421).
+      if (raw == null || raw === '') return isBoolType(toType) ? false : null;
       switch (toType) {
         case 'checkbox':
         case 'toggle': return Boolean(raw);
@@ -4591,7 +4602,7 @@ export class Weave {
           if (from === 'select') return [raw];
           return String(raw).split(',').map((v) => this.#findOption(nextConfig.options, v.trim())?.id).filter(Boolean);
         }
-        case 'workflow': return nextConfig.states.some((s) => s.id === raw) ? raw : nextConfig.states.find((s) => s.default).id;
+        case 'workflow': return nextConfig.states.some((s) => s.id === raw) ? raw : null;
         default: return null;
       }
     };
@@ -4853,9 +4864,12 @@ export class Weave {
       if (f) named.add(f.id);
     }
     for (const f of Object.values(db.fields)) {
+      if (named.has(f.id)) continue;
+      // A state only where the author marked one (Issue #421).
       if (f.type === 'workflow') {
-        e.values[f.id] = f.config.states.find((s) => s.default)?.id ?? f.config.states[0].id;
-      } else if (f.config?.default !== undefined && !named.has(f.id)) {
+        const d = f.config.states.find((s) => s.default);
+        if (d) e.values[f.id] = d.id;
+      } else if (f.config?.default !== undefined) {
         e.values[f.id] = this.#resolveDefault(f);
       }
     }
@@ -5216,18 +5230,22 @@ export class Weave {
   }
 
   #setStateInternal(e, db, field, stateRef, depth) {
-    const state = field.config.states.find((s) => s.id === stateRef)
+    // Empty is a state value like any other since Issue #421: a row can start
+    // with none, so it can be put back to none.
+    const empty = stateRef == null || stateRef === '';
+    const state = empty ? null
+      : field.config.states.find((s) => s.id === stateRef)
       ?? field.config.states.find((s) => s.name === stateRef)
       ?? field.config.states.find((s) => s.name.toLowerCase() === String(stateRef).toLowerCase());
-    if (!state) throw new WeaveError(`'${stateRef}' is not a state of '${field.name}'`, 'invalid');
-    const old = e.values[field.id];
-    if (old === state.id) return;
-    e.values[field.id] = state.id;
+    if (!empty && !state) throw new WeaveError(`'${stateRef}' is not a state of '${field.name}'`, 'invalid');
+    const old = e.values[field.id] ?? null;
+    if (old === (state?.id ?? null)) return;
+    e.values[field.id] = state?.id ?? null;
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
     const oldName = field.config.states.find((s) => s.id === old)?.name ?? null;
-    this.#logActivity(e, 'state-changed', { field: field.name, from: oldName, to: state.name });
-    this.#runAutomations(db, e, { type: 'state-changed', fieldId: field.id, toStateId: state.id }, depth);
+    this.#logActivity(e, 'state-changed', { field: field.name, from: oldName, to: state?.name ?? null });
+    this.#runAutomations(db, e, { type: 'state-changed', fieldId: field.id, toStateId: state?.id ?? null }, depth);
   }
 
   /* Recoverable by default. `hard` is the irreversible opt-in: it unlinks the

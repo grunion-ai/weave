@@ -62,7 +62,8 @@ if (s) {
       : null;
     assert.ok(field, 'the column exists');
     assert.deepEqual(field.config.states.map((st) => st.name), NAMES);
-    assert.equal(field.config.states[0].default, true, 'Not started is the default');
+    // No state is the default until one is picked (Issues #421, #422).
+    assert.equal(field.config.states.some((st) => st.default), false, 'no default unless picked');
     await page.close();
   });
 
