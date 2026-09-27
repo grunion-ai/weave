@@ -115,15 +115,10 @@ reads the allowed values instead of guessing. Full map:
 
 ## Screenshots
 
-| Board view | Documents on every row |
-| --- | --- |
-| <img src="docs/screenshots/board.png" alt="weave board view — entities grouped into workflow state columns" width="440"> | <img src="docs/screenshots/document.png" alt="weave entity page — a markdown document rendered beside the entity's fields" width="440"> |
-| Workflow states become columns; drag or set state from any interface. | Every entity carries markdown documents, addressable as `.md`, `.html`, and `.pdf` URLs. |
-
-| Relation map | Universal search |
-| --- | --- |
-| <img src="docs/screenshots/map.png" alt="weave relation map — tables connected by relations with the automation layer drawn in" width="440"> | <img src="docs/screenshots/search.png" alt="weave command-K search palette showing cross-workspace results with copyable permalinks" width="440"> |
-| The schema, drawn: relations with cardinality, plus the automation layer. | ⌘K across every workspace, backed by SQLite FTS5, with copyable permalinks. |
+| Documents on every row | Relation map | Universal search |
+| --- | --- | --- |
+| <img src="docs/screenshots/document.png" alt="weave entity page — a markdown document rendered beside the entity's fields" width="290"> | <img src="docs/screenshots/map.png" alt="weave relation map — tables connected by relations with the automation layer drawn in" width="290"> | <img src="docs/screenshots/search.png" alt="weave command-K search palette showing cross-workspace results with copyable permalinks" width="290"> |
+| Every entity carries markdown documents, addressable as `.md`, `.html`, and `.pdf` URLs. | The schema, drawn: relations with cardinality, plus the automation layer. | ⌘K across every workspace, backed by SQLite FTS5, with copyable permalinks. |
 
 ## How weave compares
 
@@ -164,7 +159,7 @@ mature plugin ecosystem — see [what weave is not](#what-weave-is-not).
 | --- | --- |
 | Data model | Spaces → tables → entities. Field types: text, number, rating (icons you click to fill, 0 to a max), date, date range, checkbox, toggle (a switch with two named states), url, email, select, multiselect, workflow states, bidirectional relations, lookups, rollups (count, sum, avg, median, min, max, range, stdev, distinct, filled, empty, join — over a relation, or over a whole table from the space's own row, which is what the grid footer draws), formulas, and any number of markdown document fields per entity. |
 | Statistics | `weave stats <table>` (also `weave_stats` and `GET /api/tables/:ref/stats`): every column summarised — five-number summary, stdev and a histogram for numbers, ranked distributions for chips, earliest/latest/span for dates — grouped with `--by`, narrowed with `--where`. |
-| Views | Table, board, list, entity pages, a relation map with the automation layer drawn in, and per-space/table filtering. Inline editing everywhere. |
+| Views | Table, entity pages (docked beside the table or opened full page), a relation map with the automation layer drawn in, and per-space/table filtering. Inline editing everywhere. |
 | Documents | Every doc is a native URL: `.md`, `.mmd`, `.html`, `.pdf`. Mermaid diagrams, raw HTML and math render in place; `[[Table#12]]` mentions resolve to links. Whole-entity export paginates one page per document. Math is KaTeX only (`$…$` / `$$…$$`, vendored + offline); the other fence engines Vditor knows (graphviz, echarts, plantuml, mindmap, abc, flowchart) are deliberately not vendored, so those fences stay plain code blocks. |
 | Automations | Triggers (created / field changed / state changed) → set field, append doc, add comment, outgoing webhook. |
 | Search | Universal ⌘K across workspaces with copyable permalinks, backed by a SQLite FTS5 index. |

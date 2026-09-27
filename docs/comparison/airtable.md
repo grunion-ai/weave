@@ -18,8 +18,8 @@ airtable.com for current terms.*
 | Record | Entity | Every entity gets a per-table public id — `Task#12` — usable as a ref anywhere. |
 | Field | Field | See the field-type table below. |
 | Grid view | Table view | Inline editing on every cell. |
-| Kanban view | Board view | Columns are workflow states. |
-| Gallery / list | List view | |
+| Kanban view | Not built | The board view was removed in Issue #75. |
+| Gallery / list | Not built | The list view was removed before the board view. |
 | Linked record | Relation | Bidirectional and real — the inverse field is created and maintained for you. |
 | Lookup | Lookup | Pull a field across a relation. |
 | Rollup | Rollup | Aggregate across a relation. |

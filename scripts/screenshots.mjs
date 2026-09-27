@@ -28,9 +28,8 @@ const WIDTH = Number(arg("width", 1440));
 const HEIGHT = Number(arg("height", 900));
 
 // [file, workspace prefix ("" = default), route resolver, caption]
-const SHOTS = [
+export const SHOTS = [
   ["table", "/w/weave", (s) => `#/table/${tableId(s, "Development/Feature")}`],
-  ["board", "/w/weave", (s) => `#/table/${tableId(s, "Development/Feature")}`, "board"],
   ["document", "/w/weave", async (s, ws) =>
     `#/entity/${await entityId(ws, "Guide", "Quickstart")}`],
   // The seeded `uno` demo (scripts/seed.mjs) is the map subject — it has
@@ -80,9 +79,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const hash = await route(schema, ws);
     await page.goto(`${BASE}${ws}/${hash}`, { waitUntil: "networkidle" });
 
-    if (mode === "board") {
-      await page.getByRole("button", { name: "Board", exact: true }).click();
-    }
     if (mode === "search") {
       await page.keyboard.press("Meta+K");
       await page.keyboard.type("document", { delay: 20 });

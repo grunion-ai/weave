@@ -16,7 +16,7 @@ weave is, the quickstart, self-hosting, and the FAQ.
 | [weave vs Airtable](comparison/airtable.md) | Concept mapping, field types, what wins where, how to migrate |
 | [weave vs Fibery](comparison/fibery.md) | The closest model to weave's, and the honest gaps |
 | [Open-source alternatives compared](comparison/alternatives.md) | weave against NocoDB, Baserow, Grist, and Teable |
-| [Screenshots](screenshots/) | Table, board, entity documents, relation map, search — regenerate with `node scripts/screenshots.mjs` |
+| [Screenshots](screenshots/) | Table, entity documents, relation map, search. Regenerate with `node scripts/screenshots.mjs` |
 
 ## Elsewhere in the repo
 
