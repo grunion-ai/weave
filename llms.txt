@@ -36,5 +36,5 @@ is nothing to build and nothing to install from npm.
 
 ## Optional
 
-- [Screenshots](https://github.com/grunion-ai/weave/tree/main/docs/screenshots): table, entity documents, relation map, search
+- [Screenshots](https://github.com/grunion-ai/weave/tree/main/docs/screenshots): table, entity documents, docked entity, relation map, search
 - [License](https://github.com/grunion-ai/weave/blob/main/LICENSE): MIT

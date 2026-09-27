@@ -120,6 +120,10 @@ reads the allowed values instead of guessing. Full map:
 | <img src="docs/screenshots/document.png" alt="weave entity page — a markdown document rendered beside the entity's fields" width="290"> | <img src="docs/screenshots/map.png" alt="weave relation map — tables connected by relations with the automation layer drawn in" width="290"> | <img src="docs/screenshots/search.png" alt="weave command-K search palette showing cross-workspace results with copyable permalinks" width="290"> |
 | Every entity carries markdown documents, addressable as `.md`, `.html`, and `.pdf` URLs. | The schema, drawn: relations with cardinality, plus the automation layer. | ⌘K across every workspace, backed by SQLite FTS5, with copyable permalinks. |
 
+<img src="docs/screenshots/dock.png" alt="weave table with one row opened in the dock beside it, the breadcrumb on one line above the table toolbar" width="900">
+
+Open any row and it docks beside its table, so the entity and the rows around it stay in view together.
+
 ## How weave compares
 
 ### Against the SaaS it replaces

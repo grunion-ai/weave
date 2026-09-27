@@ -2283,9 +2283,15 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .table-search-input { display: none; width: 200px; }
 .table-search.open .table-search-input { display: block; }
 .table-search-empty { margin: 8px 0; color: var(--tblr-secondary); }
-.crumb-row { display: flex; align-items: center; gap: 12px; }
-.crumb-path { flex: 1; min-width: 0; }
-.crumb-actions { display: flex; align-items: center; gap: 6px; }
+/* The crumb trail is one line at any panel width (Issue #437). A docked
+   entity leaves the table 320-650px, and a flex: 1 path shrank to nothing
+   there: one word per line, drawn under the toolbar. The path now asks for
+   its whole line, so when path and toolbar do not fit side by side the
+   toolbar drops to its own row below; a path longer than the panel itself
+   ends in an ellipsis. */
+.crumb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.crumb-path { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crumb-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; margin-left: auto; }
 .row-deleted { opacity: .5; }
 .row-deleted .open-link { text-decoration: line-through; }
 

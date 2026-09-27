@@ -37,6 +37,8 @@ export const SHOTS = [
   // just-created workspace does not.
   ["map", "/w/uno", () => "#/map"],
   ["search", "/w/weave", (s) => `#/table/${tableId(s, "Development/Feature")}`, "search"],
+  // The first row opened beside its table (Issue #437).
+  ["dock", "/w/weave", (s) => `#/table/${tableId(s, "Development/Feature")}`, "dock"],
 ];
 
 /** Find a table's id in a /api/schema payload by "Space/Table" or bare name. */
@@ -82,6 +84,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (mode === "search") {
       await page.keyboard.press("Meta+K");
       await page.keyboard.type("document", { delay: 20 });
+    }
+    if (mode === "dock") {
+      await page.keyboard.press("Escape"); // the search shot leaves ⌘K open
+      await page.click("td.pid-cell a.open-link");
+      await page.waitForSelector("#dock:not([hidden])");
     }
     await page.waitForTimeout(500);
 
