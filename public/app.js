@@ -3769,6 +3769,25 @@ async function gridConfigWrite(db, tablePatch, viewPatch = tablePatch) {
   return true;
 }
 const viewHref = (db, v) => `#/table/${db.id}/view/${v.blank ? 'blank' : v.id}`;
+/* Deleted rows and the Σ row are the view's (Issue #442; Kyle, 2026-09-27).
+   A view that never set the Σ row follows the table's older opt-in; a grid
+   with no view (a space page) keeps the session switch and the table's. */
+const showsDeleted = (db) => (db.view && !db.view.blank ? !!db.view.deleted : state.showDeleted.has(db.id));
+const showsRollups = (db) => !db.system && (db.view && !db.view.blank && typeof db.view.rollups === 'boolean' ? db.view.rollups : db.hideRollups === false);
+/* The one system default (Issue #442): what Reset view returns a view to
+   and what New view starts from, so the two can never drift. Every field in
+   schema order (with the table's default system columns), no filter, sort,
+   widths or frozen columns, no deleted rows, no Σ row, Comfortable. Search
+   is not a view setting; both callers clear it. */
+function systemDefault(db, view = null) {
+  const table = allTables().find((d) => d.id === db.id) || db;
+  return {
+    fields: [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n] && n !== 'Activity')],
+    filters: {}, sort: [],
+    ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
+    frozen: 0, density: 'comfortable', deleted: false, rollups: false,
+  };
+}
 /* The name a new view is offered: "View 2", "View 3", …, the first one this
    table has free (Kyle, 2026-09-27). A duplicate is offered its source's
    name with the next free number. The first, migrated view is "Standard". */
@@ -3822,7 +3841,9 @@ function viewStrip(db) {
       if (e.mode === 'rename') return write(() => api('PATCH', at(e.id), { name }), { focus: e.id });
       let made;
       try {
-        made = await api('PATCH', at(name), { from: e.from, ...(e.position != null ? { position: e.position } : {}) });
+        // + Add view starts from the system default (Issue #442); Duplicate copies its source.
+        made = await api('PATCH', at(name), { from: e.from, ...(e.from === 'blank' ? systemDefault(db) : {}), ...(e.position != null ? { position: e.position } : {}) });
+        if (e.from === 'blank') { stopTableSearchTimer(); tableSearch = { ...tableSearch, text: '', focus: false, only: null }; }
       } catch (err) { toast(err.message, true); redraw(); return; }
       await loadSchema();
       const hash = `#/table/${db.id}/view/${made.id}`;
@@ -4131,7 +4152,7 @@ async function readAndDrawTable(db, dbId, search) {
      eyeball's "show deleted" is the one path that still asks for the whole
      table: trashed rows ride along in place, and a page has no place for
      them. ponytail: the window still draws only what is in view there. */
-  const showDeleted = state.showDeleted.has(db.id);
+  const showDeleted = showsDeleted(db);
   const query = {
     ...(where ? { where } : {}),
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
@@ -4362,14 +4383,7 @@ function tableViewButton(ref) {
         await eyeWrites;
         stopTableSearchTimer();
         tableSearch = { ...tableSearch, text: '', focus: false, only: null };
-        const table = allTables().find((d) => d.id === db.id) || db;
-        const patch = { filters: {}, sort: [] };
-        if (raw) {
-          patch.fields = [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n] && n !== 'Activity')];
-          patch.widths = Object.fromEntries(Object.keys(current.view?.widths || {}).map((n) => [n, null]));
-          patch.frozen = 0;
-          patch.density = 'comfortable';
-        }
+        const patch = raw ? systemDefault(db, current.view) : { filters: {}, sort: [] };
         await gridConfigWrite(current, null, patch);
         await showDatabase(db.id, current.view?.id);
         document.querySelector('.table-view-btn')?.focus({ preventScroll: true });
@@ -4380,7 +4394,7 @@ function tableViewButton(ref) {
       el('hr'),
       el('button', { class: 'chip-pop-row view-reset', type: 'button', onclick: () => reset(true, current) }, lucideEl('undo'), 'Reset view'),
       el('button', { class: 'chip-pop-row view-clear', type: 'button', onclick: () => reset(false, current) }, lucideEl('list-filter'), 'Clear filters, search, and sorting'),
-      el('p', { class: 'table-control-note' }, 'Changes save automatically. Reset restores all columns in schema order.'),
+      el('p', { class: 'table-control-note' }, 'Changes save automatically. Reset shows every field in schema order, turns off filters, sorting, search, deleted rows and the Σ rollup row, and sets Comfortable density.'),
     ];
     pop = tableControlPopover(btn, db, 'table-view-popover', build(db));
     if (!pop) return;
@@ -4592,7 +4606,9 @@ function tableFieldsPopover(anchor, db, trashCount) {
     const shown = new Set(t.columns || []);
     for (const r of pop.querySelectorAll('.table-field-row')) r.querySelector('.eye-row input').checked = shown.has(r.dataset.field);
     const rollups = pop.querySelector('[data-rollups] input');
-    if (rollups) rollups.checked = t.hideRollups === false;
+    if (rollups) rollups.checked = showsRollups(t);
+    const deleted = pop.querySelector('[data-deleted] input');
+    if (deleted) deleted.checked = showsDeleted(t);
   };
   const shown = new Set(db.columns || []);
   const rows = [tableControlHeader('Fields', () => pop?.remove()),
@@ -4604,13 +4620,11 @@ function tableFieldsPopover(anchor, db, trashCount) {
     el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'Add field'),
     el('div', { class: 'eye-head' }, 'Rows'),
     el('label', { class: 'chip-pop-row eye-row', 'data-deleted': '' },
-      el('input', { type: 'checkbox', class: 'form-check-input', checked: state.showDeleted.has(db.id) ? '' : undefined, onchange: () => {
-        state.showDeleted.has(db.id) ? state.showDeleted.delete(db.id) : state.showDeleted.add(db.id);
-        pop?.remove(); keepScroll(() => showDatabase(db.id, db.view.id));
-      } }),
+      // Saved into the view, like its filters (Issue #442).
+      el('input', { type: 'checkbox', class: 'form-check-input', checked: showsDeleted(db) ? '' : undefined, onchange: () => write((t) => ({ deleted: !showsDeleted(t) })) }),
       el('span', { class: 'eye-label' }, `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`)),
     ...(db.system ? [] : [el('label', { class: 'chip-pop-row eye-row', 'data-rollups': '' },
-      el('input', { type: 'checkbox', class: 'form-check-input', checked: db.hideRollups === false ? '' : undefined, onchange: () => write((t) => ({ table: { hideRollups: t.hideRollups === false } })) }),
+      el('input', { type: 'checkbox', class: 'form-check-input', checked: showsRollups(db) ? '' : undefined, onchange: () => write((t) => ({ rollups: !showsRollups(t) })) }),
       el('span', { class: 'eye-label' }, 'Σ rollup row'))]),
   ];
   pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
@@ -6284,7 +6298,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       // to roll up to). The eye's Rows section switches it on — a table has
       // no Σ row until it opts in, which is `hideRollups: false` on the
       // table, so the absence reads as hidden (Issue #249).
-      db.system || db.hideRollups !== false ? null : renderFooter(db, cols)),
+      showsRollups(db) ? renderFooter(db, cols) : null),
       tbody);
     const kept = wrap.scrollTop;
     wrap.replaceChildren(table, puck, layoutSheet);

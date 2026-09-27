@@ -172,6 +172,9 @@ weave_table_view {view: "Issue/Open bugs", move: {field: "Status", before: "Name
   list of them), so a wide table never has to be resent. `show` puts a field
   back where it was hidden from (its schema position when that neighbour is
   gone).
+- `deleted: true` shows the trashed rows in place and `rollups` (`true`, `false`, or
+  `null` to follow the table's `hideRollups`) draws or hides the Σ row; both are
+  the view's own (Issue #442), like `density`.
 - `widths` (`{Name: 240}`) sets column widths by name, merged into the
   view's; `null` clears one. `frozen` is how many leading fields stay frozen
   beside # (0, the default, freezes only #). A read carries either only

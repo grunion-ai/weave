@@ -1985,7 +1985,9 @@ export class Weave {
      keeps one), `widths` ({field: px}, merged; null clears one) and
      `frozen` (how many leading fields stay frozen beside #; Feature #233)
      and `density` (compact, comfortable or spacious: the row height the
-     grid draws this view at; Feature #239).
+     grid draws this view at; Feature #239), `deleted` (true shows the
+     trashed rows in place) and `rollups` (true draws the Σ row, false
+     hides it, null hands it back to the table's hideRollups; Issue #442).
      Blank, the raw table, left the strip on 2026-09-25; it is
      still readable as 'Issue/blank' so old links and agents keep working,
      never written, never stored. */
@@ -2056,6 +2058,10 @@ export class Weave {
     if (v.frozen) out.frozen = v.frozen;
     // Feature #239: Comfortable is the default and reads as absent.
     if (v.density) out.density = v.density;
+    // Issue #442: deleted rows and the Σ row are the view's. Absent is the
+    // default: no trash, and the Σ row as the table's older opt-in says.
+    if (v.deleted) out.deleted = true;
+    if (typeof v.rollups === 'boolean') out.rollups = v.rollups;
     return out;
   }
 
@@ -2074,7 +2080,7 @@ export class Weave {
      at the end, so a refused write leaves the view (or its absence) as it
      was. */
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -2177,6 +2183,14 @@ export class Weave {
       const d = typeof patch.density === 'string' ? patch.density.trim().toLowerCase() : '';
       if (!VIEW_DENSITIES.includes(d)) throw new WeaveError(`density is compact, comfortable or spacious — got ${JSON.stringify(patch.density)}`, 'invalid');
       if (d === 'comfortable') delete next.density; else next.density = d;
+    }
+    if (patch.deleted != null) {
+      if (typeof patch.deleted !== 'boolean') throw new WeaveError(`deleted is true or false: whether the view shows its deleted rows. Got ${JSON.stringify(patch.deleted)}`, 'invalid');
+      if (patch.deleted) next.deleted = true; else delete next.deleted;
+    }
+    if (patch.rollups !== undefined) {
+      if (patch.rollups !== null && typeof patch.rollups !== 'boolean') throw new WeaveError(`rollups is true, false or null: whether the view draws the Σ row (null follows the table). Got ${JSON.stringify(patch.rollups)}`, 'invalid');
+      if (patch.rollups === null) delete next.rollups; else next.rollups = patch.rollups;
     }
     if ((next.frozen ?? 0) > next.fields.length) next.frozen = next.fields.length;
     if (!next.frozen) delete next.frozen;
@@ -2642,6 +2656,8 @@ export class Weave {
       if (vDoc.widths) out.widths = Object.fromEntries(Object.entries(vDoc.widths).filter(([k]) => has(k)));
       if (vDoc.frozen) out.frozen = vDoc.frozen;
       if (vDoc.density) out.density = vDoc.density;
+      if (vDoc.deleted) out.deleted = true;
+      if (typeof vDoc.rollups === 'boolean') out.rollups = vDoc.rollups;
       for (const k of ['filters', 'sort', 'widths']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
       return out;
     };
@@ -2671,6 +2687,8 @@ export class Weave {
       }
       if ((vDoc.frozen ?? 0) !== (have?.frozen ?? 0)) patch.frozen = vDoc.frozen ?? 0;
       if ((vDoc.density ?? 'comfortable') !== (have?.density ?? 'comfortable')) patch.density = vDoc.density ?? 'comfortable';
+      if (!!vDoc.deleted !== !!have?.deleted) patch.deleted = !!vDoc.deleted;
+      if ((vDoc.rollups ?? null) !== (have?.rollups ?? null)) patch.rollups = vDoc.rollups ?? null;
       if (!Object.keys(patch).length) continue;
       act(have ? 'update-view' : 'create-view', `${q}/${vDoc.name}`, () => this.tableView(`${db.id}/${vDoc.name}`, patch));
     }
@@ -3529,7 +3547,7 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
-    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text']]) {
+    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text'], ['Show Deleted', 'checkbox'], ['Rollup Row', 'checkbox']]) {
       if (!this.#sysField(viewsT, n)) this.addField(viewsT.id, { name: n, type, ...(type === 'number' ? { config: { decimals: 0 } } : {}) }).system = true;
     }
     /* Workflows (Kyle, 2026-08-24): a system table whose rows are DATA —
@@ -3772,6 +3790,9 @@ export class Weave {
         Widths: formatWidths(this.#viewOut(db, v).widths),
         // Feature #239: blank is the default, Comfortable.
         Density: v.density ?? '',
+        // Issue #442: what the grid draws, the table's opt-in when the view is silent.
+        'Show Deleted': !!v.deleted,
+        'Rollup Row': typeof v.rollups === 'boolean' ? v.rollups : db.hideRollups === false,
       };
       let row = this.#sysRow('views', v.id);
       if (!row) {
@@ -3787,10 +3808,10 @@ export class Weave {
       }
       const patch = {};
       if (reg.entityName(row) !== v.name) patch.Name = v.name;
-      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position', 'Frozen', 'Widths', 'Density']) {
+      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position', 'Frozen', 'Widths', 'Density', 'Show Deleted', 'Rollup Row']) {
         const f = this.#sysField(t, k);
         if (!f) continue;
-        if ((row.values[f.id] ?? (k === 'Default' ? false : k === 'Frozen' ? 0 : '')) !== want[k]) patch[k] = want[k];
+        if ((row.values[f.id] ?? (['Default', 'Show Deleted', 'Rollup Row'].includes(k) ? false : k === 'Frozen' ? 0 : '')) !== want[k]) patch[k] = want[k];
       }
       if (!this.#relIds(row, t, 'Table').includes(tableRow.id)) patch.Table = tableRow.id;
       if (wsRow && !this.#relIds(row, t, 'Workspace').includes(wsRow.id)) patch.Workspace = wsRow.id;
@@ -4079,6 +4100,8 @@ export class Weave {
       vp.frozen = n == null || n === '' ? 0 : Number(n);
     }
     if ('Density' in values) vp.density = String(take('Density') ?? '').trim() || 'comfortable';
+    if ('Show Deleted' in values) vp.deleted = !!take('Show Deleted');
+    if ('Rollup Row' in values) vp.rollups = !!take('Rollup Row');
     // The Widths text is the whole set: a name it no longer lists is unsized.
     if ('Widths' in values) {
       vp.widths = { ...Object.fromEntries(Object.keys(cur?.widths ?? {}).map((n) => [n, null])), ...parseWidths(take('Widths')) };

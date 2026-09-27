@@ -54,8 +54,10 @@ const s = await launch('a grid sorts by value, not costume', (weave) => {
 });
 
 if (s) {
-  const { base, browser } = s;
+  const { base, browser, weave } = s;
   const open = async () => {
+    // Deleted rows are saved in the view since Issue #442: every case starts paged.
+    for (const t of Object.values(weave.state.tables)) if (!t.system) for (const v of t.tableViews ?? []) if (v.deleted) weave.tableView(`${t.id}/${v.id}`, { deleted: false });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${base}/#/table/${sessions.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -68,7 +70,11 @@ if (s) {
   const stopPaging = async (page) => {
     await page.click('.eye-btn');
     await page.waitForSelector('.chip-pop .eye-row');
+    const read = page.waitForResponse((r) => r.url().includes('/trash'));
     await page.locator('.chip-pop .eye-row', { hasText: 'Deleted' }).first().click();
+    await read;
+    await page.waitForLoadState('networkidle');
+    await page.keyboard.press('Escape');
     await page.waitForSelector('.chip-pop', { state: 'detached' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
   };

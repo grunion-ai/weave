@@ -54,6 +54,15 @@ function pickFlags(names) {
 }
 
 const splitList = (v) => String(v).split(',').map((x) => x.trim()).filter(Boolean);
+/* A view's deleted rows and Σ row (Issue #442): `--deleted on|off`,
+   `--rollups on|off|table` (table follows the table's hideRollups). */
+function viewRowFlags(flags) {
+  const on = (v) => ['on', 'true', 'yes', '1', true].includes(v);
+  const out = {};
+  if (flags.deleted != null) out.deleted = on(flags.deleted);
+  if (flags.rollups != null) out.rollups = flags.rollups === 'table' ? null : on(flags.rollups);
+  return out;
+}
 
 function resolveEntityRef(w, ref, dbFlag) {
   // Accept: entity uuid, "Db#12", or (with --db) a name / #pid.
@@ -681,6 +690,7 @@ async function main() {
         for (const k of ['filters', 'sort', 'widths']) if (flags[k] != null) patch[k] = parseJsonFlag(k);
         if (flags.frozen != null) patch.frozen = Number(flags.frozen);
         if (flags.density != null) patch.density = flags.density;
+        Object.assign(patch, viewRowFlags(flags));
         if (flags.name != null) patch.name = flags.name;
         if (flags.from != null) patch.from = flags.from;
         if (flags.position != null) patch.position = Number(flags.position);

@@ -1711,7 +1711,8 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
   // Issue #249: hidden is the default, so both the switch and the grid read
   // the opt-in explicitly — the absence is off, never on.
   assert.match(eye, /row\(cur\.hideRollups === false, 'Σ rollup row'/, 'the switch reads on only when the table opted in');
-  assert.match(fnBody('renderTable'), /db\.system \|\| db\.hideRollups !== false \? null : renderFooter/, 'no Σ row until the table opts in (Issue #249)');
+  assert.match(fnBody('renderTable'), /showsRollups\(db\) \? renderFooter\(db, cols\) : null/, 'no Σ row until the view or table opts in (Issues #249, #442)');
+  assert.match(readFileSync(join(ROOT, 'public/app.js'), 'utf8'), /const showsRollups = \(db\) => !db\.system && \(db\.view && !db\.view\.blank && typeof db\.view\.rollups === 'boolean' \? db\.view\.rollups : db\.hideRollups === false\);/, 'the view decides; a silent view follows the table opt-in');
   // A taught row keeps the handler it was built with, so every handler reads
   // the live table instead of a set captured at build time, and reads it
   // when its write's turn comes rather than at the click (Issue #243).

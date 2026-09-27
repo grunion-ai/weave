@@ -479,7 +479,7 @@ The Σ under a grid column is a rollup on the **Workspace/Spaces** row of the sp
 
 Three surfaces write that field. The Σ row's picker turns one on with a switch, \`weave field add\` / \`weave_add_field\` take the config above, and the field dialog on the **Workspace/Spaces** grid asks **Rolls up** — through a relation, or over a table — where *Over a table* picks the table, the aggregate and the column. Only the API writes a \`where\`.
 
-A grid carries no Σ row until you ask for one: switch **Σ rollup row** on in the eye's Rows section and the grid draws every space rollup in a **Σ row** pinned under the field headers — it stays while the body scrolls — and offers the aggregates on a click in that row. The switch is the table's \`hideRollups\` (mirrored as **Hide Rollups** on its Tables row, like the filter and the sort — never a browser setting): \`false\` is the table that opted in, \`true\` is one switched back off, and a table nobody has touched has no row. The space page draws the same rollups as tiles; \`weave stats <table>\` / \`weave_stats\` / \`GET /api/tables/:ref/stats\` summarise every column on demand without storing anything. A space rollup answers on its own space's row and reads \`null\` on every other; \`via\` is refused anywhere but the Spaces registry and on registry tables.
+A grid carries no Σ row until you ask for one: tick **Σ rollup row** in the Fields popover's Rows section and the grid draws every space rollup in a **Σ row** pinned under the field headers — it stays while the body scrolls — and offers the aggregates on a click in that row. The box saves into the current view as its \`rollups\` (\`weave_table_view\`, never a browser setting). A view that has never set it follows the table's older \`hideRollups\` (mirrored as **Hide Rollups** on its Tables row): \`false\` is a table that opted in, \`true\` is one switched back off, and a table nobody has touched has no row. The space page draws the same rollups as tiles; \`weave stats <table>\` / \`weave_stats\` / \`GET /api/tables/:ref/stats\` summarise every column on demand without storing anything. A space rollup answers on its own space's row and reads \`null\` on every other; \`via\` is refused anywhere but the Spaces registry and on registry tables.
 
 ## Usage
 
@@ -1940,8 +1940,8 @@ Search is temporary: it is not saved into a view or shared with other people, an
 | **Rename** | Edits the name in place. **Enter** or clicking away saves; **Escape** cancels. |
 | **Duplicate** | Adds a row under the view with its name focused (\`Open bugs 2\`). **Enter** or clicking away creates the copy and opens it; **Escape** drops the row. |
 | **Delete** | Hold the button until it fills. The last view cannot be deleted. |
-| **+ Add view** | Adds a row with its name focused, offered as the next free **View N**. **Enter** or clicking away creates the view, with every regular field in schema order, no filters and no sorting, and opens it; **Escape** drops the row. The menu stays open throughout. |
-| **Reset view** | Restores regular columns in schema order and the table's default system columns, removes custom widths and frozen columns, clears filters, search and sorting, and returns density to Comfortable. The view keeps its name. |
+| **+ Add view** | Adds a row with its name focused, offered as the next free **View N**. **Enter** or clicking away creates the view from the system default that **Reset view** restores, and opens it; **Escape** drops the row. The menu stays open throughout. |
+| **Reset view** | Returns the view to the system default: every regular field in schema order with the table's default system columns, no filters, sorting, search, custom widths or frozen columns, no deleted rows, no Σ rollup row, and Comfortable density. **+ Add view** starts from the same default. The view keeps its name. |
 | **Clear filters, search, and sorting** | Removes those restrictions while keeping the column layout and density. |
 
 A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` link still opens the raw table, read-only. Choose **+ Add view** to make an editable view.
@@ -1950,7 +1950,7 @@ A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` l
 
 Click a field's visibility control to show or hide its column. **Show all** and **Hide all** apply to the whole list. Drag the grip at a field's right edge to move it; the straight insertion line marks where it will land. With the grip focused, **↑ / ↓** moves it one place. System columns such as Created At use the same controls.
 
-These changes save into the current view. Hiding a column does not delete its data. **Add field** opens the same field tray as the **+** at the end of the grid's field headers. The **Rows** section also lets you show deleted records and the Σ rollup row.
+These changes save into the current view. Hiding a column does not delete its data. **Add field** opens the same field tray as the **+** at the end of the grid's field headers. The **Rows** section shows deleted records and the Σ rollup row; each box saves into the current view, so another view keeps its own.
 
 ## Filters
 
@@ -1960,7 +1960,7 @@ Open **Filters** and choose state chips under a workflow or toggle field. Select
 
 ## For agents
 
-One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; a read carries each only when it is set. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
+One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; \`deleted: true\` shows the trashed rows in place, and \`rollups\` is \`true\` or \`false\` for the Σ row (\`null\` follows the table); a read carries each only when it is set. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
   },
   {
     name: 'Chip and card anatomy',

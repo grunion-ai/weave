@@ -210,7 +210,7 @@ if (s) {
     await page.close();
   });
 
-  test('the eye switches the Σ row off and on; the choice lives on the table and survives a reload (Issue #233)', async () => {
+  test('the eye switches the Σ row off and on; the choice lives on the view and survives a reload (Issues #233, #442)', async () => {
     const page = await open(`/table/${sessions.id}`);
     await page.waitForSelector('thead tr.wv-foot');
     await page.click('.crumb-actions .eye-btn');
@@ -220,7 +220,7 @@ if (s) {
     await sw().click();
     await page.waitForFunction(() => !document.querySelector('tr.wv-foot'));
     assert.equal(await page.locator('.wv-foot, tfoot').count(), 0, 'no Σ row anywhere');
-    assert.equal(weave.getTable(sessions.id).hideRollups, true, 'stored on the table');
+    assert.equal(weave.tableView(sessions.id).views[0].rollups, false, 'stored on the view (Issue #442)');
     assert.equal(await page.evaluate(() => Object.keys(localStorage).some((k) => /rollup/i.test(k))), false, 'nothing in localStorage');
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -230,7 +230,7 @@ if (s) {
     assert.equal(await sw().locator('input').isChecked(), false);
     await sw().click();
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
-    assert.equal(weave.getTable(sessions.id).hideRollups, false, 'shown is stored too (Issue #249)');
+    assert.equal(weave.tableView(sessions.id).views[0].rollups, true, 'shown is stored too (Issue #249)');
     await page.close();
   });
 
@@ -251,7 +251,7 @@ if (s) {
     await sw().click();
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
     assert.equal(await footCell(page, 'Cost').locator('.foot-val').innerText(), '3');
-    assert.equal(weave.getTable(quiet.id).hideRollups, false, 'the opt-in is stored, not the absence');
+    assert.equal(weave.tableView(quiet.id).views[0].rollups, true, 'the opt-in is stored on the view, not the absence');
     await page.keyboard.press('Escape');
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats', { timeout: 10000 });
