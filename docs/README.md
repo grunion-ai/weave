@@ -11,6 +11,7 @@ weave is, the quickstart, self-hosting, and the FAQ.
 | Document | What it covers |
 | --- | --- |
 | [Ontology & glossary](ONTOLOGY.md) | The one core kind — workspaces, spaces, tables and rows are all entities — how the levels nest, and the glossary; plus why an entity type is not a field type |
+| [Architecture map](architecture/) | Interactive map of the runtime: adapters, request core, engine, stores, renderers, agent surfaces; every node links to its code at a pinned commit |
 | [Feature parity matrix](PARITY.md) | weave scored against Fibery's core work-platform feature set, feature by feature |
 | [weave vs Airtable](comparison/airtable.md) | Concept mapping, field types, what wins where, how to migrate |
 | [weave vs Fibery](comparison/fibery.md) | The closest model to weave's, and the honest gaps |

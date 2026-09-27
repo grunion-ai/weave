@@ -29,7 +29,7 @@ to [Using weave as an agent](#using-weave-as-an-agent).
 | `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
 | `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
 | `test/` | `node --test` suites — the contract for every behavior above |
-| `docs/` | Parity matrix, comparisons, screenshots |
+| `docs/` | Parity matrix, comparisons, screenshots, the architecture map (`docs/architecture/`) |
 | `scripts/` | Dev tooling (seed data, README screenshots) |
 
 ## Rules for changing this repo

@@ -74,8 +74,10 @@ cannot pass the gate.
 node scripts/export-development.mjs        # 3. docs/development.json gains the release
 node scripts/changelog-fold.mjs            # 4. every changelog.d/ fragment moves under
 #    `## v<version>` in CHANGELOG.md and the fragments are deleted; edit the digest if
-#    needed, then land through Gerrit as one change
-# 5. automatic: the main watcher tags and publishes it. Then confirm it did:
+#    needed
+node scripts/architecture.mjs              # 5. re-pin docs/architecture/ to the landed
+#    base, then land steps 2-5 through Gerrit as one change
+# 6. automatic: the main watcher tags and publishes it. Then confirm it did:
 gh release list -R grunion-ai/weave --limit 1   # the new version, marked Latest
 ```
 
@@ -87,7 +89,7 @@ back for a hand rebase and a fresh gate). Step 4 folds the fragments, sorted by 
 it is idempotent, so a second run changes nothing. `test/changelog-fragments.test.mjs`
 fails a commit that adds lines to CHANGELOG.md without changing the package.json version.
 
-Step 5 is the one users see. After the change lands and the main watcher mirrors the
+Step 6 is the one users see. After the change lands and the main watcher mirrors the
 green gerrit/main to GitHub (rule 7), it runs `harness/scripts/weave-release-tags.mjs`:
 every version in the landed range with no `v<version>` tag gets an annotated
 `v<version>` tag on the commit that introduced it, pushed to GitHub, and a GitHub Release
@@ -106,6 +108,19 @@ and publishes only while that checkout is on `main`: v0.4.16 went out untagged o
 2026-09-10 because it was not. When the Release is missing,
 `node scripts/weave-release-tags.mjs --dry-run` in that checkout prints what is owed;
 write the missing CHANGELOG section or fix the push, then run it without `--dry-run`.
+
+## Architecture map
+
+`docs/architecture/` holds an interactive map of the runtime rendered by
+[archify](https://github.com/tt-a1i/archify): `weave.architecture.json` is the source,
+`weave.architecture.html` the rendered page, and every node links to its code at the
+commit named in `meta.repository.revision`. `test/architecture-map.test.mjs` goes red
+when a cited file moves or is deleted, when a new `src/` or `bin/` module is not named
+on the map, or when the HTML no longer matches the JSON. The change that trips it
+updates the JSON and runs `node scripts/architecture.mjs`, which re-pins HEAD and
+re-renders. Release step 5 re-pins it too, so every tagged version carries a map of the
+code it shipped. archify is a dev tool, found at `$ARCHIFY` or
+`~/.claude/skills/archify/bin/archify.mjs`; weave never depends on it.
 
 ## Service operations
 

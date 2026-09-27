@@ -1,0 +1,467 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Weave runtime architecture",
+    "output": "weave.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/grunion-ai/weave",
+      "revision": "3cc33f95dd590ec5679cd36a89e079abc53823bc"
+    },
+    "views": [
+      {
+        "id": "local-request",
+        "label": "Local request path",
+        "focus": [
+          "browser",
+          "node",
+          "routes",
+          "engine",
+          "sqlite"
+        ],
+        "note": "A browser request on :4400 from the adapter to the workspace file."
+      },
+      {
+        "id": "cloudflare-port",
+        "label": "Cloudflare port",
+        "focus": [
+          "worker",
+          "routes",
+          "engine",
+          "durable"
+        ],
+        "note": "The same request core under workerd, one Durable Object per workspace."
+      },
+      {
+        "id": "agents",
+        "label": "Agent surfaces",
+        "focus": [
+          "agents",
+          "cli",
+          "node",
+          "routes",
+          "engine"
+        ],
+        "note": "Agents reach the engine over stdio MCP through the CLI or over POST /api/mcp."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Browser UI",
+      "sublabel": "public/app.js",
+      "pos": [
+        40,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "public/app.js",
+          "label": "vanilla JS app shell"
+        }
+      ]
+    },
+    {
+      "id": "agents",
+      "type": "external",
+      "label": "Agents",
+      "sublabel": "MCP clients",
+      "pos": [
+        40,
+        560
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "node",
+      "type": "backend",
+      "label": "Node adapter",
+      "sublabel": "node:http :4400",
+      "pos": [
+        250,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/server.js",
+          "line": 330,
+          "label": "createServer"
+        },
+        {
+          "path": "src/server.js",
+          "line": 136,
+          "label": "workspace hub"
+        }
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "cloud",
+      "label": "Worker adapter",
+      "sublabel": "workerd",
+      "pos": [
+        250,
+        420
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/worker.js",
+          "line": 18,
+          "label": "WeaveWorkspace DO"
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Sign-in",
+      "sublabel": "WebAuthn passkeys",
+      "pos": [
+        470,
+        60
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/webauthn.js",
+          "label": "passkey verify"
+        },
+        {
+          "path": "src/auth-page.js",
+          "line": 176,
+          "label": "sign-in page"
+        }
+      ]
+    },
+    {
+      "id": "routes",
+      "type": "backend",
+      "label": "Request core",
+      "sublabel": "runtime-agnostic",
+      "pos": [
+        470,
+        320
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/routes.js",
+          "line": 54,
+          "label": "createRequestHandler"
+        },
+        {
+          "path": "src/mcp.js",
+          "line": 637,
+          "label": "MCP JSON-RPC"
+        }
+      ]
+    },
+    {
+      "id": "renderers",
+      "type": "backend",
+      "label": "Renderers",
+      "sublabel": "doc, PDF, deck",
+      "pos": [
+        690,
+        60
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/markdown.js",
+          "line": 316,
+          "label": "renderMarkdown"
+        },
+        {
+          "path": "src/pdf.js",
+          "line": 311,
+          "label": "markdownToPdf"
+        },
+        {
+          "path": "src/deck.js",
+          "line": 203,
+          "label": "renderDeck"
+        }
+      ]
+    },
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "Engine",
+      "sublabel": "tables, formulas",
+      "pos": [
+        690,
+        320
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/engine.js",
+          "line": 829,
+          "label": "class Weave"
+        },
+        {
+          "path": "src/formula.js",
+          "line": 148,
+          "label": "formula evaluator"
+        },
+        {
+          "path": "src/stats.js",
+          "line": 52,
+          "label": "rollup aggregates"
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "weave CLI",
+      "sublabel": "bin/weave.js",
+      "pos": [
+        470,
+        560
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "bin/weave.js",
+          "line": 225,
+          "label": "main"
+        },
+        {
+          "path": "src/mcp.js",
+          "line": 674,
+          "label": "stdio MCP"
+        }
+      ]
+    },
+    {
+      "id": "sqlite",
+      "type": "database",
+      "label": "node:sqlite",
+      "sublabel": "one .db per workspace",
+      "pos": [
+        910,
+        220
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/store.js",
+          "line": 66,
+          "label": "Store"
+        }
+      ]
+    },
+    {
+      "id": "durable",
+      "type": "database",
+      "label": "Durable Object SQL",
+      "sublabel": "ctx.storage.sql",
+      "pos": [
+        910,
+        420
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/store-cf.js",
+          "line": 44,
+          "label": "CFStore"
+        }
+      ]
+    },
+    {
+      "id": "backup",
+      "type": "backend",
+      "label": "Backup",
+      "sublabel": "encrypted tar to S3",
+      "pos": [
+        1190,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/backup.js",
+          "line": 290,
+          "label": "backup"
+        },
+        {
+          "path": "src/backup.js",
+          "line": 506,
+          "label": "S3 client"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Cloudflare Workers",
+      "wraps": [
+        "worker",
+        "durable"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "shared core",
+      "wraps": [
+        "routes",
+        "engine",
+        "renderers"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-node",
+      "from": "browser",
+      "to": "node",
+      "label": "HTTP /api",
+      "variant": "emphasis"
+    },
+    {
+      "id": "node-routes",
+      "from": "node",
+      "to": "routes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "worker-routes",
+      "from": "worker",
+      "to": "routes"
+    },
+    {
+      "id": "routes-auth",
+      "from": "routes",
+      "to": "auth",
+      "label": "session gate",
+      "variant": "security"
+    },
+    {
+      "id": "routes-engine",
+      "from": "routes",
+      "to": "engine",
+      "variant": "emphasis"
+    },
+    {
+      "id": "routes-renderers",
+      "from": "routes",
+      "to": "renderers",
+      "label": "doc.html, pdf, deck"
+    },
+    {
+      "id": "engine-sqlite",
+      "from": "engine",
+      "to": "sqlite",
+      "label": "WAL rows",
+      "variant": "emphasis"
+    },
+    {
+      "id": "engine-durable",
+      "from": "engine",
+      "to": "durable",
+      "label": "same Store API"
+    },
+    {
+      "id": "agents-node",
+      "from": "agents",
+      "to": "node",
+      "label": "POST /api/mcp",
+      "variant": "dashed",
+      "labelDy": -70
+    },
+    {
+      "id": "agents-cli",
+      "from": "agents",
+      "to": "cli",
+      "label": "stdio JSON-RPC"
+    },
+    {
+      "id": "cli-engine",
+      "from": "cli",
+      "to": "engine",
+      "label": "in-process"
+    },
+    {
+      "id": "sqlite-backup",
+      "from": "sqlite",
+      "to": "backup",
+      "label": "nightly snapshot",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "One core, two hosts",
+      "items": [
+        "src/routes.js imports no node:http or node:fs",
+        "src/server.js wraps it for node, src/worker.js for workerd",
+        "src/store.js and src/store-cf.js share one Store interface"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Shared by every runtime",
+      "items": [
+        "src/vocabulary.js: one field vocabulary for UI, CLI and MCP",
+        "src/ids.js and src/mark.js: ids and the rope mark",
+        "src/applet.js and src/bugreport.js: routes behind the request core"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Weave records itself",
+      "items": [
+        "src/handbook.js writes the Handbook into the weave workspace",
+        "src/weaver-seed.js and src/quality-mirror.js sync Development and Quality",
+        "src/service.js and src/rehearse.js run launchd and upgrade rehearsal"
+      ]
+    }
+  ]
+}
