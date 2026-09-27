@@ -4038,7 +4038,7 @@ function filterStrip(db, onChange) {
   const paint = () => {
     for (const { chip, field, name } of chips) {
       const on = (active[field] || []).includes(name);
-      chip.classList.toggle('on', on); chip.setAttribute('aria-pressed', String(on));
+      chip.classList.toggle('on', on); chip.querySelector('input').checked = on;
     }
     const count = Object.values(active).filter((v) => v.length).length;
     clear.disabled = !count;
@@ -4073,17 +4073,16 @@ function filterStrip(db, onChange) {
         el('span', { class: 'filter-type' }, f.type === 'toggle' ? 'Toggle' : 'Workflow')));
     const values = el('div', { class: 'filter-values' });
     for (const st of filterStates(f)) {
-      const chip = el('button', {
-        class: `filter-chip cat-${st.category}`, type: 'button', 'aria-label': st.name,
-        onclick: () => {
-          if (db.view?.blank) return toast(BLANK_READ_ONLY, true);
-          const cur = new Set(active[f.name] || []);
-          cur.has(st.name) ? cur.delete(st.name) : cur.add(st.name);
-          if (cur.size) active[f.name] = [...cur]; else delete active[f.name];
-          dirty = true; hold(); paint(); note.textContent = 'Applying…';
-          clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE);
-        },
-      }, st.name);
+      // A filter option is weave's checkbox with its name (Issue #441).
+      const box = el('input', { type: 'checkbox', class: 'form-check-input', onchange: () => {
+        if (db.view?.blank) { box.checked = !box.checked; return toast(BLANK_READ_ONLY, true); }
+        const cur = new Set(active[f.name] || []);
+        box.checked ? cur.add(st.name) : cur.delete(st.name);
+        if (cur.size) active[f.name] = [...cur]; else delete active[f.name];
+        dirty = true; hold(); paint(); note.textContent = 'Applying…';
+        clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE);
+      } });
+      const chip = el('label', { class: `filter-chip cat-${st.category}` }, box, st.name);
       chips.push({ chip, field: f.name, name: st.name }); values.append(chip);
     }
     row.append(values); strip.append(row);
@@ -4351,6 +4350,8 @@ function tableControlPopover(anchor, db, className, rows) {
   const trigger = () => document.querySelector(`#main ${selector}`) || anchor;
   const position = () => {
     const r = trigger().getBoundingClientRect();
+    // A long list grows to the room below its button before it scrolls (Issue #446).
+    if (className === 'table-fields-popover') pop.style.maxHeight = `${Math.max(220, innerHeight - r.bottom - 22)}px`;
     pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))}px`;
     pop.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8))}px`;
   };
@@ -4373,10 +4374,10 @@ function tableControlPopover(anchor, db, className, rows) {
         (document.activeElement === document.body || pop.contains(document.activeElement))) target.focus({ preventScroll: true });
   });
   pop.addEventListener('keydown', (e) => {
-    if (e.defaultPrevented || e.target.matches('input') || (e.target.closest('.field-reorder-handle') && ['ArrowUp', 'ArrowDown'].includes(e.key))) return;
+    if (e.defaultPrevented || e.target.matches('input:not([type="checkbox"])') || (e.target.closest('.field-reorder-handle') && ['ArrowUp', 'ArrowDown'].includes(e.key))) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); pop.remove(); trigger().focus({ preventScroll: true }); }
     else if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
-      const opts = [...pop.querySelectorAll('.view-tab,.seg-opt,.eye-row,.filter-chip,.chip-pop-row')].filter((b) => !b.disabled);
+      const opts = [...pop.querySelectorAll('.view-tab,.seg-opt,.eye-row:not(label),.eye-row > input,.filter-chip:not(label),.filter-chip > input,.chip-pop-row:not(label)')].filter((b) => !b.disabled);
       if (!opts.length) return;
       e.preventDefault();
       const i = opts.indexOf(document.activeElement), step = e.key === 'ArrowUp' ? -1 : 1;
@@ -4389,7 +4390,7 @@ function tableControlPopover(anchor, db, className, rows) {
   position();
   document.addEventListener('click', outside, true);
   window.addEventListener('resize', position);
-  pop.querySelector('.view-tab.active,.seg-opt.on,.eye-row,.filter-chip,.chip-pop-row')?.focus({ preventScroll: true });
+  pop.querySelector('.view-tab.active,.seg-opt.on,.eye-row:not(label),.eye-row > input,.filter-chip:not(label),.filter-chip > input,.chip-pop-row:not(label)')?.focus({ preventScroll: true });
   return pop;
 }
 function tableControlButton(className, label, icon, dropdown = false) {
@@ -4507,6 +4508,64 @@ function tableFilterButton(ref) {
   });
   return btn;
 }
+/* One pointer drag for the rows of a popover list: the Fields popover's
+   fields and the Views list (Issues #445, #443). A press that moves 4px
+   lifts the row; html.wv-grabbing holds the `grabbing` cursor, and no text
+   selects, until the drop, Escape or a cancelled pointer; a square-ended
+   .drop-line marks the gap the row lands in, and the list scrolls when the
+   pointer rests near its edge. `drop(targetKey, after)` runs on a real drop
+   only. `row.dragged` stays true through the click a drop fires, so the
+   press is not also a click. */
+function startRowDrag(list, row, down, drop, { rows = '.table-field-row', key = (r) => r.dataset.field } = {}) {
+  const html = document.documentElement;
+  let started = false, line = null, at = null, raf = 0, lastY = down.clientY;
+  html.classList.add('wv-grabbing');
+  const place = (y) => {
+    const all = [...list.querySelectorAll(rows)];
+    if (!all.length) return;
+    let target = all[all.length - 1], after = true;
+    for (const r of all) { const b = r.getBoundingClientRect(); if (y < b.top + b.height / 2) { target = r; after = false; break; } }
+    if (!line) { line = el('div', { class: 'drop-line', 'aria-hidden': 'true' }); list.append(line); }
+    line.style.top = `${(after ? target.offsetTop + target.offsetHeight : target.offsetTop) - 1}px`;
+    at = { target: key(target), after };
+  };
+  const scroll = () => {
+    cancelAnimationFrame(raf);
+    const b = list.getBoundingClientRect();
+    const v = lastY < b.top + 24 ? -6 : lastY > b.bottom - 24 ? 6 : 0;
+    if (!v || list.scrollHeight <= list.clientHeight) return;
+    list.style.scrollSnapType = 'none';
+    list.scrollTop += v; place(lastY);
+    raf = requestAnimationFrame(scroll);
+  };
+  const onMove = (e) => {
+    if (e.pointerId !== down.pointerId) return;
+    lastY = e.clientY;
+    if (!started) {
+      if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < 4) return;
+      started = true; row.dragged = true; row.classList.add('dragging');
+    }
+    place(e.clientY); scroll();
+  };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(false); } };
+  function end(ok) {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('pointercancel', onCancel);
+    document.removeEventListener('keydown', onKey, true);
+    cancelAnimationFrame(raf);
+    html.classList.remove('wv-grabbing');
+    line?.remove(); row.classList.remove('dragging'); list.style.scrollSnapType = '';
+    if (started) setTimeout(() => { row.dragged = false; });
+    if (ok && started && at) drop(at.target, at.after);
+  }
+  const onUp = (e) => { if (e.pointerId === down.pointerId) end(true); };
+  const onCancel = (e) => { if (e.pointerId === down.pointerId) end(false); };
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+  document.addEventListener('pointercancel', onCancel);
+  document.addEventListener('keydown', onKey, true);
+}
 function tableFieldsPopover(anchor, db, trashCount) {
   let pop;
   const raw = () => allTables().find((t) => t.id === db.id) || db;
@@ -4557,22 +4616,24 @@ function tableFieldsPopover(anchor, db, trashCount) {
       return { fields: order.filter((n) => (t.columns || []).includes(n)) };
     });
   };
-  let dragging = null;
-  const clearDrop = () => pop.querySelectorAll('.drop-before,.drop-after').forEach((r) => r.classList.remove('drop-before', 'drop-after'));
+  /* A row is a labelled checkbox and a drag handle in one (Issues #441,
+     #445): a click on the box or the name flips the field, a press that
+     moves drags the row, and the whole row reads `grab` — never an I-beam.
+     A drag sets html.wv-grabbing, so the cursor reads `grabbing` wherever
+     the pointer goes until the drop, Escape or a cancelled pointer. The
+     insertion line is one straight, square-ended rule in the list. */
   const makeRow = (name, shown) => {
-    const toggle = el('button', { class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': String(shown), onclick: () => flip(name) },
-      el('span', { class: 'field-visible-check', 'aria-hidden': 'true' }, lucideEl('check')),
-      el('span', { class: 'eye-label' }, name));
-    const handle = el('button', { class: 'field-reorder-handle', type: 'button', draggable: 'true', 'aria-label': `Reorder ${name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'));
+    const box = el('input', { type: 'checkbox', class: 'form-check-input', checked: shown ? '' : undefined, onchange: () => flip(name) });
+    const toggle = el('label', { class: 'chip-pop-row eye-row' }, box, el('span', { class: 'eye-label' }, name));
+    const handle = el('button', { class: 'field-reorder-handle', type: 'button', 'aria-label': `Reorder ${name}`, title: 'Drag to reorder; ↑ / ↓ to move' }, lucideEl('grip-vertical'));
     const row = el('div', { class: 'table-field-row', dataset: { field: name } }, toggle, handle);
-    handle.addEventListener('dragstart', (e) => { dragging = name; e.dataTransfer.setData('text/plain', name); e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); });
-    handle.addEventListener('dragend', () => { dragging = null; row.classList.remove('dragging'); clearDrop(); });
-    row.addEventListener('dragover', (e) => {
-      if (!dragging || dragging === name) return;
-      e.preventDefault(); e.dataTransfer.dropEffect = 'move'; clearDrop();
-      row.classList.add(e.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2 ? 'drop-after' : 'drop-before');
+    row.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target === box || db.view?.blank) return;
+      e.preventDefault(); // no text selection, no caret
+      startRowDrag(pop.querySelector('.table-field-list'), row, e, (target, after) => move(name, target, after));
     });
-    row.addEventListener('drop', (e) => { if (!dragging) return; e.preventDefault(); const from = dragging; dragging = null; const after = row.classList.contains('drop-after'); clearDrop(); move(from, name, after); });
+    // A press that became a drag is not a click on the label.
+    row.addEventListener('click', (e) => { if (row.dragged) { row.dragged = false; e.preventDefault(); e.stopPropagation(); } }, true);
     handle.addEventListener('keydown', (e) => {
       if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
       e.preventDefault(); const i = order.indexOf(name), to = i + (e.key === 'ArrowUp' ? -1 : 1);
@@ -4588,8 +4649,9 @@ function tableFieldsPopover(anchor, db, trashCount) {
     order = order.filter((n) => names.has(n));
     for (const name of names) if (!order.includes(name)) { order.push(name); list.append(makeRow(name, (t.columns || []).includes(name))); }
     const shown = new Set(t.columns || []);
-    for (const r of pop.querySelectorAll('.table-field-row')) r.querySelector('.eye-row').setAttribute('aria-checked', String(shown.has(r.dataset.field)));
-    pop.querySelector('[data-rollups]')?.setAttribute('aria-checked', String(t.hideRollups === false));
+    for (const r of pop.querySelectorAll('.table-field-row')) r.querySelector('.eye-row input').checked = shown.has(r.dataset.field);
+    const rollups = pop.querySelector('[data-rollups] input');
+    if (rollups) rollups.checked = t.hideRollups === false;
   };
   const shown = new Set(db.columns || []);
   const rows = [tableControlHeader('Fields', () => pop?.remove()),
@@ -4600,11 +4662,15 @@ function tableFieldsPopover(anchor, db, trashCount) {
     el('div', { class: 'table-field-list' }, ...order.map((n) => makeRow(n, shown.has(n)))),
     el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'Add field'),
     el('div', { class: 'eye-head' }, 'Rows'),
-    el('button', { class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': String(state.showDeleted.has(db.id)), onclick: () => {
-      state.showDeleted.has(db.id) ? state.showDeleted.delete(db.id) : state.showDeleted.add(db.id);
-      pop?.remove(); keepScroll(() => showDatabase(db.id, db.view.id));
-    } }, el('span', { class: 'eye-label' }, `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`)),
-    ...(db.system ? [] : [el('button', { class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'data-rollups': '', 'aria-checked': String(db.hideRollups === false), onclick: () => write((t) => ({ table: { hideRollups: t.hideRollups === false } })) }, el('span', { class: 'eye-label' }, 'Σ rollup row'))]),
+    el('label', { class: 'chip-pop-row eye-row', 'data-deleted': '' },
+      el('input', { type: 'checkbox', class: 'form-check-input', checked: state.showDeleted.has(db.id) ? '' : undefined, onchange: () => {
+        state.showDeleted.has(db.id) ? state.showDeleted.delete(db.id) : state.showDeleted.add(db.id);
+        pop?.remove(); keepScroll(() => showDatabase(db.id, db.view.id));
+      } }),
+      el('span', { class: 'eye-label' }, `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`)),
+    ...(db.system ? [] : [el('label', { class: 'chip-pop-row eye-row', 'data-rollups': '' },
+      el('input', { type: 'checkbox', class: 'form-check-input', checked: db.hideRollups === false ? '' : undefined, onchange: () => write((t) => ({ table: { hideRollups: t.hideRollups === false } })) }),
+      el('span', { class: 'eye-label' }, 'Σ rollup row'))]),
   ];
   pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
   // Teach switches only after both the grid and dock have repainted.
@@ -5410,7 +5476,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       el('td', { class: 'sel-cell' }, cellBox(
         item.deleted ? null : el('label', { class: 'sel-hit' },
           el('input', {
-            class: 'sel-box', type: 'checkbox',
+            class: 'sel-box form-check-input', type: 'checkbox',
             'aria-label': `Select #${item.publicId}`,
             onclick: (e) => onBox(e, item.id),
           })))),
@@ -6229,7 +6295,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         el('th', { class: 'sel-head' },
           el('label', { class: 'sel-hit' },
             el('input', {
-              class: 'sel-box', type: 'checkbox', 'aria-label': 'Select every row',
+              class: 'sel-box form-check-input', type: 'checkbox', 'aria-label': 'Select every row',
               onclick: () => {
                 const loaded = loadedIds();
                 const L = SEL();
@@ -8382,7 +8448,7 @@ function fieldDialog(db, existing, after) {
            out of. */
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.literal ? '' : undefined, onchange: (e) => { state.literal = e.target.checked; changed(); } }),
-          el('span', { class: 'form-check-label' }, 'Literal ', el('span', { class: 'date-format-eg' }, 'show **marks** and `syntax` as typed, never dressed'))));
+          el('span', { class: 'form-check-label' }, 'Literal ', el('span', { class: 'date-format-eg' }, 'show ', el('code', {}, '**marks**'), ' and ', el('code', {}, '`syntax`'), ' as typed, never dressed'))));
       } else if (t === 'document') {
         kids.push(dsection('Kind', segCtl(fdc.DOCUMENT_KINDS, state.kind ?? 'markdown', (v) => { state.kind = v; changed(); })));
       } else if (t === 'key') {

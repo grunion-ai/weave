@@ -153,7 +153,8 @@ if (s) {
         document.querySelector('.wv-grid tbody td.pid-cell')).borderRightWidth);
       assert.equal(widths, '1px', 'the hairline is reserved, not grown');
       await page.evaluate(() => { document.querySelector('.table-wrap').scrollLeft = 0; });
-      await page.waitForTimeout(80);
+      // The seam follows the scroll event, which a loaded gate delivers late.
+      await page.waitForFunction((want) => getComputedStyle(document.querySelector('.wv-grid tbody td.pid-cell')).borderRightColor === want, rest, { timeout: 3000 }).catch(() => {});
       assert.equal(await seam(), rest, 'and it goes again when the grid comes back to its left edge');
     } finally { await page.close(); }
   });

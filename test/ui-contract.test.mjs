@@ -1790,7 +1790,9 @@ test('the view controls sit on the crumb line; Fields has a bundled eye icon and
   // The toolbar is built once per table in tableChrome (Issue #444).
   assert.match(fnBody('tableChrome'), /tableControlButton\('eye-btn', 'Fields', 'eye'\)/, 'the Fields label carries the bundled eye icon');
   assert.match(fnBody('tableControlButton'), /lucideEl\(icon\)/, 'toolbar controls use the bundled icon renderer');
-  assert.match(fnBody('tableFieldsPopover'), /role: 'switch', 'aria-checked': String\(shown\)/, 'table field visibility exposes switch state');
+  // Issue #441: a table's field rows are weave's checkbox, not a switch.
+  assert.match(fnBody('tableFieldsPopover'), /el\('input', \{ type: 'checkbox', class: 'form-check-input', checked: shown/, 'table field visibility is a real checkbox');
+  assert.doesNotMatch(fnBody('tableFieldsPopover'), /role: 'switch'|field-visible-check/, 'and no hand-drawn switch');
   assert.ok(rulesFor('.switch.on').background?.includes('--tblr-primary'));
 });
 

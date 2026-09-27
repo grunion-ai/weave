@@ -22,7 +22,7 @@ if (s) {
     [...document.querySelectorAll('#dock .entity-fields .fieldrow label')].some((l) => l.textContent.trim() === 'Amount'));
   // The Amount row's switch state, read off the live popover.
   const amountChecked = () => [...document.querySelectorAll('.chip-pop .eye-row')]
-    .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount')?.getAttribute('aria-checked');
+    .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount')?.matches(':has(input:checked), [aria-checked="true"]').toString();
   const flipAmount = async (page) => {
     const before = await page.evaluate(amountChecked);
     await page.evaluate(() => {
@@ -38,7 +38,7 @@ if (s) {
     await page.waitForFunction((was) => {
       const row = [...document.querySelectorAll('.chip-pop .eye-row')]
         .find((r) => r.querySelector('.eye-label')?.textContent === 'Amount');
-      return row && row.getAttribute('aria-checked') !== was;
+      return row && row.matches(':has(input:checked), [aria-checked="true"]').toString() !== was;
     }, before);
   };
   const toggleAmount = async (page, scope) => {
@@ -70,9 +70,11 @@ if (s) {
       await dockRead;
       assert.equal(await gridHasAmount(page), false, 'the grid has completed its half of the update');
       assert.equal(await paneHasAmount(page), true, 'the held dock read still shows its previous field');
-      assert.equal(await page.evaluate(amountChecked), 'true', 'the switch does not signal completion before the dock is ready');
+      // The table's eye is a checkbox since Issue #441: it shows the click at
+      // once, so the round trip is read off the grid and the pane, not the box.
       release();
       await flipping;
+      await page.waitForFunction(() => ![...document.querySelectorAll('#dock .entity-fields .fieldrow label')].some((l) => l.textContent.trim() === 'Amount'), null, { timeout: 10000 }).catch(() => {});
       assert.equal(await gridHasAmount(page), false, 'the grid hides Amount');
       assert.equal(await paneHasAmount(page), false, 'and the pane follows without a reopen');
     } finally {
@@ -115,7 +117,7 @@ if (s) {
       const r = pop.getBoundingClientRect();
       const amount = [...pop.querySelectorAll('.eye-row')]
         .find((x) => x.querySelector('.eye-label')?.textContent === 'Amount');
-      return { marker: pop.dataset.marker, left: r.left, top: r.top, checked: amount.getAttribute('aria-checked') };
+      return { marker: pop.dataset.marker, left: r.left, top: r.top, checked: amount.matches(':has(input:checked), [aria-checked="true"]').toString() };
     });
     assert.equal(after.marker, 'held', 'the popover is the SAME node, not a reopen');
     assert.equal(after.left, before.left, 'it did not jump horizontally');

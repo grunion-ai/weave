@@ -47,8 +47,8 @@ if (s) {
   // Read one switch off the live popover. Hidden means the switch is off.
   const switchReads = ([name, want]) => [...document.querySelectorAll('.chip-pop .eye-row')]
     .find((r) => r.querySelector('.eye-label')?.textContent === name)
-    ?.getAttribute('aria-checked') === want;
-  const focusedLabel = () => document.activeElement?.querySelector?.('.eye-label')?.textContent ?? null;
+    ?.matches(':has(input:checked), [aria-checked="true"]') === (want === 'true');
+  const focusedLabel = () => document.activeElement?.closest?.('.eye-row')?.querySelector('.eye-label')?.textContent ?? null;
   const until = async (ok, what) => {
     for (const t0 = Date.now(); !ok();) {
       if (Date.now() - t0 > 5000) throw new Error(`timed out waiting for ${what}`);
@@ -100,6 +100,8 @@ if (s) {
     await page.waitForFunction(switchReads, ['Amount', 'false']);
     await page.mouse.up();
     await page.waitForFunction(switchReads, ['Stage', 'false']);
+    // A checkbox shows the click at once; the write lands after (Issue #441).
+    await until(() => JSON.stringify(hiddenNow()) === JSON.stringify(['Amount', 'Stage']), 'the hidden set').catch(() => {});
     assert.deepEqual(hiddenNow(), ['Amount', 'Stage'], 'both flips reached the table');
     // Focus never left the popover, so its own keydown listener hears Escape.
     assert.ok(await page.evaluate(() => !!document.activeElement?.closest?.('.chip-pop')),
@@ -133,6 +135,8 @@ if (s) {
     // flip out of date and would drop Amount back out of the hidden set.
     await page.locator('.chip-pop .eye-row', { hasText: 'Stage' }).first().click();
     await page.waitForFunction(switchReads, ['Stage', 'false']);
+    // A checkbox shows the click at once; the write lands after (Issue #441).
+    await until(() => JSON.stringify(hiddenNow()) === JSON.stringify(['Amount', 'Stage']), 'the hidden set').catch(() => {});
     assert.deepEqual(hiddenNow(), ['Amount', 'Stage'], 'the second flip added to the hidden set');
     await page.close();
   });
@@ -167,10 +171,14 @@ if (s) {
     release();
     await page.waitForFunction(switchReads, ['Amount', 'false']);
     await page.waitForFunction(switchReads, ['Stage', 'false']);
+    // A checkbox shows the click at once; the write lands after (Issue #441).
+    await until(() => JSON.stringify(hiddenNow()) === JSON.stringify(['Amount', 'Stage']), 'the hidden set').catch(() => {});
     assert.deepEqual(hiddenNow(), ['Amount', 'Stage'], 'neither flip overwrote the other');
     assert.deepEqual(patches, [{ hide: ['Amount'] }, { hide: ['Stage'] }],
       'the second flip read the table after the first one landed');
     // Painting is off the write queue, and a burst paints once at its end.
+    await until(() => draws >= 1, 'the redraw').catch(() => {});
+    await page.waitForLoadState('networkidle');
     assert.equal(draws, 1, 'the pair redrew the grid once');
     await page.close();
   });
@@ -279,7 +287,7 @@ if (s) {
       return rows.length;
     });
     await page.click('.chip-pop .foot-row[data-agg="sum"]');
-    await page.waitForFunction(() => document.querySelector('.chip-pop .foot-row[data-agg="sum"]')?.getAttribute('aria-checked') === 'true');
+    await page.waitForFunction(() => document.querySelector('.chip-pop .foot-row[data-agg="sum"]')?.matches(':has(input:checked), [aria-checked="true"]'));
     assert.equal(
       await page.evaluate(() => document.querySelectorAll('.chip-pop .foot-row[data-stamp]').length),
       rowCount, 'every aggregate row is the node it was before the flip');

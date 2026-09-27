@@ -154,7 +154,7 @@ if (s) {
       await page.click('.table-filter-btn');
       await page.locator('.table-filter-popover').evaluate((pop) => { pop.dataset.probe = 'same'; });
       const m = await measure(page, 'filter', async () => {
-        await page.locator('.table-filter-popover .filter-chip[aria-label="Done"]').click();
+        await page.locator('.table-filter-popover .filter-chip:text-is("Done")').click();
         await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 20);
       });
       clean(m, 'filter');
@@ -252,7 +252,7 @@ if (s) {
       });
       hold = 1200;
       await page.click('.table-filter-btn');
-      await page.locator('.table-filter-popover .filter-chip[aria-label="Done"]').click();
+      await page.locator('.table-filter-popover .filter-chip:text-is("Done")').click();
       // The debounce (250 ms) then the held query: busy from the click, not from the fetch.
       await page.waitForTimeout(120);
       const early = await page.evaluate(() => ({
@@ -262,11 +262,13 @@ if (s) {
         pageRope: !document.querySelector('#page-loader')?.hidden,
       }));
       assert.deepEqual(early, { busy: true, toolbarBusy: false, rope: false, pageRope: false }, 'the grid dims at once, the toolbar does not, and no rope yet');
+      // The dim is a short opacity transition; a loaded gate may not have painted its first frame yet.
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('#main .table-wrap')).opacity !== '1', null, { timeout: 400 }).catch(() => {});
       assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#main .table-wrap')).opacity !== '1'), true, 'the stale rows are dimmed');
       await page.waitForTimeout(500);
       assert.equal(await page.locator('#main .grid-loader:not([hidden])').count(), 1, 'past 500 ms the rope covers the grid');
       // A second chip while the first is still loading.
-      await page.locator('.table-filter-popover .filter-chip[aria-label="Doing"]').click();
+      await page.locator('.table-filter-popover .filter-chip:text-is("Doing")').click();
       assert.equal(await page.locator('#main .grid-loader svg').count() > 0, true, 'the rope is the weave loader');
       assert.equal(await page.evaluate(() => document.querySelector('#page-loader').hidden), true, 'the page-wide rope stays down');
       hold = 0;
@@ -277,7 +279,7 @@ if (s) {
       const status = new Map(weave.query(table.id).items.map((e) => [e.id, e.fields.Status]));
       assert.deepEqual([...new Set(drawn.map((id) => status.get(id)))].sort(), ['Doing', 'Done'], 'the grid shows the answer to both chips');
       assert.deepEqual(weave.tableView(table).views.find((v) => v.name === 'Default').filters, { Status: ['Done', 'Doing'] }, 'the second click was kept');
-      assert.deepEqual((await page.$$eval('.table-filter-popover .filter-chip.on', (bs) => bs.map((b) => b.getAttribute('aria-label')))).sort(), ['Doing', 'Done']);
+      assert.deepEqual((await page.$$eval('.table-filter-popover .filter-chip.on', (bs) => bs.map((b) => b.textContent.trim()))).sort(), ['Doing', 'Done']);
       await page.waitForFunction(() => document.querySelector('#main .grid-loader')?.hidden !== false, null, { timeout: 5000 });
     } finally { await page.close(); }
   });

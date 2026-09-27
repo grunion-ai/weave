@@ -596,8 +596,8 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 /* The row checkbox is a 14px box whose 26px hit area is a pseudo-element,
    so it takes no layout and its cell lets it spill. */
 .wv-grid tbody td.sel-cell > .wv-cb { overflow: visible; }
-.wv-grid tbody .sel-hit { height: 14px; position: relative; }
-.wv-grid tbody .sel-hit::before { content: ""; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
+.wv-grid tbody .sel-hit { height: 16px; position: relative; }
+.wv-grid tbody .sel-hit::before { content: ""; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
 /* Chips and their + button stay on one line: wrapped, a relation cell was
    48px tall and set the height of every row beside it. Overflow is the
    clipped-cell hover expansion's job now, not the row's. */
@@ -2671,9 +2671,7 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .filter-type { margin-left: auto; font-size: 11px; color: var(--tblr-secondary); font-weight: 400; }
 .filter-values { display: flex; gap: 7px; flex-wrap: wrap; }
 .table-filter-popover .filter-chip { border-radius: 5px; padding: 6px 9px; min-height: 32px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 12px; }
-.table-filter-popover .filter-chip::after { content: ''; width: 10px; display: inline-block; }
 .table-filter-popover .filter-chip.on { border-color: var(--tblr-primary); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-weight: 400; }
-.table-filter-popover .filter-chip.on::after { content: '✓'; }
 .filter-footer { border-top: 1px solid var(--tblr-border-color); display: flex; align-items: center; justify-content: space-between; padding: 8px 4px 0 8px; gap: 8px; }
 .filter-footer [role="status"] { font-size: 11px; color: var(--tblr-secondary); }
 .table-fields-popover { width: 320px; }
@@ -2682,20 +2680,35 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .table-field-row { position: relative; display: flex; align-items: center; border-radius: 0; }
 .table-field-row .eye-row { flex: 1; min-width: 0; gap: 9px; }
 .table-field-row .eye-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.field-visible-check { border: 1px solid var(--tblr-border-color); border-radius: 3px; display: flex; width: 15px; height: 15px; flex-shrink: 0; align-items: center; justify-content: center; }
-.field-visible-check svg { width: 12px; height: 12px; visibility: hidden; }
-.eye-row[aria-checked="true"] .field-visible-check { background: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); border-color: var(--tblr-primary); }
-.eye-row[aria-checked="true"] .field-visible-check svg { visibility: visible; }
 .field-reorder-handle { border: 0; border-radius: var(--tblr-border-radius); background: none; color: var(--tblr-secondary); padding: 8px; cursor: grab; }
 .field-reorder-handle svg { display: block; width: 15px; height: 15px; }
 .table-field-row.dragging { opacity: .4; }
-.table-field-row.drop-before::before,.table-field-row.drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 2px; border-radius: 0; background: var(--tblr-primary); pointer-events: none; z-index: 1; }
-.table-field-row.drop-before::before { top: -1px; }
-.table-field-row.drop-after::after { bottom: -1px; }
 .table-fields-popover > .eye-row[aria-checked="true"]::after { content: '✓'; margin-left: auto; color: var(--tblr-primary); }
 @media (max-width: 700px) { .crumb-actions .table-search { flex: 1; } .crumb-actions .table-search-input { width: 100%; min-width: 80px; } .table-control-label { max-width: 110px; } }
 @media (pointer: coarse) { .table-control-popover :is(.chip-pop-row,.filter-chip,.seg-opt,.view-tab,.field-reorder-handle) { min-height: 44px; } }
 /* Keep actions visible while a long field list scrolls inside the picker. */
 .table-fields-popover { overflow: hidden; }
 .table-fields-popover > :not(.table-field-list) { flex-shrink: 0; }
-.table-field-list { min-height: 0; overflow-y: auto; }
+.table-field-list { min-height: 0; overflow-y: auto; flex: 0 1 auto; position: relative; scroll-snap-type: y mandatory; overscroll-behavior: contain; }
+
+/* ---------- one checkbox (Issues #441, #384) ----------
+   weave's checkbox is input.form-check-input: the field dialog, settings,
+   the checkbox cell, the grid's row selector, the Fields and the Filters
+   popovers all draw it. The grid's selector keeps its fade-in. A checkbox
+   row puts the box on its label's first line, never over it. */
+.wv-grid input.sel-box.form-check-input { transition: opacity .12s ease, background .1s, border-color .1s; }
+.form-check { display: flex; align-items: flex-start; gap: 8px; padding-left: 0; min-height: 0; }
+.form-check > input.form-check-input { float: none; margin: 2px 0 0; flex-shrink: 0; }
+.form-check-label code { font-size: 11.5px; padding: 0 3px; border-radius: 3px; background: var(--wv-pill-hover, rgba(0,0,0,.05)); color: inherit; }
+.table-control-popover label.eye-row .form-check-input,
+.table-filter-popover .filter-chip .form-check-input { margin: 0; }
+.table-filter-popover .filter-chip { gap: 8px; padding: 6px 10px 6px 8px; user-select: none; -webkit-user-select: none; }
+
+/* ---------- the Fields popover's drag (Issue #445) ---------- */
+.table-field-row { cursor: grab; scroll-snap-align: start; }
+.table-fields-popover label.eye-row { cursor: grab; user-select: none; -webkit-user-select: none; }
+.table-fields-popover label.eye-row .form-check-input { cursor: pointer; }
+/* Reboot's [type=button]:not(:disabled) pointer would win over a bare class. */
+.table-fields-popover .field-reorder-handle:not(:disabled) { cursor: grab; }
+.drop-line { position: absolute; left: 6px; right: 6px; height: 2px; border-radius: 0; background: var(--tblr-primary); pointer-events: none; z-index: 2; }
+html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }

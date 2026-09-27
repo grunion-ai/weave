@@ -216,7 +216,7 @@ if (s) {
     await page.click('.crumb-actions .eye-btn');
     const sw = () => page.locator('.chip-pop .eye-row', { hasText: 'Σ rollup row' });
     await sw().waitFor();
-    assert.equal(await sw().getAttribute('aria-checked'), 'true');
+    assert.equal(await sw().locator('input').isChecked(), true);
     await sw().click();
     await page.waitForFunction(() => !document.querySelector('tr.wv-foot'));
     assert.equal(await page.locator('.wv-foot, tfoot').count(), 0, 'no Σ row anywhere');
@@ -227,7 +227,7 @@ if (s) {
     assert.equal(await page.locator('tr.wv-foot').count(), 0, 'still hidden after a reload');
     await page.click('.crumb-actions .eye-btn');
     await sw().waitFor();
-    assert.equal(await sw().getAttribute('aria-checked'), 'false');
+    assert.equal(await sw().locator('input').isChecked(), false);
     await sw().click();
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
     assert.equal(weave.getTable(sessions.id).hideRollups, false, 'shown is stored too (Issue #249)');
@@ -247,7 +247,7 @@ if (s) {
     await page.click('.crumb-actions .eye-btn');
     const sw = () => page.locator('.chip-pop .eye-row', { hasText: 'Σ rollup row' });
     await sw().waitFor();
-    assert.equal(await sw().getAttribute('aria-checked'), 'false', 'the switch reads off');
+    assert.equal(await sw().locator('input').isChecked(), false, 'the box reads off');
     await sw().click();
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
     assert.equal(await footCell(page, 'Cost').locator('.foot-val').innerText(), '3');

@@ -141,6 +141,8 @@ if (s) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.click('#main .nav-menu');
     await page.setViewportSize({ width: 1280, height: 844 });
+    // The media query's change event lands after the resize, not with it.
+    await page.waitForFunction(() => !document.querySelector('#app').classList.contains('nav-peek'), null, { timeout: 3000 }).catch(() => {});
     assert.equal((await shell(page)).open, false, 'widening past 900px shuts an open drawer');
     await page.close();
   });

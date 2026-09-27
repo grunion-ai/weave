@@ -78,7 +78,7 @@ if (s) {
       await page.evaluate(() => { document.querySelector('#main .eye-btn').dataset.stamp = 'old'; });
       await page.locator('.chip-pop .eye-row', { hasText: 'Stage' }).first().click();
       await page.waitForFunction(() => [...document.querySelectorAll('.chip-pop .eye-row')]
-        .find((r) => r.querySelector('.eye-label')?.textContent === 'Stage')?.getAttribute('aria-checked') === 'false');
+        .find((r) => r.querySelector('.eye-label')?.textContent === 'Stage')?.matches(':has(input:checked), [aria-checked="true"]') === false);
       await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid .col-label')].some((h) => h.textContent.trim() === 'Stage'));
       await page.waitForLoadState('networkidle');
       assert.equal(await page.evaluate(() => document.querySelector('#main .eye-btn').dataset.stamp), 'old', 'the eye kept its node');
