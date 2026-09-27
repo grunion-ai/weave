@@ -126,7 +126,7 @@ if (s) {
      mockup's 220 to 260 on 2026-09-26; the dropped commit 41398c3 measured
      240px leaving such a name one pixel of room in Chromium's fallback face.
      The default is Feature #233's, so a stored width still wins and the "+"
-     column still takes the slack. */
+     column still trails the last field (Feature #240). */
   const THIRTY = 'Quickstart for a new workspace';
   for (const theme of ['light', 'dark']) {
     test(`${theme}: a thirty-character name reads whole at the Name default; a stored width still wins`, async () => {
@@ -155,8 +155,10 @@ if (s) {
         assert.equal(Math.round(got.width), 260, `Name opens at 260px, got ${got.width}`);
         assert.ok(Math.abs(got.cell - got.width) <= 1, `the cells follow the header: ${got.cell} vs ${got.width}`);
         assert.equal(got.clipped, false, `"${THIRTY}" reads whole in a ${Math.round(got.width)}px column`);
-        assert.ok(got.plus > 200, `the "+" column takes the slack (${got.plus}px)`);
-        assert.ok(Math.abs(got.gridRight - got.wrapRight) <= 1, `the grid fills its card (${got.gridRight} vs ${got.wrapRight})`);
+        // Feature #240: the "+" trails the last field and the card's slack
+        // is left bare, so the grid ends short of its card.
+        assert.ok(got.plus < 60, `the "+" column is as wide as its button (${got.plus}px)`);
+        assert.ok(got.wrapRight - got.gridRight > 100, `the slack past the "+" is bare card (${got.gridRight} vs ${got.wrapRight})`);
       } finally { await page.close(); }
       weave.tableView(`${db.id}/${view(db).id}`, { widths: { Name: 180 } });
       page = await openGrid(db, { width: 1440, theme });

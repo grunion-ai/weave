@@ -188,6 +188,10 @@ if (s) {
     // A second click on the eye closes it (Issue #320); the ⋮ opens its menu.
     await page.click('#main .eye-btn');
     await page.waitForFunction(() => !document.querySelector('.chip-pop'));
+    // The grid is wider than its card here, and Stage ends at the wrap's
+    // right edge, under the sticky "+" (Feature #240): bring it clear first.
+    await page.evaluate(() => document.querySelector('#main .wv-grid thead th:has(.field-menu[aria-label="Configure field Stage"])')
+      .scrollIntoView({ block: 'nearest', inline: 'center' }));
     await page.locator('#main .wv-grid thead th:has(.field-menu[aria-label="Configure field Stage"]) .field-menu').click({ force: true });
     await page.waitForSelector('.chip-pop');
     assert.equal(await page.evaluate(() => document.querySelectorAll('.chip-pop .eye-row').length), 0, 'the ⋮ menu opened');
