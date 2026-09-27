@@ -452,6 +452,23 @@ if (s) {
   const playingParts = (sel) => [...document.querySelectorAll(sel)].flatMap((h) => [...h.querySelectorAll('[data-mi]')])
     .filter((p) => p.classList.contains(p.dataset.mi.split(' ')[0])).length;
   const NAV = '#nav .wv-icon.mi:not([data-ms="0"])';
+  /* Record each run as it starts, in the page: a run is every part of one
+     host wearing its motion classes at once, and __runs lists the host index
+     each time one begins. Polling for the classes from the test side missed
+     a 200 ms run whenever the gate's load stalled the poll (Issue #401); the
+     record is written by the mutation itself, so it cannot. */
+  const recordRuns = (sel) => {
+    window.__recorder?.disconnect();
+    const hosts = [...document.querySelectorAll(sel)];
+    const on = hosts.map(() => false);
+    window.__runs = [];
+    window.__recorder = new MutationObserver(() => hosts.forEach((h, i) => {
+      const now = [...h.querySelectorAll('[data-mi]')].every((p) => p.classList.contains(p.dataset.mi.split(' ')[0]));
+      if (now && !on[i]) window.__runs.push(i);
+      on[i] = now;
+    }));
+    for (const h of hosts) window.__recorder.observe(h, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  };
   for (const theme of ['light', 'dark']) {
     test(`nothing animates on mount; an icon plays once on its own hover or press, then rests (${theme})`, async () => {
       const page = await browser.newPage();
@@ -468,31 +485,33 @@ if (s) {
       // Hover one: that icon plays, every other one stays still.
       const host = page.locator(NAV).first();
       const ms = Number(await host.getAttribute('data-ms'));
+      await page.evaluate(recordRuns, NAV);
       await host.hover();
-      await page.waitForFunction((sel) => {
-        const h = document.querySelector(sel);
-        return [...h.querySelectorAll('[data-mi]')].every((p) => p.classList.contains(p.dataset.mi.split(' ')[0]));
-      }, NAV, { timeout: 3000 }).catch(() => assert.fail('a hover plays the icon'));
-      const others = await page.evaluate((sel) => {
-        const [first, ...rest] = document.querySelectorAll(sel);
-        void first;
-        return rest.flatMap((h) => [...h.querySelectorAll('[data-mi]')]).filter((p) => p.classList.contains(p.dataset.mi.split(' ')[0])).length;
-      }, NAV);
-      assert.equal(others, 0, 'only the hovered icon plays');
+      // The suite runs under a gate at load 80-135, where the test side can
+      // stall past a whole run before its first poll (Issue #401: the first
+      // nav icon is a 200 ms chevron). Stall that long on purpose, so the
+      // read cannot depend on landing inside the run.
+      await page.waitForTimeout(ms + 100);
+      await page.waitForFunction(() => window.__runs.length > 0, null, { timeout: 3000 })
+        .catch(() => assert.fail('a hover plays the icon'));
       // …and it rests again: nothing loops.
       await page.waitForFunction((sel) => ![...document.querySelector(sel).querySelectorAll('[data-mi]')]
         .some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), NAV, { timeout: ms + 3000 })
         .catch(() => assert.fail(`after its ${ms} ms run the icon rests — it does not loop`));
+      assert.deepEqual(await page.evaluate(() => window.__runs), [0], 'only the hovered icon plays, and only once');
       // A press is the other trigger: the second icon plays on pointerdown.
+      // Pointing at it plays it once first; let that run end before pressing.
       const second = page.locator(NAV).nth(1);
       const box = await second.boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.waitForTimeout(Number(await second.getAttribute('data-ms')) + 100);
+      await page.waitForFunction(() => window.__runs.includes(1), null, { timeout: 3000 })
+        .catch(() => assert.fail('pointing at the second icon plays it'));
+      await page.waitForFunction((sel) => ![...document.querySelectorAll(sel)[1].querySelectorAll('[data-mi]')]
+        .some((p) => p.classList.contains(p.dataset.mi.split(' ')[0])), NAV, { timeout: 5000 });
+      await page.evaluate(recordRuns, NAV);
       await page.mouse.down();
-      assert.ok(await page.evaluate((sel) => {
-        const h = document.querySelectorAll(sel)[1];
-        return [...h.querySelectorAll('[data-mi]')].every((p) => p.classList.contains(p.dataset.mi.split(' ')[0]));
-      }, NAV), 'a press plays the icon');
+      await page.waitForFunction(() => window.__runs.includes(1), null, { timeout: 3000 })
+        .catch(() => assert.fail('a press plays the icon'));
       await page.mouse.up();
       // Reload: still nothing on mount.
       await page.reload({ waitUntil: 'domcontentloaded' });
