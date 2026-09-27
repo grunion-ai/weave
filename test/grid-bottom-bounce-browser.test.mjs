@@ -81,7 +81,8 @@ if (s) {
     await page.waitForTimeout(400);
     const heights = await page.evaluate(() => new Set([...document.querySelectorAll('.wv-grid tbody tr.entity-row')]
       .map((r) => Math.round(r.getBoundingClientRect().height))).size);
-    assert.ok(heights > 1, 'the grid under test has rows of more than one height');
+    // Feature #239: rows no longer vary; every row is its density's token.
+    assert.equal(heights, 1, 'every row of the grid under test is one declared height');
     return page;
   };
 
@@ -99,7 +100,8 @@ if (s) {
     await page.waitForTimeout(1200);
     const heights = await page.evaluate(() => new Set([...document.querySelectorAll('.wv-grid tbody tr.entity-row')]
       .map((r) => Math.round(r.getBoundingClientRect().height))).size);
-    assert.ok(heights > 1, 'the grid under test has rows of more than one height');
+    // Feature #239: rows no longer vary; every row is its density's token.
+    assert.equal(heights, 1, 'every row of the grid under test is one declared height');
     return page;
   };
 

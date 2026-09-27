@@ -47,7 +47,9 @@ if (s) {
     return n ? { ...n.getBoundingClientRect().toJSON(), ih: innerHeight, iw: innerWidth } : null;
   }, sel);
   const inView = (r) => r.top >= 0 && r.bottom <= r.ih && r.height > 0;
-  const overlap = (a, b) => a.top < b.bottom && b.top < a.bottom && a.left < b.right && b.left < a.right;
+  // Sub-pixel slack: a 44px row (Feature #239) can land its bottom a quarter
+  // pixel under the foot's top edge, which no one can see.
+  const overlap = (a, b) => a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5 && a.left < b.right && b.left < a.right;
   const openTasks = async (page) => {
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`tr[data-eid="${seeded[0]}"] td[data-field="Name"] input`);

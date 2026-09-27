@@ -15,8 +15,9 @@
 (() => {
   const PAGE = 200;
   const MIN_BUFFER = 20;
-  // Fallbacks until a row has painted; both densities, measured in Chromium.
-  const ROW_H = { comfortable: 38, compact: 24 };
+  // The declared row heights (Feature #239), the --wv-row-h tokens in
+  // style.css; app.js reads the token and falls back to these.
+  const ROW_H = { compact: 32, comfortable: 44, spacious: 72 };
   const pageOf = (i, page) => Math.floor(i / page) * page;
 
   globalThis.WeaveGridWindow = {

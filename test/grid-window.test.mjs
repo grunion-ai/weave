@@ -146,5 +146,5 @@ test('travelFor reads a direction from a row of travel, never from a pixel (Issu
   // Down is the direction a grid opens in, and a row height nobody has
   // measured yet falls back to the density's own, as windowFor does.
   assert.deepEqual(GW.travelFor({ scrollTop: 20, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 0 });
-  assert.deepEqual(GW.travelFor({ scrollTop: 40, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 40 });
+  assert.deepEqual(GW.travelFor({ scrollTop: 50, lastTop: 0, rowH: 0 }), { direction: 1, lastTop: 50 });
 });

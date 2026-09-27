@@ -523,8 +523,67 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    around each one, so a row read as ruled between its fields. It is a record
    now — values at rest, the control the moment you aim at a cell. Row height
    is one variable, because density is a control the reader owns. */
-.wv-grid { --wv-row-pad: 9px; }
-.wv-grid[data-density="compact"] { --wv-row-pad: 2px; }
+/* Row density (Feature #239, Kyle 2026-09-27): the row is a DECLARED track,
+   never the tallest cell. --wv-row-h is the row, --wv-cell-h the clip box
+   every value sits in (app.js cellBox), --wv-row-pad what is left above and
+   below it, --wv-lines the lines a text value may take. Only height moves:
+   the font and every column width are the same at all three. */
+.wv-grid { --wv-row-h: 44px; --wv-cell-h: 28px; --wv-row-pad: 8px; --wv-lines: 1; --wv-grid-chip-line: 18px; --wv-av: 20px; }
+.wv-grid[data-density="compact"] { --wv-row-h: 32px; --wv-cell-h: 24px; --wv-row-pad: 4px; --wv-grid-chip-line: 16px; --wv-av: 16px; }
+.wv-grid[data-density="spacious"] { --wv-row-h: 72px; --wv-cell-h: 56px; --wv-lines: 2; --wv-av: 24px; }
+/* A table cell treats height as a minimum, so the td states the track and
+   the clip box inside it is what holds it. The rule between rows is an
+   inset shadow, beside Tabler's hover tint, so it costs the row no height. */
+.wv-grid[data-density] tbody tr.entity-row > td { height: var(--wv-row-h); box-sizing: border-box; border-bottom-width: 0;
+  box-shadow: inset 0 -1px 0 var(--tblr-table-border-color, var(--tblr-border-color)), inset 0 0 0 9999px var(--tblr-table-bg-state, var(--tblr-table-bg-type, var(--tblr-table-accent-bg))); }
+/* A collapsed border is split between the cells it divides, so the header's
+   rule would hand the first row half a pixel: it is a shadow too. */
+.wv-grid[data-density] thead > tr > * { border-bottom-width: 0; }
+.wv-grid[data-density] thead > tr:first-child > th { box-shadow: inset 0 -1px 0 var(--tblr-table-border-color, var(--tblr-border-color)), inset 0 0 0 9999px var(--tblr-table-bg-state, var(--tblr-table-bg-type, var(--tblr-table-accent-bg))); }
+.wv-grid .wv-cb { height: var(--wv-cell-h); overflow: clip; display: flex; align-items: center; min-width: 0; }
+.wv-grid td.num > .wv-cb { justify-content: flex-end; }
+/* The value's own box may shrink, and ends in an ellipsis where it has one. */
+.wv-grid .wv-cb > * { min-width: 0; max-width: 100%; flex: 0 1 auto; }
+/* The checkbox and # columns are as wide as what they hold. */
+.wv-grid td:is(.sel-cell, .pid-cell) > .wv-cb > * { flex: none; }
+.wv-grid .wv-cb > :is(.wv-cb-text, .text-dressed, .doc-preview, .url-dressed, .num-dressed, .k) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wv-grid .wv-cb > .inline-edit { flex: 1 1 auto; }
+/* Row forms: a block-padded value loses its block padding, a chip is 18 or
+   20px, and at Spacious text takes two lines. */
+.wv-grid .wv-cb > :is(.text-dressed, .doc-preview) { padding-top: 0; padding-bottom: 0; }
+.wv-grid .wv-cb .k { line-height: var(--wv-grid-chip-line); }
+.wv-grid .wv-cb .av { width: var(--wv-av); height: var(--wv-av); }
+.wv-grid[data-density="spacious"] .wv-cb > .text-dressed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--wv-lines); white-space: normal; }
+.wv-grid[data-density="spacious"] .wv-cb > .doc-preview .doc-preview-line { display: block; overflow: hidden; text-overflow: ellipsis; }
+.wv-grid[data-density="spacious"] .wv-cb > .doc-preview .doc-preview-line ~ .doc-preview-line ~ .doc-preview-line { display: none; }
+/* Chips on one row, two at Spacious; the rest are hidden whole (fitChips)
+   and counted. */
+.wv-grid .wv-cb > .ms-box > :is(.k, .mention-wrap) { flex: none; }
+/* A relation chip wears its avatar at the density's size and no block
+   padding, so two rows of them fit a Spacious box. The + link button
+   follows the chips; it leaves when one chip has to shrink to fit. */
+.wv-grid .wv-cb .k-rel > a { padding-top: 0; padding-bottom: 0; }
+.wv-grid .wv-cb > .ms-box > .btn { flex: none; }
+.wv-grid .wv-cb > .ms-box.wv-fit-one > .btn { display: none; }
+.wv-grid .wv-cb > .ms-box > [hidden] { display: none; }
+.wv-grid[data-density="spacious"] .wv-cb > .ms-box { flex-wrap: wrap; row-gap: 4px; white-space: normal; }
+.wv-grid .wv-cb > .ms-box.wv-fit-one > :first-child { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+/* The computed card: a chip, title only, until Spacious makes room for a
+   compact card of title and one line. */
+.wv-grid .wv-cb > .wv-card { margin: 0; min-width: 0; gap: 2px; padding: 0 8px; line-height: 18px; }
+.wv-grid .wv-cb > .wv-card :is(.wv-card-fields, .wv-card-head > :not(.wv-card-title)) { display: none; }
+.wv-grid .wv-cb > .wv-card .wv-card-head { display: block; min-width: 0; }
+.wv-grid .wv-cb > .wv-card .wv-card-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wv-grid .wv-cb > .wv-card .wv-card-id { margin-right: 6px; }
+.wv-grid:not([data-density="spacious"]) .wv-cb > .wv-card { border-radius: 4px; }
+.wv-grid:not([data-density="spacious"]) .wv-cb > .wv-card .wv-card-desc { display: none; }
+.wv-grid[data-density="spacious"] .wv-cb > .wv-card { padding: 4px 8px; }
+.wv-grid[data-density="spacious"] .wv-cb > .wv-card .wv-card-desc { -webkit-line-clamp: 1; }
+/* The row checkbox is a 14px box whose 26px hit area is a pseudo-element,
+   so it takes no layout and its cell lets it spill. */
+.wv-grid tbody td.sel-cell > .wv-cb { overflow: visible; }
+.wv-grid tbody .sel-hit { height: 14px; position: relative; }
+.wv-grid tbody .sel-hit::before { content: ""; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
 /* Chips and their + button stay on one line: wrapped, a relation cell was
    48px tall and set the height of every row beside it. Overflow is the
    clipped-cell marker's job now, not the row's. */
@@ -625,6 +684,8 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
   box-shadow: var(--tblr-box-shadow); pointer-events: none;
 }
 .cell-pop .inline-edit { border-color: transparent; background: none; width: auto; }
+.cell-pop .wv-cb { height: auto; overflow: visible; display: block; }
+.cell-pop .ms-box { flex-wrap: wrap; white-space: normal; }
 .cell-pop .ms-box > .btn, .cell-pop .chip .x, .cell-pop .k .x, .cell-pop .date-pick-btn { display: none; }
 .computed { cursor: default; }
 .computed-mark { margin-right: 5px; color: var(--tblr-secondary); font-size: 11px; }
@@ -1865,7 +1926,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 /* Files over a file cell (Issue #85): the zone says "let go here" with a
    ring and a tint in the primary token, both inset, so nothing around it
    moves and the chips stay readable in either theme. */
-.wv-grid td.is-file-drop, .attach-box.is-file-drop {
+.wv-grid td.is-file-drop, .wv-grid[data-density] tbody tr.entity-row > td.is-file-drop, .attach-box.is-file-drop {
   box-shadow: inset 0 0 0 2px var(--tblr-primary);
   background: rgba(var(--tblr-primary-rgb), .08);
 }

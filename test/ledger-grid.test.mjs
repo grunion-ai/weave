@@ -125,21 +125,19 @@ test('the name column carries the row, so it is set heavier', () => {
 
 /* ── density ───────────────────────────────────────────────────────────── */
 
-test('density is a control with two heights, and compact is the shorter one', () => {
-  const comfy = rulesFor('.wv-grid');
-  const compact = rulesFor('.wv-grid[data-density="compact"]');
-  assert.ok(comfy['--wv-row-pad'], 'row height is one variable');
-  assert.ok(compact['--wv-row-pad'], 'compact overrides it');
-  assert.ok(Number.parseFloat(compact['--wv-row-pad']) < Number.parseFloat(comfy['--wv-row-pad']),
-    'compact rows are shorter than comfortable ones');
+test('density is a control with three declared heights, compact the shortest and spacious the tallest', () => {
+  const px = (sel) => Number.parseFloat(rulesFor(sel)['--wv-row-h']);
+  assert.equal(px('.wv-grid'), 44, 'Comfortable is the default (Feature #239)');
+  assert.equal(px('.wv-grid[data-density="compact"]'), 32);
+  assert.equal(px('.wv-grid[data-density="spacious"]'), 72);
 });
 
-test('a table remembers the density it was last read at', () => {
+test('a table view remembers the density it was last read at (Feature #239)', () => {
   assert.match(APP, /function gridDensity\(/);
   const fn = APP.match(/function gridDensity\([^]*?\n\}/)[0];
-  assert.match(fn, /localStorage/, 'a viewing preference, per person, per table');
-  assert.match(fn, /weave-grid-density:/, 'keyed like the other per-entity view state');
-  assert.match(APP, /Comfortable/, 'and it is a visible control, not a hidden setting');
+  assert.match(fn, /db\.view\.density/, 'the view carries it');
+  assert.match(APP, /density: mode/, 'and a pick autosaves into the view');
+  assert.match(APP, /Spacious/, 'and it is a visible control, not a hidden setting');
 });
 
 /* ── one type size ─────────────────────────────────────────────────────── */

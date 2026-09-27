@@ -70,10 +70,9 @@ if (s) {
   async function grid(density) {
     const page = await browser.newPage({ viewport: { width: 820, height: 900 } });
     if (density) {
-      // Density is per table and per person, so it is set the way a person
-      // sets it — in localStorage, before the grid draws.
-      await page.addInitScript(([key, d]) => localStorage.setItem(key, d),
-        [`weave-grid-density:${tasks.id}`, density]);
+      // Density is saved in the view (Feature #239), so it is set there,
+      // before the grid draws.
+      weave.tableView(`${tasks.id}/${weave.tableView(tasks).views[0].id}`, { density });
     }
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr');
@@ -165,8 +164,11 @@ if (s) {
     try {
       await page.setViewportSize({ width: 420, height: 900 });
       await page.waitForFunction(() => {
-        const tds = [...document.querySelectorAll('.wv-grid tbody td')];
-        const over = tds.filter((t) => t.scrollWidth > t.clientWidth + 1);
+        // What a value overflows is its clip box (Feature #239), or its own
+        // ellipsised box inside it.
+        const tds = [...document.querySelectorAll('.wv-grid tbody td[data-field]')];
+        const wide = (n) => n.scrollWidth > n.clientWidth + 1;
+        const over = tds.filter((t) => { const b = t.querySelector(':scope > .wv-cb'); return b && (wide(b) || [...b.children].some(wide)); });
         return over.length > 0 && over.every((t) => t.classList.contains('clipped'));
       }, null, { timeout: 3000 });
     } finally { await page.close(); }
@@ -183,8 +185,9 @@ if (s) {
           .map((r) => Math.round(r.getBoundingClientRect().height)));
         assert.ok(h.length >= 2, 'two rows to compare');
         assert.equal(new Set(h).size, 1, `every row is the same height (${h.join(', ')})`);
-        const cap = density === 'compact' ? 34 : 48;
-        assert.ok(h[0] <= cap, `a ${density} row stays at ${cap}px or under (${h[0]})`);
+        // A declared height (Feature #239): exact, never a cap.
+        const want = density === 'compact' ? 32 : 44;
+        assert.equal(h[0], want, `a ${density} row is ${want}px (${h[0]})`);
       } finally { await page.close(); }
     });
   }
@@ -213,7 +216,7 @@ if (s) {
     const page = await grid();
     try {
       const lines = await page.evaluate(async () => {
-        const td = document.querySelector('.wv-grid tbody td:has(> .doc-preview)');
+        const td = document.querySelector('.wv-grid tbody td:has(> .wv-cb > .doc-preview)');
         if (!td) return null;
         const visible = (n) => [...n.querySelectorAll('.doc-preview-line')]
           .filter((l) => getComputedStyle(l).display !== 'none').length;
@@ -236,7 +239,7 @@ if (s) {
     const page = await grid();
     try {
       const look = await page.evaluate(() => {
-        const td = document.querySelector('.wv-grid tbody td:has(> .doc-preview)');
+        const td = document.querySelector('.wv-grid tbody td:has(> .wv-cb > .doc-preview)');
         const name = document.querySelector('.wv-grid tbody td.name-cell');
         return {
           computed: td.classList.contains('cell-computed'),

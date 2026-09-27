@@ -2491,6 +2491,9 @@ function showCellPop(td, wrap) {
   const src = td.querySelectorAll('*');
   const clones = pop.querySelectorAll('*');
   for (let i = 0; i < clones.length && i < src.length; i++) copyCellType(src[i], clones[i]);
+  // The pop is where the chips the fit hid are read (Feature #239).
+  for (const n of pop.querySelectorAll('.wv-cb > .ms-box > [hidden]')) n.hidden = false;
+  for (const n of pop.querySelectorAll('.wv-cb > .ms-box > .k-more')) n.remove();
   /* An <input> is a box the CELL sized: it cannot wrap and it cannot grow, so
      a copy of one hides exactly what the cell hid — the expansion opened and
      showed no more of the name than the row already had (Issue #157). The
@@ -2581,7 +2584,54 @@ function readWeaveCells(html) {
   } catch { return null; } // not our block: the TSV underneath takes over
 }
 
+/* A chip shows whole or not at all (Feature #239, Kyle 2026-09-27). In a
+   multi-value cell the chips that fit inside the cell's clip box stay, the
+   rest are hidden from the end and a +N counts them; the cell reads as
+   clipped, so its pop shows every one. At Spacious the box wraps to two
+   rows of chips. One chip that cannot fit even alone shrinks to the box
+   rather than cross it. */
+function fitChips(grid) {
+  for (const box of grid.querySelectorAll('tbody td > .wv-cb > .ms-box')) {
+    const cb = box.parentElement;
+    // A relation chip rides in its .mention-wrap.
+    const chips = [...box.children].filter((n) => n.matches('.k:not(.k-more):not(.k-add), .mention-wrap'));
+    let more = box.querySelector(':scope > .k-more');
+    box.classList.remove('wv-fit-one');
+    for (const c of chips) c.hidden = false;
+    if (more) more.hidden = true;
+    if (chips.length < 2) continue;
+    const c = cb.getBoundingClientRect();
+    // Centred in its box, a second row of chips spills above as well as below.
+    const out = (n) => { const r = n.getBoundingClientRect(); return r.right > c.right + 0.5 || r.bottom > c.bottom + 0.5 || r.top < c.top - 0.5; };
+    let shown = chips.length;
+    while (shown > 1 && (out(chips[shown - 1]) || (more && !more.hidden && out(more)))) {
+      chips[--shown].hidden = true;
+      if (!more) { more = el('span', { class: 'k k-more' }); chips.at(-1).after(more); }
+      more.hidden = false;
+      more.textContent = `+${chips.length - shown}`;
+      more.title = `${chips.length - shown} more — open the cell to see them`;
+    }
+    if (out(chips[0]) || (more && !more.hidden && out(more))) box.classList.add('wv-fit-one');
+  }
+}
+const overflowsY = (n) => n.scrollHeight > n.clientHeight + 1;
+/* In development one painted row per paint is held to its token (Feature
+   #239): a renderer that grows a row names its field type in the console
+   instead of quietly moving every row under the window. */
+const WEAVE_DEV = ['localhost', '127.0.0.1'].includes(location.hostname);
+function checkRowPitch(grid) {
+  const tr = grid.querySelector('tbody tr.entity-row');
+  const want = parseFloat(getComputedStyle(grid).getPropertyValue('--wv-row-h'));
+  if (!tr || !want) return;
+  const got = tr.getBoundingClientRect().height;
+  if (Math.abs(got - want) < 0.5) return;
+  const tallest = [...tr.children].map((td) => ({ type: td.dataset.ftype ?? td.className, h: td.firstElementChild?.getBoundingClientRect().height ?? 0, boxed: !!td.querySelector(':scope > .wv-cb') }))
+    .sort((a, b) => (a.boxed - b.boxed) || (b.h - a.h))[0];
+  console.warn(`weave: a ${grid.dataset.density} row painted ${got}px, not its ${want}px token; tallest cell: ${tallest?.type} (${tallest?.h}px${tallest?.boxed ? '' : ', no clip box'})`);
+}
+
 function markClippedCells(grid) {
+  fitChips(grid);
   // A text cell's value is cut off INSIDE its control: the <input> is
   // `width: 100%`, so it never outgrows the cell and the cell never reports
   // overflow. Every Name on Kyle's Issue grid ran past its column and not one
@@ -2597,26 +2647,53 @@ function markClippedCells(grid) {
     // cell, hidden, and only the pop can show them. Width alone would call
     // that cell unclipped and the rest of the description would never be
     // reachable, so having more than one line counts as clipped too.
-    const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > 1;
+    // Spacious shows two (Feature #239).
+    const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > (grid.dataset.density === 'spacious' ? 2 : 1);
     // A graphic (Feature #230) is drawn to fit its cell and has nothing
     // hidden: the pop would only show the same bar again.
     if (td.querySelector('.cg-wrap')) { td.classList.remove('clipped'); continue; }
-    td.classList.toggle('clipped', overflowsX(td) || cutOff.has(td) || hasHiddenLines);
+    /* The clip box holds the value to the row (Feature #239), so what it
+       cuts is cut in either direction: a value past its width or past its
+       height, a child ellipsised inside it, or whole chips the fit hid. */
+    const cb = td.matches('[data-field], .sys-cell') ? td.querySelector(':scope > .wv-cb') : null;
+    const boxCut = !!cb && (overflowsX(cb) || overflowsY(cb)
+      || [...cb.children].some((n) => overflowsX(n) || overflowsY(n))
+      || !!cb.querySelector('.ms-box > .k-more:not([hidden])'));
+    td.classList.toggle('clipped', overflowsX(td) || boxCut || cutOff.has(td) || hasHiddenLines);
   }
+  if (WEAVE_DEV && grid.dataset.density) checkRowPitch(grid);
 }
 
-/* ---------- Ledger: density ----------
-   Comfortable or Compact, per table and per person — a way of reading the
-   table rather than a property of it, so it lives beside the doc-fold state
-   in localStorage rather than in the table's schema. */
-function gridDensity(dbId, next) {
-  const key = `weave-grid-density:${dbId}`;
-  if (next === undefined) {
-    try { return localStorage.getItem(key) === 'compact' ? 'compact' : 'comfortable'; }
-    catch { return 'comfortable'; } // storage blocked: the default density
+/* ---------- Ledger: density (Feature #239) ----------
+   Compact, Comfortable or Spacious: the row height a grid is drawn at, 32,
+   44 or 72px, declared by the --wv-row-h token and never measured. It is a
+   property of the view (Kyle, 2026-09-27), beside filter, sort and fields,
+   and a pick autosaves into it the way those do. A grid with no view (a
+   registry table) keeps the old per-browser key; a view that has no
+   density yet reads that key once, saves it, and the key goes. */
+const DENSITY_LABELS = { compact: 'Compact', comfortable: 'Comfortable', spacious: 'Spacious' };
+const densityKey = (dbId) => `weave-grid-density:${dbId}`;
+const hasView = (db) => !!db.view && !db.view.blank;
+function gridDensity(db) {
+  if (hasView(db)) return db.view.density ?? 'comfortable';
+  try { const d = localStorage.getItem(densityKey(db.id)); return DENSITY_LABELS[d] ? d : 'comfortable'; }
+  catch { return 'comfortable'; } // storage blocked: the default density
+}
+function saveGridDensity(db, mode) {
+  if (!hasView(db)) {
+    try { localStorage.setItem(densityKey(db.id), mode); } catch { /* private mode */ }
+    return;
   }
-  try { localStorage.setItem(key, next); } catch { /* private mode */ }
-  return next;
+  // Painted now, saved behind: the view object is the one the schema holds.
+  if (mode === 'comfortable') delete db.view.density; else db.view.density = mode;
+  gridConfigWrite(db, null, { density: mode }).catch((err) => toast(err.message, true));
+}
+function adoptLegacyDensity(db) {
+  if (!hasView(db) || db.view.density) return;
+  let old = null;
+  try { old = localStorage.getItem(densityKey(db.id)); localStorage.removeItem(densityKey(db.id)); }
+  catch { return; } // storage blocked: nothing to hand over
+  if (DENSITY_LABELS[old] && old !== 'comfortable') saveGridDensity(db, old);
 }
 
 // Row click → 'ignore' (a control handled it), the picker cell, or null (open).
@@ -3022,8 +3099,8 @@ function toggleSwitch(f, val, patch) {
    axe counted 40 unnamed inputs on the Issue table, each read aloud as a
    bare "edit text". A grid control is named by column and row ("Points,
    Grid is slow"); a field row on the entity page passes its field name. */
-function labeledEditorFor(f, item, db, onSaved, { compact = false, label } = {}) {
-  const node = editorFor(f, item, db, onSaved, { compact });
+function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label } = {}) {
+  const node = editorFor(f, item, db, onSaved, { compact, fit });
   if (node instanceof Element) {
     const name = label ?? `${f.name}, ${item.name || `#${item.publicId}`}`;
     for (const n of [node, ...node.querySelectorAll('*')]) {
@@ -3071,7 +3148,7 @@ function fileDropZone(zone, take) {
   return zone;
 }
 
-function editorFor(f, item, db, onSaved, { compact = false } = {}) {
+function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
   /* The way back for the writers that are not a field PATCH — a state change,
@@ -3240,9 +3317,10 @@ function editorFor(f, item, db, onSaved, { compact = false } = {}) {
     const all = val == null ? [] : Array.isArray(val) ? val : [val];
     // In the grid a cell is nowrap and used to clip whatever did not fit. Show
     // the first few and hand the rest to a count that opens the cell popover,
-    // so the row says how much it is not showing.
+    // so the row says how much it is not showing. The table grid draws every
+    // chip and shows the ones that fit whole (`fit`, Feature #239).
     const CAP = 3;
-    const current = compact && all.length > CAP ? all.slice(0, CAP) : all;
+    const current = compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
     const hidden = all.length - current.length;
     for (const s of current) {
       /* The whole chip is the link — avatar, name, and the ↗ that promises
@@ -4298,7 +4376,7 @@ function tableViewButton(db) {
           patch.fields = [...blankView(table).fields, ...(table.systemFields || []).filter((n) => SYSTEM_COLS[n] && n !== 'Activity')];
           patch.widths = Object.fromEntries(Object.keys(current.view?.widths || {}).map((n) => [n, null]));
           patch.frozen = 0;
-          gridDensity(db.id, 'comfortable');
+          patch.density = 'comfortable';
         }
         await gridConfigWrite(current, null, patch);
         await showDatabase(db.id, current.view?.id);
@@ -4325,18 +4403,19 @@ function tableViewButton(db) {
   return btn;
 }
 function tableDensityButton(db) {
-  const mode = gridDensity(db.id);
-  const btn = tableControlButton('table-density-btn', mode === 'compact' ? 'Compact' : 'Comfortable', 'list', true);
-  btn.setAttribute('aria-label', `Row density: ${mode === 'compact' ? 'Compact' : 'Comfortable'}`);
+  const mode = gridDensity(db);
+  const btn = tableControlButton('table-density-btn', DENSITY_LABELS[mode], 'list', true);
+  btn.setAttribute('aria-label', `Row density: ${DENSITY_LABELS[mode]}`);
   btn.addEventListener('click', () => {
     let pop;
     const choices = segCtl([
-      { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
       { id: 'compact', label: 'Compact', title: 'Short rows, for scanning' },
-    ], gridDensity(db.id), (next) => {
+      { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
+      { id: 'spacious', label: 'Spacious', title: 'Two lines per row, for long values' },
+    ], gridDensity(db), (next) => {
       const wrap = document.querySelector('.wv-grid')?.closest('.table-wrap');
-      if (wrap?.wvSetDensity) wrap.wvSetDensity(next); else gridDensity(db.id, next);
-      const label = next === 'compact' ? 'Compact' : 'Comfortable';
+      if (wrap?.wvSetDensity) wrap.wvSetDensity(next); else saveGridDensity(db, next);
+      const label = DENSITY_LABELS[next];
       btn.querySelector('.table-control-label').textContent = label;
       btn.setAttribute('aria-label', `Row density: ${label}`);
       pop?.remove(); btn.focus({ preventScroll: true });
@@ -4843,11 +4922,10 @@ function visibleCols(db) {
    grid's create-and-name. Without one the grid has no foot button: the old
    button reached for state.inlineAdd, which on a space page was whatever
    table the reader had visited last (Issue #195). */
-// Measured row heights, per table and density, for a redraw's first paint.
-const GRID_ROW_H = new Map();
 // Each grid scopes its layout sheet to its own table (Feature #233).
 let GRID_SEQ = 0;
 function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
+  adoptLegacyDensity(db);
   // Reassigned when a column moves in place (Feature #233): rows built after
   // the move, and the next draw, read the order the reader now sees.
   let cols = visibleCols(db);
@@ -4857,7 +4935,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
      the table's system columns after its fields, fixed there. */
   const isSysCol = (c) => !colField(db, c) && !!SYSTEM_COLS[c];
   const sysTail = db.columns ? [] : (db.systemFields ?? []);
-  const sysCell = (n, item) => el('td', { class: 'cell-computed sys-cell', dataset: { sys: n } }, SYSTEM_COLS[n]?.(item) ?? '');
+  /* Every value sits in ONE clip box (Feature #239): a table cell treats its
+     height as a minimum, so the td alone can never hold a row to its
+     density; the box, sized to --wv-cell-h with overflow clipped, can. One
+     choke point for every field type, rather than a rule per renderer. */
+  const cellBox = (...kids) => el('div', { class: 'wv-cb' }, ...kids);
+  const sysValue = (n, item) => el('span', { class: 'wv-cb-text' }, SYSTEM_COLS[n]?.(item) ?? '');
+  const sysCell = (n, item) => el('td', { class: 'cell-computed sys-cell', dataset: { sys: n } }, cellBox(sysValue(n, item)));
   // Header bar = checkbox + id + one per field + the "+" field control.
   // Full-width rows span it, so it is derived once rather than restated per
   // call site.
@@ -5197,14 +5281,14 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     },
       // Left of the # link, so the link never disappears while a selection
       // is live and a chosen row stays openable (mockup, 2026-08-24).
-      el('td', { class: 'sel-cell' },
+      el('td', { class: 'sel-cell' }, cellBox(
         item.deleted ? null : el('label', { class: 'sel-hit' },
           el('input', {
             class: 'sel-box', type: 'checkbox',
             'aria-label': `Select #${item.publicId}`,
             onclick: (e) => onBox(e, item.id),
-          }))),
-      el('td', { class: 'pid-cell' },
+          })))),
+      el('td', { class: 'pid-cell' }, cellBox(
         el('a', {
           class: 'open-link',
           href: registryHref(db, item) ?? `#/entity/${item.id}`,
@@ -5216,7 +5300,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
             e.preventDefault();
             dockEntity(db, item.id);
           },
-        }, `#${item.publicId} ↗`)),
+        }, `#${item.publicId} ↗`))),
       ...cols.map((c) => {
         if (isSysCol(c)) return sysCell(c, item);
         const f = db.fields.find((x) => x.name === c);
@@ -5240,7 +5324,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
             + (c === cols[0] ? ' name-cell' : '') + kind,
           // The width is the column's, painted by the grid's layout sheet
           // (Feature #233), so a row built later wears it too.
-        }, labeledEditorFor(f, item, db, onSaved, { compact: true }));
+        }, cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
         /* A file cell takes a dropped file (Issue #85). The cell is the
            zone, not the chip, so the whole box lights; the chip it holds
            now (repaintRow swaps it) does the upload. */
@@ -5265,7 +5349,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   let table = null, tbody = null, topSpacer = null, bottomSpacer = null, loadedNote = null;
   const live = new Map();     // index → the <tr> in the tbody right now
   const built = new Map();    // entity id → its <tr>, for the life of this draw
-  const win = { start: 0, end: 0, lastTop: 0, dir: 1, rowH: 0, rowHAt: '' };
+  const win = { start: 0, end: 0, lastTop: 0, dir: 1 };
 
   /* ---------- column layout: resize, reorder, freeze (Feature #233) ----------
      Kyle's rules (2026-09-25): a header label never truncates; one field's
@@ -5430,6 +5514,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       if (canFreezeHere()) {
         db.view.widths = { ...(db.view.widths ?? {}), [c]: w };
         refreeze(); paintLayout();
+        requestAnimationFrame(() => markClippedCells(table)); // the chips that fit, refit
         await gridConfigWrite(db, null, { widths: { [c]: w } });
       } else {
         // A registry grid has no views: the width stays the field's own.
@@ -5665,29 +5750,23 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     clearTimeout(nudgeTimers.get(c));
     nudgeTimers.set(c, setTimeout(() => { nudgeTimers.delete(c); commitWidth(c, w); }, 350));
   };
-  /* The row height: measured from a painted row, else what this table
-     measured at this density last time, else the density's default. The
-     memory matters on a redraw: its first paint has no real row yet (the
-     pages under the old window are the ones held, the top's may not be),
-     and a spacer sized on the default lands the restored scroll on the
-     wrong rows.
-
-     Measured ONCE per table, density and width, and then kept (Issue #324).
-     Weave's rows are not all the same height — the live Issue grid measures
-     46.5, 47 and 48 — and the spacer stands in for hundreds of them at one
-     height, so re-reading that height from whichever row happens to head
-     the window turned a pixel of row-to-row variance into hundreds of
-     pixels of page height. At the last row, where the scroll is already at
-     its maximum, the box clamped to the new height; the clamp resized the
-     wrap, which re-fired the observer, which re-measured, which moved the
-     height again: a three-position cycle thirty times a second, with no
-     hand on the wheel, and a console full of "ResizeObserver loop
-     completed with undelivered notifications". `rowHAt` names what was
-     measured, so a density flip or a resize measures again and a scroll
-     never does. */
-  const rowHKey = () => `${db.id}:${gridDensity(db.id)}`;
-  const rowHAt = () => `${rowHKey()}:${Math.round(wrap.clientWidth)}`;
-  const rowH = () => win.rowH || GRID_ROW_H.get(rowHKey()) || GW().ROW_H[gridDensity(db.id)];
+  /* The row height is DECLARED, never measured (Feature #239, Issue #440):
+     the --wv-row-h token of the grid's density, which every row is held to
+     by its cells' clip boxes. Issue #324 measured one painted row per table,
+     density and width and kept it, because rows were not all the same
+     height (46.5, 47 and 48 on the live Issue grid) and a spacer standing
+     in for hundreds of them at a re-measured height made the page cycle
+     between three heights at the last row. A declared height has no
+     variance to chase: every row is the token, so the spacer is exact and
+     nothing is measured on a scroll, a resize or a flip. */
+  const tokenH = {};
+  const rowH = () => {
+    const d = gridDensity(db);
+    if (!tokenH[d] && table?.isConnected && table.dataset.density === d) {
+      tokenH[d] = parseFloat(getComputedStyle(table).getPropertyValue('--wv-row-h')) || 0;
+    }
+    return tokenH[d] || GW().ROW_H[d];
+  };
   const spacer = () => el('tr', { class: 'wv-spacer', 'aria-hidden': 'true' },
     el('td', { colspan: String(colCount) }));
   /* A spacer with nothing to stand in for leaves the tbody, so the first
@@ -5764,14 +5843,6 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const rewindow = () => {
     if (!tbody?.isConnected) return;
     const g = geometry();
-    const first = tbody.querySelector('tr.entity-row');
-    // Measured from a painted row, once per table, density and width; the
-    // fallback until then (Issue #324).
-    if (first && rowHAt() !== win.rowHAt) {
-      win.rowHAt = rowHAt();
-      win.rowH = first.getBoundingClientRect().height || win.rowH;
-      if (win.rowH) GRID_ROW_H.set(rowHKey(), win.rowH);
-    }
     // A row of travel decides the direction, never a pixel (Issue #317).
     const travel = GW().travelFor({ scrollTop: g.scrollTop, lastTop: win.lastTop, direction: win.dir, rowH: rowH() });
     win.dir = travel.direction; win.lastTop = travel.lastTop;
@@ -5824,10 +5895,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       // painted it already, and the round trip must not take it back.
       if (td !== document.activeElement && td.contains(document.activeElement)) continue;
       if (was && JSON.stringify(was.fields?.[f.name] ?? null) === JSON.stringify(item.fields?.[f.name] ?? null)) continue;
-      td.replaceChildren(labeledEditorFor(f, item, db, onSaved, { compact: true }));
+      td.replaceChildren(cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
       for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     }
-    for (const td of tr.querySelectorAll(':scope > td.sys-cell')) td.textContent = SYSTEM_COLS[td.dataset.sys]?.(item) ?? '';
+    for (const td of tr.querySelectorAll(':scope > td.sys-cell')) td.replaceChildren(cellBox(sysValue(td.dataset.sys, item)));
     tr.classList.toggle('row-deleted', !!item.deleted);
   };
   /* `fresh` is the PATCH response: the edited row, plus `affected`. The rows
@@ -5873,11 +5944,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
      back there after it, inside the one gesture, so no frame is painted
      anywhere in between.
 
-     Read and landed off the DOM, not off `rowH`: weave's rows are not all
-     the same height (Issue #324), and an anchor estimated from one height
-     was twenty rows out on a 600-row grid. `scrollToRow` brings the row and
-     its window into the DOM at the estimate; the correction that follows is
-     under a screen and costs no extra paint.
+     Read and landed off the DOM as well as off `rowH`: rows used to vary in
+     height (Issue #324), and an anchor estimated from one height was twenty
+     rows out on a 600-row grid. Every row is its density's token now
+     (Feature #239), so `scrollToRow` lands the row at the estimate and the
+     correction that follows is a fraction of a row at most; it stays, as
+     the check that the arithmetic and the paint agree.
 
      The correction is the grid settling, not the reader travelling, so it
      re-anchors the direction of travel (Issue #317) before the re-window.
@@ -5897,11 +5969,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     return { i: win.start, into: 0 };
   };
   const setDensity = (mode) => {
-    if (!tbody?.isConnected) return gridDensity(db.id, mode);
+    if (!tbody?.isConnected) return saveGridDensity(db, mode);
     const { i: anchor, into } = topRow();
-    gridDensity(db.id, mode);
+    saveGridDensity(db, mode);
     table.dataset.density = mode;
-    rewindow();            // measures the row at its new height and repaints
+    rewindow();            // windows at the new density's token and repaints
     scrollToRow(anchor);   // and brings the reader's row back into the window
     for (let k = 0; k < 3; k++) {
       const g = geometry(), tr = live.get(anchor);
@@ -5963,7 +6035,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       });
     }
     live.clear(); built.clear();
-    win.start = 0; win.end = 0; win.lastTop = 0; win.dir = 1; win.rowHAt = '';
+    win.start = 0; win.end = 0; win.lastTop = 0; win.dir = 1;
     tbody = el('tbody');
     topSpacer = spacer(); bottomSpacer = spacer();
     // Creating an entity is the last row of the grid, not a detached bar:
@@ -6023,7 +6095,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
     table = el('table', {
       class: 'table table-sm table-vcenter card-table table-hover wv-grid',
-      dataset: { density: gridDensity(db.id) },
+      dataset: { density: gridDensity(db) },
     },
       el('thead', {}, el('tr', {},
         // Select-all, with a dash for a partial selection. Same hit target as

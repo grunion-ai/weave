@@ -227,7 +227,9 @@ if (s) {
       assert.match(await toastText(page), /Pasted 1 cell/);
       assert.deepEqual(names(1, 'Peers'), ['Ann', 'Cy'], 'linked by id — the block carried them');
       await page.waitForFunction((q) => /Ann/.test(document.querySelector(q)?.innerText ?? ''), sel(1, 'Peers'));
-      assert.match(await page.locator(sel(1, 'Peers')).innerText(), /Ann[\s\S]*Cy/, 'the chips are on the page');
+      // Every chip is in the cell; the ones that do not fit whole are hidden
+      // behind its +N (Feature #239), so the text, not the paint, holds both.
+      assert.match(await page.locator(sel(1, 'Peers')).textContent(), /Ann[\s\S]*Cy/, 'the chips are on the page');
       await page.locator('.wv-toast-action').first().click();
       await page.waitForFunction(() => !document.querySelector('.wv-toast-action'));
       await page.waitForTimeout(200);

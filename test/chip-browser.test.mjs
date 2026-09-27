@@ -109,7 +109,7 @@ if (s) {
   });
 
   for (const colorScheme of ['light', 'dark']) {
-    test(`every chip surface draws at the shared size — label >= 13px, box >= 24px — in ${colorScheme}`, async () => {
+    test(`every chip surface draws at the shared size — label >= 13px, box >= 24px, 20px in a Comfortable grid — in ${colorScheme}`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
       await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-grid td .k-state');
@@ -127,7 +127,9 @@ if (s) {
       for (const [what, sel] of Object.entries(surfaces)) {
         const m = await measure(page, sel);
         assert.equal(m.fontSize, tok.font, `${what} reads the token, not its own number`);
-        assert.ok(m.height >= 24, `${what} is a comfortable hit target: ${m.height}px, want >= 24`);
+        // In the grid a chip is 20px at Comfortable and the cell is the hit
+        // target (Feature #239, Kyle 2026-09-27).
+        assert.ok(m.height >= 20 && m.height <= 22, `${what} is a Comfortable grid chip: ${m.height}px, want 20 to 22`);
         assert.equal(m.radius, '4px', `${what} keeps the 4px corner`);
       }
       assert.equal((await measure(page, '.wv-grid td .k-rel')).background, 'rgba(0, 0, 0, 0)', 'still no fill behind a pointer chip');

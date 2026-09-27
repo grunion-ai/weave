@@ -768,6 +768,9 @@ const MIN_COLUMN_WIDTH = 60;
    checkbox default (56) is under the legacy field floor above. */
 const VIEW_MIN_WIDTH = 40;
 const VIEW_MAX_WIDTH = 4000;
+/* A view's row density (Feature #239): the row height its grid is drawn at,
+   32, 44 or 72px. Comfortable is the default and is never stored. */
+const VIEW_DENSITIES = ['compact', 'comfortable', 'spacious'];
 const formatWidths = (widths) => Object.entries(widths ?? {}).map(([n, px]) => `${n} ${px}`).join(', ');
 function parseWidths(text) {
   const out = {};
@@ -1965,7 +1968,9 @@ export class Weave {
      (rename), `from` (the view a new one copies — every field, no filter,
      no sort when omitted), `delete: true` (never the last view: a table
      keeps one), `widths` ({field: px}, merged; null clears one) and
-     `frozen` (how many leading fields stay frozen beside #; Feature #233).
+     `frozen` (how many leading fields stay frozen beside #; Feature #233)
+     and `density` (compact, comfortable or spacious: the row height the
+     grid draws this view at; Feature #239).
      Blank, the raw table, left the strip on 2026-09-25; it is
      still readable as 'Issue/blank' so old links and agents keep working,
      never written, never stored. */
@@ -2034,6 +2039,8 @@ export class Weave {
     for (const [id, px] of Object.entries(v.widths ?? {})) { const n = viewEntryName(db, id); if (n) widths[n] = px; }
     if (Object.keys(widths).length) out.widths = widths;
     if (v.frozen) out.frozen = v.frozen;
+    // Feature #239: Comfortable is the default and reads as absent.
+    if (v.density) out.density = v.density;
     return out;
   }
 
@@ -2052,7 +2059,7 @@ export class Weave {
      at the end, so a refused write leaves the view (or its absence) as it
      was. */
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete', 'widths', 'frozen'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -2150,6 +2157,11 @@ export class Weave {
       if (!Number.isInteger(patch.frozen) || patch.frozen < 0) throw new WeaveError('frozen is a whole number: how many of the leading fields stay frozen beside # (0 — only #)', 'invalid');
       if (patch.frozen > next.fields.length) throw new WeaveError(`frozen is at most the ${next.fields.length} fields this view shows`, 'invalid');
       next.frozen = patch.frozen;
+    }
+    if (patch.density != null) {
+      const d = typeof patch.density === 'string' ? patch.density.trim().toLowerCase() : '';
+      if (!VIEW_DENSITIES.includes(d)) throw new WeaveError(`density is compact, comfortable or spacious — got ${JSON.stringify(patch.density)}`, 'invalid');
+      if (d === 'comfortable') delete next.density; else next.density = d;
     }
     if ((next.frozen ?? 0) > next.fields.length) next.frozen = next.fields.length;
     if (!next.frozen) delete next.frozen;
@@ -2614,6 +2626,7 @@ export class Weave {
       if (vDoc.sort) out.sort = vDoc.sort.filter((s) => has(s.field));
       if (vDoc.widths) out.widths = Object.fromEntries(Object.entries(vDoc.widths).filter(([k]) => has(k)));
       if (vDoc.frozen) out.frozen = vDoc.frozen;
+      if (vDoc.density) out.density = vDoc.density;
       for (const k of ['filters', 'sort', 'widths']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
       return out;
     };
@@ -2642,6 +2655,7 @@ export class Weave {
         patch.widths = { ...Object.fromEntries(Object.keys(have?.widths ?? {}).map((n) => [n, null])), ...(vDoc.widths ?? {}) };
       }
       if ((vDoc.frozen ?? 0) !== (have?.frozen ?? 0)) patch.frozen = vDoc.frozen ?? 0;
+      if ((vDoc.density ?? 'comfortable') !== (have?.density ?? 'comfortable')) patch.density = vDoc.density ?? 'comfortable';
       if (!Object.keys(patch).length) continue;
       act(have ? 'update-view' : 'create-view', `${q}/${vDoc.name}`, () => this.tableView(`${db.id}/${vDoc.name}`, patch));
     }
@@ -3500,7 +3514,7 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
-    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text']]) {
+    for (const [n, type] of [['Fields', 'text'], ['Filter', 'text'], ['Sort', 'text'], ['Default', 'checkbox'], ['Position', 'number'], ['Frozen', 'number'], ['Widths', 'text'], ['Density', 'text']]) {
       if (!this.#sysField(viewsT, n)) this.addField(viewsT.id, { name: n, type, ...(type === 'number' ? { config: { decimals: 0 } } : {}) }).system = true;
     }
     /* Workflows (Kyle, 2026-08-24): a system table whose rows are DATA —
@@ -3741,6 +3755,8 @@ export class Weave {
         // Feature #233: the frozen count and the widths, as the verb reads them.
         Frozen: v.frozen ?? 0,
         Widths: formatWidths(this.#viewOut(db, v).widths),
+        // Feature #239: blank is the default, Comfortable.
+        Density: v.density ?? '',
       };
       let row = this.#sysRow('views', v.id);
       if (!row) {
@@ -3756,7 +3772,7 @@ export class Weave {
       }
       const patch = {};
       if (reg.entityName(row) !== v.name) patch.Name = v.name;
-      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position', 'Frozen', 'Widths']) {
+      for (const k of ['Fields', 'Filter', 'Sort', 'Default', 'Position', 'Frozen', 'Widths', 'Density']) {
         const f = this.#sysField(t, k);
         if (!f) continue;
         if ((row.values[f.id] ?? (k === 'Default' ? false : k === 'Frozen' ? 0 : '')) !== want[k]) patch[k] = want[k];
@@ -4047,6 +4063,7 @@ export class Weave {
       const n = take('Frozen');
       vp.frozen = n == null || n === '' ? 0 : Number(n);
     }
+    if ('Density' in values) vp.density = String(take('Density') ?? '').trim() || 'comfortable';
     // The Widths text is the whole set: a name it no longer lists is unsized.
     if ('Widths' in values) {
       vp.widths = { ...Object.fromEntries(Object.keys(cur?.widths ?? {}).map((n) => [n, null])), ...parseWidths(take('Widths')) };
