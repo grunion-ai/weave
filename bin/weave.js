@@ -770,6 +770,8 @@ async function main() {
         limit: flags.limit ? Number(flags.limit) : null,
         offset: flags.offset ? Number(flags.offset) : 0,
         search: flags.search ? String(flags.search) : '',
+        // Issue #448: N beside the filtered total, as `all`.
+        countAll: Boolean(flags['count-all']),
       });
       return out(result);
     }

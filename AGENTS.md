@@ -184,7 +184,8 @@ weave_table_view {view: "Issue/Open bugs", move: {field: "Status", before: "Name
   `show`, `hide`, `move`, freeze and take `widths` like fields (Issue #418).
   `weave_update_table`'s `systemFields` still works and writes the default
   view; `Activity` stays a table-level switch.
-- `filters` (`{WorkflowOrToggleField: [states]}`) and `sort`
+- `filters` (`{Field: [names]}`: a workflow's states, a toggle's labels, or a
+  single-select's or multi-select's options; Issue #319) and `sort`
   (`[{field, dir}]`) are `weave_update_table`'s shapes and validators.
 - `default: true` moves a view first (the default is the first view); `position`
   sets its place in the list; `name` renames; `delete: true` removes it.

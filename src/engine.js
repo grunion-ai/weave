@@ -2241,17 +2241,18 @@ export class Weave {
 
   #checkFilters(db, filters) {
     if (typeof filters !== 'object' || Array.isArray(filters)) {
-      throw new WeaveError('filters is an object of { workflowFieldName: [stateNames] }', 'invalid');
+      throw new WeaveError('filters is an object of { fieldName: [stateOrOptionNames] }', 'invalid');
     }
     const out = {};
     for (const [fname, states] of Object.entries(filters)) {
       const f = this.findField(db, fname);
-      // A toggle's two labels are its states (Feature #202).
-      if (!f || !(f.type === 'workflow' || f.type === 'toggle')) throw new WeaveError(`'${fname}' is not a workflow or toggle field of ${db.name}`, 'invalid');
-      if (!Array.isArray(states)) throw new WeaveError(`The filter on '${fname}' is a list of state names`, 'invalid');
-      const names = f.type === 'toggle' ? [f.config.on, f.config.off] : f.config.states.map((st) => st.name);
+      // A toggle's two labels are its states (Feature #202); a select's and a
+      // multi-select's options filter the same way (Issue #319).
+      if (!f || !['workflow', 'toggle', 'select', 'multiselect'].includes(f.type)) throw new WeaveError(`'${fname}' is not a workflow, toggle, single-select or multi-select field of ${db.name}`, 'invalid');
+      if (!Array.isArray(states)) throw new WeaveError(`The filter on '${fname}' is a list of ${f.type.endsWith('select') ? 'option' : 'state'} names`, 'invalid');
+      const names = f.type === 'toggle' ? [f.config.on, f.config.off] : f.type.endsWith('select') ? (f.config.options ?? []).map((o) => o.name) : f.config.states.map((st) => st.name);
       for (const s of states) {
-        if (!names.includes(s)) throw new WeaveError(`'${s}' is not a state of ${db.name}.${f.name}`, 'invalid');
+        if (!names.includes(s)) throw new WeaveError(`'${s}' is not ${f.type.endsWith('select') ? 'an option' : 'a state'} of ${db.name}.${f.name}`, 'invalid');
       }
       if (states.length) out[f.name] = [...states];
     }
@@ -6057,7 +6058,7 @@ export class Weave {
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
     try { return this.#queryIn(dbRef, opts); } finally { this.viewerZone = prev; }
   }
-  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, search = '' } = {}) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = false, trashCount = false, countAll = false, search = '' } = {}) {
     const db = this.getTable(dbRef);
     /* What the reader draws, and no more (Issue #272). `select` is the flat
        projection an agent asks a narrow question with; `fields` keeps the
@@ -6079,6 +6080,10 @@ export class Weave {
     }
     const chips = relations === 'chip' && !select ? Object.create(null) : null;
     let rows = this.listEntities(db.id, { includeDeleted });
+    /* `countAll: true` answers N beside the filtered total: the table's
+       undeleted rows before any where or search, so the Filters popover
+       reads "X of N" off the read the grid makes anyway (Issue #448). */
+    const all = countAll ? (includeDeleted ? this.listEntities(db.id).length : rows.length) : null;
     /* `search` is the ⌘K matcher scoped to this table (Feature #228): it
        narrows whatever the where-clause and the sort make of the table, and
        `total` counts the matches, so a paged grid pages through them. */
@@ -6119,7 +6124,7 @@ export class Weave {
       for (const path of select) out[path] = this.#pathValue(e, db, path);
       return out;
     });
-    return { total, items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}) };
+    return { total, items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}), ...(countAll ? { all } : {}) };
   }
 
   #matchNode(e, db, node) {

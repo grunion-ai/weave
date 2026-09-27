@@ -1925,7 +1925,7 @@ The controls sit beside the breadcrumb, in this order: **Search → View → Den
 | **Current view name ▾** | Selects and manages saved views. Changes save automatically. |
 | **Compact ▾**, **Comfortable ▾** or **Spacious ▾** | Sets the row height: 32, 44 or 72 pixels, with two lines of text at Spacious. Only the height changes; text size and column widths stay the same. The row under your eye stays put, and the choice saves into the current view like its filters and sorting, so each view keeps its own. A cell shows the chips that fit whole and a +N for the rest; hover it to see them all. |
 | **Fields** | Shows, hides and reorders columns; opens the field tray to add a field. |
-| **Filters** | Narrows rows by workflow or toggle states. The badge counts fields with active filters. |
+| **Filters** | Narrows rows by workflow states, toggle labels and single-select or multi-select options. The badge counts fields with active filters. |
 
 Search is temporary: it is not saved into a view or shared with other people, and leaving the table clears it.
 
@@ -1954,9 +1954,9 @@ These changes save into the current view. Hiding a column does not delete its da
 
 ## Filters
 
-Open **Filters** and choose state chips under a workflow or toggle field. Selected chips apply automatically and save into the current view; the popover stays open as results update. Select a chip again to remove it. Selecting several states in one field includes any of those states; filters on different fields must all match. A field with no selected states adds no restriction.
+Open **Filters** and tick options under a workflow, toggle, single-select or multi-select field. Each tick applies at once and saves into the current view; the popover stays open as results update. Untick an option to remove it. Several options in one field include any of them, and filters on different fields must all match. A multi-select row matches when it has any ticked option. A field with nothing ticked adds no restriction. The footer counts what is left as **X of N**, in the table's own word for its rows (\`7 of 413 bugs\`): X after the filters and the search, N every row that is not deleted.
 
-**Clear all** removes all filters from the view while keeping search, sorting and column layout. If the table has no workflow or toggle fields, the popover offers **Add field**, opening the usual field tray.
+**Clear all** removes all filters from the view while keeping search, sorting and column layout. If the table has no workflow, toggle or select fields, the popover offers **Add field**, opening the usual field tray.
 
 ## For agents
 

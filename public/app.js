@@ -3930,6 +3930,9 @@ function filterSeed(db) {
     const f = db.fields.find((x) => x.name === name);
     if (!f || !states?.length) continue;
     if (f.type === 'toggle') { if (!states.includes(f.off)) values[name] = true; continue; }
+    // A select takes the filter's first option; a multi-select holds it (Issue #319).
+    if (f.type === 'select') { values[name] = states[0]; continue; }
+    if (f.type === 'multiselect') { values[name] = [states[0]]; continue; }
     const def = f.states?.find((s) => s.default)?.name;
     if (!states.includes(def)) values[name] = states[0];
   }
@@ -3950,11 +3953,35 @@ async function setTableFilters(db, filters) {
   return gridConfigWrite(db, { filters });
 }
 /* A toggle's two labels are its states (Feature #202): the strip offers
-   them like a workflow's, and the where-clause carries the booleans. */
-const isFilterField = (f) => f.type === 'workflow' || f.type === 'toggle';
+   them like a workflow's, and the where-clause carries the booleans. A
+   single-select's and a multi-select's options are picked the same way
+   (Issue #319): the where-clause is `in` over their names, which a
+   multi-select row meets with any one of its options. */
+const FILTER_KINDS = {
+  workflow: { label: 'Workflow', icon: 'refresh-cw' },
+  toggle: { label: 'Toggle', icon: 'square-check' },
+  select: { label: 'Single select', icon: 'list' },
+  multiselect: { label: 'Multi select', icon: 'list-checks' },
+};
+const isFilterField = (f) => Object.hasOwn(FILTER_KINDS, f.type);
 const filterStates = (f) => (f.type === 'toggle'
   ? [{ name: f.on, category: 'done', on: true }, { name: f.off, category: 'not-started', on: false }]
-  : f.states);
+  : f.type === 'select' || f.type === 'multiselect'
+    ? (f.optionsFull ?? (f.options ?? []).map((name) => ({ name }))).map((o) => ({ name: o.name, hue: o.hue || 'slate' }))
+    : f.states);
+/* The Filters popover's footer, "X of N <rows>" (Issue #448): X is what the
+   filters and the search leave, N every undeleted row, both read off the
+   grid's own query (`countAll`). Set in place, never redrawn. */
+const filterCounts = new Map(); // table id → { x, n }
+function setFilterTotal(db, x, n) {
+  if (x != null && n != null) filterCounts.set(db.id, { x, n });
+  const c = filterCounts.get(db.id);
+  const out = document.querySelector('.table-filter-popover .filter-total');
+  if (!out || !c || out.closest('.chip-pop')?.tableId !== db.id) return;
+  const text = `${c.x} of ${c.n} ${db.term?.plural ?? 'rows'}`;
+  if (out.textContent !== text) out.textContent = text;
+  out.classList.remove('stale');
+}
 function filterWhere(db) {
   const active = tableFilters(db);
   const conds = Object.entries(active)
@@ -3986,7 +4013,7 @@ function filterStrip(db, onChange) {
      flushes still on the chain, so a click during a slow re-read keeps it. */
   let timer = 0, dirty = false, inflight = 0, release = null;
   const hold = () => { release ??= gridHold(); };
-  const note = el('span', { role: 'status', 'aria-live': 'polite' }, 'Applies immediately');
+  const note = el('span', { class: 'filter-total', role: 'status', 'aria-live': 'polite' });
   const clear = el('button', { class: 'btn btn-sm btn-ghost-primary tiny filter-clear', type: 'button', onclick: () => {
     if (db.view?.blank) return toast(BLANK_READ_ONLY, true);
     for (const k of Object.keys(active)) delete active[k];
@@ -4006,7 +4033,7 @@ function filterStrip(db, onChange) {
     if (!dirty) return filterWrites;
     dirty = false;
     const next = Object.fromEntries(Object.entries(active).map(([k, v]) => [k, [...v]]));
-    note.textContent = 'Applying…'; strip.setAttribute('aria-busy', 'true');
+    note.classList.add('stale'); strip.setAttribute('aria-busy', 'true');
     inflight += 1;
     filterWrites = filterWrites.catch(() => {}).then(async () => {
       await setTableFilters(db, next);
@@ -4018,16 +4045,18 @@ function filterStrip(db, onChange) {
     }).finally(() => {
       inflight -= 1;
       if (dirty || inflight) return;
-      note.textContent = 'Applies immediately'; strip.setAttribute('aria-busy', 'false');
+      strip.setAttribute('aria-busy', 'false');
+      setFilterTotal(db);
       release?.(); release = null;
     });
     return filterWrites;
   };
   strip.flushPending = flush;
+  const scroll = el('div', { class: 'filter-scroll' });
   for (const f of wfFields) {
     const row = el('div', { class: 'filter-group', role: 'group', 'aria-label': f.name },
-      el('div', { class: 'filter-label' }, lucideEl(f.type === 'toggle' ? 'square-check' : 'refresh-cw'), f.name,
-        el('span', { class: 'filter-type' }, f.type === 'toggle' ? 'Toggle' : 'Workflow')));
+      el('div', { class: 'filter-label' }, lucideEl(FILTER_KINDS[f.type].icon), f.name,
+        el('span', { class: 'filter-type' }, FILTER_KINDS[f.type].label)));
     const values = el('div', { class: 'filter-values' });
     for (const st of filterStates(f)) {
       // A filter option is weave's checkbox with its name (Issue #441).
@@ -4036,15 +4065,19 @@ function filterStrip(db, onChange) {
         const cur = new Set(active[f.name] || []);
         box.checked ? cur.add(st.name) : cur.delete(st.name);
         if (cur.size) active[f.name] = [...cur]; else delete active[f.name];
-        dirty = true; hold(); paint(); note.textContent = 'Applying…';
+        dirty = true; hold(); paint(); note.classList.add('stale');
         clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE);
       } });
-      const chip = el('label', { class: `filter-chip cat-${st.category}` }, box, st.name);
+      const chip = st.hue
+        ? el('label', { class: `filter-chip hue-${st.hue}` }, box, el('span', { class: 'opt-dot', 'aria-hidden': 'true' }), st.name)
+        : el('label', { class: `filter-chip cat-${st.category}` }, box, st.name);
       chips.push({ chip, field: f.name, name: st.name }); values.append(chip);
     }
-    row.append(values); strip.append(row);
+    row.append(values); scroll.append(row);
   }
-  strip.append(el('div', { class: 'filter-footer' }, note, clear)); paint();
+  strip.append(scroll, el('div', { class: 'filter-footer' }, note, clear)); paint();
+  // The count fills in once the popover is on the page.
+  queueMicrotask(() => setFilterTotal(db));
   return strip;
 }
 
@@ -4170,7 +4203,7 @@ async function readAndDrawTable(db, dbId, search) {
      eyeball. The count rides on the query (`trashCount`); the rows are asked
      for only when "Deleted rows" puts them in the grid. */
   const [result, trash] = await Promise.all([
-    api('POST', `/tables/${db.id}/query`, { ...query, trashCount: true }).then((res) => graftChips(db, res)),
+    api('POST', `/tables/${db.id}/query`, { ...query, trashCount: true, countAll: true }).then((res) => graftChips(db, res)),
     showDeleted
       ? api('GET', `/tables/${db.id}/trash`).catch(() => ({ total: 0, items: [] }))
       : null,
@@ -4178,6 +4211,7 @@ async function readAndDrawTable(db, dbId, search) {
   // The box has moved on while this read was out: a newer read is coming.
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
   tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
+  setFilterTotal(db, result.total, result.all);
   // The eyeball's "show deleted": trashed rows ride along, dimmed, in place.
   // The search never finds the trash, so a search leaves them out.
   const items = showDeleted && !search
@@ -4308,7 +4342,7 @@ function tableControlPopover(anchor, db, className, rows) {
   const position = () => {
     const r = trigger().getBoundingClientRect();
     // A long list grows to the room below its button before it scrolls (Issue #446).
-    if (className === 'table-fields-popover') pop.style.maxHeight = `${Math.max(220, innerHeight - r.bottom - 22)}px`;
+    if (className === 'table-fields-popover' || className === 'table-filter-popover') pop.style.maxHeight = `${Math.max(220, innerHeight - r.bottom - 22)}px`;
     pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))}px`;
     pop.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8))}px`;
   };
@@ -4327,7 +4361,9 @@ function tableControlPopover(anchor, db, className, rows) {
   pop.addEventListener('click', (e) => {
     // A hold button is left alone: Safari blurs a focused button on the next
     // press, and a blur ends a hold (the Views list's delete).
-    const target = e.target.closest('button:not(.hold-btn),a');
+    // A checkbox row focuses its box, so Space and Escape reach the popover.
+    const hit = e.target.closest('button:not(.hold-btn),a,label');
+    const target = hit?.tagName === 'LABEL' ? hit.control : hit;
     if (pop.isConnected && target && pop.contains(target) &&
         (document.activeElement === document.body || pop.contains(document.activeElement))) target.focus({ preventScroll: true });
   });
@@ -4456,7 +4492,7 @@ function tableFilterButton(ref) {
     let pop;
     const strip = filterStrip(db, () => keepScroll(() => showDatabase(db.id, db.view?.id)));
     const content = strip || el('div', { class: 'table-control-note' },
-      'Workflow and toggle fields provide filters. This table has neither.',
+      'Workflow, toggle and select fields provide filters. This table has none.',
       el('button', { class: 'chip-pop-row table-filter-add-field', type: 'button', onclick: () => { pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'Add field'));
     pop = tableControlPopover(btn, db, 'table-filter-popover', [tableControlHeader('Filters', () => pop?.remove()), content]);
     if (pop) pop.beforeClose = () => strip?.flushPending();
