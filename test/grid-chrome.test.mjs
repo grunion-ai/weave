@@ -157,7 +157,7 @@ if (s) {
   /* The marker is measured, never assumed — so it has to be measured AGAIN
      when the box changes. Narrowing the window puts cells over their columns
      that were not over them before, and every one of those has to pick up its
-     ⤢ or the expansion cannot be opened at all. Guards the expansion the two
+     clipped class or the expansion cannot be opened at all. Guards the expansion the two
      cases above are about: they only ever run on a cell that is marked. */
   test('a cell that starts overflowing gets its marker without a redraw', async () => {
     const page = await grid();

@@ -68,10 +68,9 @@ test('the overlay hangs off the scroll wrapper, which cannot clip it', () => {
   assert.match(APP, /cell-pop-layer/, 'one layer per grid, like the doc overlays');
 });
 
-test('a clipped cell says it is clipped before you hover it', () => {
-  const after = rulesFor('.wv-grid td.clipped::after');
-  assert.ok(after.content, 'a marker glyph — chips get no native ellipsis');
-  assert.equal(after.position, 'absolute', 'and it costs the value no width');
+test('a clipped cell draws no floating marker glyph', () => {
+  assert.deepEqual(rulesFor('.wv-grid td.clipped::after'), {},
+    'Kyle, 2026-09-27: the floating micro icon is not needed; hover still opens the whole value');
   assert.match(APP, /scrollWidth\s*>\s*[\w.]+\.clientWidth/, 'clipped is measured, never assumed');
 });
 
