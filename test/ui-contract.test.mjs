@@ -372,10 +372,12 @@ test('purging keeps the hold-to-confirm and is the only hard delete in the UI', 
 
 test('deleted rows are reached through the eyeball; the toolbar has no trash badge (superseded 2026-08-23)', () => {
   assert.doesNotMatch(fnBody('drawDatabase'), /#\/trash\//, 'no 🗑 control on the toolbar');
+  assert.doesNotMatch(fnBody('tableChrome'), /#\/trash\//, 'nor on the chrome built once per table (Issue #444)');
   // Issue #270: the count rides on the query; the list is fetched only when
   // the eyeball's "Deleted rows" asks for the rows themselves.
-  assert.match(fnBody('showDatabase'), /trashCount: true/, 'the count still feeds the eyeball');
-  assert.match(fnBody('showDatabase'), /showDeleted\s*\?\s*api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/,
+  // showDatabase reads through readAndDrawTable since Issue #433 put its hold around the read.
+  assert.match(fnBody('readAndDrawTable'), /trashCount: true/, 'the count still feeds the eyeball');
+  assert.match(fnBody('readAndDrawTable'), /showDeleted\s*\?\s*api\('GET', `\/tables\/\$\{db\.id\}\/trash`\)/,
     'the trash list is fetched only when deleted rows are shown');
   assert.match(fnBody('fieldVisibilityPopover'), /Deleted \$\{cur\.term\.plural\}/, 'the toggle speaks the table\'s row term');
 });
@@ -1719,7 +1721,8 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
     'every switch writes through one queue, reading the table only when its turn comes');
   assert.match(eye, /if \(patch\.view\) await gridConfigWrite\(db, null, patch\.view\);\s*else \{ await api\('PATCH', `\/tables\/\$\{db\.id\}`, patch\); await loadSchema\(\); \}/,
     "a field flip on a view writes the view (Feature #229), inside the same queue");
-  assert.match(eye, /turn\.then\(\(\) => \{\s*if \(eyeTails\.get\(db\.id\) !== turn\) return;\s*eyeTails\.delete\(db\.id\);\s*paint\(\);/,
+  // The grid's hold (Issue #433) is let go by the superseded flip at once and by the last one after its paint.
+  assert.match(eye, /turn\.then\(async \(\) => \{\s*if \(eyeTails\.get\(db\.id\) !== turn\) return release\(\);\s*eyeTails\.delete\(db\.id\);\s*await paint\(\);\s*release\(\);/,
     "the paint runs off the queue, once, after the last write of a burst on this table");
   assert.match(eye, /if \(pop\?\.eyeOf === db\.id\) pop\.relearnEye\(\)/,
     "a late paint teaches only an eye on this table, never a ⋮ menu opened since");
@@ -1784,7 +1787,8 @@ test('the view controls sit on the crumb line; Fields has a bundled eye icon and
   assert.match(vh, /class: 'crumb-actions wv-toolbar' \}, \.\.\.actions\.filter\(Boolean\)/, 'actions render beside the crumb');
   assert.doesNotMatch(vh, /titleInput, \.\.\.actions/, 'and no longer on the title row');
   assert.match(fnBody('fieldVisibilityPopover'), /class: 'switch' \+ \(on \? ' on' : ''\)/, 'rows are toggle switches');
-  assert.match(fnBody('drawDatabase'), /tableControlButton\('eye-btn', 'Fields', 'eye'\)/, 'the Fields label carries the bundled eye icon');
+  // The toolbar is built once per table in tableChrome (Issue #444).
+  assert.match(fnBody('tableChrome'), /tableControlButton\('eye-btn', 'Fields', 'eye'\)/, 'the Fields label carries the bundled eye icon');
   assert.match(fnBody('tableControlButton'), /lucideEl\(icon\)/, 'toolbar controls use the bundled icon renderer');
   assert.match(fnBody('tableFieldsPopover'), /role: 'switch', 'aria-checked': String\(shown\)/, 'table field visibility exposes switch state');
   assert.ok(rulesFor('.switch.on').background?.includes('--tblr-primary'));
@@ -1793,6 +1797,7 @@ test('the view controls sit on the crumb line; Fields has a bundled eye icon and
 test('system columns are toggled only from the eye — not from the table ⋮ menu (Kyle, 2026-08-23)', () => {
   const draw = fnBody('drawDatabase');
   assert.doesNotMatch(draw, /Object\.keys\(SYSTEM_COLS\)\.map/, 'no Created At / Modified At rows in the table menu');
+  assert.doesNotMatch(fnBody('tableChrome'), /Object\.keys\(SYSTEM_COLS\)\.map/, 'the menu lives in tableChrome since Issue #444');
   assert.match(fnBody('fieldVisibilityPopover'), /Object\.keys\(SYSTEM_COLS\)\.map/);
 });
 

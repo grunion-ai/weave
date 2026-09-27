@@ -1794,6 +1794,23 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 /* The rope's own motion is the loading signal; the wash fading in is not.
    Honour a reduced-motion request by dropping the fade, not the loader. */
 @media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }
+/* The grid's own wait (Issue #433): a table change that refetches dims the
+   grid body at once, and past the loader threshold the same rope sits over
+   the part of the grid in view. The page header stacks above it (z 6). */
+#main > .table-wrap[aria-busy="true"] { opacity: .5; transition: opacity .12s ease; }
+#main > .grid-loader[hidden] { display: none; }
+#main > .grid-loader {
+  position: absolute; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  animation: loader-in .18s ease both;
+}
+#main > .grid-loader .mark-light, #main > .grid-loader .mark-dark { width: 96px; height: 96px; }
+#main > .grid-loader svg { width: 100%; height: 100%; display: block; }
+#main > .grid-loader .mark-dark { display: none; }
+[data-bs-theme="dark"] #main > .grid-loader .mark-light { display: none; }
+[data-bs-theme="dark"] #main > .grid-loader .mark-dark { display: block; }
+@media (prefers-reduced-motion: reduce) { #main > .grid-loader, #main > .table-wrap[aria-busy="true"] { animation: none; transition: none; } }
 .fielddef-edit { display: inline-flex; align-items: center; gap: 4px; }
 /* The corner cluster's lower row (Issue #204): the workspace trash glyph,
    pinned bottom-right under the bug button. A tray reaches the bottom edge,

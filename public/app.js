@@ -1133,7 +1133,8 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
   }
   crumbKids.push(el('span', {
     class: 'permalink-copy', title: 'Copy permalink',
-    onclick: () => copyText(permalink, 'Permalink copied'),
+    // A function when the page outlives its view (the table page, Issue #444).
+    onclick: () => copyText(typeof permalink === 'function' ? permalink() : permalink, 'Permalink copied'),
   }, `${title} ⧉`));
   // The view's controls sit on the crumb line, right-aligned (Kyle,
   // 2026-08-23), leaving the title row to the title.
@@ -4009,12 +4010,16 @@ function filterStrip(db, onChange) {
   const active = Object.fromEntries(Object.entries(tableFilters(db)).map(([k, v]) => [k, [...v]]));
   const strip = el('div', { class: 'filter-strip' });
   const chips = [];
-  let timer = 0, dirty = false;
+  /* The grid dims from the click, not from the fetch (Issue #433), and stays
+     dim until the last flush of the burst has drawn: `inflight` counts the
+     flushes still on the chain, so a click during a slow re-read keeps it. */
+  let timer = 0, dirty = false, inflight = 0, release = null;
+  const hold = () => { release ??= gridHold(); };
   const note = el('span', { role: 'status', 'aria-live': 'polite' }, 'Applies immediately');
   const clear = el('button', { class: 'btn btn-sm btn-ghost-primary tiny filter-clear', type: 'button', onclick: () => {
     if (db.view?.blank) return toast(BLANK_READ_ONLY, true);
     for (const k of Object.keys(active)) delete active[k];
-    dirty = true; paint(); flush();
+    dirty = true; hold(); paint(); flush();
   } }, 'Clear all');
   const paint = () => {
     for (const { chip, field, name } of chips) {
@@ -4023,9 +4028,7 @@ function filterStrip(db, onChange) {
     }
     const count = Object.values(active).filter((v) => v.length).length;
     clear.disabled = !count;
-    const trigger = document.querySelector('.table-filter-btn');
-    trigger?.querySelector('.table-filter-count')?.remove();
-    if (count) trigger?.append(el('span', { class: 'table-filter-count' }, count));
+    setFilterCount(document.querySelector('#main .table-filter-btn'), count);
   };
   const flush = () => {
     clearTimeout(timer);
@@ -4033,6 +4036,7 @@ function filterStrip(db, onChange) {
     dirty = false;
     const next = Object.fromEntries(Object.entries(active).map(([k, v]) => [k, [...v]]));
     note.textContent = 'Applying…'; strip.setAttribute('aria-busy', 'true');
+    inflight += 1;
     filterWrites = filterWrites.catch(() => {}).then(async () => {
       await setTableFilters(db, next);
       if (state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id) await onChange();
@@ -4040,7 +4044,12 @@ function filterStrip(db, onChange) {
       toast(err.message, true);
       const view = allTables().find((t) => t.id === db.id)?.views?.find((v) => v.id === db.view?.id);
       if (!dirty) { for (const k of Object.keys(active)) delete active[k]; Object.assign(active, view?.filters || {}); paint(); }
-    }).finally(() => { if (!dirty) { note.textContent = 'Applies immediately'; strip.setAttribute('aria-busy', 'false'); } });
+    }).finally(() => {
+      inflight -= 1;
+      if (dirty || inflight) return;
+      note.textContent = 'Applies immediately'; strip.setAttribute('aria-busy', 'false');
+      release?.(); release = null;
+    });
     return filterWrites;
   };
   strip.flushPending = flush;
@@ -4057,7 +4066,7 @@ function filterStrip(db, onChange) {
           const cur = new Set(active[f.name] || []);
           cur.has(st.name) ? cur.delete(st.name) : cur.add(st.name);
           if (cur.size) active[f.name] = [...cur]; else delete active[f.name];
-          dirty = true; paint(); note.textContent = 'Applying…';
+          dirty = true; hold(); paint(); note.textContent = 'Applying…';
           clearTimeout(timer); timer = setTimeout(flush, FILTER_DEBOUNCE);
         },
       }, st.name);
@@ -4078,11 +4087,21 @@ function filterStrip(db, onChange) {
 const TABLE_SEARCH_DEBOUNCE = 150;               // the palette's pause
 let tableSearch = { dbId: null, text: '', open: false, focus: false, only: null };
 let tableSearchTimer = 0;
+/* The grid dims from the keystroke (Issue #433): the hold is taken when the
+   box changes and let go once no keystroke is waiting on its pause and the
+   read it started has drawn. A read overtaken by a newer one keeps it. */
+let tableSearchRelease = null;
+function stopTableSearchTimer() {
+  clearTimeout(tableSearchTimer); tableSearchTimer = 0;
+  tableSearchRelease?.(); tableSearchRelease = null;
+}
 const tableSearchText = (db) => (tableSearch.dbId === db.id ? tableSearch.text.trim() : '');
 function setTableSearch(db, text, { open = tableSearch.open, focus = false } = {}) {
-  clearTimeout(tableSearchTimer);
+  clearTimeout(tableSearchTimer); tableSearchTimer = 0;
   tableSearch = { ...tableSearch, dbId: db.id, text, open, focus };
-  return showDatabase(db.id, state.route.view);
+  return showDatabase(db.id, state.route.view).finally(() => {
+    if (!tableSearchTimer) { tableSearchRelease?.(); tableSearchRelease = null; }
+  });
 }
 function openTableSearch(root = document) {
   const box = root.querySelector('.table-search');
@@ -4106,6 +4125,7 @@ function tableSearchBox(db) {
   input.addEventListener('input', () => {
     tableSearch = { ...tableSearch, dbId: db.id, text: input.value, open: true };
     clearTimeout(tableSearchTimer);
+    tableSearchRelease ??= gridHold();
     tableSearchTimer = setTimeout(() => setTableSearch(db, input.value).catch((err) => toast(err.message, true)), TABLE_SEARCH_DEBOUNCE);
   });
   input.addEventListener('keydown', async (e) => {
@@ -4113,7 +4133,7 @@ function tableSearchBox(db) {
     if (e.key === 'Escape') {
       e.preventDefault(); e.stopPropagation();
       const had = tableSearchText(db) || input.value.trim();
-      if (!had) { clearTimeout(tableSearchTimer); tableSearch.open = false; box.querySelector('button').focus(); return; }
+      if (!had) { stopTableSearchTimer(); tableSearch.open = false; box.querySelector('button').focus(); return; }
       await setTableSearch(db, '', { open: false });
       document.querySelector('.table-search-btn')?.focus();
     } else if (e.key === 'Enter') {
@@ -4135,13 +4155,22 @@ async function showDatabase(dbId, view) {
   // names one (null for the bare table route, which opens the default).
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
   const db = viewed(table, pickTableView(table, view));
-  if (tableSearch.dbId !== dbId) { clearTimeout(tableSearchTimer); tableSearch = { dbId, text: '', open: false, focus: false, only: null }; }
+  if (tableSearch.dbId !== dbId) { stopTableSearchTimer(); tableSearch = { dbId, text: '', open: false, focus: false, only: null }; }
   const search = tableSearch.text.trim();
   // The board view is gone (Kyle, 2026-08-25, Issue #75) the way the list
   // view went before it: a stale 'board' names no table view and lands on
   // the default.
+  /* A redraw of the table already on screen (a search, a filter, a view, a
+     field flip) keeps its page (Issue #444): the sidebar marks the same row
+     as before and is left alone, and the grid on screen dims while its rows
+     are read (Issue #433). Opening a table is a route and draws it all. */
+  const again = tableChromeOn(dbId);
   state.route = { page: 'db', dbId, view: db.view.id };
-  renderNav();
+  if (!again) renderNav();
+  const release = again ? gridHold() : () => {};
+  try { await readAndDrawTable(db, dbId, search); } finally { release(); }
+}
+async function readAndDrawTable(db, dbId, search) {
   // public/ is served from disk while the server process is long-lived, so a
   // page can be newer than the routes behind it (git pull without a restart).
   // The trash badge is decoration — it must never keep the table from opening.
@@ -4357,18 +4386,28 @@ function tableControlHeader(title, close) {
   return el('div', { class: 'table-control-head' }, el('strong', {}, title),
     el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary', type: 'button', 'aria-label': `Close ${title.toLowerCase()}`, onclick: close }, lucideEl('x')));
 }
-function tableViewButton(db) {
-  const btn = tableControlButton('table-view-btn', db.view?.name || 'Default', 'table', true);
-  btn.setAttribute('aria-label', `View: ${db.view?.name || 'Default'}`);
+/* The toolbar is drawn once per table (Issue #444) and outlives every grid
+   redraw under it, so each control reads the view on screen through `ref`
+   at click time, and `label` repaints what it shows when the view moves. */
+function tableViewButton(ref) {
+  const btn = tableControlButton('table-view-btn', '', 'table', true);
+  btn.label = () => {
+    const name = ref.db.view?.name || 'Default';
+    btn.querySelector('.table-control-label').textContent = name;
+    btn.setAttribute('aria-label', `View: ${name}`);
+  };
+  btn.label();
   btn.addEventListener('click', () => {
+    const db = ref.db;
     let pop;
     const reset = async (raw, current) => {
       if (current.view?.blank) return toast(BLANK_READ_ONLY, true);
       pop?.remove();
+      const release = gridHold();
       try {
         await filterWrites;
         await eyeWrites;
-        clearTimeout(tableSearchTimer);
+        stopTableSearchTimer();
         tableSearch = { ...tableSearch, text: '', focus: false, only: null };
         const table = allTables().find((d) => d.id === db.id) || db;
         const patch = { filters: {}, sort: [] };
@@ -4381,7 +4420,7 @@ function tableViewButton(db) {
         await gridConfigWrite(current, null, patch);
         await showDatabase(db.id, current.view?.id);
         document.querySelector('.table-view-btn')?.focus({ preventScroll: true });
-      } catch (err) { toast(err.message, true); }
+      } catch (err) { toast(err.message, true); } finally { release(); }
     };
     const build = (current) => [
       tableControlHeader('Views', () => pop?.remove()), viewStrip(current),
@@ -4402,11 +4441,15 @@ function tableViewButton(db) {
   });
   return btn;
 }
-function tableDensityButton(db) {
-  const mode = gridDensity(db);
-  const btn = tableControlButton('table-density-btn', DENSITY_LABELS[mode], 'list', true);
-  btn.setAttribute('aria-label', `Row density: ${DENSITY_LABELS[mode]}`);
+function tableDensityButton(ref) {
+  const btn = tableControlButton('table-density-btn', '', 'list', true);
+  btn.label = (mode = gridDensity(ref.db)) => {
+    btn.querySelector('.table-control-label').textContent = DENSITY_LABELS[mode];
+    btn.setAttribute('aria-label', `Row density: ${DENSITY_LABELS[mode]}`);
+  };
+  btn.label();
   btn.addEventListener('click', () => {
+    const db = ref.db;
     let pop;
     const choices = segCtl([
       { id: 'compact', label: 'Compact', title: 'Short rows, for scanning' },
@@ -4415,9 +4458,7 @@ function tableDensityButton(db) {
     ], gridDensity(db), (next) => {
       const wrap = document.querySelector('.wv-grid')?.closest('.table-wrap');
       if (wrap?.wvSetDensity) wrap.wvSetDensity(next); else saveGridDensity(db, next);
-      const label = DENSITY_LABELS[next];
-      btn.querySelector('.table-control-label').textContent = label;
-      btn.setAttribute('aria-label', `Row density: ${label}`);
+      btn.label(next);
       pop?.remove(); btn.focus({ preventScroll: true });
     });
     for (const b of choices.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.classList.contains('on')));
@@ -4426,12 +4467,22 @@ function tableDensityButton(db) {
   });
   return btn;
 }
-function tableFilterButton(db) {
+/* The count on the Filters trigger, set in place: a toolbar node is never
+   swapped for a new one (Issue #444). */
+function setFilterCount(btn, count) {
+  if (!btn) return;
+  let badge = btn.querySelector('.table-filter-count');
+  if (!count) { badge?.remove(); return; }
+  if (!badge) btn.append(badge = el('span', { class: 'table-filter-count' }));
+  if (badge.textContent !== String(count)) badge.textContent = String(count);
+}
+function tableFilterButton(ref) {
   const btn = tableControlButton('table-filter-btn', 'Filters', 'list-filter');
   btn.setAttribute('aria-label', 'Filters');
-  const count = Object.values(tableFilters(db)).filter((v) => v?.length).length;
-  if (count) btn.append(el('span', { class: 'table-filter-count' }, count));
+  btn.label = () => setFilterCount(btn, Object.values(tableFilters(ref.db)).filter((v) => v?.length).length);
+  btn.label();
   btn.addEventListener('click', () => {
+    const db = ref.db;
     let pop;
     const strip = filterStrip(db, () => keepScroll(() => showDatabase(db.id, db.view?.id)));
     const content = strip || el('div', { class: 'table-control-note' },
@@ -4452,6 +4503,8 @@ function tableFieldsPopover(anchor, db, trashCount) {
   const here = () => state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id;
   const write = (make) => {
     if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
+    // The grid dims from the flip until the last flip of a burst has drawn (Issue #433).
+    const release = gridHold();
     const turn = eyeWrites.then(async () => {
       const patch = make(current());
       if (patch.table) { await api('PATCH', `/tables/${db.id}`, patch.table); await loadSchema(); }
@@ -4459,11 +4512,12 @@ function tableFieldsPopover(anchor, db, trashCount) {
     }).catch((err) => toast(err.message, true));
     eyeWrites = turn; eyeTails.set(db.id, turn);
     turn.then(async () => {
-      if (eyeTails.get(db.id) !== turn) return;
+      if (eyeTails.get(db.id) !== turn) return release();
       eyeTails.delete(db.id);
-      if (!here()) return;
+      if (!here()) return release();
       try { await keepScroll(() => showDatabase(db.id, db.view.id)); if (dock?.db.id === db.id) await drawDock(); }
       catch (err) { toast(err.message, true); }
+      release();
       if (pop?.isConnected) refresh(current());
     });
   };
@@ -4543,21 +4597,46 @@ function tableFieldsPopover(anchor, db, trashCount) {
   if (pop) { pop.eyeOf = db.id; pop.relearnEye = () => refresh(current()); }
 }
 
-function drawDatabase(db, items, trashCount = 0, pager = null) {
+/* ---------- the table page: chrome once, grid patched (Issue #444) ----------
+   The breadcrumb, title, description and toolbar are drawn when a table
+   opens and stay mounted while the reader works in it. Search, filter, view,
+   Reset view, field show/hide and order, and Add field all redraw the grid
+   body under them, in one task, so no frame paints a blank or half-built
+   page, the description is not re-rendered off /markdown, the open popover
+   keeps its anchor and the search box keeps its node, focus and caret.
+   Density never redraws at all (wvSetDensity). The chrome is rebuilt only
+   when the table's own face changes (name, icon, description, space, row
+   term) or the reader arrives from another page. */
+const tableChromeSig = (db) => JSON.stringify([db.name, db.icon, db.description, db.space, db.spaceId, db.term?.singular, db.term?.plural]);
+function tableChromeOn(dbId) {
   const main = $('#main');
-  // The search box is redrawn with the grid it narrows; the caret goes with it.
-  const typing = document.activeElement?.classList?.contains('table-search-input') ? document.activeElement : null;
-  const caret = typing ? [typing.selectionStart, typing.selectionEnd] : null;
-  main.replaceChildren();
-
-  main.append(viewHeader({
+  const chrome = main?.wvTable;
+  return !!chrome && chrome.dbId === dbId && chrome.header.parentElement === main ? chrome : null;
+}
+function tableChrome(db, trashCount) {
+  const ref = { db, trashCount };
+  const chrome = { dbId: db.id, sig: tableChromeSig(db), ref };
+  const viewBtn = tableViewButton(ref);
+  const densityBtn = tableDensityButton(ref);
+  const filterBtn = tableFilterButton(ref);
+  const search = tableSearchBox(db);
+  chrome.set = (next, count) => {
+    ref.db = next; ref.trashCount = count;
+    viewBtn.label(); densityBtn.label(); filterBtn.label();
+    // A search cleared from elsewhere (Reset view, a new row) empties the box.
+    const input = search.querySelector('.table-search-input');
+    const want = tableSearchText(next) ? tableSearch.text : '';
+    if (input.value.trim() !== want.trim()) input.value = want;
+  };
+  chrome.header = viewHeader({
     crumbs: [
       { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
       { label: db.space, href: `#/space/${db.spaceId}` },
     ],
-    permalink: `${location.origin}${WS_PREFIX}/${db.view ? viewHref(db, db.view) : `#/table/${db.id}`}`,
+    permalink: () => `${location.origin}${WS_PREFIX}/${ref.db.view ? viewHref(ref.db, ref.db.view) : `#/table/${ref.db.id}`}`,
     title: db.name,
     icon: db.icon,
+    // A new face redraws the chrome: the signature no longer matches.
     onSetIcon: async (icon) => {
       await api('PATCH', `/tables/${db.id}`, { icon: icon ?? '' });
       await loadSchema();
@@ -4566,30 +4645,33 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
     onRename: async (name) => {
       await api('PATCH', `/tables/${db.id}`, { name });
       await loadSchema();
-      drawDatabase(allTables().find((d) => d.id === db.id), items, trashCount, pager);
+      await showDatabase(db.id, state.route.view);
     },
     description: db.description,
     onSaveDescription: async (md) => {
       await api('PATCH', `/tables/${db.id}`, { description: md });
       await loadSchema();
+      // The box already shows what was saved; the next grid redraw keeps it.
+      const saved = allTables().find((d) => d.id === db.id);
+      if (saved) chrome.sig = tableChromeSig(saved);
     },
     actions: [
-      tableSearchBox(db),
-      tableViewButton(db),
-      tableDensityButton(db),
+      search,
+      viewBtn,
+      densityBtn,
       (() => {
         const eye = tableControlButton('eye-btn', 'Fields', 'eye');
         eye.setAttribute('aria-label', 'Show or hide fields');
-        eye.addEventListener('click', () => fieldVisibilityPopover(eye, db, trashCount));
+        eye.addEventListener('click', () => fieldVisibilityPopover(eye, ref.db, ref.trashCount));
         return eye;
       })(),
-      tableFilterButton(db),
+      filterBtn,
       // Export and delete are occasional and one of them is irreversible, so
       // they live in the overflow rather than the toolbar.
       dotsMenu([
         // Every column summarised on demand — nothing stored; the footer's
         // Σ row is where a figure is kept.
-        { label: 'Column stats…', run: () => columnStatsPanel(db) },
+        { label: 'Column stats…', run: () => columnStatsPanel(ref.db) },
         { label: 'Export CSV', href: `${WS_PREFIX}/api/tables/${db.id}/export.csv`, download: `${db.name}.csv` },
         'divider',
         // A share page is this table + these filters, named (Feature #17).
@@ -4600,7 +4682,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
           run: () => modal('New share page', [
             el('input', { name: 'name', placeholder: 'Page name', class: 'form-control full' }),
           ], async (fd) => {
-            const where = filterWhere(db);
+            const where = filterWhere(ref.db);
             await api('POST', '/views', { name: fd.get('name'), blocks: [{ table: db.id, ...(where ? { where } : {}) }] });
             toast('Share page saved — find it on the workspace page');
           }, 'Save'),
@@ -4610,7 +4692,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
         // dialog every other field opens, reached from here as a shortcut.
         {
           label: `Row term (${db.term.singular})…`,
-          run: () => editFieldDialog(db, nameFieldOf(db)),
+          run: () => editFieldDialog(ref.db, nameFieldOf(ref.db)),
         },
         // System columns live behind the eye (Feature #114), not here.
         'divider',
@@ -4627,13 +4709,36 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
         },
       ], { title: 'Table actions', align: 'right' }),
     ],
-  }));
+  });
+  return chrome;
+}
 
-  const searchInput = main.querySelector('.table-search-input');
-  if (searchInput && (typing || tableSearch.focus)) {
+function drawDatabase(db, items, trashCount = 0, pager = null) {
+  const main = $('#main');
+  let chrome = tableChromeOn(db.id);
+  if (chrome && chrome.sig === tableChromeSig(db)) {
+    // The grid body goes; the chrome, and a rope finishing its cycle, stay.
+    chrome.set(db, trashCount);
+    syncDocTitle(db.name);
+    for (const n of [...main.children]) if (n !== chrome.header && !n.classList.contains('grid-loader')) n.remove();
+  } else {
+    // The search box is redrawn with the chrome; the caret goes with it.
+    const typing = document.activeElement?.classList?.contains('table-search-input') ? document.activeElement : null;
+    const caret = typing ? [typing.selectionStart, typing.selectionEnd] : null;
+    main.replaceChildren();
+    chrome = tableChrome(db, trashCount);
+    main.wvTable = chrome;
+    main.append(chrome.header);
+    const searchInput = main.querySelector('.table-search-input');
+    if (searchInput && typing) {
+      searchInput.focus();
+      if (caret) searchInput.setSelectionRange(...caret);
+    }
+  }
+  if (tableSearch.focus) {
     tableSearch.focus = false;
-    searchInput.focus();
-    if (caret) searchInput.setSelectionRange(...caret);
+    const searchInput = main.querySelector('.table-search-input');
+    if (searchInput && document.activeElement !== searchInput) searchInput.focus();
   }
 
   const controlPop = document.querySelector('.table-control-popover');
@@ -4728,6 +4833,8 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
   };
 
   renderTable(main, db, items, onSaved, state.inlineAdd, pager);
+  // A grid drawn while a newer change is still loading is not the answer yet.
+  paintGridWait();
   /* / or ⌘F on a resting cell opens the search. Capture phase, ahead of the
      grid's keymap: a resting cell would otherwise take / as the first
      character of an edit. A cell already editing keeps its keys. */
@@ -4787,6 +4894,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
      table's truth. A field flip on a grid with views is that view's
      (Feature #229); system columns and the Σ row stay the table's. */
   const save = (patchOf) => {
+    const release = home?.id === 'main' ? gridHold() : () => {};
     const turn = eyeWrites.then(async () => {
       const patch = patchOf(liveTable());
       if (patch.view) await gridConfigWrite(db, null, patch.view);
@@ -4794,10 +4902,11 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
     }).catch((err) => toast(err.message, true));
     eyeWrites = turn;
     eyeTails.set(db.id, turn);
-    turn.then(() => {
-      if (eyeTails.get(db.id) !== turn) return;
+    turn.then(async () => {
+      if (eyeTails.get(db.id) !== turn) return release();
       eyeTails.delete(db.id);
-      paint();
+      await paint();
+      release();
     });
   };
   /* A queued paint can land after the reader has moved on. The eye's own
@@ -11953,6 +12062,83 @@ async function withPageLoader(work) {
   }
 }
 
+/* ---------- the grid's own wait (Issue #433) ----------
+   A change on a table already on screen (a filter chip, a keystroke in the
+   search, a field flip, a view) holds the grid until its rows are drawn.
+   While anything holds it the grid body — never the toolbar — is dimmed and
+   aria-busy at once, so the old rows never pass for the answer; the rope
+   comes over the grid only when the wait passes LOADER_SHOW_AFTER_MS, and
+   once up it finishes its cycle, the page loader's two rules at grid scale.
+   gridHold() returns its release; releasing twice is harmless. */
+const gridWait = { holds: new Set(), showTimer: 0, shownAt: 0, hideTimer: 0 };
+function gridHold() {
+  const token = {};
+  gridWait.holds.add(token);
+  paintGridWait();
+  return () => { if (gridWait.holds.delete(token)) paintGridWait(); };
+}
+function paintGridWait() {
+  const busy = gridWait.holds.size > 0;
+  const wrap = $('#main')?.querySelector(':scope > .table-wrap');
+  if (wrap && busy !== (wrap.getAttribute('aria-busy') === 'true')) {
+    if (busy) wrap.setAttribute('aria-busy', 'true'); else wrap.removeAttribute('aria-busy');
+  }
+  if (busy) {
+    clearTimeout(gridWait.hideTimer); gridWait.hideTimer = 0;
+    if (!gridWait.shownAt && !gridWait.showTimer) {
+      gridWait.showTimer = setTimeout(() => { gridWait.showTimer = 0; showGridLoader(); }, LOADER_SHOW_AFTER_MS);
+    } else if (gridWait.shownAt) placeGridLoader();
+    return;
+  }
+  if (gridWait.showTimer) { clearTimeout(gridWait.showTimer); gridWait.showTimer = 0; return; }
+  if (!gridWait.shownAt || gridWait.hideTimer) return;
+  const elapsed = Date.now() - gridWait.shownAt;
+  gridWait.hideTimer = setTimeout(hideGridLoader, LOADER_CYCLE_MS - (elapsed % LOADER_CYCLE_MS));
+}
+/* Over the part of the grid in view: the rope sits where the reader is
+   looking, under the page header (which stacks above it). */
+function placeGridLoader() {
+  const main = $('#main');
+  const node = main?.querySelector(':scope > .grid-loader');
+  const wrap = main?.querySelector(':scope > .table-wrap');
+  if (!node || !wrap) return;
+  const m = main.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+  const top = Math.max(w.top, 0), bottom = Math.min(w.bottom, innerHeight);
+  Object.assign(node.style, {
+    top: `${top - m.top}px`, left: `${w.left - m.left}px`,
+    width: `${w.width}px`, height: `${Math.max(0, bottom - top)}px`,
+  });
+}
+function showGridLoader() {
+  const main = $('#main');
+  const source = $('#page-loader');
+  if (!main?.querySelector(':scope > .table-wrap') || !loading.ready || !source) return;
+  let node = main.querySelector(':scope > .grid-loader');
+  if (!node) {
+    node = el('div', { class: 'grid-loader', 'aria-hidden': 'true' });
+    for (const mark of source.children) node.append(mark.cloneNode(true));
+    main.append(node);
+  }
+  node.hidden = false;
+  gridWait.shownAt = Date.now();
+  placeGridLoader();
+  // Restart the clocks so the visible rope begins at the start of a weave.
+  for (const svg of node.querySelectorAll('svg')) svg.setCurrentTime?.(0);
+}
+function hideGridLoader() {
+  gridWait.hideTimer = 0; gridWait.shownAt = 0;
+  const node = $('#main')?.querySelector(':scope > .grid-loader');
+  if (node) node.hidden = true;
+}
+/* Leaving the table drops whatever it was waiting on: the page it would
+   dim is gone, and a hold released later is a no-op. */
+function resetGridWait() {
+  gridWait.holds.clear();
+  clearTimeout(gridWait.showTimer); gridWait.showTimer = 0;
+  clearTimeout(gridWait.hideTimer);
+  hideGridLoader();
+}
+
 /* ---------- boot ---------- */
 
 
@@ -12020,9 +12206,14 @@ function renderRoute() {
   state.pageName = null;
   const hash = location.hash || '#/';
   // The skeleton of where we're going, painted before we go (Feature #49).
+  // Another view of the table on screen is not a new place: its grid is
+  // redrawn under the chrome it already has (Issue #444).
   const dbM = hash.match(/^#\/(?:table|db)\/([^/?]+)/);
-  paintSkeleton(dbM ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list',
-    dbM ? allTables().find((d) => d.id === dbM[1]) : null);
+  if (!(dbM && tableChromeOn(dbM[1]))) {
+    resetGridWait();
+    paintSkeleton(dbM ? 'db' : /^#\/entity\//.test(hash) ? 'entity' : 'list',
+      dbM ? allTables().find((d) => d.id === dbM[1]) : null);
+  }
   let m;
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
   if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)(?:\/view\/([^/?]+))?(?:\?e=([^&]+))?/))) return showDatabase(m[1], m[2] ? decodeURIComponent(m[2]) : null).then(() => redock(m[1], m[3]));

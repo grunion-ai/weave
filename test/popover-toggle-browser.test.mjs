@@ -69,7 +69,9 @@ if (s) {
       await page.close();
     });
 
-    test(`after a flip redraws the eye, a click on the new eye still closes (${theme})`, async () => {
+    /* Since Issue #444 a flip redraws the grid under the toolbar, not the
+       toolbar: the eye keeps its node, and a click on it still closes. */
+    test(`after a flip redraws the grid, a click on the eye still closes (${theme})`, async () => {
       const page = await table(theme);
       await page.click('#main .eye-btn');
       await page.waitForSelector('.chip-pop .eye-row');
@@ -77,10 +79,12 @@ if (s) {
       await page.locator('.chip-pop .eye-row', { hasText: 'Stage' }).first().click();
       await page.waitForFunction(() => [...document.querySelectorAll('.chip-pop .eye-row')]
         .find((r) => r.querySelector('.eye-label')?.textContent === 'Stage')?.getAttribute('aria-checked') === 'false');
-      await page.waitForFunction(() => !document.querySelector('#main .eye-btn').dataset.stamp);
+      await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid .col-label')].some((h) => h.textContent.trim() === 'Stage'));
+      await page.waitForLoadState('networkidle');
+      assert.equal(await page.evaluate(() => document.querySelector('#main .eye-btn').dataset.stamp), 'old', 'the eye kept its node');
       await page.click('#main .eye-btn');
       await settle(page);
-      assert.equal(await isOpen(page), false, 'the redrawn eye closed the popover');
+      assert.equal(await isOpen(page), false, 'the eye closed the popover');
       await page.close();
     });
   }
