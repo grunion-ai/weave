@@ -45,6 +45,7 @@
   --wv-pill-hover: rgba(12, 27, 51, .06);    /* ink tint on paper */
   --wv-pill-active: rgba(12, 27, 51, .12);
   --wv-panel-shadow: 0 1px 3px rgba(12, 27, 51, .08);
+  --wv-head-shadow: rgba(12, 27, 51, .14);   /* a stuck grid header's lift (Feature #240) */
   --tblr-border-radius: 8px;
   --tblr-border-radius-lg: 14px;
   --tblr-bg-surface: #fafaf8;                /* Kami Warm White Paper */
@@ -75,6 +76,7 @@
   --wv-pill-hover: rgba(224, 220, 212, .07); /* cream tint on navy */
   --wv-pill-active: rgba(224, 220, 212, .14);
   --wv-panel-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+  --wv-head-shadow: rgba(0, 0, 0, .45);
   --tblr-border-radius: 8px;
   --tblr-border-radius-lg: 14px;
   --tblr-bg-surface: #132444;                /* Kami Elevated Panel */
@@ -363,12 +365,13 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 /* ---------- table view ---------- */
 
 /* Open ledger, not a closed cell: rows are ruled, the page is the surface.
-   Any card hosting a grid loses its box entirely; the header strip keeps the
-   soft corners so the ledger still matches the rounded aesthetic (Kyle,
-   2026-08-28). */
+   Any card hosting a grid loses its box entirely (Kyle, 2026-08-28), and the
+   header is no longer a tinted strip with soft corners: its labels sit on
+   the same surface over one hairline (Feature #240, Kyle 2026-09-27). The
+   header's rule is a step stronger than the row rule, the border mixed an
+   eighth of the way toward the ink, so it reads in both themes. */
 .card:has(.wv-grid) { border: 0; border-radius: 0; box-shadow: none; }
-.wv-grid thead th:first-child { border-top-left-radius: var(--tblr-border-radius); }
-.wv-grid thead th:last-child { border-top-right-radius: var(--tblr-border-radius); }
+.wv-grid { --wv-head-rule: color-mix(in srgb, var(--tblr-border-color), var(--tblr-body-color) 12%); }
 /* position:relative so the clipped-cell overlay can hang off the wrapper —
    a cell clips its own overflow, and the expansion must not be clipped. */
 /* An overflow that scrolls makes the wrap a scroll container, and a sticky
@@ -387,7 +390,11 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    (3) passes under the header row (4), whose corner (5) sits over the lot.
    Ties are broken by document order, which would put a body cell over the
    Σ row it scrolls beneath, so each layer is numbered rather than shared. */
-.wv-grid thead th { position: sticky; top: 0; z-index: 4; background: var(--tblr-bg-surface-secondary); cursor: pointer; user-select: none; white-space: nowrap; }
+/* The header paints the card surface, opaque, so rows never show through it
+   while it is stuck (Feature #240). Labels read as the field is named:
+   sentence case, no tracking, 12px medium in the secondary ink. */
+.wv-grid thead th { position: sticky; top: 0; z-index: 4; background: var(--tblr-bg-surface); cursor: pointer; user-select: none; white-space: nowrap;
+  text-transform: none; letter-spacing: normal; font-size: 12px; font-weight: 500; color: var(--tblr-secondary); border-bottom-color: var(--wv-head-rule); }
 /* The grid's own header sticks to whichever box scrolls, so the offset is
    owed only where the PAGE is that box: a `.wv-fit` wrap, which clips rather
    than scrolls. There the view header is already parked at the top, and the
@@ -537,9 +544,16 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid[data-density] tbody tr.entity-row > td { height: var(--wv-row-h); box-sizing: border-box; border-bottom-width: 0;
   box-shadow: inset 0 -1px 0 var(--tblr-table-border-color, var(--tblr-border-color)), inset 0 0 0 9999px var(--tblr-table-bg-state, var(--tblr-table-bg-type, var(--tblr-table-accent-bg))); }
 /* A collapsed border is split between the cells it divides, so the header's
-   rule would hand the first row half a pixel: it is a shadow too. */
+   rule would hand the first row half a pixel: it is a shadow too, in the
+   header's stronger hairline. --wv-head-lift is the faint shadow a stuck
+   header casts on the rows passing under it (Feature #240): the scroll
+   listener in app.js marks the wrap `.wv-head-stuck` only while the header
+   sits below its resting place, so at rest there is none. It falls from the
+   header's last row, which is the Σ row when the table shows one. */
 .wv-grid[data-density] thead > tr > * { border-bottom-width: 0; }
-.wv-grid[data-density] thead > tr:first-child > th { box-shadow: inset 0 -1px 0 var(--tblr-table-border-color, var(--tblr-border-color)), inset 0 0 0 9999px var(--tblr-table-bg-state, var(--tblr-table-bg-type, var(--tblr-table-accent-bg))); }
+.wv-grid[data-density] thead > tr:first-child > th { box-shadow: inset 0 -1px 0 var(--wv-head-rule), inset 0 0 0 9999px var(--tblr-table-bg-state, var(--tblr-table-bg-type, var(--tblr-table-accent-bg))); }
+.table-wrap.wv-head-stuck .wv-grid { --wv-head-lift: 0 5px 6px -5px var(--wv-head-shadow); }
+.table-wrap.wv-head-stuck .wv-grid[data-density] thead > tr:first-child:last-child > th { box-shadow: inset 0 -1px 0 var(--wv-head-rule), inset 0 0 0 9999px var(--tblr-table-bg-state, var(--tblr-table-bg-type, var(--tblr-table-accent-bg))), var(--wv-head-lift); }
 .wv-grid .wv-cb { height: var(--wv-cell-h); overflow: clip; display: flex; align-items: center; min-width: 0; }
 .wv-grid td.num > .wv-cb { justify-content: flex-end; }
 /* The value's own box may shrink, and ends in an ellipsis where it has one. */
@@ -698,13 +712,15 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .field-menu { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 18px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; background: none; border: 0; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; transition: opacity .12s ease; }
 /* The ⋮ sits at its column's right edge — hard against the next column's
    label — so the hovered header tints too: the tint says which column the
-   affordance belongs to. */
-.wv-grid th.col-head:hover { background: var(--tblr-bg-surface); }
+   affordance belongs to. With no band under the header (Feature #240) it is
+   also the only sign that the cell resizes, reorders and opens a menu, so
+   the one hovered cell takes the secondary surface, opaque like the rest. */
+.wv-grid th.col-head:hover { background: var(--tblr-bg-surface-secondary); }
 .wv-grid th.col-head:hover .field-menu, .field-menu:focus-visible { opacity: 1; }
 /* The # column and a system column carry a sort-only ⋮ (Issue #254), on the
    same terms: room kept for it, shown on hover or focus. */
 .wv-grid :is(th.pid-head, th.sys-head) { padding-right: 24px; }
-.wv-grid :is(th.pid-head, th.sys-head):hover { background: var(--tblr-bg-surface); }
+.wv-grid :is(th.pid-head, th.sys-head):hover { background: var(--tblr-bg-surface-secondary); }
 .wv-grid :is(th.pid-head, th.sys-head):hover .field-menu { opacity: 1; }
 .field-menu:hover, .field-menu:focus-visible { color: var(--tblr-primary); background: var(--tblr-bg-surface); }
 /* Resize grip (Feature #42): the column's own right edge. It spans the full
@@ -739,23 +755,36 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .modal-note { color: var(--tblr-secondary); font-size: 12px; margin-top: 2px; }
 
 /* "+" closing the header bar: adds a field where the fields live. */
-/* The one column without a width of its own: it takes whatever the fields
-   leave of the card, so no field is ever stretched or squeezed to fill it
+/* It trails the last field (Feature #240, Kyle 2026-09-27). The grid is as
+   wide as its columns, so the card's slack past the "+" is bare surface: no
+   column takes it, and no field is ever stretched or squeezed to fill it
    (Feature #233, Kyle's rule 2). */
+.wv-grid:has(th.add-field-head) { width: max-content; }
 .wv-grid th.add-field-head { white-space: nowrap; padding-left: 4px; padding-right: 8px; cursor: default; }
+/* On a grid wider than its card the "+" holds at the wrap's right edge,
+   over the headers scrolling under it: opaque surface (the header rule),
+   above the scrolling header cells, and a short fade on its left so a
+   column slides under it instead of being cut. fitWatch marks the wrap
+   `.wv-overflow-x` only while it overflows, and the button wears its chip
+   border only then. */
+.wv-grid th.add-field-head { position: sticky; right: 0; z-index: 5; }
+.table-wrap.wv-overflow-x .wv-grid th.add-field-head::before { content: ''; position: absolute; top: 0; bottom: 1px; right: 100%; width: 16px; pointer-events: none; background: linear-gradient(to right, transparent, var(--tblr-bg-surface)); }
+.table-wrap.wv-overflow-x .add-field-btn { border-color: var(--tblr-border-color); }
 .add-field-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: 14px; line-height: 1; cursor: pointer; }
 .add-field-btn:hover { color: var(--tblr-primary); border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
 /* Creating an entity is the grid's last row, so the table reads as one
    surface that grows from the bottom rather than a table plus a button.
    On a long table it floats at the bottom edge of the page (Feature #196),
-   the header's twin: same surface tint so rows do not bleed through, same
-   z-index so it paints over them, resting in its place once the reader
+   the header's twin: the same opaque surface so rows do not bleed through,
+   same z-index so it paints over them, resting in its place once the reader
    reaches the end. The selection puck floats centred over it; the label
-   sits at the left edge and stays readable, so the foot does not lift. */
+   sits at the left edge and stays readable, so the foot does not lift.
+   Like the hairline header it carries no grey, under the pointer either:
+   the label turns to the accent instead (Feature #240). */
 .wv-grid tr.add-entity-row td { padding: 0; border-bottom: 0; position: sticky; bottom: 0; z-index: 1; background: var(--tblr-bg-surface); }
 .wv-grid tr.add-entity-row:hover td { background: var(--tblr-bg-surface); }
 .add-entity-btn { width: 100%; display: block; padding: 7px 12px; background: none; border: 0; color: var(--tblr-secondary); font: inherit; text-align: left; cursor: pointer; }
-.add-entity-btn:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-primary); }
+.add-entity-btn:hover { color: var(--tblr-primary); }
 /* The row window (Issue #271): two spacer rows stand in for the rows not
    drawn, a pending row holds a place at the row height until its page
    lands, and the foot says how much of the table is here. */
@@ -2454,6 +2483,9 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
    collapsed 2px border lent the first body row a pixel. */
 .wv-grid thead tr.wv-foot td { position: sticky; top: var(--wv-head-h, 0px); z-index: 2; box-shadow: inset 0 -1px 0 var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); font-size: 12px; color: var(--tblr-secondary); vertical-align: top; white-space: nowrap; padding-top: 4px; padding-bottom: 4px; }
 #main .table-wrap.wv-fit .wv-grid thead tr.wv-foot td { top: calc(var(--wv-view-h, 0px) + var(--wv-head-h, 0px)); }
+/* A stuck header casts its faint shadow from here when the Σ row is shown
+   (Feature #240): the rows pass under this row, not under the labels. */
+.table-wrap.wv-head-stuck .wv-grid thead tr.wv-foot td { box-shadow: inset 0 -1px 0 var(--tblr-border-color), var(--wv-head-lift); }
 /* The Σ row's own corner: frozen left as well as pinned under the header,
    and a layer above the rest of the row so the body's frozen cells pass
    beneath it rather than through it (Issue #252). */

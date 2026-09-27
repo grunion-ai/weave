@@ -502,11 +502,25 @@ addEventListener('auxclick', openNativeClick, true);
    in style.css takes its colour from that. One capture-phase listener for
    every grid on every page — scroll does not bubble, and a per-grid listener
    would have to be wired into each of the four places a grid is built. */
+/* The same listener tells a grid's header whether it is stuck (Feature
+   #240): a sticky header cell sits below the top of its table only while
+   rows are passing under it, whichever box scrolls: the page for a grid
+   that fits, the wrap for a wide one. That wrap wears `.wv-head-stuck`, and
+   style.css gives the header a faint shadow for it. Read once a frame. */
+let headCheck = 0;
+const markStuckHeads = () => {
+  headCheck = 0;
+  for (const grid of document.querySelectorAll('.table-wrap > .wv-grid')) {
+    const th = grid.tHead?.rows[0]?.cells[0];
+    if (th) grid.parentElement.classList.toggle('wv-head-stuck', th.getBoundingClientRect().top - grid.getBoundingClientRect().top > 0.5);
+  }
+};
 addEventListener('scroll', (e) => {
   const wrap = e.target;
   if (wrap instanceof HTMLElement && wrap.classList.contains('table-wrap')) {
     wrap.classList.toggle('wv-scrolled-x', wrap.scrollLeft > 0);
   }
+  headCheck ||= requestAnimationFrame(markStuckHeads);
 }, { capture: true, passive: true });
 /* The row term of a table by id (Feature #40) — for surfaces that hold a
    target id rather than the table. Unknown ids speak the default, "record". */
@@ -5069,6 +5083,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const fitWatch = new ResizeObserver(() => {
     const fit = wrap.scrollWidth <= wrap.clientWidth + 1;
     wrap.classList.toggle('wv-fit', fit);
+    // The trailing "+" wears its fade and chip only while it floats over
+    // columns (Feature #240).
+    wrap.classList.toggle('wv-overflow-x', !fit);
     /* A grid wider than its card keeps its sideways scroll, so its wrap IS
        the scroll container — and the header and the Σ row (Issue #233) can
        only stick to it. On the table page such a wrap scrolls vertically

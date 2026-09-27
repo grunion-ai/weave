@@ -201,7 +201,7 @@ test('full-width grid rows derive their span from one column count', () => {
 test('grid create controls are styled', () => {
   // Feature #233: the "+" column is the one column without a width, so it
   // takes the card's slack and no field is ever stretched to fill it.
-  assert.equal(rulesFor('.wv-grid th.add-field-head').width, undefined, 'the "+" cell takes the slack, not a share');
+  assert.equal(rulesFor('.wv-grid th.add-field-head').width, undefined, 'the "+" cell has no width of its own: it trails the last field (Feature #240)');
   assert.ok(rulesFor('.add-field-btn').cursor);
   assert.ok(rulesFor('.add-entity-btn').width, 'the new-entity row spans the grid');
 });
