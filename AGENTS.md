@@ -148,7 +148,9 @@ deletions, which is why they need `allowDestructive`.
 ### Views over a table
 
 A table has an ordered list of named views (Features #229, #237); the first is
-the default and opens with the table. The toolbar button bearing the current
+the default and opens with the table. A new table's first view is named
+`Standard` (tables made before 2026-09-27 had theirs renamed from `Default`),
+and the UI offers `View 2`, `View 3` and so on for new ones. The toolbar button bearing the current
 view name opens the list and its add, reset and clear actions. **Blank** — the
 raw table, every regular field in schema order, no filter, no sort — remains
 addressable through the API and old links. It is computed, never stored, and

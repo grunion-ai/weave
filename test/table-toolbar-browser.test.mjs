@@ -68,7 +68,7 @@ if (s) {
     } finally { await page.close(); }
   });
   test('Reset view restores raw fields and clears the saved filter, sort, widths and frozen columns', async () => {
-    s.weave.tableView(`${table.id}/Default`, { fields: ['Name'], sort: [{ field: 'Name', dir: 'desc' }], widths: { Name: 300 }, frozen: 1 });
+    s.weave.tableView(`${table.id}/Standard`, { fields: ['Name'], sort: [{ field: 'Name', dir: 'desc' }], widths: { Name: 300 }, frozen: 1 });
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
@@ -86,7 +86,7 @@ if (s) {
   });
 
   test('Clear filters, search, and sorting keeps the saved column layout', async () => {
-    s.weave.tableView(`${table.id}/Default`, { fields: ['Name'], sort: [{ field: 'Name', dir: 'desc' }], widths: { Name: 300 }, frozen: 1 });
+    s.weave.tableView(`${table.id}/Standard`, { fields: ['Name'], sort: [{ field: 'Name', dir: 'desc' }], widths: { Name: 300 }, frozen: 1 });
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
@@ -131,7 +131,7 @@ if (s) {
   });
 
   test('showing a hidden field restores its saved position unless its hidden grip was moved', async () => {
-    s.weave.tableView(`${table.id}/Default`, { fields: ['Name', 'Owner', 'Description'], frozen: 0 });
+    s.weave.tableView(`${table.id}/Standard`, { fields: ['Name', 'Owner', 'Description'], frozen: 0 });
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
@@ -159,7 +159,7 @@ if (s) {
   });
 
   test('dragging a field grip persists its column order after reload', async () => {
-    s.weave.tableView(`${table.id}/Default`, { fields: ['Name', 'Description', 'Owner'], frozen: 0 });
+    s.weave.tableView(`${table.id}/Standard`, { fields: ['Name', 'Description', 'Owner'], frozen: 0 });
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });

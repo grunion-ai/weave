@@ -278,7 +278,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_table_view',
-    description: 'A table\'s views (tabs over its grid), in order: the first opens by default. view "Task" lists them; "Task/Open" reads one; "Task/blank" is the raw table, read-only. Any other key writes, creating the view if new (from: a view to copy, else all fields). fields: visible columns in order, unlisted hidden. show/hide: names. move: {field, before|after}. filters: {WorkflowField: [states]}. sort: [{field, dir}]. position: its place, 0 = default. widths: {field: px}, null clears. frozen: leading fields frozen beside #. density: compact, comfortable (default) or spacious. name renames; delete: true. Returns the view.',
+    description: 'A table\'s views (the View dropdown over its grid), in order: the first opens with the table; a new table\'s first view is named Standard, and new ones View 2, View 3. view "Task" lists them; "Task/Open" reads one; "Task/blank" is the raw table, read-only. Any other key writes, creating the view if new (from: a view to copy, else all fields). fields: visible columns in order, unlisted hidden. show/hide: names. move: {field, before|after}. filters: {WorkflowField: [states]}. sort: [{field, dir}]. position: its place, 0 = default. widths: {field: px}, null clears. frozen: leading fields frozen beside #. density: compact, comfortable (default) or spacious. name renames; delete: true. Returns the view.',
     inputSchema: {
       type: 'object',
       properties: {

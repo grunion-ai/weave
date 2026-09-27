@@ -1913,7 +1913,7 @@ The mail app opens with the To, Subject and body already there. If nothing opens
     order: 20,
     doc: `# Table views
 
-A table can be read several ways. Each **view** keeps which columns show, their order and widths, frozen columns, filters and sorting. Open the button bearing the current view's name to choose another. The **first** view in the menu is the default and opens with the table. A table always keeps at least one view.
+A table can be read several ways. Each **view** keeps which columns show, their order and widths, frozen columns, filters and sorting. Open the button bearing the current view's name to choose another. The **first** view in the menu opens with the table, and its row says **Opens first**. A new table's first view is named **Standard**; views you add are offered **View 2**, **View 3** and so on. A table always keeps at least one view.
 
 ## The toolbar
 
@@ -1934,11 +1934,13 @@ Search is temporary: it is not saved into a view or shared with other people, an
 | You do in the view menu | What happens |
 | --- | --- |
 | Select a view | Opens its saved layout, filters and sorting. |
-| Drag a view up or down | Reorders the list. Drop it first to make it the default. With a mouse, press and move; on a phone, hold still for a moment, then slide. |
-| **Alt+↑** / **Alt+↓** on a focused view | Moves it one place; **Alt+←** / **Alt+→** also work. |
-| Double-click a view | Renames it in place. **Enter** or clicking away saves; **Escape** cancels. |
-| Right-click a view (or **Shift+F10**, or hold it on a phone and let go) | Opens **Rename…**, **Duplicate view…** and **Delete view**. Duplicate opens a named copy; deletion requires holding to confirm. The last view cannot be deleted. |
-| **+ Add view** | Creates and opens a view with every regular field in schema order, no filters and no sorting. |
+| Drag a view by its handle | Reorders the list; a straight line marks where it lands. Drop it first to make it open with the table. The handle works with a mouse or a finger. |
+| **Alt+↑** / **Alt+↓** on a focused view | Moves it one place. |
+| Hover or focus a view | Shows its **Rename**, **Duplicate** and **Delete** buttons. There is no right-click menu. |
+| **Rename** | Edits the name in place. **Enter** or clicking away saves; **Escape** cancels. |
+| **Duplicate** | Adds a row under the view with its name focused (\`Open bugs 2\`). **Enter** or clicking away creates the copy and opens it; **Escape** drops the row. |
+| **Delete** | Hold the button until it fills. The last view cannot be deleted. |
+| **+ Add view** | Adds a row with its name focused, offered as the next free **View N**. **Enter** or clicking away creates the view, with every regular field in schema order, no filters and no sorting, and opens it; **Escape** drops the row. The menu stays open throughout. |
 | **Reset view** | Restores regular columns in schema order and the table's default system columns, removes custom widths and frozen columns, clears filters, search and sorting, and returns density to Comfortable. The view keeps its name. |
 | **Clear filters, search, and sorting** | Removes those restrictions while keeping the column layout and density. |
 
@@ -1958,7 +1960,7 @@ Open **Filters** and choose state chips under a workflow or toggle field. Select
 
 ## For agents
 
-One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view is the default; \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; a read carries each only when it is set. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
+One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; a read carries each only when it is set. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **Workspace/Views**, where editing \`Fields\`, \`Filter\` or \`Sort\` runs the same checks.`,
   },
   {
     name: 'Chip and card anatomy',

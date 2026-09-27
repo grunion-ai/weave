@@ -913,6 +913,7 @@ export class Weave {
       }
       if (this.#ensureTableViews(db)) changed = true;
       if (this.#ensureSystemColumnsInViews(db)) changed = true;
+      if (this.#ensureStandardViewName(db)) changed = true;
     }
     for (const e of Object.values(s.entities ?? {})) {
       if (e.docs) continue;
@@ -1094,7 +1095,7 @@ export class Weave {
      list — the order IS the strip, and the first is the default — each view
      holding its visible fields (ids, in column order: listed = shown,
      unlisted = hidden), its state filter and its sort. A table that predates
-     views gets one, "Default", made of what it showed: the columns left after
+     views gets one, "Standard" ("Default" before 2026-09-27), made of what it showed: the columns left after
      its hidden set, in its field order, with its filter and sort. The legacy
      keys go, so there is one source. Blank is never stored. */
   /* Issue #418: the system columns a table showed (its `systemFields`, a
@@ -1108,10 +1109,24 @@ export class Weave {
     return true;
   }
 
+  /* "Standard" replaces "Default" (Kyle, 2026-09-27): a first view made
+     before the ruling, or any view still called Default then, is renamed
+     once, unless the table already has a Standard. The flag keeps the
+     rename to once, so a view somebody names Default later keeps it. */
+  #ensureStandardViewName(db) {
+    if (db.standardViewNamed || !Array.isArray(db.tableViews)) return false;
+    db.standardViewNamed = true;
+    const taken = db.tableViews.some((v) => v.name.toLowerCase() === 'standard');
+    const old = db.tableViews.find((v) => v.name === 'Default');
+    if (old && !taken) old.name = 'Standard';
+    return true;
+  }
+
   #ensureTableViews(db) {
     if (Array.isArray(db.tableViews)) return false;
     const hidden = new Set(db.hiddenFields ?? []);
-    const view = { id: uuid(), name: 'Default', fields: db.fieldOrder.filter((id) => db.fields[id] && !hidden.has(db.fields[id].name)) };
+    db.standardViewNamed = true;
+    const view = { id: uuid(), name: 'Standard', fields: db.fieldOrder.filter((id) => db.fields[id] && !hidden.has(db.fields[id].name)) };
     if (db.filters && Object.keys(db.filters).length) view.filters = db.filters;
     if (db.sort?.length) view.sort = db.sort;
     db.tableViews = [view];
@@ -2185,7 +2200,7 @@ export class Weave {
 
   /* updateTable's filters / sort / hiddenFields, spoken to the default view
      (the leftmost; a table always has one, and a legacy table gets its
-     Default from #ensureTableViews). */
+     Standard from #ensureTableViews). */
   #writeDefaultView(db, { filters, sort, hiddenFields }) {
     this.#ensureTableViews(db);
     const cur = db.tableViews[0];
@@ -2207,7 +2222,7 @@ export class Weave {
       patch.hide = [...shown].filter((id) => hide.has(id));
       patch.show = db.fieldOrder.filter((id) => !hide.has(id) && !shown.has(id));
     }
-    return this.#writeView(db, cur?.name ?? 'Default', patch);
+    return this.#writeView(db, cur?.name ?? 'Standard', patch);
   }
 
   #checkFilters(db, filters) {

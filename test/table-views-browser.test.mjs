@@ -1,16 +1,19 @@
-/* The view strip (Feature #229; Kyle's rulings 2026-09-23 and 2026-09-25):
-   view options in the eyebrow dropdown. Order signals the default: the
-   first option opens with the table, and dragging a tab (mouse or touch, or
-   Alt+Left / Alt+Right) reorders the strip. No star, no ⋯ button, no Blank
-   tab: double-click renames a tab in place; right-click (or Shift+F10)
-   opens Rename…, Duplicate view… and a hold-to-delete Delete view; + makes a
-   view with every field, no filter, no sort. A table keeps at least one
-   view. A change to the filter, the sort or the columns autosaves into the
-   view on screen; the old …/view/blank link still opens the raw table,
-   read-only. Every write here is the tableView verb an agent calls — the
-   assertions read the engine back, not the DOM alone. Issue #341 rides
-   along: + New on a filtered view makes a row the grid can show.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
+/* The Views list (Feature #229; Kyle's rulings 2026-09-23, 2026-09-25 and
+   2026-09-27): views live in the View dropdown. Order signals the default:
+   the first view opens with the table and its row says "Opens first".
+   Every row shows a drag handle; a drag by it, or Alt+Up / Alt+Down on a
+   focused row, reorders. No right-click and no context menu: Rename,
+   Duplicate and a hold-to-delete are row buttons on hover and on keyboard
+   focus. Rename edits in place; + Add view and Duplicate append an inline
+   row with a focused name ("View 2"), and Enter or a click away creates
+   and opens the view, Escape drops the row, all inside the open dropdown.
+   A table keeps at least one view. A change to the filter, the sort or the
+   columns autosaves into the view on screen; the old …/view/blank link
+   still opens the raw table, read-only. Every write here is the tableView
+   verb an agent calls: the assertions read the engine back, not the DOM
+   alone. Issue #341 rides along: + New on a filtered view makes a row the
+   grid can show. Playwright is NOT a dependency of weave; the suite skips
+   when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -32,9 +35,9 @@ const s = await launch('table view strip', (weave) => {
 if (s) {
   const { base, browser, weave } = s;
   const reset = () => {
-    if (!weave.tableView(jobs).views.some((v) => v.name === 'Default')) weave.tableView(`${jobs.id}/Default`, { from: 'blank' });
-    for (const v of weave.tableView(jobs).views) if (v.name !== 'Default') weave.tableView(`${jobs.id}/${v.id}`, { delete: true });
-    weave.tableView(`${jobs.id}/Default`, { position: 0, filters: {}, sort: [], fields: ['Name', 'Description', 'Status', 'Owner'] });
+    if (!weave.tableView(jobs).views.some((v) => v.name === 'Standard')) weave.tableView(`${jobs.id}/Standard`, { from: 'blank' });
+    for (const v of weave.tableView(jobs).views) if (v.name !== 'Standard') weave.tableView(`${jobs.id}/${v.id}`, { delete: true });
+    weave.tableView(`${jobs.id}/Standard`, { position: 0, filters: {}, sort: [], fields: ['Name', 'Description', 'Status', 'Owner'] });
   };
   const order = () => weave.tableView(jobs).views.map((v) => v.name);
   const idOf = (name) => weave.tableView(`${jobs.id}/${name}`).id;
@@ -42,7 +45,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, colorScheme: theme, ...opts });
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.click('.table-view-btn');
-    await page.waitForSelector('.view-strip .view-tab');
+    await page.waitForSelector('.view-strip .view-row');
     return page;
   };
   const ensureViews = async (page) => {
@@ -50,14 +53,15 @@ if (s) {
   };
   const tabs = async (page) => {
     await ensureViews(page);
-    return page.$$eval('.view-strip .view-tab', (ts) => ts.map((t) => ({
-      name: t.textContent.trim(), active: t.classList.contains('active'),
+    return page.$$eval('.view-strip .view-row', (ts) => ts.map((t) => ({
+      name: t.querySelector('.view-name').textContent.trim(), active: t.classList.contains('active'),
     })));
   };
-  const tab = (page, name) => page.locator('.view-strip .view-tab').filter({ hasText: new RegExp(`^${name}$`) });
+  const tab = (page, name) => page.locator('.view-strip .view-row').filter({ has: page.locator('.view-name', { hasText: new RegExp(`^${name}$`) }) });
+  const grip = (page, name) => tab(page, name).locator('.view-grip');
   const waitOrder = async (page, want) => {
     await ensureViews(page);
-    await page.waitForFunction((w) => JSON.stringify([...document.querySelectorAll('.view-strip .view-tab')].map((t) => t.textContent.trim())) === JSON.stringify(w), want);
+    await page.waitForFunction((w) => JSON.stringify([...document.querySelectorAll('.view-strip .view-row .view-name')].map((t) => t.textContent.trim())) === JSON.stringify(w), want);
   };
   const hold = async (page, locator, ms = 1400) => {
     const box = await locator.boundingBox();
@@ -73,7 +77,7 @@ if (s) {
     reset();
     const page = await open();
     try {
-      assert.deepEqual(await tabs(page), [{ name: 'Default', active: true }]);
+      assert.deepEqual(await tabs(page), [{ name: 'Standard', active: true }]);
       assert.equal(await page.locator('.view-strip .view-add').count(), 1, 'the + makes a view');
       assert.equal(await page.locator('.view-strip .view-star').count(), 0, 'no star: order says which view is the default');
       assert.equal(await page.locator('.view-strip .dots-btn').count(), 0, 'no ⋯ button in the strip');
@@ -95,7 +99,7 @@ if (s) {
       await patched;
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
       assert.deepEqual(weave.tableView(`${jobs.id}/Mine`).filters, { Status: ['Done'] }, 'saved into Mine');
-      assert.equal(weave.tableView(`${jobs.id}/Default`).filters, undefined, 'the default did not move');
+      assert.equal(weave.tableView(`${jobs.id}/Standard`).filters, undefined, 'the default did not move');
       assert.deepEqual(await heads(page), ['Name', 'Status'], "the grid shows Mine's columns, in Mine's order");
       await page.reload({ waitUntil: 'networkidle' });
       await page.click('.table-view-btn');
@@ -107,12 +111,12 @@ if (s) {
 
   test('an old …/view/blank link still opens the raw table, read-only, and the note names a real control', async () => {
     reset();
-    weave.tableView(`${jobs.id}/Default`, { filters: { Status: ['Open'] }, hide: ['Owner'] });
+    weave.tableView(`${jobs.id}/Standard`, { filters: { Status: ['Open'] }, hide: ['Owner'] });
     const page = await open(`#/table/${jobs.id}/view/blank`);
     try {
       assert.equal(await rows(page), 4, 'every row');
       assert.ok((await heads(page)).includes('Owner'), 'every field');
-      assert.deepEqual(await tabs(page), [{ name: 'Default', active: false }], 'no tab is lit: the raw table has none');
+      assert.deepEqual(await tabs(page), [{ name: 'Standard', active: false }], 'no tab is lit: the raw table has none');
       await page.click('.table-filter-btn');
       await page.click('.filter-strip .filter-chip:text-is("Done")');
       await page.waitForFunction(() => /read-only/.test(document.body.textContent));
@@ -121,96 +125,184 @@ if (s) {
       assert.doesNotMatch(note, /Save as view/);
       await page.waitForLoadState('networkidle');
       assert.equal(await page.locator('.filter-strip .filter-chip.on').count(), 0, 'the chip did not turn on');
-      assert.deepEqual(weave.tableView(`${jobs.id}/Default`).filters, { Status: ['Open'] }, 'nothing moved');
+      assert.deepEqual(weave.tableView(`${jobs.id}/Standard`).filters, { Status: ['Open'] }, 'nothing moved');
     } finally { reset(); await page.close(); }
   });
 
-  test('right-click a tab: Rename…, Duplicate view… and Delete view; Duplicate copies it and opens the copy', async () => {
+  test('every row: a drag handle, the name, row buttons on hover and focus, "Opens first" on the first; no context menu', async () => {
     reset();
-    weave.tableView(`${jobs.id}/Default`, { filters: { Status: ['Open'] } });
+    weave.tableView(`${jobs.id}/A`, { from: 'blank' });
     const page = await open();
     try {
-      await tab(page, 'Default').click({ button: 'right' });
-      const items = await page.$$eval('.view-ctx .dropdown-item', (xs) => xs.map((x) => x.textContent.trim()));
-      assert.deepEqual(items, ['Rename…', 'Duplicate view…', 'Delete view']);
-      await page.click('.view-ctx .dropdown-item:text-is("Duplicate view…")');
-      await page.fill('#modal input[name=name]', 'Open copy');
-      await page.click('#modal button[type=submit]');
+      const first = tab(page, 'Standard');
+      assert.equal(await first.locator('.view-grip').count(), 1, 'the first row has its handle');
+      assert.equal(await tab(page, 'A').locator('.view-grip').isVisible(), true, 'every row shows its handle');
+      assert.equal(await first.locator('.view-first').textContent(), 'Opens first');
+      assert.equal(await tab(page, 'A').locator('.view-first').count(), 0, 'only the first view carries the caption');
+      const acts = tab(page, 'A').locator('.view-acts');
+      assert.equal(await acts.evaluate((n) => getComputedStyle(n).opacity), '0', 'the row buttons rest hidden');
+      await tab(page, 'A').hover();
+      await page.waitForFunction(() => getComputedStyle(document.querySelectorAll('.view-strip .view-row')[1].querySelector('.view-acts')).opacity === '1');
+      assert.deepEqual(await acts.locator('button').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label'))), ['Rename A', 'Duplicate A', 'Hold to delete A']);
+      await page.mouse.move(5, 5);
+      await tab(page, 'A').locator('.view-name').focus();
+      assert.equal(await acts.evaluate((n) => getComputedStyle(n).opacity), '1', 'keyboard focus shows them too');
+      await tab(page, 'A').locator('.view-name').click({ button: 'right' });
+      await page.keyboard.press('Shift+F10');
+      await page.waitForTimeout(200);
+      assert.equal(await page.locator('.view-ctx, .dropdown-menu.show').count(), 0, 'no right-click or context menu');
+    } finally { reset(); await page.close(); }
+  });
+
+  test('Duplicate names the copy inline, prefilled; Enter creates it after its source and opens it, the dropdown open', async () => {
+    reset();
+    weave.tableView(`${jobs.id}/Standard`, { filters: { Status: ['Open'] } });
+    const page = await open();
+    try {
+      await tab(page, 'Standard').hover();
+      await tab(page, 'Standard').locator('.view-dup-btn').click();
+      const input = page.locator('.view-strip .view-name-input');
+      await input.waitFor();
+      assert.equal(await input.evaluate((i) => i === document.activeElement), true, 'focused');
+      assert.equal(await input.inputValue(), 'Standard 2');
+      assert.equal(await page.locator('#modal:visible, .modal.show').count(), 0, 'no modal');
+      await input.fill('Open copy');
+      await input.press('Enter');
       await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('Open copy'));
-      await page.click('.table-view-btn');
+      assert.equal(await page.locator('.table-view-popover').isVisible(), true, 'the dropdown stays open');
+      await waitOrder(page, ['Standard', 'Open copy']);
       const copy = weave.tableView(`${jobs.id}/Open copy`);
       assert.deepEqual(copy.filters, { Status: ['Open'] }, 'the copy carries the filter');
       assert.ok(new RegExp(`/view/${copy.id}$`).test(await page.evaluate(() => location.hash)), 'the URL names the copy');
+      assert.equal((await tabs(page)).find((t) => t.active).name, 'Open copy');
       assert.equal(await rows(page), 2);
     } finally { reset(); await page.close(); }
   });
 
-  test('+ makes a view with every field, no filter, no sort — even from a filtered view — and puts it last', async () => {
+  test('+ Add view appends an inline row named View 2: Enter makes a view with every field, no filter, no sort, and opens it', async () => {
     reset();
-    weave.tableView(`${jobs.id}/Default`, { filters: { Status: ['Open'] }, hide: ['Owner'], sort: [{ field: 'Name', dir: 'desc' }] });
+    weave.tableView(`${jobs.id}/Standard`, { filters: { Status: ['Open'] }, hide: ['Owner'], sort: [{ field: 'Name', dir: 'desc' }] });
     const page = await open();
     try {
       await page.click('.view-strip .view-add');
-      await page.fill('#modal input[name=name]', 'Fresh');
-      await page.click('#modal button[type=submit]');
-      await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('Fresh'));
-      await page.click('.table-view-btn');
-      const fresh = weave.tableView(`${jobs.id}/Fresh`);
+      const input = page.locator('.view-strip .view-name-input');
+      await input.waitFor();
+      assert.equal(await input.inputValue(), 'View 2', 'the first free View N');
+      assert.equal(await input.evaluate((i) => i === document.activeElement && i.selectionStart === 0 && i.selectionEnd === i.value.length), true, 'focused and selected');
+      assert.equal(await page.locator('#modal:visible').count(), 0, 'no modal');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('View 2'));
+      assert.equal(await page.locator('.table-view-popover').isVisible(), true, 'the dropdown stays open');
+      const fresh = weave.tableView(`${jobs.id}/View 2`);
       assert.deepEqual(fresh.fields, ['Name', 'Description', 'Status', 'Owner']);
       assert.ok(!fresh.filters && !fresh.sort, 'the system default: no filter, no sort');
-      assert.deepEqual(order(), ['Default', 'Fresh']);
+      assert.deepEqual(order(), ['Standard', 'View 2']);
       assert.equal(await rows(page), 4);
+      // The next one is View 3.
+      await page.click('.view-strip .view-add');
+      assert.equal(await page.locator('.view-strip .view-name-input').inputValue(), 'View 3');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.view-strip .view-name-input'));
+      assert.deepEqual(order(), ['Standard', 'View 2'], 'Escape drops the row and makes nothing');
+      assert.equal(await page.locator('.table-view-popover').isVisible(), true);
     } finally { reset(); await page.close(); }
   });
 
-  test('drag a tab to the front with the mouse: the order saves, and the bare table route opens that view', async () => {
+  test('a click away from the inline name creates the view, as Enter does', async () => {
+    reset();
+    const page = await open();
+    try {
+      await page.click('.view-strip .view-add');
+      await page.locator('.view-strip .view-name-input').fill('Clicked away');
+      await page.mouse.click(700, 600);
+      await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('Clicked away'));
+      assert.deepEqual(order(), ['Standard', 'Clicked away']);
+    } finally { reset(); await page.close(); }
+  });
+
+  test('Rename edits the name in place: Enter commits, Escape cancels, blur commits', async () => {
+    reset();
+    weave.tableView(`${jobs.id}/A`, { from: 'blank' });
+    const page = await open();
+    try {
+      const input = page.locator('.view-strip .view-name-input');
+      await tab(page, 'A').hover();
+      await tab(page, 'A').locator('.view-rename-btn').click();
+      await input.waitFor();
+      assert.equal(await input.inputValue(), 'A');
+      await input.fill('Alpha');
+      await input.press('Enter');
+      await waitOrder(page, ['Standard', 'Alpha']);
+      assert.deepEqual(order(), ['Standard', 'Alpha']);
+      await tab(page, 'Alpha').hover();
+      await tab(page, 'Alpha').locator('.view-rename-btn').click();
+      await input.waitFor();
+      await input.fill('Nope');
+      await input.press('Escape');
+      await waitOrder(page, ['Standard', 'Alpha']);
+      assert.deepEqual(order(), ['Standard', 'Alpha'], 'Escape leaves the name alone');
+      assert.equal(await page.locator('.table-view-popover').isVisible(), true, 'and keeps the dropdown open');
+      await tab(page, 'Alpha').hover();
+      await tab(page, 'Alpha').locator('.view-rename-btn').click();
+      await input.waitFor();
+      await input.fill('Again');
+      await input.blur();
+      await waitOrder(page, ['Standard', 'Again']);
+      assert.deepEqual(order(), ['Standard', 'Again'], 'blur commits');
+    } finally { reset(); await page.close(); }
+  });
+
+  test('drag a row by its handle to the top: the order saves, the caption follows it, and the bare table route opens that view', async () => {
     reset();
     weave.tableView(`${jobs.id}/A`, { from: 'blank' });
     weave.tableView(`${jobs.id}/B`, { from: 'blank', filters: { Status: ['Done'] } });
     const page = await open(`#/table/${jobs.id}/view/${idOf('A')}`);
     try {
-      assert.equal(await tab(page, 'B').getAttribute('draggable'), 'false', 'the link\'s own native drag is off, so the pointer drag owns the gesture');
-      const from = await tab(page, 'B').boundingBox();
-      const to = await tab(page, 'Default').boundingBox();
+      const from = await grip(page, 'B').boundingBox();
+      const to = await tab(page, 'Standard').boundingBox();
       await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
       await page.mouse.down();
-      await page.mouse.move(to.x + to.width / 2, to.y + 2, { steps: 12 });
+      await page.mouse.move(from.x + from.width / 2, to.y + 2, { steps: 12 });
+      assert.equal(await page.evaluate(() => getComputedStyle(document.elementFromPoint(10, 10)).cursor), 'grabbing', 'the drag holds the grabbing cursor');
+      const line = await page.$eval('.view-strip .drop-line', (l) => getComputedStyle(l).borderTopLeftRadius);
+      assert.equal(line, '0px', 'a straight, square-ended insertion line');
       await page.mouse.up();
-      await waitOrder(page, ['B', 'Default', 'A']);
+      await waitOrder(page, ['B', 'Standard', 'A']);
       await page.waitForLoadState('networkidle');
-      assert.deepEqual(order(), ['B', 'Default', 'A'], 'saved through the verb');
+      assert.deepEqual(order(), ['B', 'Standard', 'A'], 'saved through the verb');
+      assert.equal(await tab(page, 'B').locator('.view-first').textContent(), 'Opens first', 'the caption moved with the view');
+      assert.equal(await tab(page, 'Standard').locator('.view-first').count(), 0);
       assert.equal((await tabs(page)).find((t) => t.active).name, 'A', 'the drag is not a click: the view on screen stays');
       await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
       await page.goto(`${base}/#/table/${jobs.id}`, { waitUntil: 'networkidle' });
       await page.click('.table-view-btn');
-      await page.waitForSelector('.view-tab.active');
-      assert.equal((await tabs(page)).find((t) => t.active).name, 'B', 'the leftmost view opens with the table');
+      await page.waitForSelector('.view-row.active');
+      assert.equal((await tabs(page)).find((t) => t.active).name, 'B', 'the first view opens with the table');
       assert.equal(await rows(page), 1, "and it is B's grid");
     } finally { reset(); await page.close(); }
   });
 
-  test('a drag whose first move already lands on another tab still picks the tab up (Issue #400)', async () => {
+  test('a drag whose first move already lands on another row still picks the row up (Issue #400)', async () => {
     reset();
     weave.tableView(`${jobs.id}/A`, { from: 'blank' });
     const page = await open();
     try {
-      const from = await tab(page, 'A').boundingBox();
-      const to = await tab(page, 'Default').boundingBox();
+      const from = await grip(page, 'A').boundingBox();
+      const to = await tab(page, 'Standard').boundingBox();
       await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
       await page.mouse.down();
-      // One jump, as a fast flick or an automation driver sends it: the first
-      // move the page sees is already over Default, never over A.
-      await page.mouse.move(to.x + to.width / 2, to.y + 2);
+      // One jump, as a fast flick or an automation driver sends it.
+      await page.mouse.move(from.x + from.width / 2, to.y + 2);
       await page.mouse.up();
-      await waitOrder(page, ['A', 'Default']);
+      await waitOrder(page, ['A', 'Standard']);
       await page.waitForLoadState('networkidle');
-      assert.deepEqual(order(), ['A', 'Default']);
+      assert.deepEqual(order(), ['A', 'Standard']);
     } finally { reset(); await page.close(); }
   });
 
   // CDP's touch input is Chromium's; WEAVE_BROWSER=webkit runs the rest.
   const cdpTouch = !process.env.WEAVE_BROWSER || process.env.WEAVE_BROWSER === 'chromium';
-  test('drag with a finger: press and hold a tab, then slide it; a quick swipe does not reorder', { skip: cdpTouch ? false : 'CDP touch input is Chromium-only' }, async () => {
+  test('drag with a finger by the handle', { skip: cdpTouch ? false : 'CDP touch input is Chromium-only' }, async () => {
     reset();
     weave.tableView(`${jobs.id}/A`, { from: 'blank' });
     weave.tableView(`${jobs.id}/B`, { from: 'blank' });
@@ -218,133 +310,82 @@ if (s) {
     try {
       const cdp = await page.context().newCDPSession(page);
       const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
-      const from = await tab(page, 'A').boundingBox();
-      const to = await tab(page, 'Default').boundingBox();
+      const from = await grip(page, 'A').boundingBox();
+      const to = await tab(page, 'Standard').boundingBox();
       const x0 = from.x + from.width / 2;
       const y = from.y + from.height / 2;
-      const slide = async () => { for (let k = 1; k <= 10; k++) await touch('touchMove', x0, y + ((to.y + 2) - y) * (k / 10)); };
       await touch('touchStart', x0, y);
-      await slide();
+      for (let k = 1; k <= 10; k++) await touch('touchMove', x0, y + ((to.y + 2) - y) * (k / 10));
       await touch('touchEnd');
-      await page.waitForTimeout(300);
-      assert.deepEqual(order(), ['Default', 'A', 'B'], 'a finger that slides at once is a scroll, not a drag');
-      assert.equal(await page.locator('.view-tab.dragging').count(), 0);
-      await touch('touchStart', x0, y);
-      await page.waitForTimeout(600);
-      assert.equal(await page.locator('.view-tab.dragging').count(), 1, 'held still, the tab lifts');
-      await slide();
-      await touch('touchEnd');
-      await waitOrder(page, ['A', 'Default', 'B']);
+      await waitOrder(page, ['A', 'Standard', 'B']);
       await page.waitForLoadState('networkidle');
-      assert.deepEqual(order(), ['A', 'Default', 'B'], 'a touch drag saves the same order a mouse drag does');
-      assert.equal(await page.locator('.view-ctx').count(), 0, 'a hold that became a drag opens no menu');
-      const a = await tab(page, 'A').boundingBox();
-      await touch('touchStart', a.x + a.width / 2, a.y + a.height / 2);
-      await page.waitForTimeout(600);
-      await touch('touchEnd');
-      await page.waitForSelector('.view-ctx');
-      assert.deepEqual(order(), ['A', 'Default', 'B'], 'held and let go without sliding: the menu, and nothing moved');
+      assert.deepEqual(order(), ['A', 'Standard', 'B'], 'a touch drag saves the same order a mouse drag does');
     } finally { reset(); await page.close(); }
   });
 
-  test('double-click a tab name to rename it in place: Enter commits, Escape cancels', async () => {
-    reset();
-    weave.tableView(`${jobs.id}/A`, { from: 'blank' });
-    const page = await open();
-    try {
-      await tab(page, 'A').dblclick();
-      const input = page.locator('.view-strip .view-tab input');
-      await input.waitFor();
-      await input.fill('Alpha');
-      await input.press('Enter');
-      await waitOrder(page, ['Default', 'Alpha']);
-      assert.deepEqual(order(), ['Default', 'Alpha']);
-      await tab(page, 'Alpha').dblclick();
-      await input.waitFor();
-      await input.fill('Nope');
-      await input.press('Escape');
-      await waitOrder(page, ['Default', 'Alpha']);
-      assert.deepEqual(order(), ['Default', 'Alpha'], 'Escape leaves the name alone');
-      await tab(page, 'Alpha').click({ button: 'right' });
-      await page.click('.view-ctx .dropdown-item:text-is("Rename…")');
-      await input.waitFor();
-      await input.fill('Again');
-      await input.blur();
-      await waitOrder(page, ['Default', 'Again']);
-      assert.deepEqual(order(), ['Default', 'Again'], 'the menu\'s Rename… is the same editor; blur commits');
-    } finally { reset(); await page.close(); }
-  });
-
-  test('a click on a tab, then a double-click elsewhere, renames nothing', async () => {
-    reset();
-    weave.tableView(`${jobs.id}/A`, { from: 'blank' });
-    const page = await open();
-    try {
-      await tab(page, 'A').click();
-      await page.waitForFunction(() => document.querySelector('.table-view-btn')?.textContent.includes('A'));
-      await page.waitForLoadState('networkidle');
-      await page.locator('#main h1, #main .page-title, #main h2').first().dblclick({ position: { x: 20, y: 10 } });
-      await page.waitForTimeout(400);
-      assert.equal(await page.locator('.view-strip .view-tab input').count(), 0, 'the earlier tab click does not ride along into an unrelated double-click');
-    } finally { reset(); await page.close(); }
-  });
-
-  test('Delete view from the menu is hold-to-confirm; the last view cannot go', async () => {
+  test('Delete is a hold on the row button; the last view cannot go', async () => {
     reset();
     weave.tableView(`${jobs.id}/A`, { from: 'blank' });
     const page = await open(`#/table/${jobs.id}/view/${idOf('A')}`);
     try {
-      await tab(page, 'A').click({ button: 'right' });
-      await hold(page, page.locator('.view-ctx .hold-btn'));
-      await waitOrder(page, ['Default']);
-      assert.deepEqual(order(), ['Default']);
-      assert.equal((await tabs(page)).find((t) => t.active).name, 'Default', 'deleting the view on screen opens the leftmost');
-      await tab(page, 'Default').click({ button: 'right' });
-      await hold(page, page.locator('.view-ctx .hold-btn'));
+      await tab(page, 'A').hover();
+      await tab(page, 'A').locator('.view-del').click();
+      await page.waitForTimeout(300);
+      assert.deepEqual(order(), ['Standard', 'A'], 'a click is not a hold');
+      await tab(page, 'A').hover();
+      await hold(page, tab(page, 'A').locator('.view-del'));
+      await waitOrder(page, ['Standard']);
+      assert.deepEqual(order(), ['Standard']);
+      assert.equal((await tabs(page)).find((t) => t.active).name, 'Standard', 'deleting the view on screen opens the first');
+      await tab(page, 'Standard').hover();
+      await hold(page, tab(page, 'Standard').locator('.view-del'));
       await page.waitForFunction(() => /at least one view/.test(document.body.textContent));
-      assert.deepEqual(order(), ['Default'], 'the last view stays');
+      assert.deepEqual(order(), ['Standard'], 'the last view stays');
     } finally { reset(); await page.close(); }
   });
 
-  test('keyboard: Alt+Left / Alt+Right move the focused tab; Shift+F10 opens its menu', async () => {
+  test('keyboard: Alt+Up / Alt+Down move the focused row and keep its focus', async () => {
     reset();
     weave.tableView(`${jobs.id}/A`, { from: 'blank' });
     weave.tableView(`${jobs.id}/B`, { from: 'blank' });
     const page = await open();
     try {
-      await tab(page, 'B').focus();
-      await page.keyboard.press('Alt+ArrowLeft');
-      await waitOrder(page, ['Default', 'B', 'A']);
-      await page.waitForFunction(() => document.activeElement?.classList.contains('view-tab') && document.activeElement.textContent.trim() === 'B');
-      await page.keyboard.press('Alt+ArrowLeft');
-      await waitOrder(page, ['B', 'Default', 'A']);
-      assert.deepEqual(order(), ['B', 'Default', 'A'], 'saved');
-      await page.keyboard.press('Alt+ArrowRight');
-      await waitOrder(page, ['Default', 'B', 'A']);
-      assert.deepEqual(order(), ['Default', 'B', 'A']);
-      assert.ok(page.url().includes(`#/table/${jobs.id}`), 'Alt+Left moved the tab, not the browser back');
-      await page.keyboard.press('Shift+F10');
-      await page.waitForSelector('.view-ctx');
-      assert.deepEqual(await page.$$eval('.view-ctx .dropdown-item', (xs) => xs.map((x) => x.textContent.trim())), ['Rename…', 'Duplicate view…', 'Delete view']);
+      await tab(page, 'B').locator('.view-name').focus();
+      await page.keyboard.press('Alt+ArrowUp');
+      await waitOrder(page, ['Standard', 'B', 'A']);
+      await page.waitForFunction(() => document.activeElement?.classList.contains('view-name') && document.activeElement.textContent.trim() === 'B');
+      await page.keyboard.press('Alt+ArrowUp');
+      await waitOrder(page, ['B', 'Standard', 'A']);
+      assert.deepEqual(order(), ['B', 'Standard', 'A'], 'saved');
+      assert.equal(await tab(page, 'B').locator('.view-first').count(), 1, 'the caption follows the view to the top');
+      await page.waitForFunction(() => document.activeElement?.textContent.trim() === 'B');
+      await page.keyboard.press('Alt+ArrowDown');
+      await waitOrder(page, ['Standard', 'B', 'A']);
+      assert.deepEqual(order(), ['Standard', 'B', 'A']);
+      assert.ok(page.url().includes(`#/table/${jobs.id}`), 'Alt+Up moved the row, not the browser');
+      await tab(page, 'A').locator('.view-grip').focus();
+      await page.keyboard.press('Alt+ArrowUp');
+      await waitOrder(page, ['Standard', 'A', 'B']);
+      await page.waitForFunction(() => document.activeElement?.classList.contains('view-grip'));
     } finally { reset(); await page.close(); }
   });
 
   test('hiding a column with the eye hides it in this view only', async () => {
     reset();
-    weave.tableView(`${jobs.id}/Narrow`, { from: 'Default' });
+    weave.tableView(`${jobs.id}/Narrow`, { from: 'Standard' });
     const page = await open(`#/table/${jobs.id}/view/${weave.tableView(`${jobs.id}/Narrow`).id}`);
     try {
       await page.click('.eye-btn');
       await page.click('.chip-pop .eye-row:has(.eye-label:text-is("Owner"))');
       await page.waitForFunction(() => ![...document.querySelectorAll('.wv-grid thead .col-label')].some((h) => h.textContent.trim() === 'Owner'));
       assert.ok(!weave.tableView(`${jobs.id}/Narrow`).fields.includes('Owner'));
-      assert.ok(weave.tableView(`${jobs.id}/Default`).fields.includes('Owner'), 'the default still shows it');
+      assert.ok(weave.tableView(`${jobs.id}/Standard`).fields.includes('Owner'), 'the default still shows it');
     } finally { reset(); await page.close(); }
   });
 
   test('+ New on a filtered view makes a row the grid can show (Issue #341)', async () => {
     reset();
-    weave.tableView(`${jobs.id}/Default`, { filters: { Status: ['Done'] } });
+    weave.tableView(`${jobs.id}/Standard`, { filters: { Status: ['Done'] } });
     const page = await open();
     try {
       assert.equal(await rows(page), 1);
@@ -360,19 +401,19 @@ if (s) {
     }
   });
 
-  test('both themes: the active tab is marked by an underline the theme can see', async () => {
+  test('both themes: the view on screen is marked by a fill and a check the theme can see', async () => {
     reset();
     for (const theme of ['light', 'dark']) {
       const page = await open(`#/table/${jobs.id}`, theme);
       try {
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
-        const { line, bg, color } = await page.$eval('.view-tab.active', (a) => {
-          const cs = getComputedStyle(a);
-          return { line: cs.borderBottomColor, bg: getComputedStyle(document.body).backgroundColor, color: cs.color };
-        });
-        assert.notEqual(line, 'rgba(0, 0, 0, 0)', `${theme}: the underline is drawn`);
-        assert.notEqual(line, bg, `${theme}: and it is not the page colour`);
-        assert.notEqual(color, bg, `${theme}: the label reads`);
+        const { fill, pop, color, check } = await page.$eval('.view-row.active', (r) => ({
+          fill: getComputedStyle(r).backgroundColor, pop: getComputedStyle(r.closest('.chip-pop')).backgroundColor,
+          color: getComputedStyle(r.querySelector('.view-name')).color, check: r.querySelector('.view-check').textContent,
+        }));
+        assert.notEqual(fill, pop, `${theme}: the active row has its own fill`);
+        assert.notEqual(color, pop, `${theme}: the name reads`);
+        assert.equal(check, '✓', `${theme}: and a check`);
       } finally { await page.close(); }
     }
   });

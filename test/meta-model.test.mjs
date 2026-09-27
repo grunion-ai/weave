@@ -217,12 +217,12 @@ test('editing the row edits the table: Field Order and Hidden Fields write back'
   assert.deepEqual(db.fieldOrder.map((id) => db.fields[id].name), ['Points', 'Name', 'Description', 'Chip', 'Card'], 'the views may be left out; they close the order');
 
   w.updateEntity(row.id, { 'Hidden Fields': 'Points' });
-  assert.deepEqual(w.tableView('Task/Default').fields, ['Name', 'Description', 'Chip', 'Card'], 'the default view hides it; the list is the whole hidden set, so the chip and card it leaves out show');
+  assert.deepEqual(w.tableView('Task/Standard').fields, ['Name', 'Description', 'Chip', 'Card'], 'the default view hides it; the list is the whole hidden set, so the chip and card it leaves out show');
   w.updateEntity(row.id, { 'Hidden Fields': '' });
   // Feature #233 (Kyle's rule 2): a hidden field keeps its place in the view,
   // so Points returns after Description, where it stood in this view when it
   // was hidden, not at the front the schema order has since given it.
-  assert.deepEqual(w.tableView('Task/Default').fields, ['Name', 'Description', 'Points', 'Chip', 'Card'], 'empty clears: every column shows, each where it stood');
+  assert.deepEqual(w.tableView('Task/Standard').fields, ['Name', 'Description', 'Points', 'Chip', 'Card'], 'empty clears: every column shows, each where it stood');
 
   // The same validation as the schema verb: a partial order is refused.
   assert.throws(() => w.updateEntity(row.id, { 'Field Order': 'Name' }), /every field exactly once/);

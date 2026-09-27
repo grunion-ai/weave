@@ -107,7 +107,7 @@ if (s) {
     await page.waitForTimeout(300);
   };
   async function open(view = '') {
-    weave.tableView(`${table.id}/Default`, { fields: ['Name', 'Description', 'Owner', 'Status'], filters: {}, sort: [], density: 'comfortable' });
+    weave.tableView(`${table.id}/Standard`, { fields: ['Name', 'Description', 'Owner', 'Status'], filters: {}, sort: [], density: 'comfortable' });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${base}/#/table/${table.id}${view}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -168,19 +168,19 @@ if (s) {
     try {
       await page.click('.table-view-btn');
       const m = await measure(page, 'view switch', async () => {
-        await page.locator('.table-view-popover .view-tab[aria-label="Narrow"]').click();
+        await page.locator('.table-view-popover .view-name:text-is("Narrow")').click();
         await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].map((h) => h.textContent.trim()).join(',') === 'Name,Status');
       });
       clean(m, 'view switch');
       assert.equal(await page.getAttribute('.table-view-btn', 'aria-label'), 'View: Narrow', 'the view button names the view on screen');
-      assert.equal(await page.locator('.table-view-popover .view-tab.active').getAttribute('aria-label'), 'Narrow');
+      assert.equal(await page.locator('.table-view-popover .view-tab.active .view-name').textContent(), 'Narrow');
     } finally { await page.close(); }
   });
 
   test('Reset view redraws the grid, not the page', async () => {
     const page = await open();
     try {
-      weave.tableView(`${table.id}/Default`, { fields: ['Name'], sort: [{ field: 'Name', dir: 'desc' }] });
+      weave.tableView(`${table.id}/Standard`, { fields: ['Name'], sort: [{ field: 'Name', dir: 'desc' }] });
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('.view-desc .view-desc-body');
       await page.evaluate(installProbe);
@@ -278,7 +278,7 @@ if (s) {
       const drawn = await page.$$eval('.wv-grid tbody tr.entity-row', (rs) => rs.map((r) => r.dataset.eid));
       const status = new Map(weave.query(table.id).items.map((e) => [e.id, e.fields.Status]));
       assert.deepEqual([...new Set(drawn.map((id) => status.get(id)))].sort(), ['Doing', 'Done'], 'the grid shows the answer to both chips');
-      assert.deepEqual(weave.tableView(table).views.find((v) => v.name === 'Default').filters, { Status: ['Done', 'Doing'] }, 'the second click was kept');
+      assert.deepEqual(weave.tableView(table).views.find((v) => v.name === 'Standard').filters, { Status: ['Done', 'Doing'] }, 'the second click was kept');
       assert.deepEqual((await page.$$eval('.table-filter-popover .filter-chip.on', (bs) => bs.map((b) => b.textContent.trim()))).sort(), ['Doing', 'Done']);
       await page.waitForFunction(() => document.querySelector('#main .grid-loader')?.hidden !== false, null, { timeout: 5000 });
     } finally { await page.close(); }

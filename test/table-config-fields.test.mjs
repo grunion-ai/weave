@@ -29,7 +29,7 @@ function fresh() {
 }
 
 // Since Feature #229 the filter and sort live on the default view.
-const dv = (w) => w.tableView('Task/Default');
+const dv = (w) => w.tableView('Task/Standard');
 const tableRowOf = (w, dbName) =>
   w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === dbName);
 const tval = (w, row, fieldName) => {

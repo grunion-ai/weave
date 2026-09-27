@@ -1873,8 +1873,6 @@ body:has(#tray-back) #hub-foot { display: none; }
 .view-tab:hover { color: var(--tblr-body-color); text-decoration: none; }
 .view-tab.active { color: var(--tblr-body-color); font-weight: 600; border-bottom-color: var(--tblr-primary); }
 .view-tab.dragging { background: var(--tblr-primary-lt); color: var(--tblr-body-color); cursor: grabbing; }
-.view-rename { font: inherit; color: inherit; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-primary);
-  border-radius: 4px; padding: 0 4px; margin: -1px -5px; min-width: 4ch; outline: none; }
 .view-add { padding: 0 8px; margin-left: 2px; }
 /* ---------- filter strip (Feature #38) ---------- */
 .filter-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
@@ -2319,7 +2317,11 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
    toolbar drops to its own row below; a path longer than the panel itself
    ends in an ellipsis. */
 .crumb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
-.crumb-path { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The path gives up its tail (ellipsis) before the toolbar drops a row: a
+   8rem basis, so a filter badge or a longer view name ("Standard") never
+   reflows the header and moves the grid (Issue #444); a docked panel too
+   narrow for 8rem beside the toolbar still wraps as Issue #437 wants. */
+.crumb-path { flex: 1 1 8rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .crumb-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; margin-left: auto; }
 .row-deleted { opacity: .5; }
 .row-deleted .open-link { text-decoration: line-through; }
@@ -2655,8 +2657,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .table-view-popover .view-strip { display: flex; flex-direction: column; align-items: stretch; border: 0; overflow: visible; margin: 0; gap: 3px; }
 .table-view-popover .view-tab { margin: 0; border: 0; border-radius: var(--tblr-border-radius); min-height: 34px; padding: 7px 10px; }
 .table-view-popover .view-tab.active { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
-.table-view-popover .view-tab.active::after { content: '✓'; margin-left: auto; }
-.table-view-popover .view-tab:has(.view-rename)::after { content: none; }
 .table-view-popover .view-add { text-align: left; padding: 8px 10px; margin: 6px 0 0; }
 .table-density-popover { width: 220px; }
 .table-density-popover .seg-ctl { display: flex; flex-direction: column; border: 0; background: none; gap: 3px; }
@@ -2712,3 +2712,32 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .table-fields-popover .field-reorder-handle:not(:disabled) { cursor: grab; }
 .drop-line { position: absolute; left: 6px; right: 6px; height: 2px; border-radius: 0; background: var(--tblr-primary); pointer-events: none; z-index: 2; }
 html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
+
+/* ---------- the Views list (Issue #443; Kyle's rulings 2026-09-27) ----------
+   Every row: a drag handle, the name, "Opens first" on the first row, the
+   Rename / Duplicate / hold-to-delete buttons on hover or keyboard focus,
+   and the check on the view on screen. New view and Duplicate name the
+   view in an inline row. */
+.table-view-popover .view-strip { position: relative; }
+.table-view-popover .view-row { display: flex; align-items: center; gap: 2px; padding: 0 6px 0 0; }
+.table-view-popover .view-grip { border: 0; background: none; color: var(--tblr-secondary); padding: 9px 4px 9px 6px; border-radius: 6px; display: grid; place-items: center; opacity: .7; touch-action: none; }
+.table-view-popover .view-grip:not(:disabled) { cursor: grab; }
+.table-view-popover .view-grip:hover, .table-view-popover .view-grip:focus-visible { opacity: 1; }
+.table-view-popover .view-grip svg { width: 14px; height: 14px; }
+.table-view-popover .view-name { flex: 1; min-width: 0; padding: 7px 4px; color: inherit; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 6px; }
+.table-view-popover .view-name:focus-visible, .table-view-popover .view-act:focus-visible, .table-view-popover .view-grip:focus-visible { outline: 2px solid rgba(var(--tblr-primary-rgb), .45); outline-offset: -2px; }
+.table-view-popover .view-first { flex: none; font-size: 10.5px; font-weight: 500; letter-spacing: .02em; color: var(--tblr-secondary); background: var(--wv-pill-hover, rgba(0,0,0,.05)); border-radius: 4px; padding: 1px 6px; margin-right: 4px; white-space: nowrap; }
+.table-view-popover .view-tab.active .view-first { color: var(--tblr-primary); background: color-mix(in oklab, var(--tblr-primary) 12%, transparent); }
+.table-view-popover .view-acts { display: inline-flex; gap: 1px; opacity: 0; transition: opacity .1s; }
+.table-view-popover .view-row:hover .view-acts, .table-view-popover .view-row:focus-within .view-acts { opacity: 1; }
+.table-view-popover .view-act { border: 0; background: none; color: var(--tblr-secondary); border-radius: 6px; padding: 5px; display: grid; place-items: center; width: auto; }
+.table-view-popover .view-act svg, .table-view-popover .view-act .wv-icon { width: 14px; height: 14px; }
+.table-view-popover .view-act:hover { background: var(--wv-pill-hover, rgba(0,0,0,.05)); color: var(--tblr-body-color); }
+.table-view-popover .view-del:hover, .table-view-popover .view-del.holding { color: var(--tblr-danger); }
+.table-view-popover .view-del .hold-label:empty { display: none; }
+.table-view-popover .view-check { width: 14px; flex: none; text-align: center; font-size: 13px; }
+.table-view-popover .view-tab.dragging { opacity: .4; background: none; }
+.table-view-popover .view-edit { padding: 3px 4px; background: color-mix(in oklab, var(--tblr-primary) 6%, transparent); }
+.table-view-popover .view-name-input { flex: 1; min-width: 0; height: 28px; border: 1px solid var(--tblr-primary); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); padding: 3px 8px; font-size: 13px; outline: 2px solid rgba(var(--tblr-primary-rgb), .25); outline-offset: 0; }
+.table-view-popover .view-edit-hint { font: 10.5px var(--tblr-font-monospace, ui-monospace, monospace); color: var(--tblr-secondary); padding: 0 6px; white-space: nowrap; }
+@media (pointer: coarse) { .table-view-popover .view-acts { opacity: 1; } }
