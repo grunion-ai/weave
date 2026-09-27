@@ -586,7 +586,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid tbody .sel-hit::before { content: ""; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
 /* Chips and their + button stay on one line: wrapped, a relation cell was
    48px tall and set the height of every row beside it. Overflow is the
-   clipped-cell marker's job now, not the row's. */
+   clipped-cell hover expansion's job now, not the row's. */
 .wv-grid tbody .ms-box { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-wrap: nowrap; }
 .wv-grid tbody .ms-box .chip, .wv-grid tbody .ms-box .k { margin: 0; }
 .wv-grid tbody td { padding-top: var(--wv-row-pad); padding-bottom: var(--wv-row-pad);
@@ -664,16 +664,8 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 .wv-grid tr:hover .chip .x, .wv-grid tr:hover .k .x, .wv-grid tr:hover .ms-box > .btn, .wv-grid tr:hover .date-pick-btn,
 .wv-grid tr:focus-within .chip .x, .wv-grid tr:focus-within .k .x, .wv-grid tr:focus-within .ms-box > .btn, .wv-grid tr:focus-within .date-pick-btn { opacity: 1; }
 
-/* A capped column says what it is hiding: a marker at rest, the whole value
-   on hover. Text gets the native ellipsis too; chips never do, which is why
-   the glyph is the marker that always shows. */
+/* A capped column shows its whole value on hover; no marker glyph (2026-09-27). */
 .wv-grid td.clipped { position: relative; }
-.wv-grid td.clipped::after {
-  content: "⤢"; position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
-  font-size: 10px; line-height: 1; color: var(--tblr-secondary); opacity: .4;
-  transition: opacity .12s ease; pointer-events: none;
-}
-.wv-grid tr:hover td.clipped::after { opacity: 1; color: var(--tblr-primary); }
 /* The expansion is a COPY in a layer over the grid. The cell keeps its own
    box and its own content, so expanding one cannot move a column. */
 .cell-pop-layer { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
