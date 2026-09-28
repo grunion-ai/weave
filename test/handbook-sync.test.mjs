@@ -156,7 +156,7 @@ test('weave handbook check exits 1 on drift; handbook sync clears it', () => {
 test('serve brings an existing docs workspace up to the current Handbook on boot', async () => {
   const sub = mkdtempSync(join(dir, 'boot-'));
   const docs = staleDb(join(sub, 'weave.db'));
-  const child = spawn('node', [BIN, 'serve', '--port', '0', '--data', join(sub, 'ws.db')], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn('node', [BIN, 'serve', '--port', '0', '--data', join(sub, 'ws.db')], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });
   let log = '';
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`serve never came up:\n${log}`)), 20000);

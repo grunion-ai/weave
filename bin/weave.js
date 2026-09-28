@@ -335,6 +335,16 @@ async function main() {
     const dest = process.env.WEAVE_BACKUP_DEST || null;
     // The served instance reports its build so a stale one can toast.
     const { port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null });
+    /* The newer-release check (Issue #253): at most one GitHub request a day,
+       cached beside the workspace, armed only once the port is listening so it
+       never delays the start. WEAVE_UPDATE_CHECK=off makes no request. */
+    {
+      const { createReleaseCheck, updateCheckFromEnv } = await import('../src/update-check.js');
+      const { armReleaseCheck, VERSION } = await import('../src/server.js');
+      const release = createReleaseCheck({ version: VERSION, enabled: updateCheckFromEnv(), cacheFile: join(dirname(dataPath), 'update-check.json') });
+      armReleaseCheck(release);
+      release.refresh();
+    }
     if (dest) {
       const { backup, scheduleNightly } = await import('../src/backup.js');
       const { tmpdir } = await import('node:os');

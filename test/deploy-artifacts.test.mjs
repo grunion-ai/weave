@@ -220,7 +220,7 @@ test('G3: docker build, run with the six variables, health ok, an entity survive
     docker('volume', 'create', volume);
     docker('run', '-d', '--name', name, '-p', '127.0.0.1::4400', '-v', `${volume}:/data`,
       '-e', 'PORT=4400', '-e', 'WEAVE_HOST=0.0.0.0', '-e', 'WEAVE_DATA=/data/workspace.db',
-      '-e', 'WEAVE_ORIGIN=http://127.0.0.1:4400', '-e', 'WEAVE_KEYSTORE_PASSPHRASE=g3-gate', '-e', 'WEAVE_BACKUP_DEST=',
+      '-e', 'WEAVE_ORIGIN=http://127.0.0.1:4400', '-e', 'WEAVE_KEYSTORE_PASSPHRASE=g3-gate', '-e', 'WEAVE_BACKUP_DEST=', '-e', 'WEAVE_UPDATE_CHECK=off',
       tag);
     // An ephemeral published port is reassigned on every (re)start: read it each time.
     const baseNow = () => `http://127.0.0.1:${docker('port', name, '4400').split('\n')[0].split(':').pop()}`;

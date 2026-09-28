@@ -1359,6 +1359,20 @@ function renderNav() {
         status.textContent += ` · ${h.sha} ≠ ${h.diskSha}`;
         status.title = `This server booted at ${h.sha}; the checkout it serves is at ${h.diskSha} — restart weave`;
         toast(`This page was served by ${h.diskSha} but the server is still running ${h.sha} — restart weave; until then saving can fail silently`, true);
+      } else if (h.releaseBehind) {
+        /* A newer published release (Issue #253): the server asks GitHub at
+           most once a day. It outranks the sha comparison because it is the
+           one an install from a clone or a zip can act on. The toast shows
+           once per release per browser; the chip stays amber until updated. */
+        status.classList.add('is-behind');
+        status.textContent += ` · v${h.latestRelease} available`;
+        status.title = `weave v${h.latestRelease} is out; this instance runs v${h.version}. Checked ${h.releaseCheckedAt}.`;
+        let seen = null;
+        try { seen = localStorage.getItem('wv-release-seen'); } catch { /* storage blocked: toast every load */ }
+        if (seen !== h.latestRelease) {
+          toast(`weave v${h.latestRelease} is available. This instance runs v${h.version}.`);
+          try { localStorage.setItem('wv-release-seen', h.latestRelease); } catch { /* ignore */ }
+        }
       } else if (h.behind) {
         status.classList.add('is-behind');
         status.textContent += ` · ${h.sha} ≠ ${h.latestSha}`;

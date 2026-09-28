@@ -460,7 +460,7 @@
       "items": [
         "src/handbook.js writes the Handbook into the weave workspace",
         "src/weaver-seed.js and src/quality-mirror.js sync Development and Quality",
-        "src/service.js and src/rehearse.js run launchd and upgrade rehearsal"
+        "src/service.js, src/rehearse.js and src/update-check.js: launchd, rehearsal, newer releases"
       ]
     }
   ]

@@ -25,6 +25,8 @@ services:
       # Set this (plus the bucket credentials — Handbook → "Backup and restore")
       # and the server backs itself up nightly at 04:00 UTC, thirty archives kept.
       # WEAVE_BACKUP_DEST: s3://bucket/weave
+      # The server asks GitHub for the latest release once a day; off stops it.
+      # WEAVE_UPDATE_CHECK: "off"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4400/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 30s

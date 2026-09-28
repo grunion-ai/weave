@@ -107,7 +107,7 @@ test('serve brings an existing docs workspace\'s Showcase up to the current buil
   docs.state.meta.name = 'weave';
   docs.save();
   docs.store.close?.();
-  const child = spawn('node', [BIN, 'serve', '--port', '0', '--data', join(sub, 'ws.db')], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn('node', [BIN, 'serve', '--port', '0', '--data', join(sub, 'ws.db')], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });
   let log = '';
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`serve never came up:\n${log}`)), 20000);

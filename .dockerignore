@@ -32,3 +32,4 @@ brand/
 .*-shot.mjs
 .DS_Store
 *.tmp
+update-check.json

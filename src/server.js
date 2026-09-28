@@ -10,7 +10,7 @@ import { createRequestHandler } from './routes.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 // The version weave actually is — read at load, never hardcoded (Issue #19).
-const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
+export const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
 
 /* ---------- build staleness (Kyle, 2026-09-02) ----------
    "my local should always be on the latest and should show a toast when it
@@ -58,10 +58,16 @@ export function describeBuild({ head, disk = null, latest = null }) {
     ...(latest ? { latestSha: latest.slice(0, 7), behind: latest !== head } : {}),
   };
 }
+/* The newer-release check (Issue #253, src/update-check.js) rides the same
+   payload. `weave serve` arms it; it needs no checkout, so an install from a
+   source zip still hears about a newer release. */
+let RELEASE = null;
+export function armReleaseCheck(check) { RELEASE = check; }
 export function buildInfo() {
-  if (!BUILD.head) return null;
+  const release = RELEASE?.status() ?? null;
+  if (!BUILD.head) return release;
   if (Date.now() - BUILD.checkedAt > 5 * 60 * 1000) refreshLatest();
-  return describeBuild({ head: BUILD.head, disk: diskHead(), latest: BUILD.latest });
+  return { ...describeBuild({ head: BUILD.head, disk: diskHead(), latest: BUILD.latest }), ...release };
 }
 const MIME = {
   '.html': 'text/html; charset=utf-8',
