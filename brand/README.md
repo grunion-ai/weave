@@ -47,6 +47,7 @@ width 3.5 on a 48-unit grid. The under-strand is cut with SVG masks
 | `weave-favicon.svg` | Favicon source (mono, 4.5 strands) |
 | `weave-app-icon.svg` | 512 squircle app icon |
 | `weave-loader-dark.svg` / `-light.svg` | Animated loader (decision 7), same strand pairs as the marks |
+| `weave-loader-rope.html` | The app's loader (Issue #390): both themes' rope at rest inside compositor windows, with its CSS |
 | `weave-lockup-dark.svg` / `-light.svg` | Inline mark + wordmark |
 
 `assets/png/` — rasters rendered via headless Chromium: favicon 16/32/48 +
@@ -77,7 +78,7 @@ Consumers:
 
 | Where | Asset | Why |
 | --- | --- | --- |
-| App page loads | `public/brand/weave-loader-{dark,light}.svg` | Inlined by `initPageLoader()` — only inline SVG exposes `setCurrentTime`, which is what makes the whole-cycle rule exact |
+| App page loads | `public/brand/weave-loader-rope.html` (`loaderRopeHtml()`) | Inlined by `initPageLoader()`. Chrome and Safari tick SMIL on the main thread, so the SMIL rope froze on every long task (Issue #390). The app shows the still strands through windows that move by transform only, which the compositor runs: each end of the dash is an anchor holding a far-side window, a square cut at the end's point and a round cap disc, and the strand inside counter-moves so it stays put. The ends ride the dash's ends frame by frame; the unweave follows Chromium's dash so it ends on the two end dots. Look settled by Kyle, 2026-09-28 |
 | README hero | `assets/png/weave-loader-{dark,light}.gif` | GitHub's image proxy does not run SMIL; `brand/render-gif.mjs` builds the pair from the same generator |
 
 ## Usage rules

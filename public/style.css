@@ -1809,12 +1809,16 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 }
 /* The rope is inlined SVG with a viewBox and no width/height, so as a flex
    item it has no intrinsic size and collapses to 0x0 unless sized here. */
-#page-loader .mark-light, #page-loader .mark-dark { width: 96px; height: 96px; }
+#page-loader .mark-light, #page-loader .mark-dark { position: relative; width: 96px; height: 96px; }
 #page-loader svg { width: 100%; height: 100%; display: block; }
 #page-loader .mark-dark { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-light { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-dark { display: block; }
 @keyframes loader-in { from { opacity: 0; } to { opacity: 1; } }
+/* Issue #390: the rope's own layout and keyframes ship inside
+   public/brand/weave-loader-rope.html (brand/build-logos.mjs loaderRopeCss),
+   generated from the rope's geometry; they move by transform only, so the
+   compositor keeps the rope moving while the main thread is busy. */
 /* The rope's own motion is the loading signal; the wash fading in is not.
    Honour a reduced-motion request by dropping the fade, not the loader. */
 @media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }
@@ -1829,7 +1833,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
   pointer-events: none;
   animation: loader-in .18s ease both;
 }
-#main > .grid-loader .mark-light, #main > .grid-loader .mark-dark { width: 96px; height: 96px; }
+#main > .grid-loader .mark-light, #main > .grid-loader .mark-dark { position: relative; width: 96px; height: 96px; }
 #main > .grid-loader svg { width: 100%; height: 100%; display: block; }
 #main > .grid-loader .mark-dark { display: none; }
 [data-bs-theme="dark"] #main > .grid-loader .mark-light { display: none; }
