@@ -7129,9 +7129,11 @@ export class Weave {
      Secrets stay home (Issue #230): a reader token may take an export, so
      the account token hashes and the view share tokens are stripped on the
      way out — from every surface, the CLI and MCP included. The dump still
-     round-trips: an imported account keeps its name and role but verifies
-     no token until it is deleted and created again, and an imported view
-     arrives unshared until someone shares it, which mints a fresh token.
+     round-trips: imported into another workspace, an account keeps its name
+     and role but verifies no token until it is deleted and created again,
+     and a view arrives unshared until someone shares it, which mints a fresh
+     token. Imported back into the workspace it came from, the stored
+     secrets stay put (#keepSecrets).
      The .db copy (`weave backup`, Feature #209) is the surface that keeps
      them; the JSON is interchange, not a key escrow. */
   exportJSON({ blobs: withBlobs = true } = {}) {
@@ -7168,10 +7170,35 @@ export class Weave {
     return true;
   }
 
+  /* The export strips the secrets (Issue #230), so a dump imported back into
+     the workspace it came from would wipe every token hash, share token,
+     session and invite, and lock the admin who ran it out. What the dump
+     leaves out, the store keeps: matched by account and view id, and only
+     for the accounts and views the dump still names. A secret the dump does
+     carry wins. A dump from elsewhere matches no ids and keeps nothing. */
+  #keepSecrets(prior) {
+    const meta = this.state.meta;
+    for (const a of Object.values(meta.accounts ?? {})) {
+      const was = prior.accounts?.[a.id];
+      if (was?.tokenHash && a.tokenHash === undefined) a.tokenHash = was.tokenHash;
+    }
+    for (const v of Object.values(meta.views ?? {})) {
+      const was = prior.views?.[v.id];
+      if (was?.shareToken && v.shareToken === undefined) v.shareToken = was.shareToken;
+    }
+    for (const kind of ['sessions', 'invites']) {
+      if (meta[kind] !== undefined || !prior[kind]) continue;
+      const kept = Object.entries(prior[kind]).filter(([, s]) => meta.accounts?.[s.accountId]);
+      if (kept.length) meta[kind] = Object.fromEntries(kept);
+    }
+  }
+
   importJSON(state) {
     if (!state || ![1, 2].includes(state.version)) throw new WeaveError('Unsupported workspace format', 'invalid');
+    const prior = this.state.meta ?? {};
     this.state = JSON.parse(JSON.stringify(state));
     this.#migrate();
+    this.#keepSecrets(prior);
     if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
     else if (this.registryHost) this.#syncAll();
     this.#landBlobs();

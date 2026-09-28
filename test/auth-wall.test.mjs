@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
@@ -228,6 +229,58 @@ test('Issue #230 (b): import is a schema write — an admin only', async () => {
     assert.equal((await call('POST', '/api/import', { token: reader, body: dump })).status, 403);
     assert.equal((await call('POST', '/api/import', { token: writer, body: dump })).status, 403, 'a writer cannot replace the workspace');
     assert.equal((await call('POST', '/api/import', { token: admin, body: dump })).status, 200);
+  } finally {
+    stop();
+  }
+});
+
+/* Issue #230 (c): the redacted dump, imported back into the workspace it came
+   from, must not lock that workspace out of itself. The export strips the
+   token hashes, the share tokens, the sessions and the invites, and a plain
+   replace then wiped every one of them here too: the admin who ran the import
+   was answered 401 on the next call and every share link died. What the dump
+   does not carry, import keeps from what is already stored, matched by
+   account and view id. A value the dump does carry still wins, and an
+   account or view the dump drops takes its secrets with it. */
+test('Issue #230 (c): an export imported back into the same workspace keeps its tokens, share links and sessions', async () => {
+  const { w, view, share, admin, writer, reader, call, stop } = await serve();
+  try {
+    const eye = w.listAccounts().find((a) => a.name === 'eye');
+    const session = w.createSession('root').token;
+    const invite = w.createInvite('eye').token;
+    const dump = await (await call('GET', '/api/export', { token: admin })).json();
+    const text = JSON.stringify(dump);
+    for (const re of [/\bwv_[\w-]{16,}/, /\bwvv_[\w-]{16,}/, /\bwvs_[\w-]{16,}/, /tokenHash/, /shareToken/]) {
+      assert.ok(!re.test(text), `the export carries ${re}`);
+    }
+    assert.equal((await call('POST', '/api/import', { token: admin, body: dump })).status, 200);
+    assert.equal((await call('GET', '/api/workspace', { token: admin })).status, 200, 'the admin who imported is still signed in');
+    for (const t of [admin, writer, reader]) assert.ok(w.verifyToken(t), 'every account token still verifies');
+    assert.equal(w.viewByShareToken(share)?.id, view.id, 'the share link still opens its view');
+    assert.equal((await call('GET', `/view/${share}`)).status, 200);
+    assert.ok(w.verifySession(session), 'a browser signed in before the import stays signed in');
+    assert.equal(w.readInvite(invite)?.id, eye.id, 'an open invite still works');
+    // A second round trip is the same as the first: nothing decays.
+    await call('POST', '/api/import', { token: admin, body: await (await call('GET', '/api/export', { token: admin })).json() });
+    assert.ok(w.verifyToken(admin) && w.viewByShareToken(share));
+
+    // A dump that drops an account or a view takes their secrets with it.
+    const trimmed = structuredClone(dump);
+    delete trimmed.meta.accounts[eye.id];
+    delete trimmed.meta.views[view.id];
+    assert.equal((await call('POST', '/api/import', { token: admin, body: trimmed })).status, 200);
+    assert.equal(w.verifyToken(reader), null, 'a dropped account does not come back through its old token');
+    assert.equal(w.readInvite(invite), null, "a dropped account's invite goes with it");
+    assert.equal(w.viewByShareToken(share), null, 'a dropped view does not keep its share link');
+    assert.ok(w.verifyToken(admin), 'the accounts the dump kept still verify');
+
+    // A dump that carries its own hash wins over the stored one.
+    const minted = w.createAccount({ name: 'fresh', role: 'reader' });
+    const own = structuredClone(w.state);
+    own.meta.accounts[minted.account.id].tokenHash = createHash('sha256').update('wv_replacement').digest('hex');
+    w.importJSON(own);
+    assert.equal(w.verifyToken('wv_replacement')?.id, minted.account.id);
+    assert.equal(w.verifyToken(minted.token), null);
   } finally {
     stop();
   }
