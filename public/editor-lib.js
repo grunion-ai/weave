@@ -386,4 +386,83 @@ globalThis.WeaveEditorLib = {
     const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
     return norm(name) !== '' && norm(heading) === norm(name);
   },
+
+  /* ---------- a block command takes the line it was typed on (Issue #455) ----
+     Kyle, 2026-09-28: a heading line, then /task, kept the heading and put a
+     "To do" placeholder under it. The slash menu handed Vditor a fixed string
+     and nothing read the line. A line-prefix command now travels as a marker,
+     the same U+2063 fence a reference uses, and the line that holds the marker
+     is rewritten here as markdown: old block marker off, new one on, words
+     kept.
+
+     One entry per command: the prefix it writes, and the placeholder a line
+     with no words gets, because a marker with nothing after it is not a block
+     (the slash menu's note in app.js has the measurements). */
+  BLOCK_KINDS: {
+    text: ['', 'Text'],
+    h1: ['# ', 'Heading'],
+    h2: ['## ', 'Heading'],
+    h3: ['### ', 'Heading'],
+    h4: ['#### ', 'Heading'],
+    h5: ['##### ', 'Heading'],
+    h6: ['###### ', 'Heading'],
+    bullet: ['- ', 'List item'],
+    number: ['1. ', 'List item'],
+    task: ['- [ ] ', 'To do'],
+    quote: ['> ', 'Quote'],
+  },
+  BLOCK_MARKER_RE: /\u2063block:([a-z0-9]+)\u2063/,
+  blockMarker(kind) {
+    return `\u2063block:${kind}\u2063`;
+  },
+
+  /* Line in, command in, line out. The indent stays, so a nested item
+     converts where it sits. Every quote caret comes off, then one heading or
+     list marker, and a task box goes with its bullet. A marker counts only
+     with a space or the end of the line after it: `*soon*` is emphasis and
+     `#tag` is a word. */
+  convertLine(line, kind) {
+    const src = String(line ?? '');
+    const spec = this.BLOCK_KINDS[kind];
+    if (!spec) return src;
+    const [, indent, rest] = src.trimEnd().match(/^(\s*)(.*)$/);
+    const words = rest
+      .replace(/^(?:>\s?)+/, '')
+      .replace(/^(?:#{1,6}|(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?)(?:\s+|$)/, '')
+      .trim();
+    return `${indent}${spec[0]}${words || spec[1]}`;
+  },
+
+  /* The document around that line. null when no marker is in it; otherwise
+     the document with the one line rewritten, and `line`, where that line now
+     is, so the caller can put the caret at its end.
+
+     The space typed before "/" belongs to the command and goes with it. A
+     table row and a line inside a code fence lose the marker and nothing
+     else, and `line` is -1 to say so: a block prefix there would break the
+     table or rewrite the code. A line that leaves a list or a paragraph
+     (Text, a heading, a quote) is set apart by blank lines, because "- a\nb"
+     reads b as the tail of item a. */
+  convertMarkedLine(md) {
+    const src = String(md ?? '');
+    const hit = src.match(this.BLOCK_MARKER_RE);
+    if (!hit) return null;
+    const lines = src.split('\n');
+    let at = lines.findIndex((l) => l.includes(hit[0]));
+    const cut = lines[at].indexOf(hit[0]);
+    const before = lines[at].slice(0, cut);
+    const after = lines[at].slice(cut + hit[0].length);
+    const line = before.trim() ? before.replace(/[ \u00a0]$/, '') + after : before + after.trimStart();
+    const fenced = lines.slice(0, at).filter((l) => /^\s*(?:```|~~~)/.test(l)).length % 2 === 1;
+    if (fenced || /^\s*\|/.test(line)) {
+      lines[at] = line.trimEnd();
+      return { md: lines.join('\n'), line: -1 };
+    }
+    lines[at] = this.convertLine(line, hit[1]);
+    if (!/^(?:bullet|number|task)$/.test(hit[1])) {
+      if (lines[at + 1]?.trim()) lines.splice(at + 1, 0, '');
+      if (lines[at - 1]?.trim()) { lines.splice(at, 0, ''); at += 1; }
+    }
+    return { md: lines.join('\n'), line: at };
+  },
 };

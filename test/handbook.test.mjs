@@ -92,6 +92,8 @@ test('the document-formatting guide covers the surface the editor offers', () =>
     'Raw HTML', 'full screen', 'markdown',
     // Issue #96: the fences and a diagram's source live behind this button.
     '**</>** button',
+    // Issue #455: a line-prefix command converts the line it is typed on.
+    'take the line they are typed on', 'Buy milk /task',
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the formatting guide never mentions ${topic}`);
   }

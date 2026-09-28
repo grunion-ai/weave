@@ -775,7 +775,7 @@ Select some text and the toolbar floats in over the selection — headings (with
 
 ## The slash menu
 
-Type \`/\` on an empty line. Three groups:
+Type \`/\` on an empty line, or after a space on a line that already has text. Three groups:
 
 | Group | What it holds |
 | --- | --- |
@@ -786,6 +786,8 @@ Type \`/\` on an empty line. Three groups:
 Each row shows its markdown on the right, so the menu teaches the syntax rather than hiding it. Aliases catch what you actually type: \`/todo\` finds the task list, \`/hr\` the divider, \`/h4\` a level-four heading directly.
 
 A format command wraps the text you selected rather than a placeholder — as long as you selected it in the last fifteen seconds. Select a phrase, type \`/bold\`, and the phrase is what ends up bold.
+
+Text, a heading, a list, a task list and a quote take the line they are typed on. \`Buy milk /task\` becomes \`- [ ] Buy milk\`, \`## Plan /task\` becomes \`- [ ] Plan\`, and \`/text\` on a heading gives a plain paragraph. The words, their inline formatting and a nested item's indent stay; the caret goes to the end of the line. On an empty line the command writes its prefix and a placeholder to type over. Every other block (code, mermaid, table, divider, line break, image, raw HTML) is inserted beside the text.
 
 ## Blocks
 

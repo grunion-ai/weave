@@ -311,6 +311,197 @@ if (s) {
     await page.close();
   });
 
+  /* ---------- a block command on a line with text (Issue #455) ----------
+     Kyle, 2026-09-28: a heading line, then /task, kept the heading and put a
+     "To do" placeholder under it. A line-prefix command now takes the line it
+     was typed on: the words stay, the block type changes. The rewrite itself
+     is test/slash-convert-line.test.mjs; these cases are what Vditor and Lute
+     make of it, where the caret ends up, and what reaches the server. */
+
+  /* Writes `md`, puts the caret at the end of the text in `sel` (the last
+     block when there is none), `back` characters short of it, types ` /query`
+     and takes the promoted row. Returns the markdown the editor holds, where
+     the caret is, and what was saved. `then(page)` runs on the page before
+     it closes, after the save, and its answer comes back as `after`.
+     `recorded` waits, before the command is typed, for Vditor's undo stack to
+     hold the document: a writer pauses, a test does not. */
+  async function convertLine(md, query, { sel = null, back = 0, then = null, recorded = false } = {}) {
+    const id = freshEntity('Convert case');
+    const page = await browser.newPage();
+    try {
+      await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+      await page.evaluate(({ md, sel, back }) => {
+        const ed = window.__weaveEditors.values().next().value;
+        ed.setValue(md);
+        ed.focus();
+        if (!md) return; // an empty document has one place for the caret
+        const root = document.querySelector('.vditor-ir .vditor-reset');
+        const block = sel ? root.querySelector(sel) : root.lastElementChild;
+        const texts = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+        let last = null;
+        for (let n = texts.nextNode(); n; n = texts.nextNode()) {
+          // A nested list is another item's text, not this one's.
+          if (n.textContent.trim() && n.parentElement.closest('li, [data-block]') === block.closest('li, [data-block]')) last = n;
+        }
+        const range = document.createRange();
+        range.setStart(last, last.textContent.replace(/\n$/, '').length - back);
+        range.collapse(true);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+      }, { md, sel, back });
+      if (!md) await page.click('.vditor-ir [contenteditable="true"]');
+      if (recorded) {
+        await page.waitForFunction((text) =>
+          window.__weaveEditors.values().next().value.vditor.undo.ir.lastText.includes(text),
+        md, { timeout: 15000, polling: 100 });
+      }
+      await page.keyboard.type(md ? ` /${query}` : `/${query}`);
+      await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
+      await hintFiltered(page);
+      const label = (await page.textContent('.vditor-hint:not(.vditor-panel--arrow) button')).trim();
+      await page.keyboard.press('Enter');
+      // Until the marker is gone and the document has stopped changing.
+      let markdown = null;
+      for (let i = 0; i < 60; i++) {
+        const now = await page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
+        if (now === markdown && !/\u2063/.test(now) && !now.includes(`/${query}`)) break;
+        markdown = now;
+        await page.waitForTimeout(50);
+      }
+      const caret = await page.evaluate(() => {
+        const s = getSelection();
+        if (!s.rangeCount) return null;
+        const r = s.getRangeAt(0);
+        const el = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+        const block = el.closest('li, [data-block]');
+        if (!block) return null;
+        const before = document.createRange();
+        before.selectNodeContents(block);
+        before.setEnd(r.startContainer, r.startOffset);
+        // The line's own text: a nested list under it is not part of the line.
+        const own = [...block.childNodes].filter((n) => !(n.nodeType === 1 && /^(UL|OL)$/.test(n.tagName)))
+          .map((n) => n.textContent).join('');
+        return { collapsed: r.collapsed, before: before.toString().trim(), line: own.trim(), inEditor: !!el.closest('.vditor-ir') };
+      });
+      await page.evaluate(() => window.__weaveFlushDocSaves());
+      let saved = null;
+      for (let i = 0; i < 40; i++) {
+        saved = await (await fetch(`${base}/e/${id}/doc.md`)).text();
+        if (saved.trim() === markdown.trim()) break;
+        await page.waitForTimeout(50);
+      }
+      const after = then ? await then(page) : null;
+      return { label, markdown, caret, saved, after };
+    } finally { await page.close(); }
+  }
+
+  const said = (r) => `chose "${r.label}" and produced:\n${JSON.stringify(r.markdown)}`;
+
+  // [name, document, query, options, the line it must become, what must be gone]
+  const CONVERSIONS = [
+    ['a paragraph becomes a task', 'Buy milk', 'task', {}, /^- \[ \] +Buy milk$/m, /To do|^Buy milk/m],
+    ['a heading becomes a task', '## Plan', 'task', {}, /^- \[ \] +Plan$/m, /To do|^#/m],
+    ['a task becomes a heading', '- [ ] Plan', 'h2', { sel: 'li' }, /^## Plan$/m, /Heading|\[ \]/],
+    ['a paragraph becomes a quote', 'Buy milk', 'quote', {}, /^> Buy milk$/m, /Quote|^Buy milk/m],
+    ['a bulleted item becomes a numbered one', '- Buy milk', 'number', { sel: 'li' }, /^1\. Buy milk$/m, /List item|^- /m],
+    ['Text on a heading gives a paragraph', '## Plan', 'text', {}, /^Plan$/m, /^Text$|#/m],
+    ['inline marks stay', '**Buy** `milk`', 'h3', {}, /^### \*\*Buy\*\* `milk`$/m, /Heading/],
+  ];
+
+  for (const [name, md, query, options, expected, gone] of CONVERSIONS) {
+    test(`convert: ${name}`, async () => {
+      const r = await convertLine(md, query, options);
+      assert.match(r.markdown, expected, `"${md}" + "/${query}" ${said(r)}`);
+      assert.doesNotMatch(r.markdown, gone, `nothing is left behind and no placeholder arrives: ${said(r)}`);
+      assert.equal(r.markdown.trim().split('\n').filter(Boolean).length, 1, `one line in, one line out: ${said(r)}`);
+      assert.doesNotMatch(r.markdown, /\u2063/, 'the marker never stays in the document');
+      assert.ok(r.caret?.inEditor && r.caret.collapsed, 'the caret is back in the document');
+      assert.equal(r.caret.before, r.caret.line, 'at the end of the converted line');
+      assert.equal(r.saved.trim(), r.markdown.trim(), 'and the conversion is what was saved');
+    });
+  }
+
+  test('convert: the words on both sides of the caret survive', async () => {
+    // Caret after "milk", so " today" sits to its right when the command runs.
+    const r = await convertLine('Buy milk today', 'task', { back: ' today'.length });
+    assert.match(r.markdown, /^- \[ \] +Buy milk +today$/m, said(r));
+    assert.doesNotMatch(r.markdown, /To do|\u2063/, said(r));
+    assert.equal(r.caret.before, r.caret.line, 'the caret goes to the end of the line, past the words that were after it');
+  });
+
+  test('convert: a nested item keeps its indent between list types', async () => {
+    const r = await convertLine('- one\n  - two', 'number', { sel: 'li li' });
+    assert.match(r.markdown, /^- one$/m, `the parent item is untouched: ${said(r)}`);
+    assert.match(r.markdown, /^ {2,4}1\. two$/m, `the nested item is numbered where it was: ${said(r)}`);
+    assert.doesNotMatch(r.markdown, /List item|\u2063/, said(r));
+    assert.equal(r.caret.line, 'two');
+    assert.equal(r.caret.before, 'two', 'the caret is at the end of the nested item');
+  });
+
+  test('convert: only the line the command ran on changes', async () => {
+    const r = await convertLine('# Title\n\nBuy milk\n\nLast line', 'task', { sel: 'p' });
+    assert.match(r.markdown, /^# Title\n\n- \[ \] +Buy milk\n\nLast line\n?$/, said(r));
+    assert.equal(r.caret.before, 'Buy milk', 'the caret stays on the line that was converted');
+  });
+
+  test('convert: the next keystroke lands at the end of the converted line', async () => {
+    const r = await convertLine('Buy milk', 'task', {
+      then: async (page) => {
+        await page.keyboard.type(' and eggs');
+        return page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
+      },
+    });
+    assert.match(r.after, /^- \[ \] +Buy milk and eggs\n?$/, `typed on and got ${JSON.stringify(r.after)}`);
+  });
+
+  /* Vditor feeds its undo stack from the same 800ms timer as its input event.
+     A marker still in the line when that timer fires is on the stack for
+     good: undo brings it back, it converts again, and undo never gets past the
+     line. The conversion runs before the timer, so the stack holds what was
+     typed and what it became. Polled, because a headless page throttles
+     timers. */
+  test('convert: undo goes back to what was typed, never to the marker', async () => {
+    const r = await convertLine('Buy milk', 'task', {
+      recorded: true,
+      then: async (page) => {
+        const state = () => page.evaluate(() => {
+          const v = window.__weaveEditors.values().next().value.vditor;
+          return { depth: v.undo.ir.undoStack.length, last: v.undo.ir.lastText };
+        });
+        // The converted line reaches the stack when the timer fires.
+        await page.waitForFunction(() =>
+          /checkbox/.test(window.__weaveEditors.values().next().value.vditor.undo.ir.lastText),
+        null, { timeout: 15000, polling: 100 });
+        const converted = await state();
+        await page.evaluate(() => {
+          const v = window.__weaveEditors.values().next().value.vditor;
+          v.undo.undo(v);
+        });
+        const undone = await page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
+        return { converted, undone, then: await state() };
+      },
+    });
+    assert.doesNotMatch(r.after.converted.last, /\u2063/, 'the state on the stack is the converted line');
+    assert.doesNotMatch(r.after.undone, /\u2063|block:/, `undo never shows the marker, got ${JSON.stringify(r.after.undone)}`);
+    assert.doesNotMatch(r.after.undone, /\[ \]/, `and the line is no longer a task, got ${JSON.stringify(r.after.undone)}`);
+    assert.match(r.after.undone, /Buy milk/, 'the words are still there');
+    assert.ok(r.after.then.depth < r.after.converted.depth, 'undo went down the stack and stayed there');
+  });
+
+  test('convert: an empty line still gets the marker and its placeholder', async () => {
+    const r = await convertLine('', 'task');
+    assert.match(r.markdown, /^- \[ \] +To do\n?$/, said(r));
+    assert.equal(r.caret.before, 'To do', 'with the caret after the placeholder, where Vditor used to leave it');
+    assert.equal(r.saved.trim(), r.markdown.trim());
+  });
+
+  test('convert: a block that is not a line prefix still inserts beside the text', async () => {
+    const r = await convertLine('Buy milk', 'divider');
+    assert.match(r.markdown, /Buy milk/, said(r));
+    assert.match(r.markdown, /^(---|\*\*\*)$/m, said(r));
+  });
+
   test('a table reference is picked from search and resolves to a live chip', async () => {
     const page = await browser.newPage();
     const id = freshEntity('Table ref case');

@@ -9369,6 +9369,12 @@ const refMarker = (kind) => `⁣ref:${kind}⁣`;
 const DEFERRED_INSERTS = { '⁣raw-html⁣': '<div>html</div>' };
 const ENTITY_LINK_MARKER = refMarker('entity');
 const REF_MARKER_RE = /⁣ref:(entity|table|space)⁣/;
+/* And for a line-prefix block (Text, a heading, a list, a quote), because the
+   command takes the line it was typed on and a hint item cannot read one
+   (Issue #455). The marker lands in the line; the editor rewrites that line
+   as markdown the moment it does (convertBlockLine). The kinds, their
+   prefixes and their placeholders live in editor-lib.js. */
+const blockMarker = (kind) => globalThis.WeaveEditorLib.blockMarker(kind);
 
 /* The last thing the writer selected, remembered because typing "/" replaces
    the selection before any command can see it. A format command wraps that
@@ -9400,16 +9406,19 @@ function slashItems() {
   const headings = [1, 2, 3, 4, 5, 6].map((n) => ({
     label: `Heading ${n}`, icon: 'H', group: 'all', hidden: true,
     hint: `${'#'.repeat(n)} `, aliases: [`h${n}`, `heading${n}`],
-    insert: `${'#'.repeat(n)} Heading`,
+    insert: blockMarker(`h${n}`),
   }));
   return [
-    { label: 'Text', icon: '¶', flat: 'pilcrow', group: 'all', hint: '—', aliases: ['paragraph', 'plain'], insert: 'Text' },
-    { label: 'Heading 1–6', icon: 'H', group: 'all', hint: '#…######', aliases: ['title'], insert: '# Heading' },
+    /* These six rows and the heading levels convert the line they are typed
+       on; on a line with no words they write their prefix and a placeholder,
+       as they always did. Every other block is an insert. */
+    { label: 'Text', icon: '¶', flat: 'pilcrow', group: 'all', hint: '—', aliases: ['paragraph', 'plain'], insert: blockMarker('text') },
+    { label: 'Heading 1–6', icon: 'H', group: 'all', hint: '#…######', aliases: ['title'], insert: blockMarker('h1') },
     ...headings,
-    { label: 'Bulleted list', icon: '•', flat: 'list', group: 'all', hint: '-', aliases: ['ul', 'unordered'], insert: '- List item' },
-    { label: 'Numbered list', icon: '1.', flat: 'list-ordered', group: 'all', hint: '1.', aliases: ['ol', 'ordered'], insert: '1. List item' },
-    { label: 'Task list', icon: '☑', flat: 'square-check', group: 'all', hint: '- [ ]', aliases: ['todo', 'checkbox'], insert: '- [ ] To do' },
-    { label: 'Quote', icon: '❝', flat: 'quote', group: 'all', hint: '>', aliases: ['blockquote'], insert: '> Quote' },
+    { label: 'Bulleted list', icon: '•', flat: 'list', group: 'all', hint: '-', aliases: ['ul', 'unordered'], insert: blockMarker('bullet') },
+    { label: 'Numbered list', icon: '1.', flat: 'list-ordered', group: 'all', hint: '1.', aliases: ['ol', 'ordered'], insert: blockMarker('number') },
+    { label: 'Task list', icon: '☑', flat: 'square-check', group: 'all', hint: '- [ ]', aliases: ['todo', 'checkbox'], insert: blockMarker('task') },
+    { label: 'Quote', icon: '❝', flat: 'quote', group: 'all', hint: '>', aliases: ['blockquote'], insert: blockMarker('quote') },
     /* No language on the fence: the content decides. An unlabelled block is
        auto-detected and highlighted as what it actually is — json, html, a
        mermaid source, a shell session — and anything unrecognised stays plain
@@ -9774,6 +9783,7 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
       });
       attachToolbarBubble(host);
       attachFileTools(host, editor, onInput);
+      watchBlockMarkers(host, editor, onInput);
       if (autoFocus) editor.focus();
     },
     ...(onBlur ? { blur: () => onBlur() } : {}),
@@ -9781,6 +9791,9 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
       // A reference command arrives here as its marker, never as content.
       const ref = v.match(REF_MARKER_RE);
       if (ref) return pickReference(editor, v, ref[0], ref[1], onInput);
+      // watchBlockMarkers converts a block marker as it lands. This is the
+      // net under it: a marker is never handed on to be saved.
+      if (globalThis.WeaveEditorLib.BLOCK_MARKER_RE.test(v)) return convertBlockLine(host, editor, onInput);
       for (const [marker, block] of Object.entries(DEFERRED_INSERTS)) {
         if (!v.includes(marker)) continue;
         const next = v.replace(marker, block);
@@ -10403,6 +10416,75 @@ async function resolveRefs(refs) {
       refResolveCache.set(ref, { href, label: a.dataset.name ?? a.textContent, title: a.textContent, kind });
     });
   } catch { /* resolution is decoration; a failed fetch leaves literals */ }
+}
+
+/* ---------- a block command takes its line (Issue #455) ----------
+   The marker is converted the moment it lands, from a MutationObserver, and
+   not from Vditor's input event. That event runs on an 800ms timer
+   (undoDelay), so the writer would read "Buy milk block:task" for most of a
+   second. The same timer puts the document on the undo stack: a marker still
+   there at that point comes back on ⌘Z, converts again, and undo never gets
+   past the line. The observer runs before either, and setValue cancels the
+   timer, so the undo stack only ever holds the converted line. */
+function watchBlockMarkers(host, editor, onInput) {
+  const root = host.querySelector('.vditor-ir .vditor-reset');
+  if (!root) return;
+  const marked = (n) => n.textContent.includes('\u2063block:');
+  new MutationObserver((records) => {
+    if (records.some((r) => marked(r.target) || [...r.addedNodes].some(marked))) convertBlockLine(host, editor, onInput);
+  }).observe(root, { childList: true, characterData: true, subtree: true });
+}
+
+/* The rewrite is WeaveEditorLib.convertMarkedLine, on the markdown. The
+   whole document is written back, the one path that round-trips through
+   Lute, with a sentinel after the line's last word: setValue rebuilds the
+   surface and leaves the caret nowhere, and the sentinel is where it goes.
+   The sentinel is out again before anything reads the document, so what is
+   saved, through the same debounce as typing, is what the editor holds.
+   A table row or a line of code is not converted (`line` is -1): the marker
+   comes out of the surface and the caret stays where it was. */
+const CARET_SENTINEL = '\u2063caret\u2063';
+function convertBlockLine(host, editor, onInput) {
+  const md = editor.getValue();
+  const next = globalThis.WeaveEditorLib.convertMarkedLine(md);
+  if (!next) return;
+  let token = md.match(globalThis.WeaveEditorLib.BLOCK_MARKER_RE)[0];
+  if (next.line >= 0) {
+    token = CARET_SENTINEL;
+    const lines = next.md.split('\n');
+    lines[next.line] += token;
+    editor.setValue(lines.join('\n'));
+  }
+  // The token is somewhere the walk cannot reach: write the document
+  // without one and let the caret fall where focus puts it.
+  if (!caretToToken(host, token)) { editor.setValue(next.md); editor.focus(); }
+  onInput(editor.getValue());
+  scheduleDecorFor(host);
+}
+
+/* Takes every `token` out of the editing surface (a code block holds its
+   text twice, source and preview) and leaves the caret where the first one
+   was. false when there was none. */
+function caretToToken(host, token) {
+  const root = host.querySelector('.vditor-ir .vditor-reset');
+  if (!root) return false;
+  const texts = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let spot = null;
+  for (let n = texts.nextNode(); n; n = texts.nextNode()) {
+    const at = n.data.indexOf(token);
+    if (at < 0) continue;
+    n.deleteData(at, token.length);
+    spot ??= { node: n, at };
+  }
+  if (!spot) return false;
+  root.focus({ preventScroll: true });
+  const range = document.createRange();
+  range.setStart(spot.node, spot.at);
+  range.collapse(true);
+  const sel = getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  return true;
 }
 
 /* Hands off to the same search the ⌘K palette runs, so one search surface
