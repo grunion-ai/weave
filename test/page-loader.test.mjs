@@ -13,7 +13,9 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { LOADER_CYCLE_MS, VARIANTS } from '../brand/build-logos.mjs';
+import {
+  LOADER_CYCLE_MS, VARIANTS, PALETTE, loaderDraw, loaderStill, loaderWipe, loaderWipeCss, dashExtent, markExtent,
+} from '../brand/build-logos.mjs';
 import { APP, HTML, CSS, px } from './lib/source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,10 +34,65 @@ test('a shown loader always finishes at least one whole cycle', () => {
   assert.match(APP, /const elapsed = Date\.now\(\) - loading\.shownAt/);
 });
 
-test('showing the loader restarts the clock so the cycle starts at the start', () => {
+test('showing the loader restarts the wipe so the cycle starts at the start', () => {
+  // The wipe is a CSS animation on elements inside the host, and [hidden] is
+  // display:none, so un-hiding the host starts it again at 0 (Issue #390).
+  // SMIL's setCurrentTime is gone with SMIL.
+  assert.match(CSS, /#page-loader\[hidden\] \{ display: none; \}/);
+  assert.match(CSS, /#main > \.grid-loader\[hidden\] \{ display: none; \}/);
   const show = APP.slice(APP.indexOf('function showPageLoader'));
-  assert.match(show.slice(0, 500), /setCurrentTime\(0\)/,
-    'an <img> timeline free-runs; only a restarted inline SVG begins a whole weave');
+  assert.match(show.slice(0, 400), /host\.hidden = false/);
+  assert.doesNotMatch(APP, /setCurrentTime/, 'no SMIL clock is left to restart');
+});
+
+/* Issue #390: the rope froze whenever the main thread was busy, because it
+   animated stroke-dashoffset with SMIL. The still mark is the weave-on rope at
+   rest, and a window that animates transform only reveals it; the compositor
+   owns that motion. The browser half of the gate is page-loader-browser. */
+test('the still rope is the weave-on mark at rest: same paths, same masks', () => {
+  for (const [c2, id] of [[PALETTE.sky, 'sd'], [PALETTE.ink, 'sl']]) {
+    const drawn = loaderDraw({ c1: PALETTE.blue, c2, id })
+      .replace(/ pathLength="100" stroke-dasharray="100 110"/g, '')
+      .replace(/<animate [^>]*\/>/g, '')
+      .replace(/(<path [^>]*)><\/path>/g, '$1/>');
+    assert.equal(loaderStill({ c1: PALETTE.blue, c2, id }), drawn);
+  }
+});
+
+test('the wipe reveals what the dash drew, frame by frame', () => {
+  const { width, margin, stops } = loaderWipe();
+  assert.ok(margin > 0 && margin <= 0.5, 'the edge may clear the caps by at most one CSS pixel');
+  const at = (u) => {
+    const i = stops.findIndex(([o]) => o >= u);
+    if (i <= 0) return stops[Math.max(i, 0)][1];
+    const [[u0, p0], [u1, p1]] = [stops[i - 1], stops[i]];
+    return p0 + (p1 - p0) * (u - u0) / (u1 - u0);
+  };
+  const [lo, hi] = markExtent();
+  for (let k = 0; k <= 400; k++) {
+    const u = k / 400, p = at(u), want = dashExtent(u);
+    if (!want) {
+      assert.ok(p + width <= lo - margin + 0.05 || p >= hi + margin - 0.05,
+        `u=${u}: the dash shows nothing, the wipe window sits at ${p.toFixed(2)}`);
+      continue;
+    }
+    // The window reaches `margin` past the dash; clip both to the mark.
+    const shown = [Math.max(p + margin, lo), Math.min(p + width - margin, hi)];
+    assert.ok(Math.abs(shown[0] - want[0]) <= 0.05 && Math.abs(shown[1] - want[1]) <= 0.05,
+      `u=${u}: dash spans ${want.map((x) => x.toFixed(2))}, wipe ${shown.map((x) => x.toFixed(2))}`);
+  }
+});
+
+test('style.css carries the generated wipe verbatim, on transform only', () => {
+  const css = loaderWipeCss();
+  assert.ok(CSS.includes(css),
+    'public/style.css is stale: paste loaderWipeCss() from brand/build-logos.mjs between the Issue #390 markers');
+  const frames = css.slice(css.indexOf('@keyframes'));
+  const props = new Set([...frames.matchAll(/\{\s*([a-z-]+):/g)].map((m) => m[1]));
+  assert.deepEqual([...props], ['transform'], 'only transform keeps the rope on the compositor');
+  assert.match(css, new RegExp(`animation: rope-wipe ${LOADER_CYCLE_MS}ms linear infinite`));
+  assert.match(css, new RegExp(`animation: rope-wipe-in ${LOADER_CYCLE_MS}ms linear infinite`));
+  assert.doesNotMatch(CSS, /stroke-dashoffset/);
 });
 
 test('a fast route never pays for the loader', () => {
@@ -115,14 +172,14 @@ test('the inlined rope is given a size', () => {
 });
 
 test('both themes are shipped and selected the same way as the rail mark', () => {
-  assert.match(APP, /weave-loader-\$\{theme\}\.svg/);
+  assert.match(APP, /weave-loader-still-\$\{theme\}\.svg/);
   assert.match(CSS, /\[data-bs-theme="dark"\] #page-loader \.mark-light \{ display: none; \}/);
   assert.match(CSS, /\[data-bs-theme="dark"\] #page-loader \.mark-dark \{ display: block; \}/);
 });
 
 test('the served loaders are byte-identical to the generated brand assets', () => {
   for (const theme of ['dark', 'light']) {
-    const file = `weave-loader-${theme}.svg`;
+    const file = `weave-loader-still-${theme}.svg`;
     assert.ok(VARIANTS.some((v) => v.file === file), `${file} is a build variant`);
     assert.equal(read(`public/brand/${file}`), read(`brand/assets/${file}`),
       `public/brand/${file} is a stale copy — re-run brand/build-logos.mjs and copy it across`);

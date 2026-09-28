@@ -47,6 +47,7 @@ width 3.5 on a 48-unit grid. The under-strand is cut with SVG masks
 | `weave-favicon.svg` | Favicon source (mono, 4.5 strands) |
 | `weave-app-icon.svg` | 512 squircle app icon |
 | `weave-loader-dark.svg` / `-light.svg` | Animated loader (decision 7), same strand pairs as the marks |
+| `weave-loader-still-dark.svg` / `-light.svg` | The same loader at rest, no animation: the app reveals it with a compositor wipe (Issue #390) |
 | `weave-lockup-dark.svg` / `-light.svg` | Inline mark + wordmark |
 
 `assets/png/` — rasters rendered via headless Chromium: favicon 16/32/48 +
@@ -77,7 +78,7 @@ Consumers:
 
 | Where | Asset | Why |
 | --- | --- | --- |
-| App page loads | `public/brand/weave-loader-{dark,light}.svg` | Inlined by `initPageLoader()` — only inline SVG exposes `setCurrentTime`, which is what makes the whole-cycle rule exact |
+| App page loads | `public/brand/weave-loader-still-{dark,light}.svg` + `loaderWipeCss()` in `public/style.css` | Inlined by `initPageLoader()` inside a window that slides by transform while the mark slides back. Chrome and Safari tick SMIL on the main thread, so the SMIL rope froze on every long task; a transform animation runs on the compositor (Issue #390). The window tracks the dash's span frame by frame; the one visible difference is the leading edge, a vertical cut where the dash had a round cap |
 | README hero | `assets/png/weave-loader-{dark,light}.gif` | GitHub's image proxy does not run SMIL; `brand/render-gif.mjs` builds the pair from the same generator |
 
 ## Usage rules

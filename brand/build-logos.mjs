@@ -34,9 +34,10 @@ const anim = (attr, values, dur, extra = "") =>
   `<animate attributeName="${attr}" values="${values}" dur="${dur}s" ` +
   `repeatCount="indefinite"${extra}/>`;
 // Ease every leg of a keyframe list with the same spline (n stops → n-1 legs).
+const SPLINE = ".45 0 .25 1";
 const eased = keyTimes =>
   ` calcMode="spline" keyTimes="${keyTimes.join(";")}" keySplines="` +
-  Array(keyTimes.length - 1).fill(".45 0 .25 1").join(";") + `"`;
+  Array(keyTimes.length - 1).fill(SPLINE).join(";") + `"`;
 
 // Morph loaders: interpolate the rope through a list of amplitudes. Strand,
 // mask, and over-segment all carry the SAME keyframe list, so the under-strand
@@ -111,13 +112,27 @@ export function loaderSpin({ c1, c2, sw = 3.5, id = "sp", dur = 2.2 }) {
 // strand A stays continuous through it, so the crossing is simply part of the
 // strand and draws with it. B keeps its cut, so the over-under still reads.
 export function loaderDraw({ c1, c2, sw = 3.5, id = "dr", dur = 2 }) {
-  const kt = ["0", ".45", ".62", "1"];
   // pathLength normalizes both strands to 100 so they draw at the same rate.
   // The off-gap (110) must exceed offset + pathLength (104 + 100 = 204 across
   // the pattern), or the dash wraps at the far end and a round cap paints a
   // stray dot there on the hidden frames.
-  const draw = anim("stroke-dashoffset", "104;0;0;-104", dur, eased(kt));
+  const draw = anim("stroke-dashoffset", DRAW.offsets.join(";"), dur, eased(DRAW.keyTimes));
   const dash = ` pathLength="100" stroke-dasharray="100 110"`;
+  return drawMark({ c1, c2, sw, id, dash, draw });
+}
+
+// The weave-on timeline: dash offsets at key times, each leg on SPLINE.
+const DRAW = { keyTimes: ["0", ".45", ".62", "1"], offsets: [104, 0, 0, -104] };
+
+// The weave-on rope at rest (Issue #390): loaderDraw's paths and masks with no
+// dash and no SMIL. The app reveals it with a wipe the compositor animates
+// (loaderWipeCss), because Chrome and Safari tick SMIL on the main thread and
+// the rope froze whenever the page was busy.
+export function loaderStill({ c1, c2, sw = 3.5, id = "st" }) {
+  return drawMark({ c1, c2, sw, id });
+}
+
+function drawMark({ c1, c2, sw, id, dash = "", draw = "" }) {
   const gw = sw + 2.5;
   const region = 'maskUnits="userSpaceOnUse" x="-24" y="-24" width="96" height="96"';
   const white = H3.overs.map(o => stroke(o, "#fff", gw)).join("");
@@ -138,6 +153,113 @@ export function loaderDraw({ c1, c2, sw = 3.5, id = "dr", dur = 2 }) {
 // data-cycle attribute it is stamped into) so "let it finish one cycle" is one
 // fact, not two that can drift.
 export const LOADER_CYCLE_MS = 2000;
+
+// ---------------------------------------------------------------------------
+// The compositor wipe (Issue #390). Both strands run left to right and are
+// monotonic in x, and they are mirror images, so at any moment the dash on
+// each covers the same x-span. A window that shows only that span, over the
+// still mark, therefore shows what the dash drew. The window slides with
+// transform; its content counter-slides so the mark stays put. Transform is
+// the one thing Chrome and Safari animate off the main thread.
+// ---------------------------------------------------------------------------
+
+// A cubic-bezier easing, solved for progress x by bisection.
+function bezier(x1, y1, x2, y2) {
+  const at = (t, a, b) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
+  return x => {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; (at(m, x1, x2) < x ? (lo = m) : (hi = m)); }
+    return at((lo + hi) / 2, y1, y2);
+  };
+}
+const ease = bezier(...SPLINE.split(" ").map(Number));
+
+// x at each 1/2000 of strand A's length (pathLength 100 → index s * 20).
+const ALONG = (() => {
+  const n = H3.a.match(/-?[\d.]+/g).map(Number);
+  const pts = [];
+  for (let i = 2; i < n.length; i += 6) {
+    const [x0, y0] = i === 2 ? [n[0], n[1]] : [n[i - 2], n[i - 1]];
+    for (let k = i === 2 ? 0 : 1; k <= 400; k++) {
+      const t = k / 400, u = 1 - t;
+      pts.push([u ** 3 * x0 + 3 * u * u * t * n[i] + 3 * u * t * t * n[i + 2] + t ** 3 * n[i + 4],
+        u ** 3 * y0 + 3 * u * u * t * n[i + 1] + 3 * u * t * t * n[i + 3] + t ** 3 * n[i + 5]]);
+    }
+  }
+  const len = [0];
+  for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const total = len[len.length - 1];
+  return Array.from({ length: 2001 }, (_, j) => {
+    const want = (j / 2000) * total;
+    let i = len.findIndex(l => l >= want);
+    if (i <= 0) return pts[0][0];
+    const f = (want - len[i - 1]) / (len[i] - len[i - 1]);
+    return pts[i - 1][0] + f * (pts[i][0] - pts[i - 1][0]);
+  });
+})();
+const xAt = s => { const j = s * 20, i = Math.floor(j); return i >= 2000 ? ALONG[2000] : ALONG[i] + (j - i) * (ALONG[i + 1] - ALONG[i]); };
+
+// The mark's x-span with its round caps, in the 48-unit viewBox.
+export function markExtent(sw = 3.5) { return [xAt(0) - sw / 2, xAt(100) + sw / 2]; }
+
+// The x-span the weave-on dash paints at cycle phase u (0..1), caps included,
+// or null on a frame where it paints nothing.
+export function dashExtent(u, sw = 3.5) {
+  const kt = DRAW.keyTimes.map(Number), o = DRAW.offsets;
+  let leg = kt.findIndex((k, i) => i > 0 && u <= k);
+  if (leg < 0) leg = kt.length - 1;
+  const f = (u - kt[leg - 1]) / (kt[leg] - kt[leg - 1]);
+  const offset = o[leg - 1] + (o[leg] - o[leg - 1]) * ease(Math.min(1, Math.max(0, f)));
+  const from = Math.max(0, -offset), to = Math.min(100, 100 - offset);
+  return from < to ? [xAt(from) - sw / 2, xAt(to) + sw / 2] : null;
+}
+
+// Keyframes for the window's left edge: [phase, x] stops, linear between, as
+// few as keep every frame within `tolerance` units of the dash (48 units span
+// the 96px rope, so 0.05 is 0.1px). The window's edges sit `margin` outside
+// the dash's own span, so the compositor's pixel-snapped clip never shaves the
+// round caps' antialiasing; on the empty frames it parks a margin clear of the
+// mark, so no sliver of a cap shows either.
+export function loaderWipe({ sw = 3.5, tolerance = 0.05, margin = 0.25 } = {}) {
+  const [lo, hi] = markExtent(sw), width = hi - lo + 2 * margin;
+  const left = u => {
+    const e = dashExtent(u, sw);
+    if (e) return e[0] > lo + 1e-9 ? e[0] - margin : e[1] + margin - width; // unweaving : drawing in
+    return u < +DRAW.keyTimes[1] ? lo - margin - width : hi + margin;        // not yet drawn : all gone
+  };
+  const N = 8000, pts = Array.from({ length: N + 1 }, (_, i) => [i / N, left(i / N)]);
+  const keep = new Set([0, N]);
+  const simplify = (a, b) => { // Ramer-Douglas-Peucker on the phase axis
+    let worst = -1, at = -1;
+    for (let i = a + 1; i < b; i++) {
+      const [u0, p0] = pts[a], [u1, p1] = pts[b];
+      const d = Math.abs(p0 + (p1 - p0) * (pts[i][0] - u0) / (u1 - u0) - pts[i][1]);
+      if (d > worst) { worst = d; at = i; }
+    }
+    if (worst > tolerance) { keep.add(at); simplify(a, at); simplify(at, b); }
+  };
+  simplify(0, N);
+  const stops = [...keep].sort((a, b) => a - b).map(i => pts[i]);
+  return { width, margin, stops };
+}
+
+// The CSS the app ships for the wipe, pasted verbatim into public/style.css
+// between the Issue #390 markers (test/page-loader.test.mjs checks it). The
+// window is the mark's own width; its offsets are percents of the elements'
+// own widths, so the rope scales with whatever box holds it.
+export function loaderWipeCss({ sw = 3.5 } = {}) {
+  const { width, stops } = loaderWipe({ sw });
+  const n = v => String(+v.toFixed(3));
+  const pct = u => n(u * 100) + "%";
+  const frames = (name, f) => `@keyframes ${name} {\n` +
+    stops.map(([u, p]) => `  ${pct(u)} { transform: translateX(${n(f(p))}%); }\n`).join("") + `}\n`;
+  return `.rope-wipe { position: absolute; top: 0; bottom: 0; left: 0; width: ${n(width / 48 * 100)}%; ` +
+    `overflow: hidden; animation: rope-wipe ${LOADER_CYCLE_MS}ms linear infinite; }\n` +
+    `.rope-wipe-in { position: absolute; top: 0; bottom: 0; left: 0; width: ${n(48 / width * 100)}%; ` +
+    `animation: rope-wipe-in ${LOADER_CYCLE_MS}ms linear infinite; }\n` +
+    frames("rope-wipe", p => p / width * 100) +
+    frames("rope-wipe-in", p => -p / 48 * 100);
+}
 
 export const LOADERS = {
   travel: { label: "Travel — endless rope through a fading window", fn: loaderTravel },
@@ -185,6 +307,9 @@ export const VARIANTS = [
   // loaders (decision 7): weave-on, the same strand pairs as the marks
   { file: "weave-loader-dark.svg",     svg: loaderSvg("draw", { c1: PALETTE.blue, c2: PALETTE.sky, id: "ld" }) },
   { file: "weave-loader-light.svg",    svg: loaderSvg("draw", { c1: PALETTE.blue, c2: PALETTE.ink, id: "ll" }) },
+  // the app's loader (Issue #390): the same rope at rest, revealed by loaderWipeCss()
+  { file: "weave-loader-still-dark.svg",  svg: loaderStill({ c1: PALETTE.blue, c2: PALETTE.sky, id: "sd" }) },
+  { file: "weave-loader-still-light.svg", svg: loaderStill({ c1: PALETTE.blue, c2: PALETTE.ink, id: "sl" }) },
   // lockups (decisions 3A + 4B)
   { file: "weave-lockup-dark.svg",     svg: lockupSvg(PALETTE.cream) },
   { file: "weave-lockup-light.svg",    svg: lockupSvg(PALETTE.ink) },

@@ -12150,10 +12150,13 @@ function wireKeySheet() {
      of the cycle it is in — which is a full cycle when it has only just
      appeared, and rounds up to the next boundary when the wait ran long.
 
-   The SVGs are fetched and inlined rather than used as <img>: only an inline
-   SVG exposes setCurrentTime, and restarting the clock at show time is what
-   makes "one whole cycle" true rather than approximately true — an <img>
-   timeline free-runs from page load, so it would be at an arbitrary phase. */
+   The rope is the still mark revealed by a wipe (Issue #390): .rope-wipe
+   slides a window across it and .rope-wipe-in slides the mark back the other
+   way, both by transform alone, so the compositor keeps it moving while this
+   thread parses JSON or renders a route. The old SMIL rope froze on every
+   long task. The wipe is a CSS animation inside a host whose [hidden] is
+   display:none, so showing the host starts it at the start of a weave, which
+   is what makes "one whole cycle" exact. */
 const LOADER_CYCLE_MS = 2000; // must match LOADER_CYCLE_MS in brand/build-logos.mjs
 const LOADER_SHOW_AFTER_MS = 500;
 const loading = { depth: 0, shownAt: 0, showTimer: null, hideTimer: null, ready: false };
@@ -12163,10 +12166,10 @@ async function initPageLoader() {
   if (!host) return;
   const pairs = [['mark-light', 'light'], ['mark-dark', 'dark']];
   const svgs = await Promise.all(pairs.map(async ([cls, theme]) => {
-    const res = await fetch(`/brand/weave-loader-${theme}.svg`);
-    const wrap = el('span', { class: cls });
-    wrap.innerHTML = await res.text();
-    return wrap;
+    const res = await fetch(`/brand/weave-loader-still-${theme}.svg`);
+    const inner = el('span', { class: 'rope-wipe-in' });
+    inner.innerHTML = await res.text();
+    return el('span', { class: cls }, el('span', { class: 'rope-wipe' }, inner));
   })).catch(() => null);
   if (!svgs) return; // no loader is better than a bare wash
   host.replaceChildren(...svgs);
@@ -12179,8 +12182,6 @@ function showPageLoader() {
   loading.shownAt = Date.now();
   host.hidden = false;
   host.setAttribute('aria-hidden', 'false');
-  // Restart both clocks so the visible rope begins at the start of a weave.
-  for (const svg of host.querySelectorAll('svg')) svg.setCurrentTime(0);
 }
 
 function hidePageLoader() {
@@ -12278,8 +12279,6 @@ function showGridLoader() {
   node.hidden = false;
   gridWait.shownAt = Date.now();
   placeGridLoader();
-  // Restart the clocks so the visible rope begins at the start of a weave.
-  for (const svg of node.querySelectorAll('svg')) svg.setCurrentTime?.(0);
 }
 function hideGridLoader() {
   gridWait.hideTimer = 0; gridWait.shownAt = 0;

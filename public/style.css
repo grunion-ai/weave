@@ -1806,12 +1806,136 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 }
 /* The rope is inlined SVG with a viewBox and no width/height, so as a flex
    item it has no intrinsic size and collapses to 0x0 unless sized here. */
-#page-loader .mark-light, #page-loader .mark-dark { width: 96px; height: 96px; }
+#page-loader .mark-light, #page-loader .mark-dark { position: relative; width: 96px; height: 96px; }
 #page-loader svg { width: 100%; height: 100%; display: block; }
 #page-loader .mark-dark { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-light { display: none; }
 [data-bs-theme="dark"] #page-loader .mark-dark { display: block; }
 @keyframes loader-in { from { opacity: 0; } to { opacity: 1; } }
+/* Issue #390: the rope is the still mark (weave-loader-still-*.svg) seen
+   through a window that slides left to right while its content slides back,
+   so the mark stays put and only the visible span moves. Both animate
+   transform only, which Chrome and Safari run on the compositor: the rope
+   keeps moving while boot parses JSON or a route renders. The span tracks the
+   weave-on dash frame by frame. Generated: paste loaderWipeCss() from
+   brand/build-logos.mjs between these markers; test/page-loader.test.mjs
+   refuses a stale copy. */
+/* rope-wipe: generated */
+.rope-wipe { position: absolute; top: 0; bottom: 0; left: 0; width: 58.333%; overflow: hidden; animation: rope-wipe 2000ms linear infinite; }
+.rope-wipe-in { position: absolute; top: 0; bottom: 0; left: 0; width: 171.429%; animation: rope-wipe-in 2000ms linear infinite; }
+@keyframes rope-wipe {
+  0% { transform: translateX(-64.286%); }
+  6.063% { transform: translateX(-64.286%); }
+  6.075% { transform: translateX(-49.977%); }
+  7.313% { transform: translateX(-47.243%); }
+  11.813% { transform: translateX(-35.898%); }
+  12.612% { transform: translateX(-33.697%); }
+  13.237% { transform: translateX(-31.614%); }
+  13.75% { transform: translateX(-29.454%); }
+  14.2% { transform: translateX(-27.022%); }
+  14.6% { transform: translateX(-24.351%); }
+  15.687% { transform: translateX(-16.3%); }
+  16.063% { transform: translateX(-14.031%); }
+  16.475% { transform: translateX(-11.979%); }
+  17.15% { transform: translateX(-9.293%); }
+  18.813% { transform: translateX(-3.777%); }
+  19.587% { transform: translateX(-0.837%); }
+  20.25% { transform: translateX(2.238%); }
+  21.65% { transform: translateX(9.636%); }
+  22.363% { transform: translateX(12.775%); }
+  23.212% { transform: translateX(15.559%); }
+  24.225% { transform: translateX(17.93%); }
+  25.425% { transform: translateX(20.026%); }
+  27% { transform: translateX(22.216%); }
+  32.675% { transform: translateX(28.71%); }
+  36.362% { transform: translateX(32.306%); }
+  39.575% { transform: translateX(34.439%); }
+  41.875% { transform: translateX(35.31%); }
+  44.275% { transform: translateX(35.694%); }
+  62.5% { transform: translateX(35.753%); }
+  64.3% { transform: translateX(36.606%); }
+  66% { transform: translateX(38.615%); }
+  67.675% { transform: translateX(41.746%); }
+  70.462% { transform: translateX(48.061%); }
+  71.737% { transform: translateX(51.415%); }
+  72.612% { transform: translateX(54.501%); }
+  73.063% { transform: translateX(56.681%); }
+  73.462% { transform: translateX(59.201%); }
+  73.8% { transform: translateX(61.822%); }
+  74.662% { transform: translateX(69.216%); }
+  75.225% { transform: translateX(73.019%); }
+  75.838% { transform: translateX(76.086%); }
+  77.175% { transform: translateX(81.57%); }
+  77.763% { transform: translateX(84.294%); }
+  78.338% { transform: translateX(87.596%); }
+  79.35% { transform: translateX(94.548%); }
+  79.8% { transform: translateX(97.337%); }
+  80.337% { transform: translateX(100.012%); }
+  80.925% { transform: translateX(102.219%); }
+  81.888% { transform: translateX(104.862%); }
+  83.213% { transform: translateX(107.579%); }
+  89.362% { transform: translateX(118.427%); }
+  91.313% { transform: translateX(121.417%); }
+  91.325% { transform: translateX(135.714%); }
+  100% { transform: translateX(135.714%); }
+}
+@keyframes rope-wipe-in {
+  0% { transform: translateX(37.5%); }
+  6.063% { transform: translateX(37.5%); }
+  6.075% { transform: translateX(29.153%); }
+  7.313% { transform: translateX(27.558%); }
+  11.813% { transform: translateX(20.941%); }
+  12.612% { transform: translateX(19.657%); }
+  13.237% { transform: translateX(18.442%); }
+  13.75% { transform: translateX(17.181%); }
+  14.2% { transform: translateX(15.763%); }
+  14.6% { transform: translateX(14.205%); }
+  15.687% { transform: translateX(9.508%); }
+  16.063% { transform: translateX(8.185%); }
+  16.475% { transform: translateX(6.988%); }
+  17.15% { transform: translateX(5.421%); }
+  18.813% { transform: translateX(2.203%); }
+  19.587% { transform: translateX(0.488%); }
+  20.25% { transform: translateX(-1.305%); }
+  21.65% { transform: translateX(-5.621%); }
+  22.363% { transform: translateX(-7.452%); }
+  23.212% { transform: translateX(-9.076%); }
+  24.225% { transform: translateX(-10.459%); }
+  25.425% { transform: translateX(-11.682%); }
+  27% { transform: translateX(-12.959%); }
+  32.675% { transform: translateX(-16.748%); }
+  36.362% { transform: translateX(-18.845%); }
+  39.575% { transform: translateX(-20.09%); }
+  41.875% { transform: translateX(-20.597%); }
+  44.275% { transform: translateX(-20.821%); }
+  62.5% { transform: translateX(-20.856%); }
+  64.3% { transform: translateX(-21.354%); }
+  66% { transform: translateX(-22.526%); }
+  67.675% { transform: translateX(-24.352%); }
+  70.462% { transform: translateX(-28.036%); }
+  71.737% { transform: translateX(-29.992%); }
+  72.612% { transform: translateX(-31.792%); }
+  73.063% { transform: translateX(-33.064%); }
+  73.462% { transform: translateX(-34.534%); }
+  73.8% { transform: translateX(-36.063%); }
+  74.662% { transform: translateX(-40.376%); }
+  75.225% { transform: translateX(-42.594%); }
+  75.838% { transform: translateX(-44.383%); }
+  77.175% { transform: translateX(-47.582%); }
+  77.763% { transform: translateX(-49.171%); }
+  78.338% { transform: translateX(-51.097%); }
+  79.35% { transform: translateX(-55.153%); }
+  79.8% { transform: translateX(-56.78%); }
+  80.337% { transform: translateX(-58.34%); }
+  80.925% { transform: translateX(-59.628%); }
+  81.888% { transform: translateX(-61.169%); }
+  83.213% { transform: translateX(-62.755%); }
+  89.362% { transform: translateX(-69.082%); }
+  91.313% { transform: translateX(-70.826%); }
+  91.325% { transform: translateX(-79.167%); }
+  100% { transform: translateX(-79.167%); }
+}
+/* rope-wipe: end */
 /* The rope's own motion is the loading signal; the wash fading in is not.
    Honour a reduced-motion request by dropping the fade, not the loader. */
 @media (prefers-reduced-motion: reduce) { #page-loader { animation: none; } }
@@ -1826,7 +1950,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
   pointer-events: none;
   animation: loader-in .18s ease both;
 }
-#main > .grid-loader .mark-light, #main > .grid-loader .mark-dark { width: 96px; height: 96px; }
+#main > .grid-loader .mark-light, #main > .grid-loader .mark-dark { position: relative; width: 96px; height: 96px; }
 #main > .grid-loader svg { width: 100%; height: 100%; display: block; }
 #main > .grid-loader .mark-dark { display: none; }
 [data-bs-theme="dark"] #main > .grid-loader .mark-light { display: none; }
