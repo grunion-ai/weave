@@ -8241,6 +8241,52 @@ function numberDisplayControls(n, redraw, changed, column = null) {
   return out;
 }
 
+/* Where a lookup's or a rollup's look comes from (Issue #387). A computed
+   column has no display of its own: it wears the rating or the number
+   display of the field it reads (Features #230, #231), so the tray names
+   that field and links to its settings, where the look is changed. */
+function computedShowsAs(db, f, after) {
+  const rel = f.via ? db.fields.find((x) => x.type === 'relation' && x.name === f.via) : null;
+  const far = allTables().find((d) => d.id === (f.viaTableId ?? rel?.targetDbId));
+  const source = f.targetField ? far?.fields?.find((x) => x.name === f.targetField) : null;
+  const owner = source ? `${far.name} › ${source.name}` : null;
+  const counts = f.type === 'rollup' && ['count', 'distinct', 'filled', 'empty'].includes(f.aggregate ?? 'count');
+  let words;
+  if (f.rating) {
+    const icon = String(f.rating.icon ?? 'lucide:star').replace(/^lucide:/, '');
+    words = `Drawn as the rating on ${owner ?? f.targetField}: ${f.rating.max} ${icon}${f.rating.max === 1 ? '' : 's'}.`;
+  } else if (cellGraphics.isGraphic(f.display)) {
+    words = `Drawn as a ${f.display} from ${owner ?? f.targetField}, on ${typeof f.scale === 'number' ? `a fixed scale of ${f.scale}` : 'the column max'}.`;
+  } else if (counts) {
+    words = 'A count, in plain figures.';
+  } else {
+    words = owner ? `Values from ${owner}, in that field’s format.` : 'Plain text.';
+  }
+  const link = source && !counts ? el('a', {
+    href: '#',
+    onclick: (e) => { e.preventDefault(); fieldDialog(far, source, after); },
+  }, `Open ${source.name} settings`) : null;
+  /* The result on the first row that has one, drawn as the cell draws it
+     (ported from change 443), so the recipe reads against a real value. */
+  const result = el('div', {}, el('span', { class: 'hintnote' }, 'Reading the rows…'));
+  api('POST', `/tables/${db.id}/query`, { limit: 50 }).then((res) => {
+    const blank = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
+    const row = (res.items ?? []).find((it) => !blank(it.raw?.[f.name]));
+    if (!row) return result.replaceChildren(el('span', { class: 'hintnote' }, 'No row has a value yet.'));
+    const raw = row.raw[f.name];
+    const text = row.fields?.[f.name];
+    const drawn = f.rating && typeof raw === 'number' ? ratingEl(f.rating.max, f.rating.icon, raw)
+      : numberGraphicFor(f, row, text) ?? (Array.isArray(text) ? text.join(', ') : String(text ?? raw));
+    result.replaceChildren(el('span', { class: 'hintnote' }, `${row.name || 'Untitled'}: `), drawn);
+  }).catch(() => result.replaceChildren(el('span', { class: 'hintnote' }, 'The rows could not be read.')));
+  return [
+    dsection('Result', result),
+    dsection('Shows as',
+      el('div', {}, words),
+      link ? el('div', { class: 'hintnote' }, `A ${f.type} takes its look from the field it reads, so change it on ${source.name}. `, link) : null),
+  ];
+}
+
 function fieldDialog(db, existing, after) {
   const fdc = fieldDialogCore;
   const isEdit = !!existing;
@@ -8463,24 +8509,37 @@ function fieldDialog(db, existing, after) {
       } else if (t === 'lookup' || t === 'rollup') {
         // Both picks are search-as-you-type over what exists: the table's
         // relations, then the fields of the table that relation points at.
-        const throughRelation = () => {
+        // `fixed` (an existing field, Issue #387) draws the same three rows
+        // read-only, in the slots the pickers take: the engine has no verb
+        // to repoint a lookup or a rollup yet, and when it does, dropping
+        // `fixed` is the whole client change.
+        const fixedRow = (name, value) => el('input', { class: 'form-control wv-fixed', name, readonly: '', tabindex: '-1', value: value ?? '' });
+        const throughRelation = (fixed = false) => {
           const out = [];
           const rels = db.fields.filter((x) => x.type === 'relation');
-          const relSel = pickerSelect({ name: 'relationField', options: rels.map((r) => ({ id: r.name, label: `${r.name} → ${r.targetDb}` })), value: state.relationField || (rels[0]?.name ?? null) });
-          state.relationField = state.relationField || (rels[0]?.name ?? '');
-          relSel.input.addEventListener('change', () => { state.relationField = relSel.input.value; state.targetField = ''; drawCfg(); changed(); });
-          out.push(dsection('Relation', rels.length ? relSel : el('div', { class: 'modal-note' }, 'This table has no relations yet — add one first')));
+          const relLabel = (r) => `${r.name} → ${r.targetDb}`;
+          if (!fixed) state.relationField = state.relationField || (rels[0]?.name ?? '');
           const rel = rels.find((r) => r.name === state.relationField);
+          if (fixed) out.push(dsection('Relation', fixedRow('relationField', rel ? relLabel(rel) : state.relationField)));
+          else {
+            const relSel = pickerSelect({ name: 'relationField', options: rels.map((r) => ({ id: r.name, label: relLabel(r) })), value: state.relationField || null });
+            relSel.input.addEventListener('change', () => { state.relationField = relSel.input.value; state.targetField = ''; drawCfg(); changed(); });
+            out.push(dsection('Relation', rels.length ? relSel : el('div', { class: 'modal-note' }, 'This table has no relations yet — add one first')));
+          }
           const target = rel && allTables().find((d) => d.id === rel.targetDbId);
           const targets = (target?.fields ?? []).filter((x) => x.type !== 'document');
           const needsTarget = t === 'lookup' || (state.aggregate ?? 'count') !== 'count';
-          if (needsTarget && target) {
+          if (needsTarget && fixed) {
+            const tf = targets.find((x) => x.name === state.targetField);
+            out.push(dsection('Field', fixedRow('targetField', tf ? `${tf.name} · ${tf.type}` : state.targetField)));
+          } else if (needsTarget && target) {
             const tSel = pickerSelect({ name: 'targetField', placeholder: `Field of ${target.name}…`, options: targets.map((x) => ({ id: x.name, label: `${x.name} · ${x.type}` })), value: state.targetField || null });
             tSel.input.addEventListener('change', () => { state.targetField = tSel.input.value; changed(); });
             out.push(dsection('Target field', tSel));
           }
           if (t === 'rollup') {
-            out.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); changed(); })));
+            out.push(dsection('Aggregate', fixed ? fixedRow('aggregate', state.aggregate ?? 'count')
+              : segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); changed(); })));
           }
           return out;
         };
@@ -8511,7 +8570,15 @@ function fieldDialog(db, existing, after) {
           return out;
         };
         if (isEdit) {
-          kids.push(el('div', { class: 'modal-note full' }, 'Computed config is not editable — delete and recreate to repoint it'));
+          /* Issue #387: the tray says what the column computes and where
+             its look comes from, instead of only that it cannot change. */
+          if (existing.viaTable) {
+            kids.push(dsection('Table', fixedRow('via', existing.viaTable)));
+            if (existing.targetField) kids.push(dsection('Field', fixedRow('targetField', existing.targetField)));
+            kids.push(dsection('Aggregate', fixedRow('aggregate', existing.aggregate ?? 'count')));
+          } else kids.push(...throughRelation(true));
+          kids.push(el('div', { class: 'modal-note full' }, `The recipe is set when the ${t} is created and cannot be changed here.`));
+          kids.push(...computedShowsAs(db, existing, after));
         } else {
           if (overs.length) {
             kids.push(dsection('Rolls up', segCtl(
