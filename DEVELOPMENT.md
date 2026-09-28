@@ -103,11 +103,14 @@ named `weave v<version> did not publish a GitHub Release`.
 
 The check is not automatic. Whoever lands the bump confirms, the same day, that
 `gh release list -R grunion-ai/weave` names the new version as Latest. The watcher runs
-on the Mac that hosts Gerrit, from the harness checkout at `~/Documents/harness.nosync`,
-and publishes only while that checkout is on `main`: v0.4.16 went out untagged on
-2026-09-10 because it was not. When the Release is missing,
-`node scripts/weave-release-tags.mjs --dry-run` in that checkout prints what is owed;
-write the missing CHANGELOG section or fix the push, then run it without `--dry-run`.
+on the Mac that hosts Gerrit, from `~/.harness-serve`, a detached harness worktree kept at
+the harness `origin/main` (launchd jobs `ai.grunion.weave-review` and
+`ai.grunion.weave-deploy`). It once ran from a shared checkout that sat on another
+branch, and v0.4.16 went out untagged on 2026-09-10 because of it. The tagger compares
+against the tags and Releases on GitHub, never local tags.
+`node scripts/weave-release-tags.mjs --dry-run` in `~/.harness-serve` prints every version
+still owed a tag or a Release; write the missing CHANGELOG section or fix the push, then
+run it without `--dry-run`.
 
 ## Architecture map
 
