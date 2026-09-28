@@ -103,12 +103,19 @@ function noteSchemaVersion(version, isRead) {
 
 // `signal` lets a caller cancel a request a newer one has replaced (⌘K).
 async function api(method, path, body, { signal } = {}) {
+  const payload = body === undefined ? undefined : JSON.stringify(body);
   const res = await fetch(WS_PREFIX + '/api' + path, {
     method,
     signal,
     headers: { 'Content-Type': 'application/json', 'X-Weave-Zone': LOCAL_ZONE },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    keepalive: leaving,
+    body: payload,
+    /* A hidden tab may be frozen or discarded before the answer comes, so
+       its writes ride keepalive too (Issue #247). The browser refuses a
+       keepalive body over 64KB outright; a long document goes as a plain
+       fetch, which a page still alive can finish. The cap counts bytes:
+       an accented letter is two of them. */
+    keepalive: (leaving || document.visibilityState === 'hidden')
+      && new TextEncoder().encode(payload ?? '').length < 60_000,
   });
   const data = await res.json().catch(() => ({}));
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
@@ -9446,6 +9453,8 @@ async function showMap() {
 const DOC_SAVE_DEBOUNCE = 600;
 const liveEditors = new Set();
 const pendingDocSaves = new Map();
+// Each live editor's `pull`: hands on what the surface holds right now.
+const docPulls = new WeakMap();
 
 
 /* ---------- the slash menu ----------
@@ -9481,6 +9490,10 @@ const refMarker = (kind) => `⁣ref:${kind}⁣`;
 const DEFERRED_INSERTS = { '⁣raw-html⁣': '<div>html</div>' };
 const ENTITY_LINK_MARKER = refMarker('entity');
 const REF_MARKER_RE = /⁣ref:(entity|table|space)⁣/;
+// A document mid-command: every marker above, and the block marker below.
+const holdsCommandMarker = (v) => REF_MARKER_RE.test(v)
+  || globalThis.WeaveEditorLib.BLOCK_MARKER_RE.test(v)
+  || Object.keys(DEFERRED_INSERTS).some((m) => v.includes(m));
 /* And for a line-prefix block (Text, a heading, a list, a quote), because the
    command takes the line it was typed on and a hint item cannot read one
    (Issue #455). The marker lands in the line; the editor rewrites that line
@@ -9805,8 +9818,23 @@ const WV_TB_ICONS = {
   undo: tbIcon('undo'), redo: tbIcon('redo'), upload: tbIcon('upload'),
 };
 
-function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, entityId }) {
+function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
   const t = vditorTheme();
+  /* Vditor hands the text over 800ms after the last keystroke (undoDelay),
+     and a phone leaves sooner than that: the app switcher, the lock button,
+     Back. `pull` reads what the surface holds right now and hands it on if
+     it moved, so every leaving path saves the last word (Issue #247). A
+     half-typed command is left alone: its marker is not content. */
+  let handed = null; // null until Vditor has built the surface
+  const onInput = (v) => { handed = v; hand(v); };
+  const pull = () => {
+    if (handed === null) return;
+    let v;
+    try { v = editor.getValue(); } catch { return; } // already destroyed
+    if (v !== handed && !holdsCommandMarker(v)) onInput(v);
+  };
+  // Tapping outside is a leaving path too; the write goes now, not in 1.4s.
+  host.addEventListener('focusout', () => { pull(); flushDocSaves(); });
   const chips = attachRefChips(host);
   attachCodeAuto(host);
   attachCodeRawToggle(host);
@@ -9878,6 +9906,10 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
       editor.vditor?.lute?.SetEmojis?.(window.weaveIconRegistry?.emojiTable() ?? {});
       const md = editor.getValue();
       if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
+      /* Lute normalises what it loads (a trailing newline, a list marker),
+         so the baseline for pull() is the surface as built, not the stored
+         text: an untouched document must not save itself on leaving. */
+      handed = editor.getValue();
       scheduleDecorFor(host);
       /* Typing "/" replaces whatever was selected, so the selection has to be
          remembered before the menu can ask for it. Both events fire after the
@@ -9924,6 +9956,7 @@ function mountDocEditor(host, { value, placeholder, onInput, onBlur, autoFocus, 
       scheduleDecorFor(host); // chips, rail, folds and code detection
     },
   });
+  docPulls.set(editor, pull);
   liveEditors.add(editor);
   return editor;
 }
@@ -10687,14 +10720,23 @@ function relTime(iso) {
   return new Date(iso).toLocaleDateString();
 }
 
-// Leaving the page must not cost the last few keystrokes.
+/* Leaving the page must not cost the last few keystrokes. The live editors
+   are read first: what Vditor has not handed over yet is not queued yet. */
 function flushDocSaves() {
+  for (const ed of liveEditors) docPulls.get(ed)?.();
   for (const { timer, write } of [...pendingDocSaves.values()]) {
     clearTimeout(timer);
     write();
   }
 }
+/* iOS Safari seldom fires beforeunload. A phone leaves through pagehide, or
+   through a hide that may be the last time this page runs: the tab is
+   frozen in the background and can be discarded there (Issue #247). */
 window.addEventListener('beforeunload', flushDocSaves);
+window.addEventListener('pagehide', flushDocSaves);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushDocSaves();
+});
 
 function teardownDocEditors() {
   flushDocSaves();

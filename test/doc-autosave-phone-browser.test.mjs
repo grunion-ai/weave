@@ -1,0 +1,199 @@
+/* A document typed on a phone is saved before the phone can lose it (Issue #247).
+
+   Kyle, from the phone, 2026-09-08: "mobile descriptions not captured on
+   save". The editor saves on a pause: Vditor hands the text over 800ms after
+   the last keystroke (its undoDelay) and weave writes it 600ms after that. A
+   phone rarely waits 1.4s. The app switcher, the lock button and a tap on
+   another app fire visibilitychange and pagehide, and then iOS freezes the
+   tab and may discard it: no timer runs again. Before this fix the leaving
+   flush only wrote what was already queued, which the 800ms hand-over had not
+   reached yet, and nothing flushed on a hide at all, so the text was lost on
+   every background in WebKit and Chromium, for the Description and for any
+   other markdown document field.
+
+   Each case types on a phone-profile page (390x844, touch, mobile), leaves
+   the field the way a phone user does, and asserts a PUT carrying the text
+   leaves the page within 400ms of the last keystroke, well inside the old 1.4s window. Then the
+   server must hold it. WEAVE_BROWSER=webkit runs the same cases in WebKit.
+   Playwright is NOT a dependency; the suite skips when absent. */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { launch } from './lib/browser.mjs';
+
+let table;
+const s = await launch('document autosave on a phone', (weave) => {
+  weave.createSpace({ name: 'Work' });
+  table = weave.createTable({ space: 'Work', name: 'Task' });
+  weave.addField(table, { name: 'Brief', type: 'document' });
+});
+
+const PHONE = {
+  viewport: { width: 390, height: 844 },
+  deviceScaleFactor: 3,
+  isMobile: true,
+  hasTouch: true,
+  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+};
+
+if (s) {
+  const { browser, base, weave } = s;
+  let n = 0;
+
+  // A fresh row per case, so no case reads another's text.
+  const open = async (field, { hash } = {}) => {
+    const id = weave.createEntity(table, { name: `Row ${++n}` }).id;
+    const ctx = await browser.newContext(PHONE);
+    const page = await ctx.newPage();
+    await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+    await page.goto(`${base}/${hash ? hash(id) : `#/entity/${id}`}`, { waitUntil: 'networkidle' });
+    const section = page.locator('.doc-section', { has: page.locator('.doc-section-name', { hasText: new RegExp(`^${field}$`) }) });
+    const surface = section.locator('.vditor-ir [contenteditable="true"]');
+    await surface.waitFor();
+    return { id, ctx, page, section, surface };
+  };
+
+  // Types `word`; `put` settles on the first PUT that carries it, or fails
+  // 400ms after the last keystroke. Wrapped, because an async function that
+  // returned the bare promise would make its caller wait for the PUT.
+  const typeAndWatch = async (page, surface, word, { compose = false } = {}) => {
+    await surface.tap();
+    if (compose) {
+      // An on-screen keyboard's predictive text arrives as a composition.
+      await surface.evaluate((node) => node.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' })));
+      await page.keyboard.insertText(word);
+      await surface.evaluate((node, w) => node.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: w })), word);
+    } else {
+      await page.keyboard.type(word);
+    }
+    return { put: page.waitForRequest((r) => r.method() === 'PUT' && r.url().includes('/doc') && (r.postData() ?? '').includes(word), { timeout: 400 }) };
+  };
+
+  const hide = (page) => page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+
+  const persisted = async (id, field, word) => {
+    for (let i = 0; i < 40 && !(weave.getDoc(id, field) ?? '').includes(word); i++) await new Promise((r) => setTimeout(r, 50));
+    return weave.getDoc(id, field) ?? '';
+  };
+
+  for (const field of ['Description', 'Brief']) {
+    test(`${field}: the field is edited in its rendered form, with no Save button`, async () => {
+      const { ctx, page, section } = await open(field);
+      try {
+        const shown = await section.locator('.vditor').evaluate((v) =>
+          [...v.querySelectorAll(':scope > .vditor-content > .vditor-ir, :scope > .vditor-content > .vditor-sv, :scope > .vditor-content > .vditor-wysiwyg')]
+            .filter((d) => getComputedStyle(d).display !== 'none').map((d) => d.className.split(' ')[0]));
+        assert.deepEqual(shown, ['vditor-ir'], 'instant rendering is the one surface; no raw-text pane');
+        assert.equal(await page.locator('button', { hasText: /^\s*save\s*$/i }).count(), 0, 'nothing to press');
+      } finally { await ctx.close(); }
+    });
+
+    test(`${field}: backgrounding the tab writes the text at once`, async () => {
+      const { id, ctx, page, surface } = await open(field);
+      try {
+        const { put } = await typeAndWatch(page, surface, 'backgrounded');
+        await hide(page);
+        await put;
+        assert.match(await persisted(id, field, 'backgrounded'), /backgrounded/);
+      } finally { await ctx.close(); }
+    });
+
+    test(`${field}: pagehide alone writes the text at once`, async () => {
+      const { id, ctx, page, surface } = await open(field);
+      try {
+        const { put } = await typeAndWatch(page, surface, 'pagehidden');
+        await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+        await put;
+        assert.match(await persisted(id, field, 'pagehidden'), /pagehidden/);
+      } finally { await ctx.close(); }
+    });
+
+    test(`${field}: a composed word is written on background`, async () => {
+      const { id, ctx, page, surface } = await open(field);
+      try {
+        const { put } = await typeAndWatch(page, surface, 'composedword', { compose: true });
+        await hide(page);
+        await put;
+        assert.match(await persisted(id, field, 'composedword'), /composedword/);
+      } finally { await ctx.close(); }
+    });
+
+    test(`${field}: tapping outside the field writes the text at once`, async () => {
+      const { id, ctx, page, surface } = await open(field);
+      try {
+        const { put } = await typeAndWatch(page, surface, 'tappedout');
+        await page.locator('.name-edit').tap();
+        await put;
+        assert.match(await persisted(id, field, 'tappedout'), /tappedout/);
+      } finally { await ctx.close(); }
+    });
+
+    test(`${field}: navigating back writes the text at once`, async () => {
+      const { id, ctx, page, surface } = await open(field);
+      try {
+        const { put } = await typeAndWatch(page, surface, 'wentback');
+        await page.goBack();
+        await put;
+        assert.match(await persisted(id, field, 'wentback'), /wentback/);
+      } finally { await ctx.close(); }
+    });
+
+    test(`${field}: closing the entity panel writes the text at once`, async () => {
+      const { id, ctx, page, surface } = await open(field, { hash: (eid) => `#/table/${table.id}?e=${eid}` });
+      try {
+        const { put } = await typeAndWatch(page, surface, 'panelclosed');
+        await page.locator('#dock button[aria-label="Close"]').tap();
+        await put;
+        assert.match(await persisted(id, field, 'panelclosed'), /panelclosed/);
+      } finally { await ctx.close(); }
+    });
+
+    test(`${field}: an untouched document writes nothing when the phone leaves it`, async () => {
+      const { id, ctx, page, surface } = await open(field);
+      try {
+        // Stored text Lute rewrites on load (list marker, no trailing newline):
+        // the leaving flush must compare against the built surface, not this.
+        weave.setDoc(id, '* one\n* two', field);
+        await page.reload({ waitUntil: 'networkidle' });
+        await surface.waitFor();
+        const puts = [];
+        page.on('request', (r) => { if (r.method() === 'PUT' && r.url().includes('/doc')) puts.push(r.url()); });
+        await surface.tap();
+        await page.locator('.name-edit').tap();
+        await hide(page);
+        await page.waitForTimeout(400);
+        assert.deepEqual(puts, [], 'no write for a document nobody changed');
+        assert.equal(weave.getDoc(id, field), '* one\n* two');
+      } finally { await ctx.close(); }
+    });
+
+    test(`${field}: a document over the 64KB keepalive cap still saves on background`, async () => {
+      const { id, ctx, page, surface } = await open(field);
+      try {
+        // 40,000 accented letters: under 60,000 characters, about 80KB of
+        // bytes. The browser refuses a keepalive body that size, so the
+        // write must go as a plain fetch or it is never sent at all.
+        weave.setDoc(id, 'é'.repeat(40_000), field);
+        await page.reload({ waitUntil: 'networkidle' });
+        await surface.waitFor();
+        const { put } = await typeAndWatch(page, surface, 'bigdocument');
+        await hide(page);
+        await put;
+        assert.match(await persisted(id, field, 'bigdocument'), /bigdocument/);
+      } finally { await ctx.close(); }
+    });
+
+    test(`${field}: a reload straight after typing keeps the text`, async () => {
+      const { id, ctx, page, surface } = await open(field);
+      try {
+        await surface.tap();
+        await page.keyboard.type('reloaded');
+        await page.reload({ waitUntil: 'networkidle' });
+        assert.match(await persisted(id, field, 'reloaded'), /reloaded/);
+      } finally { await ctx.close(); }
+    });
+  }
+}
