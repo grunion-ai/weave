@@ -48,6 +48,7 @@ const SURFACE = [
   ['field.add', ['addField', 'materializeField'], 'weave_add_field', 'field add', ['POST /api/tables/:ref/fields']],
   ['field.update', ['updateField'], 'weave_update_field', 'field update', ['PATCH /api/tables/:ref/fields/:ref']],
   ['field.delete', ['deleteField'], 'weave_delete_field', 'field delete', ['DELETE /api/tables/:ref/fields/:ref']],
+  ['field.rollback', ['rollbackFieldConfig'], 'weave_rollback_field', 'field rollback', ['POST /api/tables/:ref/fields/:ref/rollback']],
   ['relation.add', ['addRelation'], 'weave_add_relation', 'relation add', ['POST /api/tables/:ref/relations']],
   ['formula.check', ['checkFormula'], 'weave_check_formula', 'formula check', ['POST /api/tables/:ref/formula-check']],
   ['entity.create', ['createEntity'], 'weave_create_entity', 'create', ['POST /api/tables/:ref/entities']],

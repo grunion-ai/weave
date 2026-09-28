@@ -738,9 +738,11 @@ async function main() {
         if (Object.keys(config).length) patch.config = config;
         return out(w.updateField(db, name, patch));
       }
+      // weave field rollback <db> <field> --activity <tableId:fN> (Issue #428)
+      if (sub === 'rollback') return out(w.rollbackFieldConfig(flags.activity, { table: db ?? null, field: name ?? null }));
       if (sub === 'delete') return out(w.deleteField(db, name));
       if (sub === 'list' || !sub) return out(w.getTable(db).fieldOrder.map((id) => w.getTable(db).fields[id]));
-      throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, delete`);
+      throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, rollback, delete`);
     }
     case 'formula': {
       // weave formula check <db> '<expression>' [--entity id] [--exclude-field name] [--scan]

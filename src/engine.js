@@ -99,6 +99,33 @@ const DESCRIPTION_CHARS = { small: 0, medium: 120, large: 320 };
    dropped and counted on the entity as `activityDropped` (Issue #281), so a
    read can say the history is partial instead of passing it off as complete. */
 export const ACTIVITY_CAP = 500;
+/* Field configuration history (Issue #428). A field is structure, not a row,
+   so its history is not on an entity: every change updateField makes lands
+   in the workspace's audit log, the archive of structural work, under one of
+   these two actions, and the Activity feed reads it back as the table's
+   entries. The definition is the field's name, type and config, minus the
+   column width: a width is a layout setting (a view's, since Feature #233),
+   and a toast per resize would be noise. */
+const FIELD_CONFIG_ACTIONS = { 'field-config-updated': 'field-config-updated', 'field-config-undo': 'undo' };
+function fieldDefinition(f) {
+  const { width, ...config } = f.config ?? {};
+  return structuredClone({ name: f.name, type: f.type, config });
+}
+// Key order is not meaning: two definitions are the same when their sorted
+// JSON is.
+function canonicalJSON(v) {
+  return JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)
+    ? Object.fromEntries(Object.keys(x).sort().map((kk) => [kk, x[kk]])) : x));
+}
+function definitionChanges(before, after) {
+  const out = [];
+  if (before.name !== after.name) out.push('name');
+  if (before.type !== after.type) out.push('type');
+  for (const k of new Set([...Object.keys(before.config), ...Object.keys(after.config)])) {
+    if (canonicalJSON(before.config[k]) !== canonicalJSON(after.config[k])) out.push(k);
+  }
+  return out;
+}
 /* How many segments a view takes when nobody chose (`fields: null`): the
    state counts as one, so a chip stays three wide and a card four. */
 const VIEW_AUTO_SEGMENTS = { chip: 3, card: 4 };
@@ -432,7 +459,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'activity', name: 'Activity', storedIn: 'entity.activity',
-      definition: 'An append-only record of one thing that happened to an entity — created, field-updated, state-changed, relation-updated, doc-updated, doc-appended, comment-added, file-attached, automation-ran, undo. Every entry carries seq, a monotonic per-workspace commit counter: seq is the order, ts is the display. An entity keeps its newest 500; entity.activityDropped counts the older ones it no longer holds.',
+      definition: 'An append-only record of one thing that happened to an entity — created, field-updated, state-changed, relation-updated, doc-updated, doc-appended, comment-added, file-attached, automation-ran, undo. A table carries the same kind of entry for its fields\' configuration (field-config-updated and undo, with the definition before and after; Issue #428), kept in the audit log rather than on an entity. Every entry carries seq, a monotonic per-workspace commit counter: seq is the order, ts is the display. An entity keeps its newest 500; entity.activityDropped counts the older ones it no longer holds.',
       identity: 'entityId:index',
       api: ['activityFeed', 'getActivity'],
     },
@@ -2384,7 +2411,7 @@ export class Weave {
         let db = this.findTable(qualified);
         if (db?.system) continue;
         if (!db) {
-          act('create-table', qualified, () => {
+          act('create-table', qualified, () => this.#withoutFieldLog(() => {
             db = this.createTable({ space: spDoc.space, name: tDoc.name, description: tDoc.description ?? '', icon: tDoc.icon ?? '' });
             /* createTable already minted Name and a description. Match the
                descriptor that claims the description ROLE — falling back to
@@ -2424,7 +2451,7 @@ export class Weave {
             // type change checks every name it reads (Issue #288), so it goes last.
             if (named?.type === 'formula') this.updateField(db.id, db.nameFieldId, { type: 'formula', config: configFromDescriptor(named) });
             this.#applyTableCostume(db, tDoc);
-          });
+          }));
           continue;
         }
         const tPatch = {};
@@ -4342,8 +4369,16 @@ export class Weave {
   }
 
   updateField(dbRef, fieldRef, patch) {
+    return this.#updateField(dbRef, fieldRef, patch, null);
+  }
+
+  /* The one write path for a field's configuration. `undo` is set when the
+     write is a roll back ({of, via}), which records an `undo` entry instead of
+     a new change. */
+  #updateField(dbRef, fieldRef, patch, undo) {
     const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
+    const before = fieldDefinition(field);
     let renamed = false;
     if (patch.name != null && patch.name !== field.name) {
       // Views hold fields by id, so visibility survives a rename for free;
@@ -4483,9 +4518,107 @@ export class Weave {
     }
     this.#syncFieldRow(db, field);
     if (renamed) this.#syncTableRow(db); // the names in Field Order and every view row
+    const after = fieldDefinition(field);
+    const changed = definitionChanges(before, after);
+    // The seq is minted before the save so the counter lands with it.
+    const logged = !db.system && !this.#fieldLogQuiet && changed.length
+      ? { table: this.qualifiedName(db), tableId: db.id, fieldId: field.id, field: field.name, changed, before, after, seq: this.#nextSeq(),
+        ...(before.type !== after.type ? { lossy: true } : {}), ...(undo ?? {}) }
+      : null;
     this.save();
-    if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) });
+    if (logged) this.#audit(undo ? 'field-config-undo' : 'field-config-updated', logged);
+    else if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) });
     return field;
+  }
+
+  /* A new table's minted fields are renamed and configured by applySchema as
+     part of creating it: that is its birth, not a change to record. */
+  #fieldLogQuiet = false;
+  #withoutFieldLog(fn) {
+    const was = this.#fieldLogQuiet;
+    this.#fieldLogQuiet = true;
+    try { return fn(); } finally { this.#fieldLogQuiet = was; }
+  }
+
+  /* The field-config entries as Activity feed rows, newest first. The id is
+     `<tableId>:f<audit seq>`: the table is the address, like an entity's
+     `<entityId>:<index>`. */
+  #fieldConfigRows() {
+    return this.store.listAudit({ limit: -1, actions: Object.keys(FIELD_CONFIG_ACTIONS) }).map((r) => {
+      const d = r.detail ?? {};
+      const db = this.state.tables[d.tableId];
+      return {
+        id: `${d.tableId}:f${r.seq}`,
+        seq: d.seq,
+        ts: r.at,
+        kind: FIELD_CONFIG_ACTIONS[r.action],
+        actor: r.actor ?? null,
+        detail: d,
+        entityId: d.tableId,
+        entityName: db?.fields[d.fieldId]?.name ?? d.field,
+        publicId: null,
+        dbId: d.tableId,
+        db: db ? this.qualifiedName(db) : d.table,
+        space: db ? (this.state.spaces[db.spaceId]?.name ?? null) : null,
+        deleted: !db || !!db.deletedAt,
+        scope: 'field',
+      };
+    });
+  }
+
+  #fieldConfigRow(id, rows = this.#fieldConfigRows()) {
+    const row = rows.find((r) => r.id === String(id));
+    if (!row) throw new WeaveError(`Activity '${id}' is not a field configuration entry`, 'not-found');
+    return row;
+  }
+
+  /* Whether an entry can be rolled back now, and if not, why. Stale is judged
+     twice: a later entry for the same field (the seq), and a definition that
+     no longer matches the entry's `after` (a write that recorded nothing). */
+  #rollbackCheck(row, rows) {
+    const d = row.detail;
+    const db = this.state.tables[d.tableId];
+    if (!db || db.deletedAt) return { ok: false, code: 'conflict', reason: `The table ${d.table} is gone or in the trash, so ${d.field} cannot be rolled back.` };
+    const field = db.fields[d.fieldId];
+    if (!field) return { ok: false, code: 'conflict', reason: `${d.field} has been deleted, so there is nothing to roll back.` };
+    if (d.lossy) {
+      return { ok: false, code: 'invalid', reason: `This change converted ${d.field}'s stored values from ${d.before.type} to ${d.after.type}. A roll back would restore the definition but not the values, so it is not offered.` };
+    }
+    const later = rows.find((r) => r.detail.fieldId === d.fieldId && r.seq > row.seq);
+    if (later) return { ok: false, code: 'conflict', reason: `${field.name} changed again after this entry (${later.id}). Roll back the newer change first.` };
+    if (canonicalJSON(fieldDefinition(field)) !== canonicalJSON(d.after)) {
+      return { ok: false, code: 'conflict', reason: `${field.name} has changed since this entry, so its definition no longer matches what the entry recorded.` };
+    }
+    return { ok: true };
+  }
+
+  /* Issue #428: put a field back the way an Activity entry found it. The
+     definition only: a type change is refused, because its migration
+     converted the stored values and nothing recorded them. Everything else a
+     definition holds (options, states, colours, formula, format, default,
+     description, name) leaves stored values alone: a removed option's rows
+     keep its id, so restoring the option brings their values back. The write
+     goes through the one path and records an `undo` entry naming the entry it
+     reversed; `via` says whether a toast's Undo or a roll back asked. */
+  rollbackFieldConfig(id, { table = null, field = null, via = 'rollback' } = {}) {
+    const rows = this.#fieldConfigRows();
+    const row = this.#fieldConfigRow(id, rows);
+    const d = row.detail;
+    if (table != null && this.getTable(table).id !== d.tableId) throw new WeaveError(`Activity '${id}' belongs to ${d.table}, not ${table}`, 'invalid');
+    if (field != null && this.getField(d.tableId, field).id !== d.fieldId) throw new WeaveError(`Activity '${id}' is a change to ${d.field}, not ${field}`, 'invalid');
+    const check = this.#rollbackCheck(row, rows);
+    if (!check.ok) throw new WeaveError(check.reason, check.code);
+    const f = this.state.tables[d.tableId].fields[d.fieldId];
+    const now = fieldDefinition(f);
+    const patch = { config: structuredClone(d.before.config) };
+    if (d.before.name !== f.name) patch.name = d.before.name;
+    // A key the definition did not have goes; null is every lane's clear. A
+    // view's config is a whole shape, merged, so it takes no nulls.
+    if (f.type !== 'view') for (const k of Object.keys(now.config)) if (!(k in d.before.config)) patch.config[k] = null;
+    const seq = this.state.meta.activitySeq ?? 0;
+    this.#updateField(d.tableId, f.id, patch, { of: row.id, via: via === 'undo' ? 'undo' : 'rollback' });
+    const made = this.#fieldConfigRows().find((r) => r.kind === 'undo' && r.seq > seq);
+    return { field: f, activity: made?.id ?? null };
   }
 
   /* The path back to `fieldId` through the table's other formulas, or null.
@@ -6372,11 +6505,23 @@ export class Weave {
   activityFeed({ entityId = null, tableRef = null, kinds = null, since = null, limit = null, offset = 0 } = {}) {
     const wanted = kinds?.length ? new Set(kinds) : null;
     const dbId = tableRef ? this.getTable(tableRef).id : null;
+    // A table id narrows to the table's own entries, its field configuration
+    // history (Issue #428); the rows in it have addresses of their own.
+    const tableOnly = entityId && this.state.tables[entityId] ? entityId : null;
     // 'Table#12' works here the way it works everywhere an id does.
-    if (entityId) entityId = this.getEntity(entityId).id;
+    if (entityId && !tableOnly) entityId = this.getEntity(entityId).id;
     const rows = [];
     let dropped = 0;
+    if (!entityId || tableOnly) {
+      for (const r of this.#fieldConfigRows()) {
+        if ((tableOnly ?? dbId) && r.dbId !== (tableOnly ?? dbId)) continue;
+        if (wanted && !wanted.has(r.kind)) continue;
+        if (since && r.ts < since) continue;
+        rows.push(r);
+      }
+    }
     for (const e of Object.values(this.state.entities)) {
+      if (tableOnly) break;
       if (entityId && e.id !== entityId) continue;
       if (dbId && e.dbId !== dbId) continue;
       dropped += e.activityDropped ?? 0;
@@ -6427,6 +6572,13 @@ export class Weave {
   getActivity(id) {
     const at = String(id).lastIndexOf(':');
     const entityId = String(id).slice(0, at);
+    if (String(id).slice(at + 1).startsWith('f')) {
+      // A field configuration entry carries whether it can be rolled back now.
+      const rows = this.#fieldConfigRows();
+      const row = this.#fieldConfigRow(id, rows);
+      const { code, ...rollback } = this.#rollbackCheck(row, rows);
+      return { ...row, rollback };
+    }
     const index = Number(String(id).slice(at + 1));
     const e = this.state.entities[entityId];
     const a = e?.activity?.[index];

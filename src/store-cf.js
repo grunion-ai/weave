@@ -150,8 +150,10 @@ export class CFStore {
       entry.at, entry.actor, entry.action, JSON.stringify(entry.detail ?? {}));
   }
 
-  listAudit({ limit = 100, offset = 0 } = {}) {
-    return this.#all('SELECT seq, at, actor, action, detail FROM audit_log ORDER BY seq DESC LIMIT ? OFFSET ?', limit, offset)
+  // `actions` narrows to those actions; limit -1 is no limit (SQLite's own).
+  listAudit({ limit = 100, offset = 0, actions = null } = {}) {
+    const where = actions?.length ? ` WHERE action IN (${actions.map(() => '?').join(', ')})` : '';
+    return this.#all(`SELECT seq, at, actor, action, detail FROM audit_log${where} ORDER BY seq DESC LIMIT ? OFFSET ?`, ...(where ? actions : []), limit, offset)
       .map((r) => ({ ...r, detail: JSON.parse(r.detail ?? '{}') }));
   }
 

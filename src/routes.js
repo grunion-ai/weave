@@ -849,8 +849,21 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, weave.addField(m[1], body));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)$/))) {
-          if (rx.method === 'PATCH') return out(200, weave.updateField(m[1], m[2], body));
+          if (rx.method === 'PATCH') {
+            // The field, plus the Activity entry the write recorded (null when
+            // it recorded none: a no-op or a width), so the page can offer an
+            // Undo that names exactly this change (Issue #428).
+            const seq = weave.state.meta.activitySeq ?? 0;
+            const field = weave.updateField(m[1], m[2], body);
+            const [last] = weave.activityFeed({ entityId: weave.getTable(m[1]).id, kinds: ['field-config-updated'], limit: 1 }).items;
+            const entry = last && last.seq > seq && last.detail.fieldId === field.id ? last : null;
+            return out(200, { ...field, activity: entry?.id ?? null, lossy: !!entry?.detail.lossy });
+          }
           if (rx.method === 'DELETE') { weave.deleteField(m[1], m[2]); return out(200, { ok: true }); }
+        }
+        // Under /fields, so it takes the rung the schema write takes.
+        if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)\/rollback$/)) && rx.method === 'POST') {
+          return out(200, weave.rollbackFieldConfig(body?.activity, { table: m[1], field: m[2], via: body?.via }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/relations$/)) && rx.method === 'POST') {
           return out(201, weave.addRelation(m[1], body));

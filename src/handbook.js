@@ -1089,6 +1089,18 @@ weave field add Order "Due" date --description "When the invoice falls due; ISO 
 
 \`{description: null}\` clears it. The two view fields are the exception: on Chip and Card, \`description\` is the description **size** (none, small, medium, large), not a note.
 
+## Taking a field change back
+
+Saving a field in its tray shows a toast, \`Qty updated\`, with **Undo**. Undo puts the field's definition back the way it was before that save: its name, options and their colours, states, formula, format, default and description.
+
+The toast lasts a few seconds. The record of the change stays in Activity: every change to a field's configuration is an entry on its table, \`field-config-updated\`, with the definition before and after. It shows in the Activity table with the table as its record, and its own page has a **Roll back** button. The column width is the exception: a width belongs to the view, so resizing a column records nothing.
+
+A roll back checks first. If the field has changed since the entry, the page says so and changes nothing: roll back the newer change first. Undo and Roll back each write an \`undo\` entry of their own, which can itself be rolled back.
+
+Removing an option or a state leaves the rows that held it alone: they keep its id, so rolling the change back brings their values back. A **type change** is different. Its migration converts every stored value to the new type, and the old values are not kept, so a type change has no Undo and no Roll back. Its toast says so and links to the entry, which still holds the definition before.
+
+Agents reach the same history: \`weave_activity {entity: <table id>}\` lists a table's entries, and \`weave_rollback_field\` (\`weave field rollback <table> <field> --activity <id>\`) rolls one back. Rolling back needs the same permission as changing the field.
+
 ## Costumes
 
 A costume is display only. The stored value never changes, and neither does anything computed from it.

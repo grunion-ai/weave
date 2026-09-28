@@ -266,13 +266,16 @@ export class Store {
     this.#db.prepare('DELETE FROM doc_revisions WHERE entity_id = ?').run(entityId);
   }
 
-  listAudit({ limit = 100, offset = 0 } = {}) {
+  // `actions` narrows to those actions; limit -1 is no limit (SQLite's own).
+  listAudit({ limit = 100, offset = 0, actions = null } = {}) {
     if (!this.#db) {
-      return this.#memAudit.slice().reverse().slice(offset, offset + limit)
-        .map((r) => ({ ...r, detail: r.detail ?? {} }));
+      const rows = this.#memAudit.slice().reverse().filter((r) => !actions || actions.includes(r.action));
+      return rows.slice(offset, limit < 0 ? undefined : offset + limit)
+        .map((r) => ({ ...r, detail: structuredClone(r.detail ?? {}) }));
     }
-    return this.#db.prepare('SELECT seq, at, actor, action, detail FROM audit_log ORDER BY seq DESC LIMIT ? OFFSET ?')
-      .all(limit, offset)
+    const where = actions?.length ? ` WHERE action IN (${actions.map(() => '?').join(', ')})` : '';
+    return this.#db.prepare(`SELECT seq, at, actor, action, detail FROM audit_log${where} ORDER BY seq DESC LIMIT ? OFFSET ?`)
+      .all(...(where ? actions : []), limit, offset)
       .map((r) => ({ ...r, detail: JSON.parse(r.detail ?? '{}') }));
   }
 

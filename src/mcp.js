@@ -321,6 +321,15 @@ export const TOOLS = [
     },
   },
   {
+    name: 'weave_rollback_field',
+    description: 'Put a field back the way one of its field-config-updated (or undo) Activity entries found it. Every change weave_update_field makes to a field\'s name or config (the column width aside) is an Activity entry on its table, with the definition before and after; list them with weave_activity {entity: <table id>}. The roll back is refused when the field changed after the entry, and for a type change, whose migration converted the stored values and cannot give them back. It writes its own undo entry, which can itself be rolled back. Returns {field, activity}.',
+    inputSchema: {
+      type: 'object',
+      properties: { db: { type: 'string' }, field: { type: 'string' }, activity: { type: 'string', description: 'The entry id, <tableId>:f<n>' } },
+      required: ['activity'],
+    },
+  },
+  {
     name: 'weave_delete_field',
     description: 'Delete a field and its values from every entity of the table. Not recoverable.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' } }, required: ['db', 'field'] },
@@ -540,6 +549,8 @@ export function dispatchTool(weave, name, args = {}) {
       return weave.restoreTable(args.db);
     case 'weave_update_field':
       return weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config']));
+    case 'weave_rollback_field':
+      return weave.rollbackFieldConfig(args.activity, { table: args.db ?? null, field: args.field ?? null });
     case 'weave_delete_field':
       return weave.deleteField(args.db, args.field);
     case 'weave_apply_schema':

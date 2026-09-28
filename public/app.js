@@ -3453,6 +3453,9 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
         // dialog stays open to fix it (patch() would swallow the throw).
         await api('PATCH', `/entities/${id}`, { values: { [f.name]: { type: String(fd.get('type')), config } } });
         await saved();
+        // On a Workspace/Fields row this IS a field's configuration (Issue
+        // #428): the change is in Activity, and the toast offers the way back.
+        toast(`${f.name} saved`, false, { label: 'Undo', run: () => patch(def) });
       }, 'Save');
     };
     return el('span', { class: 'fielddef-edit' }, chip);
@@ -8712,6 +8715,7 @@ function fieldDialog(db, existing, after) {
   drawGrid();
   drawCfg();
 
+  let saved = null; // the edit's PATCH answer: the field and its Activity entry
   tray(isEdit ? `Edit ${existing.name}` : 'Add field', [
     dsection('Name', nameInput),
     describable ? dsection('Description', descInput) : '',
@@ -8740,11 +8744,38 @@ function fieldDialog(db, existing, after) {
       }
       // null clears it, like width; unchanged is not sent at all.
       if (describable && description !== (fieldDescription(existing) || '')) patch.config = { ...(patch.config ?? {}), description: description || null };
-      await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(existing.id)}`, patch);
+      saved = await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(existing.id)}`, patch);
     }
     await loadSchema();
     after();
+    fieldConfigToast(db, saved, after);
   }, isEdit ? 'Save changes' : 'Create');
+}
+
+/* Issue #428: a field configuration change says it landed and offers the way
+   back, in the toast and, for later, in Activity. The Undo is the same roll
+   back the Activity entry offers: it applies the definition before, and the
+   server refuses it if the field has changed since. A type change converted
+   the stored values, and nothing recorded them, so it has no Undo: the toast
+   says so and points at the entry instead of promising what cannot come back. */
+function fieldConfigToast(db, res, redraw) {
+  if (!res?.activity) return;
+  if (res.lossy) {
+    toast(`${res.name} is now ${res.type}. Its values were converted, so this change has no Undo.`, false,
+      { label: 'Activity', run: () => { location.hash = `#/activity/${res.activity}`; } });
+    return;
+  }
+  toast(`${res.name} updated`, false, {
+    label: 'Undo',
+    run: async () => {
+      try {
+        const out = await api('POST', `/tables/${db.id}/fields/${encodeURIComponent(res.id)}/rollback`, { activity: res.activity, via: 'undo' });
+        await loadSchema();
+        await redraw?.();
+        toast(`${out.field.name} restored`);
+      } catch (err) { toast(err.message, true); }
+    },
+  });
 }
 
 /* A field edit redraws the table; the page and the grid must not snap back
@@ -11678,6 +11709,9 @@ function activitySummary(a) {
     case 'comment-added': return `comment by ${d.author ?? 'someone'}`;
     case 'file-attached': return `attached ${d.name}`;
     case 'automation-ran': return `automation “${d.name}” ran`;
+    // A field's configuration (Issue #428): the table's own entries.
+    case 'field-config-updated': return `${d.field}: ${(d.changed ?? []).join(', ')} changed`;
+    case 'undo': if (a.scope === 'field') return `${d.field}: ${(d.changed ?? []).join(', ')} put back`; return a.kind;
     case 'doc-updated':
     case 'doc-appended': {
       // The enriched detail is the point of the row: how much moved, where.
@@ -11737,7 +11771,7 @@ async function showActivity(param) {
         ? [{ label: 'Activity', href: '#/activity' }, { label: subject.db, href: `#/table/${subject.dbId}` }]
         : [],
       permalink: `${location.origin}${WS_PREFIX}/#/activity${entityId ? `/${entityId}` : ''}`,
-      title: entityId && subject ? `Activity — ${subject.entityName}` : 'Activity',
+      title: entityId && subject ? `Activity — ${subject.scope === 'field' ? subject.db : subject.entityName}` : 'Activity',
     }),
     el('div', { class: 'wv-note' },
       'A system table: weave writes these rows, so they cannot be added, edited or deleted. ',
@@ -11757,9 +11791,43 @@ async function showActivity(param) {
    uses: a permalink to the entity, swallowing the click so the row or page
    around it keeps its own destination. */
 function recordChip(a) {
+  // A field configuration entry belongs to a table, which is its record.
+  if (a.scope === 'field') {
+    return el('span', { class: 'k k-rel' + (a.deleted ? ' deleted' : '') },
+      el('a', { href: `#/table/${a.dbId}`, onclick: (e) => e.stopPropagation() },
+        `${a.db ?? '—'}${a.deleted ? ' (deleted)' : ''}`));
+  }
   return el('span', { class: 'k k-rel' + (a.deleted ? ' deleted' : '') },
     el('a', { href: `#/entity/${a.entityId}`, onclick: (e) => e.stopPropagation() },
       `${a.db ?? '—'} #${a.publicId}${a.deleted ? ' (deleted)' : ''}`));
+}
+
+/* Roll back, on a field configuration entry (Issue #428): the server says
+   whether it can (`rollback.ok`) and, when it cannot, why, and that reason is
+   what the page shows instead of the button. It checks again on the click, so
+   a field changed in another tab since this page loaded refuses rather than
+   overwriting that change. */
+function rollbackControl(a) {
+  const fieldPath = () => `/tables/${a.dbId}/fields/${encodeURIComponent(a.detail.fieldId)}/rollback`;
+  if (!a.rollback?.ok) return el('span', { class: 'activity-rollback-reason' }, a.rollback?.reason ?? 'Not available');
+  return el('button', {
+    class: 'btn btn-sm activity-rollback', type: 'button',
+    onclick: async () => {
+      try {
+        const out = await api('POST', fieldPath(), { activity: a.id });
+        await loadSchema();
+        toast(`${out.field.name} rolled back`, false, out.activity ? {
+          label: 'Undo',
+          run: async () => {
+            try { await api('POST', fieldPath(), { activity: out.activity, via: 'undo' }); await loadSchema(); }
+            catch (err) { toast(err.message, true); }
+            showActivityDetail(a.id);
+          },
+        } : null);
+      } catch (err) { toast(err.message, true); }
+      showActivityDetail(a.id);
+    },
+  }, `Roll back ${a.detail.field}`);
 }
 
 /* One event's own page, laid out like any entity page: the crumb carries its
@@ -11778,14 +11846,23 @@ async function showActivityDetail(id) {
   catch (err) { toast(err.message, true); return showActivity(null); }
 
   const row = (label, value) => el('div', { class: 'fieldrow' }, el('label', {}, label), el('span', {}, value));
+  const field = a.scope === 'field';
+  const d = a.detail ?? {};
   const fieldsBody = el('div', { class: 'card-body' },
     row('Record', recordChip(a)),
     row('Table', a.db ? el('a', { href: `#/table/${a.dbId}` }, a.db) : '—'),
     row('Event', el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
     row('When', el('span', { title: a.ts }, new Date(a.ts).toLocaleString())),
     row('Actor', a.actor ?? '—'),
-    ...Object.entries(a.detail ?? {}).map(([k, v]) => row(k, fmtValue(v))),
-    row('History', el('a', { href: `#/activity/${a.entityId}` }, `All activity for ${a.entityName ?? 'this record'} →`)));
+    // A field configuration entry (Issue #428) reads as the field, what
+    // changed, and the two definitions whole; the ids and seq stay in the API.
+    ...(field
+      ? [row('Field', d.field), row('Changed', (d.changed ?? []).join(', ')),
+        row('Before', el('code', { class: 'activity-def' }, JSON.stringify(d.before))),
+        row('After', el('code', { class: 'activity-def' }, JSON.stringify(d.after)))]
+      : Object.entries(d).map(([k, v]) => row(k, fmtValue(v)))),
+    ...(field ? [row('Roll back', rollbackControl(a))] : []),
+    row('History', el('a', { href: `#/activity/${a.entityId}` }, field ? `All field changes on ${a.db} →` : `All activity for ${a.entityName ?? 'this record'} →`)));
 
   main.replaceChildren(
     stickViewHeader(el('div', { class: 'view-header' },

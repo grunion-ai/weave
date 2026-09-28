@@ -109,7 +109,7 @@ Or add it to Claude Code in one line:
 claude mcp add weave -- node /path/to/weave/bin/weave.js mcp --data /path/to/my-workspace.db
 ```
 
-Fifty-five tools, the same undo the UI has, and `weave_vocabulary` so an agent
+Fifty-six tools, the same undo the UI has, and `weave_vocabulary` so an agent
 reads the allowed values instead of guessing. Full map:
 [Agents: MCP, REST, and CLI](#agents-mcp-rest-and-cli).
 

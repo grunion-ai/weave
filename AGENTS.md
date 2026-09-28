@@ -24,7 +24,7 @@ to [Using weave as an agent](#using-weave-as-an-agent).
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
 | `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP stdio server — 55 tools over the engine |
+| `src/mcp.js` | MCP stdio server — 56 tools over the engine |
 | `src/formula.js` | Formula parser/evaluator |
 | `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
 | `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
@@ -66,7 +66,7 @@ Point an MCP client at the stdio server:
 }
 ```
 
-Fifty-five tools, grouped. Every one of them reaches something the web UI can
+Fifty-six tools, grouped. Every one of them reaches something the web UI can
 do — there is no configuration that needs a browser, and none that needs a
 human.
 
@@ -74,7 +74,7 @@ human.
 | --- | --- |
 | Read the shape | `weave_schema`, `weave_vocabulary`, `weave_relation_map`, `weave_registry` |
 | Spaces & tables | `weave_create_space`, `weave_update_space`, `weave_delete_space`, `weave_restore_space`, `weave_create_table`, `weave_update_table`, `weave_move_table`, `weave_duplicate_table`, `weave_delete_table`, `weave_restore_table` |
-| Fields | `weave_add_field`, `weave_update_field`, `weave_delete_field`, `weave_add_relation` |
+| Fields | `weave_add_field`, `weave_update_field`, `weave_rollback_field`, `weave_delete_field`, `weave_add_relation` |
 | Formulas | `weave_check_formula` — validate + preview an expression before saving it |
 | Whole schema | `weave_apply_schema` |
 | Entities | `weave_query`, `weave_get_entity`, `weave_create_entity`, `weave_update_entity`, `weave_delete_entity`, `weave_restore_entity`, `weave_trash`, `weave_undo` |
@@ -138,6 +138,23 @@ registry has no column for: a table's `icon` and `noun`, and its `systemFields`.
 the rows and the structures they mirror; `action: rebuild` (`weave registry
 rebuild`, `POST /api/registry/rebuild`) resyncs them, and counts as a schema
 write for a capped token.
+
+**A field's configuration keeps its history.** Every change to a field's
+name or config (options, states, colours, formula, format, default,
+description, type; the column width aside) is an Activity entry on its table,
+kind `field-config-updated`, holding the definition before and after and a
+`seq`, whichever door made it: the verb, the `Definition` on its registry
+row, or `weave_apply_schema`. `weave_activity {entity: <table id>}` lists a
+table's entries; the entry id is `<tableId>:f<n>`, and `PATCH
+/api/tables/:t/fields/:f` returns the id it recorded as `activity`.
+`weave_rollback_field {activity}` (`weave field rollback <table> <field>
+--activity <id>`, `POST /api/tables/:t/fields/:f/rollback {activity}`) puts
+the definition back and records an `undo` entry. It refuses when the field
+changed after the entry, and it refuses a type change: that migration
+converted the stored values, and a roll back would restore the definition
+without them. Removing an option or a state leaves the rows' stored ids
+alone, so rolling it back brings those values back. A roll back is a schema
+write, with the same rung.
 
 **A schema document round-trips.** `weave_schema` out, edit, `weave_apply_schema`
 back — with `dryRun` first for the plan. Everything the description emits
@@ -209,7 +226,7 @@ workspace. Every MCP tool has a command:
 | --- | --- | --- |
 | `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
 | `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table view` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` / `weave stats <table> [--by F] [--where J]` |
-| `weave map` | `weave field add` / `weave field update` / `weave field delete` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
+| `weave map` | `weave field add` / `weave field update` / `weave field rollback` / `weave field delete` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
 | `weave registry` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
 | `weave doc-revisions <ref> [--field F] [--seq n]` | `weave doc-restore <ref> --seq n [--field F]` | |

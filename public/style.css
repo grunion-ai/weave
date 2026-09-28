@@ -1254,6 +1254,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-note { color: var(--tblr-secondary); font-size: 12px; margin: 0 0 10px; }
 .activity-when { white-space: nowrap; color: var(--tblr-secondary); }
 .activity-row { cursor: pointer; }
+/* A field definition on its event page wraps rather than widening the page (Issue #428). */
+.activity-def { overflow-wrap: anywhere; white-space: pre-wrap; }
+.activity-rollback-reason { color: var(--tblr-secondary); }
 .entity-head .activity-title { font-size: 24px; font-weight: 700; padding: 2px 4px; flex: 1; min-width: 0; }
 .chip.rel.deleted a { text-decoration: line-through; color: var(--tblr-secondary); }
 
