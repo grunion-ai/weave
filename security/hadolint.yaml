@@ -1,0 +1,4 @@
+# Two accepted findings on the current Dockerfile; any other rule still fails.
+ignored:
+  - DL3066  # USER node: the base image's node user is uid 1000 and the name is what the image documents
+  - DL3025  # HEALTHCHECK CMD uses shell form on purpose: the probe needs $PORT expanded

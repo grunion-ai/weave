@@ -1,0 +1,1 @@
+- **A repeatable security scan** (Issue #532): `node scripts/security-scan.mjs` runs gitleaks over history, semgrep with weave's own sink rules (`security/semgrep/weave.yml`) against a baseline so only new results fail, zizmor, actionlint, hadolint and the vendor advisory lookup, one pass, fail or skipped line each.

@@ -1,0 +1,194 @@
+# Static rules written for weave's own sinks. Run by scripts/security-scan.mjs:
+#   semgrep --config security/semgrep/weave.yml src bin public --exclude vendor
+# Results that exist today are recorded in baseline.json; the scan fails only on
+# a result that is not in it. Rules match a request value by the names this
+# codebase uses: rx.path, rx.searchParams, rx.header(), body, and the regex
+# match `m` of a route. Extend those lists when the handler shape changes.
+rules:
+  - id: weave-html-sink-unescaped
+    languages: [javascript]
+    severity: WARNING
+    message: >-
+      HTML sink fed a value that did not pass through the escaping helper
+      (esc, escapeHtmlText, htmlText, escapeXml, escapeHtml). Escape every
+      interpolated value, or assign textContent.
+    patterns:
+      - pattern-either:
+          - pattern: $X.innerHTML = $V
+          - pattern: $X.outerHTML = $V
+          - pattern: $X.innerHTML += $V
+          - pattern: $X.insertAdjacentHTML($P, $V)
+      - pattern-not: $X.innerHTML = ""
+      - pattern-not: $X.innerHTML = ''
+      - pattern-not: $X.innerHTML = "..."
+      - pattern-not: $X.innerHTML = '...'
+      - pattern-not: $X.outerHTML = "..."
+      - pattern-not: $X.insertAdjacentHTML($P, "...")
+      - pattern-not: $X.insertAdjacentHTML($P, '...')
+      - pattern-not: $X.innerHTML = $H(...)
+      - pattern-not: $X.outerHTML = $H(...)
+      - pattern-not: $X.insertAdjacentHTML($P, $H(...))
+      - metavariable-regex:
+          metavariable: $V
+          regex: '^(?!(esc|escapeHtmlText|htmlText|escapeXml|escapeHtml)\().*'
+    paths:
+      exclude: ['**/vendor/**']
+
+  - id: weave-sql-built-from-variable
+    languages: [javascript]
+    severity: ERROR
+    message: >-
+      SQL text built with a template literal or concatenation that includes a
+      variable. Bind values with ? placeholders; if the variable is an
+      identifier, check it against a fixed list first and say so in a comment.
+    patterns:
+      - pattern-either:
+          - pattern: $DB.prepare(`...${$V}...`)
+          - pattern: $DB.exec(`...${$V}...`)
+          - pattern: $DB.prepare($S + $V)
+          - pattern: $DB.exec($S + $V)
+          - pattern: $DB.prepare($V + $S)
+          - pattern: $DB.exec($V + $S)
+      - metavariable-regex:
+          metavariable: $DB
+          regex: '(?i)(db|database|sql)$'
+    paths:
+      exclude: ['**/vendor/**']
+
+  - id: weave-fs-path-from-request
+    mode: taint
+    languages: [javascript]
+    severity: ERROR
+    message: >-
+      A request value reaches a filesystem path. Resolve it against a root and
+      refuse anything outside (safeJoin, resolveInside, assertInside, isInside,
+      withinRoot or guardPath); stripping ".." is not a guard.
+    pattern-sources:
+      - pattern: rx.path
+      - pattern: rx.searchParams.get(...)
+      - pattern: rx.header(...)
+      - pattern: $R.searchParams.get(...)
+      - pattern: url.pathname
+      - pattern: req.url
+      - pattern: body.$F
+      - pattern: body[...]
+      - pattern: m[...]
+    pattern-sanitizers:
+      - patterns:
+          - pattern: $G(...)
+          - metavariable-regex:
+              metavariable: $G
+              regex: '^(safeJoin|resolveInside|assertInside|isInside|withinRoot|guardPath)$'
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $FS.readFile(...)
+              - pattern: $FS.readFileSync(...)
+              - pattern: $FS.writeFile(...)
+              - pattern: $FS.writeFileSync(...)
+              - pattern: $FS.appendFileSync(...)
+              - pattern: $FS.createReadStream(...)
+              - pattern: $FS.createWriteStream(...)
+              - pattern: $FS.unlinkSync(...)
+              - pattern: $FS.rmSync(...)
+              - pattern: $FS.readdirSync(...)
+              - pattern: $FS.renameSync(...)
+              - pattern: $FS.copyFileSync(...)
+              - pattern: $FS.mkdirSync(...)
+              - pattern: $FS.statSync(...)
+              - pattern: $FS.existsSync(...)
+              - pattern: readFileSync(...)
+              - pattern: writeFileSync(...)
+              - pattern: createReadStream(...)
+              - pattern: readdirSync(...)
+              - pattern: renameSync(...)
+              - pattern: statSync(...)
+              - pattern: existsSync(...)
+          - metavariable-regex:
+              metavariable: $FS
+              regex: '^(fs|fsp|promises)$'
+    paths:
+      exclude: ['**/vendor/**', 'public/**']
+
+  - id: weave-decodeuricomponent-unguarded
+    languages: [javascript]
+    severity: WARNING
+    message: >-
+      decodeURIComponent throws URIError on a bad escape such as %E0%A4%A. Call
+      it inside try/catch so a malformed request is a 400, not a crashed handler.
+    patterns:
+      - pattern: decodeURIComponent(...)
+      - pattern-not-inside: |
+          try { ... } catch ($E) { ... }
+      - pattern-not-inside: |
+          try { ... } catch { ... }
+      - pattern-not-inside: |
+          try { ... } finally { ... }
+    paths:
+      exclude: ['**/vendor/**']
+
+  - id: weave-dynamic-code
+    languages: [javascript]
+    severity: ERROR
+    message: >-
+      new Function and eval compile a string into code. Nothing in weave should
+      feed either a value a user can influence.
+    pattern-either:
+      - pattern: new Function(...)
+      - pattern: eval(...)
+      - pattern: globalThis.eval(...)
+      - pattern: window.eval(...)
+    paths:
+      exclude: ['**/vendor/**']
+
+  - id: weave-child-process-shell
+    languages: [javascript]
+    severity: ERROR
+    message: >-
+      child_process with shell: true, or exec/execSync (which always use a
+      shell), parses its argument as a command line. Use execFile or spawn with
+      an argument array and no shell.
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: $CP.exec(...)
+              - pattern: $CP.execSync(...)
+          - metavariable-regex:
+              metavariable: $CP
+              regex: '^(cp|childProcess|child_process|proc)$'
+      - pattern: execSync(...)
+      - pattern: |
+          $M(..., { ..., shell: true, ... })
+    paths:
+      exclude: ['**/vendor/**']
+
+  - id: weave-bracket-access-request-key
+    mode: taint
+    languages: [javascript]
+    severity: WARNING
+    message: >-
+      A request value is used as a property key on a plain object. A key of
+      __proto__, constructor or toString reaches the prototype. Use a Map,
+      Object.create(null), or check Object.hasOwn first.
+    pattern-sources:
+      - pattern: rx.path
+      - pattern: rx.searchParams.get(...)
+      - pattern: rx.header(...)
+      - pattern: $R.searchParams.get(...)
+      - pattern: body.$F
+      - pattern: body[...]
+      - pattern: m[...]
+    pattern-sanitizers:
+      - pattern: Object.hasOwn(...)
+      - pattern: Number(...)
+      - pattern: String(...).length
+    pattern-sinks:
+      - patterns:
+          - pattern: $OBJ[$K]
+          - focus-metavariable: $K
+          - metavariable-regex:
+              metavariable: $K
+              regex: '^[^0-9]'
+          - pattern-not-inside: $M.get($K)
+    paths:
+      include: ['src/routes.js', 'src/server.js', 'src/worker.js', 'src/mcp.js', 'src/applet.js', 'bin/weave.js']
