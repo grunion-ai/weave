@@ -1,0 +1,1 @@
+- **CI actions are pinned and the token is read-only** (Issue #525): every action in `.github/workflows/` is pinned to a full commit SHA, both workflows grant `contents: read` only, and a new `security.yml` runs `scripts/security-scan.mjs` on push to main, on pull requests and weekly.

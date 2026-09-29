@@ -1,0 +1,68 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, Monday 06:17 UTC. GitHub stops running scheduled workflows on a
+    # repository after 60 days without repository activity; re-enable one from
+    # the Actions tab if it goes quiet.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+      ACTIONLINT_VERSION: "1.7.12"
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+      HADOLINT_VERSION: "2.15.1"
+      HADOLINT_SHA256: c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507
+      SEMGREP_VERSION: "1.176.0"
+      ZIZMOR_VERSION: "1.30.1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0 # gitleaks reads the whole history
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+      # Official release channels, versions pinned above, checksums verified.
+      - name: install gitleaks, actionlint, hadolint
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/bin"
+          curl -fsSL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz -C "$HOME/bin" gitleaks
+          curl -fsSL -o actionlint.tgz "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tgz" | sha256sum -c -
+          tar -xzf actionlint.tgz -C "$HOME/bin" actionlint
+          curl -fsSL -o "$HOME/bin/hadolint" "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-x86_64"
+          echo "${HADOLINT_SHA256}  $HOME/bin/hadolint" | sha256sum -c -
+          chmod +x "$HOME/bin/hadolint"
+          rm -f gitleaks.tgz actionlint.tgz
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: install semgrep and zizmor
+        run: pip install "semgrep==${SEMGREP_VERSION}" "zizmor==${ZIZMOR_VERSION}"
+      # --require-all: a tool that failed to install is a red run, not a skip.
+      - name: scan
+        env:
+          GH_TOKEN: ${{ github.token }} # zizmor's online audits
+        run: node scripts/security-scan.mjs --require-all
