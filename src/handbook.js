@@ -1097,7 +1097,9 @@ The toast lasts a few seconds. The record of the change stays in Activity: every
 
 A roll back checks first. If the field has changed since the entry, the page says so and changes nothing: roll back the newer change first. Undo and Roll back each write an \`undo\` entry of their own, which can itself be rolled back.
 
-Removing an option or a state leaves the rows that held it alone: they keep its id, so rolling the change back brings their values back. A **type change** is different. Its migration converts every stored value to the new type, and the old values are not kept, so a type change has no Undo and no Roll back. Its toast says so and links to the entry, which still holds the definition before.
+Removing an option or a state leaves the rows that held it alone: they keep its id, so rolling the change back brings their values back. A **type change** converts every stored value to the new type, and weave keeps each row's value from before it, so its Undo and its Roll back bring the values back with the definition. A row someone edited after the change keeps that edit, converted back to the old type, and a row made after the change is converted the same way. The toast says how many values came back, how many edited rows were kept and how many newer rows were converted.
+
+Weave keeps the values of a field's newest type change only. When a field changes type again, the older entry keeps its two definitions but not its values, and its page says so: rolling it back cannot bring those values back.
 
 Agents reach the same history: \`weave_activity {entity: <table id>}\` lists a table's entries, and \`weave_rollback_field\` (\`weave field rollback <table> <field> --activity <id>\`) rolls one back. Rolling back needs the same permission as changing the field.
 

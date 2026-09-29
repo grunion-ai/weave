@@ -8776,27 +8776,35 @@ function fieldDialog(db, existing, after) {
 /* Issue #428: a field configuration change says it landed and offers the way
    back, in the toast and, for later, in Activity. The Undo is the same roll
    back the Activity entry offers: it applies the definition before, and the
-   server refuses it if the field has changed since. A type change converted
-   the stored values, and nothing recorded them, so it has no Undo: the toast
-   says so and points at the entry instead of promising what cannot come back. */
+   server refuses it if the field has changed since. A type change keeps the
+   values it converted (Issue #467), so it offers Undo like any other. */
 function fieldConfigToast(db, res, redraw) {
   if (!res?.activity) return;
-  if (res.lossy) {
-    toast(`${res.name} is now ${res.type}. Its values were converted, so this change has no Undo.`, false,
-      { label: 'Activity', run: () => { location.hash = `#/activity/${res.activity}`; } });
-    return;
-  }
-  toast(`${res.name} updated`, false, {
+  toast(res.lossy ? `${res.name} is now ${res.type}` : `${res.name} updated`, false, {
     label: 'Undo',
     run: async () => {
       try {
         const out = await api('POST', `/tables/${db.id}/fields/${encodeURIComponent(res.id)}/rollback`, { activity: res.activity, via: 'undo' });
         await loadSchema();
         await redraw?.();
-        toast(`${out.field.name} restored`);
+        toast(rolledBackText(out, 'restored'));
       } catch (err) { toast(err.message, true); }
     },
   });
+}
+
+/* What a roll back did, in one line. A type change's roll back also says
+   what happened to the values (Issue #467): back from before the change,
+   kept because someone edited them since, or converted because the row is
+   newer than the change. Counts of zero say nothing. */
+function rolledBackText(out, verb) {
+  const n = (k, one, many) => (out[k] ? `${out[k]} ${out[k] === 1 ? one : many}` : null);
+  const parts = [
+    n('restored', 'value back', 'values back'),
+    n('left', 'edited since, kept', 'edited since, kept'),
+    n('converted', 'newer row converted', 'newer rows converted'),
+  ].filter(Boolean);
+  return `${out.field.name} ${verb}${parts.length ? `: ${parts.join(', ')}` : ''}`;
 }
 
 /* A field edit redraws the table; the page and the grid must not snap back
@@ -11872,7 +11880,7 @@ function rollbackControl(a) {
       try {
         const out = await api('POST', fieldPath(), { activity: a.id });
         await loadSchema();
-        toast(`${out.field.name} rolled back`, false, out.activity ? {
+        toast(rolledBackText(out, 'rolled back'), false, out.activity ? {
           label: 'Undo',
           run: async () => {
             try { await api('POST', fieldPath(), { activity: out.activity, via: 'undo' }); await loadSchema(); }
@@ -11915,7 +11923,12 @@ async function showActivityDetail(id) {
     ...(field
       ? [row('Field', d.field), row('Changed', (d.changed ?? []).join(', ')),
         row('Before', el('code', { class: 'activity-def' }, JSON.stringify(d.before))),
-        row('After', el('code', { class: 'activity-def' }, JSON.stringify(d.after)))]
+        row('After', el('code', { class: 'activity-def' }, JSON.stringify(d.after))),
+        // A type change's values (Issue #467): kept, or dropped under the bound.
+        ...(d.lossy ? [row('Values', d.snapshot
+          ? `${d.snapshot.rows} ${d.snapshot.rows === 1 ? 'value' : 'values'} from before this change kept for a roll back`
+          : d.snapshotDropped ? 'No longer kept: a newer type change of this field replaced them' : 'Not kept')] : []),
+        ...(d.restored != null ? [row('Values put back', `${d.restored} restored, ${d.left} edited since and kept, ${d.converted} newer converted`)] : [])]
       : Object.entries(d).map(([k, v]) => row(k, fmtValue(v)))),
     ...(field ? [row('Roll back', rollbackControl(a))] : []),
     row('History', el('a', { href: `#/activity/${a.entityId}` }, field ? `All field changes on ${a.db} →` : `All activity for ${a.entityName ?? 'this record'} →`)));

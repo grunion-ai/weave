@@ -150,11 +150,15 @@ table's entries; the entry id is `<tableId>:f<n>`, and `PATCH
 `weave_rollback_field {activity}` (`weave field rollback <table> <field>
 --activity <id>`, `POST /api/tables/:t/fields/:f/rollback {activity}`) puts
 the definition back and records an `undo` entry. It refuses when the field
-changed after the entry, and it refuses a type change: that migration
-converted the stored values, and a roll back would restore the definition
-without them. Removing an option or a state leaves the rows' stored ids
-alone, so rolling it back brings those values back. A roll back is a schema
-write, with the same rung.
+changed after the entry. A type change keeps each row's value from before
+it, so its roll back restores the definition and the values: a row edited
+since keeps its edit, converted back, and a row made since is converted; the
+answer and the undo entry count them as `restored`, `left` and `converted`.
+Only a field's newest type change keeps its values; an older entry says
+`snapshotDropped` and its roll back is refused. The feed and the audit log
+show a snapshot as its row count only, and an export carries none. Removing
+an option or a state leaves the rows' stored ids alone, so rolling it back
+brings those values back. A roll back is a schema write, with the same rung.
 
 **A schema document round-trips.** `weave_schema` out, edit, `weave_apply_schema`
 back — with `dryRun` first for the plan. Everything the description emits

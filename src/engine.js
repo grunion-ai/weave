@@ -2992,7 +2992,7 @@ export class Weave {
   }
 
   listAudit(opts) {
-    return this.store.listAudit(opts);
+    return this.store.listAudit(opts).map((r) => ({ ...r, detail: Weave.#publicDetail(r.detail) }));
   }
 
   createAccount({ name, role = 'writer' } = {}) {
@@ -4369,13 +4369,14 @@ export class Weave {
   }
 
   updateField(dbRef, fieldRef, patch) {
-    return this.#updateField(dbRef, fieldRef, patch, null);
+    return this.#updateField(dbRef, fieldRef, patch, null).field;
   }
 
   /* The one write path for a field's configuration. `undo` is set when the
      write is a roll back ({of, via}), which records an `undo` entry instead of
-     a new change. */
-  #updateField(dbRef, fieldRef, patch, undo) {
+     a new change. `restore` is the snapshot a roll back of a type change
+     puts back (Issue #467). */
+  #updateField(dbRef, fieldRef, patch, undo, restore = null) {
     const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
     const before = fieldDefinition(field);
@@ -4393,12 +4394,18 @@ export class Weave {
     if (patch.type != null && patch.type !== field.type && field.type === 'view') {
       throw new WeaveError(`The ${field.config.shape} is fixed as a view — rename or reconfigure it`, 'invalid');
     }
+    let migrated = null;
     if (patch.type != null && patch.type !== field.type) {
-      this.#migrateFieldType(db, field, patch.type, patch.config ?? {});
+      // A roll back goes back to the type the field had, whichever way the
+      // migration table points: the definition it restores was valid.
+      migrated = this.#migrateFieldType(db, field, patch.type, patch.config ?? {}, { force: !!undo, restore });
       // The new type's config is fully set by the migration; the rest of the
-      // patch (width, default) still applies below on the new shape.
-      patch = { ...patch, config: Object.fromEntries(Object.entries(patch.config ?? {}).filter(([k]) => ['width', 'default'].includes(k))) };
-      if (!Object.keys(patch.config).length) delete patch.config;
+      // patch (width, default) still applies below on the new shape. A roll
+      // back sends the whole definition before, so every lane applies it.
+      if (!undo) {
+        patch = { ...patch, config: Object.fromEntries(Object.entries(patch.config ?? {}).filter(([k]) => ['width', 'default'].includes(k))) };
+        if (!Object.keys(patch.config).length) delete patch.config;
+      }
     }
     if (patch.config) {
       // Column width belongs to every field type, so it is handled before the
@@ -4521,14 +4528,39 @@ export class Weave {
     const after = fieldDefinition(field);
     const changed = definitionChanges(before, after);
     // The seq is minted before the save so the counter lands with it.
+    // A type change keeps each row's value from before it and the value it
+    // made (Issue #467), so its Undo can put the values back too.
     const logged = !db.system && !this.#fieldLogQuiet && changed.length
       ? { table: this.qualifiedName(db), tableId: db.id, fieldId: field.id, field: field.name, changed, before, after, seq: this.#nextSeq(),
-        ...(before.type !== after.type ? { lossy: true } : {}), ...(undo ?? {}) }
+        ...(before.type !== after.type ? { lossy: true } : {}), ...(migrated ? { snapshot: migrated.rows } : {}),
+        ...(undo ?? {}), ...(restore && migrated ? migrated.counts : {}) }
       : null;
     this.save();
-    if (logged) this.#audit(undo ? 'field-config-undo' : 'field-config-updated', logged);
-    else if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) });
-    return field;
+    if (logged) {
+      this.#audit(undo ? 'field-config-undo' : 'field-config-updated', logged);
+      if (migrated) this.#dropOlderSnapshots(field.id, logged.seq);
+    } else if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) });
+    return { field, counts: migrated?.counts ?? null };
+  }
+
+  /* The growth bound (Issue #467). The audit log keeps no size policy, and the
+     capped stores cap a count per subject (200 revisions a document, 500
+     entries an entity), which a whole column of values per entry does not
+     fit. So a field keeps the values of its newest type change only; an older
+     entry keeps its definitions and says its values were dropped. */
+  #dropOlderSnapshots(fieldId, keepSeq) {
+    for (const r of this.store.listAudit({ limit: -1, actions: Object.keys(FIELD_CONFIG_ACTIONS) })) {
+      const d = r.detail ?? {};
+      if (d.fieldId !== fieldId || !d.snapshot || d.seq === keepSeq) continue;
+      const { snapshot, ...rest } = d;
+      this.store.setAuditDetail(r.seq, { ...rest, snapshotDropped: true });
+    }
+  }
+
+  // An entry's detail as any door shows it: a snapshot is row values, so it
+  // leaves as its row count and nothing else.
+  static #publicDetail(d) {
+    return d?.snapshot ? { ...d, snapshot: { rows: Object.keys(d.snapshot).length } } : d;
   }
 
   /* A new table's minted fields are renamed and configured by applySchema as
@@ -4553,7 +4585,7 @@ export class Weave {
         ts: r.at,
         kind: FIELD_CONFIG_ACTIONS[r.action],
         actor: r.actor ?? null,
-        detail: d,
+        detail: Weave.#publicDetail(d),
         entityId: d.tableId,
         entityName: db?.fields[d.fieldId]?.name ?? d.field,
         publicId: null,
@@ -4581,8 +4613,11 @@ export class Weave {
     if (!db || db.deletedAt) return { ok: false, code: 'conflict', reason: `The table ${d.table} is gone or in the trash, so ${d.field} cannot be rolled back.` };
     const field = db.fields[d.fieldId];
     if (!field) return { ok: false, code: 'conflict', reason: `${d.field} has been deleted, so there is nothing to roll back.` };
-    if (d.lossy) {
-      return { ok: false, code: 'invalid', reason: `This change converted ${d.field}'s stored values from ${d.before.type} to ${d.after.type}. A roll back would restore the definition but not the values, so it is not offered.` };
+    // A type change rolls back with its values while its snapshot is kept.
+    if (d.lossy && !d.snapshot) {
+      return { ok: false, code: 'conflict', reason: d.snapshotDropped
+        ? `The values from before this change are no longer kept: weave keeps them for the newest type change of ${field.name} only, and a newer one replaced them. Rolling back this entry cannot bring its values back.`
+        : `This type change was recorded before weave kept the values a type change converts, so rolling it back cannot bring its values back.` };
     }
     const later = rows.find((r) => r.detail.fieldId === d.fieldId && r.seq > row.seq);
     if (later) return { ok: false, code: 'conflict', reason: `${field.name} changed again after this entry (${later.id}). Roll back the newer change first.` };
@@ -4615,10 +4650,17 @@ export class Weave {
     // A key the definition did not have goes; null is every lane's clear. A
     // view's config is a whole shape, merged, so it takes no nulls.
     if (f.type !== 'view') for (const k of Object.keys(now.config)) if (!(k in d.before.config)) patch.config[k] = null;
+    // A type change goes back through the migration with its snapshot.
+    let restore = null;
+    if (d.before.type !== f.type) {
+      patch.type = d.before.type;
+      const auditSeq = Number(String(row.id).slice(String(row.id).lastIndexOf(':f') + 2));
+      restore = this.store.listAudit({ limit: -1, actions: Object.keys(FIELD_CONFIG_ACTIONS) }).find((r) => r.seq === auditSeq)?.detail?.snapshot ?? {};
+    }
     const seq = this.state.meta.activitySeq ?? 0;
-    this.#updateField(d.tableId, f.id, patch, { of: row.id, via: via === 'undo' ? 'undo' : 'rollback' });
+    const { counts } = this.#updateField(d.tableId, f.id, patch, { of: row.id, via: via === 'undo' ? 'undo' : 'rollback' }, restore);
     const made = this.#fieldConfigRows().find((r) => r.kind === 'undo' && r.seq > seq);
-    return { field: f, activity: made?.id ?? null };
+    return { field: f, activity: made?.id ?? null, ...(counts ?? {}) };
   }
 
   /* The path back to `fieldId` through the table's other formulas, or null.
@@ -4707,9 +4749,15 @@ export class Weave {
      into the new shape. Options/states are derived from the old config or,
      for text sources, from the distinct values present — so nothing that is
      in a cell today is lost, it just wears a new type. */
-  #migrateFieldType(db, field, toType, config) {
+  /* `force` is a roll back going back to the type the field had; `restore`
+     is that roll back's snapshot. Returns the snapshot of this conversion
+     ({rowId: [before, after]}, rows that held a value only) and, when
+     restoring, what happened to each row: restored (unchanged since), left
+     (edited since: its edit converts, the snapshot does not overwrite it),
+     converted (no snapshot: made since, or empty then). */
+  #migrateFieldType(db, field, toType, config, { force = false, restore = null } = {}) {
     const allowed = TYPE_MIGRATIONS[field.type] ?? [];
-    if (!allowed.includes(toType)) {
+    if (!force && !allowed.includes(toType)) {
       throw new WeaveError(`A ${field.type} field can become ${allowed.length ? allowed.join(', ') : 'nothing else'} — not ${toType}`, 'invalid');
     }
     if (field.id === db.nameFieldId && !(['text', 'formula'].includes(toType) && ['text', 'formula'].includes(field.type))) {
@@ -4795,7 +4843,21 @@ export class Weave {
         default: return null;
       }
     };
-    for (const e of rows) e.values[field.id] = coerce(e.values[field.id], e);
+    const held = (v) => !(v == null || v === '' || (Array.isArray(v) && !v.length));
+    const snapshot = {};
+    const counts = restore ? { restored: 0, left: 0, converted: 0 } : null;
+    for (const e of rows) {
+      const raw = e.values[field.id];
+      let next = coerce(raw, e);
+      if (restore) {
+        const pair = restore[e.id];
+        if (pair && canonicalJSON(raw ?? null) === canonicalJSON(pair[1] ?? null)) { next = structuredClone(pair[0]); counts.restored += 1; }
+        else if (pair) counts.left += 1;
+        else if (held(raw)) counts.converted += 1;
+      }
+      if (held(raw)) snapshot[e.id] = [structuredClone(raw), structuredClone(next ?? null)];
+      e.values[field.id] = next;
+    }
     field.type = toType;
     const width = field.config.width;
     const term = field.id === db.nameFieldId ? field.config.term : undefined;
@@ -4811,6 +4873,7 @@ export class Weave {
     // have a string; migrating to a formula fills the cache for every row.
     if (toType === 'formula' && field.id === db.nameFieldId) for (const e of rows) this.#mark(e);
     if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from, to: toType, rows: rows.length });
+    return { rows: snapshot, counts };
   }
 
   deleteField(dbRef, fieldRef) {

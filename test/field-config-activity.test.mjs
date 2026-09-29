@@ -17,9 +17,8 @@
    - rollbackFieldConfig applies `before` through the same path and records
      its own `undo` entry. It refuses when the field changed after the entry
      (a later entry for the field, or a definition that no longer matches
-     `after`), and it refuses a type change: the migration converted the
-     stored values and nothing recorded them, so a roll back could restore
-     the definition but not the values.
+     `after`). A type change rolls back with its values (Issue #467,
+     test/field-type-snapshot.test.mjs).
    - The entries live in the workspace's audit log, the archive of structural
      work, so they survive a reopen and never ride the table blob.
    - Every door: route (the rung of the schema write), MCP, CLI. */
@@ -151,17 +150,18 @@ test('a definition changed by a path that records nothing still counts as change
   assert.throws(() => w.rollbackFieldConfig(a.id), (err) => err.code === 'conflict' && /changed since/.test(err.message));
 });
 
-test('a type change is recorded as lossy and roll back refuses it', () => {
+test('a type change is recorded as lossy and, since Issue #467, rolls back with its values', () => {
   const { w, t } = workspace();
+  const row = w.createEntity(t, { name: 'hot', values: { Priority: 'High' } });
   const f = w.getField(t.id, 'Priority');
   w.updateField(t.id, f.id, { type: 'text' });
   const [a] = configEntries(w);
   assert.equal(a.detail.lossy, true);
   assert.ok(a.detail.changed.includes('type'));
-  assert.equal(w.getActivity(a.id).rollback.ok, false);
-  assert.match(w.getActivity(a.id).rollback.reason, /values/);
-  assert.throws(() => w.rollbackFieldConfig(a.id), /values/);
-  assert.equal(w.getField(t.id, f.id).type, 'text');
+  assert.equal(w.getActivity(a.id).rollback.ok, true);
+  w.rollbackFieldConfig(a.id);
+  assert.equal(w.getField(t.id, f.id).type, 'select');
+  assert.equal(w.readEntity(row.id).fields.Priority, 'High');
 });
 
 test('removing an option and rolling it back brings the stored values back', () => {

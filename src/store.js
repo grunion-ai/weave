@@ -266,6 +266,18 @@ export class Store {
     this.#db.prepare('DELETE FROM doc_revisions WHERE entity_id = ?').run(entityId);
   }
 
+  /* Rewrite one entry's detail in place. The one caller is the growth bound
+     on type-change snapshots (Issue #467): an older entry drops its row
+     values and keeps the rest. */
+  setAuditDetail(seq, detail) {
+    if (!this.#db) {
+      const row = this.#memAudit.find((r) => r.seq === seq);
+      if (row) row.detail = structuredClone(detail);
+      return;
+    }
+    this.#db.prepare('UPDATE audit_log SET detail = ? WHERE seq = ?').run(JSON.stringify(detail ?? {}), seq);
+  }
+
   // `actions` narrows to those actions; limit -1 is no limit (SQLite's own).
   listAudit({ limit = 100, offset = 0, actions = null } = {}) {
     if (!this.#db) {

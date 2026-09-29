@@ -75,6 +75,73 @@ if (s) {
       } finally { await page.close(); }
     });
 
+    // Issue #467: a type change keeps the values it converts.
+    test(`a type change in the tray offers Undo, and Undo brings the numbers back (${colorScheme})`, async () => {
+      const name = `Count ${colorScheme}`;
+      const f = weave.addField(t, { name, type: 'number' });
+      const rows = [weave.createEntity(t, { name: `n1 ${colorScheme}`, values: { [name]: 12.5 } }), weave.createEntity(t, { name: `n2 ${colorScheme}`, values: { [name]: 3 } })];
+      const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
+      try {
+        await page.goto(`${base}/#/table/${t.id}`, { waitUntil: 'networkidle' });
+        await page.waitForSelector('.wv-grid th.col-head');
+        await page.evaluate((n) => [...document.querySelectorAll('.wv-grid th.col-head')].find((h) => h.textContent.includes(n)).click(), name);
+        await page.waitForSelector('#tray-back .type-tile');
+        await page.click('#tray-back .type-tile[title^="Convert to text"]');
+        await page.click('.tray-actions .btn-primary, .tray .btn-primary');
+        await page.waitForFunction((n) => [...document.querySelectorAll('#wv-toasts .wv-toast-msg')].some((m) => m.textContent.startsWith(`${n} is now text`)), name, { timeout: 10000 });
+        assert.equal(weave.getField(t.id, f.id).type, 'text');
+        const up = (await toastText(page)).find((x) => x.text.startsWith(`${name} is now text`));
+        assert.equal(up.action, 'Undo', 'a type change offers Undo like any other change');
+        assert.ok(!/no Undo|converted/.test(up.text), 'and no longer says the values are gone');
+        assert.notEqual(up.fg, up.bg, 'legible in this theme');
+        await page.evaluate((n) => [...document.querySelectorAll('#wv-toasts .wv-toast')].find((x) => x.textContent.includes(`${n} is now text`)).querySelector('.wv-toast-action').click(), name);
+        await page.waitForFunction((n) => [...document.querySelectorAll('#wv-toasts .wv-toast-msg')].some((m) => m.textContent.startsWith(`${n} restored: 2 values back`)), name, { timeout: 10000 });
+        assert.equal(weave.getField(t.id, f.id).type, 'number');
+        assert.deepEqual(rows.map((r) => weave.getEntity(r.id).values[f.id]), [12.5, 3], 'the exact numbers');
+      } finally { await page.close(); }
+    });
+
+    test(`Roll back of a type change counts the edited and the newer rows (${colorScheme})`, async () => {
+      const name = `Grade ${colorScheme}`;
+      const f = weave.addField(t, { name, type: 'select', config: { options: [{ id: 'g-a', name: 'A', hue: 'green' }, { id: 'g-b', name: 'B', hue: 'red' }] } });
+      const kept = weave.createEntity(t, { name: `k ${colorScheme}`, values: { [name]: 'A' } });
+      const edited = weave.createEntity(t, { name: `e ${colorScheme}`, values: { [name]: 'A' } });
+      weave.updateField(t.id, f.id, { type: 'text' });
+      const entry = entryFor(f.id);
+      weave.updateEntity(edited.id, { [name]: 'B' });
+      const newer = weave.createEntity(t, { name: `n ${colorScheme}`, values: { [name]: 'B' } });
+      const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
+      try {
+        await page.goto(`${base}/#/activity/${entry.id}`, { waitUntil: 'networkidle' });
+        await page.waitForSelector('.activity-rollback');
+        assert.match(await page.locator('.fieldrow', { hasText: 'Values' }).first().innerText(), /2 values from before this change kept/);
+        await page.click('.activity-rollback');
+        await page.waitForFunction((n) => [...document.querySelectorAll('#wv-toasts .wv-toast-msg')].some((m) => m.textContent.startsWith(`${n} rolled back: 1 value back, 1 edited since, kept, 1 newer row converted`)), name, { timeout: 10000 });
+        assert.equal(weave.getField(t.id, f.id).type, 'select');
+        assert.equal(weave.getEntity(kept.id).values[f.id], 'g-a', 'the option id came back');
+        assert.equal(weave.getEntity(edited.id).values[f.id], 'g-b', 'the edit stands');
+        assert.equal(weave.getEntity(newer.id).values[f.id], 'g-b', 'the newer row converted');
+      } finally { await page.close(); }
+    });
+
+    test(`a dropped snapshot says so plainly (${colorScheme})`, async () => {
+      const name = `Level ${colorScheme}`;
+      const f = weave.addField(t, { name, type: 'number' });
+      weave.createEntity(t, { name: `l ${colorScheme}`, values: { [name]: 4 } });
+      weave.updateField(t.id, f.id, { type: 'text' });
+      const first = entryFor(f.id);
+      weave.updateField(t.id, f.id, { type: 'number' });
+      const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
+      try {
+        await page.goto(`${base}/#/activity/${first.id}`, { waitUntil: 'networkidle' });
+        await page.waitForSelector('.activity-rollback-reason');
+        assert.match(await page.$eval('.activity-rollback-reason', (n) => n.textContent), /no longer kept/);
+        assert.match(await page.locator('.fieldrow', { hasText: 'Values' }).first().innerText(), /No longer kept/);
+        const legible = await page.$eval('.activity-rollback-reason', (n) => getComputedStyle(n).color !== getComputedStyle(document.body).backgroundColor);
+        assert.ok(legible, 'legible in this theme');
+      } finally { await page.close(); }
+    });
+
     test(`a stale roll back refuses and keeps the newer change (${colorScheme})`, async () => {
       const f = weave.addField(t, { name: `Size ${colorScheme}`, type: 'select', config: { options: [{ id: 's', name: 'S' }, { id: 'm', name: 'M' }] } });
       weave.updateField(t.id, f.id, { config: { options: [{ id: 's', name: 'S' }] } });

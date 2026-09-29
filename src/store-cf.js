@@ -150,6 +150,11 @@ export class CFStore {
       entry.at, entry.actor, entry.action, JSON.stringify(entry.detail ?? {}));
   }
 
+  // Issue #467: an older type-change entry drops its row values in place.
+  setAuditDetail(seq, detail) {
+    this.#run('UPDATE audit_log SET detail = ? WHERE seq = ?', JSON.stringify(detail ?? {}), seq);
+  }
+
   // `actions` narrows to those actions; limit -1 is no limit (SQLite's own).
   listAudit({ limit = 100, offset = 0, actions = null } = {}) {
     const where = actions?.length ? ` WHERE action IN (${actions.map(() => '?').join(', ')})` : '';
