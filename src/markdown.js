@@ -41,6 +41,35 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+/* The scheme gate for every URL the renderer writes (Issue #490). A target
+   is kept when it has no scheme (a relative path, a query, an in-page or
+   in-app #anchor) or its scheme is http, https or mailto; an image source
+   may also be inline PNG, JPEG, GIF or WebP data. The scheme is read the
+   way a browser reads it: entities decoded, control characters and
+   whitespace dropped, case folded. Anything else returns null and the
+   caller writes the text with no anchor. */
+const ENTITY = { colon: ':', tab: '\t', newline: '\n', amp: '&', sol: '/', period: '.', lpar: '(', rpar: ')' };
+function decodeEntities(s) {
+  for (let n = 0; n < 4; n++) {
+    const next = s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);?/gi, (m, e) => {
+      if (e[0] !== '#') return ENTITY[e.toLowerCase()] ?? m;
+      const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : '';
+    });
+    if (next === s) return s;
+    s = next;
+  }
+  return s;
+}
+function safeUrl(url, { image = false } = {}) {
+  const plain = decodeEntities(String(url)).replace(/[\u0000-\u0020\u007f-\u009f]/g, '').toLowerCase();
+  const scheme = plain.match(/^([^/?#]*?):/);
+  if (!scheme) return url;
+  if (['http', 'https', 'mailto'].includes(scheme[1])) return url;
+  if (image && /^data:image\/(png|jpeg|gif|webp)[;,]/.test(plain)) return url;
+  return null;
+}
+
 /* A link that leaves weave opens in a new tab (Kyle, 2026-09-07): the
    reader keeps the page they were on. Anything with a scheme and host is
    "leaving"; a route (#/entity/…), a workspace path (/e/…) or a bare
@@ -82,7 +111,7 @@ function renderInline(text, resolveMention) {
           try {
             resolved = resolveMention(kind, target);
           } catch { /* falls through to the broken chip below */ }
-          if (resolved) {
+          if (resolved && safeUrl(resolved.href) != null) {
             /* A chip with preview fields collapses to its name behind a caret
                (Kyle, 2026-09-01): the whole chip stays a link to the entity;
                only the caret toggles the field segments open. */
@@ -128,7 +157,8 @@ function renderInline(text, resolveMention) {
     if (src.startsWith('![', i)) {
       const m = src.slice(i).match(/^!\[([^\]]*)\]\(([^)\s]+)\)/);
       if (m) {
-        out += `<img src="${escapeHtml(m[2])}" alt="${escapeHtml(m[1])}">`;
+        const url = safeUrl(m[2], { image: true });
+        out += url == null ? escapeHtml(m[1]) : `<img src="${escapeHtml(url)}" alt="${escapeHtml(m[1])}">`;
         i += m[0].length;
         continue;
       }
@@ -137,7 +167,8 @@ function renderInline(text, resolveMention) {
     if (src[i] === '[') {
       const m = src.slice(i).match(/^\[([^\]]+)\]\(([^)\s]+)\)/);
       if (m) {
-        out += `<a href="${escapeHtml(m[2])}"${linkTarget(m[2])}>${renderInline(m[1], resolveMention)}</a>`;
+        const url = safeUrl(m[2]);
+        out += url == null ? escapeHtml(m[1]) : `<a href="${escapeHtml(url)}"${linkTarget(url)}>${renderInline(m[1], resolveMention)}</a>`;
         i += m[0].length;
         continue;
       }
