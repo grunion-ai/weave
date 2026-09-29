@@ -319,6 +319,28 @@ export function originFromEnv(env = process.env) {
 }
 export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
 
+/* The names this server answers to (Issue #487). Any Host used to do, so a
+   page on an attacker's name that re-resolves to 127.0.0.1 (DNS rebinding)
+   was same-origin with a loopback instance. Loopback names, WEAVE_ORIGIN's
+   host and the comma-separated WEAVE_ALLOWED_HOSTS answer; ports are not
+   compared, since a rebinding page controls the name, not the port. */
+const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const hostnameOf = (host) => { try { return host ? new URL(`http://${host}`).hostname : null; } catch { return null; } };
+export const allowedHostsFromEnv = (env = process.env) => String(env.WEAVE_ALLOWED_HOSTS ?? '').split(',').map((h) => hostnameOf(h.trim())).filter(Boolean);
+export function hostAllowed(host, { origin = null, allowedHosts = [] } = {}) {
+  const name = hostnameOf(String(host ?? ''));
+  if (!name) return false;
+  return LOOPBACK_NAMES.has(name) || (!!origin && new URL(origin).hostname === name) || allowedHosts.includes(name);
+}
+/* A container bound to 0.0.0.0 with neither variable set was reached by
+   whatever name its platform gave it; refusing that on upgrade would take it
+   down, so it keeps answering any Host and says so once. */
+export function hostCheckFor({ host, env = process.env }) {
+  const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host);
+  if (loopback || env.WEAVE_ORIGIN?.trim() || allowedHostsFromEnv(env).length) return { enforce: true, warning: null };
+  return { enforce: false, warning: `weave: bound to ${host} with neither WEAVE_ORIGIN nor WEAVE_ALLOWED_HOSTS set, so any Host header is answered; set one to refuse DNS-rebound requests` };
+}
+
 /* Content-versioned asset URLs (Issue #313). weave has no build step, so the
    shell is versioned when it is served: every local src/href/import in
    index.html that names a file gains `?v=<first 12 hex of its sha1>`, and an
@@ -346,7 +368,7 @@ export function createAssetVersions(dir) {
 }
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
 
   // Node adapter around the runtime-agnostic dispatcher (src/routes.js): this
@@ -437,6 +459,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       const url = new URL(req.url, 'http://localhost');
       let path;
       try { path = decodeURIComponent(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
+      // Health stays open to any name: platform probes send their own Host.
+      if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts })) {
+        return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
+      }
       const outcome = await handle({
         method: req.method,
         path,
@@ -457,8 +483,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits } = {}) {
-  const server = createServer(weave, { workspaces, build, backup, limits, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}) });
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts } = {}) {
+  const { enforce, warning } = origin || allowedHosts?.length ? { enforce: true, warning: null } : hostCheckFor({ host });
+  if (warning) console.warn(warning);
+  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });
