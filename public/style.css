@@ -144,6 +144,8 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .nav-add-table { margin-left: auto; opacity: 0; }
 .nav-space-row:hover .nav-add-table, .nav-add-table:focus-visible { opacity: 1; }
 .nav-foot { border-top: 1px solid var(--wv-pill-hover); margin-top: 12px; padding-top: 8px; }
+/* The workspace system tables, pinned under the spaces (Activity, Trash, Workflows). */
+.nav-system { border-top: 1px solid var(--wv-pill-hover); padding-top: 6px; flex: none; }
 /* The stats strip: workspace entity count + on-disk size, pinned to the
    sidebar's bottom edge — quiet metadata, same register as the version chip.
    Sticky with the canvas behind it, so a long nav scrolls under the strip. */

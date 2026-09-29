@@ -1650,6 +1650,9 @@ export class Weave {
   updateTable(ref, patch) {
     const db = this.getTable(ref);
     if (patch.name != null) refuseReserved('table', patch.name);
+    // A system table's name is fixed (Kyle, 2026-09-29): the nav pins it and
+    // every door finds it by that name. Writing the name it has is no rename.
+    if (patch.name != null && db.system && patch.name !== db.name) throw new WeaveError(`Table '${db.name}' is part of the system registry and cannot be renamed`, 'invalid');
     if (patch.name != null) db.name = patch.name;
     if (patch.description != null) db.description = patch.description;
     if (patch.icon != null) db.icon = iconValue(patch.icon);

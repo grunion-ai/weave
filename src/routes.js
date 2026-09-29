@@ -969,6 +969,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (raw) { try { where = JSON.parse(raw); } catch { return out(400, { error: 'where must be JSON' }); } }
           return out(200, weave.tableStats(m[1], { by, where }));
         }
+        // The workspace trash: every trashed row, from every table.
+        if (path === '/api/trash' && rx.method === 'GET') {
+          const items = weave.listTrash();
+          return out(200, { total: items.length, items });
+        }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/trash$/)) && rx.method === 'GET') {
           const items = weave.listTrash(m[1]);
           return out(200, { total: items.length, items });
