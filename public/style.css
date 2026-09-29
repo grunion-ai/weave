@@ -2770,6 +2770,14 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .wv-color-opt .wv-color-label { color: var(--tblr-secondary); }
 .wv-color-opt[aria-pressed="true"] .wv-color-label { color: var(--tblr-body-color); font-weight: 600; }
 
+/* ---------- the formula tray's reference (Issue #389) ----------
+   The field and function chips fold behind one summary under the result's
+   Display, Style, Color and Sample. */
+.fx-ref { margin-top: 10px; }
+.fx-ref > summary { cursor: pointer; font-size: 12.5px; color: var(--tblr-body-color); font-weight: 600; }
+.fx-ref > summary .fx-ref-hint { margin-left: 8px; font-weight: 400; color: var(--tblr-secondary); }
+.fx-ref[open] > summary { margin-bottom: 6px; }
+
 /* ---------- accessibility baseline (Issue #378) ----------
    Finding F2 of the 2026-09-26 design pass, gated by
    test/a11y-browser.test.mjs (axe-core, both themes). */

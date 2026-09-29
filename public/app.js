@@ -8057,7 +8057,7 @@ function stateListEditor(state, onChange) {
 
 /* The formula builder: expression plus insertable chips for this table's
    fields and the engine's functions — the two vocabularies a formula has. */
-function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () => selfName ?? '', onType = null } = {}) {
+function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () => selfName ?? '', onType = null, onTail = null } = {}) {
   const ta = el('textarea', {
     class: 'fx-expr', rows: 3, spellcheck: 'false',
     placeholder: 'e.g. if(Estimate > 5, "big", "small")',
@@ -8224,17 +8224,28 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     el('div', { class: 'fx-chip-row fn-group' }, el('span', { class: 'fx-chip-lbl' }, group),
       ...fns.map((fn) => teach(el('button', { type: 'button', class: 'fx-chip fn', onclick: () => insert(`${fn.name}()`, 1) }, `${fn.name}()`),
         { sig: fn.sig, doc: fn.doc, eg: fn.example }))));
-  if ((state.expression ?? '').trim()) runCheck();
+  const written = !!(state.expression ?? '').trim();
+  if (written) runCheck();
   drawAgent();
-  return el('div', {},
-    el('div', { class: 'fx-ac-wrap' }, ta, mirror, ac),
-    status,
-    rowpick,
+  /* Issue #389: the result line is followed by what the result looks
+     like — Display, Style, Color, Sample, drawn by the tray between the
+     Script section and this tail — and the sixty field and function chips
+     fold behind "Fields and functions", open while the script is empty and
+     closed once a formula exists, so the setting that decides the column's
+     look is on screen when the tray opens. Typing still offers both
+     through the autocomplete. The tail (the reference and the agent
+     panel) is handed to the tray through onTail, to sit under the look. */
+  const reference = el('details', { class: 'fx-ref', ...(written ? {} : { open: '' }) },
+    el('summary', {}, 'Fields and functions', el('span', { class: 'fx-ref-hint' }, 'or type [ for a field, two letters for a function')),
     el('div', { class: 'fx-chip-rows' },
       el('div', { class: 'fx-chip-row' }, el('span', { class: 'fx-chip-lbl' }, 'fields'), ...fieldChips),
       ...fnRows),
-    card,
-    agent);
+    card);
+  onTail?.(el('div', { class: 'fx-tail full' }, reference, agent));
+  return el('div', {},
+    el('div', { class: 'fx-ac-wrap' }, ta, mirror, ac),
+    status,
+    rowpick);
 }
 
 /* The number costume controls (Kyle, 2026-08-23): Format → number shows a
@@ -8605,7 +8616,11 @@ function fieldDialog(db, existing, after) {
         },
       }),
       el('span', { class: 'fx-mark' }, 'ƒ'), 'Formula',
-      el('span', { class: 'fx-hint' }, 'any field can be computed'));
+      /* What the box does, said where it is (Issue #389): unticked, a
+         formula column freezes into text; ticked, a new field computes. */
+      el('span', { class: 'fx-hint' }, isEdit && existing.type === 'formula'
+        ? 'untick to freeze each row’s result into plain text'
+        : 'compute this field from the row’s other fields instead of typing it'));
     let note = '';
     if (isEdit && state.type !== existing.type && !state.computed) {
       note = el('div', { class: 'modal-note migrate-note' }, `Saving converts this ${existing.type} field to ${state.type}; every row's value is migrated in place.`);
@@ -8630,13 +8645,13 @@ function fieldDialog(db, existing, after) {
       // only a numeric one: the section draws once the check names the type
       // (direction B), and stays for a table with no rows to type it on.
       const costumeWrap = el('div', { class: 'full' });
-      let resultType = null;
+      let resultType = null, fxTail = null;
       const drawCostume = () => costumeWrap.replaceChildren(...(resultType === 'list' || state.number.display === 'sparkline'
         ? sparklineControls(state.number, drawCostume, changed, column)
         : resultType === null || resultType === 'number' ? numberCostumeControls(state, drawCostume, changed, { label: 'Result format', column }) : []));
-      kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null, fieldName: () => nameInput.value, onType: (t) => { resultType = t; drawCostume(); } })));
+      kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null, fieldName: () => nameInput.value, onType: (t) => { resultType = t; drawCostume(); }, onTail: (tail) => { fxTail = tail; } })));
       drawCostume();
-      kids.push(costumeWrap);
+      kids.push(costumeWrap, fxTail);
     } else {
       const t = state.type;
       // The Name field carries the table's row term (Feature #40).
