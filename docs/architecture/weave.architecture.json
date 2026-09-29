@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "374d4f0ee8891831016f82350cd5b0bf34933c8f"
+      "revision": "b83f6573dacee5b8df261a86d5f58899b88a2725"
     },
     "views": [
       {
@@ -451,7 +451,7 @@
       "items": [
         "src/vocabulary.js: one field vocabulary for UI, CLI and MCP",
         "src/ids.js and src/mark.js: ids and the rope mark",
-        "src/applet.js and src/bugreport.js: routes behind the request core"
+        "src/applet.js, src/bugreport.js and src/oidc.js: routes and provider sign-in behind the request core"
       ]
     },
     {

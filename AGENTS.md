@@ -236,7 +236,7 @@ workspace. Every MCP tool has a command:
 | `weave doc-revisions <ref> [--field F] [--seq n]` | `weave doc-restore <ref> --seq n [--field F]` | |
 | `weave audit` | `weave view` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
 | `weave workspace` | `weave workspace logo` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
-| `weave audit` | `weave account invite` / `weave account sessions` / `weave account revoke-session` / `weave account remove-credential` | |
+| `weave audit` | `weave account invite` / `weave account sessions` / `weave account revoke-session` / `weave account remove-credential` / `weave account link` / `weave account unlink` | |
 
 Two operator verbs work on the whole data directory rather than one workspace
 and have no MCP tool on purpose — an agent holding a token must not be able to
@@ -305,6 +305,14 @@ Notes that save round trips:
   passkey within 15 minutes. `sessions`, `revoke-session` and
   `remove-credential` are the lost-device verbs. `WEAVE_ORIGIN` names the
   origin passkeys bind to on a hosted instance; localhost needs nothing.
+- **A provider sign-in opens only a linked account.** With `WEAVE_OIDC_ISSUER`
+  and `WEAVE_OIDC_CLIENT_ID` set, `/auth` also offers one OpenID Connect
+  provider. Signing in there creates no account: `weave_accounts`
+  `action: link-identity` (or `weave account link <name> --email <address>`,
+  or `POST /api/accounts/<name>/identities`) names the email the provider
+  will vouch for, the first verified sign-in pins the provider's subject to
+  the account, and `unlink-identity` closes it. The session is the same
+  `wv_session` cookie; agents keep the token.
 - **Secrets never come back to an agent.** A `key` (credential) field holds the
   *name* of a secret; the secret itself is encrypted in a keystore outside the
   workspace, so it is never in a cell, an export, a formula or a query result.

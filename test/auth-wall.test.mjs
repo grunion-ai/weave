@@ -100,8 +100,12 @@ async function serve() {
    part 2): the /auth page and the ceremonies under /api/auth/ — options,
    verify and logout answer an anonymous caller because they are how a caller
    stops being anonymous. /api/auth/me and the self-service session and
-   credential verbs are the account's own and stay 401 to nobody. */
+   credential verbs are the account's own and stay 401 to nobody. Door C
+   (Feature #212) is the same kind of door: start and callback under
+   /api/auth/oidc/ answer nobody with a redirect, a refusal page, or a 404
+   when no provider is configured — never the wall. */
 const OPEN = (method, path) => path === '/api/health' || path === '/auth'
+  || /^\/api\/auth\/oidc\/(start|callback)$/.test(path)
   || /^\/api\/auth\/login\/(options|verify)$/.test(path) || path === '/api/auth/logout'
   || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || path.startsWith('/t/')
     || /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path)));

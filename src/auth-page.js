@@ -8,6 +8,8 @@
      signed out           → "Sign in with a passkey" (discoverable credential)
      signed out + ?invite → "Register this device" with a label field
      signed in            → the "You" section: sessions, passkeys, sign out
+   With a provider configured (door C, Feature #212) the signed-out state
+   also carries "Sign in with <provider>", a plain link that keeps ?next.
    After a successful ceremony the page goes to ?next, or the workspace root. */
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -50,6 +52,7 @@ li:first-child{border-top:0}
 .row{display:flex;gap:8px;margin-top:18px}
 .row button{flex:1}
 a{color:var(--accent)}
+a.provider{display:block;text-align:center;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px 16px;margin-top:10px;font-weight:600}
 .mark{display:block;width:40px;height:40px;margin:0 0 14px}
 `;
 
@@ -150,7 +153,7 @@ const JS = `
   }
 
   async function load() {
-    if (!supported()) { show('sec-unsupported'); return; }
+    if (!supported() && !$('oidc')) { show('sec-unsupported'); return; }
     let me = null;
     try { me = await api('/me'); } catch { me = null; }
     if (me) {
@@ -166,6 +169,7 @@ const JS = `
     if (invite) { show('sec-register'); return; }
     show('sec-signin');
   }
+  if ($('oidc')) $('oidc').href += '?next=' + encodeURIComponent(next);
   $('signin').onclick = signIn;
   $('register').onclick = register;
   $('label').value = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
@@ -173,7 +177,7 @@ const JS = `
 })();
 `;
 
-export function renderAuthPage({ mount = '', workspace = 'weave' } = {}) {
+export function renderAuthPage({ mount = '', workspace = 'weave', provider = null } = {}) {
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -189,7 +193,8 @@ export function renderAuthPage({ mount = '', workspace = 'weave' } = {}) {
       <h1>Sign in to ${esc(workspace)}</h1>
       <p class="sub">Use the passkey on this device — Face ID, Touch ID, Windows Hello, or a security key.</p>
       <button id="signin" class="primary" type="button">Sign in with passkey</button>
-      <p class="sub" style="margin-top:14px">No passkey yet? Ask an operator for an invite link, or open the one you were sent.</p>
+${provider ? `      <a id="oidc" class="provider" href="${esc(mount)}/api/auth/oidc/start">Sign in with ${esc(provider)}</a>
+` : ''}      <p class="sub" style="margin-top:14px">No passkey yet? Ask an operator for an invite link, or open the one you were sent.</p>
     </section>
     <section id="sec-register" hidden>
       <h1 id="register-title">Register this device</h1>

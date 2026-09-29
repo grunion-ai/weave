@@ -92,6 +92,9 @@ const SURFACE = [
      a passkey is a browser act — the invite URL is how the CLI reaches them. */
   ['auth.invite', ['createInvite', 'consumeInvite'], 'weave_accounts', 'account invite', ['POST /api/auth/register/options', 'POST /api/auth/register/verify']],
   ['auth.credentials', ['addCredential', 'removeCredential'], 'weave_accounts', 'account remove-credential', ['POST /api/auth/register/verify', 'DELETE /api/auth/credentials/:ref']],
+  /* Door C (Feature #212). Linking is the operator's verb on every door;
+     the sign-in itself is the browser's trip through the provider. */
+  ['auth.identities', ['linkIdentity', 'unlinkIdentity', 'accountForIdentity'], 'weave_accounts', 'account link', ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback']],
   ['auth.sessions', ['createSession', 'listSessions', 'revokeSession'], 'weave_accounts', 'account sessions', ['POST /api/auth/login/options', 'POST /api/auth/login/verify', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref']],
   ['keys', ['setKey', 'listKeys', 'deleteKey'], 'weave_keys', 'key', ['GET /api/keys', 'POST /api/keys', 'DELETE /api/keys/:rest']],
   /* Reveal has no MCP tool ON PURPOSE (Feature #143). A human asking for their
