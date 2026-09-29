@@ -32,12 +32,23 @@ const gitOut = (...a) => {
   const r = spawnSync('git', ['-C', ROOT, ...a], { encoding: 'utf8', timeout: 4000 });
   return r.status === 0 ? r.stdout.trim() : null;
 };
-const BUILD = { head: gitOut('rev-parse', 'HEAD'), remote: gitOut('remote')?.split('\n')[0] || null, latest: null, checkedAt: 0, disk: null, diskCheckedAt: 0 };
+const BUILD = { head: gitOut('rev-parse', 'HEAD'), remote: gitOut('remote')?.split('\n')[0] || null, latest: null, contains: null, checkedAt: 0, disk: null, diskCheckedAt: 0 };
 function refreshLatest() {
   BUILD.checkedAt = Date.now();
   if (!BUILD.remote) return;
   execFile('git', ['-C', ROOT, 'ls-remote', BUILD.remote, 'main'], { encoding: 'utf8', timeout: 4000 },
-    (err, out) => { if (!err) BUILD.latest = (out ?? '').split(/\s/)[0] || null; });
+    async (err, out) => {
+      if (err) return;
+      const latest = (out ?? '').split(/\s/)[0] || null;
+      BUILD.contains = latest ? await headContains(ROOT, latest, BUILD.head) : null;
+      BUILD.latest = latest;
+    });
+}
+/* Does this checkout already carry `sha`? A sha the local store never fetched
+   fails the check, which is the right answer: HEAD lacks it (Issue #459). */
+export function headContains(root, sha, head = 'HEAD') {
+  return new Promise((resolve) => execFile('git', ['-C', root, 'merge-base', '--is-ancestor', sha, head],
+    { timeout: 4000 }, (err) => resolve(!err)));
 }
 /* The HEAD the next static asset will be served from. Read for real, at most
    every 5s: the whole point is that it can differ from the one in memory. */
@@ -49,13 +60,15 @@ function diskHead() {
   return BUILD.disk;
 }
 /* The verdicts, apart from the reading: stale = the process is older than the
-   checkout it serves; behind = the checkout is older than main. */
-export function describeBuild({ head, disk = null, latest = null }) {
+   checkout it serves; behind = main has a commit the checkout lacks (Issue
+   #459: a checkout at main or ahead of it is not behind). `contains` says
+   whether HEAD carries main's sha; unknown falls back to "differs". */
+export function describeBuild({ head, disk = null, latest = null, contains = null }) {
   if (!head) return null;
   return {
     sha: head.slice(0, 7),
     ...(disk ? { diskSha: disk.slice(0, 7), stale: disk !== head } : {}),
-    ...(latest ? { latestSha: latest.slice(0, 7), behind: latest !== head } : {}),
+    ...(latest ? { latestSha: latest.slice(0, 7), behind: latest !== head && contains !== true } : {}),
   };
 }
 /* The newer-release check (Issue #253, src/update-check.js) rides the same
@@ -67,7 +80,7 @@ export function buildInfo() {
   const release = RELEASE?.status() ?? null;
   if (!BUILD.head) return release;
   if (Date.now() - BUILD.checkedAt > 5 * 60 * 1000) refreshLatest();
-  return { ...describeBuild({ head: BUILD.head, disk: diskHead(), latest: BUILD.latest }), ...release };
+  return { ...describeBuild({ head: BUILD.head, disk: diskHead(), latest: BUILD.latest, contains: BUILD.contains }), ...release };
 }
 const MIME = {
   '.html': 'text/html; charset=utf-8',

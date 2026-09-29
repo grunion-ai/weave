@@ -177,7 +177,7 @@ test('/api/health carries the release verdict beside sha and behind, which keep 
     server.close();
     armReleaseCheck(null);
   }
-  // behind still means main's sha differs from the boot head, nothing else
+  // behind still means main has a commit the boot head lacks (Issue #459), nothing else
   const s = (c) => c.repeat(40);
   assert.equal(describeBuild({ head: s('a'), disk: s('a'), latest: s('b') }).behind, true);
   assert.ok(!('releaseBehind' in describeBuild({ head: s('a'), disk: s('a'), latest: s('a') })));
