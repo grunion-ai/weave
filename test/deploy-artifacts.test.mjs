@@ -33,6 +33,7 @@ const GUIDE_TITLES = [
   'Self-host weave: choose your door',
   'Door A: an edge gate',
   'Door B: passkeys',
+  'Door C: sign in with a provider',
   'Deploy: Railway',
   'Deploy: Fly.io, Render, a VPS, Docker',
   'Backup and restore',

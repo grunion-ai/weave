@@ -1414,7 +1414,7 @@ weave on a laptop binds \`127.0.0.1\` and needs no login. weave on a server need
 
 **Door B** is the door a fresh \`git clone\` gets: passkeys for people, typed and scoped \`wv_\` tokens for agents, no account at a third party. It is the default the guides lead with: the **Door B: passkeys** page is the invite, the second device, the lost-phone day, and \`WEAVE_ORIGIN\`.
 
-**Door C** adds a provider to door B's session: sign in with GitHub, Google, or a self-hosted identity server. It is "add a provider", never a second auth system, and it lands with Feature #212.
+**Door C** adds a provider to door B's session: sign in with GitHub, Google, or a self-hosted identity server. It is "add a provider", never a second auth system: the **Door C: sign in with a provider** page covers the provider's settings, the four variables and linking an account.
 
 ## Tailscale, stated plainly
 
@@ -1545,7 +1545,7 @@ Three checks, whichever gate you chose:
     order: 15,
     doc: `# Door B: passkeys
 
-A hosted weave has three front doors, and you pick one: an edge gate in front of the process (Cloudflare Access, Tailscale, Caddy), a provider over OIDC (planned), or this one — passkeys built into weave, no account at a third party, nothing to install. Door B is what a fresh clone gets, and it stacks behind an edge gate without either knowing.
+A hosted weave has three front doors, and you pick one: an edge gate in front of the process (Cloudflare Access, Tailscale, Caddy), a provider over OIDC (door C), or this one — passkeys built into weave, no account at a third party, nothing to install. Door B is what a fresh clone gets, and it stacks behind an edge gate without either knowing.
 
 A passkey is a public key on the account row. Your phone or laptop keeps the private half and signs a challenge when you sign in — Face ID, Touch ID, Windows Hello, or a security key. Nothing to type, nothing to reset, nothing for a phishing page to collect: the key only ever signs for the origin it was made on.
 
@@ -1611,6 +1611,97 @@ Share links (\`/view/<token>\`) and the task applet keep their own doors.
 3. Open \`/auth\` on the laptop while signed in, **Add this device**: two entries.
 4. Sign out on the laptop, sign in again with the passkey: no username, one prompt.
 5. \`weave account revoke-session you --all\`: the next page load on the phone is the sign-in page.`,
+  },
+  {
+    name: "Door C: sign in with a provider",
+    audience: 'Human',
+    order: 15.5,
+    doc: `# Door C: sign in with a provider
+
+Door C adds one OpenID Connect (OIDC) provider to door B's session. The provider has to serve \`/.well-known/openid-configuration\`; Clerk, Auth0, Keycloak, Authentik and Google are examples. The session cookie, the account row and sign-out are door B's. Agents keep using \`wv_\` bearer tokens, and passkeys keep working beside the provider.
+
+## Accounts and identities
+
+Signing in at the provider creates no account in weave. You link an existing weave account to the email the provider will vouch for, and weave stores that link as an identity on the account. The first sign-in that arrives with that email marked verified pins the provider's subject (the \`sub\` claim) to the account; until then, weave refuses a sign-in whose email is unverified. After the pin, weave matches on the subject alone, so a changed email still signs in and the same email under a different subject is refused.
+
+A hosted provider with open sign-up lets anyone create a user there. A sign-in at the provider proves who someone is, and weave admits that person only when you have linked an account to their email.
+
+## Application at the provider
+
+Register an OAuth or OIDC application that uses the authorization code flow with PKCE, the scopes \`openid email profile\` and one redirect URI:
+
+\`\`\`
+<WEAVE_ORIGIN>/api/auth/oidc/callback
+\`\`\`
+
+That URI serves every workspace the weave process hosts. Copy the client id and client secret.
+
+## Environment variables
+
+| Variable | Required | What it does |
+| --- | --- | --- |
+| \`WEAVE_OIDC_ISSUER\` | Yes | The provider's issuer URL. \`https\` is required except on loopback. |
+| \`WEAVE_OIDC_CLIENT_ID\` | Yes | The client id of the application you registered. |
+| \`WEAVE_OIDC_CLIENT_SECRET\` | No | The client secret. Omit it for a public client, which then relies on PKCE alone. |
+| \`WEAVE_OIDC_NAME\` | No | The provider's name on the sign-in link. Defaults to the issuer's host name. |
+
+Issuer and client id switch the door on together. Set one without the other and \`weave serve\` stops at startup and names the missing variable.
+
+## Account linking
+
+Link an account from the CLI, the HTTP API or MCP. Each takes the account name and the email. From the CLI:
+
+\`\`\`bash
+weave account link kyle --email kyle@example.com
+\`\`\`
+
+Add \`--issuer <url>\` when \`WEAVE_OIDC_ISSUER\` is not set in your shell. The HTTP call needs an admin bearer token:
+
+\`\`\`bash
+curl -X POST https://weave.example.com/api/accounts/kyle/identities \\
+  -H "Authorization: Bearer wv_<admin token>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"email": "kyle@example.com"}'
+\`\`\`
+
+From MCP, call the \`weave_accounts\` tool with \`action: link-identity\`.
+
+To unlink:
+
+\`\`\`bash
+weave account unlink kyle --email kyle@example.com
+# or over HTTP: DELETE /api/accounts/kyle/identities?email=kyle@example.com
+\`\`\`
+
+## Clerk
+
+In the Clerk dashboard, create an OAuth application and give it the redirect URI above. Use your Clerk instance's Frontend API URL as \`WEAVE_OIDC_ISSUER\`; on a development instance it looks like \`https://<name>.clerk.accounts.dev\`. weave accepts RS256 or ES256 id tokens and sends an S256 PKCE challenge; Clerk supports RS256 and S256.
+
+\`\`\`bash
+WEAVE_OIDC_ISSUER=https://<name>.clerk.accounts.dev
+WEAVE_OIDC_CLIENT_ID=<client id>
+WEAVE_OIDC_CLIENT_SECRET=<client secret>
+WEAVE_OIDC_NAME=Clerk
+\`\`\`
+
+## Sign-in page
+
+\`/auth\` shows a \`Sign in with <name>\` link under the passkey button. After you sign in at the provider, you land on the page you were heading to. A refused sign-in gets a page that states the reason and links back to \`/auth\`.
+
+## Sign-in verification
+
+On every sign-in, weave verifies the id token's signature (RS256 or ES256) against the provider's published keys, then checks the token's issuer, audience, expiry and nonce. Each sign-in carries a one-time state value that expires after five minutes, so a sign-in left open longer than that at the provider is refused. weave sets a cookie in the browser that starts a sign-in and refuses a callback that arrives without it, so a callback link opened in another browser signs nobody in. If the id token carries no email, weave reads the email from the provider's userinfo endpoint, and refuses the sign-in unless userinfo names the same subject as the id token.
+
+## Limits
+
+weave supports one provider per process and creates no account at sign-in. Signing out ends the weave session and leaves the provider's own session alone.
+
+## How you know it worked
+
+1. Open \`/auth\` in a private window: the \`Sign in with <name>\` link sits under the passkey button.
+2. Sign in at the provider with the linked email: you land in the workspace.
+3. Sign in with an email that has no linked account: weave answers \`403\` with a page reading **No account for this identity**.
+4. Run \`weave account list\` after the first sign-in: the account's entry in \`identities[]\` has its \`subject\` filled in.`,
   },
   {
     name: "Deploy: Railway",
@@ -1878,11 +1969,15 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 | \`WEAVE_ORIGIN\` | \`weave serve\`, \`weave account invite\` | unset (loopback: \`http://localhost:<port>\`) | The public origin passkeys and the \`wv_session\` cookie are bound to — scheme and host, no path. Unset off loopback with \`requireAuth\` on, \`serve\` refuses to start; wrong, every passkey ceremony fails with an origin mismatch and every invite URL points at the wrong host. The RP ID is its hostname; https makes the cookie \`Secure\`. |
 | \`WEAVE_TRUST_PROXY\` | \`weave serve\` | unset | Set to \`1\` behind Railway, Fly, Render or any reverse proxy: the sign-in rate limits then read the client from \`X-Forwarded-For\`. Unset behind a proxy, every visitor shares the proxy's address and ten sign-in attempts a minute lock everyone out; set with no proxy, a client can forge the header. |
 | \`WEAVE_BACKUP_DEST\` | \`weave serve\`, \`weave backup\` | unset | \`s3://bucket/prefix\`. Set on \`weave serve\`, the server backs up in-process daily at 04:00 UTC and keeps thirty archives; unset, nothing leaves the machine and \`/api/health\` carries no \`backup\` field. Wrong bucket or credentials: the run fails, a \`backup-failed\` audit row and \`lastStatus\` on health say so, the server keeps serving. The endpoint, credentials and passphrase it needs are on the **Backup and restore** guide. |
+| \`WEAVE_OIDC_ISSUER\` | \`weave serve\`, \`weave account link\` | unset | The issuer URL of one OpenID Connect provider, \`https\` off loopback. Set with \`WEAVE_OIDC_CLIENT_ID\`, the sign-in page gains a link to the provider (the **Door C: sign in with a provider** guide). Set without it, \`serve\` stops at startup and names the missing variable. A URL the provider does not call its own issuer fails every sign-in with a page that says so. |
+| \`WEAVE_OIDC_CLIENT_ID\` | \`weave serve\` | unset | The client id the provider issued for this instance. The provider must hold \`<WEAVE_ORIGIN>/api/auth/oidc/callback\` as a redirect URI, or it refuses the sign-in before weave sees it. |
+| \`WEAVE_OIDC_CLIENT_SECRET\` | \`weave serve\` | unset | The client secret, for a confidential client. Unset, weave signs in as a public client and relies on PKCE alone; a provider that expects the secret answers \`invalid_client\`. |
+| \`WEAVE_OIDC_NAME\` | \`weave serve\` | the issuer's host name | The word on the sign-in link: \`Clerk\` reads "Sign in with Clerk". |
 | \`WEAVE_UPDATE_CHECK\` | \`weave serve\` | on | Set to \`off\` and the server makes no request to GitHub. On, it asks \`api.github.com/repos/grunion-ai/weave/releases/latest\` at most once a day (no token, nothing about the install), keeps the answer in \`update-check.json\` beside \`WEAVE_DATA\`, and \`/api/health\` carries \`latestRelease\`, \`releaseCheckedAt\` and \`releaseBehind\`; the sidebar instance chip turns amber when a newer release exists. Offline, rate-limited or blocked, the check stays silent and nothing else changes. |
 
 ## The container
 
-The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOST=0.0.0.0\`, \`WEAVE_DATA=/data/workspace.db\`, \`WEAVE_KEYSTORE=/data/keystore.json\`. A platform overrides \`PORT\`; you supply \`WEAVE_KEYSTORE_PASSPHRASE\`. \`WEAVE_ORIGIN\`, \`WEAVE_TRUST_PROXY\` and \`WEAVE_BACKUP_DEST\` are listed as comments, each off unless set, and \`WEAVE_UPDATE_CHECK\` is listed as the one that is on unless set to \`off\`, so the contract is visible in one place.
+The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOST=0.0.0.0\`, \`WEAVE_DATA=/data/workspace.db\`, \`WEAVE_KEYSTORE=/data/keystore.json\`. A platform overrides \`PORT\`; you supply \`WEAVE_KEYSTORE_PASSPHRASE\`. \`WEAVE_ORIGIN\`, \`WEAVE_TRUST_PROXY\`, \`WEAVE_BACKUP_DEST\` and the four provider sign-in variables are listed as comments, each off unless set, and \`WEAVE_UPDATE_CHECK\` is listed as the one that is on unless set to \`off\`, so the contract is visible in one place.
 
 ## How you know it worked
 

@@ -241,6 +241,10 @@ on any instance, including the one you just started):
 - **Door B: passkeys** — built-in sign-in, no third party: `weave account
   invite <name>` prints a one-time link, the phone registers a passkey, and
   `WEAVE_ORIGIN` names the origin it binds to. Agents keep `wv_` tokens.
+- **Door C: sign in with a provider**: one OpenID Connect provider (Clerk,
+  Auth0, Keycloak, Authentik, Google) on top of door B's session. `weave
+  account link <name> --email <address>` opens an account to it; signing in
+  creates none.
 - **Deploy: Railway** — project from GitHub, volume at `/data`, variables,
   custom domain, one replica.
 - **Deploy: Fly.io, Render, a VPS, Docker** — one section each, same shape;

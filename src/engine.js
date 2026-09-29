@@ -541,9 +541,9 @@ export const ONTOLOGY = {
     },
     {
       key: 'account', name: 'Account', storedIn: 'state.meta.accounts',
-      definition: 'A named token holder with a role — admin, writer, or reader. Only the token hash is kept. Passkeys (public keys) live on the row as credentials[]; browser sessions and one-time invites are kept beside it as sha256 hashes (Feature #222 part 2).',
+      definition: 'A named token holder with a role — admin, writer, or reader. Only the token hash is kept. Passkeys (public keys) live on the row as credentials[]; browser sessions and one-time invites are kept beside it as sha256 hashes (Feature #222 part 2). Provider identities (issuer, email, pinned subject) live on the row as identities[] (Feature #212).',
       identity: 'uuid; name unique in the workspace',
-      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createInvite', 'consumeInvite', 'addCredential', 'removeCredential', 'createSession', 'verifySession', 'listSessions', 'revokeSession'],
+      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createInvite', 'consumeInvite', 'addCredential', 'removeCredential', 'createSession', 'verifySession', 'listSessions', 'revokeSession', 'linkIdentity', 'unlinkIdentity', 'accountForIdentity'],
     },
     {
       key: 'key', name: 'Credential', storedIn: 'keystore',
@@ -3276,6 +3276,66 @@ export class Weave {
       this.#audit('session-revoked', { name: a.name, count: gone.length, all: !!all });
     }
     return { revoked: gone.length };
+  }
+
+  // ---------------- provider identities (Feature #212, door C) ----------------
+  /* Signing in at a provider provisions nobody. An admin links an account to
+     the email a provider will vouch for (account.identities[]); the first
+     sign-in that arrives with that email verified pins the provider's subject
+     to the link, and from then on the subject is the identity — the same
+     email under another subject is someone else. Identities are keyed by
+     issuer, so two providers never share a namespace. */
+  linkIdentity(accountRef, { issuer, email } = {}) {
+    const a = this.#account(accountRef);
+    const iss = String(issuer ?? '').trim().replace(/\/+$/, '');
+    const mail = String(email ?? '').trim().toLowerCase();
+    if (!iss) throw new WeaveError('An identity needs the issuer of the provider that vouches for it', 'invalid');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) throw new WeaveError(`An identity needs the email the provider will vouch for (got '${email ?? ''}')`, 'invalid');
+    for (const other of Object.values(this.state.meta.accounts)) {
+      if ((other.identities ?? []).some((i) => i.issuer === iss && i.email === mail)) throw new WeaveError(`${mail} is already linked to '${other.name}'`, 'conflict');
+    }
+    const identity = { issuer: iss, email: mail, subject: null, createdAt: nowISO(), lastUsedAt: null };
+    (a.identities ??= []).push(identity);
+    this.save();
+    this.#audit('identity-linked', { name: a.name, issuer: iss, email: mail });
+    return identity;
+  }
+
+  unlinkIdentity(accountRef, { issuer = null, email } = {}) {
+    const a = this.#account(accountRef);
+    const mail = String(email ?? '').trim().toLowerCase();
+    const keep = (a.identities ?? []).filter((i) => !(i.email === mail && (!issuer || i.issuer === issuer)));
+    const unlinked = (a.identities ?? []).length - keep.length;
+    if (!unlinked) throw new WeaveError(`No identity '${mail}' on '${a.name}'`, 'not-found');
+    a.identities = keep;
+    this.save();
+    this.#audit('identity-unlinked', { name: a.name, email: mail });
+    return { unlinked, remaining: keep.length };
+  }
+
+  /* The account a verified provider identity opens, or null. */
+  accountForIdentity({ issuer, subject, email = null, emailVerified = false } = {}) {
+    if (!issuer || !subject) return null;
+    const mail = String(email ?? '').trim().toLowerCase();
+    let hit = null;
+    let pin = null;
+    for (const a of Object.values(this.state.meta.accounts ?? {})) {
+      for (const i of a.identities ?? []) {
+        if (i.issuer !== issuer) continue;
+        if (i.subject === subject) hit = { a, i };
+        else if (!i.subject && emailVerified && mail && i.email === mail) pin = { a, i };
+      }
+    }
+    const found = hit ?? pin;
+    if (!found) return null;
+    if (!hit) {
+      found.i.subject = String(subject);
+      this.#audit('identity-pinned', { name: found.a.name, issuer, email: found.i.email });
+    }
+    found.i.lastUsedAt = nowISO();
+    this.save();
+    const { tokenHash, ...pub } = found.a;
+    return pub;
   }
 
   // ---------------- meta-model (Feature #12) ----------------

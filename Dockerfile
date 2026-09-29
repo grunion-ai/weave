@@ -14,6 +14,10 @@ COPY --chown=node:node . .
 #   WEAVE_KEYSTORE_PASSPHRASE  derives the keystore key; no key file on disk (unset)
 #   WEAVE_ORIGIN               public origin passkeys + the session cookie bind to (unset = loopback)
 #   WEAVE_TRUST_PROXY          1 behind a platform proxy: rate limits read X-Forwarded-For (unset)
+#   WEAVE_OIDC_ISSUER          an OpenID Connect provider to sign in with  (unset)
+#   WEAVE_OIDC_CLIENT_ID       the client id that provider issued; set with the issuer (unset)
+#   WEAVE_OIDC_CLIENT_SECRET   the client secret; unset = public client, PKCE alone (unset)
+#   WEAVE_OIDC_NAME            the word on the sign-in link                (issuer's host)
 #   WEAVE_UPDATE_CHECK         off: never ask GitHub for a newer release   (on: once a day)
 #   WEAVE_BACKUP_DEST          s3://bucket/prefix: nightly backup at 04:00 UTC   (unset = off)
 ENV PORT=4400 \

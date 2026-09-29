@@ -28,7 +28,8 @@ const STARTED_AT = new Date().toISOString();
 
 /* What a browser sees at the wall (Feature #222 phase 0): the condition and
    the ways in — the passkey page (phase 2), a Bearer token, a share link. */
-const wallPageHtml = (authHref) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in with a passkey</a>, send a Bearer token, or open a share link you were given.</p>`;
+const escHtml = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in with a passkey${provider ? ` or ${escHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
 /* ---------- door B plumbing (Feature #222 part 2) ----------
    Challenges live five minutes in memory, keyed by a random id the client
@@ -47,11 +48,13 @@ const parseCookies = (header) => Object.fromEntries(String(header ?? '').split('
      nextAt, dest}, no secrets) or null when WEAVE_BACKUP_DEST is unset —
      /api/health carries it so a stale backup shows where staleness is
      already checked (Feature #222 phase 3, Feature #209)
+   - oidc: createOidc's provider (src/oidc.js), or null when WEAVE_OIDC_* is
+     unset — door C, one provider on top of door B's session (Feature #212)
    - serveStatic: (path) => {status, headers, body} | null, or null when the
      platform serves assets before the dispatcher runs
    Returns handle(rx) where rx = { method, path (decoded pathname),
    searchParams, header(name), readBody() } → {status, headers, body}. */
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null } = {}) {
   const challenges = new Map();
   const rates = { options: new Map(), failed: new Map() };
   /* limited(kind, ip) counts this call and says whether the minute's budget
@@ -69,10 +72,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
   const noteFailure = (ip) => limited('failed', ip);
   /* The id the client echoes back IS the challenge: 32 random bytes, used
      once — takeChallenge deletes on read, so a replayed verify finds nothing. */
-  const putChallenge = (entry) => {
+  const putChallenge = (entry, id = newChallenge()) => {
     const now = Date.now();
     for (const [k, v] of challenges) if (v.expiresAt <= now) challenges.delete(k);
-    const id = newChallenge();
     challenges.set(id, { ...entry, expiresAt: now + CHALLENGE_TTL_MS });
     return id;
   };
@@ -238,7 +240,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
        assets — never a .html, which is the app itself. A browser gets a
        page, an API caller keeps the JSON. */
     const authHref = `${wsPrefix}/auth?next=${encodeURIComponent(wsPrefix + path)}`;
-    const wallPage = () => out(401, wallPageHtml(authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    const wallPage = () => out(401, wallPageHtml(authHref, oidc?.name), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/')
       || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
@@ -449,7 +451,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
       /* ---------- door B: the sign-in page and its ceremonies (Feature #222 part 2) ---------- */
       if (path === '/auth') {
-        return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
 
       // ---------- API ----------
@@ -463,6 +465,56 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const who = () => session ?? (role ? weave.verifyToken(authz.slice(7).trim()) : null);
           // Which engine holds the session: the one asked, or the hub root.
           const holder = () => (session && weave.verifySession(cookies.wv_session)) ? weave : hub.get(hub.defaultName);
+          /* ---------- door C: one OIDC provider (Feature #212) ----------
+             start sends the browser to the provider; the callback is one
+             address for every workspace (a provider registers exact
+             redirect URIs), so the trip remembers which engine asked. The
+             account is looked for there, then on the hub root, and the
+             session minted is door B's. A refusal is a page: this is a
+             navigation, not a fetch. */
+          if (path.startsWith('/api/auth/oidc/')) {
+            if (!oidc) return notFound({ error: 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
+            const refusal = (status, title, detail) => out(status,
+              `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>${escHtml(title)}</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>${escHtml(title)}</h1><p>${escHtml(detail)}</p><p><a href="${escHtml(wsPrefix)}/auth">Back to sign in</a></p>`,
+              { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+            const redirectUri = `${originFor(rx)}/api/auth/oidc/callback`;
+            if (route === 'GET /api/auth/oidc/start') {
+              if (limited('options', ip)) return tooMany();
+              const n = String(rx.searchParams?.get('next') ?? '');
+              const next = /^\/(?![/\\])/.test(n) ? n : `${wsPrefix}/`;
+              let trip;
+              try { trip = await oidc.begin({ redirectUri }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
+              /* The trip belongs to the browser that started it: a second,
+                 unguessable value rides a cookie scoped to these two routes,
+                 so a callback URL handed to another browser finishes nothing. */
+              const binder = newChallenge();
+              putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave }, trip.state);
+              const secure = originFor(rx).startsWith('https:') ? '; Secure' : '';
+              return { status: 302, headers: { Location: trip.url, 'Set-Cookie': `wv_oidc=${binder}; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=${CHALLENGE_TTL_MS / 1000}${secure}`, 'Cache-Control': 'no-store' }, body: '' };
+            }
+            if (route === 'GET /api/auth/oidc/callback') {
+              if (limited('failed', ip, { peek: true })) return tooMany();
+              const c = takeChallenge(String(rx.searchParams?.get('state') ?? ''), 'oidc');
+              if (!c || !cookies.wv_oidc || cookies.wv_oidc !== c.binder) { noteFailure(ip); return refusal(400, 'This sign-in expired or was already used', 'Start again from the sign-in page, in the browser you want to sign in.'); }
+              if (rx.searchParams.get('error') || !rx.searchParams.get('code')) return refusal(400, `${oidc.name} did not sign you in`, String(rx.searchParams.get('error_description') ?? rx.searchParams.get('error') ?? 'No authorization code came back.'));
+              let who;
+              try {
+                who = await oidc.redeem({ code: rx.searchParams.get('code'), redirectUri, verifier: c.verifier, nonce: c.nonce });
+              } catch (err) {
+                noteFailure(ip);
+                // A provider that is down or slow is its own answer, not a 500.
+                if (!(err instanceof WeaveError)) return refusal(502, `${oidc.name} is not answering`, 'The identity provider could not be reached. Try again in a minute.');
+                return refusal(401, `${oidc.name} sign-in could not be verified`, err.message);
+              }
+              const root = hub.get(hub.defaultName);
+              let account = null;
+              const engine = [c.holder, root].find((e) => (account = e.accountForIdentity(who)));
+              if (!engine) { noteFailure(ip); return refusal(403, 'No account for this identity', `${who.email ?? 'This identity'} signed in at ${oidc.name}, but no account here is linked to it${who.emailVerified ? '' : ' with a verified email'}. Ask an operator to link one (weave account link <name> --email <address>).`); }
+              const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
+              return { status: 302, headers: { Location: c.next, 'Set-Cookie': sessionCookie(minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+            }
+            return notFound({ error: 'Unknown auth route', code: 'not-found' });
+          }
           if (route === 'POST /api/auth/register/options') {
             if (limited('options', ip)) return tooMany();
             const invite = body?.invite ? weave.readInvite(String(body.invite)) : null;
@@ -619,6 +671,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'GET /api/accounts') return out(200, weave.listAccounts());
         if (route === 'POST /api/accounts') return out(201, weave.createAccount(body ?? {}));
+        // Door C (Feature #212): the email a provider will vouch for, linked
+        // to an account before anyone signs in with it.
+        if ((m = path.match(/^\/api\/accounts\/([^/]+)\/identities$/))) {
+          const ref = decodeURIComponent(m[1]);
+          if (rx.method === 'POST') return out(201, weave.linkIdentity(ref, { issuer: body?.issuer ?? oidc?.issuer, email: body?.email }));
+          if (rx.method === 'DELETE') return out(200, weave.unlinkIdentity(ref, { issuer: rx.searchParams?.get('issuer') ?? null, email: rx.searchParams?.get('email') }));
+        }
         if ((m = path.match(/^\/api\/accounts\/(.+)$/)) && rx.method === 'DELETE') {
           return out(200, weave.deleteAccount(decodeURIComponent(m[1])));
         }

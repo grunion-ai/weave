@@ -182,6 +182,9 @@ Passkeys & sessions (Feature #222, door B)
   account sessions <name>                             Browser sessions the account holds
   account revoke-session <name> (--all | --id <id>)  End sessions — the lost-phone verb
   account remove-credential <name> <credId>           Drop a passkey (id or prefix, from account list)
+Provider sign-in (Feature #212, door C)
+  account link <name> --email <address> [--issuer <url>]    Open the account to the provider identity with that verified email
+  account unlink <name> --email <address>                   Close it again
 Undo (entity mutations only — schema work is not undoable)
   undo [--steps n]                    Revert the last n entity mutations
   undo --list [--limit 20]           Show what undo would revert, newest first
@@ -217,7 +220,8 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      and the session cookie bind to, e.g. https://weave.example.com — required when auth is on and the
      host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by X-Forwarded-For behind Railway/Fly/a proxy),
      WEAVE_ALLOWED_HOSTS (comma-separated extra Host names served besides loopback and WEAVE_ORIGIN's host;
-     others get 421), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides
+     others get 421), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
+     with one OpenID Connect provider, redirect URI <origin>/api/auth/oidc/callback), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides
      its own), WEAVE_KEYSTORE_PASSPHRASE, WEAVE_APPLET_PASSCODE, WEAVE_INLINE_FILE_TYPES (comma-separated
      attachment types served in place beside images, PDF and plain text; the rest download)`;
 
@@ -655,7 +659,17 @@ async function main() {
         return out(w.revokeSession(ref, { all: Boolean(flags.all), id: flags.all ? null : String(flags.id) }));
       }
       if (sub === 'remove-credential') return out(w.removeCredential(ref, extra));
-      throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete, invite, sessions, revoke-session, remove-credential`);
+      /* Door C (Feature #212): the email a provider will vouch for. Nobody
+         is provisioned by signing in, so this verb is how an account gets a
+         provider identity. The issuer defaults to WEAVE_OIDC_ISSUER. */
+      if (sub === 'link' || sub === 'unlink') {
+        if (!ref || !flags.email || flags.email === true) throw new WeaveError(`account ${sub} needs a name and --email <address>`, 'invalid');
+        const issuer = flags.issuer ?? (process.env.WEAVE_OIDC_ISSUER?.trim().replace(/\/+$/, '') || null);
+        if (sub === 'unlink') return out(w.unlinkIdentity(ref, { issuer: issuer ?? null, email: flags.email }));
+        if (!issuer) throw new WeaveError('account link needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
+        return out(w.linkIdentity(ref, { issuer, email: flags.email }));
+      }
+      throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete, invite, sessions, revoke-session, remove-credential, link, unlink`);
     }
     case 'key': {
       const [sub, name] = args;

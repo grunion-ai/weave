@@ -25,6 +25,12 @@ services:
       # Set this (plus the bucket credentials — Handbook → "Backup and restore")
       # and the server backs itself up nightly at 04:00 UTC, thirty archives kept.
       # WEAVE_BACKUP_DEST: s3://bucket/weave
+      # Sign in with one OpenID Connect provider (Handbook → "Door C: sign in
+      # with a provider"); its redirect URI is <WEAVE_ORIGIN>/api/auth/oidc/callback.
+      # WEAVE_OIDC_ISSUER: https://clerk.example.com
+      # WEAVE_OIDC_CLIENT_ID: change-me
+      # WEAVE_OIDC_CLIENT_SECRET: change-me
+      # WEAVE_OIDC_NAME: Clerk
       # The server asks GitHub for the latest release once a day; off stops it.
       # WEAVE_UPDATE_CHECK: "off"
     healthcheck:
