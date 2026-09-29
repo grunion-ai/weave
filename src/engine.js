@@ -75,6 +75,16 @@ const VALUE_TYPES = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox'
 const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 // Registry tables whose rows are containers universalSearch already returns.
 const REGISTRY_HITS = new Set(['workspaces', 'spaces', 'tables', 'views']);
+/* Collections are plain objects keyed by id (or name, for keys), and a ref
+   is any string a caller sends. These three would find Object.prototype or
+   Object itself, and the verb after the lookup would write to it, so a
+   lookup reads own properties only and nothing may be named them
+   (Issue #485). */
+const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
+const own = (o, k) => (o != null && Object.hasOwn(o, k) ? o[k] : undefined);
+function refuseReserved(kind, name) {
+  if (RESERVED_NAMES.has(String(name).trim())) throw new WeaveError(`'${String(name).trim()}' is reserved and cannot name a ${kind}`, 'invalid');
+}
 /* checkbox and toggle store the same boolean; the toggle names its two states (Feature #202). */
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
@@ -1359,7 +1369,7 @@ export class Weave {
      its page is read again. */
   affectedBy(id, touched = []) {
     const out = new Set([id, ...touched]);
-    const e = this.state.entities[id];
+    const e = own(this.state.entities, id);
     const db = e ? this.state.tables[e.dbId] : null;
     for (const f of Object.values(db?.fields ?? {})) {
       if (f.type !== 'relation') continue;
@@ -1369,7 +1379,7 @@ export class Weave {
   }
 
   #mark(entityOrId) {
-    const e = typeof entityOrId === 'string' ? this.state.entities[entityOrId] : entityOrId;
+    const e = typeof entityOrId === 'string' ? own(this.state.entities, entityOrId) : entityOrId;
     // A formula Name is materialised into values[nameFieldId] on the row's own
     // writes (Feature #168) so FTS search and the store index a string.
     // Cross-row inputs refresh on this row's next write — search may lag,
@@ -1421,6 +1431,7 @@ export class Weave {
 
   createSpace({ name, description = '', icon = '' }) {
     if (!name) throw new WeaveError('Space name is required', 'invalid');
+    refuseReserved('space', name);
     if (this.findSpace(name)) throw new WeaveError(`Space '${name}' already exists`, 'conflict');
     // A table has taken its icon at creation since Feature #51; a space had to
     // be created and then updated, which is a second call for one field.
@@ -1445,7 +1456,7 @@ export class Weave {
   findSpace(ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
     const live = Object.values(this.state.spaces).filter((s) => !s.deletedAt);
-    return this.state.spaces[ref] ?? live.find((s) => s.name === ref)
+    return own(this.state.spaces, ref) ?? live.find((s) => s.name === ref)
       ?? live.find((s) => s.name.toLowerCase() === String(ref).toLowerCase());
   }
 
@@ -1457,6 +1468,7 @@ export class Weave {
 
   updateSpace(ref, patch) {
     const s = this.getSpace(ref);
+    if (patch.name != null) refuseReserved('space', patch.name);
     this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) });
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
@@ -1492,7 +1504,7 @@ export class Weave {
   restoreSpace(ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
     // The live-name resolver cannot see the trash, so reach in by hand.
-    const s = this.state.spaces[ref]
+    const s = own(this.state.spaces, ref)
       ?? Object.values(this.state.spaces).find((x) => x.name.toLowerCase() === String(ref).toLowerCase());
     if (!s) throw new WeaveError(`Space '${ref}' not found`, 'not-found');
     if (!s.deletedAt) return s;
@@ -1512,6 +1524,7 @@ export class Weave {
   createTable({ space, name, description = '', icon = '' }) {
     const sp = this.getSpace(space);
     if (!name) throw new WeaveError('Table name is required', 'invalid');
+    refuseReserved('table', name);
     const qualified = `${sp.name}/${name}`;
     if (this.findTable(qualified)) throw new WeaveError(`Table '${qualified}' already exists`, 'conflict');
     const held = Object.values(this.state.tables).find((d) => d.deletedAt && d.spaceId === sp.id && d.name.toLowerCase() === name.toLowerCase());
@@ -1569,7 +1582,7 @@ export class Weave {
 
   findTable(ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
-    if (this.state.tables[ref]) return this.state.tables[ref];
+    if (own(this.state.tables, ref)) return this.state.tables[ref];
     const all = Object.values(this.state.tables).filter((d) => !d.deletedAt && !this.state.spaces[d.spaceId]?.deletedAt);
     if (String(ref).includes('/')) {
       const [spName, dbName] = String(ref).split('/');
@@ -1589,6 +1602,7 @@ export class Weave {
 
   updateTable(ref, patch) {
     const db = this.getTable(ref);
+    if (patch.name != null) refuseReserved('table', patch.name);
     if (patch.name != null) db.name = patch.name;
     if (patch.description != null) db.description = patch.description;
     if (patch.icon != null) db.icon = iconValue(patch.icon);
@@ -1864,7 +1878,7 @@ export class Weave {
 
   restoreTable(ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
-    let db = this.state.tables[ref];
+    let db = own(this.state.tables, ref);
     if (!db) {
       const [spName, dbName] = String(ref).includes('/') ? String(ref).split('/') : [null, String(ref)];
       db = Object.values(this.state.tables).find((d) => d.name.toLowerCase() === String(dbName).toLowerCase()
@@ -1927,6 +1941,7 @@ export class Weave {
      block fails the author, not the reader. */
   createView({ name, blocks = [] } = {}) {
     if (!name) throw new WeaveError('View name is required', 'invalid');
+    refuseReserved('view', name);
     const views = (this.state.meta.views ??= {});
     const resolved = blocks.map((b) => {
       const db = this.getTable(b.table);
@@ -1944,7 +1959,7 @@ export class Weave {
   }
 
   getView(id) {
-    const v = (this.state.meta.views ?? {})[id];
+    const v = own(this.state.meta.views, id);
     if (!v) throw new WeaveError(`View '${id}' not found`, 'not-found');
     return v;
   }
@@ -2097,6 +2112,7 @@ export class Weave {
   #checkViewName(db, name, self = null) {
     const n = typeof name === 'string' ? name.trim() : '';
     if (!n) throw new WeaveError('A view needs a name', 'invalid');
+    refuseReserved('view', n);
     if (n.includes('/')) throw new WeaveError(`A view name cannot hold '/' — it separates the table from the view: '${n}'`, 'invalid');
     if (n.toLowerCase() === 'blank') throw new WeaveError("'Blank' is reserved: 'Table/blank' reads the raw table", 'invalid');
     const clash = db.tableViews.find((v) => v !== self && v.name.toLowerCase() === n.toLowerCase());
@@ -2843,8 +2859,9 @@ export class Weave {
 
   setKey(name, secret) {
     if (!name) throw new WeaveError('Key name is required', 'invalid');
+    refuseReserved('key', name);
     const data = this.#readKeystore();
-    const prior = data.keys[name];
+    const prior = own(data.keys, name);
     data.keys[name] = {
       ...this.#seal(secret ?? ''),
       // The actor who first set a credential owns it; re-setting the secret is
@@ -2861,7 +2878,7 @@ export class Weave {
 
   deleteKey(name) {
     const data = this.#readKeystore();
-    if (!(name in data.keys)) throw new WeaveError(`Key '${name}' not found`, 'not-found');
+    if (!Object.hasOwn(data.keys, name)) throw new WeaveError(`Key '${name}' not found`, 'not-found');
     delete data.keys[name];
     this.#writeKeystore(data);
     this.#audit('key-deleted', { name });
@@ -2869,7 +2886,7 @@ export class Weave {
   }
 
   hasKey(name) {
-    return name in this.#readKeystore().keys;
+    return Object.hasOwn(this.#readKeystore().keys, name);
   }
 
   /* Names, never values — and now who may see each one, which is the fact a
@@ -2886,7 +2903,7 @@ export class Weave {
 
   resolveKey(name) {
     const { keys } = this.#readKeystore();
-    const entry = keys[name];
+    const entry = own(keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
     return 'legacy' in entry ? entry.legacy : this.#open(entry, name);
   }
@@ -2919,7 +2936,7 @@ export class Weave {
 
   revealKey(name, { via = 'show' } = {}) {
     const data = this.#readKeystore();
-    const entry = data.keys[name];
+    const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
     if (!this.#mayReveal(entry)) {
       throw new WeaveError(`'${name}' is not shared with you — its owner has to grant it`, 'forbidden');
@@ -2942,7 +2959,7 @@ export class Weave {
   grantKey(name, account) {
     if (!account) throw new WeaveError('Name the account the credential is shared with', 'invalid');
     const data = this.#readKeystore();
-    const entry = data.keys[name];
+    const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
     if (!this.#mayGrant(entry)) throw new WeaveError(`Only '${entry.owner}' can share '${name}'`, 'forbidden');
     entry.owner ??= this.actor;
@@ -2956,7 +2973,7 @@ export class Weave {
 
   revokeKey(name, account) {
     const data = this.#readKeystore();
-    const entry = data.keys[name];
+    const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
     if (!this.#mayGrant(entry)) throw new WeaveError(`Only '${entry.owner}' can unshare '${name}'`, 'forbidden');
     entry.shared = Array.isArray(entry.shared) ? entry.shared.filter((a) => a !== account) : false;
@@ -2999,6 +3016,7 @@ export class Weave {
 
   createAccount({ name, role = 'writer' } = {}) {
     if (!name) throw new WeaveError('Account name is required', 'invalid');
+    refuseReserved('account', name);
     if (!Weave.ROLES.includes(role)) throw new WeaveError(`Invalid role '${role}' (${Weave.ROLES.join(', ')})`, 'invalid');
     const accounts = (this.state.meta.accounts ??= {});
     if (Object.values(accounts).some((a) => a.name === name)) throw new WeaveError(`Account '${name}' already exists`, 'conflict');
@@ -3032,7 +3050,7 @@ export class Weave {
 
   deleteAccount(ref) {
     const accounts = this.state.meta.accounts ?? {};
-    const a = accounts[ref] ?? Object.values(accounts).find((x) => x.name === ref);
+    const a = own(accounts, ref) ?? Object.values(accounts).find((x) => x.name === ref);
     if (!a) throw new WeaveError(`Account '${ref}' not found`, 'not-found');
     delete accounts[a.id];
     this.save();
@@ -3060,7 +3078,7 @@ export class Weave {
 
   #account(ref) {
     const accounts = this.state.meta.accounts ?? {};
-    const a = accounts[ref] ?? Object.values(accounts).find((x) => x.name === ref);
+    const a = own(accounts, ref) ?? Object.values(accounts).find((x) => x.name === ref);
     if (!a) throw new WeaveError(`Account '${ref}' not found`, 'not-found');
     return a;
   }
@@ -3243,12 +3261,12 @@ export class Weave {
   #ownerOf(row) { return this.#engineOf(this.#wsIdOfRow(row)); }
   /* Table ids are uuids, so one id names a table across every engine. */
   #tableAnywhere(id) {
-    for (const w of this.#engines()) { const table = w.state.tables[id]; if (table) return { owner: w, table }; }
+    for (const w of this.#engines()) { const table = own(w.state.tables, id); if (table) return { owner: w, table }; }
     return null;
   }
   #fieldAnywhere(fieldId) {
     for (const w of this.#engines()) {
-      const table = Object.values(w.state.tables).find((t) => t.fields[fieldId]);
+      const table = Object.values(w.state.tables).find((t) => own(t.fields, fieldId));
       if (table) return { owner: w, table, field: table.fields[fieldId] };
     }
     return null;
@@ -4171,7 +4189,7 @@ export class Weave {
 
   findField(db, ref) {
     if (ref && typeof ref === 'object') ref = ref.id;
-    if (db.fields[ref]) return db.fields[ref];
+    if (own(db.fields, ref)) return db.fields[ref];
     const fields = Object.values(db.fields);
     return fields.find((f) => f.name === ref)
       ?? fields.find((f) => f.name.toLowerCase() === String(ref).toLowerCase())
@@ -4202,6 +4220,7 @@ export class Weave {
   addField(dbRef, { name, type, config = {} }) {
     const db = this.getTable(dbRef);
     if (!name) throw new WeaveError('Field name is required', 'invalid');
+    refuseReserved('field', name);
     if (this.findField(db, name)) throw new WeaveError(`Field '${name}' already exists`, 'conflict');
     if (!FIELD_TYPES.includes(type)) throw new WeaveError(`Unknown field type '${type}'`, 'invalid');
     if (type === 'relation') throw new WeaveError(`Use addRelation() to create relation fields`, 'invalid');
@@ -4291,6 +4310,8 @@ export class Weave {
   addRelation(dbRef, { name, targetDb, targetDbs, cardinality = 'many-to-one', inverseName }) {
     const db = this.getTable(dbRef);
     if (!name) throw new WeaveError('Relation field name is required', 'invalid');
+    refuseReserved('field', name);
+    if (inverseName != null) refuseReserved('field', inverseName);
     if (this.findField(db, name)) throw new WeaveError(`Field '${name}' already exists`, 'conflict');
     const cards = {
       'many-to-one': { thisMany: false, targetMany: true },   // Task.Project ← Project.Tasks
@@ -4383,6 +4404,7 @@ export class Weave {
     const field = this.getField(db.id, fieldRef);
     const before = fieldDefinition(field);
     let renamed = false;
+    if (patch.name != null) refuseReserved('field', patch.name);
     if (patch.name != null && patch.name !== field.name) {
       // Views hold fields by id, so visibility survives a rename for free;
       // their filter and sort speak names, so those follow it here.
@@ -5003,7 +5025,7 @@ export class Weave {
   // A relation target that is still live. Deleted targets keep their link (so
   // restore is lossless) but must not be seen by anything reading through it.
   #liveEntity(id) {
-    const e = this.state.entities[id];
+    const e = own(this.state.entities, id);
     if (!e || e.deletedAt) return null;
     const db = this.state.tables[e.dbId];
     if (!db || db.deletedAt || this.state.spaces[db.spaceId]?.deletedAt) return null;
@@ -5011,7 +5033,7 @@ export class Weave {
   }
 
   getEntity(id) {
-    const e = this.state.entities[id];
+    const e = own(this.state.entities, id);
     if (e) return e;
     // 'Table#12' / 'Space/Table#12' refs work everywhere an id does.
     const m = /^(.+)#(\d+)$/.exec(String(id));
@@ -5025,7 +5047,7 @@ export class Weave {
   findEntity(dbRef, ref) {
     // ref: entity object, entity id, public id (number or '#12'), or exact name
     if (ref && typeof ref === 'object') ref = ref.id;
-    if (this.state.entities[ref]) return this.state.entities[ref];
+    if (own(this.state.entities, ref)) return this.state.entities[ref];
     const db = this.getTable(dbRef);
     const list = this.listEntities(db.id);
     // Qualified 'Table#12' / 'Space/Table#12' refs resolve everywhere else
@@ -5360,7 +5382,7 @@ export class Weave {
       }
       // A uuid of a live entity outside the set resolves nowhere above but is
       // a sharper error than 'not found': the row exists, just not here.
-      if (!target && this.state.entities[r]) throw new WeaveError(`Entity '${r}' is not in a related table`, 'invalid');
+      if (!target && own(this.state.entities, r)) throw new WeaveError(`Entity '${r}' is not in a related table`, 'invalid');
       if (!target) throw new WeaveError(`Related entity '${r}' not found`, 'not-found');
       if (!memberIds.includes(target.dbId)) throw new WeaveError(`Entity '${r}' is not in the related table`, 'invalid');
       return target.id;
@@ -6238,7 +6260,7 @@ export class Weave {
   }
 
   #summary(id) {
-    const e = this.state.entities[id];
+    const e = own(this.state.entities, id);
     if (!e) return null;
     const db = this.state.tables[e.dbId];
     /* The far row's chip rides along so a relation cell draws the same chip
@@ -6572,7 +6594,7 @@ export class Weave {
     const dbId = tableRef ? this.getTable(tableRef).id : null;
     // A table id narrows to the table's own entries, its field configuration
     // history (Issue #428); the rows in it have addresses of their own.
-    const tableOnly = entityId && this.state.tables[entityId] ? entityId : null;
+    const tableOnly = entityId && own(this.state.tables, entityId) ? entityId : null;
     // 'Table#12' works here the way it works everywhere an id does.
     if (entityId && !tableOnly) entityId = this.getEntity(entityId).id;
     const rows = [];
@@ -6645,7 +6667,7 @@ export class Weave {
       return { ...row, rollback };
     }
     const index = Number(String(id).slice(at + 1));
-    const e = this.state.entities[entityId];
+    const e = own(this.state.entities, entityId);
     const a = e?.activity?.[index];
     if (!a) throw new WeaveError(`Activity '${id}' not found`, 'not-found');
     return this.activityFeed({ entityId }).items.find((r) => r.id === `${entityId}:${index}`);
@@ -6780,7 +6802,7 @@ export class Weave {
   }
 
   updateAutomation(id, patch) {
-    const auto = this.state.automations[id];
+    const auto = own(this.state.automations, id);
     if (!auto) throw new WeaveError(`Automation '${id}' not found`, 'not-found');
     if (patch.enabled != null) auto.enabled = patch.enabled;
     if (patch.name != null) auto.name = patch.name;
@@ -6792,7 +6814,7 @@ export class Weave {
   }
 
   deleteAutomation(id) {
-    const auto = this.state.automations[id];
+    const auto = own(this.state.automations, id);
     delete this.state.automations[id];
     this.save();
     const db = auto && this.state.tables[auto.dbId];
@@ -7022,7 +7044,7 @@ export class Weave {
     const text = Object.values(e.docs ?? {}).filter(Boolean).join('\n');
     const ids = new Set();
     const add = (id) => {
-      const t = this.state.entities[id];
+      const t = own(this.state.entities, id);
       if (t && !t.deletedAt && t.id !== e.id) ids.add(t.id);
     };
     for (const m of text.matchAll(/\[\[\s*([^\][|#\n]+?)\s*#(\d+)\s*(?:\|[^\]]*)?\]\]/g)) {
@@ -7418,6 +7440,12 @@ export class Weave {
   importJSON(state) {
     if (!state || ![1, 2].includes(state.version)) throw new WeaveError('Unsupported workspace format', 'invalid');
     const prior = this.state.meta ?? {};
+    // A reserved id in a dump would become a row the store reloads onto a
+    // prototype; refuse it before anything changes (Issue #485).
+    const tables = { ...state.tables, ...state.databases };
+    const maps = [state.spaces, tables, state.entities, state.automations, state.meta?.views, state.meta?.accounts,
+      ...Object.values(tables).map((t) => t?.fields)];
+    for (const m of maps) for (const k of Object.keys(m ?? {})) refuseReserved('row id', k);
     this.state = JSON.parse(JSON.stringify(state));
     this.#migrate();
     this.#keepSecrets(prior);
