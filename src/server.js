@@ -422,19 +422,36 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   // only changes on a deploy. ponytail: unbounded by count, but the keys are
   // the files in public/ at their current versions — a deploy restarts us.
   const gzCache = new Map();
+  /* The listener is async, so anything it throws is an unhandled rejection,
+     and node ends the process on one (Issue #484: a malformed percent-escape
+     in the path took the server down). Its whole body is guarded: a path
+     that will not decode is the caller's 400, anything else is a 500 whose
+     detail stays in the log. */
+  const fail = (res, status, error, code) => {
+    if (res.headersSent) return res.destroy();
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error, code }));
+  };
   const server = createHttpServer(async (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
-    const outcome = await handle({
-      method: req.method,
-      path: decodeURIComponent(url.pathname),
-      searchParams: url.searchParams,
-      header: (name) => req.headers[name.toLowerCase()],
-      readBody: () => readBody(req),
-      remote: req.socket?.remoteAddress ?? null,
-    });
-    const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
-    res.writeHead(outcome.status, headers);
-    res.end(body);
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      let path;
+      try { path = decodeURIComponent(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
+      const outcome = await handle({
+        method: req.method,
+        path,
+        searchParams: url.searchParams,
+        header: (name) => req.headers[name.toLowerCase()],
+        readBody: () => readBody(req),
+        remote: req.socket?.remoteAddress ?? null,
+      });
+      const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
+      res.writeHead(outcome.status, headers);
+      res.end(body);
+    } catch (err) {
+      console.error(`weave: ${req.method} ${req.url} failed:`, err);
+      fail(res, 500, 'Internal error', 'internal');
+    }
   });
 
   return server;
