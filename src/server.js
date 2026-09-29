@@ -131,7 +131,51 @@ export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache =
   return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'gzip' }, body: zipped };
 }
 
-async function readBody(req) {
+/* Cross-site writes (Issue #486). A page anywhere could POST a text/plain
+   "simple request" (no preflight) at an instance and change its rows. A write
+   is refused when the browser says it came from another site: an Origin that
+   is not this request's own origin, WEAVE_ORIGIN or a loopback origin on
+   this port, or Sec-Fetch-Site: cross-site. No Origin (curl, the CLI, agents)
+   is served. The WebAuthn routes keep their own origin check on top. */
+const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+export const requestIsHttps = (req, trustProxy) => !!req.socket?.encrypted
+  || (trustProxy && String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim().toLowerCase() === 'https');
+export function crossSiteWrite(req, { origin = null, trustProxy = false } = {}) {
+  if (!WRITES.has(req.method)) return false;
+  if (String(req.headers['sec-fetch-site'] ?? '').toLowerCase() === 'cross-site') return true;
+  const from = req.headers.origin;
+  if (from === undefined) return false;
+  const port = req.socket?.localPort;
+  const own = `${requestIsHttps(req, trustProxy) ? 'https' : 'http'}://${String(req.headers.host ?? '').toLowerCase()}`;
+  const ok = [own, origin, ...['localhost', '127.0.0.1', '[::1]'].map((h) => `http://${h}:${port}`)];
+  return !ok.includes(String(from).toLowerCase());
+}
+
+/* Security headers (Issue #494), on every answer the node adapter writes.
+   frame-ancestors is enforced: weave frames only its own pages (deck, doc
+   and file previews), and WEAVE_FRAME_ANCESTORS (comma-separated origins)
+   lets a demo shell elsewhere frame it. The report-only policy is the target
+   state, not today's: the shell and the document pages still run inline
+   scripts and styles, so enforcing it would break them. HSTS only when the
+   request arrived over https. */
+export const CSP_REPORT_ONLY = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'";
+export const frameAncestorsFromEnv = (env = process.env) => String(env.WEAVE_FRAME_ANCESTORS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
+export function securityHeaders(headers, { https = false, frameAncestors = [] } = {}) {
+  const html = /^text\/html/i.test(headers['Content-Type'] ?? '');
+  return {
+    ...headers,
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'same-origin',
+    ...(html ? { 'Content-Security-Policy': ["frame-ancestors 'self'", ...frameAncestors].join(' '), 'Content-Security-Policy-Report-Only': CSP_REPORT_ONLY } : {}),
+    ...(https ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}),
+  };
+}
+
+async function readBody(req, { requireJson = false } = {}) {
+  // With an Origin present a browser sent it: only a JSON body, never a form or text/plain.
+  if (requireJson && !/^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? '')) {
+    throw new WeaveError('A request with an Origin must send its body as application/json', 'invalid');
+  }
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
@@ -319,6 +363,28 @@ export function originFromEnv(env = process.env) {
 }
 export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
 
+/* The names this server answers to (Issue #487). Any Host used to do, so a
+   page on an attacker's name that re-resolves to 127.0.0.1 (DNS rebinding)
+   was same-origin with a loopback instance. Loopback names, WEAVE_ORIGIN's
+   host and the comma-separated WEAVE_ALLOWED_HOSTS answer; ports are not
+   compared, since a rebinding page controls the name, not the port. */
+const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const hostnameOf = (host) => { try { return host ? new URL(`http://${host}`).hostname : null; } catch { return null; } };
+export const allowedHostsFromEnv = (env = process.env) => String(env.WEAVE_ALLOWED_HOSTS ?? '').split(',').map((h) => hostnameOf(h.trim())).filter(Boolean);
+export function hostAllowed(host, { origin = null, allowedHosts = [] } = {}) {
+  const name = hostnameOf(String(host ?? ''));
+  if (!name) return false;
+  return LOOPBACK_NAMES.has(name) || (!!origin && new URL(origin).hostname === name) || allowedHosts.includes(name);
+}
+/* A container bound to 0.0.0.0 with neither variable set was reached by
+   whatever name its platform gave it; refusing that on upgrade would take it
+   down, so it keeps answering any Host and says so once. */
+export function hostCheckFor({ host, env = process.env }) {
+  const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host);
+  if (loopback || env.WEAVE_ORIGIN?.trim() || allowedHostsFromEnv(env).length) return { enforce: true, warning: null };
+  return { enforce: false, warning: `weave: bound to ${host} with neither WEAVE_ORIGIN nor WEAVE_ALLOWED_HOSTS set, so any Host header is answered; set one to refuse DNS-rebound requests` };
+}
+
 /* Content-versioned asset URLs (Issue #313). weave has no build step, so the
    shell is versioned when it is served: every local src/href/import in
    index.html that names a file gains `?v=<first 12 hex of its sha1>`, and an
@@ -346,7 +412,7 @@ export function createAssetVersions(dir) {
 }
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv() } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
 
   // Node adapter around the runtime-agnostic dispatcher (src/routes.js): this
@@ -422,26 +488,51 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   // only changes on a deploy. ponytail: unbounded by count, but the keys are
   // the files in public/ at their current versions — a deploy restarts us.
   const gzCache = new Map();
+  /* The listener is async, so anything it throws is an unhandled rejection,
+     and node ends the process on one (Issue #484: a malformed percent-escape
+     in the path took the server down). Its whole body is guarded: a path
+     that will not decode is the caller's 400, anything else is a 500 whose
+     detail stays in the log. */
+  const secure = (req, headers) => securityHeaders(headers, { https: requestIsHttps(req, trustProxy), frameAncestors });
+  const fail = (res, status, error, code) => {
+    if (res.headersSent) return res.destroy();
+    res.writeHead(status, secure(res.req, { 'Content-Type': 'application/json' }));
+    res.end(JSON.stringify({ error, code }));
+  };
   const server = createHttpServer(async (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
-    const outcome = await handle({
-      method: req.method,
-      path: decodeURIComponent(url.pathname),
-      searchParams: url.searchParams,
-      header: (name) => req.headers[name.toLowerCase()],
-      readBody: () => readBody(req),
-      remote: req.socket?.remoteAddress ?? null,
-    });
-    const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
-    res.writeHead(outcome.status, headers);
-    res.end(body);
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      let path;
+      try { path = decodeURIComponent(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
+      // Health stays open to any name: platform probes send their own Host.
+      if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts })) {
+        return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
+      }
+      if (crossSiteWrite(req, { origin, trustProxy })) return fail(res, 403, 'Cross-site write refused', 'forbidden');
+      const outcome = await handle({
+        method: req.method,
+        path,
+        searchParams: url.searchParams,
+        header: (name) => req.headers[name.toLowerCase()],
+        readBody: () => readBody(req, { requireJson: req.headers.origin !== undefined }),
+        remote: req.socket?.remoteAddress ?? null,
+      });
+      const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
+      res.writeHead(outcome.status, secure(req, headers));
+      res.end(body);
+    } catch (err) {
+      console.error(`weave: ${req.method} ${req.url} failed:`, err);
+      fail(res, 500, 'Internal error', 'internal');
+    }
   });
 
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits } = {}) {
-  const server = createServer(weave, { workspaces, build, backup, limits, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}) });
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts, frameAncestors } = {}) {
+  const { enforce, warning } = origin || allowedHosts?.length ? { enforce: true, warning: null } : hostCheckFor({ host });
+  if (warning) console.warn(warning);
+  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

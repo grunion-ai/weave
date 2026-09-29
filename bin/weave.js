@@ -216,7 +216,9 @@ Data file: --data flag > WEAVE_DATA env > ~/.weave/workspace.json
 Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (public origin passkeys
      and the session cookie bind to, e.g. https://weave.example.com — required when auth is on and the
      host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by X-Forwarded-For behind Railway/Fly/a proxy),
-     WEAVE_KEYSTORE_PASSPHRASE, WEAVE_APPLET_PASSCODE`;
+     WEAVE_ALLOWED_HOSTS (comma-separated extra Host names served besides loopback and WEAVE_ORIGIN's host;
+     others get 421), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides
+     its own), WEAVE_KEYSTORE_PASSPHRASE, WEAVE_APPLET_PASSCODE`;
 
 /* Where an invite URL points: WEAVE_ORIGIN, else the loopback dev origin. */
 function publicOrigin() {
