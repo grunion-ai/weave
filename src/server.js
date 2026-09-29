@@ -151,6 +151,26 @@ export function crossSiteWrite(req, { origin = null, trustProxy = false } = {}) 
   return !ok.includes(String(from).toLowerCase());
 }
 
+/* Security headers (Issue #494), on every answer the node adapter writes.
+   frame-ancestors is enforced: weave frames only its own pages (deck, doc
+   and file previews), and WEAVE_FRAME_ANCESTORS (comma-separated origins)
+   lets a demo shell elsewhere frame it. The report-only policy is the target
+   state, not today's: the shell and the document pages still run inline
+   scripts and styles, so enforcing it would break them. HSTS only when the
+   request arrived over https. */
+export const CSP_REPORT_ONLY = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'";
+export const frameAncestorsFromEnv = (env = process.env) => String(env.WEAVE_FRAME_ANCESTORS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
+export function securityHeaders(headers, { https = false, frameAncestors = [] } = {}) {
+  const html = /^text\/html/i.test(headers['Content-Type'] ?? '');
+  return {
+    ...headers,
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'same-origin',
+    ...(html ? { 'Content-Security-Policy': ["frame-ancestors 'self'", ...frameAncestors].join(' '), 'Content-Security-Policy-Report-Only': CSP_REPORT_ONLY } : {}),
+    ...(https ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}),
+  };
+}
+
 async function readBody(req, { requireJson = false } = {}) {
   // With an Origin present a browser sent it: only a JSON body, never a form or text/plain.
   if (requireJson && !/^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? '')) {
@@ -392,7 +412,7 @@ export function createAssetVersions(dir) {
 }
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv() } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
 
   // Node adapter around the runtime-agnostic dispatcher (src/routes.js): this
@@ -473,9 +493,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
      in the path took the server down). Its whole body is guarded: a path
      that will not decode is the caller's 400, anything else is a 500 whose
      detail stays in the log. */
+  const secure = (req, headers) => securityHeaders(headers, { https: requestIsHttps(req, trustProxy), frameAncestors });
   const fail = (res, status, error, code) => {
     if (res.headersSent) return res.destroy();
-    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.writeHead(status, secure(res.req, { 'Content-Type': 'application/json' }));
     res.end(JSON.stringify({ error, code }));
   };
   const server = createHttpServer(async (req, res) => {
@@ -497,7 +518,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         remote: req.socket?.remoteAddress ?? null,
       });
       const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
-      res.writeHead(outcome.status, headers);
+      res.writeHead(outcome.status, secure(req, headers));
       res.end(body);
     } catch (err) {
       console.error(`weave: ${req.method} ${req.url} failed:`, err);
@@ -508,10 +529,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts } = {}) {
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts, frameAncestors } = {}) {
   const { enforce, warning } = origin || allowedHosts?.length ? { enforce: true, warning: null } : hostCheckFor({ host });
   if (warning) console.warn(warning);
-  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}) });
+  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });
