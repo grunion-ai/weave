@@ -1,0 +1,22 @@
+[
+  "weave-bracket-access-request-key|bin/weave.js|return Number(m[1]) * ({ s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2] || 'm']);",
+  "weave-bracket-access-request-key|src/routes.js|? weave.state.tables[weave.getEntity(sysM[1]).dbId]",
+  "weave-bracket-access-request-key|src/routes.js|if (eM && !weave.state.entities[eM[1]] && root.state.entities[eM[1]]) weave = root;",
+  "weave-bracket-access-request-key|src/routes.js|if (eM && !weave.state.entities[eM[1]] && root.state.entities[eM[1]]) weave = root;",
+  "weave-decodeuricomponent-unguarded|public/app.js|if ((m = hash.match(/^#\\/(?:table|db)\\/([^/?]+)(?:\\/view\\/([^/?]+))?(?:\\?e=([^&]+))?/))) return showDatabase(m[1], m[2] ? decodeURIComponent(m[2]) : null).then(() => redock(m[1], m[3]));",
+  "weave-decodeuricomponent-unguarded|public/app.js|return $('#ws-name')?.textContent || (WS_PREFIX ? decodeURIComponent(WS_PREFIX.slice(3)) : '');",
+  "weave-decodeuricomponent-unguarded|src/server.js|path: decodeURIComponent(url.pathname),",
+  "weave-decodeuricomponent-unguarded|src/worker.js|const path = decodeURIComponent(url.pathname);",
+  "weave-html-sink-unescaped|public/app.js|body.innerHTML = html;",
+  "weave-html-sink-unescaped|public/app.js|box.innerHTML = html;",
+  "weave-html-sink-unescaped|public/app.js|box.innerHTML = svg; // numbers only: cell-graphics.js builds it from the series",
+  "weave-html-sink-unescaped|public/app.js|code.innerHTML = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;",
+  "weave-html-sink-unescaped|public/app.js|if (html != null) view.innerHTML = html;",
+  "weave-html-sink-unescaped|public/app.js|span.innerHTML = `<svg viewBox=\"0 0 24 24\" width=\"1em\" height=\"1em\" fill=\"currentColor\" aria-hidden=\"true\">${mark}</svg>`;",
+  "weave-html-sink-unescaped|public/app.js|span.innerHTML = window.LUCIDE_MOVING[name];",
+  "weave-html-sink-unescaped|public/app.js|wrap.innerHTML = await res.text();",
+  "weave-sql-built-from-variable|src/backup.js|db.exec(`VACUUM INTO '${dst.replace(/'/g, \"''\")}'`);",
+  "weave-sql-built-from-variable|src/store.js|db.prepare(`DELETE FROM ${key} WHERE id = ?`).run(id);",
+  "weave-sql-built-from-variable|src/store.js|db.prepare(`INSERT INTO ${key} (id, json) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json`).run(id, json);",
+  "weave-sql-built-from-variable|src/store.js|for (const row of db.prepare(`SELECT id, json FROM ${key}${LOAD_ORDER[key] ?? ''}`).all()) {"
+]

@@ -1,0 +1,20 @@
+# Gitleaks over the full git history (scripts/security-scan.mjs).
+# Three known false positives, each named; anything else fails the scan.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "aria-keyshortcuts values in public/app.js (keyboard shortcut strings, not keys)"
+targetRules = ["generic-api-key"]
+paths = ['''^public/app\.js$''']
+regexes = ['''aria-keyshortcuts''']
+regexTarget = "line"
+condition = "AND"
+
+[[allowlists]]
+description = "redaction fixture in test/bug-report.test.mjs (the test feeds a fake token to the redactor)"
+targetRules = ["generic-api-key"]
+paths = ['''^test/bug-report\.test\.mjs$''']
+regexes = ['''token=''']
+regexTarget = "line"
+condition = "AND"
