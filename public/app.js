@@ -10055,11 +10055,12 @@ async function uploadDocFiles(files, entityId, getEditor, onInput) {
     } catch (e) { return `Upload failed: ${e.message}`; }
     const url = `${WS_PREFIX}/api/files/${meta.id}`;
     const mime = f.type || '';
-    // Images and viewable documents embed as inline viewers (the raw-HTML
-    // block passes through the renderer and every export); anything else
-    // links. The hover toolbar can demote any viewer to a link later.
-    const md = mime.startsWith('image/') ? `![${f.name}](${url})`
-      : (mime === 'application/pdf' || mime === 'text/html')
+    // Images and PDFs embed as inline viewers (the raw-HTML block passes
+    // through the renderer and every export); anything else links, because
+    // the server sends it as a download (Issue #483). The hover toolbar can
+    // demote any viewer to a link later.
+    const md = /^image\/(png|jpeg|gif|webp)$/.test(mime) ? `![${f.name}](${url})`
+      : mime === 'application/pdf'
         ? `\n<iframe class="wv-file" src="${url}" title="${f.name}"></iframe>\n`
         : `[${f.name}](${url})`;
     editor.insertValue(md + '\n');

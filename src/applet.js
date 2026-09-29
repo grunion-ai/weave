@@ -18,6 +18,7 @@ import '../public/vendor/lucide-moving.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { renderMarkdown } from './markdown.js';
 import { markParts, PALETTE } from './mark.js';
+import { fileHeaders } from './engine.js';
 
 const COOKIE = 'wv_applet';
 const YEAR = 31536000;
@@ -244,10 +245,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
       .find((e) => (e.files ?? []).some((f) => f.id === m[1]));
     if (!owner || !mine(owner.id)) return out(404, 'Not found');
     const { meta, bytes } = weave.readFile(m[1]);
-    return out(200, bytes, {
-      'Content-Type': meta.mime,
-      'Content-Disposition': `inline; filename="${meta.name.replace(/[^\w.-]+/g, '_')}"`,
-    });
+    return out(200, bytes, fileHeaders(meta, bytes));
   }
 
   return out(404, { error: 'No such applet route', code: 'not-found' });

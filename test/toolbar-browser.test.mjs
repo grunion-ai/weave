@@ -393,7 +393,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('uploaded pdf and html files embed live viewers in the editor', async () => {
+  test('an uploaded pdf embeds a live viewer and an html file links (Issue #483)', async () => {
     const id = entityWithDoc('ViewerUp', 'viewer paragraph target\n');
     const page = await openEntity(id);
     const dir = mkdtempSync(join(tmpdir(), 'weave-view-'));
@@ -407,13 +407,15 @@ if (s) {
       await page.setInputFiles('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', [pdf, html]);
       await page.waitForFunction(() => {
         const v = window.__weaveEditors.values().next().value.getValue();
-        return v.includes('title="view.pdf"') && v.includes('title="page.html"');
+        return v.includes('title="view.pdf"') && v.includes('[page.html](');
       }, null, { timeout: 20000 });
-      // The IR editor shows both as rendered html-block previews with the
-      // iframe alive inside — the viewer, not the markup.
+      // The IR editor shows the pdf as a rendered html-block preview with the
+      // iframe alive inside. The html file is served as a download, so it
+      // links instead of framing.
       await page.waitForFunction(() =>
-        document.querySelectorAll('.doc-editor .vditor-ir__preview iframe.wv-file').length >= 2,
+        document.querySelectorAll('.doc-editor .vditor-ir__preview iframe.wv-file').length >= 1,
       null, { timeout: 20000 });
+      assert.doesNotMatch(await value(page), /title="page\.html"/, 'no viewer for an html file');
     } finally { await page.close(); }
   });
 

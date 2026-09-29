@@ -4,7 +4,7 @@
 // runs under node (src/server.js wraps it) and workerd (src/worker.js will).
 // The adapter owns transport: reading the body stream, writing the response,
 // and static assets (node reads public/; Workers bind Static Assets).
-import { Weave, WeaveError } from './engine.js';
+import { Weave, WeaveError, fileHeaders } from './engine.js';
 import { handleApplet } from './applet.js';
 import { VOCABULARY } from './vocabulary.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.js';
@@ -1067,10 +1067,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
           const { meta, bytes } = weave.readFile(m[1]);
-          return out(200, bytes, {
-            'Content-Type': meta.mime,
-            'Content-Disposition': `inline; filename="${meta.name.replace(/[^\w.-]+/g, '_')}"`,
-          });
+          return out(200, bytes, fileHeaders(meta, bytes));
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments$/)) && rx.method === 'POST') {

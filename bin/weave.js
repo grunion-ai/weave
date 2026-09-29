@@ -218,7 +218,8 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by X-Forwarded-For behind Railway/Fly/a proxy),
      WEAVE_ALLOWED_HOSTS (comma-separated extra Host names served besides loopback and WEAVE_ORIGIN's host;
      others get 421), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides
-     its own), WEAVE_KEYSTORE_PASSPHRASE, WEAVE_APPLET_PASSCODE`;
+     its own), WEAVE_KEYSTORE_PASSPHRASE, WEAVE_APPLET_PASSCODE, WEAVE_INLINE_FILE_TYPES (comma-separated
+     attachment types served in place beside images, PDF and plain text; the rest download)`;
 
 /* Where an invite URL points: WEAVE_ORIGIN, else the loopback dev origin. */
 function publicOrigin() {

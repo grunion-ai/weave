@@ -87,6 +87,43 @@ const own = (o, k) => (o != null && Object.hasOwn(o, k) ? o[k] : undefined);
 function refuseReserved(kind, name) {
   if (RESERVED_NAMES.has(String(name).trim())) throw new WeaveError(`'${String(name).trim()}' is reserved and cannot name a ${kind}`, 'invalid');
 }
+
+/* The raster image type the leading bytes prove, or null. A claimed type is
+   never trusted for anything served inline (Issue #483). */
+export function sniffImage(bytes) {
+  const b = Buffer.from(bytes ?? []);
+  const at = (hex, i = 0) => b.subarray(i, i + hex.length / 2).toString('hex') === hex;
+  if (at('89504e470d0a1a0a')) return 'image/png';
+  if (at('ffd8ff')) return 'image/jpeg';
+  if (at('474946383761') || at('474946383961')) return 'image/gif';
+  if (at('52494646') && at('57454250', 8)) return 'image/webp';
+  return null;
+}
+
+/* Headers for serving a stored file (Issue #483). Only inert types the app
+   shows in place go inline: images (checked against their bytes), PDFs for
+   the document viewer iframe, plain text. Anything else, HTML and SVG
+   included, downloads as octet-stream. The sandbox policy and nosniff hold
+   for every file, so no stored byte runs script on the workspace origin.
+   WEAVE_INLINE_FILE_TYPES (comma-separated) adds types served in place. */
+const INLINE_FILE_TYPES = new Set(['application/pdf', 'text/plain']);
+export function fileHeaders(meta, bytes) {
+  const claimed = String(meta.mime ?? '').split(';')[0].trim().toLowerCase();
+  const image = claimed.startsWith('image/') ? sniffImage(bytes) : null;
+  const extra = String(process.env.WEAVE_INLINE_FILE_TYPES ?? '').toLowerCase().split(',').map((t) => t.trim());
+  const inline = image === claimed ? image
+    : INLINE_FILE_TYPES.has(claimed) || (claimed && extra.includes(claimed)) ? claimed : null;
+  const name = String(meta.name ?? 'file');
+  const ascii = name.replace(/[^\w.-]+/g, '_');
+  const utf8 = encodeURIComponent(name).replace(/['()*!]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+  return {
+    'Content-Type': inline ?? 'application/octet-stream',
+    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${utf8}`,
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "sandbox; default-src 'none'",
+  };
+}
+
 /* checkbox and toggle store the same boolean; the toggle names its two states (Feature #202). */
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
