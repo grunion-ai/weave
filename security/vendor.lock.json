@@ -1,0 +1,986 @@
+{
+  "comment": "Pins every vendored library under public/vendor/ and src/vendor/. Checked by test/security/vendor-lock.test.mjs; rehash with node scripts/vendor-lock.mjs after a deliberate upgrade; advisories via node scripts/vendor-advisories.mjs.",
+  "libraries": [
+    {
+      "name": "mermaid",
+      "npm": "mermaid",
+      "version": "11.17.0",
+      "versionSource": "version:\"11.17.0\" string in mermaid.min.js",
+      "files": [
+        {
+          "path": "public/vendor/mermaid.min.js",
+          "sha256": "8d8e0eec56d3a83b4b3c87f42050845546dee93ebe1875d2117c12e6947c0cb3"
+        }
+      ]
+    },
+    {
+      "name": "dompurify",
+      "npm": "dompurify",
+      "version": "3.4.12",
+      "bundledIn": "mermaid",
+      "versionSource": ".version=\"3.4.12\" and the DOMPurify 3.4.12 banner inside mermaid.min.js",
+      "files": []
+    },
+    {
+      "name": "vditor",
+      "npm": "vditor",
+      "version": "3.11.3",
+      "note": "includes the Lute markdown engine (GopherJS, go1.21.13) as dist/js/lute/lute.min.js; Lute is not an npm package",
+      "files": [
+        {
+          "path": "public/vendor/vditor/LICENSE",
+          "sha256": "c50d6e1944c4c1558ef12a5cfa4f0a4e8c927a56908c1a587c9d60400eef66fe"
+        },
+        {
+          "path": "public/vendor/vditor/dist/css/content-theme/dark.css",
+          "sha256": "ac2f7fa0d23dd3a939260b0ba58c162c03755efd8a1860a883cf01c7b4434d58"
+        },
+        {
+          "path": "public/vendor/vditor/dist/css/content-theme/light.css",
+          "sha256": "47b6bee34f640b358100f3d1ce60992c986633485aa31d510b29c0997497c923"
+        },
+        {
+          "path": "public/vendor/vditor/dist/index.css",
+          "sha256": "4fbb55fe1e479d9ed1c089dd12638c993091135a08ef91f59d546193d64501db"
+        },
+        {
+          "path": "public/vendor/vditor/dist/index.min.js",
+          "sha256": "335b49191dbf6ee72cf7bcad42e6dfd394c99887aa9b22f1a374e23d3a2e92a4"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/highlight.js/third-languages.js",
+          "sha256": "3bf29ef22f3ce4c4cd0047fa6f49acca9d1283d6766780e9c222bd68748bdefb"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/i18n/en_US.js",
+          "sha256": "91c5b70447a0d33770e17850ff1ddc4b0c88b222d25941c02c896682a56172cf"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/icons/ant.js",
+          "sha256": "a91e14e09dcd7b99f49b7b8dcc6301fed6774d62547fcf4e971757aa3a802c33"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/lute/lute.min.js",
+          "sha256": "8e7a18344afd870f195248f5de189b9e130b53b991470cb171f788d8908bafc9"
+        }
+      ]
+    },
+    {
+      "name": "katex",
+      "npm": "katex",
+      "version": "0.16.47",
+      "versionSource": "version:\"0.16.47\" in katex.min.js",
+      "note": "shipped inside Vditor; includes the mhchem extension",
+      "files": [
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_AMS-Regular.woff2",
+          "sha256": "0cdd387c9590a1a9f9794560022dbb59654a7d86f187aa0c81495ad42d3a7308"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Caligraphic-Bold.woff2",
+          "sha256": "de7701e42cf1f4cf0b766c03fb27977207eee2f4fd5d76fa82188406da43ea4c"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Caligraphic-Regular.woff2",
+          "sha256": "5d53e70ad607c2352162dec9e0923fb54ecdafaccbf604cd8dcf7d00facb989b"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Fraktur-Bold.woff2",
+          "sha256": "74444efd593c005e3f4573b44524704c0af0a937fe911cca9e94068d0d140d3f"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Fraktur-Regular.woff2",
+          "sha256": "51814d270d06ff0255dba0799994fa4d8c84d11f09951d47595f4abb1f3602dc"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Main-Bold.woff2",
+          "sha256": "0f60d1b897938ec918c8ce073092411baf9438f6739465693ff18b0f9d20b021"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Main-BoldItalic.woff2",
+          "sha256": "99cd42a3c072d918f2f44984a807cf7aa16e13545fd0875fc07c6c65f99e715b"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Main-Italic.woff2",
+          "sha256": "97479ca6cce906abc961ecac96faa5f9ca2e61b8e7670d475826bcdee9a7c267"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Main-Regular.woff2",
+          "sha256": "c2342cd8b869e01752a9321dc17213fc40d4d04c79688c1d43f2cf316abd7866"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Math-BoldItalic.woff2",
+          "sha256": "dc47344dbb6cb5b655c8460d561f4df5f501b90c804ad3c6cec65fe322351ab1"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Math-Italic.woff2",
+          "sha256": "7af58c5ec8f132a2ddde9027c6d7814decce4d3b822a11192a42a20e2e973264"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_SansSerif-Bold.woff2",
+          "sha256": "e99ae51144bf1232efcc1bfe5add36262c6866b0faab24fa75740e1b98577a62"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_SansSerif-Italic.woff2",
+          "sha256": "00b26ac825e2095056396e0553b8ac26d3f8ad158c3826e28b4c45b385c4714a"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_SansSerif-Regular.woff2",
+          "sha256": "68e8c73ef42afd3ccec58bf0fba302cce448938e7fc020a5e31f8a952eee1342"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Script-Regular.woff2",
+          "sha256": "036d4e95149b69ff9bcc0cd55771efeb25ffa3947293e69acd78d5ac328c684b"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Size1-Regular.woff2",
+          "sha256": "6b47c40166b6dbe21a5dfca7718413f2147fd2399be1ba605d8ad39cedf25dfe"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Size2-Regular.woff2",
+          "sha256": "d04c54219f9eaec6d4d4fd42dfb28785975a4794d6b2fc71e566b9cd6db842dd"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Size3-Regular.woff2",
+          "sha256": "73d591271b1604960cb10bb90fee021670af7297017e0e98480b332d11f51995"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Size4-Regular.woff2",
+          "sha256": "a4af7d414440a1c1790825cfb700cf9cf43b0f2c4b04f0ebc523011ad9853ec0"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/fonts/KaTeX_Typewriter-Regular.woff2",
+          "sha256": "71d517d67827787cfabdf186914cc3358eda539e37931941f2b2fd4a21f68c0b"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/katex.min.css",
+          "sha256": "0289a02cf451a44dd73add683a09644252363871ac11713a647b732cee8b1ee3"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/katex.min.js",
+          "sha256": "a29d2961d3146de5949d78ac7c1a9d93ae54955bad22a6db4fbe836e88e8bf48"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/katex/mhchem.min.js",
+          "sha256": "aaf20145c0b8ecd450ccf6eb0cebece2f77d8e6a02c30d291f28c1167b57b2df"
+        }
+      ]
+    },
+    {
+      "name": "highlight.js",
+      "npm": "highlight.js",
+      "version": "11.7.0",
+      "versionSource": "Highlight.js v11.7.0 banner in highlight.min.js",
+      "note": "shipped inside Vditor",
+      "files": [
+        {
+          "path": "public/vendor/vditor/dist/js/highlight.js/highlight.min.js",
+          "sha256": "3555e3c33b8a64ec89c94de41a3faeeee45c31e9ed904003f6ebd75419bc08d0"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/highlight.js/styles/github-dark.min.css",
+          "sha256": "bd923f35d598428df7dd3213275d50f382680f6277ccd2e1e02de13fa1656d51"
+        },
+        {
+          "path": "public/vendor/vditor/dist/js/highlight.js/styles/github.min.css",
+          "sha256": "5f5db2458549f8b86de973acd7d5d7b26ff5413c07f26aa3f42b054b943c3448"
+        }
+      ]
+    },
+    {
+      "name": "tabler",
+      "npm": "@tabler/core",
+      "version": "1.4.0",
+      "versionSource": "Tabler v1.4.0 banner in tabler.min.css",
+      "files": [
+        {
+          "path": "public/vendor/tabler.min.css",
+          "sha256": "7ef750bd10546a695d0b12767ad8048bd8f3ec5de7daefb1067f9d0daa3d1c9a"
+        }
+      ]
+    },
+    {
+      "name": "cytoscape",
+      "npm": "cytoscape",
+      "version": "3.33.1",
+      "versionSource": "\"3.33.1\" version string in cytoscape.min.js",
+      "files": [
+        {
+          "path": "public/vendor/cytoscape.min.js",
+          "sha256": "f55947f3daa3bae53209d4b885c195c157f595c225e508a6b382598d9452d6e2"
+        }
+      ]
+    },
+    {
+      "name": "lean-qr",
+      "npm": "lean-qr",
+      "version": "2.7.3",
+      "versionSource": "CHANGELOG.md, \"Share QR codes\": the file carries no version string",
+      "files": [
+        {
+          "path": "public/vendor/lean-qr.mjs",
+          "sha256": "3e1b236f34ce8e89398a12b08984a330a4afa29c7a8a010ae24dc382a216b0fd"
+        }
+      ]
+    },
+    {
+      "name": "lucide",
+      "npm": "lucide",
+      "version": null,
+      "versionSource": "none: the icon shapes come from a lucide-icons/lucide checkout named only in scripts/build-lucide-moving.mjs, and no file records its version, so the OSV lookup skips it",
+      "note": "motion CSS from movingicons.dev (jis3r/icons, MIT)",
+      "files": [
+        {
+          "path": "public/vendor/icons/activity.svg",
+          "sha256": "cbcc220fedd5168c8688fb93832bf3d52a809792dcb2c07cd27059b629006d75"
+        },
+        {
+          "path": "public/vendor/icons/archive.svg",
+          "sha256": "ebaec26596f4893037433b3fa3629cc608d5643b9bc8199574d93c1298135315"
+        },
+        {
+          "path": "public/vendor/icons/arrow-down.svg",
+          "sha256": "7b5fd04e7b734cd5b9917dadff972cd0afdfe864343e3db7d8a2f30c31fef43d"
+        },
+        {
+          "path": "public/vendor/icons/arrow-left-right.svg",
+          "sha256": "80ac6e09c675b90217add8fca4131f300c5ed665bc9ded800b7e1c1c04edcb73"
+        },
+        {
+          "path": "public/vendor/icons/arrow-left.svg",
+          "sha256": "f78bb61519d1dedb44f5fc0d8f275ffe09a41f0c0435adffff4812a149386954"
+        },
+        {
+          "path": "public/vendor/icons/arrow-right.svg",
+          "sha256": "2504c16aa947135113c6336e75e16badc78f211177fdb427e380c6d63380bca0"
+        },
+        {
+          "path": "public/vendor/icons/arrow-up-right.svg",
+          "sha256": "4409889098209c64beb439310407c18862774151ca24b316de017359dd70243b"
+        },
+        {
+          "path": "public/vendor/icons/arrow-up.svg",
+          "sha256": "3a2efeede2dbb565da822e4f953f5ae63f5f4d74fddb1457be86e50a486ba31c"
+        },
+        {
+          "path": "public/vendor/icons/award.svg",
+          "sha256": "3bf967af03d12221b55f6772f59afe0aab9b6f3cc8001c34c72af0e0fa5adcc0"
+        },
+        {
+          "path": "public/vendor/icons/badge-percent.svg",
+          "sha256": "62a6626c931827871ce603ac317b347be746484d1187609691a8496004565e47"
+        },
+        {
+          "path": "public/vendor/icons/ban.svg",
+          "sha256": "d39a19fbdf71a1edbef51be671d5eabba6ab582e49dd7e183a9ed95f51149076"
+        },
+        {
+          "path": "public/vendor/icons/battery.svg",
+          "sha256": "13407d8538ec22971e5f0caf2d6b2befd538ab329785cc3956bb3b7229bb44bb"
+        },
+        {
+          "path": "public/vendor/icons/bell-ring.svg",
+          "sha256": "ad3471364d3b23ddf827429c74eecb1669bdbb80097bc29628a2308c94572108"
+        },
+        {
+          "path": "public/vendor/icons/bell.svg",
+          "sha256": "abfa8cc1475a390c043a6bb068f5edecd13bd7155320b1198907b1fb7325bbcb"
+        },
+        {
+          "path": "public/vendor/icons/blocks.svg",
+          "sha256": "7eddcadaf979485750af08332faa7c66f62c7b17ee6b29012682ebd882a55423"
+        },
+        {
+          "path": "public/vendor/icons/bold.svg",
+          "sha256": "293d37ddf4c3feead89b50b956cdeda56b7b235f7b3d18c8d239e4ec0a08f94c"
+        },
+        {
+          "path": "public/vendor/icons/bookmark.svg",
+          "sha256": "e6c15c8afa6e48ae31f700d470380e0f6fa4deb06b37d921e6e96232bdc722ab"
+        },
+        {
+          "path": "public/vendor/icons/braces.svg",
+          "sha256": "21b8551f05e0523f1153d236e9f1dae47f69252edd52d9df9d67b721b913fcd2"
+        },
+        {
+          "path": "public/vendor/icons/briefcase.svg",
+          "sha256": "e9455c1cd77339af4bff8dcaff69a34343c596a8c3d484c66008614a2f794252"
+        },
+        {
+          "path": "public/vendor/icons/bug.svg",
+          "sha256": "635aac04c46d492c70ad317a461e846f2552ad3503c8223723adca42c9581b54"
+        },
+        {
+          "path": "public/vendor/icons/calendar-range.svg",
+          "sha256": "f855d14b9d500826710f5007a3214df39a7ad6e6b1469efc2d888aef8a3ab174"
+        },
+        {
+          "path": "public/vendor/icons/calendar.svg",
+          "sha256": "63a59997310aee92a6e09444771347cb4c4dffa6a0770e95173d033ab906af96"
+        },
+        {
+          "path": "public/vendor/icons/camera.svg",
+          "sha256": "2b3ce1ec4ac78e9d7dadf9f1422bffe9f27edc0e2f4816f82d8b44a0913a46bc"
+        },
+        {
+          "path": "public/vendor/icons/chart-bar.svg",
+          "sha256": "d758d25c2819e79aea66ddb29fa47ad340e92cd8fc169f013c440002f5500e94"
+        },
+        {
+          "path": "public/vendor/icons/chart-column.svg",
+          "sha256": "9c300acdaf873345c138864f8a1e527d14738573497d11a164d08acac36f81ba"
+        },
+        {
+          "path": "public/vendor/icons/chart-pie.svg",
+          "sha256": "1607880e22eaaf22deff0453b338cbdd4b42f623fa20d073174bd7ccd8cddceb"
+        },
+        {
+          "path": "public/vendor/icons/check.svg",
+          "sha256": "fb3a85538d4ad16122d785fc28a5251998d47f17cddf8eba6753eb7532475adb"
+        },
+        {
+          "path": "public/vendor/icons/chevron-down.svg",
+          "sha256": "f2018b11597f521a7d2f9241dbcc041a3650e94475d41824dac12cd84c32117a"
+        },
+        {
+          "path": "public/vendor/icons/chevron-left.svg",
+          "sha256": "b1af377776e77f381968759b3207e8350f383b6c97dcae76d7190253a0b7c8f5"
+        },
+        {
+          "path": "public/vendor/icons/chevron-right.svg",
+          "sha256": "9811459180bc937289f954df5d9c0d182d6ade629c92606c5a77b520246f1855"
+        },
+        {
+          "path": "public/vendor/icons/chevron-up.svg",
+          "sha256": "563fafb58d3a4ad3ea0ead7c8da8e07152275a4c5f7e63c792c85795c2bf2733"
+        },
+        {
+          "path": "public/vendor/icons/circle-alert.svg",
+          "sha256": "4511107195d866e95615b9cf8729e57dbdb14482b324378cf7715cb2029c9d3b"
+        },
+        {
+          "path": "public/vendor/icons/circle-arrow-down.svg",
+          "sha256": "d19434f1ebfec7046aad645aea324e1b8ea98d73c53ecb9fdd3012e9cea9edab"
+        },
+        {
+          "path": "public/vendor/icons/circle-arrow-left.svg",
+          "sha256": "bbdf640168368133b2fa5bb450c15dbaa141068e7742aba3a88ad0328568b982"
+        },
+        {
+          "path": "public/vendor/icons/circle-arrow-right.svg",
+          "sha256": "b2f7041696cfe3e624f62881498884690bcca39b588823f5cb707b4a602c9c8f"
+        },
+        {
+          "path": "public/vendor/icons/circle-arrow-up.svg",
+          "sha256": "a5b52474d7c6da90cf4edd076d10972e84baa4299a7607d50da37c9d562af1f7"
+        },
+        {
+          "path": "public/vendor/icons/circle-question-mark.svg",
+          "sha256": "39336fbc1aeed07309ad9640c2b7abddede3cead93c2f852ad92bfa2946841de"
+        },
+        {
+          "path": "public/vendor/icons/clipboard.svg",
+          "sha256": "52ec47624ce7d696145731f56c7a753d3509d5e5d731d6e36c37cefe0a9c5128"
+        },
+        {
+          "path": "public/vendor/icons/clock.svg",
+          "sha256": "e4515641e42af6d9033569a3631fa208e1b8a154b307ed7215d5e174216aa3d2"
+        },
+        {
+          "path": "public/vendor/icons/cloud-download.svg",
+          "sha256": "e8c6764c227f49429ea9d4baf2e3ef5185c5395fc0197938545270396881b529"
+        },
+        {
+          "path": "public/vendor/icons/cloud-upload.svg",
+          "sha256": "d8d54403991568c963568835bf52444eed4cc9184b12621fbd01446fd1779fa2"
+        },
+        {
+          "path": "public/vendor/icons/code-xml.svg",
+          "sha256": "497a8fa37e77dbbb37f418f30eb605a4e7a98450fc1f37f47a3cef705abe044b"
+        },
+        {
+          "path": "public/vendor/icons/code.svg",
+          "sha256": "073a9923ca56436660ffafa26ed88b8094e608aa26ca685d9275b7274abb6faf"
+        },
+        {
+          "path": "public/vendor/icons/coins.svg",
+          "sha256": "5c8c5998fd235749fb17661a29e6a041776a10400d76bbc3c94e708cc695527a"
+        },
+        {
+          "path": "public/vendor/icons/compass.svg",
+          "sha256": "7cbbbdbfadd9503483a261c1098f89d88a712bbc97d7ec0da36a5af01d335e86"
+        },
+        {
+          "path": "public/vendor/icons/copy.svg",
+          "sha256": "ed19ce50d38c9cd18bbd6dde57c5e92314798e5d5b6db47408c697d693a4aa4a"
+        },
+        {
+          "path": "public/vendor/icons/corner-down-left.svg",
+          "sha256": "c24ec834d41a77bf275bfdf60ec39930a0a3dd7a576dd1f161d7a3fb3ac1537b"
+        },
+        {
+          "path": "public/vendor/icons/cpu.svg",
+          "sha256": "d7d7e2fc327c1c868054035a51ef4a72ff7f3eae0a2fa1c158baeb6c5b560bfa"
+        },
+        {
+          "path": "public/vendor/icons/credit-card.svg",
+          "sha256": "ebb7a8ea1dce6b439ef4e9b4cab854bcd87f34be17656320b184078c2b070f09"
+        },
+        {
+          "path": "public/vendor/icons/dollar-sign.svg",
+          "sha256": "44a769243d16fa372852c79e697be0adc18247441517dac4fa5d6a0bdcf501cf"
+        },
+        {
+          "path": "public/vendor/icons/download.svg",
+          "sha256": "f19c4b4030376cdd2dd0597f9ef10fff9544176b0f94df2b0f080558a248a440"
+        },
+        {
+          "path": "public/vendor/icons/ellipsis-vertical.svg",
+          "sha256": "32ffbdde12a47cdff22d51918c20b398fc2c112238baf37fc0fc7f6c737194df"
+        },
+        {
+          "path": "public/vendor/icons/ellipsis.svg",
+          "sha256": "96b2378683f7633df9a79d928340812dee4fdf5d5ba89bacd1033541a9f3d042"
+        },
+        {
+          "path": "public/vendor/icons/euro.svg",
+          "sha256": "9df857950581ef90925114600d3a6839f9831009a623941a3ef5033c256c88e2"
+        },
+        {
+          "path": "public/vendor/icons/eye-off.svg",
+          "sha256": "e8f536512417181fdb620ee5cce081c53da7bdd60c5ab62be8e05a00fcdeb3e4"
+        },
+        {
+          "path": "public/vendor/icons/eye.svg",
+          "sha256": "d6383916312d72b3d58137ee042862566dc4714560af24d92b3a35f33edd4bd3"
+        },
+        {
+          "path": "public/vendor/icons/file-down.svg",
+          "sha256": "642e9bee436d146f2bec511db639b2b33da5fefdca85d2b3ed3a052911fd1970"
+        },
+        {
+          "path": "public/vendor/icons/file-minus.svg",
+          "sha256": "8f7b3e58c23009386613d21f8976d91c23e75fcb3e520b44f8721e1bab37644e"
+        },
+        {
+          "path": "public/vendor/icons/file-plus.svg",
+          "sha256": "7baa7a5e6143e9862ef77f54381d7fa2ed3cfb7088693a5bbb29412e217ae34a"
+        },
+        {
+          "path": "public/vendor/icons/file-text.svg",
+          "sha256": "bb5016a44ab33f667f12955c96c9739bafb3deb74f2dcbb02fd26012b1774e11"
+        },
+        {
+          "path": "public/vendor/icons/file-up.svg",
+          "sha256": "945927fab7e44fbf965f17f5637354b9853af8a68b35cf45735344ff4d0423a9"
+        },
+        {
+          "path": "public/vendor/icons/file-x.svg",
+          "sha256": "0a7de56ea21d5436350307800b26410abb0a5876034fc66d6aeefe37f573c9ee"
+        },
+        {
+          "path": "public/vendor/icons/file.svg",
+          "sha256": "f539d936124dc1e6a36fe7f035f60d1a49b605e1761f37a32b7d403011a0062d"
+        },
+        {
+          "path": "public/vendor/icons/flag.svg",
+          "sha256": "47a3c8c9264f97782bfc177752206d035d7ae104968507ee18e1581457184365"
+        },
+        {
+          "path": "public/vendor/icons/folder.svg",
+          "sha256": "7cc0d1df2485069bf0629589ab3cb203ff470ad0fb261b08e025da1482f5756a"
+        },
+        {
+          "path": "public/vendor/icons/funnel.svg",
+          "sha256": "45b4b4cbe73b4ea2437d8cbaf231380df09766eeb6427619f1b55d83202b0b3b"
+        },
+        {
+          "path": "public/vendor/icons/gamepad-2.svg",
+          "sha256": "e7f767943fc2e34d804ccc3581c11a4ac7427b8422df845f34a4dcaa7a606958"
+        },
+        {
+          "path": "public/vendor/icons/gauge.svg",
+          "sha256": "dc6c2c77f1de10ce7fbab157dccb75a120711e01e2bf46c3cc2197d6b84d6c2a"
+        },
+        {
+          "path": "public/vendor/icons/grip-vertical.svg",
+          "sha256": "e45f1ef5e73f4b7f1a9e956f684b31d3e70f7552e0719f29e07d89e1a7f721f3"
+        },
+        {
+          "path": "public/vendor/icons/hash.svg",
+          "sha256": "b09b5793dd07efb4780a67c38f2907855f15c0ae5beb858150994ee7a9f7e0c5"
+        },
+        {
+          "path": "public/vendor/icons/heading.svg",
+          "sha256": "d59bcde915f1f8b21938034d7389ac928197563e18ef7e4483b97542f01d028d"
+        },
+        {
+          "path": "public/vendor/icons/heart.svg",
+          "sha256": "da1bcd1f17911fd94c77d41894a856ab3a800a36b4a76105deff6f9351d4e940"
+        },
+        {
+          "path": "public/vendor/icons/history.svg",
+          "sha256": "f75e59f9b6782567dfdefd86e0d5587b39a24f7238ebb1166d38d8ce728f6678"
+        },
+        {
+          "path": "public/vendor/icons/house.svg",
+          "sha256": "edb621757e1f88912074b5734187d2a3002a30dd9bd69ddd9cf4841f381a6cbd"
+        },
+        {
+          "path": "public/vendor/icons/id-card.svg",
+          "sha256": "4341587d27a3a29a57022bf575b51fb789e4a30eca2e723d5dd95bc1282307b4"
+        },
+        {
+          "path": "public/vendor/icons/image.svg",
+          "sha256": "17cd71f6644c73ccee4725e281c11d40efbd32c87594c2434746ae9dfac48138"
+        },
+        {
+          "path": "public/vendor/icons/info.svg",
+          "sha256": "d6572523baa7a8e5ffc675c9609ee1b492aa1b2a09a32e2a2ffd37e96cd7dbd9"
+        },
+        {
+          "path": "public/vendor/icons/italic.svg",
+          "sha256": "8a454493a7a0b5e5c5912c25841ce282a48dc8ad291816afbbb9af30769174ba"
+        },
+        {
+          "path": "public/vendor/icons/kanban.svg",
+          "sha256": "4ec92d247d70b7c3c629f875fa7ae52921a925190c4054732fb38776f3e077aa"
+        },
+        {
+          "path": "public/vendor/icons/key-round.svg",
+          "sha256": "fdeb11ea5bca945c6c5a8e2e9b2f8d3e9d499869cc383b079405ae2f55cc510f"
+        },
+        {
+          "path": "public/vendor/icons/key-square.svg",
+          "sha256": "2979c9f5adc139ede230f6565451571bbe99f240da498cac1e3cc5959f142134"
+        },
+        {
+          "path": "public/vendor/icons/key.svg",
+          "sha256": "f033ec93801d1153852bb53de15f94841cd382f03c7d77ac89171a4ffa226596"
+        },
+        {
+          "path": "public/vendor/icons/landmark.svg",
+          "sha256": "7d6fb2da1bbb863872d1aff9b95ff165319efb978b6b6c13b4dc661e9526456e"
+        },
+        {
+          "path": "public/vendor/icons/layers.svg",
+          "sha256": "647e3f4aa93c0368cc4dbe578f154bc8c81e4245a3f94675f158caf65758fa0c"
+        },
+        {
+          "path": "public/vendor/icons/layout-grid.svg",
+          "sha256": "128bf47080f28128aca9ce2a49d68a229ebc7a12b339b53d3b0ad0ef8ff869d8"
+        },
+        {
+          "path": "public/vendor/icons/lightbulb.svg",
+          "sha256": "38d84e0a1f24a173233dd0a91330180493d727c34e01d30a7d0bf5c91942eaef"
+        },
+        {
+          "path": "public/vendor/icons/link.svg",
+          "sha256": "e1c48b60ac41c6021fd05c39caa2959ff0e3c159a15f85cf88f869d5233bc192"
+        },
+        {
+          "path": "public/vendor/icons/list-checks.svg",
+          "sha256": "ea72413978d9d2e9d99ec47e60b46baa0b2ed9f3b3b6f2114b01148a75fefa93"
+        },
+        {
+          "path": "public/vendor/icons/list-filter.svg",
+          "sha256": "f6efe8ed2786539ab1008f907a7e2254bcbe75eb1231dcab55d4c06001065678"
+        },
+        {
+          "path": "public/vendor/icons/list-indent-decrease.svg",
+          "sha256": "763388bbc9a04dc7647952c6f9d31ce139461d541b76d79c564352dba7a8e70a"
+        },
+        {
+          "path": "public/vendor/icons/list-indent-increase.svg",
+          "sha256": "90875876b53987de9a998224080f0a3d807d5fd3bbb5f9b713ca1d9d641dcdce"
+        },
+        {
+          "path": "public/vendor/icons/list-ordered.svg",
+          "sha256": "846f5d3b0e415b08395912ff792032e438433a657e1c22b9e6c051f06f457589"
+        },
+        {
+          "path": "public/vendor/icons/list.svg",
+          "sha256": "080e8a12a949d709d9dae1c37e0beabc9e68c27f54c95bea4d569ba6523dc27f"
+        },
+        {
+          "path": "public/vendor/icons/lock-open.svg",
+          "sha256": "336412b637d65b442f907a3b62ececee9999625f74fd688871f71b65e84e34a8"
+        },
+        {
+          "path": "public/vendor/icons/lock.svg",
+          "sha256": "baf6a948a27597667e5565a6f8888993da93427883ebc2fe1a41f84d84a4adba"
+        },
+        {
+          "path": "public/vendor/icons/log-in.svg",
+          "sha256": "9182f970d3a29d376edca2959247abd831087a5cbb9411613e2fed0d8b7d94d0"
+        },
+        {
+          "path": "public/vendor/icons/log-out.svg",
+          "sha256": "fcb5e06c0aa679f7b7d1ed8b743b8f2a930ee23eb5f852f3a9cc4a2a3b477fa5"
+        },
+        {
+          "path": "public/vendor/icons/mail.svg",
+          "sha256": "d019e02f22653f06b37dd25ca47a8a24c99ea6732b6a57e26ec0c09d3572d3d8"
+        },
+        {
+          "path": "public/vendor/icons/map-pin.svg",
+          "sha256": "2dcef29b558c956ad6cc553c7f3860478ef07a518eaaef92d31ab1c7efdc7d3c"
+        },
+        {
+          "path": "public/vendor/icons/maximize-2.svg",
+          "sha256": "fa524bf9ee7e0be78deea71c5f179f06034ab6e0f6bb1b19bb726dbc946ab4c7"
+        },
+        {
+          "path": "public/vendor/icons/message-circle.svg",
+          "sha256": "dc1d3674d0035f94e0ae9da684e694bc3b4342efceaac90430cfc308d35df4f2"
+        },
+        {
+          "path": "public/vendor/icons/message-square.svg",
+          "sha256": "cbb80b06407a29b05a2db015ab92275b1094baedffd5ff775248c3e74d019abf"
+        },
+        {
+          "path": "public/vendor/icons/mic.svg",
+          "sha256": "cff0ed5f59b1e10457293a1b1b00a57e30539954829a6b8c1a8fedd0a5e8c0cb"
+        },
+        {
+          "path": "public/vendor/icons/minus.svg",
+          "sha256": "a3646172375a4e50dac7b67697466a3627121f19d458cd9863cf5cddd88a7e53"
+        },
+        {
+          "path": "public/vendor/icons/moon.svg",
+          "sha256": "d5548bd4b68a5c611a5a1e491be9e7835545c7f40a1fba4054b03d4ac1309db2"
+        },
+        {
+          "path": "public/vendor/icons/paperclip.svg",
+          "sha256": "b90e81cda6cde7c794e6fa53bd45f679b808d9d36032f0da8cbeef83582f4573"
+        },
+        {
+          "path": "public/vendor/icons/pause.svg",
+          "sha256": "e7ad5eb051b5f37fd467074e6bb6bdae335c9790c1eb00f7318c14d6046f110a"
+        },
+        {
+          "path": "public/vendor/icons/pencil.svg",
+          "sha256": "bff0a3bfee4d060bc3f4fb1a4da29c4ef0e916de2aaa679d133c3f801ffb7063"
+        },
+        {
+          "path": "public/vendor/icons/percent.svg",
+          "sha256": "accb31fa177e54629b204e5f03dfd39d48136b8fa86e531a521fdc925b4ee6ae"
+        },
+        {
+          "path": "public/vendor/icons/phone-call.svg",
+          "sha256": "f72a95e68a90c4cb92a19d4c9bbb4f88b144f58337abd9c776f34440a9185721"
+        },
+        {
+          "path": "public/vendor/icons/phone-missed.svg",
+          "sha256": "92008c833d72e5cafc35609f7218827f9dd44680fb57e4ee4df19537a07cd1e8"
+        },
+        {
+          "path": "public/vendor/icons/phone-off.svg",
+          "sha256": "ffc87cfa781d40c9fa04b3fbf62ca6b94cdc64102874ec2fa05e6fcd0cf90292"
+        },
+        {
+          "path": "public/vendor/icons/phone.svg",
+          "sha256": "039f7508ba6c3ae1149a0167ff54542c568ba6991f980ba8f83772bcf0e3f49e"
+        },
+        {
+          "path": "public/vendor/icons/pilcrow.svg",
+          "sha256": "f5f5e03b6ad7c33a62a617011b77e82ca1bea57b85a15170ab02c4adcef3e9bb"
+        },
+        {
+          "path": "public/vendor/icons/play.svg",
+          "sha256": "af70dad186ab868428963af541e72d6f5899cc85af6263bfa4770549ea4ad656"
+        },
+        {
+          "path": "public/vendor/icons/plus.svg",
+          "sha256": "c8364150300e83981e55d3b1c92ac34780cdfae56f1fbe5597cc405f06035156"
+        },
+        {
+          "path": "public/vendor/icons/quote.svg",
+          "sha256": "82d29d8a5df1dcaff3922ce2a5d899fbc420302537e101147a9868e2e8163452"
+        },
+        {
+          "path": "public/vendor/icons/radio.svg",
+          "sha256": "6ee0e2886ea895617ac1b648238795df90916f3b3b7fe9ba818d8144c1d01349"
+        },
+        {
+          "path": "public/vendor/icons/receipt.svg",
+          "sha256": "da461da24e2f8fe656278f4d04848b64c83e5812aa074535ec4025201d1d9321"
+        },
+        {
+          "path": "public/vendor/icons/redo.svg",
+          "sha256": "15659befc3b551ba6ce229efd40f828c62a5d67f162411c3e10391c274b6f5a5"
+        },
+        {
+          "path": "public/vendor/icons/refresh-cw.svg",
+          "sha256": "d2cd94d89ff2ddbb89764032b1f3d2921c137d5970722525d1b257a2cbb89a40"
+        },
+        {
+          "path": "public/vendor/icons/ring-empty.svg",
+          "sha256": "cc4fdad9a292c2cd55be47ba80b3bb39f48753068da4380cd4a8dd3b8f21b4dc"
+        },
+        {
+          "path": "public/vendor/icons/ring-full.svg",
+          "sha256": "aba42647ea3f54740fb6fc1ba23617777b9ed2200f6275051cae95a97b9592dc"
+        },
+        {
+          "path": "public/vendor/icons/ring-half-left.svg",
+          "sha256": "e2d5e842d9621df5f867fab5b62cb6987e9c5c85469664db1c6d79a263a7289f"
+        },
+        {
+          "path": "public/vendor/icons/ring-half.svg",
+          "sha256": "1654338c7745ec8752269f67af62100a72fe81dd704bb1b2b18304e2e7df9927"
+        },
+        {
+          "path": "public/vendor/icons/ring-quarter.svg",
+          "sha256": "ee8ced4aa27bf50a69d62191c258869a1b41cd8789859c76df584271e5040f29"
+        },
+        {
+          "path": "public/vendor/icons/ring-three-quarters.svg",
+          "sha256": "fc718a0827cc780fe1443cf12d3d9f597c8a388fa37bec229caa8853c2885369"
+        },
+        {
+          "path": "public/vendor/icons/rocket.svg",
+          "sha256": "c63acb6544079cb6313870c0036058348645a2fa9757f39a1ef9949b4546399e"
+        },
+        {
+          "path": "public/vendor/icons/route.svg",
+          "sha256": "80885f0e1838d51ac0c541f067b0171f33ab6beaba9df38701925f97aed7c28b"
+        },
+        {
+          "path": "public/vendor/icons/scan.svg",
+          "sha256": "0023878dd30821a65b8ac0b09a29b327662ae1039bf812fe4cd66d2bd19fa263"
+        },
+        {
+          "path": "public/vendor/icons/search.svg",
+          "sha256": "a5273d2f6a9fb56cd7b4d1d211b7e851ec827707c8b8fd33bc3fba7b2e320eac"
+        },
+        {
+          "path": "public/vendor/icons/send.svg",
+          "sha256": "e41c85c8ff3c9b495728697482622a1962db2a3d9c4ebae54a413e232589e22b"
+        },
+        {
+          "path": "public/vendor/icons/settings.svg",
+          "sha256": "f8d03c8e174e7bf16af53713b46b8e381c4948cf8326f8858e98a1625b7660ad"
+        },
+        {
+          "path": "public/vendor/icons/shield-check.svg",
+          "sha256": "b39fcd9253ad882913963b1c419d7d0f9dc8485fff5b66e7fa8b7457d856662f"
+        },
+        {
+          "path": "public/vendor/icons/shield-x.svg",
+          "sha256": "a2ba0d2a0145bf3e0e38c174f431ce32ad148dbee1e94cff0bcdd877d8bb10e5"
+        },
+        {
+          "path": "public/vendor/icons/shopping-bag.svg",
+          "sha256": "498da13c3f0425255acfc8d25a0e6323d198a336eadc2250ec34d7c4a3bbd2db"
+        },
+        {
+          "path": "public/vendor/icons/shopping-cart.svg",
+          "sha256": "09f339a8a5651bdf12726f8825516a9ac1d3e5ad566a57e77d23f9eaca086cf2"
+        },
+        {
+          "path": "public/vendor/icons/sliders-horizontal.svg",
+          "sha256": "1ae62fed7e1d5aa63dec66620cbe14d2e5bd84bfe5f9c7b664009fe1219d5428"
+        },
+        {
+          "path": "public/vendor/icons/sparkles.svg",
+          "sha256": "3bec939c0265a063d7a209d2db13b79c8f6961a79d2013b8434519076b6665c1"
+        },
+        {
+          "path": "public/vendor/icons/square-arrow-down.svg",
+          "sha256": "380bbbebb3e046a449d4edb688a2cd5e74e655fcdea0a7a29b40e4557ecc1a73"
+        },
+        {
+          "path": "public/vendor/icons/square-arrow-left.svg",
+          "sha256": "9bd6d733f1594a279ccd07a2eb1d2f166b69ec25a83e33808d275ab3201c1873"
+        },
+        {
+          "path": "public/vendor/icons/square-arrow-right.svg",
+          "sha256": "f2cf55b5d089fc0ac6c3f6a705ee64591fee7c5b3b0ffbd7755b0e06332bcb0a"
+        },
+        {
+          "path": "public/vendor/icons/square-arrow-up.svg",
+          "sha256": "52431f2dad88fe94db323cf6410c9bb80659979631ee6d6bf941245776775084"
+        },
+        {
+          "path": "public/vendor/icons/square-check.svg",
+          "sha256": "8eaa256d1f0165a4e906c68cf9baf4165d9c8c987862bddc91277d16bdee4a60"
+        },
+        {
+          "path": "public/vendor/icons/square-pen.svg",
+          "sha256": "9164ec676a0043f622267648fd673402fb79e4c75e50af9335104d7c7919e09a"
+        },
+        {
+          "path": "public/vendor/icons/square-x.svg",
+          "sha256": "7efcbf3511b2887642cad76cf4385548da3bfbddb47a9ea5ff881f5a4fcff424"
+        },
+        {
+          "path": "public/vendor/icons/star.svg",
+          "sha256": "8c85203e85e112fa40a4b940246b0c94270fdc6a733d4c9a07d6fb1ac448815f"
+        },
+        {
+          "path": "public/vendor/icons/strikethrough.svg",
+          "sha256": "0de65824db94d8f94d1f31ec364d62b200ded9d20a6e17e9672ed82a744fb755"
+        },
+        {
+          "path": "public/vendor/icons/sun-moon.svg",
+          "sha256": "08665085b19c7a1634d79c9f9042671f2c4cbb68b0e58d89c07536e1f8920b9e"
+        },
+        {
+          "path": "public/vendor/icons/sun.svg",
+          "sha256": "4c80263b2de9b23f4e5844ecd96d02354165bbda639c787c60b70134f5017f6e"
+        },
+        {
+          "path": "public/vendor/icons/table.svg",
+          "sha256": "8531c961f618639ecf4fccc6f6af2828bde8415164f92da017635ccc60c51e73"
+        },
+        {
+          "path": "public/vendor/icons/target.svg",
+          "sha256": "3f0712a6197bf8b38be3e8f9501927d9c5a2174ecac67dfedc00a887812870fe"
+        },
+        {
+          "path": "public/vendor/icons/terminal.svg",
+          "sha256": "dc5084bf94d6a9ea013b5eea50db79f0de8f7ef22648daf05709f053f7411483"
+        },
+        {
+          "path": "public/vendor/icons/ticket-check.svg",
+          "sha256": "1beb9ec07dc2ed4d014d497e4cc2a5f2d8224faa9bf5aa7f503ba9b082e1a6a8"
+        },
+        {
+          "path": "public/vendor/icons/ticket.svg",
+          "sha256": "c81278fd1381124cd88db0322c14925db57475cc678eb1f12955f9e0ba126942"
+        },
+        {
+          "path": "public/vendor/icons/timer.svg",
+          "sha256": "807af44917dda522add0c4e15a1b9556ac0a6dc2cf0fe417a5fc2719f96a60c9"
+        },
+        {
+          "path": "public/vendor/icons/trash-2.svg",
+          "sha256": "0ac5e4cee0061ea7045ada88d1981b50c1d2ea961583271924e7ad8f0311dcd9"
+        },
+        {
+          "path": "public/vendor/icons/trending-up.svg",
+          "sha256": "cd8b3c4b0f2079cd5a7312b13570398f22ff42ab19db776b59e3f9ddf14e9f4b"
+        },
+        {
+          "path": "public/vendor/icons/triangle-alert.svg",
+          "sha256": "a9c6521bbbddc6005acface3f4b3ce1f7579bf560edc7e7676f37b941c7d8540"
+        },
+        {
+          "path": "public/vendor/icons/undo.svg",
+          "sha256": "7a32c9bff8bbd673d6e54dba687089cc54bd65c679b8ba4bbf2bf471039f569f"
+        },
+        {
+          "path": "public/vendor/icons/upload.svg",
+          "sha256": "c032f6171201f428fabdca7c39fc027e7e745ee84818a677483e4a8401ef9b4c"
+        },
+        {
+          "path": "public/vendor/icons/user-cog.svg",
+          "sha256": "1bff981bf70f1c1fcf6241e3bdba145eb9e196625f10f2737b395490a07c9731"
+        },
+        {
+          "path": "public/vendor/icons/user-plus.svg",
+          "sha256": "43f5b2975aa982b7972dc17a6521b0609a6dae1e923172004a84a5e8a13a3ce2"
+        },
+        {
+          "path": "public/vendor/icons/user.svg",
+          "sha256": "a34305596ea6bf1d9362efde30272014ec7296676a61fdb3283173534534e14e"
+        },
+        {
+          "path": "public/vendor/icons/users-round.svg",
+          "sha256": "bfa185fb3597e0ab2c3df4066c890f8981f1d01a152b4acf53b2b50007618b59"
+        },
+        {
+          "path": "public/vendor/icons/users.svg",
+          "sha256": "1ccbe64ab036d65686b2958574868f84ba3936b9be783e5bfc0336b3a0dfb476"
+        },
+        {
+          "path": "public/vendor/icons/video.svg",
+          "sha256": "cfaf77ec4909c552c0288fa33fc64274a192cc4464d41f94b4de7670c1cead8c"
+        },
+        {
+          "path": "public/vendor/icons/volume-1.svg",
+          "sha256": "e97dfa9157896d48cb6d1d43284511ae29818fe383c22df13143263612275e8b"
+        },
+        {
+          "path": "public/vendor/icons/volume-2.svg",
+          "sha256": "7923c29d2d82722eed8bc62b99b9f111e326aeea8791e318bb09a27d153e638c"
+        },
+        {
+          "path": "public/vendor/icons/volume-x.svg",
+          "sha256": "1765e44d54281a093d7e30cc8ffeab8359647f0efdec2c1099285a66f02c541d"
+        },
+        {
+          "path": "public/vendor/icons/wallet.svg",
+          "sha256": "8451b421325832d9c31f71708e6f7c2e1cca57321f58b14030cbfa13b3ca7972"
+        },
+        {
+          "path": "public/vendor/icons/wifi.svg",
+          "sha256": "ac2646227ed3922378c635d9b686601a506e2eeff6cc7c9b0b37e960cc258c21"
+        },
+        {
+          "path": "public/vendor/icons/workflow.svg",
+          "sha256": "e75f0b7a5470da184f5335d2e8995463d4aadbb8bdf70bc4ab54e9f74914de40"
+        },
+        {
+          "path": "public/vendor/icons/x.svg",
+          "sha256": "a4f6061183df413c1b014ac582dc63c793a45cdde108dd7afbe1d9f9552ceb07"
+        },
+        {
+          "path": "public/vendor/icons/zap.svg",
+          "sha256": "057164d354481a7f2d2ea650f63749188af96f771784670d83dd5a5ad044360a"
+        },
+        {
+          "path": "public/vendor/lucide-moving.css",
+          "sha256": "a305a67f9dd61be0746fbf731bf78e6ffa9ccaa2d6b4df62d1a79403c8720639"
+        },
+        {
+          "path": "public/vendor/lucide-moving.js",
+          "sha256": "3d71ab8a77a322be128490e4f24601393ccf1578244853417681e84fddd2c8cf"
+        }
+      ]
+    },
+    {
+      "name": "dejavu-fonts",
+      "npm": null,
+      "version": "2.37",
+      "versionSource": "DejaVuSans-LICENSE.txt header, \"DejaVu Sans 2.37\"",
+      "note": "not an npm package",
+      "files": [
+        {
+          "path": "public/vendor/fonts/DejaVuSans-LICENSE.txt",
+          "sha256": "cd9028e2f7cfe1367f7fa0add87eccdea185e23852b5a88b1a4c9904f6c94220"
+        },
+        {
+          "path": "public/vendor/fonts/DejaVuSans.ttf",
+          "sha256": "7da195a74c55bef988d0d48f9508bd5d849425c1770dba5d7bfc6ce9ed848954"
+        }
+      ]
+    },
+    {
+      "name": "decklet",
+      "npm": null,
+      "version": "0.3.3+cf73916",
+      "versionSource": "src/vendor/decklet/README.md",
+      "note": "grunion-ai/decklet, pinned by commit; not an npm package",
+      "files": [
+        {
+          "path": "src/vendor/decklet/README.md",
+          "sha256": "7498a1569144ca05762ad40109cf34e848185f61d333a78e77cd83f274520c46"
+        },
+        {
+          "path": "src/vendor/decklet/create.mjs",
+          "sha256": "a31302299e8540f14b5f95677053ad9dd6beca560598d38779f01c463050dff7"
+        },
+        {
+          "path": "src/vendor/decklet/template.html",
+          "sha256": "104008a1b8beee41c2087ebdc381e0a3ce6a04240a9c96ee926e1abab599344f"
+        },
+        {
+          "path": "src/vendor/decklet/validate.mjs",
+          "sha256": "1abf435f48cd2b24835d0045e05ad0f85440af19e845c648b0c48e249964b6a3"
+        }
+      ]
+    }
+  ]
+}

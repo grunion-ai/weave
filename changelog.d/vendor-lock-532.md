@@ -1,0 +1,1 @@
+- **Vendored libraries are pinned and checked** (Issue #532): `security/vendor.lock.json` lists every file under `public/vendor/` and `src/vendor/` with its library, version and sha256; `test/security/vendor-lock.test.mjs` fails on a changed, unlisted or missing file, and `node scripts/vendor-advisories.mjs` asks OSV for advisories on each (network, so outside `npm test`).
