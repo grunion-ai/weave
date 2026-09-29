@@ -14,7 +14,7 @@ import { markdownToPdf } from './pdf.js';
 // Worker — evaluating it there fails the whole upload. Deck routes are rare
 // and node-only anyway, so they pay for the import when they are asked for.
 const deckModule = () => import('./deck.js');
-import { handleMcpMessage } from './mcp.js';
+import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
 import { renderAuthPage } from './auth-page.js';
 import { verifyRegistration, verifyAssertion, newChallenge, b64url } from './webauthn.js';
@@ -315,6 +315,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (role === 'reader' && !read) return deny(403, 'This token is read-only');
       if (role === 'writer' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
     }
+    /* The caller's role on another workspace of this hub, verified there: its
+       Bearer token, or its session (a root session opens a member, as at the
+       wall). For routes that act on more than the URL workspace. */
+    const roleOn = (w) => {
+      if (w === weave) return role;
+      if (authz && /^Bearer /i.test(authz)) return w.verifyToken(authz.slice(7).trim())?.role ?? null;
+      if (!cookies.wv_session) return null;
+      const root = hub.get(hub.defaultName);
+      return (w.verifySession(cookies.wv_session) ?? (w !== root ? root.verifySession(cookies.wv_session) : null))?.role ?? null;
+    };
 
     // Resolves [[Table#12]] mentions in rendered documents (active workspace).
     // The one place that knows how each reference kind is addressed and what
@@ -560,9 +570,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // color, an icon name or a format (src/vocabulary.js).
         if (route === 'GET /api/vocabulary') return out(200, VOCABULARY);
 
+        /* These act on the hub, not the URL workspace (Issue #481). The list
+           and search ?all=1 carry only the workspaces whose own wall this
+           caller would pass; create, restore and delete need an admin on the
+           hub root once the root holds an account. */
+        const canOpen = (w) => !w.state.meta.requireAuth || roleOn(w) != null;
+        if (/^\/api\/workspaces(\/|$)/.test(path) && rx.method !== 'GET') {
+          const hubRoot = hub.get(hub.defaultName);
+          const rootRole = roleOn(hubRoot);
+          if (!mayAdminister(hubRoot, rootRole)) return deny(rootRole ? 403 : 401, 'Managing workspaces needs an admin on the hub root');
+        }
         if (route === 'GET /api/workspaces') {
           const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
-          return out(200, hub.list({ includeDeleted }));
+          return out(200, hub.list({ includeDeleted }).filter((x) => canOpen(hub.get(x.name))));
         }
         if (route === 'POST /api/workspaces') {
           const w = hub.create(body.name);
@@ -593,7 +613,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // Accounts (Feature #14). Once any account exists, only an admin
         // token manages them — the anonymous door closes behind the first key.
         if (path.startsWith('/api/accounts') || (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {}))) {
-          if (weave.listAccounts().length && role !== 'admin') {
+          if (!mayAdminister(weave, role)) {
             return deny(role ? 403 : 401, 'Managing accounts needs an admin token');
           }
         }
@@ -603,10 +623,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.deleteAccount(decodeURIComponent(m[1])));
         }
         // Keystore (Feature #64): set, list, delete — never read back. The
-        // same admin gate as accounts once any account exists.
+        // same admin gate as accounts once any account exists — the hub
+        // root's accounts, whichever workspace the URL names, because one
+        // keystore serves the whole process (Issue #480). A root caller on
+        // a key's access list may reveal it; its owner may rotate or drop it.
         if (path.startsWith('/api/keys')) {
-          if (weave.listAccounts().length && role !== 'admin') {
-            return deny(role ? 403 : 401, 'Managing keys needs an admin token');
+          const root = hub.get(hub.defaultName);
+          const rootRole = roleOn(root);
+          const km = /^\/api\/keys\/([^/]+)(\/reveal)?$/.exec(path);
+          const reveal = !!km?.[2] && rx.method === 'POST';
+          const target = route === 'POST /api/keys' ? body?.name
+            : km && !km[2] && rx.method === 'DELETE' ? decodeURIComponent(km[1]) : null;
+          const owns = !!rootRole && target != null && weave.listKeys().find((k) => k.name === target)?.owner === weave.actor;
+          if (!mayAdminister(root, rootRole) && !(reveal && rootRole) && !owns) {
+            return deny(rootRole ? 403 : 401, 'Managing keys needs an admin on the hub root');
           }
           if (route === 'GET /api/keys') return out(200, weave.listKeys());
           if (route === 'POST /api/keys') return out(201, weave.setKey(body?.name, body?.value));
@@ -663,7 +693,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
            hosted instance speaks exactly what a local agent already speaks. */
         if (route === 'POST /api/mcp') {
           const msgs = Array.isArray(body) ? body : [body];
-          const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version })).filter(Boolean);
+          // The accounts, keys and import tools ask the same gate as REST
+          // (Issue #482), so the caller's role travels with the message.
+          const root = hub.get(hub.defaultName);
+          const caller = { role, root, rootRole: roleOn(root) };
+          const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
           return out(200, Array.isArray(body) ? replies : replies[0]);
         }
@@ -733,6 +767,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (!issues) {
             return out(501, { error: 'No Development/Issue table to file into — this instance has no weave docs workspace', code: 'unsupported' });
           }
+          /* The documented intake: anyone who may write here files into the
+             weave docs workspace. An anonymous caller (the wall off here)
+             must also pass the docs workspace's own wall (Issue #481). */
+          if (role == null && !canOpen(docs)) return deny(401, 'The weave docs workspace requires authentication');
           docs.maybeRefresh();
           /* renderBugReport is the validator too: an unknown symptom, or a
              report with neither a symptom nor a note, throws before anything
@@ -1078,6 +1116,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             // Cross-workspace search: permalinks carry the workspace path.
             const results = [];
             for (const [name, w] of hub.entries()) {
+              if (!canOpen(w)) continue;
               const prefix = name === hub.defaultName ? '' : `/w/${name}`;
               for (const hit of w.universalSearch(q, { limit, prefix })) {
                 results.push({ workspace: name, ...hit });
@@ -1088,7 +1127,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.universalSearch(q, { limit, prefix: wsPrefix }));
         }
         if (route === 'GET /api/export') return out(200, weave.exportJSON());
-        if (route === 'POST /api/import') { weave.importJSON(body); return out(200, { ok: true }); }
+        if (route === 'POST /api/import') {
+          // The import replaces the accounts too: the accounts gate (Issue #482).
+          if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Replacing the workspace needs an admin token');
+          weave.importJSON(body);
+          return out(200, { ok: true });
+        }
 
         return out(404, { error: `No route: ${route}` });
       }

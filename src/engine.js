@@ -2927,8 +2927,10 @@ export class Weave {
        accounts it is one operator with the CLI, the data file and the
        keystore already in hand, and refusing them their own credential in the
        app would be theatre — the same reason /api/keys itself is ungated
-       until an account exists. The moment accounts appear, the list bites. */
-    if (!this.listAccounts().length) return true;
+       until an account exists. The moment accounts appear, the list bites.
+       The keystore is one per process, so the accounts that count are the
+       hub root's: a member with none of its own opens nothing (Issue #480). */
+    if (!(this.registryHost ?? this).listAccounts().length) return true;
     if (entry.shared === true) return true;
     if (Array.isArray(entry.shared) && entry.shared.includes(this.actor)) return true;
     return !!entry.owner && entry.owner === this.actor;

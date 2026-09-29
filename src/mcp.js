@@ -441,7 +441,27 @@ export const TOOLS = [
   },
 ];
 
-export function dispatchTool(weave, name, args = {}) {
+/* The one gate for accounts, the wall, the keystore and whole-workspace
+   import (Issue #482). REST and the MCP dispatcher both ask it, so the two
+   doors cannot drift: anyone until `on` holds an account, an admin of `on`
+   after. `on` is the workspace for accounts and import, and the hub root for
+   keys, because one keystore serves the whole process (Issue #480). */
+export function mayAdminister(on, role) {
+  return role === 'admin' || !on.listAccounts().length;
+}
+const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'root' };
+
+/* caller: { role, root, rootRole } — who is calling over HTTP, verified by
+   the dispatcher. The stdio server passes none: its caller is the local
+   operator who started `weave mcp` on the data file, the same trust as the
+   CLI, and that is also how the first account is bootstrapped. */
+export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
+  if (caller && ADMIN_TOOLS[name]) {
+    const atRoot = ADMIN_TOOLS[name] === 'root';
+    if (!mayAdminister(atRoot ? caller.root ?? weave : weave, atRoot ? caller.rootRole : caller.role)) {
+      throw new Error(`${name} needs an admin token${atRoot ? ' on the hub root' : ''}`);
+    }
+  }
   // The MCP server is long-running: pick up commits from other processes
   // (CLI, HTTP server) before every tool call.
   weave.maybeRefresh?.();
@@ -646,7 +666,7 @@ export function dispatchTool(weave, name, args = {}) {
    transport-free, so stdio and POST /api/mcp (Feature #99) cannot drift.
    HTTP note: requests are stateless, so the actor set by `initialize` lasts
    one request; HTTP clients name themselves per call with x-weave-actor. */
-export function handleMcpMessage(weave, msg, { version = VERSION } = {}) {
+export function handleMcpMessage(weave, msg, { version = VERSION, caller = null } = {}) {
   const { id, method, params } = msg ?? {};
   const reply = (result) => (id !== undefined ? { jsonrpc: '2.0', id, result } : null);
   const fail = (code, message) => (id !== undefined ? { jsonrpc: '2.0', id, error: { code, message } } : null);
@@ -669,7 +689,7 @@ export function handleMcpMessage(weave, msg, { version = VERSION } = {}) {
         return reply({ tools: TOOLS });
       case 'tools/call': {
         try {
-          const result = dispatchTool(weave, params.name, params.arguments ?? {});
+          const result = dispatchTool(weave, params.name, params.arguments ?? {}, { caller });
           return reply(textResult(result));
         } catch (err) {
           return reply({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
