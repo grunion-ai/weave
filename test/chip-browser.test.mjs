@@ -19,7 +19,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, settled } from './lib/browser.mjs';
 
 let task, tasks;
 
@@ -60,8 +60,9 @@ if (s) {
       width: Math.round(r.width), height: Math.round(r.height),
     };
   });
-  // The caret turns over a .1s transition; read it once the turn has landed.
-  const settle = (page) => page.waitForTimeout(250);
+  // The caret turns over a .1s transition; read it once the turn has landed,
+  // however long a loaded machine takes to get there (Issue #454).
+  const settle = (page) => settled(page.locator(CARET));
   /* A 2D transform matrix(a, b, c, d, e, f): rotation θ has a = cos θ,
      b = sin θ. The browser reports it in pixels-of-matrix, not degrees. */
   const angle = (transform) => {

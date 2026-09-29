@@ -22,10 +22,16 @@
    its Verified +1, so a suite that keeps needing the second chance says so
    in the review and can be fixed rather than absorbed.
 
-   Capping concurrency was the other candidate and is measurably the wrong
-   trade here: the browser suites at `--test-concurrency=4` take 110 s against
-   66–70 s at 10, 16 and 24, and they were green at every one of those
-   settings over eight runs — the parallelism is not what they are short of.
+   The retry is not the whole answer, and on 2026-09-28 it stopped being
+   enough (Issues #454, #466): the same tree voted red five times and then
+   green. The suite had grown to 130 browser files, and node's default of
+   cores minus one files at once put nine of them up together, each a Node
+   process with a server in it plus a Chromium of four or five processes.
+   On a ten-core machine with nothing else running, the suite alone drove
+   the load average to 27, and the cases that read a paint or a timer lost
+   to their own siblings. So the suite runs in two lanes: everything that
+   does not drive a browser at node's default, then the browser suites at
+   half the cores. The retry stays for what is left.
 
    Usage: node scripts/test.mjs [file ...] [node --test flags ...]
    With no files named it runs the whole suite; `npm test -- --only` and the
@@ -33,7 +39,7 @@
 
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
@@ -51,13 +57,34 @@ export function testFiles(root = ROOT) {
     .sort();
 }
 
+/* A browser suite is one that drives Chromium: a -browser file, or one that
+   loads the shared harness or playwright under another name. */
+const BROWSER = /lib\/browser\.mjs|import\(['"]playwright/;
+export function lanes(files, root = ROOT) {
+  const browser = [], unit = [];
+  for (const f of files) {
+    let drives = /-browser\.test\.mjs$/.test(f);
+    if (!drives) { try { drives = BROWSER.test(readFileSync(resolve(root, f), 'utf8')); } catch { /* not on disk */ } }
+    (drives ? browser : unit).push(f);
+  }
+  return { unit, browser };
+}
+
+/* Half the cores: a browser suite keeps about two of them busy (its Node
+   process and server, the renderer, the GPU process), so half the cores in
+   files is the machine full and no more. */
+export const browserConcurrency = (cores = availableParallelism()) => Math.max(1, Math.floor(cores / 2));
+
 /* node picks spec on a terminal and tap otherwise; asking for the collector
-   would silently take that choice away, so it is made here and passed on. */
-export function argsFor(files, failedPath, extraArgs = [], tty = process.stdout.isTTY) {
+   would silently take that choice away, so it is made here and passed on.
+   `cap` is the lane's --test-concurrency; a caller that names its own keeps it. */
+export function argsFor(files, failedPath, extraArgs = [], tty = process.stdout.isTTY, cap = 0) {
+  const capped = cap && !extraArgs.some((a) => a.startsWith('--test-concurrency'));
   return [
     '--test',
     `--test-reporter=${tty ? 'spec' : 'tap'}`, '--test-reporter-destination=stdout',
     `--test-reporter=${REPORTER}`, `--test-reporter-destination=${failedPath}`,
+    ...(capped ? [`--test-concurrency=${cap}`] : []),
     ...extraArgs,
     ...files,
   ];
@@ -74,13 +101,23 @@ export function readFailed(failedPath) {
    run. The runner's own suite calls run(), so the mark is dropped here. */
 export const childEnv = ({ NODE_TEST_CONTEXT, ...rest } = process.env) => rest;
 
-export function run(files, extraArgs = [], { retries = RETRIES, out = console.log, env = childEnv() } = {}) {
+/* Both lanes always run, so one gate names every red; the verdict is red if
+   either is. */
+export function run(files, extraArgs = [], opts = {}) {
+  const { unit, browser } = lanes(files);
+  let code = 0;
+  if (unit.length) code = runLane(unit, extraArgs, 0, opts) || code;
+  if (browser.length) code = runLane(browser, extraArgs, browserConcurrency(), opts) || code;
+  return code;
+}
+
+function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, env = childEnv() } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-test-'));
   try {
     let attempt = files;
     for (let i = 0; ; i++) {
       const failedPath = join(dir, `failed-${i}`);
-      const status = spawnSync(process.execPath, argsFor(attempt, failedPath, extraArgs),
+      const status = spawnSync(process.execPath, argsFor(attempt, failedPath, extraArgs, undefined, cap),
         { cwd: ROOT, stdio: 'inherit', env }).status;
       if (status === 0) {
         if (i) out(`# RETRIED and green: ${attempt.length} file(s) failed the first run and passed the second — ${attempt.join(' ')}`);
@@ -101,8 +138,11 @@ export function run(files, extraArgs = [], { retries = RETRIES, out = console.lo
 }
 
 /* Only when run as the command: test/test-runner.test.mjs imports run(), and
-   a bare import that spawned the suite would recurse. */
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+   a bare import that spawned the suite would recurse. A bare `node --test`
+   also discovers this file (it matches **\/test.mjs) and runs it as a test,
+   with this file as argv[1]; NODE_TEST_CONTEXT marks that process, and it
+   must not start a second suite beside the first (Issue #435). */
+if (!process.env.NODE_TEST_CONTEXT && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const argv = process.argv.slice(2).filter((a) => a !== '--');
   const named = argv.filter((a) => !a.startsWith('-'));
   const flags = argv.filter((a) => a.startsWith('-'));

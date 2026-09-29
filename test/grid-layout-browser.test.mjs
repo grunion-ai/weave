@@ -15,7 +15,7 @@
    where, not that an event fired (Kyle, 2026-09-02). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, settled } from './lib/browser.mjs';
 
 const FIELDS = [
   ['Status', 'select', { options: ['Open', 'Done'] }],
@@ -77,8 +77,12 @@ if (s) {
   const trayOpen = (page) => page.locator('#tray-back').count();
   /* A real pointer drag: bring the header into the wrap's view, press on
      it, travel to x (viewport; a function is read after the scroll), and
-     optionally read the grid mid-drag before releasing. */
-  const drag = async (page, name, x, during = null) => {
+     optionally read the grid mid-drag before releasing. `reaim`, when
+     given, is read once the pointer has arrived and the pointer moves there:
+     a path that crosses an auto-scroll band scrolls the grid for as long as
+     it dwells there, which is longer on a loaded machine (Issue #432), so a
+     target read before the drag can be stale by the time it lands. */
+  const drag = async (page, name, x, during = null, { reaim = null } = {}) => {
     await head(page, name).evaluate((th) => th.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
     await page.waitForTimeout(50);
     if (typeof x === 'function') x = await x();
@@ -87,10 +91,15 @@ if (s) {
     await page.mouse.move(box.x + Math.min(24, box.width / 3), y);
     await page.mouse.down();
     await page.mouse.move(x, y, { steps: 8 });
+    if (reaim) await page.mouse.move(await reaim(), y);
     const seen = during ? await during() : null;
     await page.mouse.up();
     // The view write is behind the in-place move.
     await page.waitForTimeout(200);
+    // The move itself is a 180 ms slide of every cell (flip); a box read
+    // before it lands reads the slide. Under load it outlasted the 200 ms
+    // above and a frozen column measured 19 to 447px off its pin (Issue #454).
+    await settled(page.locator('.wv-grid'));
     return seen;
   };
   const insertLine = (page) => page.evaluate(() => {
@@ -352,7 +361,7 @@ if (s) {
         return { scrolled: wrap.scrollLeft, pidRight: pidR.right, owner: owner.left, cell: cell.left, next: next.left };
       });
       assert.ok(pinned.scrolled > 100, `the grid scrolls sideways (${pinned.scrolled})`);
-      assert.ok(Math.abs(pinned.owner - pinned.pidRight) <= 1, 'the frozen header is pinned beside #');
+      assert.ok(Math.abs(pinned.owner - pinned.pidRight) <= 1, `the frozen header is pinned beside # (${JSON.stringify(pinned)})`);
       assert.ok(Math.abs(pinned.cell - pinned.pidRight) <= 1, 'and so are its cells');
       assert.ok(pinned.next < pinned.pidRight, 'the first scrolling field slid under the zone');
       const seam = await page.evaluate(() => getComputedStyle(document.querySelector('.wv-grid thead th[data-col="Owner"]')).borderRightColor);
@@ -366,7 +375,10 @@ if (s) {
         await page.waitForTimeout(50);
         const st = (await layout(page)).Status;
         return st.left + st.w - 10;
-      }, () => insertLine(page));
+      }, () => insertLine(page), {
+        // Outside the band the grid stands still; aim at where Status is now.
+        reaim: async () => { const st = (await layout(page)).Status; return st.left + st.w - 10; },
+      });
       assert.equal(back.tag, 'Unfreeze', 'the line says the drop unfreezes');
       assert.equal(await trayOpen(page), 0, 'rule 4: the unfreeze drop opened nothing');
       assert.ok(!view(db).frozen, 'unfrozen');

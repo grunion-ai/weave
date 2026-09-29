@@ -143,7 +143,9 @@ if (s) {
       const rest = await seam();
       assert.match(rest, /rgba\(0, 0, 0, 0\)|transparent/, `no rule down the grid at rest, got ${rest}`);
       await page.evaluate(() => { document.querySelector('.table-wrap').scrollLeft = 400; });
-      await page.waitForTimeout(80);
+      // The seam follows the wrap's scroll event, which a busy page handles
+      // late; wait for the colour to move rather than 80 ms (Issue #454).
+      await page.waitForFunction((was) => getComputedStyle(document.querySelector('.wv-grid tbody td.pid-cell')).borderRightColor !== was, rest, { timeout: 10000 }).catch(() => {});
       const scrolled = await seam();
       assert.notEqual(scrolled, rest, 'the seam takes its colour once the body scrolls under it');
       assert.doesNotMatch(scrolled, /rgba\(0, 0, 0, 0\)/, `and it is a visible hairline, got ${scrolled}`);

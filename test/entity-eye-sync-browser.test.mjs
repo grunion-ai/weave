@@ -5,7 +5,7 @@
    Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, settled } from './lib/browser.mjs';
 
 let deals, a;
 const s = await launch('entity eye sync', (weave) => {
@@ -106,7 +106,9 @@ if (s) {
     await page.click('#main .eye-btn');
     await page.waitForSelector('.chip-pop .eye-row');
     await page.evaluate(() => { document.querySelector('.chip-pop').dataset.marker = 'held'; });
-    await page.waitForTimeout(200); // let the pop-in animation settle before measuring
+    // Measure after the pop-in animation lands, not after a guess at how long
+    // a loaded machine takes to play it (Issue #454).
+    await settled(page.locator('.chip-pop'));
     const before = await page.evaluate(() => {
       const r = document.querySelector('.chip-pop').getBoundingClientRect();
       return { left: r.left, top: r.top };

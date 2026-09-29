@@ -393,6 +393,9 @@ if (s) {
       assert.match(await toastText(page), /Pasted 1 cell/);
       assert.equal(value(2, 'Note'), 'n1', 'written to the record through bulk set');
       assert.equal(await page.locator('.wv-toast-action').count(), 1, 'and the toast carries Undo');
+      // The toast is up before the row redraws and hands focus back to its
+      // cell; in between, focus is on <body> (Issue #454). Wait for the rest.
+      await page.waitForFunction(() => document.activeElement?.tagName === 'TD', null, { timeout: 10000 }).catch(() => {});
       assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'TD', 'the cell rests after the paste');
     } finally { await ctx.close(); reset(); }
   });

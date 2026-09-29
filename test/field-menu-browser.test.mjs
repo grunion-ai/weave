@@ -27,7 +27,7 @@
    dynamically and the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually, styleOf } from './lib/browser.mjs';
 
 let tasks;
 const s = await launch('field menu', (weave) => {
@@ -215,20 +215,19 @@ if (s) {
       const box = await del.boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.down();
-      await page.waitForTimeout(400);
-      const mid = await page.evaluate(() => {
-        const f = document.querySelector('.hold-btn.holding .hold-fill');
-        return f ? new DOMMatrixReadOnly(getComputedStyle(f).transform).a : null;
-      });
+      /* Read on the page's clock, not after sleeps here: on a loaded gate
+         the press reached the page late enough that a 400 ms read saw no
+         sweep and a 1100 ms hold never finished it (Issue #454). */
+      const fillA = () => { const f = document.querySelector('.hold-btn.holding .hold-fill'); return f ? new DOMMatrixReadOnly(getComputedStyle(f).transform).a : null; };
+      await page.waitForFunction(`(${fillA})() > 0.15`, null, { polling: 'raf', timeout: 10000 }).catch(() => {});
+      const mid = await page.evaluate(fillA);
       assert.ok(mid > 0.15 && mid < 0.95, `the fill must be part-swept mid-hold, was ${mid}`);
-      assert.equal(await page.evaluate(() =>
-        Number(getComputedStyle(document.querySelector('.hold-btn.holding .hold-hint')).opacity)), 0,
+      assert.equal(await styleOf(del.locator('.hold-hint'), 'opacity', '0'), '0',
         'and the hint gets out of the way once the press starts');
-      await page.waitForTimeout(700);
+      await page.waitForSelector('.hold-btn.holding', { state: 'detached', timeout: 10000 }).catch(() => {});
       await page.mouse.up();
 
-      await page.waitForTimeout(400);
-      assert.ok(!hasField('Estimate'), 'a completed hold deletes the field');
+      assert.equal(await eventually(() => hasField('Estimate'), false), false, 'a completed hold deletes the field');
     } finally { await page.close(); }
   });
 

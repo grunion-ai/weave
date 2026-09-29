@@ -14,7 +14,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, styleOf } from './lib/browser.mjs';
 
 let orders, order;
 
@@ -39,25 +39,23 @@ if (s) {
   test('the block anchor is the row grip, and a caret click does not leave it lit (Issue #210)', async () => {
     const page = await open(order.id);
     await page.waitForSelector('.entity-values .fieldrow');
-    const grip = await page.$eval(`${HEAD} .opt-grip`, (n) => ({ text: n.textContent.trim(), icon: !!n.querySelector('.wv-icon') }));
-    assert.equal(grip.text, '', 'no text glyph — the ⠿ character sat beside Lucide grips and read as stray dots');
-    assert.ok(grip.icon, 'the anchor draws the same grip icon a row wears');
+    const glyph = await page.$eval(`${HEAD} .opt-grip`, (n) => ({ text: n.textContent.trim(), icon: !!n.querySelector('.wv-icon') }));
+    assert.equal(glyph.text, '', 'no text glyph — the ⠿ character sat beside Lucide grips and read as stray dots');
+    assert.ok(glyph.icon, 'the anchor draws the same grip icon a row wears');
     await page.click(`${HEAD} .doc-caret`);
     await page.waitForFunction(() => document.querySelector('.entity-values').classList.contains('hidden'));
     await page.mouse.move(2, 2);
-    await page.waitForTimeout(250);
     const focused = await page.evaluate(() => document.activeElement?.className ?? '');
     assert.match(focused, /doc-caret/, 'the caret keeps focus after the click (that is what used to light the grip)');
-    assert.equal(await page.$eval(`${HEAD} .opt-grip`, (n) => getComputedStyle(n).opacity), '0', 'the grip is not lit once the pointer has gone');
+    const grip = page.locator(`${HEAD} .opt-grip`);
+    // The grip fades over .12s; read it once the fade has landed, not after a guess (Issue #454).
+    assert.equal(await styleOf(grip, 'opacity', '0'), '0', 'the grip is not lit once the pointer has gone');
     // A keyboard reader still sees the handle: Tab onto the caret lights it.
     await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Tab');
-    await page.waitForTimeout(150);
-    const kb = await page.evaluate(() => ({
-      active: document.activeElement?.className ?? '',
-      lit: getComputedStyle(document.querySelector('[data-block="@values"] .block-head .opt-grip')).opacity,
-    }));
-    if (/doc-caret/.test(kb.active)) assert.equal(kb.lit, '1', 'a keyboard focus lights the grip');
+    if (/doc-caret/.test(await page.evaluate(() => document.activeElement?.className ?? ''))) {
+      assert.equal(await styleOf(grip, 'opacity', '1'), '1', 'a keyboard focus lights the grip');
+    }
     await page.close();
   });
 

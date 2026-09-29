@@ -16,7 +16,7 @@
    when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, styleOf } from './lib/browser.mjs';
 
 let jobs;
 const s = await launch('table view strip', (weave) => {
@@ -146,7 +146,7 @@ if (s) {
       assert.deepEqual(await acts.locator('button').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label'))), ['Rename A', 'Duplicate A', 'Hold to delete A']);
       await page.mouse.move(5, 5);
       await tab(page, 'A').locator('.view-name').focus();
-      assert.equal(await acts.evaluate((n) => getComputedStyle(n).opacity), '1', 'keyboard focus shows them too');
+      assert.equal(await styleOf(acts, 'opacity', '1'), '1', 'keyboard focus shows them too');
       await tab(page, 'A').locator('.view-name').click({ button: 'right' });
       await page.keyboard.press('Shift+F10');
       await page.waitForTimeout(200);
@@ -390,6 +390,16 @@ if (s) {
     try {
       assert.equal(await rows(page), 1);
       const before = weave.query(jobs).total;
+      /* open() leaves the View dropdown open, and the + New row runs past
+         the viewport's right edge, so the point Playwright clicks (the
+         middle of its visible part, x ~772) is inside the dropdown once it
+         has settled (right edge 774) and outside it only while its 120 ms
+         pop-in still draws it narrower (770). The case passed when the
+         click beat the pop-in, which a loaded machine stops it doing
+         (Issue #466). The dropdown is not what this case is about: close
+         it first. */
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.table-view-popover', { state: 'detached' });
       await page.click('.wv-grid tr.add-entity-row .add-entity-btn');
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 2);
       assert.equal(weave.query(jobs).total, before + 1);

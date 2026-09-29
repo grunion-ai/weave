@@ -1,7 +1,7 @@
 /* Feature #237: the approved toolbar keeps its controls on the eyebrow. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
 let table;
 const s = await launch('table toolbar', weave => {
   weave.createSpace({ name: 'Ops' });
@@ -144,7 +144,9 @@ if (s) {
       await page.click('.eye-btn');
       await owner.locator('.eye-row').click();
       await waitOwner(true);
-      assert.deepEqual(s.weave.tableView(table).views[0].fields, ['Name', 'Owner', 'Description'], 'reopening the picker keeps the parked position');
+      // The switch flips before its write lands; read the view once it has (Issue #454).
+      const fields = () => s.weave.tableView(table).views[0].fields;
+      assert.deepEqual(await eventually(fields, ['Name', 'Owner', 'Description']), ['Name', 'Owner', 'Description'], 'reopening the picker keeps the parked position');
       await owner.locator('.eye-row').click();
       await waitOwner(false);
       await owner.locator('.field-reorder-handle').focus();
@@ -154,7 +156,7 @@ if (s) {
       await page.waitForLoadState('networkidle');
       await owner.locator('.eye-row').click();
       await waitOwner(true);
-      assert.deepEqual(s.weave.tableView(table).views[0].fields, ['Owner', 'Name', 'Description'], 'an explicit hidden-field move overrides its parked position');
+      assert.deepEqual(await eventually(fields, ['Owner', 'Name', 'Description']), ['Owner', 'Name', 'Description'], 'an explicit hidden-field move overrides its parked position');
     } finally { await page.close(); }
   });
 
@@ -168,7 +170,8 @@ if (s) {
       await page.locator('.table-field-row[data-field="Owner"] .field-reorder-handle').dragTo(
         page.locator('.table-field-row[data-field="Name"]'), { targetPosition: { x: 10, y: 2 } });
       await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].map(h => h.textContent.trim()).slice(0, 3).join(',') === 'Owner,Name,Description');
-      assert.deepEqual(s.weave.tableView(table).views[0].fields, ['Owner', 'Name', 'Description']);
+      const want = ['Owner', 'Name', 'Description'];
+      assert.deepEqual(await eventually(() => s.weave.tableView(table).views[0].fields, want), want, 'the grip drag is saved into the view');
       await page.reload({ waitUntil: 'networkidle' });
       assert.deepEqual(await page.locator('.wv-grid .col-label').allTextContents(), ['Owner', 'Name', 'Description']);
     } finally { await page.close(); }

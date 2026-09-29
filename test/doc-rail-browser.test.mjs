@@ -62,7 +62,11 @@ if (s) {
     const calls = await page.evaluate(async () => {
       const real = window.setTimeout;
       let n = 0;
-      window.setTimeout = (fn, ms, ...rest) => { if (ms === 250) n++; return real(fn, ms, ...rest); };
+      /* Four document layers share the 250 ms debounce (rails, reference
+         chips, code colouring, heading folds), and code colouring polls on
+         it until highlight.js has loaded, which on a loaded machine is
+         still going when this runs (Issue #454). Count the rails' own. */
+      window.setTimeout = (fn, ms, ...rest) => { if (ms === 250 && /refreshDashRail/.test(String(fn))) n++; return real(fn, ms, ...rest); };
       try {
         for (let i = 0; i < 30; i++) window.dispatchEvent(new Event('resize'));
         const sync = n;

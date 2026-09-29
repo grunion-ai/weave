@@ -44,6 +44,9 @@ git fetch gerrit && jj rebase -d main@gerrit   # or: git pull gerrit main
    the gate links its shared install (`~/.gerrit/weave/pw/node_modules`) into the
    worktree and votes −1 if they skipped anyway. Run them locally the same way:
    `ln -s ~/.gerrit/weave/pw/node_modules node_modules` (gitignored) before `npm test`.
+   A browser case that is red in the gate and green alone is almost always a
+   read taken after a fixed sleep; `WEAVE_CPU_THROTTLE=4 node --test <file>`
+   slows each page fourfold and usually turns it red on a quiet machine.
 4. Working in parallel with other agents? You don't need to coordinate — Gerrit
    serializes at submit; rebase conflicts surface as a new patchset, not a broken tree.
 5. jj is the local safety net: after any suspected clobber, `jj op log` + `jj undo`.
