@@ -47,7 +47,8 @@ test('the Dockerfile pins a node 22.x-slim tag at or above 22.16 and runs the se
   assert.ok(Number(from[2]) >= 16, `node 22.${from[2]} is below 22.16, the floor package.json declares`);
   assert.match(DOCKERFILE, /^WORKDIR \/opt\/weave$/m);
   assert.match(DOCKERFILE, /^USER node$/m, 'the process runs as the image\'s unprivileged node user');
-  assert.match(DOCKERFILE, /^VOLUME (\/data|\["\/data"\])$/m);
+  assert.doesNotMatch(DOCKERFILE, /^VOLUME\b/m, 'no VOLUME instruction: Railway refuses a Dockerfile that carries one, and every manifest (railway.json, fly.toml, compose.yaml) mounts /data itself');
+  assert.match(DOCKERFILE, /^RUN mkdir -p \/data && chown node:node \/data$/m, '/data exists and is owned by the node user before a volume mounts over it');
   assert.match(DOCKERFILE, /^EXPOSE 4400$/m);
   assert.match(DOCKERFILE, /^HEALTHCHECK [\s\S]*?\/api\/health/m, 'the health check probes /api/health');
   assert.match(DOCKERFILE, /^CMD \["node", ?"bin\/weave\.js", ?"serve"\]$/m, 'CMD is the serve verb, port/host/data from the environment');

@@ -24,9 +24,10 @@ ENV PORT=4400 \
 # /data holds everything worth keeping: every workspace .db (yours plus the
 # weave docs workspace), files/ for attachments, and the keystore. Owned by
 # the unprivileged node user so a named volume inherits writable ownership.
+# Each platform mounts /data itself (Railway volume, Fly mount, compose named
+# volume); there is no VOLUME instruction because Railway refuses one.
 RUN mkdir -p /data && chown node:node /data
 USER node
-VOLUME /data
 
 EXPOSE 4400
 # The slim image has no curl; node's fetch is enough for a probe.

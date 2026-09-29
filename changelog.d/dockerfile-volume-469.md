@@ -1,0 +1,1 @@
+- **Railway builds the Dockerfile again** (Issue #469): Railway refused the image with `dockerfile invalid: docker VOLUME at Line 29 is not supported, use Railway Volumes`. The `Dockerfile` no longer carries `VOLUME /data`; Railway, Fly and `compose.yaml` each mount `/data` themselves, and the image still creates `/data` owned by the `node` user.
