@@ -6,7 +6,7 @@
    ES256), with its issuer, audience, expiry and nonce checked. What comes out
    is who the provider says is there: { issuer, subject, email,
    emailVerified }. Whether that person has an account is the engine's
-   question (accountForIdentity), and the session is door B's.
+   question (accountForIdentity), and the session is weave's own wv_session.
    ponytail: one provider. A second one is a list here and a button each on
    the sign-in page; the account row already keys identities by issuer. */
 import { createHash, randomBytes, webcrypto } from 'node:crypto';

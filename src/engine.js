@@ -541,9 +541,9 @@ export const ONTOLOGY = {
     },
     {
       key: 'account', name: 'Account', storedIn: 'state.meta.accounts',
-      definition: 'A named token holder with a role — admin, writer, or reader. Only the token hash is kept. Passkeys (public keys) live on the row as credentials[]; browser sessions and one-time invites are kept beside it as sha256 hashes (Feature #222 part 2). Provider identities (issuer, email, pinned subject) live on the row as identities[] (Feature #212).',
+      definition: 'A named token holder with a role — admin, writer, or reader. Only the token hash is kept. Browser sessions are kept beside it as sha256 hashes (Feature #222 part 2). A credentials[] array left on a row by the passkey door removed in Feature #243 is kept and ignored. Provider identities (issuer, email, pinned subject) live on the row as identities[] (Feature #212).',
       identity: 'uuid; name unique in the workspace',
-      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createInvite', 'consumeInvite', 'addCredential', 'removeCredential', 'createSession', 'verifySession', 'listSessions', 'revokeSession', 'linkIdentity', 'unlinkIdentity', 'accountForIdentity'],
+      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'listSessions', 'revokeSession', 'linkIdentity', 'unlinkIdentity', 'accountForIdentity'],
     },
     {
       key: 'key', name: 'Credential', storedIn: 'keystore',
@@ -3090,14 +3090,11 @@ export class Weave {
     return pub;
   }
 
-  /* Public keys may be listed; the token hash never is (Issue #230), and a
-     credential's JWK is a public key, so it stays too — trimmed to what a
-     list needs: id, label, alg, transports and the two dates. */
+  /* The token hash is never listed (Issue #230). Nor is a credentials[]
+     array a pre-#243 row may still carry: the passkey door that read it is
+     gone, and the data is left where it is, unread. */
   listAccounts() {
-    return Object.values(this.state.meta.accounts ?? {}).map(({ tokenHash, credentials, ...pub }) => ({
-      ...pub,
-      credentials: (credentials ?? []).map(({ publicKeyJwk, ...c }) => c),
-    }));
+    return Object.values(this.state.meta.accounts ?? {}).map(({ tokenHash, credentials, ...pub }) => pub);
   }
 
   deleteAccount(ref) {
@@ -3117,16 +3114,14 @@ export class Weave {
     return this.state.meta.requireAuth;
   }
 
-  // ---------------- passkeys, sessions, invites (Feature #222 part 2, Feature #208) ----------------
-  /* Door B. A passkey is a public key on the account row
-     (account.credentials[]); a session is a browser's standing with that
-     account, minted at sign-in and carried as a cookie; an invite is a
-     one-time, short-lived door for registering the first passkey on a row.
-     Sessions and invites are stored as sha256 of their token only — the
-     raw token is handed out exactly once, like a wv_ token. Neither leaves
-     through exportJSON. */
+  // ---------------- sessions (Feature #222 part 2, Feature #208) ----------------
+  /* A session is a browser's standing with an account, minted at sign-in
+     (the provider door, Feature #212) and carried as the wv_session cookie.
+     Sessions are stored as sha256 of their token only — the raw token is
+     handed out exactly once, like a wv_ token — and never leave through
+     exportJSON. The passkey door that introduced them, with its invites and
+     credentials, was removed in Feature #243. */
   static SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-  static INVITE_TTL_MS = 15 * 60 * 1000;
 
   #account(ref) {
     const accounts = this.state.meta.accounts ?? {};
@@ -3136,83 +3131,6 @@ export class Weave {
   }
 
   #hash(token) { return createHash('sha256').update(String(token)).digest('hex'); }
-
-  createInvite(accountRef, { ttlMs = Weave.INVITE_TTL_MS } = {}) {
-    const a = this.#account(accountRef);
-    const invites = (this.state.meta.invites ??= {});
-    const now = Date.now();
-    for (const [h, inv] of Object.entries(invites)) if (Date.parse(inv.expiresAt) <= now) delete invites[h];
-    const token = randomBytes(24).toString('base64url');
-    const expiresAt = new Date(now + Math.max(1000, Number(ttlMs) || Weave.INVITE_TTL_MS)).toISOString();
-    invites[this.#hash(token)] = { accountId: a.id, expiresAt };
-    this.save();
-    this.#audit('invite-created', { name: a.name, expiresAt });
-    return { token, expiresAt, account: { id: a.id, name: a.name, role: a.role } };
-  }
-
-  /* The account an invite token names, or null when it is unknown or
-     expired. Consuming it is a separate step so a ceremony that fails
-     halfway leaves the invite usable until it expires. */
-  readInvite(token) {
-    if (!token) return null;
-    const inv = this.state.meta.invites?.[this.#hash(token)];
-    if (!inv || Date.parse(inv.expiresAt) <= Date.now()) return null;
-    const a = this.state.meta.accounts?.[inv.accountId];
-    if (!a) return null;
-    const { tokenHash, ...pub } = a;
-    return pub;
-  }
-
-  consumeInvite(token) {
-    const pub = this.readInvite(token);
-    if (!pub) throw new WeaveError('This invite link is not valid or has expired — ask for a new one (weave account invite <name>)', 'forbidden');
-    delete this.state.meta.invites[this.#hash(token)];
-    this.save();
-    this.#audit('invite-consumed', { name: pub.name });
-    return pub;
-  }
-
-  addCredential(accountRef, { id, publicKeyJwk, alg, counter = 0, transports = [], label = '' } = {}) {
-    const a = this.#account(accountRef);
-    if (!id || !publicKeyJwk || ![-7, -257].includes(alg)) throw new WeaveError('A credential needs an id, a public key and a supported alg', 'invalid');
-    for (const other of Object.values(this.state.meta.accounts)) {
-      if ((other.credentials ?? []).some((c) => c.id === id)) throw new WeaveError('This passkey is already registered', 'conflict');
-    }
-    const cred = { id, publicKeyJwk, alg, counter: Number(counter) || 0, transports, label: String(label ?? '').slice(0, 80), createdAt: nowISO(), lastUsedAt: null };
-    (a.credentials ??= []).push(cred);
-    this.save();
-    this.#audit('credential-added', { name: a.name, label: cred.label, alg });
-    return cred;
-  }
-
-  removeCredential(accountRef, credId) {
-    const a = this.#account(accountRef);
-    const i = (a.credentials ?? []).findIndex((c) => c.id === credId || c.id.startsWith(credId));
-    if (i < 0) throw new WeaveError(`Credential '${credId}' not found on '${a.name}'`, 'not-found');
-    const [cred] = a.credentials.splice(i, 1);
-    this.save();
-    this.#audit('credential-removed', { name: a.name, label: cred.label });
-    return { id: cred.id, removed: true, remaining: a.credentials.length };
-  }
-
-  /* The auth path: which account holds a credential id, for the assertion
-     step; and the counter/lastUsedAt write once an assertion verified. */
-  credentialById(credId) {
-    for (const a of Object.values(this.state.meta.accounts ?? {})) {
-      const cred = (a.credentials ?? []).find((c) => c.id === credId);
-      if (cred) { const { tokenHash, ...pub } = a; return { account: pub, credential: cred }; }
-    }
-    return null;
-  }
-
-  useCredential(credId, { counter }) {
-    const hit = this.credentialById(credId);
-    if (!hit) throw new WeaveError('Unknown credential', 'not-found');
-    hit.credential.counter = Number(counter) || 0;
-    hit.credential.lastUsedAt = nowISO();
-    this.save();
-    return hit.credential;
-  }
 
   createSession(accountRef, { ua = '' } = {}) {
     const a = this.#account(accountRef);
@@ -7506,8 +7424,9 @@ export class Weave {
     delete out.fileBlobs;
     for (const a of Object.values(out.meta.accounts ?? {})) delete a.tokenHash;
     for (const v of Object.values(out.meta.views ?? {})) delete v.shareToken;
-    // Sessions and invites are standing (Feature #222 part 2): a dump is
-    // interchange, and a browser signed in here is not signed in there.
+    // Sessions are standing (Feature #222 part 2): a dump is interchange,
+    // and a browser signed in here is not signed in there. A pre-#243
+    // workspace may still hold invite hashes; they stay out too.
     delete out.meta.sessions;
     delete out.meta.invites;
     if (!withBlobs) return out;
@@ -7536,8 +7455,8 @@ export class Weave {
   }
 
   /* The export strips the secrets (Issue #230), so a dump imported back into
-     the workspace it came from would wipe every token hash, share token,
-     session and invite, and lock the admin who ran it out. What the dump
+     the workspace it came from would wipe every token hash, share token
+     and session, and lock the admin who ran it out. What the dump
      leaves out, the store keeps: matched by account and view id, and only
      for the accounts and views the dump still names. A secret the dump does
      carry wins. A dump from elsewhere matches no ids and keeps nothing. */
@@ -7551,7 +7470,7 @@ export class Weave {
       const was = prior.views?.[v.id];
       if (was?.shareToken && v.shareToken === undefined) v.shareToken = was.shareToken;
     }
-    for (const kind of ['sessions', 'invites']) {
+    for (const kind of ['sessions']) {
       if (meta[kind] !== undefined || !prior[kind]) continue;
       const kept = Object.entries(prior[kind]).filter(([, s]) => meta.accounts?.[s.accountId]);
       if (kept.length) meta[kind] = Object.fromEntries(kept);

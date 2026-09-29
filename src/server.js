@@ -137,7 +137,7 @@ export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache =
    is refused when the browser says it came from another site: an Origin that
    is not this request's own origin, WEAVE_ORIGIN or a loopback origin on
    this port, or Sec-Fetch-Site: cross-site. No Origin (curl, the CLI, agents)
-   is served. The WebAuthn routes keep their own origin check on top. */
+   is served. */
 const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export const requestIsHttps = (req, trustProxy) => !!req.socket?.encrypted
   || (trustProxy && String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim().toLowerCase() === 'https');
@@ -346,9 +346,10 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
   };
 }
 
-/* The public origin passkeys and the session cookie are bound to (Feature
-   #222 part 2): WEAVE_ORIGIN, e.g. https://weave.example.com. Unset means
-   loopback — http://localhost:<port>, RP ID `localhost`. WEAVE_TRUST_PROXY=1
+/* The public origin the sign-in provider redirects back to and the session
+   cookie is bound to (Feature #222 part 2, Feature #212): WEAVE_ORIGIN, e.g.
+   https://weave.example.com. Unset means loopback — http://localhost:<port>.
+   WEAVE_TRUST_PROXY=1
    makes the rate limiter read X-Forwarded-For (Railway, Fly and every other
    platform proxy put the client there); off, the socket address is the
    client, so a proxy would rate-limit itself. */

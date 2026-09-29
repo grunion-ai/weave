@@ -391,10 +391,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_accounts',
-    description: 'Agent and human accounts. action: list | create (name, role: reader|writer|admin — the token is returned once) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | invite (account — a one-time passkey registration token, 15 minutes, returned once; the URL is <origin>/auth?invite=<token>) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | remove-credential (account, credential id). Passkeys are registered in a browser; the invite is how an agent hands one to a person. | link-identity (account, email, issuer — the email an OpenID Connect provider will vouch for; signing in at the provider provisions nobody, so an account opens to a provider identity only after this; issuer defaults to WEAVE_OIDC_ISSUER) | unlink-identity (account, email).',
+    description: 'Agent and human accounts. action: list | create (name, role: reader|writer|admin — the token is returned once) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, email, issuer — the email an OpenID Connect provider will vouch for; signing in at the provider provisions nobody, so an account opens to a provider identity only after this; issuer defaults to WEAVE_OIDC_ISSUER) | unlink-identity (account, email).',
     inputSchema: {
       type: 'object',
-      properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, credential: { type: 'string' }, ttlMs: { type: 'number' }, email: { type: 'string' }, issuer: { type: 'string' } },
+      properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, email: { type: 'string' }, issuer: { type: 'string' } },
       required: ['action'],
     },
   },
@@ -616,14 +616,12 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         case 'create': return weave.createAccount({ name: args.name, role: args.role ?? 'writer' });
         case 'delete': return weave.deleteAccount(args.account);
         case 'require-auth': return weave.setRequireAuth(Boolean(args.on));
-        case 'invite': return weave.createInvite(args.account ?? args.name, { ttlMs: args.ttlMs });
         case 'sessions': return { sessions: weave.listSessions(args.account ?? args.name) };
         case 'revoke-session': return weave.revokeSession(args.account ?? args.name, { id: args.session ?? null, all: Boolean(args.all) });
-        case 'remove-credential': return weave.removeCredential(args.account ?? args.name, args.credential);
         // Door C (Feature #212): the issuer defaults to the configured provider.
         case 'link-identity': return weave.linkIdentity(args.account ?? args.name, { issuer: args.issuer ?? process.env.WEAVE_OIDC_ISSUER, email: args.email });
         case 'unlink-identity': return weave.unlinkIdentity(args.account ?? args.name, { issuer: args.issuer ?? null, email: args.email });
-        default: throw new Error(`Unknown accounts action '${args.action}' (list, create, delete, require-auth, invite, sessions, revoke-session, remove-credential, link-identity, unlink-identity)`);
+        default: throw new Error(`Unknown accounts action '${args.action}' (list, create, delete, require-auth, sessions, revoke-session, link-identity, unlink-identity)`);
       }
     case 'weave_keys':
       switch (args.action) {

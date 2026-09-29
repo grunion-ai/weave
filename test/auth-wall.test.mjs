@@ -96,17 +96,17 @@ async function serve() {
 
 /* The doors: /api/health, GET /view/<share token> (Feature #17), the passcode
    applet under /t (its own door), the static assets the sign-in page needs
-   (CSS, JS, fonts and images, never .html), and door B itself (Feature #222
-   part 2): the /auth page and the ceremonies under /api/auth/ — options,
-   verify and logout answer an anonymous caller because they are how a caller
-   stops being anonymous. /api/auth/me and the self-service session and
-   credential verbs are the account's own and stay 401 to nobody. Door C
-   (Feature #212) is the same kind of door: start and callback under
-   /api/auth/oidc/ answer nobody with a redirect, a refusal page, or a 404
-   when no provider is configured — never the wall. */
+   (CSS, JS, fonts and images, never .html), and the sign-in routes (Feature
+   #222 part 2): the /auth page and logout answer an anonymous caller.
+   /api/auth/me and the self-service session verbs are the account's own and
+   stay 401 to nobody. Door C (Feature #212) is the same kind of door: start
+   and callback under /api/auth/oidc/ answer nobody with a redirect, a refusal
+   page, or a 404 when no provider is configured — never the wall. The
+   passkey ceremonies under /api/auth/register/ and /api/auth/login/ were
+   removed (Feature #243). */
 const OPEN = (method, path) => path === '/api/health' || path === '/auth'
   || /^\/api\/auth\/oidc\/(start|callback)$/.test(path)
-  || /^\/api\/auth\/login\/(options|verify)$/.test(path) || path === '/api/auth/logout'
+  || path === '/api/auth/logout'
   || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || path.startsWith('/t/')
     || /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path)));
 
@@ -118,13 +118,6 @@ test('with requireAuth on, every route the dispatcher serves refuses an anonymou
       const res = await call(method, path);
       if (OPEN(method, path)) {
         assert.notEqual(res.status, 401, `${method} ${path} is a door and must not hit the wall`);
-        continue;
-      }
-      // Registration is a door with its own lock: an invite or a session.
-      // Anonymous with neither, the ceremony refuses — not the wall.
-      if (/^\/api\/auth\/register\//.test(path)) {
-        assert.ok([400, 401].includes(res.status), `${path} answered ${res.status}`);
-        assert.doesNotMatch((await res.json()).error, /requires authentication/, `${path} is refused by the ceremony, not the wall`);
         continue;
       }
       assert.equal(res.status, 401, `${method} ${path} answered ${res.status} to nobody`);
@@ -148,7 +141,7 @@ test('with requireAuth on, every route the dispatcher serves refuses an anonymou
     assert.equal((await call('GET', '/t')).status, 200);
     assert.equal((await call('GET', `${ws}/api/health`)).status, 200);
     for (const p of ['/app.js', '/style.css']) assert.equal((await call('GET', p)).status, 200, `${p} is an asset the sign-in page needs`);
-    // Door B: the sign-in page is served under both prefixes, and the HTML 401 links to it.
+    // The sign-in page is served under both prefixes, and the HTML 401 links to it.
     assert.equal((await call('GET', '/auth')).status, 200);
     assert.equal((await call('GET', `${ws}/auth`)).status, 200);
     assert.match(await (await call('GET', `/e/${task.id}/doc.html`)).text(), /href="\/auth\?next=/);
@@ -240,7 +233,7 @@ test('Issue #230 (b): import is a schema write — an admin only', async () => {
 
 /* Issue #230 (c): the redacted dump, imported back into the workspace it came
    from, must not lock that workspace out of itself. The export strips the
-   token hashes, the share tokens, the sessions and the invites, and a plain
+   token hashes, the share tokens and the sessions, and a plain
    replace then wiped every one of them here too: the admin who ran the import
    was answered 401 on the next call and every share link died. What the dump
    does not carry, import keeps from what is already stored, matched by
@@ -251,7 +244,6 @@ test('Issue #230 (c): an export imported back into the same workspace keeps its 
   try {
     const eye = w.listAccounts().find((a) => a.name === 'eye');
     const session = w.createSession('root').token;
-    const invite = w.createInvite('eye').token;
     const dump = await (await call('GET', '/api/export', { token: admin })).json();
     const text = JSON.stringify(dump);
     for (const re of [/\bwv_[\w-]{16,}/, /\bwvv_[\w-]{16,}/, /\bwvs_[\w-]{16,}/, /tokenHash/, /shareToken/]) {
@@ -263,7 +255,6 @@ test('Issue #230 (c): an export imported back into the same workspace keeps its 
     assert.equal(w.viewByShareToken(share)?.id, view.id, 'the share link still opens its view');
     assert.equal((await call('GET', `/view/${share}`)).status, 200);
     assert.ok(w.verifySession(session), 'a browser signed in before the import stays signed in');
-    assert.equal(w.readInvite(invite)?.id, eye.id, 'an open invite still works');
     // A second round trip is the same as the first: nothing decays.
     await call('POST', '/api/import', { token: admin, body: await (await call('GET', '/api/export', { token: admin })).json() });
     assert.ok(w.verifyToken(admin) && w.viewByShareToken(share));
@@ -274,7 +265,6 @@ test('Issue #230 (c): an export imported back into the same workspace keeps its 
     delete trimmed.meta.views[view.id];
     assert.equal((await call('POST', '/api/import', { token: admin, body: trimmed })).status, 200);
     assert.equal(w.verifyToken(reader), null, 'a dropped account does not come back through its old token');
-    assert.equal(w.readInvite(invite), null, "a dropped account's invite goes with it");
     assert.equal(w.viewByShareToken(share), null, 'a dropped view does not keep its share link');
     assert.ok(w.verifyToken(admin), 'the accounts the dump kept still verify');
 

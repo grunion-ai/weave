@@ -236,7 +236,7 @@ workspace. Every MCP tool has a command:
 | `weave doc-revisions <ref> [--field F] [--seq n]` | `weave doc-restore <ref> --seq n [--field F]` | |
 | `weave audit` | `weave view` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
 | `weave workspace` | `weave workspace logo` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
-| `weave audit` | `weave account invite` / `weave account sessions` / `weave account revoke-session` / `weave account remove-credential` / `weave account link` / `weave account unlink` | |
+| `weave audit` | `weave account sessions` / `weave account revoke-session` / `weave account link` / `weave account unlink` | |
 
 Two operator verbs work on the whole data directory rather than one workspace
 and have no MCP tool on purpose — an agent holding a token must not be able to
@@ -295,19 +295,17 @@ Notes that save round trips:
 - **Deletes are recoverable.** `weave_delete_entity` is a soft delete by
   default; `weave_trash` lists what is recoverable and `weave_restore_entity`
   brings it back. Schema deletes are not: a dropped column takes its values.
-- **People sign in with a passkey; agents keep the token.** With
-  `requireAuth` on, a browser needs a `wv_session` cookie (minted by the
-  passkey ceremony at `/auth`) or a Bearer token; the API and MCP keep using
-  `wv_` tokens, and a Bearer token wins when both are present. An agent
-  cannot register a passkey — that is a browser act — but it can hand a person
-  the door: `weave_accounts` `action: invite` (or `weave account invite <name>`)
-  returns a one-time token, and `<origin>/auth?invite=<token>` registers the
-  passkey within 15 minutes. `sessions`, `revoke-session` and
-  `remove-credential` are the lost-device verbs. `WEAVE_ORIGIN` names the
-  origin passkeys bind to on a hosted instance; localhost needs nothing.
+- **People sign in through a provider; agents keep the token.** With
+  `requireAuth` on, a browser needs a `wv_session` cookie (minted when a
+  linked person signs in at the provider from `/auth`) or a Bearer token; the
+  API and MCP keep using `wv_` tokens, and a Bearer token wins when both are
+  present. `sessions` and `revoke-session` are the lost-device verbs.
+  `WEAVE_ORIGIN` names the origin the provider sends people back to on a
+  hosted instance; localhost needs nothing. The built-in passkey door, with
+  its invites and `remove-credential`, was removed after 0.4.52 (Feature #243).
 - **A provider sign-in opens only a linked account.** With `WEAVE_OIDC_ISSUER`
-  and `WEAVE_OIDC_CLIENT_ID` set, `/auth` also offers one OpenID Connect
-  provider. Signing in there creates no account: `weave_accounts`
+  and `WEAVE_OIDC_CLIENT_ID` set, `/auth` sends a signed-out browser straight
+  to one OpenID Connect provider (`?next` kept, no page in between). Signing in there creates no account: `weave_accounts`
   `action: link-identity` (or `weave account link <name> --email <address>`,
   or `POST /api/accounts/<name>/identities`) names the email the provider
   will vouch for, the first verified sign-in pins the provider's subject to

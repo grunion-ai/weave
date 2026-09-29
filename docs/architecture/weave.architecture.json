@@ -133,7 +133,7 @@
       "id": "auth",
       "type": "security",
       "label": "Sign-in",
-      "sublabel": "WebAuthn passkeys",
+      "sublabel": "provider + session",
       "pos": [
         470,
         60
@@ -143,10 +143,6 @@
         60
       ],
       "sources": [
-        {
-          "path": "src/webauthn.js",
-          "label": "passkey verify"
-        },
         {
           "path": "src/auth-page.js",
           "line": 176,

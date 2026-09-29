@@ -149,7 +149,9 @@ test('routes: start sends the browser to the provider with state, nonce and a PK
     assert.equal(q.get('code_challenge_method'), 'S256');
     for (const k of ['state', 'nonce', 'code_challenge']) assert.ok(q.get(k)?.length >= 32, k);
     assert.notEqual(q.get('state'), q.get('nonce'));
-    assert.match(await (await s.call('GET', '/auth')).text(), /Sign in with Clerk/);
+    // Signed out, /auth goes straight here; the page is for after sign-out.
+    assert.equal((await s.call('GET', '/auth')).headers.get('location'), '/api/auth/oidc/start');
+    assert.match(await (await s.call('GET', '/auth?signed-out=1')).text(), /Sign in with Clerk/);
   } finally { s.stop(); }
 });
 

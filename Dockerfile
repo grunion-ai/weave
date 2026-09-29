@@ -12,7 +12,7 @@ COPY --chown=node:node . .
 #   WEAVE_DATA                 the workspace .db; files/ + weave.db beside it
 #   WEAVE_KEYSTORE             the secrets file; set here so it lives on the volume
 #   WEAVE_KEYSTORE_PASSPHRASE  derives the keystore key; no key file on disk (unset)
-#   WEAVE_ORIGIN               public origin passkeys + the session cookie bind to (unset = loopback)
+#   WEAVE_ORIGIN               public origin sign-ins return to + the session cookie binds to (unset = loopback)
 #   WEAVE_TRUST_PROXY          1 behind a platform proxy: rate limits read X-Forwarded-For (unset)
 #   WEAVE_OIDC_ISSUER          an OpenID Connect provider to sign in with  (unset)
 #   WEAVE_OIDC_CLIENT_ID       the client id that provider issued; set with the issuer (unset)

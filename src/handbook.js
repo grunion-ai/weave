@@ -1182,7 +1182,7 @@ weave audit --limit 50
 
 Three roles: \`admin\`, \`writer\`, \`reader\`. Tokens are \`wv_\` values hashed at rest, and every mutation lands in a durable audit log with the actor that made it — a person, the CLI, or a named MCP client.
 
-\`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\`, a view's share link, the task applet, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either gets a page that links to the sign-in, an API call gets a 401. People sign in with a passkey — the **Door B: passkeys** guide — and agents keep the token. A reader may read any page and write at none; a writer writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an admin token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
+\`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\`, a view's share link, the task applet, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either gets a page that links to the sign-in, an API call gets a 401. People sign in through an identity provider (the **Door C: sign in with a provider** guide) and agents keep the token. A reader may read any page and write at none; a writer writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an admin token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
 
 Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard deletes and file deletions are not. In the app, \`⌘Z\` (Ctrl+Z) steps back the last change: a selection-bar trash comes back whole when nothing was written after it. A text box, an open cell and a document keep \`⌘Z\` as their own text undo. There is no redo.
 
@@ -1400,23 +1400,24 @@ A workspace that minted its own Workspace space keeps it as a **tombstone**: the
     order: 13,
     doc: `# Self-host weave: choose your door
 
-weave on a laptop binds \`127.0.0.1\` and needs no login. weave on a server needs a door: something that decides who gets to the port. The rule this page and the ones after it follow: **the authentication surface is the operator's choice, and no surface depends on another.** Three doors, each a complete path on its own page, each ending with a check you can run.
+weave on a laptop binds \`127.0.0.1\` and needs no login. weave on a server needs a door: something that decides who gets to the port. The rule this page and the ones after it follow: **the authentication surface is the operator's choice.** Two doors, each a complete path on its own page, each ending with a check you can run.
 
-\`requireAuth\` is the switch inside weave (\`weave workspace require-auth\`). With requireAuth on, every page and API call needs a token: a \`wv_\` bearer for agents, a session for people once door B lands. Off, whoever reaches the port is an admin. A door in front of the port is what makes "reaches the port" mean something.
+\`requireAuth\` is the switch inside weave (\`weave workspace require-auth\`). With requireAuth on, every page and API call needs a token: a \`wv_\` bearer for agents, a session for people who sign in through the provider (door C). Off, whoever reaches the port is an admin. A door in front of the port is what makes "reaches the port" mean something.
 
-## The three doors
+## The two doors
 
 | Door | Runs where | Code in weave | Phone browser | Agents over HTTP | Share links | Portability |
 | --- | --- | --- | --- | --- | --- | --- |
 | **A. Edge gate**: Cloudflare Access, Tailscale, Caddy \`basic_auth\`, oauth2-proxy, Authelia | In front of the process | None | Yes (Tailscale needs its app) | Service token or tailnet member | Only behind a public gate | Swap the proxy; weave untouched |
-| **B. Built-in passkeys + scoped tokens** | Inside weave | Ships with weave, zero dependencies | Yes: Face ID, Touch ID, Android | \`wv_\` bearer tokens | Share grants | Any host, any DNS, no vendor |
-| **C. Identity provider over OIDC**: GitHub, Google; Keycloak, Authentik; Clerk, Auth0 | Inside weave, identity outside | On top of B's sessions | Yes | Same tokens as B | Same as B | One client id per provider |
+| **C. Identity provider over OIDC**: Clerk, Auth0, Google; Keycloak, Authentik | Inside weave, identity outside | Ships with weave, zero dependencies | Yes | \`wv_\` bearer tokens | Share grants | One client id per provider |
 
-**Door A** is the fastest way to a private instance today and costs nothing: every gate on the list has a free tier, and Cloudflare Access is free to fifty users. The gate owns identity; weave never learns who came in. Stack it in front of B or C whenever you like; neither side needs to know. The **Door A: an edge gate** guide has one config block per gate.
+**Door A** is the fastest way to a private instance today and costs nothing: every gate on the list has a free tier, and Cloudflare Access is free to fifty users. The gate owns identity; weave never learns who came in. Stack it in front of C whenever you like; neither side needs to know. The **Door A: an edge gate** guide has one config block per gate.
 
-**Door B** is the door a fresh \`git clone\` gets: passkeys for people, typed and scoped \`wv_\` tokens for agents, no account at a third party. It is the default the guides lead with: the **Door B: passkeys** page is the invite, the second device, the lost-phone day, and \`WEAVE_ORIGIN\`.
+**Door C** signs people in with one OpenID Connect provider: Clerk, Auth0, Google, or a self-hosted identity server. The provider proves who is there; weave keeps the account, the role, the browser session and the \`wv_\` tokens agents use. The **Door C: sign in with a provider** page covers the provider's settings, the four variables, linking an account, sessions and \`WEAVE_ORIGIN\`.
 
-**Door C** adds a provider to door B's session: sign in with GitHub, Google, or a self-hosted identity server. It is "add a provider", never a second auth system: the **Door C: sign in with a provider** page covers the provider's settings, the four variables and linking an account.
+## Door B was removed
+
+weave used to ship a third door, B: passkeys built into weave, registered from a one-time invite link. It was removed in the 0.4 series, in the first release after 0.4.52 (Feature #243). The CLI verbs \`weave account invite\` and \`weave account remove-credential\` and the \`/api/auth/register/*\` and \`/api/auth/login/*\` routes went with it. A passkey already stored on an account row stays in the data and is ignored. To keep a person signing in, link their account to a provider identity before you upgrade (\`weave account link <name> --email <address>\`).
 
 ## Tailscale, stated plainly
 
@@ -1438,7 +1439,7 @@ Every deploy target (Railway, Fly.io, Render, a VPS, Docker on a NAS) takes the 
     order: 14,
     doc: `# Door A: an edge gate
 
-A gate in front of the port. weave keeps binding \`127.0.0.1\` (or the container's \`0.0.0.0\` behind a platform that only routes the custom domain); the gate is what the internet talks to. Five gates, one config block each, one check each. All five stack in front of door B or C without either side knowing.
+A gate in front of the port. weave keeps binding \`127.0.0.1\` (or the container's \`0.0.0.0\` behind a platform that only routes the custom domain); the gate is what the internet talks to. Five gates, one config block each, one check each. All five stack in front of door C without either side knowing.
 
 With a gate in place, turn \`requireAuth\` on as well when agents reach the instance over HTTP: with requireAuth on, every page and API call needs a token, so a gate that admits a person still does not hand an agent anonymous write.
 
@@ -1542,85 +1543,12 @@ Three checks, whichever gate you chose:
 3. A row created through the gate is there after the gate is restarted: the gate holds sessions, weave holds data, and neither borrowed the other's.`,
   },
   {
-    name: "Door B: passkeys",
-    audience: 'Human',
-    order: 15,
-    doc: `# Door B: passkeys
-
-A hosted weave has three front doors, and you pick one: an edge gate in front of the process (Cloudflare Access, Tailscale, Caddy), a provider over OIDC (door C), or this one — passkeys built into weave, no account at a third party, nothing to install. Door B is what a fresh clone gets, and it stacks behind an edge gate without either knowing.
-
-A passkey is a public key on the account row. Your phone or laptop keeps the private half and signs a challenge when you sign in — Face ID, Touch ID, Windows Hello, or a security key. Nothing to type, nothing to reset, nothing for a phishing page to collect: the key only ever signs for the origin it was made on.
-
-## Invite: the first passkey
-
-A CLI holder is the root of trust. There is no "first visitor wins": every passkey starts from an invite minted on the machine that holds the data.
-
-\`\`\`bash
-weave account invite kyle --role admin
-# → { "account": {…}, "expiresAt": "…", "url": "https://weave.example.com/auth?invite=…" }
-\`\`\`
-
-The account is created if it does not exist (admin unless you say \`--role writer\` or \`reader\`), and the URL is good once, for 15 minutes (\`--ttl 1h\` to widen). Open it on the device that should hold the passkey, give the device a name, and approve the prompt. You land in the workspace signed in.
-
-The same verb works from MCP (\`weave_accounts\`, \`action: invite\`) so an agent can hand a person the door.
-
-## Register a second device on day one
-
-A passkey lives on one device (or one platform keychain). Before you rely on it, add a second: open \`/auth\` while signed in, choose **Add this device**, and approve. Two devices, two passkeys, one account. A phone and a laptop is the usual pair; a security key in a drawer is the careful third.
-
-## Sign in
-
-\`/auth\` has one button. The credential is discoverable — the browser knows which passkey belongs to this site — so there is no username step. After the prompt the page goes to wherever you were headed (\`?next=\`), or the workspace root.
-
-A session lasts 30 days from its last use and is carried in an \`HttpOnly\` cookie named \`wv_session\`; only its hash is stored. Sign out from \`/auth\`, or end other sessions from the same page.
-
-## The lost-device day
-
-Your phone is gone. From any terminal that holds the data:
-
-\`\`\`bash
-weave account sessions kyle                     # what is signed in, and from where
-weave account revoke-session kyle --all         # every session ends now
-weave account list                              # the credentials[] on the row, with ids
-weave account remove-credential kyle <credId>   # the lost passkey no longer signs in
-weave account invite kyle                       # a fresh door for the replacement device
-\`\`\`
-
-The second device you registered on day one skips the last step. If you never did, the invite is the way back — which is why the CLI, not the browser, is the root of trust.
-
-Every step lands in the audit log: \`invite-created\`, \`invite-consumed\`, \`credential-added\`, \`credential-removed\`, \`session-created\`, \`session-revoked\`.
-
-## \`WEAVE_ORIGIN\` and \`WEAVE_TRUST_PROXY\`
-
-A passkey is bound to an origin, and the server has to know its own. Set \`WEAVE_ORIGIN\` to the URL browsers use — \`https://weave.example.com\`, scheme and host, no path. It is required whenever \`requireAuth\` is on and the host is not loopback; \`weave serve\` refuses to start without it rather than let every sign-in fail with an origin mismatch. The RP ID is its hostname, and the cookie is \`Secure\` when it is https.
-
-On localhost nothing is needed: the origin is \`http://localhost:<port>\` and the RP ID \`localhost\`. Open the dev instance as \`localhost\`, not \`127.0.0.1\` — a passkey cannot be bound to an IP address, and the sign-in page moves you over if you forget.
-
-Behind Railway, Fly, Render or any reverse proxy, set \`WEAVE_TRUST_PROXY=1\` so the rate limiter reads the client address from \`X-Forwarded-For\`; without it every visitor shares the proxy's address and ten sign-in attempts a minute would lock out the building. Leave it unset when the process faces the network itself, or a client could forge the header.
-
-The limits: 10 \`options\` calls a minute per address, 5 failed verifications a minute. Enough to blunt guessing, cheap enough to keep.
-
-## What still works with a \`wv_\` token
-
-Everything. The CLI, MCP over stdio and over \`/api/mcp\`, and any script with a Bearer token are untouched; a Bearer token wins when a request carries both. Passkeys never lock the operator out: an admin token is the rescue path, and \`weave account\` runs on the data file without a server.
-
-Share links (\`/view/<token>\`) and the task applet keep their own doors.
-
-## How you know it worked
-
-1. \`weave workspace require-auth\`, then open the workspace in a browser: the page says it requires authentication and links to **Sign in with a passkey**.
-2. \`weave account invite you\`, open the URL on your phone, approve: you land in the workspace, and \`weave account list\` shows one entry in \`credentials[]\`.
-3. Open \`/auth\` on the laptop while signed in, **Add this device**: two entries.
-4. Sign out on the laptop, sign in again with the passkey: no username, one prompt.
-5. \`weave account revoke-session you --all\`: the next page load on the phone is the sign-in page.`,
-  },
-  {
     name: "Door C: sign in with a provider",
     audience: 'Human',
     order: 15.5,
     doc: `# Door C: sign in with a provider
 
-Door C adds one OpenID Connect (OIDC) provider to door B's session. The provider has to serve \`/.well-known/openid-configuration\`; Clerk, Auth0, Keycloak, Authentik and Google are examples. The session cookie, the account row and sign-out are door B's. Agents keep using \`wv_\` bearer tokens, and passkeys keep working beside the provider.
+Door C signs people in with one OpenID Connect (OIDC) provider. The provider has to serve \`/.well-known/openid-configuration\`; Clerk, Auth0, Keycloak, Authentik and Google are examples. The provider proves who is there; weave keeps the account row, the browser session and sign-out. Agents keep using \`wv_\` bearer tokens.
 
 ## Accounts and identities
 
@@ -1688,7 +1616,26 @@ WEAVE_OIDC_NAME=Clerk
 
 ## Sign-in page
 
-\`/auth\` shows a \`Sign in with <name>\` link under the passkey button. After you sign in at the provider, you land on the page you were heading to. A refused sign-in gets a page that states the reason and links back to \`/auth\`.
+A signed-out visit to \`/auth\` goes straight to the provider, with no page in between, and keeps \`?next\`. After you sign in at the provider, you land on the page you were heading to. Signed in, \`/auth\` shows your sessions and a sign-out button. Signing out lands on \`/auth?signed-out=1\`, which shows a \`Sign in with <name>\` link instead of sending you back to the provider, where its own session would sign you straight back in. A refused sign-in gets a page that states the reason and links back to \`/auth\`.
+
+## Sessions and the lost-device day
+
+A session lasts 30 days from its last use and is carried in an \`HttpOnly\` cookie named \`wv_session\`; only its hash is stored. Sign out from \`/auth\`, or end your other sessions from the same page.
+
+When a device is lost, end its sessions from any terminal that holds the data, then deal with the provider account at the provider:
+
+\`\`\`bash
+weave account sessions kyle                     # what is signed in, and from where
+weave account revoke-session kyle --all         # every session ends now
+\`\`\`
+
+Every step lands in the audit log: \`identity-linked\`, \`identity-pinned\`, \`identity-unlinked\`, \`session-created\`, \`session-revoked\`. An admin \`wv_\` token is the rescue path, and \`weave account\` runs on the data file without a server.
+
+## \`WEAVE_ORIGIN\` and \`WEAVE_TRUST_PROXY\`
+
+The provider sends the browser back to \`<WEAVE_ORIGIN>/api/auth/oidc/callback\`, so the server has to know its own public origin. Set \`WEAVE_ORIGIN\` to the URL browsers use: \`https://weave.example.com\`, scheme and host, no path. It is required whenever \`requireAuth\` is on and the host is not loopback; \`weave serve\` refuses to start without it. The session cookie is \`Secure\` when it is https. On localhost nothing is needed: the origin is \`http://localhost:<port>\`, and the sign-in page moves an address typed as \`127.0.0.1\` there.
+
+Behind Railway, Fly, Render or any reverse proxy, set \`WEAVE_TRUST_PROXY=1\` so the rate limiter reads the client address from \`X-Forwarded-For\`. Without it every visitor shares the proxy's address. Leave it unset when the process faces the network itself, or a client could forge the header. The limits: 10 sign-in starts a minute per address, 5 failed callbacks a minute.
 
 ## Sign-in verification
 
@@ -1700,10 +1647,11 @@ weave supports one provider per process and creates no account at sign-in. Signi
 
 ## How you know it worked
 
-1. Open \`/auth\` in a private window: the \`Sign in with <name>\` link sits under the passkey button.
+1. Open \`/auth\` in a private window: the browser goes straight to the provider's sign-in.
 2. Sign in at the provider with the linked email: you land in the workspace.
 3. Sign in with an email that has no linked account: weave answers \`403\` with a page reading **No account for this identity**.
-4. Run \`weave account list\` after the first sign-in: the account's entry in \`identities[]\` has its \`subject\` filled in.`,
+4. Run \`weave account list\` after the first sign-in: the account's entry in \`identities[]\` has its \`subject\` filled in.
+5. \`weave account revoke-session <name> --all\`: the next page load in that browser is the sign-in page.`,
   },
   {
     name: "Deploy: Railway",
@@ -1732,7 +1680,7 @@ WEAVE_DATA=/data/workspace.db
 WEAVE_KEYSTORE_PASSPHRASE=<a long random string, kept in your password manager>
 \`\`\`
 
-\`WEAVE_KEYSTORE_PASSPHRASE\` is what keeps the keystore key off the volume; lose it and the secrets in the keystore are unreadable (the data is untouched). \`WEAVE_ORIGIN=https://weave.example.com\` (the custom domain from step 4) and \`WEAVE_TRUST_PROXY=1\` join the list once \`requireAuth\` is on and you use **Door B: passkeys**; \`WEAVE_BACKUP_DEST\` (with the bucket credentials) switches on the nightly backup — the **Backup and restore** guide. The **Environment reference** guide has every variable and what breaks when each is wrong.
+\`WEAVE_KEYSTORE_PASSPHRASE\` is what keeps the keystore key off the volume; lose it and the secrets in the keystore are unreadable (the data is untouched). \`WEAVE_ORIGIN=https://weave.example.com\` (the custom domain from step 4) and \`WEAVE_TRUST_PROXY=1\` join the list once \`requireAuth\` is on and you use **Door C: sign in with a provider**; \`WEAVE_BACKUP_DEST\` (with the bucket credentials) switches on the nightly backup — the **Backup and restore** guide. The **Environment reference** guide has every variable and what breaks when each is wrong.
 
 ## 4. Custom domain
 
@@ -1744,7 +1692,7 @@ Service → **Settings → Networking → Custom Domain** → \`weave.example.co
 
 ## 6. The door
 
-The custom domain is public. Turn \`requireAuth\` on (\`weave workspace require-auth\` from a shell on the service, or \`PATCH /api/workspace\` with \`{"requireAuth": true}\` and an admin token) and put a door in front: **Door B: passkeys** (set \`WEAVE_ORIGIN\` to the custom domain and \`WEAVE_TRUST_PROXY=1\`, then \`weave account invite\` from a shell on the service) or **Door A: an edge gate**.
+The custom domain is public. Turn \`requireAuth\` on (\`weave workspace require-auth\` from a shell on the service, or \`PATCH /api/workspace\` with \`{"requireAuth": true}\` and an admin token) and put a door in front: **Door C: sign in with a provider** (set \`WEAVE_ORIGIN\` to the custom domain, \`WEAVE_TRUST_PROXY=1\` and the \`WEAVE_OIDC_*\` variables, then \`weave account link\` from a shell on the service) or **Door A: an edge gate**.
 
 ## Backups
 
@@ -1968,10 +1916,10 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 | \`WEAVE_DATA\` | every verb | \`~/.weave/workspace.json\` | Points off the volume: every restart starts empty. It names the workspace \`.db\`; the \`weave.db\` docs workspace and the \`files/\` directory of attachments are created beside it, so the directory is what needs to persist. A \`.json\` spelling is accepted and becomes the sibling \`.db\`. |
 | \`WEAVE_KEYSTORE\` | every verb | \`~/.weave/keystore.json\` | Defaults into \`$HOME\`, which in a container is not on the volume: every restart loses the encrypted secrets. The \`Dockerfile\` sets \`/data/keystore.json\`. |
 | \`WEAVE_KEYSTORE_PASSPHRASE\` | every verb | unset | Unset, a random key is written to a \`chmod 600\` file beside the keystore, so a copy of the volume carries the key. Set, the key is derived from the passphrase and nothing lands. Change it and every stored secret becomes unreadable; keep it in a password manager. |
-| \`WEAVE_ORIGIN\` | \`weave serve\`, \`weave account invite\` | unset (loopback: \`http://localhost:<port>\`) | The public origin passkeys and the \`wv_session\` cookie are bound to — scheme and host, no path. Unset off loopback with \`requireAuth\` on, \`serve\` refuses to start; wrong, every passkey ceremony fails with an origin mismatch and every invite URL points at the wrong host. The RP ID is its hostname; https makes the cookie \`Secure\`. |
+| \`WEAVE_ORIGIN\` | \`weave serve\` | unset (loopback: \`http://localhost:<port>\`) | The public origin, scheme and host, no path. The identity provider sends sign-ins back to \`<origin>/api/auth/oidc/callback\`, and the \`wv_session\` cookie is \`Secure\` when it is https. Unset off loopback with \`requireAuth\` on, \`serve\` refuses to start; wrong, the provider refuses the redirect URI or sends the browser to the wrong host. |
 | \`WEAVE_TRUST_PROXY\` | \`weave serve\` | unset | Set to \`1\` behind Railway, Fly, Render or any reverse proxy: the sign-in rate limits then read the client from \`X-Forwarded-For\`. Unset behind a proxy, every visitor shares the proxy's address and ten sign-in attempts a minute lock everyone out; set with no proxy, a client can forge the header. |
 | \`WEAVE_BACKUP_DEST\` | \`weave serve\`, \`weave backup\` | unset | \`s3://bucket/prefix\`. Set on \`weave serve\`, the server backs up in-process daily at 04:00 UTC and keeps thirty archives; unset, nothing leaves the machine and \`/api/health\` carries no \`backup\` field. Wrong bucket or credentials: the run fails, a \`backup-failed\` audit row and \`lastStatus\` on health say so, the server keeps serving. The endpoint, credentials and passphrase it needs are on the **Backup and restore** guide. |
-| \`WEAVE_OIDC_ISSUER\` | \`weave serve\`, \`weave account link\` | unset | The issuer URL of one OpenID Connect provider, \`https\` off loopback. Set with \`WEAVE_OIDC_CLIENT_ID\`, the sign-in page gains a link to the provider (the **Door C: sign in with a provider** guide). Set without it, \`serve\` stops at startup and names the missing variable. A URL the provider does not call its own issuer fails every sign-in with a page that says so. |
+| \`WEAVE_OIDC_ISSUER\` | \`weave serve\`, \`weave account link\` | unset | The issuer URL of one OpenID Connect provider, \`https\` off loopback. Set with \`WEAVE_OIDC_CLIENT_ID\`, \`/auth\` sends a signed-out browser to the provider (the **Door C: sign in with a provider** guide). Set without it, \`serve\` stops at startup and names the missing variable. A URL the provider does not call its own issuer fails every sign-in with a page that says so. |
 | \`WEAVE_OIDC_CLIENT_ID\` | \`weave serve\` | unset | The client id the provider issued for this instance. The provider must hold \`<WEAVE_ORIGIN>/api/auth/oidc/callback\` as a redirect URI, or it refuses the sign-in before weave sees it. |
 | \`WEAVE_OIDC_CLIENT_SECRET\` | \`weave serve\` | unset | The client secret, for a confidential client. Unset, weave signs in as a public client and relies on PKCE alone; a provider that expects the secret answers \`invalid_client\`. |
 | \`WEAVE_OIDC_NAME\` | \`weave serve\` | the issuer's host name | The word on the sign-in link: \`Clerk\` reads "Sign in with Clerk". |

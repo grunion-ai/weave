@@ -233,18 +233,15 @@ A server install is the local install plus a door. The container is the same
 on every target and the Handbook carries the guides (open **Handbook → Guide**
 on any instance, including the one you just started):
 
-- **Self-host weave: choose your door** — the three authentication surfaces
-  (an edge gate, built-in passkeys, an identity provider) and the rule: the
-  surface is the operator's choice, and no surface depends on another.
+- **Self-host weave: choose your door** — the two authentication surfaces
+  (an edge gate, an identity provider) and the rule: the surface is the
+  operator's choice. The built-in passkey door was removed after 0.4.52.
 - **Door A: an edge gate** — Cloudflare Access, Tailscale, Caddy, oauth2-proxy,
   Authelia: one config block and one check each.
-- **Door B: passkeys** — built-in sign-in, no third party: `weave account
-  invite <name>` prints a one-time link, the phone registers a passkey, and
-  `WEAVE_ORIGIN` names the origin it binds to. Agents keep `wv_` tokens.
 - **Door C: sign in with a provider**: one OpenID Connect provider (Clerk,
-  Auth0, Keycloak, Authentik, Google) on top of door B's session. `weave
-  account link <name> --email <address>` opens an account to it; signing in
-  creates none.
+  Auth0, Keycloak, Authentik, Google). `weave account link <name> --email
+  <address>` opens an account to it; signing in creates none. `WEAVE_ORIGIN`
+  names the origin the provider sends people back to. Agents keep `wv_` tokens.
 - **Deploy: Railway** — project from GitHub, volume at `/data`, variables,
   custom domain, one replica.
 - **Deploy: Fly.io, Render, a VPS, Docker** — one section each, same shape;

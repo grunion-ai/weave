@@ -32,7 +32,6 @@ const varsIn = (text) => new Set([...text.matchAll(/\b(PORT|WEAVE_[A-Z_]+)\b/g)]
 const GUIDE_TITLES = [
   'Self-host weave: choose your door',
   'Door A: an edge gate',
-  'Door B: passkeys',
   'Door C: sign in with a provider',
   'Deploy: Railway',
   'Deploy: Fly.io, Render, a VPS, Docker',
@@ -136,10 +135,16 @@ test('the self-hosting guides ship in the Handbook seed with their exact titles,
   }
   const orders = GUIDE_TITLES.map((t) => guide(t).order);
   assert.deepEqual(orders, [...orders].sort((a, b) => a - b), 'the guides read in the order listed');
-  // The remaining stub names the phase that fills it; door B is built (Feature #222 part 2).
-  assert.doesNotMatch(guide('Door B: passkeys').doc, /Not built yet/);
-  for (const s of ['weave account invite', 'revoke-session', 'remove-credential', 'WEAVE_ORIGIN', 'WEAVE_TRUST_PROXY', 'second device', 'wv_']) {
-    assert.ok(guide('Door B: passkeys').doc.includes(s), `door B covers ${s}`);
+  // Door B (passkeys) was removed (Feature #243): its guide is gone, and door C
+  // carries the session, lost-device and origin material it used to hold.
+  assert.equal(guide('Door B: passkeys'), undefined, 'the passkey guide is gone');
+  for (const s of ['revoke-session', 'WEAVE_ORIGIN', 'WEAVE_TRUST_PROXY', 'wv_session', 'wv_']) {
+    assert.ok(guide('Door C: sign in with a provider').doc.includes(s), `door C covers ${s}`);
+  }
+  // Only the removal note in the door guide may still name the old verbs.
+  for (const g of GUIDES) {
+    const doc = g.doc.replace(/## Door B was removed[\s\S]*?(?=\n## |$)/, '');
+    assert.doesNotMatch(doc, /weave account invite|remove-credential|Door B: passkeys|passkey/i, `${g.name} still points at the passkey door`);
   }
   assert.match(guide('Backup and restore').doc, /phase 3/i);
   assert.match(guide('Backup and restore').doc, /weave(\.js)? backup --data/, 'phase 3 landed: the guide documents the verb, not a promise');
@@ -147,7 +152,8 @@ test('the self-hosting guides ship in the Handbook seed with their exact titles,
 
 test('the door and deploy guides carry the content the README used to hold, plus one block per gate and target', () => {
   const doors = guide('Self-host weave: choose your door').doc;
-  for (const s of ['Edge gate', 'passkeys', 'OIDC', 'Tailscale']) assert.ok(doors.includes(s), `the matrix names ${s}`);
+  for (const s of ['Edge gate', 'OIDC', 'Tailscale']) assert.ok(doors.includes(s), `the matrix names ${s}`);
+  assert.match(doors, /## Door B was removed[\s\S]*0\.4 series[\s\S]*after 0\.4\.52/, 'the door guide says plainly that door B was removed, and in which series');
   const a = guide('Door A: an edge gate').doc;
   for (const s of ['Cloudflare Access', 'tailscale serve', 'basic_auth', 'oauth2-proxy', 'Authelia']) assert.ok(a.includes(s), `door A covers ${s}`);
   const rw = guide('Deploy: Railway').doc;
