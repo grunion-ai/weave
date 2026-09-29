@@ -8370,17 +8370,38 @@ function colorPicker(current, sample, onPick) {
 const SPARK_STYLE_LABELS = { line: 'line', column: 'column', winloss: 'win/loss' };
 const SPARK_SAMPLE = [3, 5, 4, 7, 6, 9, 8, 11, 10, 12];
 const SPARK_SAMPLE_WL = [1, -1, 1, 1, -1, 1, -1, -1, 1, 1];
-function sparklineControls(n, redraw, changed) {
+/* The Sample draws the column's own series (Issue #388): the list on the
+   first row that holds two numbers or more, named by that row, in the
+   chosen style and colour, and each Color swatch draws the same series. A
+   column with no list yet, or a field being created, draws an example
+   series under a note saying so. */
+function sparklineControls(n, redraw, changed, column = null) {
   const on = n.display === 'sparkline';
   const out = [dsection('Display', segCtl([{ id: 'text', label: 'text' }, { id: 'sparkline', label: 'sparkline' }], on ? 'sparkline' : 'text',
     (v) => { n.display = v; if (v !== 'sparkline') n.style = 'line'; redraw(); changed(); }))];
   if (!on) return out;
   const style = n.style ?? 'line';
-  const series = style === 'winloss' ? SPARK_SAMPLE_WL : SPARK_SAMPLE;
-  out.push(dsection('Color', colorPicker(n.color, (c) => sparkEl(style, series, c), (c) => { n.color = c; redraw(); changed(); })));
+  const swatches = el('div');
+  const sample = el('div', { class: 'cg-preview cg-spark-preview' });
+  const note = el('div');
+  const draw = () => {
+    // Nothing until the column answers: an example flashed over a real
+    // series is the very thing Issue #388 is about.
+    if (column && !column.seriesAnswered) { sample.replaceChildren(); swatches.replaceChildren(); note.replaceChildren(); return; }
+    const own = column?.series ?? null;
+    const series = own ?? (style === 'winloss' ? SPARK_SAMPLE_WL : SPARK_SAMPLE);
+    swatches.replaceChildren(colorPicker(n.color, (c) => sparkEl(style, series, c), (c) => { n.color = c; redraw(); changed(); }));
+    sample.replaceChildren(sparkEl(style, series, n.color) ?? '');
+    note.replaceChildren(own
+      ? el('div', { class: 'hintnote cg-preview-from' }, `${column.seriesRow}: ${own.length} value${own.length === 1 ? '' : 's'}, oldest first`)
+      : el('div', { class: 'hintnote cg-preview-note' }, 'Example series. No row of this column holds a list yet.'));
+  };
+  draw();
+  if (column) column.loadSeries().then(draw, () => {});
+  out.push(dsection('Color', swatches));
   out.push(dsection('Style', segCtl(fieldDialogCore.SPARKLINE_STYLES.map((id) => ({ id, label: SPARK_STYLE_LABELS[id] })), style,
     (v) => { n.style = v; redraw(); changed(); })));
-  out.push(dsection('Sample', el('div', { class: 'cg-preview cg-spark-preview' }, sparkEl(style, series, n.color))));
+  out.push(dsection('Sample', sample, note));
   return out;
 }
 
@@ -8503,6 +8524,21 @@ function fieldDialog(db, existing, after) {
         .catch(() => { this.summary = null; })
         .then(() => { this.answered = true; }));
     },
+    /* A list column's own series, for the sparkline Sample (Issue #388):
+       the first row whose value holds two numbers or more. */
+    series: null,
+    seriesRow: null,
+    seriesAnswered: false,
+    seriesPending: null,
+    loadSeries() {
+      return (this.seriesPending ??= api('POST', `/tables/${db.id}/query`, { limit: 50 })
+        .then((res) => {
+          const row = (res.items ?? []).find((it) => (Array.isArray(it.raw?.[existing.name]) ? it.raw[existing.name] : []).filter((v) => typeof v === 'number').length >= 2);
+          if (row) { this.series = row.raw[existing.name]; this.seriesRow = row.name || 'Untitled'; }
+        })
+        .catch(() => { this.series = null; })
+        .then(() => { this.seriesAnswered = true; }));
+    },
   } : null;
 
   const nameInput = el('input', {
@@ -8596,7 +8632,7 @@ function fieldDialog(db, existing, after) {
       const costumeWrap = el('div', { class: 'full' });
       let resultType = null;
       const drawCostume = () => costumeWrap.replaceChildren(...(resultType === 'list' || state.number.display === 'sparkline'
-        ? sparklineControls(state.number, drawCostume, changed)
+        ? sparklineControls(state.number, drawCostume, changed, column)
         : resultType === null || resultType === 'number' ? numberCostumeControls(state, drawCostume, changed, { label: 'Result format', column }) : []));
       kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null, fieldName: () => nameInput.value, onType: (t) => { resultType = t; drawCostume(); } })));
       drawCostume();

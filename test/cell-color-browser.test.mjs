@@ -211,6 +211,8 @@ if (s) {
       await openFieldDialog(page, 'Line ink');
       const sc = page.locator('.tray-form .dlg-sec', { has: page.locator('.dlg-lbl', { hasText: /^Color$/ }) });
       await sc.waitFor();
+      // The swatches draw once the column's own series answers (Issue #388).
+      await sc.locator('.wv-color-opt .cg-sparkwrap').nth(2).waitFor();
       assert.equal(await sc.locator('.wv-color-opt .cg-sparkwrap').count(), 3, 'each swatch is a sparkline');
       await sc.locator('.wv-color-opt[data-color="accent"]').click();
       await page.waitForSelector('.tray-form .cg-spark-preview .cg-sparkwrap.cg-c-accent');
