@@ -292,14 +292,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // kebab, 2026-08-31; restore since Issue #149).
         || /^\/api\/tables\/[^/]+\/(move|duplicate|restore)$/.test(path)
         || /^\/api\/tables\/[^/]+\/fields/.test(path)
+        // A relation is a field on this table and its inverse on the target
+        // (Issue #489).
+        || /^\/api\/tables\/[^/]+\/relations$/.test(path)
         // A view's columns, filter and sort were a PATCH on the table before
         // Feature #229 split them out; the gate follows them.
         || /^\/api\/tables\/[^/]+\/views/.test(path)
         || (/^\/api\/schema$/.test(path))
         || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH'));
       // Registry rows ARE structure: writing Spaces/Tables/Fields rows through
-      // the entity door is a schema change wearing entity clothes.
-      const sysM = !read && (path.match(/^\/api\/tables\/([^/]+)\/entities/) ?? path.match(/^\/api\/entities\/([^/]+)/));
+      // the entity door is a schema change wearing entity clothes. A CSV
+      // import creates rows the same way (Issue #489).
+      const sysM = !read && (path.match(/^\/api\/tables\/([^/]+)\/(?:entities|import\.csv)/) ?? path.match(/^\/api\/entities\/([^/]+)/));
       const sysTouch = sysM && (() => {
         try {
           const ref = sysM[0].startsWith('/api/entities/')
@@ -670,6 +674,21 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
            { ids, op, ...params }; the reply names what landed and what did not. */
         if (route === 'POST /api/bulk') {
           const { ids, op, ...params } = body ?? {};
+          /* The ids are in the body, so the entity doors' system-table check
+             never saw them (Issue #489): a writer's bulk is refused whole when
+             any row it names, or any table it writes into, is structure. */
+          if (role === 'writer') {
+            const sys = (fn) => { try { return !!fn()?.system; } catch { return false; } };
+            const list = ids == null ? [] : [].concat(ids);
+            const into = op === 'rollup' && params.table == null
+              ? (() => { try { return weave.relationTargetDbIds(weave.getField(weave.getEntity(list[0]).dbId, params.field)); } catch { return []; } })()
+              : [];
+            if (list.some((id) => sys(() => weave.state.tables[weave.getEntity(id).dbId]))
+              || (params.table != null && sys(() => weave.getTable(params.table)))
+              || into.some((t) => weave.state.tables[t]?.system)) {
+              return deny(403, 'This token cannot change the schema');
+            }
+          }
           return out(200, weave.bulk(ids, op, params));
         }
         if (route === 'POST /api/undo') {
