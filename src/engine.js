@@ -67,6 +67,8 @@ export function parseCSV(text) {
    related table each stand alone, and every other field belongs to the one
    value block that `@values` names. */
 const VALUES_BLOCK = '@values';
+// The shape of every file and logo id uuid() (crypto.randomUUID) mints.
+const BLOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const isBodyBlock = (f) => f.type === 'document' || f.type === 'attachments'
   || (f.type === 'relation' && !!(f.many ?? f.config?.many));
 
@@ -7057,7 +7059,13 @@ export class Weave {
      Three verbs over that split, so no caller has to know which it is, and
      so a surface can ASK whether a file is still there (Issue #121). */
   #blobPath(id) {
-    return this.store.path ? join(dirname(this.store.path), 'files', id) : null;
+    // A file id is an opaque token, never a path: it has the shape uuid()
+    // mints, and the path it names stays inside files/ (Issue #479).
+    if (!BLOB_ID.test(String(id))) throw new WeaveError(`Invalid file id '${id}'`, 'invalid');
+    if (!this.store.path) return null;
+    const p = join(dirname(this.store.path), 'files', id);
+    if (dirname(p) !== join(dirname(this.store.path), 'files')) throw new WeaveError(`Invalid file id '${id}'`, 'invalid');
+    return p;
   }
 
   #hasBlob(id) {
@@ -7417,6 +7425,13 @@ export class Weave {
 
   importJSON(state) {
     if (!state || ![1, 2].includes(state.version)) throw new WeaveError('Unsupported workspace format', 'invalid');
+    // Every id that becomes a blob path is checked before anything is
+    // written, so a refused dump leaves the workspace as it was (Issue #479).
+    const ids = [...Object.keys(state.fileBlobs ?? {}), state.meta?.logo?.id];
+    for (const e of Object.values(state.entities ?? {})) for (const f of e?.files ?? []) ids.push(f?.id);
+    for (const id of ids) {
+      if (id !== undefined && !BLOB_ID.test(String(id))) throw new WeaveError(`Invalid file id '${id}' in the import`, 'invalid');
+    }
     const prior = this.state.meta ?? {};
     this.state = JSON.parse(JSON.stringify(state));
     this.#migrate();
