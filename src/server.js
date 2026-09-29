@@ -131,7 +131,31 @@ export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache =
   return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'gzip' }, body: zipped };
 }
 
-async function readBody(req) {
+/* Cross-site writes (Issue #486). A page anywhere could POST a text/plain
+   "simple request" (no preflight) at an instance and change its rows. A write
+   is refused when the browser says it came from another site: an Origin that
+   is not this request's own origin, WEAVE_ORIGIN or a loopback origin on
+   this port, or Sec-Fetch-Site: cross-site. No Origin (curl, the CLI, agents)
+   is served. The WebAuthn routes keep their own origin check on top. */
+const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+export const requestIsHttps = (req, trustProxy) => !!req.socket?.encrypted
+  || (trustProxy && String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim().toLowerCase() === 'https');
+export function crossSiteWrite(req, { origin = null, trustProxy = false } = {}) {
+  if (!WRITES.has(req.method)) return false;
+  if (String(req.headers['sec-fetch-site'] ?? '').toLowerCase() === 'cross-site') return true;
+  const from = req.headers.origin;
+  if (from === undefined) return false;
+  const port = req.socket?.localPort;
+  const own = `${requestIsHttps(req, trustProxy) ? 'https' : 'http'}://${String(req.headers.host ?? '').toLowerCase()}`;
+  const ok = [own, origin, ...['localhost', '127.0.0.1', '[::1]'].map((h) => `http://${h}:${port}`)];
+  return !ok.includes(String(from).toLowerCase());
+}
+
+async function readBody(req, { requireJson = false } = {}) {
+  // With an Origin present a browser sent it: only a JSON body, never a form or text/plain.
+  if (requireJson && !/^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? '')) {
+    throw new WeaveError('A request with an Origin must send its body as application/json', 'invalid');
+  }
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
@@ -463,12 +487,13 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts })) {
         return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
       }
+      if (crossSiteWrite(req, { origin, trustProxy })) return fail(res, 403, 'Cross-site write refused', 'forbidden');
       const outcome = await handle({
         method: req.method,
         path,
         searchParams: url.searchParams,
         header: (name) => req.headers[name.toLowerCase()],
-        readBody: () => readBody(req),
+        readBody: () => readBody(req, { requireJson: req.headers.origin !== undefined }),
         remote: req.socket?.remoteAddress ?? null,
       });
       const { headers, body } = gzipOutcome(outcome, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
