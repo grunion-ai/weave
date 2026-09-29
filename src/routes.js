@@ -14,7 +14,7 @@ import { markdownToPdf } from './pdf.js';
 // Worker — evaluating it there fails the whole upload. Deck routes are rare
 // and node-only anyway, so they pay for the import when they are asked for.
 const deckModule = () => import('./deck.js');
-import { handleMcpMessage } from './mcp.js';
+import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
 import { renderAuthPage } from './auth-page.js';
 import { verifyRegistration, verifyAssertion, newChallenge, b64url } from './webauthn.js';
@@ -599,7 +599,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // Accounts (Feature #14). Once any account exists, only an admin
         // token manages them — the anonymous door closes behind the first key.
         if (path.startsWith('/api/accounts') || (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {}))) {
-          if (weave.listAccounts().length && role !== 'admin') {
+          if (!mayAdminister(weave, role)) {
             return deny(role ? 403 : 401, 'Managing accounts needs an admin token');
           }
         }
@@ -621,7 +621,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const target = route === 'POST /api/keys' ? body?.name
             : km && !km[2] && rx.method === 'DELETE' ? decodeURIComponent(km[1]) : null;
           const owns = !!rootRole && target != null && weave.listKeys().find((k) => k.name === target)?.owner === weave.actor;
-          if (root.listAccounts().length && rootRole !== 'admin' && !(reveal && rootRole) && !owns) {
+          if (!mayAdminister(root, rootRole) && !(reveal && rootRole) && !owns) {
             return deny(rootRole ? 403 : 401, 'Managing keys needs an admin on the hub root');
           }
           if (route === 'GET /api/keys') return out(200, weave.listKeys());
@@ -679,7 +679,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
            hosted instance speaks exactly what a local agent already speaks. */
         if (route === 'POST /api/mcp') {
           const msgs = Array.isArray(body) ? body : [body];
-          const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version })).filter(Boolean);
+          // The accounts, keys and import tools ask the same gate as REST
+          // (Issue #482), so the caller's role travels with the message.
+          const root = hub.get(hub.defaultName);
+          const caller = { role, root, rootRole: roleOn(root) };
+          const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
           return out(200, Array.isArray(body) ? replies : replies[0]);
         }
@@ -1089,7 +1093,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.universalSearch(q, { limit, prefix: wsPrefix }));
         }
         if (route === 'GET /api/export') return out(200, weave.exportJSON());
-        if (route === 'POST /api/import') { weave.importJSON(body); return out(200, { ok: true }); }
+        if (route === 'POST /api/import') {
+          // The import replaces the accounts too: the accounts gate (Issue #482).
+          if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Replacing the workspace needs an admin token');
+          weave.importJSON(body);
+          return out(200, { ok: true });
+        }
 
         return out(404, { error: `No route: ${route}` });
       }
