@@ -566,9 +566,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // color, an icon name or a format (src/vocabulary.js).
         if (route === 'GET /api/vocabulary') return out(200, VOCABULARY);
 
+        /* These act on the hub, not the URL workspace (Issue #481). The list
+           and search ?all=1 carry only the workspaces whose own wall this
+           caller would pass; create, restore and delete need an admin on the
+           hub root once the root holds an account. */
+        const canOpen = (w) => !w.state.meta.requireAuth || roleOn(w) != null;
+        if (/^\/api\/workspaces(\/|$)/.test(path) && rx.method !== 'GET') {
+          const hubRoot = hub.get(hub.defaultName);
+          const rootRole = roleOn(hubRoot);
+          if (!mayAdminister(hubRoot, rootRole)) return deny(rootRole ? 403 : 401, 'Managing workspaces needs an admin on the hub root');
+        }
         if (route === 'GET /api/workspaces') {
           const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
-          return out(200, hub.list({ includeDeleted }));
+          return out(200, hub.list({ includeDeleted }).filter((x) => canOpen(hub.get(x.name))));
         }
         if (route === 'POST /api/workspaces') {
           const w = hub.create(body.name);
@@ -738,6 +748,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (!issues) {
             return out(501, { error: 'No Development/Issue table to file into — this instance has no weave docs workspace', code: 'unsupported' });
           }
+          /* The documented intake: anyone who may write here files into the
+             weave docs workspace. An anonymous caller (the wall off here)
+             must also pass the docs workspace's own wall (Issue #481). */
+          if (role == null && !canOpen(docs)) return deny(401, 'The weave docs workspace requires authentication');
           docs.maybeRefresh();
           /* renderBugReport is the validator too: an unknown symptom, or a
              report with neither a symptom nor a note, throws before anything
@@ -1083,6 +1097,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             // Cross-workspace search: permalinks carry the workspace path.
             const results = [];
             for (const [name, w] of hub.entries()) {
+              if (!canOpen(w)) continue;
               const prefix = name === hub.defaultName ? '' : `/w/${name}`;
               for (const hit of w.universalSearch(q, { limit, prefix })) {
                 results.push({ workspace: name, ...hit });
