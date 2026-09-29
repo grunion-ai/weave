@@ -100,6 +100,14 @@ export function sniffImage(bytes) {
   return null;
 }
 
+/* The logo's type (Issue #492): a raster image its bytes prove, or an SVG,
+   which the workspace chip draws through an <img>. Null for anything else. */
+export function logoType(bytes) {
+  const head = Buffer.from(bytes ?? []).subarray(0, 1024).toString('utf8').replace(/^\ufeff/, '');
+  return sniffImage(bytes)
+    ?? (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!doctype svg[^>]*>\s*)?<svg[\s/>]/i.test(head) ? 'image/svg+xml' : null);
+}
+
 /* Headers for serving a stored file (Issue #483). Only inert types the app
    shows in place go inline: images (checked against their bytes), PDFs for
    the document viewer iframe, plain text. Anything else, HTML and SVG
@@ -7193,8 +7201,11 @@ export class Weave {
   // Workspace-level logo (shown in the workspace-selector chip). Stored like
   // entity file blobs; the descriptor lives on meta so it persists with the
   // schema rows. Becomes a real field once workspace-as-table lands.
-  setWorkspaceLogo({ name, mime = 'image/png', bytes }) {
+  setWorkspaceLogo({ name, bytes }) {
     const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), 'base64');
+    /* The type comes from the bytes, never the caller (Issue #492). */
+    const mime = logoType(buf);
+    if (!mime) throw new WeaveError('A logo must be a PNG, JPEG, GIF, WebP or SVG image', 'unsupported-type');
     if (this.state.meta.logo) this.deleteWorkspaceLogo();
     const logo = { id: uuid(), name: String(name), size: buf.length, mime, createdAt: nowISO() };
     this.#writeBlob(logo.id, buf);

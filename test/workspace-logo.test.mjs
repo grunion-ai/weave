@@ -26,7 +26,7 @@ test('workspace logo: set / read / delete on a file-backed workspace', () => {
   assert.deepEqual(w2.getWorkspaceLogo().bytes, PNG);
 
   // Replacing swaps the blob; deleting removes meta.
-  const meta2 = w2.setWorkspaceLogo({ name: 'v2.png', mime: 'image/png', bytes: Buffer.from('next') });
+  const meta2 = w2.setWorkspaceLogo({ name: 'v2.png', mime: 'image/png', bytes: Buffer.concat([PNG, Buffer.from('next')]) });
   assert.notEqual(meta2.id, meta.id);
   w2.deleteWorkspaceLogo();
   assert.throws(() => w2.getWorkspaceLogo(), WeaveError);

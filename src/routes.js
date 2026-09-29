@@ -4,7 +4,7 @@
 // runs under node (src/server.js wraps it) and workerd (src/worker.js will).
 // The adapter owns transport: reading the body stream, writing the response,
 // and static assets (node reads public/; Workers bind Static Assets).
-import { Weave, WeaveError, fileHeaders } from './engine.js';
+import { Weave, WeaveError, fileHeaders, logoType } from './engine.js';
 import { handleApplet } from './applet.js';
 import { VOCABULARY } from './vocabulary.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.js';
@@ -21,7 +21,7 @@ import { verifyRegistration, verifyAssertion, newChallenge, b64url } from './web
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
-  return { 'not-found': 404, conflict: 409, invalid: 400, ambiguous: 400, forbidden: 403 }[err.code] ?? 400;
+  return { 'not-found': 404, conflict: 409, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415 }[err.code] ?? 400;
 }
 
 const STARTED_AT = new Date().toISOString();
@@ -836,8 +836,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if (path === '/api/workspace/logo') {
           if (rx.method === 'GET') {
-            const { meta, bytes } = weave.getWorkspaceLogo();
-            return out(200, bytes, { 'Content-Type': meta.mime, 'Cache-Control': 'no-cache' });
+            const { bytes } = weave.getWorkspaceLogo();
+            /* Typed from the bytes at serve time too, so a logo stored before
+               Issue #492 cannot carry a hostile type. */
+            const type = logoType(bytes);
+            return out(200, bytes, {
+              'Content-Type': type ?? 'application/octet-stream',
+              ...(type ? {} : { 'Content-Disposition': 'attachment; filename="logo"' }),
+              'Cache-Control': 'no-cache',
+              'X-Content-Type-Options': 'nosniff',
+              'Content-Security-Policy': "sandbox; default-src 'none'",
+            });
           }
           if (rx.method === 'PUT' || rx.method === 'POST') {
             return out(200, weave.setWorkspaceLogo({ name: body.name, mime: body.mime, bytes: body.contentBase64 }));

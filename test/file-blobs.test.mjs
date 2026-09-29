@@ -98,12 +98,12 @@ test('opening a legacy .json dump lands its blobs too', () => {
 test('the workspace logo survives the round trip', () => {
   const src = new Weave({ path: join(tmp(), 'src.db') });
   seed(src);
-  src.setWorkspaceLogo({ name: 'mark.png', mime: 'image/png', bytes: Buffer.from('PNGBYTES') });
+  src.setWorkspaceLogo({ name: 'mark.svg', bytes: Buffer.from('<svg id="PNGBYTES"/>') });
   const dump = JSON.parse(JSON.stringify(src.exportJSON()));
 
   const dst = new Weave({ path: join(tmp(), 'dst.db') });
   dst.importJSON(dump);
-  assert.equal(dst.getWorkspaceLogo().bytes.toString('utf8'), 'PNGBYTES');
+  assert.equal(dst.getWorkspaceLogo().bytes.toString('utf8'), '<svg id="PNGBYTES"/>');
 });
 
 test('an in-memory workspace still round-trips', () => {

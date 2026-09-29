@@ -81,14 +81,14 @@ test('an in-memory workspace refuses the same ids', () => {
 test('files and logos the engine mints still round-trip', () => {
   const { w, dir, e } = fresh();
   const f = w.attachFile(e.id, { name: 'a.txt', mime: 'text/plain', bytes: Buffer.from('hello') });
-  w.setWorkspaceLogo({ name: 'l.png', bytes: Buffer.from('png') });
+  w.setWorkspaceLogo({ name: 'l.png', bytes: Buffer.from('<svg id="png"/>') });
   const dump = w.exportJSON();
   assert.equal(Buffer.from(dump.fileBlobs[f.id], 'base64').toString(), 'hello');
 
   const other = fresh();
   other.w.importJSON(dump);
   assert.equal(other.w.readFile(f.id).bytes.toString(), 'hello');
-  assert.equal(other.w.getWorkspaceLogo().bytes.toString(), 'png');
+  assert.equal(other.w.getWorkspaceLogo().bytes.toString(), '<svg id="png"/>');
   assert.deepEqual(readdirSync(join(other.dir, 'files')).sort(), [f.id, dump.meta.logo.id].sort());
   assert.ok(existsSync(join(dir, 'files', f.id)));
 });
