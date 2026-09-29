@@ -1304,6 +1304,8 @@ function renderNav() {
     nav.append(spaceRow);
     if (isFolded) continue;
     for (const db of space.tables) {
+      // Workflows is pinned in the system rows below: one place in the nav.
+      if (db.system === 'workflows') continue;
       // The row's right edge is the kebab, not a count (Kyle, 2026-08-31):
       // hover or the active row shows ⋮, and the menu carries the table verbs.
       const row = el('a', {
@@ -1330,9 +1332,21 @@ function renderNav() {
   const line = el('span', { class: 'nav-stats-line', title: 'Records in this workspace · storage on disk' },
     `${entityTotal.toLocaleString()} ${entityTotal === 1 ? 'record' : 'records'}`);
   const stats = el('div', { class: 'nav-stats' }, line);
+  /* The workspace's system tables (Kyle, 2026-09-29): Activity, Trash and
+     Workflows, pinned under the spaces in that order. Fixed rows: no kebab,
+     no grip, and the engine refuses a rename, move or delete of any system
+     table. Activity and Trash read across the whole workspace. */
+  const wf = allTables().find((d) => d.system === 'workflows');
+  const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
+  const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'Workspace system tables' },
+    sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
+    sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
+    ...(wf ? [sysRow(`#/table/${wf.id}`, 'workflow', 'Workflows', state.route?.dbId === wf.id)] : []));
   // Pinned to the sidebar's bottom edge — a sibling AFTER #nav (which carries
   // flex:1), sticky so a long nav scrolls under it rather than pushing it away.
+  document.querySelector('#sidebar .nav-system')?.remove();
   document.querySelector('#sidebar .nav-stats')?.remove();
+  $('#sidebar').append(system);
   $('#sidebar').append(stats);
   (state.healthP ??= api('GET', '/health')).then((h) => {
     if (h.sizeBytes != null) line.append(` · ${fmtSize(h.sizeBytes)}`);
@@ -3703,21 +3717,25 @@ function docChipCell(f, item, onOpen) {
    for good (purge, hold-to-confirm — it is the one irreversible action). */
 
 async function showTrash(dbId) {
-  const db = allTables().find((d) => d.id === dbId);
-  if (!db) return showHome();
+  // No table: the workspace trash, every trashed row in one list (the system
+  // Trash row in the nav). A trashed table or space is its registry row.
+  const db = dbId ? allTables().find((d) => d.id === dbId) : null;
+  if (dbId && !db) return showHome();
   state.route = { page: 'trash', dbId };
   renderNav();
-  const { items } = await api('GET', `/tables/${db.id}/trash`);
+  let { items } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
+  // A trashed table's views go with it and come back with it: its Tables row
+  // stands for the lot, so the Views rows would only be noise here.
+  if (!db) items = items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views');
   const main = $('#main');
   main.replaceChildren();
   main.append(viewHeader({
     crumbs: [
       { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
-      { label: db.space, href: `#/space/${db.spaceId}` },
-      { label: db.name, href: `#/table/${db.id}` },
+      ...(db ? [{ label: db.space, href: `#/space/${db.spaceId}` }, { label: db.name, href: `#/table/${db.id}` }] : []),
     ],
-    permalink: `${location.origin}${WS_PREFIX}/#/trash/${db.id}`,
-    title: `${db.name} — trash`,
+    permalink: `${location.origin}${WS_PREFIX}/#/trash${db ? `/${db.id}` : ''}`,
+    title: db ? `${db.name} — trash` : 'Trash',
   }));
 
   if (!items.length) {
@@ -3729,6 +3747,7 @@ async function showTrash(dbId) {
     rows.append(el('tr', {},
       el('td', { class: 'pid-cell' }, `#${item.publicId}`),
       el('td', {}, item.name || el('span', { class: 'view-desc-empty' }, 'Untitled')),
+      ...(db ? [] : [el('td', { class: 'trash-table' }, item.db)]),
       el('td', { class: 'trash-when' }, new Date(item.deletedAt).toLocaleString()),
       el('td', { class: 'trash-acts' },
         el('button', {
@@ -3755,6 +3774,7 @@ async function showTrash(dbId) {
     el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
       el('thead', {}, el('tr', {},
         el('th', { class: 'pid-head' }, '#'), el('th', {}, 'Name'),
+        ...(db ? [] : [el('th', {}, 'Table')]),
         el('th', {}, 'Deleted'), el('th', {}, ''))),
       rows)));
 }
@@ -4755,7 +4775,8 @@ function tableChrome(db, trashCount) {
       await loadSchema();
       showDatabase(db.id, state.route.view);
     },
-    onRename: async (name) => {
+    // A system table's name is fixed: the title reads, it does not edit.
+    onRename: db.system ? null : async (name) => {
       await api('PATCH', `/tables/${db.id}`, { name });
       await loadSchema();
       await showDatabase(db.id, state.route.view);
@@ -12692,6 +12713,7 @@ function renderRoute() {
       dbM ? allTables().find((d) => d.id === dbM[1]) : null);
   }
   let m;
+  if (hash === '#/trash') return showTrash(null);
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
   if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)(?:\/view\/([^/?]+))?(?:\?e=([^&]+))?/))) return showDatabase(m[1], m[2] ? decodeURIComponent(m[2]) : null).then(() => redock(m[1], m[3]));
   if ((m = hash.match(/^#\/space\/([^/?]+)/))) return showSpace(m[1]);

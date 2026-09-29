@@ -1358,6 +1358,10 @@ The Notes case is the walkthrough in [[Article#5]]. The set was built for Featur
 
 The system registry — **Spaces**, **Tables**, **Fields** and **Workflows** as rows — exists once per weave, in the **Workspace** space of the root: the default workspace, the one served at \`/\`. It used to be minted inside every workspace file; since Feature #219 a member workspace (uno, test, anything the hub adopts or creates) shows only its own spaces in the sidebar, and its structure appears as rows at the root instead.
 
+## System rows in the sidebar
+
+Three fixed rows sit at the bottom of the sidebar, under the spaces: **Activity** (every change in the workspace, \`#/activity\`), **Trash** (every trashed row in the workspace, \`#/trash\`) and **Workflows** (the Workflows table, shown at the root only). They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces row, and Restore on that row brings the whole structure back. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
+
 ## The Workspaces table
 
 The root's Workspace space carries one more table, **Workspaces**: one row per workspace the hub serves, the root included. It is the level-1 row — every other registry table relates back to it through a system **Workspace** column, so uno's tables and test's sit side by side in one grid, and a filter on Workspace is the slice you want.

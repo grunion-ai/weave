@@ -57,7 +57,7 @@ const SURFACE = [
   ['entity.update', ['updateEntity'], 'weave_update_entity', 'update', ['PATCH /api/entities/:ref']],
   ['entity.delete', ['deleteEntity'], 'weave_delete_entity', 'delete', ['DELETE /api/entities/:ref']],
   ['entity.restore', ['restoreEntity'], 'weave_restore_entity', 'restore', ['POST /api/entities/:ref/restore']],
-  ['entity.trash', ['listTrash'], 'weave_trash', 'trash', ['GET /api/tables/:ref/trash']],
+  ['entity.trash', ['listTrash'], 'weave_trash', 'trash', ['GET /api/tables/:ref/trash', 'GET /api/trash']],
   ['table.stats', ['tableStats', 'tableRollups'], 'weave_stats', 'stats', ['GET /api/tables/:ref/stats']],
   ['entity.link', ['link'], 'weave_link', 'link', ['POST /api/entities/:ref/link']],
   ['entity.unlink', ['unlink'], 'weave_unlink', 'unlink', ['POST /api/entities/:ref/unlink']],
