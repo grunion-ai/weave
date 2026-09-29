@@ -115,6 +115,12 @@
    reload. Forbidding x-overscroll removes the state (and the accidental
    back-swipe while scrolling a wide grid, with it). Vertical bounce stays. */
 html, body { overscroll-behavior-x: none; }
+/* Tabler (≥992px) sets `:root { margin-left: calc(100vw - 100%) }` to keep a
+   centred page from jumping when a scrollbar appears. Weave is left-anchored,
+   so all it did was push the page right by the width of a classic scrollbar
+   (16px in Safari with a mouse attached) on every view that scrolls the page:
+   the rail and sidebar moved between a long table and a short one (Issue #546). */
+:root { margin-left: 0; }
 /* Anything scrolled to by the browser itself — a focused control, a hash
    anchor, find-in-page — stops below the view header instead of behind it
    (Issue #321). The app's own scrolls go through scrollTargetIntoView. */

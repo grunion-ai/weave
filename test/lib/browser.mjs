@@ -17,15 +17,17 @@ import { startServer } from '../../src/server.js';
 /* WEAVE_BROWSER=webkit runs the same suites in WebKit — Kyle reads weave in
    Safari, and a drag that Chromium accepts can be one WebKit refuses. The
    export keeps its old name; every suite only ever calls launch(). */
-export const chromium = await import('playwright')
-  .then((pw) => pw[process.env.WEAVE_BROWSER || 'chromium'] ?? pw.chromium)
-  .catch(() => null);
+const pw = await import('playwright').catch(() => null);
+export const chromium = pw && (pw[process.env.WEAVE_BROWSER || 'chromium'] ?? pw.chromium);
 
 /* launch(name, seed, options)
      name    — names the skip when playwright is missing
      seed    — (weave) => void | handles; builds the workspace under test and
                may return an object of handles the suite reads back
-     options — { server: (weave) => extra startServer options }
+     options — { server: (weave) => extra startServer options,
+                 engine: 'webkit' | 'chromium' | 'firefox' — pins the suite to
+                 one engine whatever WEAVE_BROWSER says (Issue #546: only
+                 WebKit on macOS draws a classic scrollbar that takes width) }
    Resolves to { weave, server, base, browser, ...handles }, or null when
    there is no browser to run in. The server and browser are closed after
    the suite's last test. */
@@ -38,7 +40,7 @@ export async function launch(name, seed = () => {}, options = {}) {
   const handles = (await seed(weave)) ?? {};
   const { server } = await startServer(weave, { port: 0, ...(options.server?.(weave) ?? {}) });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch();
+  const browser = await (options.engine ? pw[options.engine] : chromium).launch();
   if (THROTTLE) throttle(browser);
   test.after(async () => {
     await browser?.close();
