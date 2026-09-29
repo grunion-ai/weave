@@ -311,6 +311,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (role === 'reader' && !read) return deny(403, 'This token is read-only');
       if (role === 'writer' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
     }
+    /* The caller's role on another workspace of this hub, verified there: its
+       Bearer token, or its session (a root session opens a member, as at the
+       wall). For routes that act on more than the URL workspace. */
+    const roleOn = (w) => {
+      if (w === weave) return role;
+      if (authz && /^Bearer /i.test(authz)) return w.verifyToken(authz.slice(7).trim())?.role ?? null;
+      if (!cookies.wv_session) return null;
+      const root = hub.get(hub.defaultName);
+      return (w.verifySession(cookies.wv_session) ?? (w !== root ? root.verifySession(cookies.wv_session) : null))?.role ?? null;
+    };
 
     // Resolves [[Table#12]] mentions in rendered documents (active workspace).
     // The one place that knows how each reference kind is addressed and what
@@ -599,10 +609,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.deleteAccount(decodeURIComponent(m[1])));
         }
         // Keystore (Feature #64): set, list, delete — never read back. The
-        // same admin gate as accounts once any account exists.
+        // same admin gate as accounts once any account exists — the hub
+        // root's accounts, whichever workspace the URL names, because one
+        // keystore serves the whole process (Issue #480). A root caller on
+        // a key's access list may reveal it; its owner may rotate or drop it.
         if (path.startsWith('/api/keys')) {
-          if (weave.listAccounts().length && role !== 'admin') {
-            return deny(role ? 403 : 401, 'Managing keys needs an admin token');
+          const root = hub.get(hub.defaultName);
+          const rootRole = roleOn(root);
+          const km = /^\/api\/keys\/([^/]+)(\/reveal)?$/.exec(path);
+          const reveal = !!km?.[2] && rx.method === 'POST';
+          const target = route === 'POST /api/keys' ? body?.name
+            : km && !km[2] && rx.method === 'DELETE' ? decodeURIComponent(km[1]) : null;
+          const owns = !!rootRole && target != null && weave.listKeys().find((k) => k.name === target)?.owner === weave.actor;
+          if (root.listAccounts().length && rootRole !== 'admin' && !(reveal && rootRole) && !owns) {
+            return deny(rootRole ? 403 : 401, 'Managing keys needs an admin on the hub root');
           }
           if (route === 'GET /api/keys') return out(200, weave.listKeys());
           if (route === 'POST /api/keys') return out(201, weave.setKey(body?.name, body?.value));
