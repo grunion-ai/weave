@@ -42,7 +42,7 @@ test('every field type has a default width; the mockup values hold exactly', () 
    Feature #235's column-width rule): max icons at the cell's icon box plus
    the gaps between them and the cell's padding. Before this, every rating
    opened at the type default of 104 whatever its max, so the showcase's
-   Love (max 7, 132px of icons) and Brightness (max 12, 227px) opened with
+   Love (max 7) and Brightness (max 12) opened with
    their last hearts and suns cut at the cell edge — a 7 of 7 read like a 5
    of 7 and the right-most icons could not be clicked. The geometry
    constants mirror public/style.css and are held to the rendered cell by
@@ -52,18 +52,18 @@ test('a rating opens wide enough for its own icons (Issue #404)', () => {
   assert.equal(d({}), 104, 'no max declared: the type default, which is what five icons need');
   assert.equal(d({ max: 5 }), 104, 'five star icons, the engine default max');
   assert.equal(d({ max: 3 }), 104, 'a short rating keeps the type default rather than shrinking below it');
-  assert.equal(d({ max: 7 }), 140, "the showcase's Love: 7 hearts at 18px, 6 gaps, 8px of cell padding");
-  assert.equal(d({ max: 12 }), 235, "the showcase's Brightness: 12 suns need 227px of icons");
-  assert.ok(d({ max: 12 }) >= 227 + 8, 'never under what the icons measure in the cell');
+  assert.equal(d({ max: 7 }), 112, "the showcase's Love: 7 hearts at 14px (Feature #235's redrawn cell), 6 gaps, 8px of cell padding");
+  assert.equal(d({ max: 12 }), 187, "the showcase's Brightness: 12 suns need 179px of icons");
+  assert.ok(d({ max: 12 }) >= 179 + 8, 'never under what the icons measure in the cell');
   assert.equal(d({ max: 100 }), CR.maxWidth({ type: 'rating' }),
     'past the fit ceiling a rating stops there: a hundred icons do not take the screen');
   // The cell's own padding is measured off the rendered cell, because
   // Tabler gives the row's last cell 20px on the right where every other
   // cell gets 4. Without a measurement the ordinary cell's 8 stands.
-  assert.equal(d({ max: 12, pad: 24 }), 251, "the row's last cell carries 16px more padding");
-  assert.equal(d({ max: 12, pad: 8 }), 235, 'an ordinary cell, said out loud');
-  assert.equal(d({ max: 12, pad: null }), 235, 'nothing measured yet: the ordinary cell');
-  assert.equal(CR.RATING_METRICS.icon * 12 + CR.RATING_METRICS.gap * 11 + CR.RATING_METRICS.pad, 235,
+  assert.equal(d({ max: 12, pad: 24 }), 203, "the row's last cell carries 16px more padding");
+  assert.equal(d({ max: 12, pad: 8 }), 187, 'an ordinary cell, said out loud');
+  assert.equal(d({ max: 12, pad: null }), 187, 'nothing measured yet: the ordinary cell');
+  assert.equal(CR.RATING_METRICS.icon * 12 + CR.RATING_METRICS.gap * 11 + CR.RATING_METRICS.pad, 187,
     'the width is those three numbers and nothing else');
   // Only the rating field type. A rollup or a lookup that reads a rating
   // draws its icons inside the computed chip, at the chip's own icon size,
@@ -73,7 +73,7 @@ test('a rating opens wide enough for its own icons (Issue #404)', () => {
   // Only the DEFAULT moves (Kyle, Feature #235: a width the user dragged
   // wins), so a reader who narrows a rating column keeps it narrow.
   assert.deepEqual(CR.layout([{ name: 'Love', type: 'rating', max: 7 }, { name: 'Hand', type: 'rating', max: 12, stored: 120 }]),
-    { Love: 140, Hand: 120 }, 'the untouched column fits its icons; the dragged one stands where it was put');
+    { Love: 112, Hand: 120 }, 'the untouched column fits its icons; the dragged one stands where it was put');
 });
 
 test('a longer label raises only that field\'s own width', () => {
@@ -174,4 +174,35 @@ test('the keyboard moves one place; crossing the seam freezes or unfreezes in pl
   assert.equal(step('Points', 1), null, 'the end is the end');
   assert.equal(step('Status', -1, 1, false), null, 'a full zone takes nothing more');
   assert.deepEqual(step('Name', -1, 0), { order: ORDER, frozen: 1 }, 'with only # frozen the first field freezes in place');
+});
+
+/* Feature #235: a graphic number column opens at the width its graphic
+   needs, and a 10-icon rating never clips (Issue #404; the rating rule is
+   the test above). */
+test('a rich column fits its graphic: rating icons, bar track, ring, heat, sparkline', () => {
+  const pad = CR.RICH.cellPad;
+  assert.equal(CR.defaultWidth({ type: 'rating' }), 104, 'a rating with no max named keeps the mockup width');
+  assert.equal(CR.defaultWidth({ type: 'rating', max: 10 }), 10 * 14 + 9 + CR.RATING_METRICS.pad, 'ten 14px icons with a 1px gap');
+  assert.equal(CR.defaultWidth({ type: 'rollup', rating: { max: 5 } }), 88, 'a rollup reading a rating is sized on its own (Issue #564)');
+  assert.equal(CR.defaultWidth({ type: 'number', display: 'bar' }, { widest: 30 }), pad + 80 + 6 + 30, 'track + gap + the widest figure');
+  assert.equal(CR.defaultWidth({ type: 'number', display: 'bar' }), pad + 80 + 6 + 24, 'three digits until the page measures');
+  assert.equal(CR.defaultWidth({ type: 'number', display: 'ring' }, { widest: 56 }), pad + 16 + 6 + 56);
+  assert.equal(CR.defaultWidth({ type: 'formula', display: 'heat' }, { widest: 60 }), pad + 16 + 60);
+  assert.equal(CR.defaultWidth({ type: 'number', display: 'heat' }, { widest: 12 }), 88, 'never narrower than a plain number: the empty box wants its width');
+  const spark = CR.defaultWidth({ type: 'formula', display: 'sparkline' });
+  assert.ok(spark >= 64 + pad && spark <= 96 + pad, `a sparkline is a fixed 64 to 96px graphic (${spark})`);
+  assert.equal(CR.defaultWidth({ type: 'number', display: 'bar', currency: 'USD' }, { widest: 60 }), pad + 80 + 6 + 60, 'the graphic outranks the currency default');
+  assert.equal(CR.defaultWidth({ type: 'rating', max: 100 }), CR.maxWidth({ type: 'rating' }), 'a huge max stops at the fit cap');
+});
+
+test('a dragged width wins over the fitted one, and a narrow rating knows it does not fit', () => {
+  const f = { type: 'rating', max: 10, name: 'Love' };
+  assert.equal(CR.layout([{ ...f, stored: 90 }]).Love, 90, 'the width a person chose');
+  assert.equal(CR.layout([{ ...f }]).Love, CR.defaultWidth(f));
+  assert.equal(CR.ratingFits(CR.defaultWidth(f), 10), true, 'the fitted width holds all ten icons');
+  assert.equal(CR.ratingFits(90, 10), false, 'a dragged-narrow column draws the compact form');
+  assert.equal(CR.ratingFits(CR.defaultWidth({ type: 'rating', max: 100 }), 100), false, 'past the cap too');
+  assert.equal(CR.ratingFits(187, 12, 8), true, "Brightness in an ordinary cell");
+  assert.equal(CR.ratingFits(187, 12, 24), false, "the same width in the row's last cell, which pads 16px more");
+  assert.equal(CR.ratingFits(40, null), true, 'no max: nothing to fit');
 });

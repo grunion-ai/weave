@@ -273,7 +273,7 @@ export const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
    rules, which is the whole reason weave never has to become one. */
 export const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
 const DEFAULT_PAIR_PARTS = [{ name: 'id', secret: false }, { name: 'secret', secret: true }];
-const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale'];
+const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'color'];
 /* A formula wears every number key, plus a sparkline's style (Feature #232). */
 const FORMULA_COSTUME_KEYS = [...NUMBER_COSTUME_KEYS, 'style'];
 /* How a number is drawn (Feature #230): text, or a graphic drawn against a
@@ -281,6 +281,19 @@ const FORMULA_COSTUME_KEYS = [...NUMBER_COSTUME_KEYS, 'style'];
    here: a rating is its own type. public/cell-graphics.js draws them. */
 export const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
 const isGraphicDisplay = (d) => d === 'bar' || d === 'ring' || d === 'heat';
+/* The colour a rich cell is drawn in (Feature #235), one setting per field
+   on a rating, a number's display and a formula's display. Quiet ink is the
+   default and is never written down: the graphic in the text colour, the
+   value's own words doing the talking. `icon` colours by what is drawn — a
+   star amber, a heart rose, a bar teal, a loss red — and `accent` draws
+   everything in the workspace accent. public/cell-graphics.js mirrors the
+   list, and public/style.css holds the colours, each with its dark twin. */
+export const CELL_COLORS = ['ink', 'icon', 'accent'];
+function cellColorValue(color) {
+  if (color == null) return 'ink';
+  if (!CELL_COLORS.includes(color)) throw new WeaveError(`Invalid color '${color}' (${CELL_COLORS.join(', ')})`, 'invalid');
+  return color;
+}
 /* A formula that returns a list can wear a sparkline (Feature #232): a
    line, columns, or win/loss bars. A stored number cannot — it is one value. */
 export const SPARKLINE_STYLES = ['line', 'column', 'winloss'];
@@ -688,6 +701,8 @@ function normalizeSelfContainedConfig(type, config = {}, { formula = false, stri
       }
       if (config.display !== 'text') out.display = config.display;
     }
+    // The colour (Feature #235): written down only when it is not ink.
+    if (cellColorValue(config.color) !== 'ink') out.color = config.color;
     if (isGraphicDisplay(out.display) && config.scale != null && config.scale !== 'column') {
       const scale = config.scale;
       if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
@@ -781,7 +796,8 @@ function normalizeSelfContainedConfig(type, config = {}, { formula = false, stri
     if (!Number.isInteger(max) || max < 1 || max > RATING_MAX) {
       throw new WeaveError(`A rating's max is a whole number from 1 to ${RATING_MAX}, got '${config.max}'`, 'invalid');
     }
-    return { max, icon: iconValue(config.icon ?? RATING_DEFAULTS.icon) || RATING_DEFAULTS.icon };
+    const color = cellColorValue(config.color);
+    return { max, icon: iconValue(config.icon ?? RATING_DEFAULTS.icon) || RATING_DEFAULTS.icon, ...(color !== 'ink' ? { color } : {}) };
   }
   /* A toggle names its two states (Feature #202). Both labels are kept
      even at their defaults so a reader of the config sees the words the
@@ -1373,12 +1389,12 @@ export class Weave {
       // A graphic number draws on the chip and the card too (Feature #230);
       // the text stays for a surface that draws none.
       const nd = typeof resolved === 'number' ? this.#numberDisplay(db, f) : null;
-      if (nd) seg.meter = { display: nd.display, value: resolved, scale: this.#scaleOf(db, f) };
+      if (nd) seg.meter = { display: nd.display, value: resolved, scale: this.#scaleOf(db, f), color: nd.color };
       // A rating draws its icons on the chip and the card (Feature #231).
       const rt = typeof resolved === 'number' ? this.#ratingOf(db, f) : null;
       if (rt) seg.rating = { value: resolved, ...rt };
       // A sparkline draws its series (Feature #232).
-      if (f.type === 'formula' && f.config.display === 'sparkline' && Array.isArray(resolved)) seg.spark = { style: f.config.style ?? 'line', values: resolved };
+      if (f.type === 'formula' && f.config.display === 'sparkline' && Array.isArray(resolved)) seg.spark = { style: f.config.style ?? 'line', values: resolved, color: f.config.color ?? 'ink' };
       out.fields.push(seg);
     }
     return out;
@@ -2513,7 +2529,7 @@ export class Weave {
       if (f.kind != null) config.kind = f.kind;
       if (f.multiple != null) config.multiple = f.multiple;
       if (f.term != null) config.term = f.term;
-      if (f.type === 'rating') { if (f.max != null) config.max = f.max; if (f.icon != null) config.icon = f.icon; }
+      if (f.type === 'rating') { if (f.max != null) config.max = f.max; if (f.icon != null) config.icon = f.icon; if (f.color != null) config.color = f.color; }
       if (f.type === 'view') {
         for (const k of ['link', 'state', 'description']) if (f[k] !== undefined) config[k] = f[k];
         if (f.fields !== undefined) config.fields = f.fields;
@@ -4973,15 +4989,17 @@ export class Weave {
         const description = fieldDescriptionValue(patch.config.description);
         if (description) field.config.description = description; else delete field.config.description;
       }
-      if (field.type === 'rating' && ('max' in patch.config || 'icon' in patch.config)) {
+      if (field.type === 'rating' && ('max' in patch.config || 'icon' in patch.config || 'color' in patch.config)) {
         // One key at a time: the other keeps. A lower max holds every
         // stored value to the new ceiling on read (#resolve). The scale
         // moves BEFORE the default lane reads it, so a default sent with a
         // new max is judged against that max (Feature #234), and a standing
         // default above a lowered max clamps down with it.
-        const { max, icon } = normalizeSelfContainedConfig('rating', { max: field.config.max, icon: field.config.icon, ...patch.config });
+        // A colour of null is the default, ink, like every other colour lane.
+        const { max, icon, color } = normalizeSelfContainedConfig('rating', { max: field.config.max, icon: field.config.icon, color: field.config.color, ...patch.config });
         field.config.max = max;
         field.config.icon = icon;
+        if (color) field.config.color = color; else delete field.config.color;
         if (typeof field.config.default === 'number') field.config.default = ratingValue(field.config.default, max);
       }
       if (field.type === 'number' || field.type === 'formula') {
@@ -6759,7 +6777,7 @@ export class Weave {
       const { targetField } = this.#rollupTarget(db, f);
       if (targetField && (targetField.type === 'number' || targetField.type === 'formula')) c = targetField.config;
     }
-    return c && isGraphicDisplay(c.display) ? { display: c.display, scale: c.scale ?? 'column' } : null;
+    return c && isGraphicDisplay(c.display) ? { display: c.display, scale: c.scale ?? 'column', color: c.color ?? 'ink' } : null;
   }
 
   /* What 100% is: the fixed scale, or the column's max — computed by
@@ -6781,15 +6799,18 @@ export class Weave {
      rating's own, or — for a lookup of a rating and a rollup whose answer
      stays on the scale — the rating it reads. Null for everything else. */
   #ratingOf(db, f) {
-    if (f.type === 'rating') return { max: f.config.max, icon: f.config.icon };
+    // The colour rides with the scale (Feature #235): a lookup or a rollup
+    // draws the rating it reads in that rating's colour.
+    const scaleOf = (r) => ({ max: r.config.max, icon: r.config.icon, color: r.config.color ?? 'ink' });
+    if (f.type === 'rating') return scaleOf(f);
     if (f.type === 'lookup') {
       const rel = db.fields[f.config.relationField];
       const target = rel && this.state.tables[rel.config.targetDb]?.fields[f.config.targetField];
-      return target?.type === 'rating' ? { max: target.config.max, icon: target.config.icon } : null;
+      return target?.type === 'rating' ? scaleOf(target) : null;
     }
     if (f.type === 'rollup' && RATING_SCALE_AGGS.includes(f.config.aggregate)) {
       const { targetField } = this.#rollupTarget(db, f);
-      return targetField?.type === 'rating' ? { max: targetField.config.max, icon: targetField.config.icon } : null;
+      return targetField?.type === 'rating' ? scaleOf(targetField) : null;
     }
     return null;
   }
@@ -7868,16 +7889,18 @@ export class Weave {
           // A rollup wears the display of the column it summarises (#230).
           if (f.type === 'rollup') {
             const nd = this.#numberDisplay(db, f);
-            if (nd) { out.display = nd.display; if (typeof nd.scale === 'number') out.scale = nd.scale; }
+            if (nd) { out.display = nd.display; if (typeof nd.scale === 'number') out.scale = nd.scale; out.color = nd.color; }
           }
           if (f.type === 'number' || f.type === 'formula') {
             for (const k of f.type === 'formula' ? FORMULA_COSTUME_KEYS : NUMBER_COSTUME_KEYS) {
               if (f.config[k] != null) out[k] = f.config[k];
             }
+            // A graphic says its colour out loud, ink included (Feature #235).
+            if (f.config.display) out.color = f.config.color ?? 'ink';
           }
           if (f.type === 'attachments') out.multiple = f.config.multiple !== false;
           if (f.type === 'toggle') { out.on = f.config.on; out.off = f.config.off; }
-          if (f.type === 'rating') { out.max = f.config.max; out.icon = f.config.icon; }
+          if (f.type === 'rating') { out.max = f.config.max; out.icon = f.config.icon; out.color = f.config.color ?? 'ink'; }
           // A lookup or a rollup that reads a rating draws its icons (#231).
           if (f.type === 'lookup' || f.type === 'rollup') {
             const rt = this.#ratingOf(db, f);

@@ -91,6 +91,9 @@ test('the closed sets match the engine and the field dialog', () => {
   assert.deepEqual(VOCABULARY.numberDisplays, list(DIALOG, 'NUMBER_DISPLAYS'));
   assert.deepEqual(VOCABULARY.sparklineStyles, list(ENGINE, 'SPARKLINE_STYLES'));
   assert.deepEqual(VOCABULARY.sparklineStyles, list(DIALOG, 'SPARKLINE_STYLES'));
+  // Feature #235: one set of cell colours.
+  assert.deepEqual(VOCABULARY.cellColors, list(ENGINE, 'CELL_COLORS'));
+  assert.deepEqual(VOCABULARY.cellColors, list(DIALOG, 'CELL_COLORS'));
   assert.deepEqual(VOCABULARY.dateFormats, list(DIALOG, 'DATE_FORMATS'));
   assert.deepEqual(VOCABULARY.cardinalities, list(DIALOG, 'CARDINALITIES'));
 });

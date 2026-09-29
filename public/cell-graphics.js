@@ -10,9 +10,22 @@
    share of its scale, or a heat tint behind the text. The scale is the
    engine's (`scales` on a read): the column max, or a fixed number. Every
    graphic is aria-hidden — the text beside it is what a screen reader reads,
-   so the graphic can never say something the value does not. */
+   so the graphic can never say something the value does not.
+
+   The colour (Feature #235) is the field's `color` — ink, icon or accent —
+   worn as a class on the cell's wrapper (cg-c-<color>, see colorClass); the
+   markup here only carries geometry and the share, and public/style.css
+   paints each setting from theme tokens with a dark twin. */
 (function (root) {
   const DISPLAYS = ['text', 'bar', 'ring', 'heat'];
+  // Mirrors the engine's CELL_COLORS (contract-tested).
+  const COLORS = ['ink', 'icon', 'accent'];
+  const colorOf = (c) => (COLORS.includes(c) ? c : 'ink');
+  const colorClass = (c) => `cg-c-${colorOf(c)}`;
+  /* Color by icon: a rating's filled icons take the icon's own hue. The
+     four the mockup names; any other icon falls back to the accent. */
+  const ICON_HUES = { star: 'amber', heart: 'rose', zap: 'violet', flame: 'orange' };
+  const ratingHue = (icon) => ICON_HUES[String(icon ?? 'lucide:star').replace(/^lucide:/, '')] ?? 'accent';
   const isGraphic = (d) => d != null && d !== 'text' && DISPLAYS.includes(d);
   const r2 = (n) => Math.round(n * 100) / 100;
 
@@ -30,24 +43,35 @@
   const RING_C = 2 * Math.PI * RING_R;
   const SVG = 'aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"';
 
+  /* The cell shapes (Feature #235). The bar is 6px tall with round ends on
+     an 80px track: the box is 100 by 7.5 so a share stays a percent of the
+     width, and the SVG draws at 80 by 6 — the same 0.8 both ways, so the
+     ends stay round. The ring is 16px with a 2.5px round-capped stroke:
+     2.81 in an 18-unit box. BAR_TRACK and RING_PX are the CSS sizes the
+     column width is fitted to (public/column-resize.js). */
+  const BAR_TRACK = 80, RING_PX = 16;
+  const RING_STROKE = r2(2.5 * 18 / RING_PX);
   function meterSvg(display, frac) {
     const f = Math.min(1, Math.max(0, Number(frac) || 0));
     if (display === 'bar') {
-      return `<svg class="cg cg-bar" viewBox="0 0 100 8" preserveAspectRatio="none" ${SVG}>`
-        + '<rect class="cg-track" x="0" y="0" width="100" height="8" rx="2"/>'
-        + `<rect class="cg-fill" x="0" y="0" width="${r2(f * 100)}" height="8" rx="2"/></svg>`;
+      return `<svg class="cg cg-bar" viewBox="0 0 100 7.5" ${SVG}>`
+        + '<rect class="cg-track" x="0" y="0" width="100" height="7.5" rx="3.75"/>'
+        + (f > 0 ? `<rect class="cg-fill" x="0" y="0" width="${r2(f * 100)}" height="7.5" rx="3.75"/>` : '<rect class="cg-fill" x="0" y="0" width="0" height="7.5"/>')
+        + '</svg>';
     }
     if (display === 'ring') {
       return `<svg class="cg cg-ring" viewBox="0 0 18 18" ${SVG}>`
-        + `<circle class="cg-track" cx="9" cy="9" r="${RING_R}" fill="none" stroke-width="3"/>`
-        + `<circle class="cg-fill" cx="9" cy="9" r="${RING_R}" fill="none" stroke-width="3" stroke-linecap="${f > 0 && f < 1 ? 'round' : 'butt'}"`
+        + `<circle class="cg-track" cx="9" cy="9" r="${RING_R}" fill="none" stroke-width="${RING_STROKE}"/>`
+        + `<circle class="cg-fill" cx="9" cy="9" r="${RING_R}" fill="none" stroke-width="${RING_STROKE}" stroke-linecap="${f > 0 && f < 1 ? 'round' : 'butt'}"`
         + ` stroke-dasharray="${r2(RING_C * f)} ${r2(RING_C)}" transform="rotate(-90 9 9)"/></svg>`;
     }
     if (display === 'heat') {
-      // A floor so a cell on the scale reads as tinted at all; a ceiling so
-      // the value's text stays legible on the hottest cell in both themes.
+      // A rounded tint behind the number (the wrapper's corners clip it). A
+      // floor so a cell on the scale reads as tinted at all; a ceiling so the
+      // text stays legible on the hottest cell in both themes. --cg-f is the
+      // share, which Color by icon mixes from cool to warm.
       return `<svg class="cg cg-heat" viewBox="0 0 10 10" preserveAspectRatio="none" ${SVG}>`
-        + `<rect class="cg-fill" x="0" y="0" width="10" height="10" rx="1.5" fill-opacity="${r2(0.1 + 0.6 * f)}"/></svg>`;
+        + `<rect class="cg-fill" x="0" y="0" width="10" height="10" fill-opacity="${r2(0.08 + 0.32 * f)}" style="--cg-f:${Math.round(f * 100)}%"/></svg>`;
     }
     return '';
   }
@@ -76,7 +100,10 @@
      read left to right, oldest first — and the hover lists every value. A
      blank slot is a gap in the line and an empty column. */
   const SPARK_CAP = 60;
-  const SPARK_W = 80, SPARK_H = 18, PAD = 1.5;
+  // Drawn at its own size, never stretched: the dot stays round and the
+  // columns keep their 1.5px corners (Feature #235).
+  const SPARK_W = 80, SPARK_H = 18, PAD = 2;
+  const WL_BLOCK = 5, DOT_R = 2;
   const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
   function sparkPoints(values, cap = SPARK_CAP) {
     const list = Array.isArray(values) ? values : [];
@@ -101,9 +128,10 @@
     const open = `<svg class="cg cg-spark cg-spark-${style}" viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="none" ${SVG}>`;
     const slot = (SPARK_W - 2 * PAD) / n;
     if (style === 'winloss') {
-      const mid = SPARK_H / 2, h = mid - PAD, w = Math.max(1, slot * 0.7);
+      // Small blocks a pixel clear of the midline: a win above, a loss below.
+      const mid = SPARK_H / 2, h = WL_BLOCK, w = Math.max(1, slot * 0.7);
       const bars = pts.map((v, i) => (isNum(v) && v !== 0
-        ? `<rect class="cg-fill cg-${v > 0 ? 'win' : 'loss'}" x="${r2(PAD + i * slot + (slot - w) / 2)}" y="${r2(v > 0 ? PAD : mid)}" width="${r2(w)}" height="${r2(h)}"/>`
+        ? `<rect class="cg-fill cg-${v > 0 ? 'win' : 'loss'}" x="${r2(PAD + i * slot + (slot - w) / 2)}" y="${r2(v > 0 ? mid - 1 - h : mid + 1)}" width="${r2(w)}" height="${h}" rx="1"/>`
         : '')).join('');
       return `${open}<line class="cg-track" x1="0" x2="${SPARK_W}" y1="${mid}" y2="${mid}"/>${bars}</svg>`;
     }
@@ -119,7 +147,7 @@
         if (!isNum(v)) return '';
         const yv = y(v);
         const h = Math.max(1, Math.abs(zero - yv));
-        return `<rect class="cg-fill${v < 0 ? ' cg-neg' : ''}" x="${r2(PAD + i * slot + (slot - w) / 2)}" y="${r2(Math.min(yv, zero))}" width="${r2(w)}" height="${r2(h)}"/>`;
+        return `<rect class="cg-fill${v < 0 ? ' cg-neg' : ''}" x="${r2(PAD + i * slot + (slot - w) / 2)}" y="${r2(Math.min(yv, zero))}" width="${r2(w)}" height="${r2(h)}" rx="1.5"/>`;
       }).join('') + '</svg>';
     }
     // line
@@ -128,7 +156,7 @@
     const y = (v) => (span ? PAD + (1 - (v - lo) / span) * (SPARK_H - 2 * PAD) : SPARK_H / 2);
     if (nums.length === 1) {
       const i = pts.findIndex(isNum);
-      return `${open}<circle class="cg-dot" cx="${r2(x(i))}" cy="${r2(y(pts[i]))}" r="1.8"/></svg>`;
+      return `${open}<circle class="cg-dot" cx="${r2(x(i))}" cy="${r2(y(pts[i]))}" r="${DOT_R}"/></svg>`;
     }
     let d = '', pen = false;
     pts.forEach((v, i) => {
@@ -138,8 +166,8 @@
     });
     const last = pts.length - 1 - [...pts].reverse().findIndex(isNum);
     return `${open}<path class="cg-fill" d="${d}" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`
-      + `<circle class="cg-dot" cx="${r2(x(last))}" cy="${r2(y(pts[last]))}" r="1.8"/></svg>`;
+      + `<circle class="cg-dot" cx="${r2(x(last))}" cy="${r2(y(pts[last]))}" r="${DOT_R}"/></svg>`;
   }
 
-  root.weaveCellGraphics = { DISPLAYS, isGraphic, share, meterSvg, meterTitle, ratingParts, ratingClick, SPARK_CAP, sparkPoints, sparkTitle, sparkLabel, sparkSvg };
+  root.weaveCellGraphics = { DISPLAYS, COLORS, colorOf, colorClass, ratingHue, BAR_TRACK, RING_PX, SPARK_W, SPARK_H, isGraphic, share, meterSvg, meterTitle, ratingParts, ratingClick, SPARK_CAP, sparkPoints, sparkTitle, sparkLabel, sparkSvg };
 })(globalThis);

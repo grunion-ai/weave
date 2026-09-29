@@ -46,22 +46,28 @@
   const maxWidth = (f = {}) => (f.role === 'name' ? 480 : MAX_WIDTHS[f.type] ?? MAX_FALLBACK);
 
   /* A rating's icons, as the cell paints them (public/style.css: a
-     .wv-rate-ico is a 16px glyph in 1px of padding, .wv-rating sets a 1px
-     gap, and a grid cell carries 4px of padding each side). Feature #235's
-     column-width rule: a rating opens at `max` icons plus the gaps between
-     them plus the cell's padding, so no column opens cutting its last icon
-     (Issue #404 — before this every rating opened at 104 whatever its max,
-     so a 7 of 7 read like a 5 of 7 and the right-most icon could not be
-     clicked). test/rating-browser.test.mjs holds these three numbers to
-     what the browser paints, so a CSS change to the icon cannot drift away
-     from the width in silence. */
-  const RATING_METRICS = { icon: 18, gap: 1, pad: 8 };
+     .wv-rate-ico is a 14px glyph with no padding, Feature #235's redrawn
+     cell; .wv-rating sets a 1px gap, and a grid cell carries 4px of padding
+     each side). Feature #235's column-width rule: a rating opens at `max`
+     icons plus the gaps between them plus the cell's padding, so no column
+     opens cutting its last icon (Issue #404 — before this every rating
+     opened at 104 whatever its max, so a 7 of 7 read like a 5 of 7 and the
+     right-most icon could not be clicked). test/rating-browser.test.mjs
+     holds these three numbers to what the browser paints, so a CSS change
+     to the icon cannot drift away from the width in silence. */
+  const RATING_METRICS = { icon: 14, gap: 1, pad: 8 };
   const ratingIcons = (f = {}) => (f.type === 'rating' && Number.isInteger(f.max) && f.max > 0 ? f.max : 0);
   /* `pad` is the cell's own horizontal padding and border, measured off the
      rendered cell by app.js — Tabler gives the row's last cell 20px on the
      right where every other cell has 4 — and the ordinary cell's 8 when
      nothing has been measured yet. */
   const ratingWidth = (n, pad) => n * RATING_METRICS.icon + (n - 1) * RATING_METRICS.gap + (Number.isFinite(pad) ? pad : RATING_METRICS.pad);
+  /* Whether a rating's icons fit in a column this wide; a column narrower
+     than its icons (a person dragged it, or the max passes the fit cap)
+     draws the compact "★ 3/12" instead of cutting icons off. A rollup or a
+     lookup that reads a rating draws inside the computed chip and is sized
+     on its own (Issue #564). */
+  const ratingFits = (width, max, pad) => !(max > 0) || width >= ratingWidth(max, pad);
 
   /* A toggle's switch, as the cell paints it (public/style.css: a
      .wv-toggle-track is 28px, .wv-toggle sets a 7px gap before the word,
@@ -76,14 +82,34 @@
   const toggleWidth = ({ on = 0, off = 0, pad } = {}) =>
     Math.ceil(TOGGLE_METRICS.track + TOGGLE_METRICS.gap + Math.max(on, off) + (Number.isFinite(pad) ? pad : TOGGLE_METRICS.pad));
 
-  const defaultWidth = (f = {}) => {
+  /* A graphic number column opens at the width its graphic needs (Feature
+     #235): never a bar squeezed to a sliver. The sizes are the cells' own
+     (public/style.css): an 80px bar track, a 16px ring, an 80px sparkline,
+     6px between a graphic and its figure, 24px of cell padding. `widest` is
+     the widest figure the column prints, measured by the page; three digits
+     until it has. The width a person dragged is stored and wins (layout). */
+  const RICH = { bar: 80, ring: 16, spark: 80, gap: 6, heatPad: 16, cellPad: 24, figure: 24 };
+  function richWidth(f, widest) {
+    const figure = widest ?? RICH.figure;
+    if (f.display === 'sparkline') return RICH.cellPad + RICH.spark;
+    if (f.display === 'bar') return RICH.cellPad + RICH.bar + RICH.gap + figure;
+    if (f.display === 'ring') return RICH.cellPad + RICH.ring + RICH.gap + figure;
+    if (f.display === 'heat') return RICH.cellPad + RICH.heatPad + figure;
+    return null;
+  }
+
+  const defaultWidth = (f = {}, { widest = null } = {}) => {
     if (f.role === 'name') return NAME_WIDTH;
-    if (f.type === 'number' && f.currency) return CURRENCY_WIDTH;
     const icons = ratingIcons(f);
     /* A short rating keeps the type default rather than shrinking under it,
        and past the fit ceiling a rating stops there rather than taking the
-       screen: a max that long is read in the cell's pop. */
+       screen: a max that long draws its compact form. */
     if (icons) return Math.min(maxWidth(f), Math.max(DEFAULT_WIDTHS.rating, ratingWidth(icons, f.pad)));
+    const rich = richWidth(f, widest);
+    // A number column is never narrower than a plain one: an empty cell
+    // is still a number box, and the box wants its 88px.
+    if (rich != null) return Math.min(maxWidth(f), Math.ceil(Math.max(rich, DEFAULT_WIDTHS.number)));
+    if (f.type === 'number' && f.currency) return CURRENCY_WIDTH;
     return DEFAULT_WIDTHS[f.type] ?? FALLBACK_WIDTH;
   };
 
@@ -92,7 +118,7 @@
      column's inputs decide its width; nothing is shared or redistributed. */
   function layout(cols) {
     const out = {};
-    for (const c of cols) out[c.name] = Math.max(Math.ceil(c.floor ?? 0), Math.round(c.stored ?? defaultWidth(c)));
+    for (const c of cols) out[c.name] = Math.max(Math.ceil(c.floor ?? 0), Math.round(c.stored ?? defaultWidth(c, { widest: c.widest })));
     return out;
   }
 
@@ -199,6 +225,7 @@
     },
     fit: ({ content, floor = 0, max = Infinity }) => Math.max(Math.ceil(floor), Math.min(max, Math.ceil(content))),
     nudge: ({ width, delta, floor = 0 }) => Math.max(Math.ceil(floor), Math.round(width + delta)),
+    RICH, ratingFits,
     defaultWidth, maxWidth, layout, frozenFit, canFreeze, plan, target, step,
   };
 })(globalThis);

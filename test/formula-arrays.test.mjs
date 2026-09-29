@@ -105,5 +105,5 @@ test('a chip and a card carry the series a sparkline segment draws', () => {
   w.createEntity(deal, { name: 'x', values: { Amount: 4, Close: '2026-01-01', Account: a.id } });
   w.createEntity(deal, { name: 'y', values: { Amount: 7, Close: '2026-02-01', Account: a.id } });
   const chip = w.renderView(a.id, 'chip', { config: { fields: ['Trend'] } });
-  assert.deepEqual(chip.fields[0].spark, { style: 'column', values: [4, 7] });
+  assert.deepEqual(chip.fields[0].spark, { style: 'column', values: [4, 7], color: 'ink' });
 });

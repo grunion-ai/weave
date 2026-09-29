@@ -2994,10 +2994,22 @@ function scaleText(f, scale) {
   if (scale == null) return null;
   return f?.format === 'percent' ? `${Math.round(scale * 1e4) / 100}%` : Number(scale).toLocaleString();
 }
-function numberGraphic(display, value, scale, text, f = null) {
+/* The width a figure takes in a grid cell, for fitting a graphic column
+   (Feature #235): the grid's own font on a canvas, tabular digits being as
+   wide as the widest, plus a pixel of slack for rounding. */
+let figureCanvas = null;
+function figureWidth(text) {
+  try {
+    figureCanvas ??= document.createElement('canvas').getContext('2d');
+    const cs = getComputedStyle(document.documentElement);
+    figureCanvas.font = `${cs.getPropertyValue('--wv-grid-font').trim() || '13px'} ${getComputedStyle(document.body).fontFamily}`;
+    return Math.ceil(figureCanvas.measureText(String(text).replace(/\d/g, '0')).width) + 2;
+  } catch { return null; } // no canvas (a headless probe): the width falls back to three digits
+}
+function numberGraphic(display, value, scale, text, f = null, color = f?.color) {
   const shown = String(text ?? value ?? '');
   const box = el('span', {
-    class: `cg-wrap cg-${display}`, role: 'img', 'aria-label': shown,
+    class: `cg-wrap cg-${display} ${cellGraphics.colorClass(color)}`, role: 'img', 'aria-label': shown,
     title: cellGraphics.meterTitle(shown, value, scale, scaleText(f, scale)),
   });
   // The markup is numbers only (cell-graphics.js builds it from a share).
@@ -3018,14 +3030,26 @@ function numberGraphicFor(f, item, text) {
    `rate` event (a digit, Backspace). Read-only — a lookup, a rollup, a chip
    — the same icons with no buttons, rounded to a whole icon. Either way the
    group says "3 of 5" to a screen reader and the icons are hidden from it. */
-function ratingEl(max, icon, value, { onSet = null, title = null } = {}) {
-  const box = el('span', { class: 'wv-rating' + (onSet ? ' editable' : ''), role: onSet ? 'group' : 'img', dataset: { max: String(max ?? 5) } });
+function ratingEl(max, icon, value, { onSet = null, title = null, color = 'ink' } = {}) {
+  /* The colour (Feature #235) is a class; Color by icon also names the
+     icon's hue, which the style sheet maps to a token with a dark twin. */
+  const box = el('span', {
+    class: `wv-rating ${cellGraphics.colorClass(color)}` + (onSet ? ' editable' : ''), role: onSet ? 'group' : 'img',
+    dataset: { max: String(max ?? 5), hue: cellGraphics.ratingHue(icon) },
+  });
   const paint = (v) => {
     const { filled, max: m, label } = cellGraphics.ratingParts(v, max);
     box.setAttribute('aria-label', label);
     box.title = title ?? label;
     box.dataset.value = v == null ? '' : String(v);
-    box.replaceChildren(...Array.from({ length: m }, (_, i) => {
+    /* The compact form a narrow column draws instead (Issue #404): one
+       icon and "3/12", first in the row and hidden unless the grid's layout
+       sheet says the icons do not fit. The group's label is still what a
+       screen reader hears, so the pair is hidden from it. */
+    const compact = el('span', { class: 'wv-rating-compact', 'aria-hidden': 'true' },
+      el('span', { class: 'wv-rate-mini' + (filled > 0 ? ' on' : '') }, iconEl(icon || 'lucide:star', 'wv-icon') ?? '★'),
+      el('span', { class: 'wv-rating-n' }, `${filled}/${m}`));
+    box.replaceChildren(compact, ...Array.from({ length: m }, (_, i) => {
       const n = i + 1;
       const glyph = iconEl(icon || 'lucide:star', 'wv-icon') ?? '★';
       return onSet
@@ -3044,10 +3068,10 @@ function ratingEl(max, icon, value, { onSet = null, title = null } = {}) {
    points drawn; the hover lists every value and a screen reader hears the
    count, the last value, the low and the high. Null when there is no number
    to draw, so the cell falls back to its text. */
-function sparkEl(style, values) {
+function sparkEl(style, values, color = 'ink') {
   const svg = cellGraphics.sparkSvg(style || 'line', values);
   if (!svg) return null;
-  const box = el('span', { class: `cg-wrap cg-sparkwrap cg-${style || 'line'}`, role: 'img', 'aria-label': cellGraphics.sparkLabel(values), title: cellGraphics.sparkTitle(values) });
+  const box = el('span', { class: `cg-wrap cg-sparkwrap cg-${style || 'line'} ${cellGraphics.colorClass(color)}`, role: 'img', 'aria-label': cellGraphics.sparkLabel(values), title: cellGraphics.sparkTitle(values) });
   box.innerHTML = svg; // numbers only: cell-graphics.js builds it from the series
   return box;
 }
@@ -3055,10 +3079,10 @@ function sparkEl(style, values) {
    the colour), or a label + value pair. A graphic number draws its meter,
    a rating its icons, a sparkline its series. */
 function segmentValueEl(seg) {
-  if (seg.spark) return sparkEl(seg.spark.style, seg.spark.values) ?? seg.value;
-  if (seg.rating) return ratingEl(seg.rating.max, seg.rating.icon, seg.rating.value, { title: `${seg.label}: ${seg.value}` });
+  if (seg.spark) return sparkEl(seg.spark.style, seg.spark.values, seg.spark.color) ?? seg.value;
+  if (seg.rating) return ratingEl(seg.rating.max, seg.rating.icon, seg.rating.value, { title: `${seg.label}: ${seg.value}`, color: seg.rating.color });
   return seg.meter && cellGraphics.isGraphic(seg.meter.display)
-    ? numberGraphic(seg.meter.display, seg.meter.value, seg.meter.scale, seg.value)
+    ? numberGraphic(seg.meter.display, seg.meter.value, seg.meter.scale, seg.value, null, seg.meter.color)
     : seg.value;
 }
 function viewSegmentEl(seg) {
@@ -3275,21 +3299,25 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     // are not mistaken for the chips and inputs beside them.
     const text = fieldValueCell(val);
     // A formula's list wears its sparkline (#232).
-    const graphic = (f.type === 'formula' && f.display === 'sparkline' && Array.isArray(item?.raw?.[f.name]) ? sparkEl(f.style, item.raw[f.name]) : null)
+    const graphic = (f.type === 'formula' && f.display === 'sparkline' && Array.isArray(item?.raw?.[f.name]) ? sparkEl(f.style, item.raw[f.name], f.color) : null)
       // A lookup or a rollup that reads a rating draws its icons (#231).
       ?? (f.rating && typeof item?.raw?.[f.name] === 'number'
-        ? ratingEl(f.rating.max, f.rating.icon, item.raw[f.name], { title: `${f.name}: ${text}` }) : null)
+        ? ratingEl(f.rating.max, f.rating.icon, item.raw[f.name], { title: `${f.name}: ${text}`, color: f.rating.color }) : null)
       ?? numberGraphicFor(f, item, text);
+    /* A rich column — a sparkline, a rating it reads, a bar, ring or heat —
+       leaves the Σ or ƒ to its header (Feature #235): the graphic already
+       says the cell is not typed into, and a mark in every row was noise. */
+    const rich = f.display === 'sparkline' || !!f.rating || cellGraphics.isGraphic(f.display);
     // Nothing computed: the dash is the empty hint, blank at rest in a grid (Issue #420).
     const box = el('span', { class: 'computed k k-computed' + (graphic || text ? '' : ' is-empty'), title: `${f.type} — read-only` },
-      el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
+      rich ? null : el('span', { class: 'computed-mark' }, computedMarkNode(f.type)),
       graphic ?? (text || '—'));
     if (!compact) box.append(el('span', { class: 'wv-tag' }, f.type));
     return box;
   }
   if (f.type === 'rating') {
     // The value paints the moment it is chosen; the PATCH reconciles.
-    const box = ratingEl(f.max, f.icon, item.raw?.[f.name] ?? null, { onSet: (v) => patch(v, (x) => box.paint(x)) });
+    const box = ratingEl(f.max, f.icon, item.raw?.[f.name] ?? null, { onSet: (v) => patch(v, (x) => box.paint(x)), color: f.color });
     return box;
   }
   if (f.type === 'workflow') {
@@ -5643,9 +5671,23 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const canFreezeHere = () => !!db.view && !db.view.blank;
   const storedFrozen = () => (canFreezeHere() ? db.view.frozen ?? 0 : 0);
   const storedWidth = (c) => db.view?.widths?.[c] ?? colField(db, c)?.width;
+  /* A graphic number column opens at its graphic plus its widest figure
+     (Feature #235): the column max the engine names on the read, dressed
+     the way the cell prints it, measured once. Stable across pages, since
+     the max is the whole column's. */
+  const widest = new Map();
+  const widestOf = (c) => {
+    const f = colField(db, c);
+    if (!f || !cellGraphics.isGraphic(f.display)) return null;
+    if (!widest.has(c)) {
+      const scale = items.find((it) => it?.scales?.[c] != null)?.scales?.[c] ?? f.scale ?? null;
+      widest.set(c, scale == null ? null : figureWidth(String(numberCore.dressNumber(f, scale))));
+    }
+    return widest.get(c);
+  };
   // A system column's default is its stamp's width; it floors like a field.
   const widthOf = (c) => override.get(c)
-    ?? CR.layout([{ ...colField(db, c), name: c, pad: cellPads.get(c), stored: storedWidth(c) ?? (isSysCol(c) ? SYS_WIDTHS[c] : undefined), floor: floors.get(c) }])[c];
+    ?? CR.layout([{ ...colField(db, c), name: c, pad: cellPads.get(c), stored: storedWidth(c) ?? (isSysCol(c) ? SYS_WIDTHS[c] : undefined), floor: floors.get(c), widest: widestOf(c) }])[c];
   const headOf = (c) => table?.tHead?.rows[0]?.querySelector(`th.col-head[data-col="${CSS.escape(c)}"]`) ?? null;
   // The cells before the first field: the checkbox and the # link.
   const leadCount = () => {
@@ -5670,7 +5712,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
        page's scroll away (Feature #233: every other column is fixed now, so
        nothing else absorbs it). */
     if (pidWidth) out.push(`${scope} > * > tr > :is(th.pid-head, td.pid-cell){min-width:${pidWidth}px}`);
-    cols.forEach((c, i) => out.push(cell(at + i + 1) + fixed(widthOf(c))));
+    cols.forEach((c, i) => {
+      out.push(cell(at + i + 1) + fixed(widthOf(c)));
+      /* A rating column narrower than its icons — a person dragged it, or
+         the max passes the fit cap — draws the compact "★ 3/12" rather
+         than cutting icons off (Issue #404). */
+      const f = colField(db, c);
+      if (f?.type === 'rating' && !CR.ratingFits(widthOf(c), f.max, cellPads.get(c))) {
+        out.push(`${cell(at + i + 1, 'tbody')} .wv-rating > .wv-rate-ico{display:none}`,
+          `${cell(at + i + 1, 'tbody')} .wv-rating > .wv-rating-compact{display:inline-flex}`);
+      }
+    });
     sysTail.forEach((n, j) => out.push(cell(at + cols.length + j + 1) + fixed(Math.max(SYS_WIDTHS[n] ?? 136, floors.get(n) ?? 0))));
     // The frozen fields stick beside #, each at the sum of what is left of
     // it, with the # column's own layers (Issue #252): opaque in the body,
@@ -8296,6 +8348,23 @@ function numberCostumeControls(state, redraw, changed, { label = 'Format', colum
   return kids;
 }
 
+/* The Color picker (Feature #235): the field's three colour settings as
+   swatches, each drawn as a live sample of this field in that setting —
+   the bar, the ring, the stars or the line it will wear — so the choice is
+   made by looking, not by reading a name. `sample(color)` draws one. */
+function colorPicker(current, sample, onPick) {
+  const fdc = fieldDialogCore;
+  const wrap = el('div', { class: 'wv-color-pick', role: 'group', 'aria-label': 'Color' });
+  const btns = fdc.CELL_COLORS.map((c) => el('button', {
+    type: 'button', class: 'wv-color-opt', dataset: { color: c }, 'aria-pressed': String(c === (current ?? 'ink')),
+    title: fdc.CELL_COLOR_LABELS[c],
+    onclick: () => { for (const b of btns) b.setAttribute('aria-pressed', String(b === btn(c))); onPick(c); },
+  }, el('span', { class: 'wv-color-sample', 'aria-hidden': 'true' }, sample(c)), el('span', { class: 'wv-color-label' }, fdc.CELL_COLOR_LABELS[c])));
+  const btn = (c) => btns[fdc.CELL_COLORS.indexOf(c)];
+  wrap.append(...btns);
+  return wrap;
+}
+
 /* A list result's costume (Feature #232): text, or a sparkline in one of
    three styles, with a sample series drawn in the chosen style. */
 const SPARK_STYLE_LABELS = { line: 'line', column: 'column', winloss: 'win/loss' };
@@ -8307,9 +8376,11 @@ function sparklineControls(n, redraw, changed) {
     (v) => { n.display = v; if (v !== 'sparkline') n.style = 'line'; redraw(); changed(); }))];
   if (!on) return out;
   const style = n.style ?? 'line';
+  const series = style === 'winloss' ? SPARK_SAMPLE_WL : SPARK_SAMPLE;
+  out.push(dsection('Color', colorPicker(n.color, (c) => sparkEl(style, series, c), (c) => { n.color = c; redraw(); changed(); })));
   out.push(dsection('Style', segCtl(fieldDialogCore.SPARKLINE_STYLES.map((id) => ({ id, label: SPARK_STYLE_LABELS[id] })), style,
     (v) => { n.style = v; redraw(); changed(); })));
-  out.push(dsection('Sample', el('div', { class: 'cg-preview cg-spark-preview' }, sparkEl(style, style === 'winloss' ? SPARK_SAMPLE_WL : SPARK_SAMPLE))));
+  out.push(dsection('Sample', el('div', { class: 'cg-preview cg-spark-preview' }, sparkEl(style, series, n.color))));
   return out;
 }
 
@@ -8332,6 +8403,7 @@ function numberDisplayControls(n, redraw, changed, column = null) {
   });
   const preview = el('div', { class: 'cg-preview', 'aria-label': 'Sample rows' });
   const noteBox = el('div');
+  const swatches = el('div');
   const drawPreview = () => {
     // Nothing until the column answers: a figure the field never holds is
     // the very thing Issue #388 is about, and a flash of one is still one.
@@ -8339,8 +8411,11 @@ function numberDisplayControls(n, redraw, changed, column = null) {
     const summary = column?.summary ?? null;
     const scale = numberCore.sampleScale(summary, n.scale, n);
     const { values, example } = numberCore.sampleFigures(summary, n.scale, n);
-    preview.replaceChildren(...values.map((value) => el('div', { class: 'cg-preview-row' },
-      numberGraphic(display, value, scale, String(numberCore.dressNumber(n, value)), n))));
+    const draw = (value, color) => numberGraphic(display, value, scale, String(numberCore.dressNumber(n, value)), n, color);
+    preview.replaceChildren(...values.map((value) => el('div', { class: 'cg-preview-row' }, draw(value, n.color))));
+    // Each swatch draws the column's middle figure in its setting.
+    const mid = values[Math.floor(values.length / 2)];
+    swatches.replaceChildren(colorPicker(n.color, (c) => draw(mid, c), (c) => { n.color = c; drawPreview(); changed(); }));
     noteBox.replaceChildren(example
       ? el('div', { class: 'hintnote cg-preview-note' }, 'Example figures. This column holds no numbers yet.')
       : '');
@@ -8348,6 +8423,7 @@ function numberDisplayControls(n, redraw, changed, column = null) {
   drawPreview();
   // The column answers on its own time; the Sample redraws when it does.
   if (column) column.load().then(drawPreview, () => {});
+  out.push(dsection('Color', swatches));
   out.push(dsection('Scale',
     segCtl([{ id: 'column', label: 'column max' }, { id: 'fixed', label: 'fixed' }], fixed ? 'fixed' : 'column', (v) => {
       n.scale = v === 'fixed' ? (n.format === 'percent' ? 1 : 100) : 'column';
@@ -8392,7 +8468,7 @@ function computedShowsAs(db, f, after) {
     if (!row) return result.replaceChildren(el('span', { class: 'hintnote' }, 'No row has a value yet.'));
     const raw = row.raw[f.name];
     const text = row.fields?.[f.name];
-    const drawn = f.rating && typeof raw === 'number' ? ratingEl(f.rating.max, f.rating.icon, raw)
+    const drawn = f.rating && typeof raw === 'number' ? ratingEl(f.rating.max, f.rating.icon, raw, { color: f.rating.color })
       : numberGraphicFor(f, row, text) ?? (Array.isArray(text) ? text.join(', ') : String(text ?? raw));
     result.replaceChildren(el('span', { class: 'hintnote' }, `${row.name || 'Untitled'}: `), drawn);
   }).catch(() => result.replaceChildren(el('span', { class: 'hintnote' }, 'The rows could not be read.')));
@@ -8753,12 +8829,12 @@ function fieldDialog(db, existing, after) {
            to clear; focused, the arrows move it, a digit sets it and
            Backspace clears. The row redraws with the icon and the max, and a
            default above a lowered max comes down with it. */
-        const r = state.rating ?? (state.rating = { max: 5, icon: 'lucide:star' });
+        const r = state.rating ?? (state.rating = { max: 5, icon: 'lucide:star', color: 'ink' });
         const preview = el('div', { class: 'wv-rating-default' });
         const drawDefault = () => {
           state.default = fdc.clampRatingDefault(state.default, r.max);
           const cur = state.default;
-          const box = ratingEl(r.max, r.icon, cur === '' ? null : Number(cur), { onSet: (v) => setDefault(v ? String(v) : '') });
+          const box = ratingEl(r.max, r.icon, cur === '' ? null : Number(cur), { onSet: (v) => setDefault(v ? String(v) : ''), color: r.color });
           const label = fdc.ratingDefaultLabel(cur, r.max);
           box.setAttribute('aria-label', label);
           box.title = `${label} · click an icon, or use the arrow keys`;
@@ -8792,6 +8868,9 @@ function fieldDialog(db, existing, after) {
           onclick: (e) => glyphPopover(e.currentTarget, r.icon, (id) => { r.icon = id || 'lucide:star'; drawCfg(); changed(); }),
         }, iconEl(r.icon, 'wv-icon'), el('span', {}, String(r.icon).replace(/^lucide:/, '')));
         kids.push(dsection('Icon', iconBtn));
+        // The colour (Feature #235): three of the field's own icons, two
+        // filled, in each setting.
+        kids.push(dsection('Color', colorPicker(r.color, (c) => ratingEl(3, r.icon, 2, { color: c }), (c) => { r.color = c; drawDefault(); changed(); })));
         drawDefault();
         kids.push(dsection('Default', preview));
       } else if (t === 'toggle') {

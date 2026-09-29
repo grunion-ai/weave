@@ -50,7 +50,7 @@ test('seedWeaver includes a Showcase space covering every field type and multipl
   }
   const ofType = (t) => ft.fields.filter((f) => f.type === t);
   assert.ok(ofType('number').length >= 4, 'number: plain, currency, percent, unit');
-  assert.equal(new Set(ofType('number').map((f) => `${f.format ?? 'number'}|${f.unit ?? ''}|${f.decimals ?? ''}|${f.display ?? 'text'}|${f.scale ?? 'column'}`)).size, ofType('number').length, 'every number field is a distinct configuration');
+  assert.equal(new Set(ofType('number').map((f) => `${f.format ?? 'number'}|${f.unit ?? ''}|${f.decimals ?? ''}|${f.display ?? 'text'}|${f.scale ?? 'column'}|${f.color ?? ''}`)).size, ofType('number').length, 'every number field is a distinct configuration');
   assert.ok(ofType('date').length >= 3, 'date: iso, us, long+time');
   assert.ok(ofType('select').length >= 2 && ofType('select').some((f) => f.optionsFull.some((o) => o.color)), 'select: colored and plain');
   assert.ok(ofType('workflow').length >= 2, 'workflow: full lifecycle and a two-state gate');
@@ -74,7 +74,7 @@ test('seedWeaver includes a Showcase space covering every field type and multipl
    give it something to draw. The lists come from the engine's own
    constants, so a display or a sparkline style added later without a
    Showcase column fails here. */
-import { NUMBER_DISPLAYS, SPARKLINE_STYLES } from '../src/engine.js';
+import { NUMBER_DISPLAYS, SPARKLINE_STYLES, CELL_COLORS } from '../src/engine.js';
 
 test('the Showcase wears every number display, on the column scale and a fixed one (Feature #230)', () => {
   const w = seedWeaver(new Weave());
@@ -141,6 +141,31 @@ test('the Showcase draws a sparkline in every style from sorted lookups, and sho
   assert.ok(rows.some((r) => (r.fields[winloss.name] ?? []).some((v) => v > 0)), 'the win/loss series has a win');
   const blank = rows.find((r) => r.name === 'Blank row');
   assert.ok(sparks.some((f) => /null/.test(f.expression) && blank.fields[f.name] === null), 'a formula returns null on a row with no peers');
+});
+
+/* Feature #235: every colour setting on a number display, a rating and a
+   sparkline, each with values to draw. The list is the engine's, so a
+   colour added later without a Showcase column fails here. */
+test('the Showcase draws each colour setting on a number display, a rating and a sparkline (Feature #235)', () => {
+  const w = seedWeaver(new Weave());
+  const ft = w.describeSchema().find((s) => s.space === 'Showcase').tables.find((t) => t.name === 'Field Types');
+  const kinds = {
+    'number display': ft.fields.filter((f) => f.type === 'number' && f.display && f.display !== 'text'),
+    rating: ft.fields.filter((f) => f.type === 'rating'),
+    sparkline: ft.fields.filter((f) => f.type === 'formula' && f.display === 'sparkline'),
+  };
+  const rows = w.listEntities(ft.id).map((e) => w.readEntity(e.id));
+  for (const [kind, fields] of Object.entries(kinds)) {
+    for (const c of CELL_COLORS) {
+      const f = fields.find((x) => x.color === c);
+      assert.ok(f, `a ${kind} in color '${c}'`);
+      assert.ok(rows.filter((r) => r.raw[f.name] != null && !(Array.isArray(r.raw[f.name]) && !r.raw[f.name].length)).length >= 2, `${f.name} has values to draw`);
+    }
+  }
+  // Color by icon names the icon's hue: at least two different icons wear it.
+  assert.ok(new Set(kinds.rating.filter((f) => f.color === 'icon').map((f) => f.icon)).size >= 2, 'two icons in Color by icon');
+  // A ten-icon rating, the width case of Issue #404.
+  assert.ok(kinds.rating.some((f) => f.max === 10), 'a rating out of ten');
 });
 
 test('seedFieldShowcase is idempotent — a second run is a no-op', () => {

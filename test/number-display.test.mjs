@@ -115,7 +115,7 @@ test('a chip and a card carry the meter a segment draws', () => {
   const chip = w.renderView(a.id, 'chip');
   const seg = chip.fields.find((f) => f.label === 'Score');
   assert.equal(seg.value, '7', 'the text is still there for a reader with no graphics');
-  assert.deepEqual(seg.meter, { display: 'ring', value: 7, scale: 10 });
+  assert.deepEqual(seg.meter, { display: 'ring', value: 7, scale: 10, color: 'ink' });
 });
 
 test('the column max is the same figure a Space-level via max rollup reads', () => {
