@@ -1,0 +1,1 @@
+- **A record opens as a full-screen sheet on a phone** (Issue #549): below 600px the entity dock covers the screen in place of a 56px column beside the table, where the name stood one letter per line and WebKit scrolled the page sideways. The divider is hidden, the table drops its 320px floor, and the sheet's close button and Esc hand the table back where it was.

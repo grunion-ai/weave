@@ -12,10 +12,14 @@
    sideways, with #main at least 350px wide. The drawer opens from the menu
    button, holds only 32px tap targets, and closes on Esc, on the scrim and
    on navigation. Tables may scroll inside their own wrapper; the page may
-   not. Playwright is NOT a dependency; the suite skips when absent. */
+   not. Playwright is NOT a dependency; the suite skips when absent.
+   The entity dock (Issue #549): below 600px a docked record used to stay in
+   the flex row, where the table's 320px floor left it 56px and the name stood
+   one letter per line. It is now a sheet over the whole screen, in Chromium
+   and in WebKit, and its close and Esc hand the table back. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, settled } from './lib/browser.mjs';
 
 const s = await launch('phone shell', (weave) => {
   weave.createSpace({ name: 'Product' });
@@ -35,13 +39,13 @@ const s = await launch('phone shell', (weave) => {
   weave.addField(guides, { name: 'Audience', type: 'select', config: { options: ['Everyone', 'Operators'] } });
   const guide = weave.createEntity(guides, { name: 'Quickstart', values: { Audience: 'Everyone' } });
   weave.setDoc(guide.id, '# Quickstart\n\nThe sidebar lists every space and table. A sentence long enough to wrap twice on a phone screen, so the body is measured with text in it.', 'Description');
-  return { views: { 'Task table': `#/table/${tasks.id}`, 'Task record': `#/entity/${task.id}`, 'Guide table': `#/table/${guides.id}`, 'Guide record': `#/entity/${guide.id}`, 'relation map': '#/map' } };
+  return { dockHash: `#/table/${tasks.id}?e=${task.id}`, views: { 'Task table': `#/table/${tasks.id}`, 'Task record': `#/entity/${task.id}`, 'Guide table': `#/table/${guides.id}`, 'Guide record': `#/entity/${guide.id}`, 'relation map': '#/map' } };
 });
 
 if (s) {
-  const { base, browser, views } = s;
-  const open = async (hash, { width = 390, theme = 'light' } = {}) => {
-    const page = await browser.newPage({ viewport: { width, height: 844 } });
+  const { base, browser, views, dockHash } = s;
+  const open = async (hash, { width = 390, theme = 'light', engine = browser } = {}) => {
+    const page = await engine.newPage({ viewport: { width, height: 844 } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main .nav-menu', { state: 'attached' });
@@ -144,6 +148,79 @@ if (s) {
     // The media query's change event lands after the resize, not with it.
     await page.waitForFunction(() => !document.querySelector('#app').classList.contains('nav-peek'), null, { timeout: 3000 }).catch(() => {});
     assert.equal((await shell(page)).open, false, 'widening past 900px shuts an open drawer');
+    await page.close();
+  });
+
+  /* The sheet is measured in both engines whatever WEAVE_BROWSER says: the
+     report's sideways scroll (scrollWidth 392) was WebKit's alone. */
+  const pw = await import('playwright');
+  const engines = { chromium: null, webkit: null };
+  test.after(() => Promise.all(Object.values(engines).map((b) => b?.close())));
+  const engineOf = async (name) => (engines[name] ??= await pw[name].launch());
+  const sheet = (page) => page.evaluate(() => {
+    const rect = (n) => { const r = n.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
+    const dock = document.querySelector('#dock');
+    return {
+      theme: document.documentElement.dataset.bsTheme,
+      scrollWidth: document.documentElement.scrollWidth,
+      hidden: dock.hidden,
+      dock: rect(dock),
+      position: getComputedStyle(dock).position,
+      name: dock.querySelector('textarea.name-edit') && rect(dock.querySelector('textarea.name-edit')),
+      gutter: rect(document.querySelector('#dock-gutter')),
+      main: rect(document.querySelector('#main')),
+      // What a tap in the middle of the screen lands on.
+      hit: !!document.elementFromPoint(195, 420)?.closest('#dock'),
+    };
+  });
+  const openDock = async (opts) => {
+    const page = await open(dockHash, opts);
+    await page.waitForSelector('#dock textarea.name-edit');
+    await settled(page.locator('#dock'));
+    return page;
+  };
+
+  for (const name of Object.keys(engines)) {
+    for (const theme of ['light', 'dark']) {
+      test(`a docked record at 390×844 is a full-screen sheet (${name}, ${theme})`, async () => {
+        const page = await openDock({ theme, engine: await engineOf(name) });
+        const seen = await sheet(page);
+        assert.equal(seen.theme, theme, 'the page must be in the theme under test');
+        assert.equal(seen.position, 'fixed', 'the dock leaves the flex row');
+        assert.deepEqual([seen.dock.left, seen.dock.top, seen.dock.width, seen.dock.height], [0, 0, 390, 844], 'and covers the viewport');
+        assert.ok(seen.name.width >= 200, `the name field is ${seen.name.width}px wide`);
+        assert.ok(seen.name.height < 120, `the name "Wire Stripe webhooks" takes a line or two, not ${seen.name.height}px`);
+        assert.equal(seen.gutter.width, 0, 'there is no divider to drag');
+        assert.equal(seen.scrollWidth, 390, 'the page does not scroll sideways');
+        assert.ok(seen.hit, 'the sheet is on top: a tap mid-screen lands in it');
+        await page.close();
+      });
+    }
+
+    test(`the sheet's close and Esc hand the table back (${name})`, async () => {
+      const page = await openDock({ engine: await engineOf(name) });
+      await page.click('#dock button[aria-label="Close"]');
+      let seen = await sheet(page);
+      assert.ok(seen.hidden, 'the close button shuts the sheet');
+      assert.ok(seen.main.width >= 350, `the table is back at ${seen.main.width}px`);
+      assert.ok(!page.url().includes('?e='), 'and the URL forgets the record');
+      await page.close();
+      const again = await openDock({ engine: await engineOf(name) });
+      await again.keyboard.press('Escape');
+      await again.waitForFunction(() => document.querySelector('#dock').hidden);
+      seen = await sheet(again);
+      assert.ok(seen.main.width >= 350, `Esc gives the table back at ${seen.main.width}px`);
+      assert.equal(seen.scrollWidth, 390);
+      await again.close();
+    });
+  }
+
+  test('past 600px the dock is still a column beside its table', async () => {
+    const page = await openDock({ width: 1280 });
+    const seen = await sheet(page);
+    assert.equal(seen.position, 'sticky');
+    assert.equal(seen.gutter.width, 16, 'with the divider between them');
+    assert.ok(seen.main.width >= 320 && seen.dock.left > seen.main.left + seen.main.width, `the table keeps its floor (${seen.main.width}px) and the dock sits to its right`);
     await page.close();
   });
 }

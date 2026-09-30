@@ -138,7 +138,10 @@ if (s) {
           } finally { await page.close(); }
         });
 
-        test(`${at}: the row open in the dock keeps its frozen pair opaque`, async () => {
+        /* Below 600px the dock is a sheet over the whole screen (Issue
+           #549): the docked row is under it, and there is no pixel of the
+           table to read until the sheet closes. */
+        if (viewport.width > 600) test(`${at}: the row open in the dock keeps its frozen pair opaque`, async () => {
           const page = await open(b, { theme, viewport, docked: true });
           try {
             // The pointer is elsewhere: the dock's light alone.

@@ -1976,6 +1976,19 @@ body:has(#tray-back) #hub-foot { display: none; }
 #dock-gutter::after { content: ""; position: absolute; left: 50%; top: 50%; height: 44px; width: 3px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--tblr-border-color); opacity: 0; transition: opacity .12s ease; }
 #dock-gutter:hover::after, body.dock-resizing #dock-gutter::after { opacity: 1; }
 body.dock-resizing { user-select: none; cursor: col-resize; }
+/* Below 600px there is no room for two columns (Issue #549): the table's
+   320px floor left the dock 56px at 390 and the name stood one letter per
+   line. The dock leaves the row and covers the screen as a sheet, under the
+   nav drawer's scrim (65) and every popover, over the hub foot (55). Its
+   pin is a flex basis, so it means nothing here and comes back past 600px.
+   The table underneath keeps its scroll, and the sheet keeps its own.
+   align-self goes back to auto: on a positioned box flex-start means "as
+   tall as the content", and a long record ran 62px past the screen. */
+@media (max-width: 600px) {
+  #dock { position: fixed; inset: 0; z-index: 62; align-self: auto; height: 100dvh; margin: 0; padding: 14px 14px 24px; border-radius: 0; box-shadow: none; min-height: 0; max-height: none; overscroll-behavior: contain; }
+  #dock-gutter:not([hidden]) { display: none; }
+  #main:has(+ #dock-gutter:not([hidden])) { min-width: 0; margin-right: 8px; }
+}
 /* The pane is narrower than a page: the field grid single-columns. The
    entity header pins to the top of the pane, as it does on the full page
    (Issue #411); the pane's top padding scrolls away above it. Past half the
