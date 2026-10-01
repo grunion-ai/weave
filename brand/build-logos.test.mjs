@@ -11,7 +11,69 @@ test("rope(3,8) produces the selected h3 geometry", () => {
   const r = rope(3, 8);
   assert.equal(r.a, "M12,20 C16,20 16,28 20,28 C24,28 24,20 28,20 C32,20 32,28 36,28");
   assert.equal(r.b, "M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20");
-  assert.deepEqual(r.overs, ["M22.7,26.3 Q24,24 25.3,21.7"]);
+  assert.deepEqual(r.overs, ["M20,28 C24,28 24,20 28,20"]);
+});
+
+// Issue #571. Mask A cuts strand A wherever strand B runs, with a halo of
+// sw + 2.5; the over-segment repaints strand A on top. Every point of strand
+// A's stroke that the halo removes must sit under the over-segment's stroke,
+// or the background shows through as a notch beside the crossing.
+const pathPoints = d => {
+  const pts = [], nums = s => s.trim().split(/[\s,]+/).map(Number);
+  let cur;
+  for (const [, cmd, args] of d.matchAll(/([MCQ])([^MCQ]*)/g)) {
+    const v = nums(args);
+    if (cmd === "M") { cur = v; pts.push(cur); continue; }
+    const ctl = [cur];
+    for (let i = 0; i < v.length; i += 2) ctl.push([v[i], v[i + 1]]);
+    for (let s = 1; s <= 200; s++) {
+      let q = ctl.map(p => p.slice()), t = s / 200;
+      while (q.length > 1) q = q.slice(1).map((p, i) => [q[i][0] + (p[0] - q[i][0]) * t, q[i][1] + (p[1] - q[i][1]) * t]);
+      pts.push(q[0]);
+    }
+    cur = ctl.at(-1);
+  }
+  return pts;
+};
+const nearest = (pts, [x, y]) => Math.min(...pts.map(([u, v]) => Math.hypot(u - x, v - y)));
+
+test("the over-segment covers every part of strand A the halo cuts (Issue #571)", () => {
+  for (const [label, n, sw] of [["mark", 3, 3.5], ["favicon", 3, 4.5], ["app icon", 3, 4], ["travel", 11, 3.5]]) {
+    const r = rope(n, 8), x0 = 24 - (n * 8) / 2;
+    const A = pathPoints(r.a), B = pathPoints(r.b), O = r.overs.flatMap(pathPoints);
+    // Crossing k sits at x0 + (k + .5) * pitch; A passes under B at even k, where
+    // the cut is the point. Judge only the cut around the odd (over) crossings.
+    const atOver = ([x]) => Math.round((x - x0) / 8 - 0.5) % 2 === 1;
+    let worst = 0;
+    for (let i = 1; i < A.length; i++) {
+      const [x0, y0] = A[i - 1], [x1, y1] = A[i], len = Math.hypot(x1 - x0, y1 - y0);
+      if (!len) continue;
+      const nx = -(y1 - y0) / len, ny = (x1 - x0) / len;
+      for (const off of [-sw / 2, -sw / 4, 0, sw / 4, sw / 2]) {
+        const p = [x1 + nx * off, y1 + ny * off];
+        if (!atOver(p) || nearest(B, p) >= (sw + 2.5) / 2) continue; // not cut here
+        worst = Math.max(worst, nearest(O, p) - sw / 2);
+      }
+    }
+    assert.ok(worst < 0.05, `${label}: the cut leaves strand A uncovered by ${worst.toFixed(2)} units`);
+  }
+});
+
+test("each over-segment is strand A's own odd segment, so it meets the strand with no step", () => {
+  for (const amp of [4, 2.83, 1, 0, -2.83, -4]) {
+    const r = rope(5, 8, amp);
+    for (const o of r.overs) {
+      const [, start, curve] = o.match(/^M(\S+) (C.+)$/);
+      assert.ok(r.a.includes(`${start} ${curve}`), `amp ${amp}: ${o} lies on strand A`);
+    }
+  }
+});
+
+test("the inline marks in public/index.html carry the current over-segment", () => {
+  const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+  const overs = [...html.matchAll(/<path d="(M[^"]+)" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round"\/>/g)].map(m => m[1]);
+  assert.ok(overs.length >= 2, "both rail marks found");
+  for (const o of overs) assert.equal(o, rope(3, 8).overs[0]);
 });
 
 test("rope crossing count scales with n", () => {
@@ -173,6 +235,25 @@ test("morph loaders close the gap and hide the crossing as the rope flattens", (
     assert.equal(Math.max(...widths.map(Number)), 6, "gap reaches full width elsewhere");
     const over = svg.slice(svg.indexOf("</defs>")).match(/attributeName="opacity" values="([^"]+)"/)[1];
     assert.equal(over.split(";")[flat], "0", `${name}: crossing hidden at the flat frame`);
+  }
+});
+
+test("morph loaders fade the over-segment's cut in strand B as well as narrowing it", () => {
+  // The over-segment spans the whole odd segment (Issue #571). A cut narrower
+  // than strand B, at full strength, shows as a hard slot along it at low
+  // amplitude; fading it with the over-segment keeps those frames soft.
+  for (const name of ["twist", "spin"]) {
+    const svg = loaderSvg(name);
+    const mask = svg.match(/<mask id="\w+B"[\s\S]*?<\/mask>/)[0];
+    const ds = mask.match(/attributeName="d" values="([^"]+)"/)[1].split(";");
+    const w = mask.match(/attributeName="stroke-width" values="([^"]+)"/)[1].split(";");
+    const op = mask.match(/attributeName="stroke-opacity" values="([^"]+)"/);
+    assert.ok(op, `${name}: the over cut fades`);
+    const o = op[1].split(";"), flat = ds.findIndex(d => /^M20,24 /.test(d));
+    assert.ok(flat >= 0, `${name}: passes through a flat frame`);
+    assert.equal(o[flat], "0", `${name}: no cut at the flat frame`);
+    assert.equal(w[flat], "0");
+    assert.equal(Math.max(...o.map(Number)), 1, `${name}: full cut once the rope is open`);
   }
 });
 

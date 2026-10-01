@@ -26,11 +26,14 @@ export function rope(n, pitch, amp = 4) {
     a += " " + seg(x, k % 2 ? yB : yT, k % 2 ? yT : yB);
     b += " " + seg(x, k % 2 ? yT : yB, k % 2 ? yB : yT);
   }
+  // Each over-segment is strand A's whole odd segment, wave extreme to wave
+  // extreme (Issue #571). Mask A's halo cuts A about 5 units along it either
+  // side of the crossing; a shorter over left crescent notches there. Its ends
+  // sit 2*amp from strand B, so mask B still cuts B only at the crossing.
   const overs = [];
   for (let k = 1; k < n; k += 2) {
-    const x = x0 + k * p, o = 0.575 * amp;
-    overs.push(`M${(x + 0.34 * p).toFixed(1)},${(24 + o).toFixed(1)} ` +
-      `Q${x + 0.5 * p},24 ${(x + 0.66 * p).toFixed(1)},${(24 - o).toFixed(1)}`);
+    const x = x0 + k * p;
+    overs.push(`M${x},${yB} ` + seg(x, yB, yT));
   }
   return { a, b, overs };
 }

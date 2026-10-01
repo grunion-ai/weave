@@ -45,7 +45,9 @@ const eased = keyTimes =>
 // As the rope flattens the two strands converge, and a full-width gap would eat
 // the line and leave the over-segment floating in it. So the cut tapers with
 // the amplitude (closed below |amp| 2) and the over-segment fades with it: at
-// amp 0 the mark is one clean edge-on line.
+// amp 0 the mark is one clean edge-on line. The over-segment's own cut in
+// strand B fades as well as narrowing: it spans the whole odd segment (Issue
+// #571), and a narrow cut at full strength reads as a hard slot along it.
 function morphLoader({ c1, c2, sw, id, amps, keyTimes, dur, ease = true, wrap = b => b }) {
   const frames = amps.map(a => rope(3, 8, a));
   const timing = ease ? eased(keyTimes) : ` keyTimes="${keyTimes.join(";")}"`;
@@ -57,7 +59,7 @@ function morphLoader({ c1, c2, sw, id, amps, keyTimes, dur, ease = true, wrap = 
     b: d(f => f.b),
     maskB: d(f => f.b) + track("stroke-width", t => t * (sw + 2.5)),
     over: d(f => f.overs[0]) + track("opacity", t => t),
-    maskOver: d(f => f.overs[0]) + track("stroke-width", t => t * (sw + 2.5)),
+    maskOver: d(f => f.overs[0]) + track("stroke-width", t => t * (sw + 2.5)) + track("stroke-opacity", t => t),
   };
   const { defs, body } = markParts({ c1, c2, sw, id, r: frames[0], kids });
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" ` +
