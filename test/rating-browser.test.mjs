@@ -7,6 +7,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+// The widths under test are computed here (Issue #404); the cases below
+// hold its three geometry numbers to what the browser paints.
+await import('../public/column-resize.js');
+const CR = globalThis.WeaveColumnResize;
 
 let vendors, accounts, acme, a, b;
 const s = await launch('rating field type', (weave) => {
@@ -231,6 +235,108 @@ if (s) {
       }
     });
   }
+}
+
+/* Issue #404: a rating column opens at the width its own icons need, so a
+   long max never cuts its last icons. Before this every rating column opened
+   at the type default of 104px whatever its max, and the showcase's Love
+   (max 7, 132px of icons) and Brightness (max 12, 227px) clipped: a 7 of 7
+   read like a 5 of 7 and the right-most icon could not be clicked. The width
+   comes from public/column-resize.js, which carries the cell's icon
+   geometry as three numbers; the first case holds those numbers to what the
+   browser actually paints, so a CSS change to the icon cannot drift away
+   from the width silently. */
+if (s) {
+  const { base, browser, weave } = s;
+  let gauge;
+  const open = async (tableId, colorScheme) => {
+    const page = await browser.newPage({ viewport: { width: 1500, height: 900 }, colorScheme });
+    await page.goto(`${base}/#/table/${tableId}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.wv-grid tbody tr.entity-row td[data-field="Brightness"] .wv-rating');
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return page;
+  };
+  const gaugeTable = () => {
+    if (gauge) return gauge;
+    gauge = weave.createTable({ space: 'Buy', name: 'Gauge' });
+    weave.addField(gauge, { name: 'Effort', type: 'rating', config: { max: 3, icon: 'lucide:zap' } });
+    weave.addField(gauge, { name: 'Fit', type: 'rating', config: { max: 5, icon: 'lucide:star' } });
+    weave.addField(gauge, { name: 'Love', type: 'rating', config: { max: 7, icon: 'lucide:heart' } });
+    weave.addField(gauge, { name: 'Brightness', type: 'rating', config: { max: 12, icon: 'lucide:sun' } });
+    weave.createEntity(gauge, { name: 'g1', values: { Effort: 2, Fit: 4, Love: 7, Brightness: 9 } });
+    return gauge;
+  };
+  /* What the browser paints for a mid-row rating cell: the icon box, the
+     gap between two icons, and the cell's ordinary horizontal padding. */
+  const geometry = (page) => page.evaluate(() => {
+    const td = document.querySelector('.wv-grid tbody tr.entity-row td[data-field="Love"]');
+    const box = td.querySelector('.wv-rating');
+    const cs = getComputedStyle(td);
+    const ico = box.children[0].getBoundingClientRect();
+    return {
+      icon: Math.round(ico.width),
+      gap: Math.round(box.children[1].getBoundingClientRect().left - ico.right),
+      pad: ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0),
+    };
+  });
+  /* Every rating column as drawn: its width, what its icons measure, and
+     the content box they have to live in (the cell's width less its own
+     padding and border, which is what the cell's overflow clips to). */
+  const columns = (page) => page.evaluate(() => {
+    const tr = document.querySelector('.wv-grid tbody tr.entity-row');
+    return Object.fromEntries([...tr.querySelectorAll('td[data-field]')].flatMap((td) => {
+      const box = td.querySelector('.wv-rating');
+      if (!box || !box.children.length) return [];
+      const cs = getComputedStyle(td);
+      const pad = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
+      const rect = td.getBoundingClientRect();
+      const last = box.children[box.children.length - 1].getBoundingClientRect();
+      return [[td.dataset.field, {
+        width: Math.round(rect.width),
+        icons: box.scrollWidth,
+        room: Math.round(rect.width - pad),
+        overhang: Math.round(last.right - (rect.right - (parseFloat(cs.paddingRight) || 0))),
+      }]];
+    }));
+  });
+
+  test('the cell icon geometry is the geometry the width is computed from', async () => {
+    const page = await open(gaugeTable().id, 'light');
+    try {
+      const seen = await geometry(page);
+      assert.deepEqual(seen, CR.RATING_METRICS,
+        'public/style.css paints a different icon box, gap or cell padding than public/column-resize.js measures with');
+    } finally { await page.close(); }
+  });
+
+  for (const colorScheme of ['light', 'dark']) {
+    test(`a rating column opens wide enough for every icon (${colorScheme}, Issue #404)`, async () => {
+      const page = await open(gaugeTable().id, colorScheme);
+      try {
+        const cols = await columns(page);
+        for (const [field, max] of [['Effort', 3], ['Fit', 5], ['Love', 7], ['Brightness', 12]]) {
+          const c = cols[field];
+          assert.ok(c, `${field} drew a rating`);
+          assert.ok(c.icons <= c.room, `${field} (max ${max}): ${c.icons}px of icons in a ${c.room}px content box`);
+          assert.ok(c.overhang <= 1, `${field} (max ${max}): the last icon hangs ${c.overhang}px past the cell's content edge`);
+        }
+        assert.equal(cols.Effort.width, 104, 'a short rating keeps the type default');
+        assert.equal(cols.Fit.width, 104, 'five icons are what the 104px default was always for');
+        assert.ok(cols.Love.width > cols.Fit.width, 'seven icons open wider than five');
+        assert.ok(cols.Brightness.width > cols.Love.width, 'twelve wider still');
+      } finally { await page.close(); }
+    });
+  }
+
+  test('the right-most icon of a long rating can be clicked (Issue #404)', async () => {
+    const page = await open(gaugeTable().id, 'light');
+    try {
+      const sel = 'tr.entity-row td[data-field="Brightness"]';
+      await page.locator(`${sel} .wv-rate-ico[data-n="12"]`).click();
+      await page.waitForFunction((s2) => document.querySelector(`${s2} .wv-rating`)?.getAttribute('aria-label') === '12 of 12', sel);
+      assert.equal(await page.getAttribute(`${sel} .wv-rating`, 'aria-label'), '12 of 12');
+    } finally { await page.close(); }
+  });
 }
 
 if (s) {

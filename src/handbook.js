@@ -258,6 +258,8 @@ Click the third icon to set 3; click the filled third icon again to clear to 0. 
 
 A write is rounded and held to 0..max: \`{"Fit": 3.6}\` stores 4, \`{"Fit": 9}\` stores 5, numeric text is read as its number, anything else is refused by name. Lowering \`max\` holds every row to the new ceiling.
 
+A rating column in the grid opens wide enough for every icon: \`max\` icons, the gaps between them and the cell's padding, up to the fit ceiling of 320 pixels (Issue #404). A width you drag stands.
+
 A lookup of a rating, and a rollup whose answer stays on the scale (\`avg\`, \`min\`, \`max\`, \`median\`), draw the same icons, read-only, rounded to a whole number; the API returns the unrounded figure. A \`sum\` or a spread leaves the scale and prints as a number.
 
 ## Migrations

@@ -5621,6 +5621,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const layoutSheet = el('style', { class: 'wv-grid-layout' });
   const floors = new Map();        // column → its label floor, measured off the rendered header
   const valueFloors = new Map();   // date column → the width its widest date needs (Issue #159)
+  const cellPads = new Map();      // rating column → its cell's own horizontal padding (Issue #404)
   const override = new Map();      // column → the width a gesture is painting right now
   let frozenShown = 0;             // frozen fields drawn: the stored count, capped at 60%
   let lead = 0;                    // the checkbox and # columns, in px
@@ -5633,7 +5634,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const storedWidth = (c) => db.view?.widths?.[c] ?? colField(db, c)?.width;
   // A system column's default is its stamp's width; it floors like a field.
   const widthOf = (c) => override.get(c)
-    ?? CR.layout([{ ...colField(db, c), name: c, stored: storedWidth(c) ?? (isSysCol(c) ? SYS_WIDTHS[c] : undefined), floor: floors.get(c) }])[c];
+    ?? CR.layout([{ ...colField(db, c), name: c, pad: cellPads.get(c), stored: storedWidth(c) ?? (isSysCol(c) ? SYS_WIDTHS[c] : undefined), floor: floors.get(c) }])[c];
   const headOf = (c) => table?.tHead?.rows[0]?.querySelector(`th.col-head[data-col="${CSS.escape(c)}"]`) ?? null;
   // The cells before the first field: the checkbox and the # link.
   const leadCount = () => {
@@ -5729,6 +5730,20 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       measure.remove();
     }
     for (const [c, w] of valueFloors) floors.set(c, Math.max(floors.get(c) ?? 0, w));
+    /* A rating column opens at the width its own icons need (Issue #404,
+       Feature #235). The icon box and the gap are constants in
+       column-resize.js; the cell's padding is not — Tabler gives the row's
+       last cell 20px on the right where every other gets 4 — so it is read
+       off the rendered cell, every draw, because hiding a field moves which
+       cell is last. Unlike a date's floor this only raises the DEFAULT: a
+       width the reader dragged still wins (Kyle, Feature #235). */
+    for (const c of cols) {
+      if (colField(db, c)?.type !== 'rating') continue;
+      const td = table.querySelector(`:scope > tbody > tr.entity-row > td[data-field="${CSS.escape(c)}"]`);
+      if (!td) continue;
+      const cs = getComputedStyle(td);
+      cellPads.set(c, ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0));
+    }
     const pidCell = table.querySelector(':scope > tbody > tr.entity-row > td.pid-cell');
     if (pidCell) {
       let top = db.entityCount ?? 0;

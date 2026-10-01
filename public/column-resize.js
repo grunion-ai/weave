@@ -41,12 +41,36 @@
   const MAX_WIDTHS = { document: 560, text: 480, url: 480, email: 480, multiselect: 480, relation: 480, lookup: 480, view: 480, formula: 480 };
   const MAX_FALLBACK = 320;
 
+  const maxWidth = (f = {}) => (f.role === 'name' ? 480 : MAX_WIDTHS[f.type] ?? MAX_FALLBACK);
+
+  /* A rating's icons, as the cell paints them (public/style.css: a
+     .wv-rate-ico is a 16px glyph in 1px of padding, .wv-rating sets a 1px
+     gap, and a grid cell carries 4px of padding each side). Feature #235's
+     column-width rule: a rating opens at `max` icons plus the gaps between
+     them plus the cell's padding, so no column opens cutting its last icon
+     (Issue #404 — before this every rating opened at 104 whatever its max,
+     so a 7 of 7 read like a 5 of 7 and the right-most icon could not be
+     clicked). test/rating-browser.test.mjs holds these three numbers to
+     what the browser paints, so a CSS change to the icon cannot drift away
+     from the width in silence. */
+  const RATING_METRICS = { icon: 18, gap: 1, pad: 8 };
+  const ratingIcons = (f = {}) => (f.type === 'rating' && Number.isInteger(f.max) && f.max > 0 ? f.max : 0);
+  /* `pad` is the cell's own horizontal padding and border, measured off the
+     rendered cell by app.js — Tabler gives the row's last cell 20px on the
+     right where every other cell has 4 — and the ordinary cell's 8 when
+     nothing has been measured yet. */
+  const ratingWidth = (n, pad) => n * RATING_METRICS.icon + (n - 1) * RATING_METRICS.gap + (Number.isFinite(pad) ? pad : RATING_METRICS.pad);
+
   const defaultWidth = (f = {}) => {
     if (f.role === 'name') return NAME_WIDTH;
     if (f.type === 'number' && f.currency) return CURRENCY_WIDTH;
+    const icons = ratingIcons(f);
+    /* A short rating keeps the type default rather than shrinking under it,
+       and past the fit ceiling a rating stops there rather than taking the
+       screen: a max that long is read in the cell's pop. */
+    if (icons) return Math.min(maxWidth(f), Math.max(DEFAULT_WIDTHS.rating, ratingWidth(icons, f.pad)));
     return DEFAULT_WIDTHS[f.type] ?? FALLBACK_WIDTH;
   };
-  const maxWidth = (f = {}) => (f.role === 'name' ? 480 : MAX_WIDTHS[f.type] ?? MAX_FALLBACK);
 
   /* The widths a grid paints: the view's width, else the field's legacy
      schema width, else the type's default — and never under the label. One
@@ -151,7 +175,7 @@
   }
 
   root.WeaveColumnResize = {
-    DEFAULT_WIDTHS, NAME_WIDTH, CAP,
+    DEFAULT_WIDTHS, NAME_WIDTH, CAP, RATING_METRICS,
     floor({ label = 0, padLeft = 0, padRight = 0, min = 0 } = {}) {
       return Math.max(min, Math.ceil(label + padLeft + padRight));
     },

@@ -38,6 +38,44 @@ test('every field type has a default width; the mockup values hold exactly', () 
   assert.equal(d('nonsense'), 136, 'an unknown type still gets a width');
 });
 
+/* A rating column opens at the width its own icons need (Issue #404,
+   Feature #235's column-width rule): max icons at the cell's icon box plus
+   the gaps between them and the cell's padding. Before this, every rating
+   opened at the type default of 104 whatever its max, so the showcase's
+   Love (max 7, 132px of icons) and Brightness (max 12, 227px) opened with
+   their last hearts and suns cut at the cell edge — a 7 of 7 read like a 5
+   of 7 and the right-most icons could not be clicked. The geometry
+   constants mirror public/style.css and are held to the rendered cell by
+   test/rating-browser.test.mjs. */
+test('a rating opens wide enough for its own icons (Issue #404)', () => {
+  const d = (extra) => CR.defaultWidth({ type: 'rating', ...extra });
+  assert.equal(d({}), 104, 'no max declared: the type default, which is what five icons need');
+  assert.equal(d({ max: 5 }), 104, 'five star icons, the engine default max');
+  assert.equal(d({ max: 3 }), 104, 'a short rating keeps the type default rather than shrinking below it');
+  assert.equal(d({ max: 7 }), 140, "the showcase's Love: 7 hearts at 18px, 6 gaps, 8px of cell padding");
+  assert.equal(d({ max: 12 }), 235, "the showcase's Brightness: 12 suns need 227px of icons");
+  assert.ok(d({ max: 12 }) >= 227 + 8, 'never under what the icons measure in the cell');
+  assert.equal(d({ max: 100 }), CR.maxWidth({ type: 'rating' }),
+    'past the fit ceiling a rating stops there: a hundred icons do not take the screen');
+  // The cell's own padding is measured off the rendered cell, because
+  // Tabler gives the row's last cell 20px on the right where every other
+  // cell gets 4. Without a measurement the ordinary cell's 8 stands.
+  assert.equal(d({ max: 12, pad: 24 }), 251, "the row's last cell carries 16px more padding");
+  assert.equal(d({ max: 12, pad: 8 }), 235, 'an ordinary cell, said out loud');
+  assert.equal(d({ max: 12, pad: null }), 235, 'nothing measured yet: the ordinary cell');
+  assert.equal(CR.RATING_METRICS.icon * 12 + CR.RATING_METRICS.gap * 11 + CR.RATING_METRICS.pad, 235,
+    'the width is those three numbers and nothing else');
+  // Only the rating field type. A rollup or a lookup that reads a rating
+  // draws its icons inside the computed chip, at the chip's own icon size,
+  // and clips for its own reason (Issue #564).
+  assert.equal(CR.defaultWidth({ type: 'rollup' }), 88, 'a rollup keeps the number width');
+  assert.equal(CR.defaultWidth({ type: 'lookup' }), 136, 'a lookup keeps its own width');
+  // Only the DEFAULT moves (Kyle, Feature #235: a width the user dragged
+  // wins), so a reader who narrows a rating column keeps it narrow.
+  assert.deepEqual(CR.layout([{ name: 'Love', type: 'rating', max: 7 }, { name: 'Hand', type: 'rating', max: 12, stored: 120 }]),
+    { Love: 140, Hand: 120 }, 'the untouched column fits its icons; the dragged one stands where it was put');
+});
+
 test('a longer label raises only that field\'s own width', () => {
   const widths = CR.layout([
     { name: 'Done', type: 'checkbox', floor: 90 },
