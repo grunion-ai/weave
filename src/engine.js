@@ -1,3 +1,4 @@
+import '../public/chip-core.js';
 import '../public/date-grain.js';
 import '../public/number-core.js';
 import '../public/term-core.js';
@@ -346,23 +347,34 @@ const DEFAULT_WORKFLOW_STATES = [
   { name: 'Canceled', category: 'canceled' },
 ];
 
-/* An option's colour is a name from the ten-hue ramp (public/chip-core.js),
-   not a loose hex. `color` is kept in step with it so schema export, CSV and
-   every other existing reader keeps working, and an option stored before the
-   ramp reads back as whichever hue its hex already was. */
-const HUE_HEX = {
-  slate: '', blue: '#4769eb', green: '#2ea043', amber: '#f59f00', red: '#e5484d',
-  purple: '#8e4ec6', cyan: '#00a2c7', pink: '#d6409f', teal: '#12a594', orange: '#f76b15',
-};
-const HEX_HUE = new Map(Object.entries(HUE_HEX).filter(([, h]) => h).map(([n, h]) => [h.toLowerCase(), n]));
-const hueOf = (o) => (HUE_HEX[o?.hue] !== undefined
-  ? o.hue
-  : HEX_HUE.get(String(o?.color ?? '').trim().toLowerCase()) ?? 'slate');
+/* An option's colour is a name from the ten-hue ramp, which public/chip-core.js
+   owns: the ramp, its two published aliases, and the one reader that turns an
+   authored name or hex into a ramp name. `color` is kept in step with the hue
+   so schema export, CSV and every other existing reader keeps working.
+
+   Reads are forgiving and writes are strict (Issue #551). A colour already on
+   disk resolves to whichever hue its hex was, or rests on slate, so no stored
+   workspace becomes unreadable. A colour a caller just sent is refused by
+   name, because weave used to swap an unknown one for slate and answer 201. */
+const { HUE_HEX, HUES, hueName } = globalThis.chipCore;
+function hueOf(o, { strict = false } = {}) {
+  for (const authored of [o?.hue, o?.color]) {
+    if (authored === undefined || authored === null || String(authored).trim() === '') continue;
+    const hue = hueName(authored);
+    if (hue) return hue;
+    if (strict) {
+      throw new WeaveError(
+        `Unknown option colour '${authored}' (use a hue name: ${HUES.join(', ')}; `
+        + `or its hex, or '' for slate)`, 'invalid');
+    }
+  }
+  return 'slate';
+}
 /* One option, normalised: identity, name, ramp hue, optional glyph, and the
    hex that hue resolves to. */
-function normaliseOption(o) {
+function normaliseOption(o, { strict = false } = {}) {
   if (typeof o === 'string') return { id: slug(o), name: o, hue: 'slate', icon: '', color: '' };
-  const hue = hueOf(o);
+  const hue = hueOf(o, { strict });
   return {
     id: o.id ?? slug(o.name), name: o.name, hue,
     icon: iconValue(o.icon),
@@ -601,13 +613,9 @@ function dressDateRange(c, value) { return DG.formatDateRange(value, c); }
 /* The single normaliser for every type whose config is self-contained. Used
    by addField AND by `field` value validation, so a definition can never
    describe a field the engine would refuse to create. */
-function normalizeSelfContainedConfig(type, config = {}, { formula = false } = {}) {
+function normalizeSelfContainedConfig(type, config = {}, { formula = false, strict = false } = {}) {
   if (type === 'select' || type === 'multiselect') {
-    return {
-      options: (config.options ?? []).map((o) => (typeof o === 'string'
-        ? normaliseOption(o)
-        : normaliseOption(o))),
-    };
+    return { options: (config.options ?? []).map((o) => normaliseOption(o, { strict })) };
   }
   if (type === 'workflow') {
     // No `states` key at all means "give me a lifecycle" and gets the default
@@ -804,7 +812,7 @@ function normalizeSelfContainedConfig(type, config = {}, { formula = false } = {
 /* Validate one field definition — the value of a `field`-typed field.
    `depth` is how many further levels this definition is allowed to define;
    at depth 1 it must describe a leaf, so it may not itself be a `field`. */
-function normalizeDefinition(raw, depth) {
+function normalizeDefinition(raw, depth, { strict = false } = {}) {
   if (raw == null) return null;
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     throw new WeaveError('A field definition must be an object of { type, config }', 'invalid');
@@ -817,7 +825,7 @@ function normalizeDefinition(raw, depth) {
     throw new WeaveError(
       'A definition at depth 1 must describe a leaf field; raise the field\'s depth to nest one', 'invalid');
   }
-  const config = normalizeSelfContainedConfig(type, raw.config ?? {});
+  const config = normalizeSelfContainedConfig(type, raw.config ?? {}, { strict });
   if (type === 'field' && config.depth > depth - 1) {
     throw new WeaveError(
       `A nested definition may declare depth ${depth - 1} at most, got ${config.depth}`, 'invalid');
@@ -2413,9 +2421,15 @@ export class Weave {
         const named = new Map((f.optionsFull ?? []).map((o) => [o.name, o.color ?? '']));
         const kept = new Map((existing?.config.options ?? []).map((o) => [o.name, o.color ?? '']));
         // named/kept hold the colour an option already had, keyed by name.
-        config.options = f.options.map((name) => normaliseOption({
-          name, color: named.get(name) ?? kept.get(name) ?? '',
-        }));
+        config.options = f.options.map((name) => normaliseOption(
+          { name, color: named.get(name) ?? kept.get(name) ?? '' },
+          /* A colour the document names is refused when weave cannot name it.
+             One the field already stored is read as it has always been read,
+             including when the document carries it back unchanged, so a
+             round-trip of describeSchema() never refuses the workspace it
+             came from (Issue #551). */
+          { strict: named.has(name) && named.get(name) !== kept.get(name) },
+        ));
       }
       if (f.states) config.states = f.states;
       if (f.expression) config.expression = f.expression;
@@ -3655,10 +3669,13 @@ export class Weave {
       ] } }).system = true;
     }
     if (!this.#sysField(wfT, 'Health')) {
+      // Ramp hues, not loose colour words: `yellow` is not one of weave's ten
+      // names, so all three of these stored slate and the health column read
+      // grey (Issue #551).
       this.addField(wfT.id, { name: 'Health', type: 'select', config: { options: [
-        { name: 'Healthy', color: 'green' },
-        { name: 'Warning', color: 'yellow' },
-        { name: 'Failed', color: 'red' },
+        { name: 'Healthy', hue: 'green' },
+        { name: 'Warning', hue: 'amber' },
+        { name: 'Failed', hue: 'red' },
       ] } }).system = true;
     }
     if (!this.#sysField(wfT, 'Last Run')) this.addField(wfT.id, { name: 'Last Run', type: 'date', config: { time: true } }).system = true;
@@ -4261,7 +4278,7 @@ export class Weave {
       // One normaliser, shared with `field` value validation — see the note on
       // normalizeSelfContainedConfig. If these drift, a definition can describe
       // a field addField would reject.
-      field.config = normalizeSelfContainedConfig(type, config);
+      field.config = normalizeSelfContainedConfig(type, config, { strict: true });
     } else if (type === 'lookup') {
       const rel = this.getField(db.id, config.relationField ?? config.relation);
       if (rel.type !== 'relation') throw new WeaveError('Lookup must point at a relation field', 'invalid');
@@ -4538,8 +4555,19 @@ export class Weave {
       }
       if (field.type === 'select' || field.type === 'multiselect') {
         if (patch.config.options) {
-          field.config.options = patch.config.options.map((o) =>
-            normaliseOption(o));
+          /* A colour the caller just named is held to the palette; an option
+             handed back wearing the colour it already had is not a new
+             assertion, so an edit to the list does not have to re-justify a
+             colour stored before the ramp had names (Issue #551). Widening a
+             select by appending to its own options is the common case: see
+             src/weaver-seed.js. */
+          const stored = new Map(field.config.options.map((o) => [o.id, o]));
+          field.config.options = patch.config.options.map((o) => {
+            const was = typeof o === 'string' ? null : stored.get(o.id);
+            const asStored = was
+              && (o.hue ?? '') === (was.hue ?? '') && (o.color ?? '') === (was.color ?? '');
+            return normaliseOption(o, { strict: !asStored });
+          });
         }
       } else if (field.type === 'formula') {
         if (patch.config.expression) {
@@ -4838,8 +4866,11 @@ export class Weave {
         }
         options = [...seen.values()];
       }
-      if (config.options?.length) options = config.options;
-      nextConfig = normalizeSelfContainedConfig(toType, { options });
+      // A caller's own options are strict; the ones carried over from the
+      // field's stored config or its rows are whatever is already there.
+      const sent = !!config.options?.length;
+      if (sent) options = config.options;
+      nextConfig = normalizeSelfContainedConfig(toType, { options }, { strict: sent });
     } else if (toType === 'workflow') {
       // A select's default, if it had one, is the state's (Issue #421).
       const states = (from === 'select' ? field.config.options : []).map((o) => ({ id: o.id, name: o.name, category: 'in-progress', default: o.id === field.config.default }));
@@ -5369,9 +5400,13 @@ export class Weave {
         });
       }
       case 'field':
-        // The value IS a field definition. Validated by the same normaliser
-        // addField uses, so it can only ever describe a creatable field.
-        return normalizeDefinition(raw, field.config.depth ?? 1);
+        /* The value IS a field definition. Validated by the same normaliser
+           addField uses, so it can only ever describe a creatable field.
+           A definition an author writes is held to the option palette; the
+           one the Fields registry mirrors from a field already in the
+           workspace is not, because a colour stored before the ramp had its
+           names would make the row unwritable (Issue #551). */
+        return normalizeDefinition(raw, field.config.depth ?? 1, { strict: !this.#inMetaSync });
       case 'key':
         // Only the NAME is a value; the secret stays in the keystore (#64).
         // An unknown name is storable on purpose — set the secret before or

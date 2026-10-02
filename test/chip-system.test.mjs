@@ -20,7 +20,6 @@ await import('../public/chip-core.js');
 const chips = globalThis.chipCore;
 
 const ENGINE = read('src/engine.js');
-const FDC = read('public/field-dialog-core.js');
 const INDEX = HTML;
 /* Declarations under a dark-theme ancestor, which is where the ramp's second
    half lives. */
@@ -67,9 +66,10 @@ test('every hue is redefined for dark — a light tint on navy is the classic un
 
 test("every colour a stored option can already hold is in the ramp", () => {
   // The claim the migration rests on: this is a rename, not a colour match.
-  const stored = FDC.match(/const OPTION_COLORS = \[([^\]]*)\]/)[1]
-    .split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
-  assert.ok(stored.length >= 7, 'read the real OPTION_COLORS list');
+  // The seven hexes the field dialog offered before the ramp, written out
+  // because the dialog's copy of them is gone (Issue #551) and what a stored
+  // option can hold is history now, not a list anything still reads.
+  const stored = ['#4769eb', '#2ea043', '#f59f00', '#e5484d', '#8e4ec6', '#00a2c7', '#d6409f'];
   for (const hex of stored) {
     const hue = chips.hueFromHex(hex);
     assert.ok(hue, `stored colour ${hex} has no ramp hue`);

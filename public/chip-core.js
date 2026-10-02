@@ -64,6 +64,24 @@
   );
   const hueFromHex = (hex) => BY_HEX.get(String(hex ?? '').trim().toLowerCase()) ?? 'slate';
 
+  /* The names weave published before the ramp grew to ten hues, kept working
+     for the callers that learned them (Issue #551). The vocabulary served
+     pink's hex under the name `magenta`, and slate's empty string under
+     `neutral`, so both arrive in stored options and in agent-written schema
+     documents. Each resolves to its ramp name; nothing stores the alias. */
+  const HUE_ALIAS = { magenta: 'pink', neutral: 'slate' };
+
+  /* The one reader of an authored colour: a ramp name, one of the aliases
+     above, a ramp hex, or empty for slate. Anything else reads as undefined,
+     which is how a write door knows to refuse it instead of painting it
+     grey. */
+  function hueName(value) {
+    const s = String(value ?? '').trim().toLowerCase();
+    if (!s) return 'slate';
+    if (HUE_HEX[s] !== undefined) return s;
+    return HUE_ALIAS[s] ?? BY_HEX.get(s);
+  }
+
   /* An avatar's colour is hashed from the name, so the same colleague is the
      same colour everywhere without anyone configuring it. Nine hues means two
      people sometimes collide — the initials still separate them, and a photo
@@ -89,7 +107,7 @@
     (CATEGORIES.find((x) => x.id === categoryOrDefault(c)) ?? CATEGORIES[1]).hue;
 
   root.chipCore = {
-    HUES, HUE_HEX, RAMP_ORDER, CATEGORIES, DEFAULT_CATEGORY,
-    hueForIndex, hueFromHex, hueForName, initialsFor, categoryOrDefault, categoryHue,
+    HUES, HUE_HEX, HUE_ALIAS, RAMP_ORDER, CATEGORIES, DEFAULT_CATEGORY,
+    hueForIndex, hueFromHex, hueName, hueForName, initialsFor, categoryOrDefault, categoryHue,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

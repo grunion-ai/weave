@@ -31,10 +31,21 @@ test('every described type says what it renders as and which config keys it take
   for (const k of costume) assert.ok(number.config.includes(k), `number is missing the ${k} key`);
 });
 
-test('the option palette is the palette the field dialog paints', () => {
-  const dialog = list(DIALOG, 'OPTION_COLORS');
-  assert.deepEqual(OPTION_COLORS.map((c) => c.value), dialog);
+test('the option palette is the ten-hue ramp, under the ramp names', async () => {
+  // Generated from chip-core, because a hand-kept copy drifted: it stopped at
+  // eight hues and called pink "magenta", and a write carrying the published
+  // name was stored as slate (Issue #551).
+  await import('../public/chip-core.js');
+  const ramp = globalThis.chipCore;
+  assert.deepEqual(OPTION_COLORS.map((c) => c.name), Object.keys(ramp.HUE_HEX));
+  assert.deepEqual(OPTION_COLORS.map((c) => c.value), Object.values(ramp.HUE_HEX));
   for (const c of OPTION_COLORS) assert.ok(c.name, `${c.value} needs a name an agent can reason about`);
+  // Every alias weave still accepts is published beside the hue it resolves to,
+  // so a caller holding an old name can see what it became.
+  for (const [alias, hue] of Object.entries(ramp.HUE_ALIAS)) {
+    const entry = OPTION_COLORS.find((c) => c.name === hue);
+    assert.ok(entry?.aliases?.includes(alias), `${hue} does not publish its '${alias}' alias`);
+  }
 });
 
 test('the icon names are the curated inventory, every one of them vendored', async () => {

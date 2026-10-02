@@ -312,16 +312,16 @@ One choice from a configured list. Stored as the option **id** (a slug), read ev
 
 ## Config
 
-\`options\` — strings, or objects carrying a color and a glyph. \`default\` — one option, by name or id; without it a new row's value is empty. The field dialog picks it from the options (*No default* first), and removing that option clears it.
+\`options\` — strings, or objects carrying a hue and a glyph. \`default\` — one option, by name or id; without it a new row's value is empty. The field dialog picks it from the options (*No default* first), and removing that option clears it.
 
 \`\`\`json
 { "name": "Priority", "type": "select", "config": { "options": [
-  { "name": "Low",    "color": "#2ea043" },
-  { "name": "Medium", "color": "#f59f00" },
-  { "name": "High",   "color": "#e5484d" }] } }
+  { "name": "Low",    "hue": "green" },
+  { "name": "Medium", "hue": "amber" },
+  { "name": "High",   "hue": "red" }] } }
 \`\`\`
 
-**The palette is eight values and nothing else**: \`''\` neutral, \`#4769eb\` blue, \`#2ea043\` green, \`#f59f00\` amber, \`#e5484d\` red, \`#8e4ec6\` purple, \`#00a2c7\` cyan, \`#d6409f\` magenta. An empty string is the honest default — a color should carry meaning, not decoration.
+**The palette is ten hues and nothing else**: \`slate\` (no hex), \`blue\` \`#4769eb\`, \`green\` \`#2ea043\`, \`amber\` \`#f59f00\`, \`red\` \`#e5484d\`, \`purple\` \`#8e4ec6\`, \`cyan\` \`#00a2c7\`, \`pink\` \`#d6409f\`, \`teal\` \`#12a594\`, \`orange\` \`#f76b15\`. Name the hue in \`hue\`, or give its hex in \`color\`; weave stores both. \`magenta\` is the name pink was published under and still resolves to pink, and \`neutral\` still resolves to slate. Any other name or hex is refused with a 400 that names the ten (Issue #551). Slate is the honest default: a colour should carry meaning, not decoration.
 
 ## Usage
 
@@ -1131,9 +1131,9 @@ The \`Field Types\` table in the **Showcase** space holds all of these side by s
 
 ## Colour means one thing
 
-The option palette is eight values and closed: \`''\` neutral, \`#4769eb\` blue, \`#2ea043\` green, \`#f59f00\` amber, \`#e5484d\` red, \`#8e4ec6\` purple, \`#00a2c7\` cyan, \`#d6409f\` magenta.
+The option palette is the ten-hue ramp and it is closed: \`slate\`, \`blue\`, \`green\`, \`amber\`, \`red\`, \`purple\`, \`cyan\`, \`pink\`, \`teal\`, \`orange\`. Name a hue in an option's \`hue\`, or give its hex in \`color\`. A colour weave cannot name is refused rather than stored grey, and \`magenta\` still reaches pink for callers that learned the older name.
 
-Neutral is the honest default. A colour should carry meaning — red for blocked, green for done — and a table where every option is a different colour has told the reader nothing.
+Slate is the honest default. A colour should carry meaning — red for blocked, green for done — and a table where every option is a different colour has told the reader nothing.
 
 Workflow states are the exception that proves it: a state's **category** colours its chip, so \`not-started\`, \`in-progress\`, \`done\` and \`canceled\` look the same everywhere in the workspace without anyone choosing a colour.
 

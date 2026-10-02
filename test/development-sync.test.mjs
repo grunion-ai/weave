@@ -296,7 +296,9 @@ test('widening a select keeps the options already there, colours and all', () =>
   const featuresT = w.listTables().find((t) => t.name === 'Feature');
   const milestone = () => Object.values(w.getTable(featuresT.id).fields).find((f) => f.name === 'Milestone');
   const before = milestone();
-  w.updateField(featuresT.id, before.id, { config: { options: before.config.options.map((o) => ({ ...o, hue: 'indigo' })) } });
+  // A ramp hue: an invented one is refused at this door now (Issue #551), and
+  // what this case is about is whether a widen keeps the colours it found.
+  w.updateField(featuresT.id, before.id, { config: { options: before.config.options.map((o) => ({ ...o, hue: 'purple' })) } });
   const painted = milestone().config.options;
   syncDevelopment(w, manifest({ features: [{ name: 'A far-future feature', status: 'Planned', milestone: 'v9.9' }] }));
   const after = milestone().config.options;

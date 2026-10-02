@@ -35,18 +35,20 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'view', renders: 'the row as its chip (inline: name, then the state and a few fields behind a caret) or its card (a tile: the #id link, name, state, description preview, a few fields); every table has one of each, minted and hidden', config: ['shape', 'link', 'state', 'description', 'fields'] },
 ];
 
-/* An empty string is the honest default: color earns its place by carrying
-   meaning (red for blocked, green for done), not by decorating a list. */
-export const OPTION_COLORS = [
-  { value: '', name: 'neutral' },
-  { value: '#4769eb', name: 'blue' },
-  { value: '#2ea043', name: 'green' },
-  { value: '#f59f00', name: 'amber' },
-  { value: '#e5484d', name: 'red' },
-  { value: '#8e4ec6', name: 'purple' },
-  { value: '#00a2c7', name: 'cyan' },
-  { value: '#d6409f', name: 'magenta' },
-];
+/* The option palette, generated from the ten-hue ramp public/chip-core.js owns
+   so the served names cannot drift from the ones the engine accepts (Issue
+   #551): this list used to stop at eight and to call pink "magenta", and a
+   write carrying the published name was stored as slate with no error. The
+   ramp names are what weave stores; `aliases` names what an older caller may
+   still send for the same hue. Anything outside both is refused, by name.
+   Slate is the honest default: colour earns its place by carrying meaning
+   (red for blocked, green for done), not by decorating a list. */
+await import('../public/chip-core.js');
+const RAMP = globalThis.chipCore;
+export const OPTION_COLORS = Object.entries(RAMP.HUE_HEX).map(([name, value]) => {
+  const aliases = Object.entries(RAMP.HUE_ALIAS).filter(([, hue]) => hue === name).map(([a]) => a);
+  return { value, name, ...(aliases.length ? { aliases } : {}) };
+});
 
 /* Weave's icon inventory — Lucide shapes carrying movingicons.dev motion,
    curated in public/field-dialog-core.js (ICON_CATEGORIES) — vendored at
