@@ -9812,25 +9812,48 @@ function replayChord(host, key, shift = false) {
   ir.dispatchEvent(new KeyboardEvent('keydown', { key, metaKey: mac, ctrlKey: !mac, shiftKey: shift, bubbles: true, cancelable: true }));
 }
 /* The slash menu opens upward when the caret sits low — and a 20-row menu
-   can overflow the top of the window, hiding exactly the row the query
-   promoted (the writer then reads the wrong first row). Clamp it into the
-   viewport and let it scroll instead.
+   can overflow the top of the window, or run under the pinned record header,
+   hiding exactly the row the query promoted (the writer then reads the wrong
+   first row). Clamp it under the header and let it scroll instead.
    The clamp is a short one (Issue #137, Kyle: "too many and too big of a
    slash command menu"): the full catalogue stays, but the menu is a list to
    scroll, never a sheet over the document. The selection bubble carries the
    everyday formatting with icons; the menu is for everything else. */
-const HINT_MAX_PX = 400;
+const HINT_MIN_PX = 160;
+/* The record header the menu must stay clear of: the page's own, or the
+   dock's when the document is open in the dock. Its live bottom edge, not
+   --wv-view-h, because an unscrolled page has not pinned it yet and the
+   breadcrumb row inside it is as opaque as the title. */
+function hintFloor(hint) {
+  const head = document.querySelector(hint.closest('#dock') ? '#dock .view-header' : '#main > .view-header');
+  return head ? head.getBoundingClientRect().bottom + 4 : 8;
+}
 function attachHintClamp(host) {
+  /* Each write here is a style mutation the observer below hears, so a write
+     of the value already there would spin. */
+  const put = (el, prop, v) => { if (el.style[prop] !== v) el.style[prop] = v; };
+  /* Vditor anchors an upward menu by its bottom edge (top = caret top minus
+     its own height), so the overlap comes off the top: the menu keeps its
+     place beside the caret and gives up rows to the scroll instead of
+     sliding behind the header (Issue #550). Holding the bottom makes the
+     pass idempotent — the observer hears our own writes, and a second pass
+     computes the same box and writes nothing. */
   const clamp = (hint) => {
-    hint.style.maxHeight = `${Math.max(200, Math.min(HINT_MAX_PX, innerHeight - 24))}px`;
-    hint.style.overflowY = 'auto';
-    const top = hint.getBoundingClientRect().top;
-    if (top < 8) hint.style.top = `${parseFloat(hint.style.top || '0') + (8 - top)}px`;
+    const floor = hintFloor(hint);
+    const r = hint.getBoundingClientRect();
+    const over = floor - r.top;
+    if (over <= 0) return;
+    put(hint, 'maxHeight', `${Math.max(HINT_MIN_PX, r.bottom - floor)}px`);
+    put(hint, 'top', `${parseFloat(hint.style.top || '0') + over}px`);
   };
   new MutationObserver((muts) => {
     for (const m of muts) {
       const hint = m.target.classList?.contains('vditor-hint') ? m.target : null;
-      if (hint && hint.style.display !== 'none') clamp(hint);
+      if (!hint) continue;
+      // A closed menu drops the shrink, so the next opening is measured — by
+      // Vditor's own flip check too — at the cap the sheet gives it.
+      if (hint.style.display === 'none') { if (hint.style.maxHeight) hint.style.removeProperty('max-height'); continue; }
+      clamp(hint);
     }
   }).observe(host, { subtree: true, attributes: true, attributeFilter: ['style'] });
   /* Vditor closes the menu on any window scroll. A wheel over a menu that

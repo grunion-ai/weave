@@ -2009,11 +2009,15 @@ test('the divider inserts *** — an inserted --- pair is YAML front matter to L
   assert.doesNotMatch(items, /insert: '\\n---\\n'/, 'the front-matter spelling is gone');
 });
 
-test('the slash menu clamps into the viewport instead of hiding its promoted row', () => {
+test('the slash menu clamps under the record header instead of hiding its promoted row', () => {
   assert.match(fnBody('mountDocEditor'), /attachHintClamp\(host\)/, 'wired at mount');
   const fn = fnBody('attachHintClamp');
   assert.match(fn, /maxHeight/, 'tall menus scroll');
-  assert.match(fn, /top < 8/, 'a menu that overflows the top is pushed back down');
+  assert.match(fn, /hintFloor\(hint\)/, 'the clamp measures the pinned header, not the window edge');
+  assert.match(fnBody('hintFloor'), /#dock \.view-header/, 'and the dock has its own header to clear');
+  // Issue #550: both sticky bands used to paint over the menu. The geometry
+  // itself is asserted in test/slash-menu-stack-browser.test.mjs.
+  assert.match(CSS, /\.vditor-hint \{[^}]*z-index: 9/, 'the menu outranks the record header (6) and the section head (5)');
 });
 
 test('the slash link glyph is the interlocked chain, drawn from the inventory', async () => {

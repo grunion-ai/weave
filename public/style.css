@@ -1777,10 +1777,19 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
    group (a hint item is always a button), so the highlight is painted on the
    row rather than the button: a group label never lights up. */
 /* A list to scroll, never a sheet over the document (Issue #137): capped
-   short (attachHintClamp keeps the inline clamp to the same 400px), tight
-   rows, and a wheel that stops at the menu's edge instead of scrolling the
-   page — which is what closes the menu. */
-.vditor-hint { max-width: 340px; min-width: 280px; padding: 4px; max-height: 400px; overflow-y: auto; overscroll-behavior: contain; }
+   short, tight rows, and a wheel that stops at the menu's edge instead of
+   scrolling the page — which is what closes the menu. The cap is the
+   window's as well as the menu's, so a short window shows a short menu with
+   no hand from script; attachHintClamp shrinks it further only when it has
+   to clear the pinned header. */
+/* The menu outranks every band it opens over (Issue #550). Vditor's own rule
+   puts .vditor-hint at z-index 4, under the document section head (5) and
+   the record header (6), both sticky, so a menu that flipped upward was
+   painted over by the title and by the word DESCRIPTION, and the rows under
+   them could be neither read nor clicked. 9 clears both bands and the
+   selection bubble (7) with its tooltip (8). */
+.vditor-hint { max-width: 340px; min-width: 280px; padding: 4px; z-index: 9;
+  max-height: min(400px, calc(100vh - 24px)); overflow-y: auto; overscroll-behavior: contain; }
 .vditor-hint button { padding: 0; }
 .vditor-hint button:hover, .vditor-hint button.vditor-hint--current { background-color: transparent; }
 .slash-group { display: block; padding: 8px 8px 3px; font-size: 10px; font-weight: 600; letter-spacing: .09em; color: var(--tblr-secondary); opacity: .75; }
