@@ -69,7 +69,7 @@ test('the shape: relations, script, version, state, health, last run, diagram, t
   assert.equal(type.type, 'select');
   assert.deepEqual(type.config.options, [], 'no workflow types exist yet — the field is the socket');
 
-  for (const name of ['Tables', 'Spaces', 'Script', 'Version', 'State', 'Health', 'Last Run', 'Diagram', 'Type']) {
+  for (const name of ['On', 'Tables', 'Spaces', 'Script', 'Version', 'State', 'Health', 'Last Run', 'Diagram', 'Type']) {
     assert.equal(f(t, name).system, true, `${name} is a system field`);
   }
 });
@@ -154,4 +154,71 @@ test('a Workflows row is ordinary data: a blank name is accepted, as on any tabl
   assert.equal(w.entityName(w.getEntity(row.id)), '');
   // The registries still refuse a nameless row: the row IS the space.
   assert.throws(() => w.createEntity(w.getTable('Workspace/Spaces').id, { name: '' }), /Name is required/);
+});
+
+/* Feature #249 (Kyle, 2026-10-02): each automation is a row of this table
+   and the table is the control panel, so the first piece is an On switch on
+   every row. It is a system toggle worded On / Off that starts off, and it
+   leads the row's own columns, straight after Name. The engine does not read
+   it yet and the State select stays: whether the switch replaces State, a
+   workspace-wide pause and an auto-off on failure are still Kyle's to
+   decide, and are later slices of #249. */
+const names = (t, ids) => ids.map((id) => t.fields[id]?.name ?? id);
+
+test('every Workflows row carries a system On toggle, worded On / Off, off until switched', () => {
+  const w = fresh();
+  const t = wfTable(w);
+  const on = f(t, 'On');
+  assert.ok(on, 'the On field exists');
+  assert.equal(on.type, 'toggle');
+  assert.equal(on.system, true, 'a system field, like the rest of the shape');
+  assert.deepEqual(on.config, { on: 'On', off: 'Off' }, 'worded On / Off, with no default: a new workflow starts off');
+  const wf = w.createEntity(t.id, { Name: 'Nightly enrich' });
+  assert.equal(w.readEntity(wf.id).fields.On, false, 'born off');
+  w.updateEntity(wf.id, { On: 'On' });
+  assert.equal(w.readEntity(wf.id).fields.On, true, 'the On word switches it on');
+  w.updateEntity(wf.id, { On: false });
+  assert.equal(w.readEntity(wf.id).fields.On, false, 'and off again');
+  assert.equal(w.readEntity(wf.id).fields.State, 'Draft', 'and the State select is untouched: the switch does not drive it yet');
+  assert.equal(f(t, 'State').type, 'workflow', 'State stays in place beside it');
+});
+
+test('the On switch leads the row: first after Name, in the schema order and in the standard view', () => {
+  const w = fresh();
+  const t = wfTable(w);
+  assert.deepEqual(names(t, t.fieldOrder).slice(0, 3), ['Name', 'On', 'Description']);
+  for (const v of t.tableViews) assert.deepEqual(names(t, v.fields).slice(0, 2), ['Name', 'On'], `view ${v.name}`);
+  const row = w.query('Tables', { where: [['Name', '=', 'Workflows']] }).items[0];
+  assert.match(w.readEntity(row.id).raw['Field Order'], /^Name, On, Description/, 'the Tables row names the same order');
+});
+
+test('a workspace from before the switch grows it on load, once, and a later move is kept', () => {
+  const w = fresh();
+  const json = w.exportJSON();
+  const t = Object.values(json.tables).find((x) => x.system === 'workflows');
+  const onId = Object.values(t.fields).find((x) => x.name === 'On').id;
+  delete t.fields[onId];
+  t.fieldOrder = t.fieldOrder.filter((x) => x !== onId);
+  for (const v of t.tableViews) v.fields = v.fields.filter((x) => x !== onId);
+
+  const w2 = new Weave();
+  w2.importJSON(json);
+  const t2 = wfTable(w2);
+  assert.equal(Object.values(t2.fields).filter((x) => x.name === 'On').length, 1, 'one On field');
+  assert.equal(f(t2, 'On').type, 'toggle');
+  assert.equal(f(t2, 'On').system, true);
+  assert.deepEqual(names(t2, t2.fieldOrder).slice(0, 2), ['Name', 'On'], 'it lands first after Name');
+  for (const v of t2.tableViews) assert.deepEqual(names(t2, v.fields).slice(0, 2), ['Name', 'On']);
+
+  // Re-sync is idempotent: the field is not minted twice, and a column the
+  // reader moved stays where they put it.
+  const id = f(t2, 'On').id;
+  const view = t2.tableViews[0];
+  w2.tableView(`${t2.id}/${view.id}`, { fields: [...names(t2, view.fields).filter((n) => n !== 'On'), 'On'] });
+  const again = new Weave();
+  again.importJSON(w2.exportJSON());
+  const t3 = wfTable(again);
+  assert.equal(f(t3, 'On').id, id, 'the same field, not a second one');
+  assert.equal(Object.values(t3.fields).filter((x) => x.name === 'On').length, 1);
+  assert.equal(names(t3, t3.tableViews[0].fields).at(-1), 'On', 'the reader\'s order survives a re-sync');
 });
