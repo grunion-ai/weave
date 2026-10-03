@@ -33,13 +33,15 @@ export function createReleaseCheck({ version, enabled = true, cacheFile = null, 
   if (cacheFile) {
     try {
       const c = JSON.parse(readFileSync(cacheFile, 'utf8'));
-      if (SEMVER.test(c.latest ?? '') && Number.isFinite(c.checkedAt)) state = { latest: c.latest, checkedAt: c.checkedAt, attemptedAt: Number(c.attemptedAt) || c.checkedAt };
+      /* The file sits on the volume and outlives a redeploy: an answer another
+         version wrote keeps its figure but is asked again at boot (Issue #606). */
+      if (SEMVER.test(c.latest ?? '') && Number.isFinite(c.checkedAt)) state = { latest: c.latest, checkedAt: c.checkedAt, attemptedAt: c.version === version ? Number(c.attemptedAt) || c.checkedAt : 0 };
     } catch { /* missing or unreadable: ask again */ }
   }
   let inflight = null;
   const save = () => {
     if (!cacheFile) return;
-    try { writeFileSync(cacheFile, JSON.stringify(state)); } catch { /* read-only data dir: the in-memory answer still counts */ }
+    try { writeFileSync(cacheFile, JSON.stringify({ ...state, version })); } catch { /* read-only data dir: the in-memory answer still counts */ }
   };
   function refresh() {
     if (!enabled) return Promise.resolve();
@@ -76,7 +78,10 @@ export function createReleaseCheck({ version, enabled = true, cacheFile = null, 
     if (!enabled) return null;
     refresh(); // never awaited: a health call answers with what is known now
     if (!state.latest) return null;
-    return { latestRelease: state.latest, releaseCheckedAt: new Date(state.checkedAt).toISOString(), releaseBehind: newerVersion(state.latest, version) };
+    /* Every version is tagged as it lands, so a build ahead of the answer is
+       itself the newest release: never report one older than this (Issue #606). */
+    const latest = newerVersion(version, state.latest) ? version : state.latest;
+    return { latestRelease: latest, releaseCheckedAt: new Date(state.checkedAt).toISOString(), releaseBehind: newerVersion(latest, version) };
   }
   return { status, refresh };
 }

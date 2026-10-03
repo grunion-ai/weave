@@ -21,7 +21,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
-import { fold, foldRepo, changelogGuard, FRAGMENT_NAME } from '../scripts/changelog-fold.mjs';
+import { fold, foldRepo, changelogGuard, openSecurityCitations, FRAGMENT_NAME } from '../scripts/changelog-fold.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -97,6 +97,59 @@ test('foldRepo writes CHANGELOG.md, deletes the fragments, and a second run is a
   assert.equal(readFileSync(join(dir, 'CHANGELOG.md'), 'utf8'), after);
 });
 
+/* Issue #629: fold skipped a fragment whose text trimmed to nothing and
+   foldRepo deleted it anyway, so its change would ship with no line in
+   CHANGELOG.md or the GitHub Release and nothing would say so. */
+test('fold refuses an empty fragment and names it', () => {
+  for (const text of ['', '\n', '  \n\t\n']) {
+    assert.throws(() => fold(MD, [...FRAGS, { name: 'hollow-12.md', text }], { version: '0.4.44', date: '2026-09-27' }),
+      /changelog\.d\/hollow-12\.md is empty/);
+  }
+});
+
+test('foldRepo with an empty fragment writes nothing and deletes nothing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'weave-changelog-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ version: '0.4.44' }));
+  writeFileSync(join(dir, 'CHANGELOG.md'), MD);
+  mkdirSync(join(dir, 'changelog.d'));
+  for (const f of FRAGS) writeFileSync(join(dir, 'changelog.d', f.name), f.text);
+  writeFileSync(join(dir, 'changelog.d', 'hollow-12.md'), '\n');
+  assert.throws(() => foldRepo(dir, { date: '2026-09-27' }), /hollow-12\.md is empty/);
+  assert.equal(readFileSync(join(dir, 'CHANGELOG.md'), 'utf8'), MD);
+  assert.deepEqual(readdirSync(join(dir, 'changelog.d')).sort(), ['alpha-7.md', 'hollow-12.md', 'zeta-9.md']);
+});
+
+/* Issue #568: changelog.d/mcp-inject-harness-499.md shipped the MCP injection
+   measurement harness as "(Issue #499)", and #499 is security finding S-22,
+   still Open. A finding's row stays Open until its fix lands, so the check
+   runs at release time (scripts/export-development.mjs), when every landed
+   fix has set its row Fixed; a fragment that still cites an open finding then
+   ships other work under that finding's number. */
+const ISSUES = [
+  { number: 499, name: 'Error: security finding S-22, details held until the fix lands', status: 'Open' },
+  { number: 494, name: 'Error: security finding S-17, details held until the fix lands', status: 'Fixed' },
+  { number: 388, name: 'Looks broken: a sparkline Sample', status: 'Open' },
+];
+
+test('a fragment citing an open security finding is refused; a fixed finding or an ordinary open row passes', () => {
+  const hits = openSecurityCitations([
+    { name: 'mcp-inject-harness-499.md', text: '- **MCP injection measurement harness** (Issue #499): body.\n' },
+    { name: 'pair-494.md', text: '- **Two fixes** (Issues #388 and #494): body.\n' },
+    { name: 'list-12.md', text: '- **List** (Feature #12, Issues #388, #499): body.\n' },
+  ], ISSUES);
+  assert.deepEqual(hits, [
+    'changelog.d/mcp-inject-harness-499.md cites Issue #499 (Error: security finding S-22, details held until the fix lands), which is still Open',
+    'changelog.d/list-12.md cites Issue #499 (Error: security finding S-22, details held until the fix lands), which is still Open',
+  ]);
+  assert.deepEqual(openSecurityCitations([{ name: 'a-1.md', text: '- **A** (Issue #4990): body.\n' }], ISSUES), [], '#4990 is not #499');
+});
+
+test('the release export runs the security-citation check before it writes', () => {
+  const src = readFileSync(join(ROOT, 'scripts', 'export-development.mjs'), 'utf8');
+  assert.match(src, /openSecurityCitations\(/);
+  assert.ok(src.indexOf('openSecurityCitations(') < src.indexOf('writeFileSync(out'), 'refuses before docs/development.json is written');
+});
+
 test('the guard refuses CHANGELOG.md lines added without a version bump', () => {
   assert.match(changelogGuard({ added: 3, versionBefore: '0.4.43', versionAfter: '0.4.43' }), /changelog\.d\//);
   assert.equal(changelogGuard({ added: 3, versionBefore: '0.4.43', versionAfter: '0.4.44' }), null, 'a release commit');
@@ -108,7 +161,7 @@ test('every fragment is named <slug>-<number>.md and opens on a bullet', () => {
   const names = existsSync(dir) ? readdirSync(dir) : [];
   for (const n of names) {
     assert.match(n, FRAGMENT_NAME, `${n}: name it changelog.d/<short-slug>-<Issue or Feature number>.md`);
-    assert.match(readFileSync(join(dir, n), 'utf8'), /^- /, `${n} opens on a "- " bullet`);
+    assert.match(readFileSync(join(dir, n), 'utf8'), /^- \S/, `${n} opens on a "- " bullet with text (Issue #629: an empty fragment ships its change with no note)`);
   }
   assert.doesNotMatch(readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8'), /^## Unreleased/m, 'no Unreleased section: write a fragment');
 });

@@ -36,7 +36,11 @@ export function fold(md, fragments, { version, date }) {
     lines.splice(un.start, un.end - un.start);
   }
   const byName = [...fragments].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  for (const f of byName) if (f.text.trim()) blocks.push(f.text.trim());
+  /* An empty fragment is a change with no release note: refuse it rather than
+     drop it, so foldRepo writes and deletes nothing (Issue #629). */
+  const empty = byName.filter((f) => !f.text.trim()).map((f) => `changelog.d/${f.name} is empty`);
+  if (empty.length) throw new Error(`${empty.join('; ')}: write its bullet before the release folds it`);
+  for (const f of byName) blocks.push(f.text.trim());
   if (!blocks.length) return lines.join('\n');
 
   const body = blocks.join('\n').split('\n');
@@ -71,6 +75,25 @@ export function changelogGuard({ added, versionBefore, versionAfter }) {
   if (!added || versionBefore !== versionAfter) return null;
   return `CHANGELOG.md gains ${added} line(s) but package.json stays at ${versionAfter}. `
     + 'Write changelog.d/<short-slug>-<Issue or Feature number>.md instead; only a release commit edits CHANGELOG.md, through scripts/changelog-fold.mjs.';
+}
+
+/* A fragment's `Issue #N` names the row it finishes. A security finding's row
+   stays Open until its fix lands, so at release time, when every landed fix
+   has set its row Fixed, a fragment citing an open finding ships other work
+   under that finding's number (Issue #568: the MCP injection harness went out
+   as Issue #499, finding S-22). `issues` is [{ number, name, status }]. */
+export function openSecurityCitations(fragments, issues) {
+  const held = new Map(issues.filter((i) => i.status !== 'Fixed' && /\bsecurity finding\b/i.test(i.name)).map((i) => [i.number, i]));
+  const hits = [];
+  for (const f of fragments) {
+    for (const [refs] of f.text.matchAll(/\bIssues? #\d+(?:(?:,| and|, and) #\d+)*/g)) {
+      for (const [, n] of refs.matchAll(/#(\d+)/g)) {
+        const row = held.get(Number(n));
+        if (row) hits.push(`changelog.d/${f.name} cites Issue #${n} (${row.name}), which is still ${row.status}`);
+      }
+    }
+  }
+  return hits;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -69,7 +69,7 @@ test('an equal or older release does not', async () => {
     const check = createReleaseCheck({ version: '0.4.51', fetch: answer(tag), cacheFile: scratch(), now: clock() });
     await check.refresh();
     assert.equal(check.status().releaseBehind, false, tag);
-    assert.equal(check.status().latestRelease, tag.slice(1));
+    assert.equal(check.status().latestRelease, '0.4.51', `${tag}: never older than the running version (Issue #606)`);
   }
 });
 
@@ -106,6 +106,39 @@ test('it runs at most once a day, and a restart inside the day reads the cache i
   restarted.status();
   await restarted.refresh();
   assert.equal(fetch.calls.length, 2, 'a day later it asks again');
+});
+
+/* Issue #606: update-check.json lives on the volume and survives a redeploy, so
+   a 0.4.56 build read 0.4.54 from a 0.4.54 build's cache and reported it on
+   /api/health for up to a day. */
+test('an upgrade asks again at boot instead of inheriting the old build\'s answer', async () => {
+  const cacheFile = scratch();
+  const now = clock();
+  writeFileSync(cacheFile, JSON.stringify({ latest: '0.4.54', checkedAt: T0 - 60_000, attemptedAt: T0 - 60_000, version: '0.4.54' }));
+  const fetch = counting(answer('v0.4.56'));
+  const upgraded = createReleaseCheck({ version: '0.4.56', fetch, cacheFile, now });
+  assert.equal(upgraded.status().latestRelease, '0.4.56', 'never older than the running version, even before the answer');
+  await upgraded.refresh();
+  assert.equal(fetch.calls.length, 1, 'a new version makes one request at boot');
+  assert.deepEqual(upgraded.status(), { latestRelease: '0.4.56', releaseCheckedAt: new Date(T0).toISOString(), releaseBehind: false });
+  assert.equal(JSON.parse(readFileSync(cacheFile, 'utf8')).version, '0.4.56', 'the cache records the version that wrote it');
+
+  const restarted = createReleaseCheck({ version: '0.4.56', fetch, cacheFile, now });
+  await restarted.refresh();
+  assert.equal(fetch.calls.length, 1, 'the same version inside the day makes none');
+
+  const legacy = scratch();
+  writeFileSync(legacy, JSON.stringify({ latest: '0.4.56', checkedAt: T0 - 60_000 }));
+  const fromOld = createReleaseCheck({ version: '0.4.56', fetch, cacheFile: legacy, now });
+  await fromOld.refresh();
+  assert.equal(fetch.calls.length, 2, 'a cache with no version came from a build before this fix: ask once');
+});
+
+test('a latest release older than the running build reports the running build', async () => {
+  const check = createReleaseCheck({ version: '0.4.57', fetch: answer('v0.4.56'), cacheFile: scratch(), now: clock() });
+  await check.refresh();
+  assert.deepEqual(check.status(), { latestRelease: '0.4.57', releaseCheckedAt: new Date(T0).toISOString(), releaseBehind: false },
+    'every version is tagged as it lands, so a build ahead of GitHub\'s answer is itself the newest release');
 });
 
 test('a failed request changes nothing and throws nothing', async () => {
