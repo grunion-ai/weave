@@ -919,6 +919,8 @@ The name and logo ride the icon rail on the far left, which is how you switch be
 
 ## The home page and a space page
 
+The first time you open an empty instance, a short welcome asks you to name the workspace (a default is filled in), then offers a starter or an empty workspace. **Skip setup** or Esc keeps the defaults. It runs once per person, and an existing workspace with tables never shows it; rename the workspace later from its chip in the rail or its page title.
+
 A workspace with no tables of your own opens its home page on an empty state: one line on spaces and tables, a **New table** button, and three templates (**Tasks**, **CRM**, **Docs**). The system **Workspace** space (**Spaces**, **Tables**, **Fields**, **Views**, **Workflows**, **Workspaces**) doesn't count as yours.
 
 **New table** asks for a name and a space, offering **General** if you have none. A template builds its space, tables and fields through the sidebar's create calls, links **Companies** to **Contacts** for **CRM**, and opens its first table. The empty state ends with your first table.

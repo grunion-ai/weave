@@ -11,7 +11,9 @@ import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 import { seed } from '../scripts/seed.mjs';
 
-const empty = await launch('first run: empty workspace');
+// Onboarded already: the welcome (Feature #248, onboarding-browser.test.mjs)
+// would otherwise sit over the empty state this suite reads.
+const empty = await launch('first run: empty workspace', (weave) => { weave.markOnboarded(); });
 const full = empty && await launch('first run: populated workspace', (weave) => {
   seed(weave);
   return { product: weave.getSpace('Product') };

@@ -11,8 +11,11 @@
    create calls in order, so the browser walks them over REST and the test
    walks them on an engine, and both build the same thing.
 
-   Loaded by the browser as a classic script and by the tests as a
-   side-effect import, so it speaks only globalThis. */
+   The onboarding welcome (Feature #248) builds a template on the server
+   from the same steps(), so one template is one list of calls everywhere.
+
+   Loaded by the browser as a classic script, and by the server and the
+   tests as a side-effect import, so it speaks only globalThis. */
 (function (root) {
   /* The tables a person made, from a describeSchema()-shaped list: a system
      table, or any table in a system space, is weave's own. */
@@ -96,5 +99,18 @@
     return out;
   }
 
-  root.WeaveStarters = { userTables, TEMPLATES, steps };
+  /* What a person types as a workspace name, as one the engine accepts (a
+     letter or digit, then letters, digits, - and _). A name it already
+     accepts is kept as typed; anything else is folded: "Acme Team" becomes
+     acme-team. Empty when nothing usable is left (Feature #248). */
+  const VALID_NAME = /^[a-z0-9][a-z0-9-_]*$/i;
+  function workspaceName(text) {
+    const t = String(text ?? '').trim();
+    if (VALID_NAME.test(t) && t.length <= 48) return t;
+    return t.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .replace(/['\u2019]/g, '').replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-')
+      .replace(/^[-_]+/, '').slice(0, 48).replace(/[-_]+$/, '');
+  }
+
+  root.WeaveStarters = { userTables, TEMPLATES, steps, workspaceName };
 })(globalThis);

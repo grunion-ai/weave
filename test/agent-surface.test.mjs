@@ -135,6 +135,8 @@ const INTERNAL = {
   referencesFrom: 'read helper — GET /api/entities/:ref/references-from serves the outbound mirror',
   termOf: 'read helper — what one row is called; describeSchema ships it as term on every table, and updateTable {noun} / the Name field\'s config.term set it',
   touching: 'write plumbing (Issue #257) — collects the ids one write marked, so a caller can say what went stale; the PATCH route\'s `affected` is the door',
+  onboardedAt: 'first-run state (Feature #248) — a person\'s welcome mark; GET /api/onboarding is the door, and an agent never onboards',
+  markOnboarded: 'first-run state (Feature #248) — POST /api/onboarding sets it as the welcome finishes; nothing for an agent to do',
   affectedBy: 'read helper (Issue #257) — the rows a client must re-read after writing one; PATCH /api/entities/:ref ships it as `affected`',
 };
 

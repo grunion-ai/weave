@@ -19,6 +19,8 @@ const logoOf = (weave) => weave.state.meta.logo ? weave.getWorkspaceLogo().bytes
 
 let scratch, blank;
 const s = await launch('workspace logo from the rail', (weave) => {
+  // Onboarded already: these workspaces are empty, and the welcome (Feature #248) would sit over the rail.
+  weave.markOnboarded();
   weave.state.meta.name = 'main';
   weave.setWorkspaceLogo({ name: 'main.svg', mime: 'image/svg+xml', bytes: svg('red') });
   scratch = new Weave();

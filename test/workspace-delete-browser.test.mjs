@@ -18,6 +18,8 @@ import { launch } from './lib/browser.mjs';
 
 let scratch;
 const s = await launch('workspace delete', (weave) => {
+  // Onboarded already: these workspaces are empty, and the welcome (Feature #248) would sit over the rail.
+  weave.markOnboarded();
   weave.state.meta.name = 'main';
   scratch = new Weave();
   scratch.state.meta.name = 'scratch';
