@@ -75,7 +75,7 @@ if (s) {
     });
   }
 
-  test('happy path: Enter through the welcome, keep the default name, pick Tasks, land on it', async () => {
+  test('happy path: Enter through the welcome, keep the default name, pick Work, land on it', async () => {
     const page = await open();
     await page.keyboard.press('Enter');
     await step(page, 2);
@@ -87,7 +87,8 @@ if (s) {
     await page.keyboard.press('Enter');
     await step(page, 3);
     assert.equal(await heading(page), 'Your first space');
-    assert.deepEqual(await page.locator('.wv-onboard .wv-start-title').allTextContents(), ['Tasks', 'CRM', 'Docs']);
+    assert.deepEqual(await page.locator('.wv-onboard .wv-start-title').allTextContents(), ['Money', 'Work', 'People']);
+    assert.equal(await page.locator('.wv-onboard .wv-start-template').count(), 3, 'exactly three cards');
     await page.click('.wv-onboard .wv-start-template[data-template="tasks"]');
     await page.waitForFunction(() => location.hash.startsWith('#/table/'));
     await page.waitForSelector('.view-header');
@@ -99,6 +100,21 @@ if (s) {
     assert.equal(await page.locator('.wv-onboard').count(), 0);
     await page.close();
   });
+
+  for (const [id, space, first] of [['finance', 'Money', 'Transactions'], ['crm', 'People', 'Companies']]) {
+    test(`picking ${space} builds it and lands on ${first}`, async () => {
+      const page = await open();
+      for (const n of [2, 3]) { await page.keyboard.press('Enter'); await step(page, n); }
+      await page.click(`.wv-onboard .wv-start-template[data-template="${id}"]`);
+      await page.waitForFunction(() => location.hash.startsWith('#/table/'));
+      await page.waitForSelector('.view-header');
+      const table = s.weave.findTable(`${space}/${first}`);
+      assert.ok(table, `${space}/${first} is built`);
+      assert.ok(page.url().endsWith(`#/table/${table.id}`), 'and opened');
+      assert.ok(s.weave.listEntities(table.id).length > 0, 'with its sample rows');
+      await page.close();
+    });
+  }
 
   test('rename path: type over the default, Enter, start empty, land home under the new name', async () => {
     const page = await open({ theme: 'dark' });
@@ -179,7 +195,7 @@ if (s) {
     await page.fill('.wv-onboard input', 'taken');
     await page.keyboard.press('Enter');
     await step(page, 3);
-    await page.click('.wv-onboard .wv-start-template[data-template="docs"]');
+    await page.click('.wv-onboard .wv-start-template[data-template="crm"]');
     await page.waitForSelector('.wv-toast.err');
     assert.match(await page.locator('.wv-toast.err').textContent(), /taken/);
     await step(page, 2);

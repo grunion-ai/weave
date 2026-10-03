@@ -1,8 +1,8 @@
 /* Feature #248 — onboarding: a short welcome that starts by naming the first
    workspace. The welcome runs once per person, on an instance where that
    person has built nothing yet; it names the workspace they are in (a
-   default arrives filled in), optionally builds a starter through
-   starter-core's steps(), and remembers that it ran, finished or skipped.
+   default arrives filled in), optionally builds a starter from
+   starter-core's build spec, and remembers that it ran, finished or skipped.
 
    Who "the person" is: the signed-in account (a session or a Bearer token),
    whose row carries the mark; with nobody signed in (a loopback instance
@@ -119,24 +119,39 @@ test('the rename path stores the typed name, folded to a workspace name, and the
   } finally { f.close(); }
 });
 
-test('the starter path builds the template through steps() and names its first table', async () => {
+test('the starter path builds each template in one build call and names its first table', async () => {
+  for (const template of S.TEMPLATES) {
+    const f = await fresh();
+    try {
+      const r = await f.call('POST', '/api/onboarding', { name: 'home', template: template.id });
+      assert.equal(r.status, 200, template.id);
+      assert.equal(r.body.name, 'home');
+      const first = f.root.findTable(`${template.space}/${S.firstTable(template)}`);
+      assert.ok(first, `${template.space}/${S.firstTable(template)} exists`);
+      assert.equal(r.body.table, first.id, 'the first table of the template');
+      const tables = S.spec(template).spaces[0].tables;
+      assert.deepEqual(f.root.userTables().map((t) => t.name).sort(), tables.map((t) => t.name).sort(), 'every table');
+      for (const t of tables) {
+        assert.equal(f.root.listEntities(f.root.findTable(`${template.space}/${t.name}`).id).length, (t.rows ?? []).length, `${t.name}: its sample rows`);
+      }
+    } finally { f.close(); }
+  }
   const f = await fresh();
   try {
-    const r = await f.call('POST', '/api/onboarding', { name: 'home', template: 'tasks' });
-    assert.equal(r.status, 200);
-    const tasks = f.root.findTable('Work/Tasks');
-    assert.ok(tasks, 'Work/Tasks exists');
-    assert.equal(r.body.table, tasks.id);
-    assert.equal(f.root.findField(tasks, 'Status')?.type, 'workflow');
-    assert.equal(r.body.name, 'home');
-    const crm = await fresh();
-    try {
-      const c = await crm.call('POST', '/api/onboarding', { template: 'crm' });
-      assert.equal(crm.root.findField(crm.root.findTable('CRM/Contacts'), 'Company')?.type, 'relation', 'relations too');
-      assert.equal(c.body.table, crm.root.findTable('CRM/Companies').id, 'the first table of the template');
-    } finally { crm.close(); }
+    await f.call('POST', '/api/onboarding', { template: 'finance' });
+    const months = f.root.findTable('Money/Months');
+    assert.equal(f.root.findField(months, 'Net')?.type, 'formula', 'rollups and formulas too');
+    const [month] = f.root.listEntities(months.id).map((e) => f.root.readEntity(e.id).raw);
+    assert.ok(month.Spent > 0 && month.Earned > 0);
+    assert.equal(Math.round(month.Net * 100), Math.round((month.Earned - month.Spent) * 100));
     assert.equal((await f.call('POST', '/api/onboarding', { template: 'nope' })).status, 400);
   } finally { f.close(); }
+  // Docs is gone from the list (Feature #244, 2026-10-03).
+  const docs = await fresh();
+  try {
+    assert.equal((await docs.call('POST', '/api/onboarding', { template: 'docs' })).status, 400);
+    assert.equal(docs.root.userTables().length, 0);
+  } finally { docs.close(); }
 });
 
 test('a taken name is refused before anything is built or marked', async () => {

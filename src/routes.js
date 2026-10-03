@@ -782,15 +782,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
             if (body?.template && !template) throw new WeaveError(`Unknown template '${body.template}'`, 'invalid');
             // The name is checked first, so a refusal builds nothing.
+            // One build call (Feature #253): a space already there is reused.
             let table = null;
             if (template) {
-              const hasSpace = !!weave.listSpaces().find((s) => !s.system && s.name === template.space);
-              for (const step of WeaveStarters.steps(template, { hasSpace })) {
-                if (step.op === 'space') weave.createSpace(step.body);
-                else if (step.op === 'table') { const made = weave.createTable(step.body).id; table ??= made; }
-                else if (step.op === 'field') weave.addField(step.table, step.body);
-                else weave.addRelation(step.table, step.body);
-              }
+              const built = weave.build(WeaveStarters.spec(template));
+              if (!built.ok) throw new WeaveError(`Couldn't set up ${template.title}: ${built.errors.map((e) => e.error).join('; ')}`, 'invalid');
+              table = weave.findTable(`${template.space}/${WeaveStarters.firstTable(template)}`)?.id ?? null;
             }
             const was = weave.state.meta.name;
             const ws = weave.updateWorkspace({ name });

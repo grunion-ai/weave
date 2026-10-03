@@ -2,7 +2,7 @@
    the registry (the system Workspace space), and it used to open on the
    Spaces registry grid; the welcome line waited for zero tables, which a
    root never has. Now an empty workspace shows one primary New table action
-   and three templates, and the registry grids on the home and space pages
+   and three templates (Money, Work, People), and the registry grids on the home and space pages
    fold under a Schema disclosure, one click away. A populated workspace
    shows no empty state and keeps its relation map. Both themes are checked.
    Playwright is NOT a dependency of weave; the suite skips when absent. */
@@ -36,8 +36,10 @@ if (empty) {
       const page = await open(empty, '#/', theme);
       await page.waitForSelector('.wv-start');
       assert.equal((await page.locator('.wv-start .wv-start-new').textContent()).trim(), '+ New table');
-      assert.deepEqual(await page.locator('.wv-start-template .wv-start-title').allTextContents(), ['Tasks', 'CRM', 'Docs']);
-      assert.match(await page.locator('.wv-start-lead').textContent(), /space/);
+      assert.deepEqual(await page.locator('.wv-start-template .wv-start-title').allTextContents(), ['Money', 'Work', 'People']);
+      const lead = await page.locator('.wv-start-lead').textContent();
+      assert.match(lead, /\brows\b/);
+      assert.doesNotMatch(lead, /\brecords?\b/, 'row, never record (Issue #605)');
       // The registry is folded, closed, and drew nothing.
       await page.waitForSelector('details.wv-schema');
       assert.equal(await page.locator('details.wv-schema').evaluate((d) => d.open), false);
@@ -80,18 +82,34 @@ if (empty) {
     await page.close();
   });
 
-  test('the Tasks template builds its table with a workflow and opens it, once on a double click', async () => {
+  test('the Work template builds its table with a workflow in one build call and opens it, once on a double click', async () => {
     const page = await open(empty, '#/');
-    const spacePosts = [];
-    page.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/api/spaces')) spacePosts.push(r.url()); });
+    const builds = [];
+    page.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/api/build')) builds.push(r.url()); });
     await page.dblclick('.wv-start-template[data-template="tasks"]');
     await page.waitForFunction(() => location.hash.startsWith('#/table/'));
-    assert.equal(spacePosts.length, 1, 'the second click found the card disabled');
+    assert.equal(builds.length, 1, 'one call, and the second click found the card disabled');
     const tasks = empty.weave.findTable('Work/Tasks');
     assert.ok(tasks, 'Work/Tasks exists');
     assert.equal(empty.weave.findField(tasks, 'Status')?.type, 'workflow');
     assert.ok(page.url().endsWith(`#/table/${tasks.id}`), 'landed on it');
+    assert.equal(empty.weave.listEntities(tasks.id).length, 2, 'with its sample rows');
     empty.weave.deleteSpace('Work', { hard: true });
+    await page.close();
+  });
+
+  test('the Money template builds five tables and opens Transactions, its months rolled up', async () => {
+    const page = await open(empty, '#/');
+    await page.click('.wv-start-template[data-template="finance"]');
+    await page.waitForFunction(() => location.hash.startsWith('#/table/'));
+    const tx = empty.weave.findTable('Money/Transactions');
+    assert.ok(tx, 'Money/Transactions exists');
+    assert.ok(page.url().endsWith(`#/table/${tx.id}`), 'landed on it');
+    assert.deepEqual(empty.weave.userTables().map((t) => t.name).sort(), ['Accounts', 'Income', 'Months', 'Recurring', 'Transactions']);
+    const [month] = empty.weave.listEntities(empty.weave.findTable('Money/Months').id).map((e) => empty.weave.readEntity(e.id).raw);
+    assert.ok(month.Spent > 0 && month.Earned > 0);
+    assert.equal(Math.round(month.Net * 100), Math.round((month.Earned - month.Spent) * 100));
+    empty.weave.deleteSpace('Money', { hard: true });
     await page.close();
   });
 }

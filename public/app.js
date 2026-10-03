@@ -11789,35 +11789,28 @@ function startTableDialog({ spaceId = null } = {}) {
   });
 }
 
-/* A template walks starter-core's steps over the same REST doors the
-   sidebar and the field dialog use, then opens its first table. A space the
-   person already made under the template's name is reused. */
+/* A template is one weave_build spec (Feature #253): one POST /api/build
+   builds its space, tables, rollups and sample rows, reusing a space the
+   person already made under that name, then its first table opens. */
 async function runStarter(template) {
-  const hasSpace = state.schema.some((s) => !s.system && s.space === template.space);
   toast(`Setting up ${template.title}…`);
-  // The route splits on "/", so a later step names its table by the id the
-  // table step answered with, not by its Space/Name.
-  const ids = {};
   try {
-    for (const step of WeaveStarters.steps(template, { hasSpace })) {
-      if (step.op === 'space') await api('POST', '/spaces', step.body);
-      else if (step.op === 'table') ids[`${step.body.space}/${step.body.name}`] = (await api('POST', '/tables', step.body)).id;
-      else await api('POST', `/tables/${ids[step.table]}/${step.op === 'field' ? 'fields' : 'relations'}`, step.body);
-    }
+    await api('POST', '/build', WeaveStarters.spec(template));
   } catch (err) {
     toast(`Couldn't set up ${template.title}: ${err.message}`, true);
     await loadSchema();
     return showHome();
   }
   await loadSchema();
-  const first = allTables().find((t) => !t.system && t.space === template.space && t.name === template.tables[0].name);
+  const name = WeaveStarters.firstTable(template);
+  const first = allTables().find((t) => !t.system && t.space === template.space && t.name === name);
   location.hash = first ? `#/table/${first.id}` : '#/';
 }
 
 function emptyWorkspace() {
   return el('div', { class: 'card wv-start' },
     el('div', { class: 'card-body' },
-      el('p', { class: 'wv-start-lead' }, 'Tables hold records, one per line, with the fields you choose. Related tables share a space. Start with a table or a template.'),
+      el('p', { class: 'wv-start-lead' }, 'A table holds rows, and you choose its fields. Start with a new table or a template.'),
       el('button', { class: 'btn btn-primary wv-start-new', onclick: () => startTableDialog() }, '+ New table'),
       el('div', { class: 'wv-start-label' }, 'Templates'),
       el('div', { class: 'wv-start-templates' },
