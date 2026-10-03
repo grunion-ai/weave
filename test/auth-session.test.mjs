@@ -193,7 +193,8 @@ test('routes: rate limits — 10 sign-in starts a minute per IP, 5 failed callba
     assert.equal(last.status, 302);
     const eleventh = await s.call('GET', '/api/auth/oidc/start');
     assert.equal(eleventh.status, 429);
-    assert.equal((await eleventh.json()).code, 'rate-limited');
+    // A navigation, so a page with a way back (Issue #570), not JSON.
+    assert.match(await eleventh.text(), /Too many sign-in attempts[\s\S]*href="\/auth\?signed-out=1"/);
     // Not trusting the proxy: a forged X-Forwarded-For does not buy a fresh bucket.
     assert.equal((await s.call('GET', '/api/auth/oidc/start', { headers: { 'X-Forwarded-For': '203.0.113.9' } })).status, 429);
     // Failed callbacks: five made-up states, then the sixth is refused before it is read.

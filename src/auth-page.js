@@ -112,6 +112,30 @@ const JS = `
 })();
 `;
 
+const MARK = '<svg class="mark" viewBox="0 0 48 48" role="img" aria-label="weave"><path d="M12,20 C16,20 16,28 20,28 C24,28 24,20 28,20 C32,20 32,28 36,28" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round"/><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/></svg>';
+
+/* A sign-in trip that ends without a session (Issue #570): the callback's
+   refusals, in this page's card. Every action is a plain link the caller
+   picks; none may be bare /auth, which sends a signed-out browser straight
+   back to the provider and its still-open session. No script. */
+export function renderRefusalPage({ title, lines = [], actions = [] } = {}) {
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>${esc(title)}</title>
+<style>${CSS}</style>
+</head><body>
+<main>
+  <div class="card">
+    ${MARK}
+    <h1>${esc(title)}</h1>
+${[].concat(lines).map((l) => `    <p class="sub">${esc(l)}</p>\n`).join('')}${actions.map((a) => `    <a class="provider" href="${esc(a.href)}">${esc(a.label)}</a>\n`).join('')}  </div>
+</main>
+</body></html>`;
+}
+
 export function renderAuthPage({ mount = '', workspace = 'weave', provider = null } = {}) {
   return `<!doctype html>
 <html lang="en"><head>
@@ -123,7 +147,7 @@ export function renderAuthPage({ mount = '', workspace = 'weave', provider = nul
 </head><body data-mount="${esc(mount)}">
 <main>
   <div class="card">
-    <svg class="mark" viewBox="0 0 48 48" role="img" aria-label="weave"><path d="M12,20 C16,20 16,28 20,28 C24,28 24,20 28,20 C32,20 32,28 36,28" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round"/><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/></svg>
+    ${MARK}
     <section id="sec-signin" hidden>
       <h1>Sign in to ${esc(workspace)}</h1>
 ${provider ? `      <p class="sub">Your account here is linked to your ${esc(provider)} sign-in.</p>

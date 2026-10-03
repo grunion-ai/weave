@@ -16,7 +16,7 @@ import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
-import { renderAuthPage } from './auth-page.js';
+import { renderAuthPage, renderRefusalPage } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
 
 export function statusFor(err) {
@@ -517,9 +517,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
              to pin the provider's subject to the invited account (Feature #252). */
           if (path.startsWith('/api/auth/oidc/')) {
             if (!oidc) return notFound({ error: 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
-            const refusal = (status, title, detail) => out(status,
-              `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>${escHtml(title)}</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>${escHtml(title)}</h1><p>${escHtml(detail)}</p><p><a href="${escHtml(wsPrefix)}/auth">Back to sign in</a></p>`,
+            /* Every way back lands on /auth?signed-out=1, which renders: bare
+               /auth sends a signed-out browser on to the provider, whose own
+               session signs it straight back in to the same refusal (Issue
+               #570). mount is the workspace that started the trip, once the
+               callback knows it. */
+            let mount = wsPrefix;
+            const signInAgain = () => ({ href: `${mount}/auth?signed-out=1`, label: 'Back to sign in' });
+            const refusal = (status, title, detail, actions = [signInAgain()]) => out(status, renderRefusalPage({ title, lines: detail, actions }),
               { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+            const tooMany = () => refusal(429, 'Too many sign-in attempts', 'Wait a minute, then sign in again.');
             const redirectUri = `${originFor(rx)}/api/auth/oidc/callback`;
             if (route === 'GET /api/auth/oidc/start') {
               if (limited('options', ip)) return tooMany();
@@ -528,12 +535,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               const invite = rx.searchParams?.get('invite') || null;
               if (invite && !weave.identityInvite(invite)) return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
               let trip;
-              try { trip = await oidc.begin({ redirectUri }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
+              try { trip = await oidc.begin({ redirectUri, fresh: rx.searchParams?.has('fresh') }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
               /* The trip belongs to the browser that started it: a second,
                  unguessable value rides a cookie scoped to these two routes,
                  so a callback URL handed to another browser finishes nothing. */
               const binder = newChallenge();
-              putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite }, trip.state);
+              putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite, mount: wsPrefix }, trip.state);
               const secure = originFor(rx).startsWith('https:') ? '; Secure' : '';
               return { status: 302, headers: { Location: trip.url, 'Set-Cookie': `wv_oidc=${binder}; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=${CHALLENGE_TTL_MS / 1000}${secure}`, 'Cache-Control': 'no-store' }, body: '' };
             }
@@ -541,6 +548,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (limited('failed', ip, { peek: true })) return tooMany();
               const c = takeChallenge(String(rx.searchParams?.get('state') ?? ''), 'oidc');
               if (!c || !cookies.wv_oidc || cookies.wv_oidc !== c.binder) { noteFailure(ip); return refusal(400, 'This sign-in expired or was already used', 'Start again from the sign-in page, in the browser you want to sign in.'); }
+              mount = c.mount ?? '';
               if (rx.searchParams.get('error') || !rx.searchParams.get('code')) return refusal(400, `${oidc.name} did not sign you in`, String(rx.searchParams.get('error_description') ?? rx.searchParams.get('error') ?? 'No authorization code came back.'));
               let who;
               try {
@@ -553,6 +561,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               }
               const root = hub.get(hub.defaultName);
               let account = null;
+              /* A way out to another provider account (Issue #570): sign out at
+                 the provider where discovery says how, else a trip that makes
+                 the provider ask again. An unspent invite rides that trip, and
+                 needs it: the provider would return to /auth without it. */
+              const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
+              const differentAccount = async () => ({ label: 'Use a different account', href: await oidc.endSessionUrl({ postLogoutRedirectUri: `${originFor(rx)}${mount}/auth?signed-out=1` }).catch(() => null) ?? fresh() });
               let engine = null;
               if (c.invite) {
                 try {
@@ -560,11 +574,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                   engine = c.holder;
                 } catch (err) {
                   noteFailure(ip);
-                  if (err.code === 'conflict') return refusal(409, 'This identity already opens another account', `You signed in at ${oidc.name} as someone this server already knows, so the invite was not used. Sign out at ${oidc.name} and open the invite link again as the person it was meant for.`);
+                  if (err.code === 'conflict') return refusal(409, 'This identity already opens another account', `You signed in at ${oidc.name} as someone this server already knows, so the invite was not used. Sign in as the person it was meant for to use it.`, [{ label: 'Use a different account', href: fresh(c.invite) }, signInAgain()]);
                   return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
                 }
               } else engine = [c.holder, root].find((e) => (account = e.accountForIdentity(who)));
-              if (!engine) { noteFailure(ip); return refusal(403, 'No account for this identity', `You signed in at ${oidc.name}, but no account here is linked to that identity. If an operator sent you an invite link, open it: it links this identity and signs you in. Operators make one with weave account link <name>.`); }
+              if (!engine) {
+                noteFailure(ip);
+                const ws = c.holder.state.meta.name;
+                return refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace admin can send you an invite link that adds you. Or sign in with a different account.'], [await differentAccount(), signInAgain()]);
+              }
               const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
               return { status: 302, headers: { Location: c.next, 'Set-Cookie': sessionCookie(minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
             }

@@ -15,7 +15,9 @@ export function signJwt(payload, { privateKey, kid = 'k1', alg = 'RS256' } = {})
   return `${head}.${sig}`;
 }
 
-export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cret', claimsInIdToken = true } = {}) {
+/* endSession: discovery names an end_session_endpoint (RP-initiated logout),
+   as Keycloak and Auth0 do and Clerk does not. */
+export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cret', claimsInIdToken = true, endSession = false } = {}) {
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const codes = new Map();
   const seen = { token: [], userinfo: 0, discovery: 0, jwks: 0 };
@@ -38,6 +40,7 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
         id_token_signing_alg_values_supported: ['RS256'],
         token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
         code_challenge_methods_supported: ['S256'],
+        ...(endSession ? { end_session_endpoint: `${issuer}/oauth/logout` } : {}),
       });
     }
     if (url.pathname === '/jwks') {
