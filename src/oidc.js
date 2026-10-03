@@ -97,8 +97,12 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
     issuer,
     name: name || new URL(issuer).hostname,
     /* What start needs: the three secrets of one trip and where to send the
-       browser. state and nonce ride the URL; the verifier stays here. */
-    async begin({ redirectUri }) {
+       browser. state and nonce ride the URL; the verifier stays here. fresh
+       asks the provider to sign the person in again rather than reuse its
+       session (prompt=login, plus select_account where discovery lists it),
+       which is how a person switches account where the provider names no
+       end_session_endpoint (Issue #570). */
+    async begin({ redirectUri, fresh = false }) {
       const doc = await discover();
       const state = randomBytes(32).toString('base64url');
       const nonce = randomBytes(32).toString('base64url');
@@ -108,7 +112,20 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
         response_type: 'code', client_id: clientId, redirect_uri: redirectUri, scope: 'openid',
         state, nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
       })) url.searchParams.set(k, v);
+      if (fresh) url.searchParams.set('prompt', doc.prompt_values_supported?.includes('select_account') ? 'login select_account' : 'login');
       return { url: url.href, state, nonce, verifier };
+    },
+    /* RP-initiated logout: the provider's end_session_endpoint, coming back
+       to postLogoutRedirectUri, or null when discovery names none.
+       ponytail: client_id and no id_token_hint, which the spec allows; a
+       provider that insists on the hint needs the id token kept per session. */
+    async endSessionUrl({ postLogoutRedirectUri }) {
+      const doc = await discover();
+      if (!doc.end_session_endpoint) return null;
+      const url = new URL(doc.end_session_endpoint);
+      url.searchParams.set('client_id', clientId);
+      url.searchParams.set('post_logout_redirect_uri', postLogoutRedirectUri);
+      return url.href;
     },
     /* The code for a verified identity: the issuer and the subject, and
        nothing else the token may carry. */

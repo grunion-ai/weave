@@ -1623,7 +1623,7 @@ WEAVE_OIDC_NAME=Clerk
 
 ## Sign-in page
 
-A signed-out visit to any page answers \`302\` to \`/auth?next=<the page>\`, and \`/auth\` goes straight to the provider, with no page in between, and keeps \`?next\`. After you sign in at the provider, you land on the page you were heading to. Signed in, \`/auth\` shows your sessions and a sign-out button. Signing out lands on \`/auth?signed-out=1\`, which shows a \`Sign in with <name>\` link instead of sending you back to the provider, where its own session would sign you straight back in. A refused sign-in gets a page that states the reason and links back to \`/auth\`.
+A signed-out visit to any page answers \`302\` to \`/auth?next=<the page>\`, and \`/auth\` goes straight to the provider, with no page in between, and keeps \`?next\`. After you sign in at the provider, you land on the page you were heading to. Signed in, \`/auth\` shows your sessions and a sign-out button. Signing out lands on \`/auth?signed-out=1\`, which shows a \`Sign in with <name>\` link instead of sending you back to the provider, where its own session would sign you straight back in. A refused sign-in gets a page that states the reason and links back to \`/auth?signed-out=1\`, never to bare \`/auth\`, which would send you to the provider and back to the same refusal. When the provider signs in someone with no account here, the page says that provider account has no access to the workspace, points to an invite link, and offers **Use a different account**: the provider's \`end_session_endpoint\` when its discovery document names one, coming back to \`/auth?signed-out=1\`, or else a new sign-in with \`prompt=login\`, so the provider asks for credentials again instead of reusing its session. An invite opened as someone the server already knows gets the same button, and that new sign-in carries the unspent invite.
 
 ## Sessions and the lost-device day
 
@@ -1656,7 +1656,7 @@ weave supports one provider per process and creates no account at sign-in. Signi
 
 1. Open \`/auth\` in a private window: the browser goes straight to the provider's sign-in.
 2. Open an invite link from \`weave account link <name>\` and sign in at the provider: you land in the workspace.
-3. Sign in at the provider as someone with no invite: weave answers \`403\` with a page reading **No account for this identity**.
+3. Sign in at the provider as someone with no invite: weave answers \`403\` with a page reading **No access to <workspace>** that offers **Use a different account**.
 4. Run \`weave account list\`: the account's entry in \`identities[]\` carries the issuer and the \`subject\`, and no email.
 5. \`weave account revoke-session <name> --all\`: the next page load in that browser is the sign-in page.`,
   },
