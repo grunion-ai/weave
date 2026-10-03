@@ -31,6 +31,10 @@ services:
       # WEAVE_OIDC_CLIENT_ID: change-me
       # WEAVE_OIDC_CLIENT_SECRET: change-me
       # WEAVE_OIDC_NAME: Clerk
+      # Email invites through Resend (Handbook → "Environment reference"):
+      # both set, or weave sends no email and Members shows the link to copy.
+      # WEAVE_MAIL_KEY: change-me
+      # WEAVE_MAIL_FROM: weave <no-reply@mail.example.com>
       # With a provider set, /mcp signs agents in through the browser; a second
       # domain for it on this service is listed here (Handbook, Door C).
       # WEAVE_MCP_ORIGINS: https://mcp.weave.example.com

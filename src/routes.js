@@ -18,7 +18,7 @@ import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
 import { renderAuthPage, renderRefusalPage } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
-import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES } from './mail.js';
+import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 // The welcome builds a starter from the same template data the page shows (Feature #248).
 import '../public/starter-core.js';
 const { WeaveStarters } = globalThis;
@@ -63,9 +63,12 @@ const parseCookies = (header) => Object.fromEntries(String(header ?? '').split('
      resource may name (WEAVE_MCP_ORIGINS, Feature #254)
    - serveStatic: (path) => {status, headers, body} | null, or null when the
      platform serves assets before the dispatcher runs
+   - mail: ({ to, subject, html, text }) => Promise, src/mail-send.js's
+     sender, or null when WEAVE_MAIL_KEY/WEAVE_MAIL_FROM are unset; an
+     invite is then emailed to the address typed (Feature #216)
    Returns handle(rx) where rx = { method, path (decoded pathname),
    searchParams, header(name), readBody() } → {status, headers, body}. */
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [] } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null } = {}) {
   const challenges = new Map();
   const rates = { options: new Map(), failed: new Map() };
   /* limited(kind, ip) counts this call and says whether the minute's budget
@@ -814,11 +817,28 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'GET /api/accounts') return out(200, weave.listAccounts());
         /* A new person, invited to this workspace (Issue #569): the link is
-           the invite, handed out once; weave sends no email yet. */
+           the invite, handed out once. With mail on (Feature #216) weave also
+           emails it to the address typed; a failed send is logged and named
+           in the answer, never a failed invite. The accepted notice
+           (inviteAcceptedEmail) is not sent: weave keeps no account email
+           (Feature #252). Kyle's open decision: drop it, keep the inviter's
+           address on the invite until it is used, or show it in-app. */
         if (route === 'GET /api/invites') return out(200, weave.listInvites());
         if (route === 'POST /api/invites') {
           const made = weave.inviteMember({ email: body?.email, role: body?.role ?? 'editor', issuer: body?.issuer ?? oidc?.issuer });
-          return out(201, { ...made, url: `${originFor(rx)}${wsPrefix}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` });
+          const url = `${originFor(rx)}${wsPrefix}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}`;
+          let sent = { mailed: false };
+          if (mail) {
+            try {
+              const m = inviteEmail({ inviter: made.invitedBy, workspace: made.workspace, role: made.role, expires: longDate(made.expiresAt), link: url, origin: originFor(rx) });
+              await mail({ to: made.email, subject: m.subject, html: m.html, text: m.text });
+              sent = { mailed: true };
+            } catch (err) {
+              console.error(`weave: the invite email was not sent: ${err.message}`);
+              sent = { mailed: false, mailError: err.message };
+            }
+          }
+          return out(201, { ...made, url, ...sent });
         }
         if ((m = path.match(/^\/api\/invites\/([^/]+)$/)) && rx.method === 'DELETE') return out(200, weave.revokeInvite(decodeURIComponent(m[1])));
         /* The invite emails with sample values (Feature #216): what a person

@@ -12477,9 +12477,10 @@ async function showHome() {
 /* Members (Issue #569): who has an account here, the pending invites, and
    the form that invites a new person by email. The server answers the two
    reads only for a caller who may manage accounts, an architect, so anyone
-   else never sees the section. weave sends no email yet: the invite answers
-   a one-time sign-in link, shown once, for the architect to hand over. The
-   labels are Kyle's billing words; weave bills nobody (Feature #256). */
+   else never sees the section. The invite answers a one-time sign-in link:
+   emailed when the server has mail on (Feature #216), else shown once for
+   the architect to hand over. The labels are Kyle's billing words; weave
+   bills nobody (Feature #256). */
 const ROLE_LABELS = { editor: 'Editor, paid seat', observer: 'Observer, free', architect: 'Architect, paid' };
 async function membersSection(parent) {
   const [acc, inv] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites')]);
@@ -12495,16 +12496,24 @@ async function membersSection(parent) {
       ev.preventDefault();
       try {
         const made = await api('POST', '/invites', { email: email.value.trim(), role: role.input.value });
+        if (made.mailError) toast(`The invite email was not sent: ${made.mailError}`, true);
         const [a2, i2] = await Promise.all([api('GET', '/accounts'), api('GET', '/invites')]);
         draw(a2, i2, made);
       } catch (err) { toast(err.message, true); }
     } }, email, role, el('button', { class: 'btn btn-primary', type: 'submit' }, 'Invite'));
-    const shown = link ? el('div', { class: 'wv-invite-link card' },
+    /* Emailed when the server has mail on (Feature #216); otherwise, or when
+       the send failed, the link to hand over, as before. */
+    const shown = link?.mailed ? el('div', { class: 'wv-invite-link card' },
+      el('div', { class: 'wv-invite-link-head' }, `Emailed ${link.email}`),
+      el('div', { class: 'wv-invite-note' }, 'weave emailed the sign-in link. It works once and expires in 7 days.'))
+    : link ? el('div', { class: 'wv-invite-link card' },
       el('div', { class: 'wv-invite-link-head' }, `Sign-in link for ${link.email}`),
       el('div', { class: 'wv-invite-link-row' },
         el('input', { class: 'form-control form-control-sm', readonly: '', value: link.url, 'aria-label': 'Sign-in link', onfocus: (e) => e.target.select() }),
         el('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(link.url, 'Link copied') }, 'Copy link')),
-      el('div', { class: 'wv-invite-note' }, 'Send this link yourself: weave does not send email yet. It works once and expires in 7 days.')) : null;
+      el('div', { class: 'wv-invite-note' }, link.mailError
+        ? 'Send this link yourself: the email did not go out. It works once and expires in 7 days.'
+        : 'Send this link yourself: weave does not send email yet. It works once and expires in 7 days.')) : null;
     body.replaceChildren(
       el('div', { class: 'wv-members-sub' }, 'Accounts'),
       accounts.length ? el('div', { class: 'card list-rows' },

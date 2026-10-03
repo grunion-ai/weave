@@ -18,6 +18,8 @@ COPY --chown=node:node . .
 #   WEAVE_OIDC_CLIENT_ID       the client id that provider issued; set with the issuer (unset)
 #   WEAVE_OIDC_CLIENT_SECRET   the client secret; unset = public client, PKCE alone (unset)
 #   WEAVE_OIDC_NAME            the word on the sign-in link                (issuer's host)
+#   WEAVE_MAIL_KEY             a Resend API key; with WEAVE_MAIL_FROM, invites are emailed (unset = off)
+#   WEAVE_MAIL_FROM            the sender, on a domain Resend has verified (unset)
 #   WEAVE_MCP_ORIGINS          other origins the /mcp door answers on, comma separated (unset)
 #   WEAVE_UPDATE_CHECK         off: never ask GitHub for a newer release   (on: once a day)
 #   WEAVE_AUTO_UPDATE          1 with `supervise`: install newer releases in place (unset = off)
