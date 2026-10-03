@@ -36,4 +36,24 @@ for (const [svg, png, w, h] of JOBS) {
   await page.screenshot({ path: join(out, png), omitBackground: true });
   console.log(`rendered ${png} (${w}x${h})`);
 }
+
+// Email lockups (Feature #216), at 2x the 104x24 the invite emails show.
+// Drawn inline rather than in an <img>, because an <img> SVG cannot fetch the
+// wordmark's web font. weave serves them itself, from public/brand/.
+const EMAIL = [
+  ["weave-lockup-email-light.svg", "email-lockup-light.png"],
+  ["weave-lockup-email-dark.svg", "email-lockup-dark.png"],
+];
+for (const [svg, png] of EMAIL) {
+  await page.setViewportSize({ width: 208, height: 48 });
+  await page.setContent(
+    `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@600&display=block">` +
+    `<style>*{margin:0}html,body{background:transparent}svg{display:block;width:208px;height:48px}</style>` +
+    readFileSync(join(assets, svg), "utf8"), { waitUntil: "networkidle" });
+  await page.evaluate(() => document.fonts.ready);
+  const outfit = await page.evaluate(() => [...document.fonts].some((f) => f.family.replace(/"/g, "") === "Outfit" && f.status === "loaded"));
+  if (!outfit) throw new Error(`Outfit did not load, so ${png} would draw the wordmark in a fallback face`);
+  await page.screenshot({ path: join(here, "..", "public", "brand", png), omitBackground: true });
+  console.log(`rendered ${png} (208x48, Outfit)`);
+}
 await browser.close();

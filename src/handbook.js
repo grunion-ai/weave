@@ -1627,6 +1627,8 @@ The person opens the link and signs in at the provider, signing up there first i
 
 An invite opens the workspace it was made in. An invite made on the hub root makes a root account, which opens every workspace the way a root account always has. A link that was revoked, spent, expired or made in another workspace answers \`410\` before the provider; a sign-in with no invite gets the refusal page, **No access to** the workspace.
 
+An architect sees the emails weave sends about an invite, filled with sample values, at \`GET /api/mail/preview/invite\` and \`GET /api/mail/preview/accepted\`. Add \`?role=observer\`, \`editor\` or \`architect\` to pick the role, and \`?theme=light\` or \`?theme=dark\` to paint one palette instead of following the mail client's setting.
+
 \`\`\`bash
 weave invite dylan@example.com --role observer   # prints the invite and its url
 weave invite list                                # the pending ones

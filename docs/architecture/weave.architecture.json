@@ -447,7 +447,7 @@
       "items": [
         "src/vocabulary.js: one field vocabulary for UI, CLI and MCP",
         "src/ids.js, src/mark.js and src/workspace-name.js: ids, the rope mark, a new workspace's name",
-        "src/applet.js, src/bugreport.js, src/oidc.js and src/legal.js: routes, provider sign-in and the public privacy and terms pages behind the request core"
+        "src/applet.js, src/bugreport.js, src/oidc.js, src/legal.js and src/mail.js: routes, provider sign-in, the public privacy and terms pages and the invite emails behind the request core"
       ]
     },
     {

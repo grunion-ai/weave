@@ -166,8 +166,8 @@ function appIconSvg() {
 // Inline lockup (decisions 3A + 4B): mark at x-height, "weave" in Outfit 600.
 // Outfit must be available (or loaded) wherever the SVG is consumed; falls back
 // to the system stack.
-function lockupSvg(textColor) {
-  const { defs, body } = markParts({ c1: PALETTE.blue, c2: PALETTE.sky, sw: 3.5 });
+function lockupSvg(textColor, { c1 = PALETTE.blue, c2 = PALETTE.sky } = {}) {
+  const { defs, body } = markParts({ c1, c2, sw: 3.5 });
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="6 12 106 24"><defs>${defs}</defs>${body}` +
     `<text x="42" y="31.5" font-family="Outfit, -apple-system, 'Segoe UI', sans-serif" ` +
     `font-size="21" font-weight="600" letter-spacing="-0.4" fill="${textColor}">weave</text></svg>`;
@@ -190,6 +190,10 @@ export const VARIANTS = [
   // lockups (decisions 3A + 4B)
   { file: "weave-lockup-dark.svg",     svg: lockupSvg(PALETTE.cream) },
   { file: "weave-lockup-light.svg",    svg: lockupSvg(PALETTE.ink) },
+  // email lockups (Feature #216): the invite emails' palettes, approved
+  // 2026-10-03; rasterized by render-png.mjs, since Gmail strips SVG
+  { file: "weave-lockup-email-light.svg", svg: lockupSvg(PALETTE.ink, { c2: PALETTE.ink }) },
+  { file: "weave-lockup-email-dark.svg",  svg: lockupSvg("#eef2f8", { c1: "#3b82f6" }) },
 ];
 
 export function build(outDir) {

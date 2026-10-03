@@ -103,6 +103,13 @@ test("variant manifest covers the decided asset set with unique filenames", () =
   ]) assert.ok(files.includes(f), `missing ${f}`);
 });
 
+test("email lockups carry the invite emails' approved palettes (Feature #216)", () => {
+  const light = VARIANTS.find(v => v.file === "weave-lockup-email-light.svg").svg;
+  const dark = VARIANTS.find(v => v.file === "weave-lockup-email-dark.svg").svg;
+  assert.ok(light.includes('stroke="#2563eb"') && light.includes('stroke="#0c1b33"') && light.includes('fill="#0c1b33">weave'));
+  assert.ok(dark.includes('stroke="#3b82f6"') && dark.includes('stroke="#60a5fa"') && dark.includes('fill="#eef2f8">weave'));
+});
+
 test("favicon variant is thickened mono blue (decision 2B)", () => {
   const fav = VARIANTS.find(v => v.file === "weave-favicon.svg").svg;
   assert.ok(fav.includes('stroke-width="4.5"'));

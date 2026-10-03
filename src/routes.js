@@ -18,6 +18,7 @@ import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
 import { renderAuthPage, renderRefusalPage } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
+import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES } from './mail.js';
 // The welcome builds a starter from the same template data the page shows (Feature #248).
 import '../public/starter-core.js';
 const { WeaveStarters } = globalThis;
@@ -820,6 +821,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, { ...made, url: `${originFor(rx)}${wsPrefix}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` });
         }
         if ((m = path.match(/^\/api\/invites\/([^/]+)$/)) && rx.method === 'DELETE') return out(200, weave.revokeInvite(decodeURIComponent(m[1])));
+        /* The invite emails with sample values (Feature #216): what a person
+           gets before anyone is sent one. Architect only, like the invites. */
+        if ((m = path.match(/^\/api\/mail\/preview\/([^/]+)$/)) && rx.method === 'GET') {
+          if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Previewing email needs an architect token');
+          const make = { invite: inviteEmail, accepted: inviteAcceptedEmail }[m[1]];
+          if (!make) return notFound({ error: `No email named '${m[1]}' (invite, accepted)`, code: 'not-found' });
+          const asked = rx.searchParams?.get('role') || 'editor';
+          if (!MAIL_ROLES[asked]) throw new WeaveError(`Invalid role '${asked}' (${Object.keys(MAIL_ROLES).join(', ')})`, 'invalid');
+          const o = originFor(rx);
+          const email = make({ inviter: 'kyle', workspace: 'weave', member: 'dana', expires: 'October 10', joined: 'October 3', role: asked,
+            link: `${o}/api/auth/oidc/start?invite=Zq7tK4mW2xR9pLc8`, members: `${o}/w/weave/#members`, origin: o,
+            theme: ['light', 'dark'].includes(rx.searchParams?.get('theme')) ? rx.searchParams.get('theme') : undefined });
+          return out(200, email.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        }
         if (route === 'POST /api/accounts') return out(201, weave.createAccount(body ?? {}));
         // Door C (Feature #212, Feature #252): linking mints a one-time
         // invite link; the person who opens it and signs in is linked.

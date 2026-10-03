@@ -48,6 +48,7 @@ width 3.5 on a 48-unit grid. The under-strand is cut with SVG masks
 | `weave-app-icon.svg` | 512 squircle app icon |
 | `weave-loader-dark.svg` / `-light.svg` | Animated loader (decision 7), same strand pairs as the marks |
 | `weave-lockup-dark.svg` / `-light.svg` | Inline mark + wordmark |
+| `weave-lockup-email-light.svg` / `-dark.svg` | The invite emails' lockup (Feature #216): ink second strand on light, `#3b82f6` lead on dark, as approved 2026-10-03. `render-png.mjs` draws them, with Outfit loaded, to `public/brand/email-lockup-{light,dark}.png` at 208x48, which weave serves to mail clients (Gmail strips SVG) |
 
 `assets/png/` — rasters rendered via headless Chromium: favicon 16/32/48 +
 `favicon.ico`, app icon 512/180, mark 256, lockup 512, plus
