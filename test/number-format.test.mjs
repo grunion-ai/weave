@@ -30,6 +30,12 @@ test('unit, decimals and separator compose', () => {
   assert.equal(shown(w, 30), '30 days');
   const w2 = fresh({ decimals: 2, separator: true });
   assert.equal(shown(w2, 1234567.891), '1,234,567.89');
+  // A separator alone groups thousands and keeps the figure's own decimals:
+  // it truncated 44.22 to 44 (Issue #574).
+  const w3 = fresh({ separator: true });
+  assert.equal(shown(w3, 44.22), '44.22');
+  assert.equal(shown(w3, 1234.5), '1,234.5');
+  assert.equal(shown(w3, 0.1 + 0.2), '0.3', 'no float noise');
 });
 
 test('currency puts the unit in front; percent needs no unit at all', () => {

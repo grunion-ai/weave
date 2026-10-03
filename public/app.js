@@ -2272,6 +2272,10 @@ function credentialReveal(name, keystore) {
    that render as text and must not look editable. */
 const PICKER_FIELD_TYPES = ['select', 'multiselect', 'workflow'];
 const READONLY_FIELD_TYPES = ['lookup', 'rollup', 'formula', 'document', 'view'];
+/* A cell that holds a figure sits on the right like a number (Issue #574):
+   a formula or a rollup with a numeric result took no right-align, so a
+   column of totals read flush left beside the amounts it summed. */
+const isNumCell = (f, item) => f.type === 'number' || ((f.type === 'formula' || f.type === 'rollup') && typeof item?.raw?.[f.name] === 'number');
 
 /* Credentials (Feature #143). The glyph says what SORT of secret the chip
    stands for; the badge says whose store holds it. Both are read off the
@@ -5630,7 +5634,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           // The leading column carries the row's identity — Name by default,
           // whatever the reader put first after a reorder — so it is set
           // heavier than the fields that qualify it.
-          class: (f.type === 'number' ? 'num' : '')
+          class: (isNumCell(f, item) ? 'num' : '')
             + (c === cols[0] ? ' name-cell' : '') + kind,
           // The width is the column's, painted by the grid's layout sheet
           // (Feature #233), so a row built later wears it too.
@@ -5712,8 +5716,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     return widest.get(c);
   };
   // A system column's default is its stamp's width; it floors like a field.
+  /* A document column with nothing in any loaded row (Issue #575): an agent's
+     empty Description took the widest default on the grid for a column of
+     placeholders. */
+  const emptyDoc = (c) => colField(db, c)?.type === 'document' && items.every((it) => !String(it?.docs?.[c] ?? '').trim());
   const widthOf = (c) => override.get(c)
-    ?? CR.layout([{ ...colField(db, c), name: c, pad: cellPads.get(c), stored: storedWidth(c) ?? (isSysCol(c) ? SYS_WIDTHS[c] : undefined), floor: floors.get(c), widest: widestOf(c) }])[c];
+    ?? CR.layout([{ ...colField(db, c), name: c, pad: cellPads.get(c), stored: storedWidth(c) ?? (isSysCol(c) ? SYS_WIDTHS[c] : undefined), floor: floors.get(c), widest: widestOf(c), empty: emptyDoc(c) }])[c];
   const headOf = (c) => table?.tHead?.rows[0]?.querySelector(`th.col-head[data-col="${CSS.escape(c)}"]`) ?? null;
   // The cells before the first field: the checkbox and the # link.
   const leadCount = () => {
@@ -12120,7 +12128,7 @@ async function relatedGrid(entity, f, onSaved) {
       el('td', { class: 'pid-cell' },
         el('a', { class: 'open-link', href: `#/entity/${item.id}`, title: `Open ${target.term.singular}` }, `#${item.publicId} ↗`)),
       ...cols.map((c) => el('td', {
-        class: (c.type === 'number' ? 'num' : '')
+        class: (isNumCell(c, item) ? 'num' : '')
           + (PICKER_FIELD_TYPES.includes(c.type) ? ' cell-pick' : READONLY_FIELD_TYPES.includes(c.type) ? ' cell-computed' : ''),
       }, labeledEditorFor(c, item, target, onSaved, { compact: true }))),
       el('td', {}, el('button', {
