@@ -34,6 +34,18 @@ async function open({ theme = 'light', viewport = null } = {}) {
   return page;
 }
 
+await import('../public/starter-core.js');
+const { TEMPLATES, spec, firstTable } = globalThis.WeaveStarters;
+
+/* The server builds before it answers; poll the engine until it has. */
+async function waitFor(get, ms = 10000) {
+  for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 50))) {
+    const v = get();
+    if (v) return v;
+  }
+  throw new Error('timed out');
+}
+
 const heading = (page) => page.locator('.wv-onboard h2').textContent();
 const step = (page, n) => page.waitForSelector(`.wv-onboard[data-step="${n}"]`);
 
@@ -133,19 +145,71 @@ if (s) {
     await page.close();
   });
 
-  for (const at of [1, 2, 3]) {
-    test(`skip from step ${at} keeps the defaults and lands in a working workspace`, async () => {
-      const page = await open();
-      for (let n = 2; n <= at; n++) { await page.keyboard.press('Enter'); await step(page, n); }
-      if (at === 2) await page.fill('.wv-onboard input', 'not-this-one');
-      // Step 2 skips with Esc, the others with the button.
-      await landsHome(page, () => (at === 2 ? page.keyboard.press('Escape') : page.click('.wv-onboard-skip')));
-      assert.equal(s.weave.state.meta.name, 'workspace', 'the default name');
-      assert.equal(s.weave.userTables().length, 0, 'nothing half made');
-      assert.ok(s.weave.onboardedAt(), 'skipped counts as done');
-      await page.close();
-    });
+  /* Every finished path: the name kept or edited, times starting empty or
+     each template. Each lands in the workspace under the right name, with
+     exactly the template's tables, opened on its first, marked, and with
+     nothing left to ask. */
+  for (const edit of [false, true]) {
+    for (const template of [null, ...TEMPLATES]) {
+      test(`path: ${edit ? 'edit the name' : 'keep the name'}, then ${template ? `the ${template.id} starter` : 'start empty'}`, async () => {
+        const page = await open();
+        await page.keyboard.press('Enter');
+        await step(page, 2);
+        if (edit) await page.keyboard.type('Acme Team');
+        await page.keyboard.press('Enter');
+        await step(page, 3);
+        if (template) {
+          await page.click(`.wv-onboard .wv-start-template[data-template="${template.id}"]`);
+          const first = await waitFor(() => s.weave.findTable(`${template.space}/${firstTable(template)}`));
+          await page.waitForFunction((id) => location.hash === `#/table/${id}`, first.id);
+          await page.waitForSelector('.view-header');
+        } else {
+          await landsHome(page, () => page.click('.wv-onboard .btn-primary'));
+          assert.equal(await page.locator('.wv-start').count(), 1, 'the empty state is there to build from');
+        }
+        assert.equal(s.weave.state.meta.name, edit ? 'acme-team' : 'workspace');
+        assert.deepEqual(s.weave.userTables().map((t) => s.weave.qualifiedName(t)).sort(),
+          (template ? spec(template).spaces[0].tables : []).map((t) => `${template.space}/${t.name}`).sort(), 'exactly the template\'s tables');
+        assert.ok(s.weave.onboardedAt(), 'marked');
+        assert.equal(await page.locator('.wv-onboard').count(), 0);
+        assert.equal((await (await fetch(`${s.base}/api/onboarding`)).json()).show, false, 'never asks again');
+        await page.close();
+      });
+    }
   }
+
+  /* Every way out early: Skip setup or Esc, on each step, after typing a
+     name where there is one to type. Leaving keeps the defaults, builds
+     nothing, and counts as done. On step 3 that drops a name already
+     confirmed with Continue; Issue #615 asks whether it should, and these
+     two step-3 cases change with its answer. */
+  for (const at of [1, 2, 3]) {
+    for (const how of ['Skip setup', 'Esc']) {
+      test(`leave with ${how} on step ${at}: the defaults, nothing built, done`, async () => {
+        const page = await open();
+        if (at >= 2) { await page.keyboard.press('Enter'); await step(page, 2); await page.keyboard.type('not-this-one'); }
+        if (at === 3) { await page.keyboard.press('Enter'); await step(page, 3); }
+        await landsHome(page, () => (how === 'Esc' ? page.keyboard.press('Escape') : page.click('.wv-onboard-skip')));
+        assert.equal(s.weave.state.meta.name, 'workspace', 'the default name');
+        assert.equal(s.weave.userTables().length, 0, 'nothing half made');
+        assert.ok(s.weave.onboardedAt(), 'leaving counts as done');
+        await page.close();
+      });
+    }
+  }
+
+  test('a cleared name continues with the default', async () => {
+    const page = await open();
+    await page.keyboard.press('Enter');
+    await step(page, 2);
+    await page.keyboard.press('Backspace');
+    assert.equal(await page.inputValue('.wv-onboard input'), '');
+    await page.keyboard.press('Enter');
+    await step(page, 3);
+    await landsHome(page, () => page.keyboard.press('Enter'));
+    assert.equal(s.weave.state.meta.name, 'workspace');
+    await page.close();
+  });
 
   test('375 px: every step fits the phone, no sideways scroll', async () => {
     const page = await open({ viewport: { width: 375, height: 812 } });
