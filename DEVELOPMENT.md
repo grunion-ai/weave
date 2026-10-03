@@ -60,6 +60,15 @@ git fetch gerrit && jj rebase -d main@gerrit   # or: git pull gerrit main
    (`harness/scripts/weave-review-poll.mjs`) mirrors a green gerrit/main to GitHub
    fast-forward only, ff-pulls `~/.weave-serve`, restarts launchd `ai.grunion.weave`,
    and files a weave Issue if :4400 is not launchd's pid started after the landing.
+8. **Never hand-deploy the hosted instance after a landing** (Feature #250,
+   2026-10-03). https://weave.grunion.ai runs `node bin/weave.js supervise` with
+   `WEAVE_AUTO_UPDATE=1`: within ten minutes of a `v<version>` tag on GitHub it
+   unpacks the release and swaps workers with no failed request
+   (`/api/health` → `supervisor.release`, `supervisor.lastSwap`). A Railway
+   `serviceInstanceDeployV2` restarts the container, fails requests for 20 to 60
+   seconds and resets that state. Redeploy only for a change to the Node version,
+   the `Dockerfile` or `src/supervisor.js`. To ship a fix to the host, cut a
+   release (below); the tag is the deploy.
 
 ## Releasing
 
