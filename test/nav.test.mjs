@@ -134,7 +134,8 @@ if (s) {
       await page.click('#ws-name');
       await page.waitForSelector('#main .view-title');
       const title = await page.locator('#main .view-title').first().inputValue();
-      assert.match(title.trim(), /weave/i, 'the workspace page is the workspace, by name');
+      // A fresh workspace's name is drawn at random (Issue #594): read it back.
+      assert.equal(title.trim(), weave.state.meta.name, 'the workspace page is the workspace, by name');
       const listed = await page.locator('#main').textContent();
       assert.match(listed, /Activity/, 'and it is the page that carries the workspace-wide tables');
     } finally { await page.close(); }

@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
+import { workspaceName, nameFromFile } from './workspace-name.js';
 import { Store, WeaveError } from './store.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
@@ -942,7 +943,11 @@ export class Weave {
 
   // `store` injects an alternate Store implementation (same interface) — the
   // Cloudflare Worker port (Feature #84) passes a Durable Object-backed one.
-  constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null, revisionWindowMs = DOC_REVISION_WINDOW_MS } = {}) {
+  // `name` seeds a FRESH workspace only, for a caller that knows the address
+  // (the Worker's route, `weave serve` checking the names on the instance);
+  // without it a file someone named names the workspace, and otherwise the
+  // seed draws a random adjective-animal slug (Issue #594).
+  constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null, revisionWindowMs = DOC_REVISION_WINDOW_MS, name = null } = {}) {
     this.actor = actor;
     // Writes by one actor to one document inside this window are one
     // revision (Feature #225); a test sets 0 to make every write its own.
@@ -959,7 +964,7 @@ export class Weave {
     }
     this.state = loaded ?? {
       version: 2,
-      meta: { name: 'Weave Workspace', createdAt: nowISO() },
+      meta: { name: name ?? nameFromFile(path) ?? workspaceName().slug, createdAt: nowISO() },
       spaces: {},
       tables: {},
       entities: {},

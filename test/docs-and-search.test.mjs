@@ -107,8 +107,8 @@ test('universalSearch returns permalinks for all kinds', () => {
   assert.match(table.url, /^\/#\/table\//);
   const entity = hits.find((h) => h.kind === 'entity');
   assert.match(entity.url, /^\/e\//);
-  // Workspace name match
-  const ws = w.universalSearch('Weave Workspace');
+  // Workspace name match (a fresh workspace's name is drawn at random, Issue #594)
+  const ws = w.universalSearch(w.state.meta.name);
   assert.equal(ws[0].kind, 'workspace');
   assert.equal(ws[0].url, '/');
 });

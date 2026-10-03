@@ -446,7 +446,7 @@
       "title": "Shared by every runtime",
       "items": [
         "src/vocabulary.js: one field vocabulary for UI, CLI and MCP",
-        "src/ids.js and src/mark.js: ids and the rope mark",
+        "src/ids.js, src/mark.js and src/workspace-name.js: ids, the rope mark, a new workspace's name",
         "src/applet.js, src/bugreport.js, src/oidc.js and src/legal.js: routes, provider sign-in and the public privacy and terms pages behind the request core"
       ]
     },

@@ -10,7 +10,7 @@ import { userInfo } from 'node:os';
 const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
 import { Weave, WeaveError } from '../src/engine.js';
 import { VOCABULARY } from '../src/vocabulary.js';
-import { startServer } from '../src/server.js';
+import { startServer, openDefaultWorkspace } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
@@ -227,13 +227,8 @@ async function main() {
   if (!command || command === 'help' || flags.help) return out(HELP);
 
   if (command === 'serve') {
-    const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
-    // Workspace name = data file basename (unless already named).
-    const base = dataPath.split('/').pop().replace(/\.(json|db)$/, '');
-    if (!w.state.meta.name || w.state.meta.name === 'Weave Workspace') {
-      w.state.meta.name = base;
-      w.save();
-    }
+    // Fresh: a random adjective-animal name; legacy 'Weave Workspace': the basename.
+    const w = openDefaultWorkspace(dataPath, { actor: CLI_ACTOR });
     // The self-referential docs workspace ("weave") always exists alongside.
     if (w.state.meta.name !== 'weave') {
       const dir = dirname(dataPath);
