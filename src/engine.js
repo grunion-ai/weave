@@ -3734,7 +3734,7 @@ export class Weave {
        table. The Type select ships EMPTY on purpose: workflow types are
        designed and rolled out later; the field is the socket they plug into. */
     const wfT = this.#sysTable('workflows')
-      ?? mkTable('Workflows', 'workflows', 'Every workflow in this workspace, as a row: the tables and spaces it touches, its executable script, version, state, health, last run, and a mermaid diagram of itself.');
+      ?? mkTable('Workflows', 'workflows', 'Every workflow in this workspace, as a row: an On switch, the tables and spaces it touches, its executable script, version, state, health, last run, and a mermaid diagram of itself.');
     if (!this.#sysField(wfT, 'Tables')) {
       const { field, inverse } = this.addRelation(wfT.id, { name: 'Tables', targetDb: tablesT.id, cardinality: 'many-to-many', inverseName: 'Workflows' });
       field.system = true;
@@ -3767,6 +3767,24 @@ export class Weave {
     if (!this.#sysField(wfT, 'Last Run')) this.addField(wfT.id, { name: 'Last Run', type: 'date', config: { time: true } }).system = true;
     if (!this.#sysField(wfT, 'Diagram')) this.addField(wfT.id, { name: 'Diagram', type: 'document' }).system = true;
     if (!this.#sysField(wfT, 'Type')) this.addField(wfT.id, { name: 'Type', type: 'select', config: { options: [] } }).system = true;
+    /* The table is the control panel (Feature #249, Kyle 2026-10-02): every
+       workflow row carries an On switch, worded On / Off and off until
+       someone switches it. It leads the row's own columns, straight after
+       Name, in the schema order and in every view; that move happens only
+       when the field is minted, so a reader who moves it later keeps their
+       order. Nothing reads it yet and State stays: whether the switch
+       replaces State is one of #249's open questions. */
+    if (!this.#sysField(wfT, 'On')) {
+      const on = this.addField(wfT.id, { name: 'On', type: 'toggle', config: { on: 'On', off: 'Off' } });
+      on.system = true;
+      const lead = (ids) => {
+        ids.splice(ids.indexOf(on.id), 1);
+        ids.splice(ids.indexOf(wfT.nameFieldId) + 1, 0, on.id);
+      };
+      lead(wfT.fieldOrder);
+      for (const v of wfT.tableViews ?? []) if (v.fields.includes(on.id)) lead(v.fields);
+      this.save();
+    }
     /* Workspaces (Feature #219): the level-1 row. One registry serves every
        workspace the hub holds, so each registry table relates its rows back
        to the workspace they describe — uno's tables and test's sit side by

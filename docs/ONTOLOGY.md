@@ -305,12 +305,15 @@ registry per hub, at the root; every row carries a `Workspace` relation naming
 the workspace it describes, and a row edit routes to that workspace's engine.
 
 Not every system table is a registry. `Workspace/Workflows` is a system table
-whose rows are ordinary data — one row per workflow: the tables and spaces it
-touches (relations into the registries), its executable script (a code
-document), Version, State (Draft / Active / Deactivated), Health (Healthy /
-Warning / Failed), Last Run, a Diagram document carrying the workflow's
-mermaid, and a Type select that ships empty until workflow types are rolled
-out.
+whose rows are ordinary data — one row per workflow: an On toggle (worded
+On / Off, off until switched, the first column after Name), the tables and
+spaces it touches (relations into the registries), its executable script (a
+code document), Version, State (Draft / Active / Deactivated), Health
+(Healthy / Warning / Failed), Last Run, a Diagram document carrying the
+workflow's mermaid, and a Type select that ships empty until workflow types
+are rolled out. The table is the workspace's automation control panel
+(Feature #249); the On toggle is its first piece, and the engine does not
+read it yet.
 
 The registries are related to each other exactly as the hierarchy says: a
 Fields row belongs to its Tables row (the `Table` field, inverse `Fields`), and
