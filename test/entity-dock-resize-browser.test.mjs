@@ -61,7 +61,7 @@ if (s) {
     const stored = await page.evaluate(() => Number(localStorage.getItem('wv-dock-width')));
     assert.ok(Math.abs(stored - widened) <= 2, `the drag is remembered: ${stored} vs ${widened}`);
     // Reopen: close the dock, dock again — the pinned width comes back.
-    await page.click('#dock .dock-head button[title^="Close"]');
+    await page.click('#dock .crumb-row button[aria-label="Close"]');
     await page.waitForSelector('#dock', { state: 'hidden' });
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden])');
@@ -73,7 +73,7 @@ if (s) {
   test('double-clicking the divider restores the even split', async () => {
     const page = await openDocked();
     await page.evaluate(() => localStorage.setItem('wv-dock-width', '900'));
-    await page.click('#dock .dock-head button[title^="Close"]');
+    await page.click('#dock .crumb-row button[aria-label="Close"]');
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await page.waitForSelector('#dock-gutter:not([hidden])');
     await page.dblclick('#dock-gutter');
@@ -187,7 +187,7 @@ if (s) {
       const stored = Number(await page.evaluate(() => localStorage.getItem('wv-dock-width')));
       assert.ok(stored >= 360, `the drag leaves a pin the next open keeps: ${stored}`);
       await page.setViewportSize({ width: 1600, height: 900 });
-      await page.click('#dock .dock-head button[title^="Close"]');
+      await page.click('#dock .crumb-row button[aria-label="Close"]');
       await page.waitForSelector('#dock', { state: 'hidden' });
       await page.click(`tr[data-eid="${a.id}"] .open-link`);
       await page.waitForSelector('#dock:not([hidden])');

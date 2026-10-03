@@ -750,14 +750,18 @@ async function drawDock() {
   wireDockGutter(panel);
   applyDockWidth(panel);
   const host = el('div', { class: 'dock-entity' });
-  panel.replaceChildren(
-    el('div', { class: 'dock-head' },
-      dock.state.chain.length > 1 ? el('button', {
-        class: 'btn btn-sm btn-ghost-secondary dock-back', type: 'button',
-        title: 'Back (Esc)', 'aria-label': 'Back to the previous entity',
-        onclick: () => dockBack(),
-      }, backGlyph()) : null,
-      el('span', { style: 'flex:1' }),
+  panel.replaceChildren(host);
+  /* The dock's own controls ride the entity's crumb row (Issue #583): back
+     left of the crumb path, expand and close after the eye and the ⋮. A
+     row of their own above the crumb sat outside the sticky band, so it
+     left with the first scroll and the pane wore two toolbars. */
+  const dockControls = {
+    back: dock.state.chain.length > 1 ? el('button', {
+      class: 'btn btn-sm btn-ghost-secondary dock-back', type: 'button',
+      title: 'Back (Esc)', 'aria-label': 'Back to the previous entity',
+      onclick: () => dockBack(),
+    }, backGlyph()) : null,
+    pose: [
       el('button', {
         class: 'btn btn-sm btn-ghost-secondary pose-btn', type: 'button',
         title: 'Expand (⌘⇧E)', 'aria-label': 'Expand to the full page',
@@ -767,10 +771,11 @@ async function drawDock() {
         class: 'btn btn-sm btn-ghost-secondary', type: 'button',
         title: 'Close (Esc)', 'aria-label': 'Close',
         onclick: () => dockDismiss(),
-      }, iconEl('✕'))),
-    host);
+      }, iconEl('✕')),
+    ],
+  };
   // The full entity view — the dock is the entity, not a preview of it.
-  await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockDismiss, editors: dock.editors, crumbs });
+  await renderEntityView(entity, { mount: host, refresh: drawDock, inPeek: true, onClose: dockDismiss, editors: dock.editors, crumbs, dockControls });
   markDockedRow();
 }
 
@@ -10920,7 +10925,7 @@ function entityHop(entity) {
    mode changes only what must change: no route/nav writes, refresh redraws
    the panel, deleting closes it instead of navigating, and mounted editors
    are handed back for scoped teardown when the panel goes. */
-async function renderEntityView(entity, { mount, refresh, inPeek = false, onClose = null, editors = null, crumbs = null }) {
+async function renderEntityView(entity, { mount, refresh, inPeek = false, onClose = null, editors = null, crumbs = null, dockControls = null }) {
   const id = entity.id;
   const db = allTables().find((d) => d.id === entity.dbId);
 
@@ -11018,8 +11023,10 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false }); });
   /* One entity surface: the full page IS the dock's expanded pose, so its
      crumb row wears the same pose controls the split dock wears — the
-     inward arrows re-dock beside the table, ✕ closes to the table. */
-  const poseControls = (!inPeek && db) ? [
+     inward arrows re-dock beside the table, ✕ closes to the table. The
+     dock hands in its own (Issue #583): outward arrows and ✕ here, and
+     after a hop a back arrow that leads the crumb path. */
+  const poseControls = inPeek ? (dockControls?.pose ?? []) : db ? [
     el('button', {
       class: 'btn btn-sm pose-btn', type: 'button',
       title: 'Collapse (⌘⇧E)', 'aria-label': 'Collapse — dock beside the table',
@@ -11034,7 +11041,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   mount.append(
     stickViewHeader(el('div', { class: 'view-header' },
       el('div', { class: 'crumb crumb-row' },
-        inPeek ? null : navMenuButton(),
+        inPeek ? (dockControls?.back ?? null) : navMenuButton(),
         el('span', { class: 'crumb-path' },
         ...(inPeek
           /* The dock's crumb is its chain (Issue #276); a caller without

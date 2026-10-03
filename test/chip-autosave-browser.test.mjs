@@ -80,7 +80,7 @@ if (s) {
   test('a multi-select staged in the dock writes on click-off', async () => {
     const page = await openDocked();
     await stageGreen(page);
-    await page.click('#dock .dock-head', { position: { x: 5, y: 5 } });
+    await page.click('#dock', { position: { x: 8, y: 120 } }); // the pane's own margin: a click on nothing
     assert.deepEqual(await settle('Tags', ['red', 'green']), ['red', 'green']);
     await page.close();
   });

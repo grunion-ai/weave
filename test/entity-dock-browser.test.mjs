@@ -113,7 +113,7 @@ if (s) {
     const page = await freshTablePage();
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden])');
-    await page.click('#dock .dock-head button[title^="Close"]');
+    await page.click('#dock .crumb-row button[aria-label="Close"]');
     await page.waitForSelector('#dock', { state: 'hidden' });
     await page.close();
   });

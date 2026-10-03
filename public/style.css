@@ -1967,7 +1967,6 @@ body:has(#tray-back) #hub-foot { display: none; }
    Side padding matches #main's 28px, so the entity reads on the page's
    grid (Kyle, 2026-09-02: padding on either edge of the split dock). */
 #dock { flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: 14px 28px 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: calc(100vh - 16px); max-height: calc(100vh - 16px); overflow-y: auto; position: sticky; top: 8px; align-self: flex-start; }
-#dock .dock-head { display: flex; align-items: center; min-height: 26px; margin-bottom: 2px; }
 /* The divider is the canvas gap itself: a 16px flex column between the two
    panels (Kyle, 2026-09-02 — never a strip inside either panel). Its
    hairline waits for the pointer or a drag, centered mid-gap. */
