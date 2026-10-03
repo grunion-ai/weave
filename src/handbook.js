@@ -336,7 +336,7 @@ Editing the options is an in-place edit from the column header, not a delete-and
 
 ## Gotchas
 
-Pass an option's **id** when renaming it — a bare string re-slugs and orphans the rows that pointed at the old id. A board can group on a select when the table has no workflow field.` },
+Pass an option's **id** when renaming it — a bare string re-slugs and orphans the rows that pointed at the old id.` },
 
   { name: 'multiselect', kind: 'Choice', doc: `# multiselect
 
@@ -358,7 +358,7 @@ Order is the order you wrote, not the order of the options list.` },
 
   { name: 'workflow', kind: 'Choice', doc: `# workflow
 
-A lifecycle. One state at a time, each state belonging to a **category**, and the category is what colors the chip and orders a board.
+A lifecycle. One state at a time, each state belonging to a **category**, and the category is what colors the chip.
 
 ## Config
 
@@ -388,7 +388,7 @@ A two-state workflow is a legitimate gate — \`Pending\` → \`Approved\` says 
 
 ## Gotchas
 
-**One workflow per table.** The board and the row's state chip both read the first one; a second makes both ambiguous.
+**One workflow per table.** The state a row's chip and card show is read from the first one; a second makes it ambiguous.
 
 A select becomes a workflow the moment its values describe progress rather than kind.` },
 
@@ -698,7 +698,7 @@ Storing a name the keystore does not hold is allowed on purpose — set the row 
 
   { name: 'view', kind: 'Meta', doc: `# view
 
-How one row **appears elsewhere**. Every table carries two, minted with it and hidden from the grid until someone unhides them: **Chip**, the row inline — a relation cell, a \`[[Table#12]]\` mention in a document, a reference card — and **Card**, the row as a tile — a board column, a gallery, a peek. The config is the table's and the same for every row, so a task looks like a task wherever it turns up. The entity page draws each one the eye leaves on, in its **Appears as** strip, so a reader sees the row the way the rest of the workspace will; switch Chip or Card on in the eye to see it there, off and it goes from the strip and the grid alike.
+How one row **appears elsewhere**. Every table carries two, minted with it and hidden from the grid until someone unhides them: **Chip**, the row inline — a relation cell, a \`[[Table#12]]\` mention in a document, a reference card — and **Card**, the row as a tile — a gallery, a peek. The config is the table's and the same for every row, so a task looks like a task wherever it turns up. The entity page draws each one the eye leaves on, in its **Appears as** strip, so a reader sees the row the way the rest of the workspace will; switch Chip or Card on in the eye to see it there, off and it goes from the strip and the grid alike.
 
 ## Config
 
@@ -1150,14 +1150,14 @@ Workflow states are the exception that proves it: a state's **category** colours
 
 ## Views
 
-\`table\` and \`board\` are the two kinds. A board groups on the table's first \`workflow\` field, falling back to the first \`select\`; a table with neither cannot be a board.
+Every block is a \`table\`, the one view kind weave draws, with an optional \`where\`.
 
 Filters are workflow-state chips above the grid and resolve to a server-side \`where\`, so filtering a large table does not mean fetching it.
 
 A **saved view** is a named set of table blocks, and it can be shared:
 
 \`\`\`bash
-weave view create "Ops Monday" --blocks '[{"table":"Task","view":"board"},{"table":"Incident","view":"table"}]'
+weave view create "Ops Monday" --blocks '[{"table":"Task","where":[["Status","=","Open"]]},{"table":"Incident"}]'
 weave view share <id>     # returns a wvv_ capability URL
 weave view unshare <id>
 \`\`\`
@@ -2140,7 +2140,7 @@ The mark (7) and the caret (5) are why the chip never fills behind a pointer: co
 <div class="wv-card" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px;gap:16px;padding-top:12px"><div class="wv-card-head"><a class="wv-card-title" href="#" onclick="return false" style="overflow:visible;position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">10</i><span class="wv-card-id" style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">9</i>#12</span>Ship the editor</a><span class="k k-state cat-in-progress hue-blue wv-seg-state" style="position:relative;outline:1.5px dashed #218358;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#218358">11</i>Doing</span></div><div class="wv-card-desc" style="overflow:visible;position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">12</i>The editor is the renderer: no edit mode, no preview pane, no save button.</div><dl class="wv-card-fields" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a;grid-column:1/-1">13</i><dt>Severity</dt><dd>High</dd><dt>Symptom</dt><dd>Looks broken</dd><dt>Due</dt><dd>2026-09-12</dd></dl></div>
 </div>
 
-Only the title is a link. The rest of the tile is inert — in a grid cell the cell's own click applies, on a board the column's.
+Only the title is a link. The rest of the tile is inert — in a grid cell the cell's own click applies.
 
 | № | Element | What it does | How you use it | Hitbox |
 | --- | --- | --- | --- | --- |

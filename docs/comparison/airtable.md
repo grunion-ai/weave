@@ -30,7 +30,7 @@ airtable.com for current terms.*
 | Interfaces | — | Not built. |
 | Forms | — | Not built. |
 | Sync / integrations | Webhooks + REST + CSV | Outbound webhooks and a full REST API; no prebuilt connector catalog. |
-| Collaborators & permissions | — | Not built. weave has no accounts at all — see below. |
+| Collaborators & permissions | Accounts with three roles | Observer, editor or architect per workspace; nothing narrower. See below. |
 
 ## Field types
 
@@ -50,7 +50,7 @@ AI-generated field types.
 - **Documents are first class.** Every entity carries as many markdown documents
   as you want, each addressable as a URL: `/e/Task#12/doc.md`, `.html`, `.pdf`.
   Mermaid diagrams render in place. Airtable's long-text field is not this.
-- **Agents are first-class users.** A built-in MCP server exposes 23 tools —
+- **Agents are first-class users.** A built-in MCP server exposes 58 tools,
   including schema design, not just record CRUD — alongside the REST API and a
   scriptable CLI, all over the same engine. An agent can create the space, the
   tables, the relations, and the automations, then fill them.
@@ -60,10 +60,10 @@ AI-generated field types.
 
 ## Where Airtable wins
 
-- **Permissions and collaboration.** weave has no authentication and no per-user
-  permissions at all. Everyone who reaches the port is an admin of every
-  workspace. That is a design position, not a roadmap gap you can wait out
-  today.
+- **Permissions and collaboration.** weave gives each account one of three
+  roles per workspace and has no per-table or per-field permissions and no live
+  co-editing. Authentication stays off until an operator runs
+  `weave workspace require-auth`.
 - **Interfaces and forms.** Airtable's app-builder and form surfaces have no
   counterpart in weave.
 - **The marketplace.** Hundreds of prebuilt integrations and extensions versus

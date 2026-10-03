@@ -385,7 +385,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_views',
-    description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table or board — a board groups by the first workflow field, falling back to the first select). action: list | get | create | delete | share | unshare. Sharing mints a capability token; the /view/<token> URL renders that view read-only, even when the workspace requires auth.',
+    description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table, the one kind weave draws). action: list | get | create | delete | share | unshare. Sharing mints a capability token; the /view/<token> URL renders that view read-only, even when the workspace requires auth.',
     inputSchema: {
       type: 'object',
       properties: {

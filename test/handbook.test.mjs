@@ -136,7 +136,7 @@ test('the customization guide covers what a reader can change', () => {
   const guide = GUIDES.find((g) => g.name === 'Making a workspace your own');
   assert.ok(guide, 'there is no customization guide');
   for (const topic of [
-    'lucide:', 'noun', 'dock', 'board', 'saved view', 'audit',
+    'lucide:', 'noun', 'dock', 'saved view', 'audit',
     'rest as values', '⇧Return',
     'default width', '60%', 'Alt+Shift', 'Created At', 'costume', 'relation map', 'automation', 'update logo', 'remove logo', 'delete workspace', 'trash',
   ]) {

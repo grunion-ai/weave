@@ -385,7 +385,7 @@ A value pulled through a relation from a field on the far side.
 An aggregate over a relation: count, sum, avg, min, max, or join.
 
 ### `formula`
-An expression over this entity's fields — arithmetic, logic, and 17 functions —
+An expression over this entity's fields (arithmetic, logic, and 23 functions),
 evaluated by a parser that executes nothing.
 
 ### `view`

@@ -88,7 +88,7 @@ test('a schema document applies through the tool, dry run first', () => {
 
 test('views are created, read, shared and dropped', () => {
   const w = workspace();
-  const v = call(w, 'weave_views', { action: 'create', name: 'Billing', blocks: [{ table: 'Invoice', view: 'board' }] });
+  const v = call(w, 'weave_views', { action: 'create', name: 'Billing', blocks: [{ table: 'Invoice', view: 'table' }] });
   assert.equal(call(w, 'weave_views', { action: 'list' }).views.length, 1);
   const shared = call(w, 'weave_views', { action: 'share', view: v.id });
   assert.ok(shared.shareToken ?? shared.token ?? shared.url, 'sharing mints a capability');

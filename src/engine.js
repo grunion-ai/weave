@@ -14,7 +14,7 @@ import { Store, WeaveError } from './store.js';
 import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
-import { FIELD_TYPE_VOCABULARY } from './vocabulary.js';
+import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
 
 /* An icon value is one of the inventory (`lucide:<name>`), a legacy alias that
    still resolves (`iconly:<name>`), or a drawn mark — anything else is refused
@@ -155,7 +155,7 @@ const TEXT_OPS = new Set(['contains', 'is-empty', 'not-empty']);
 /* Chip and Card (Kyle, 2026-09-04): every table carries two `view` fields
    that say how one of its rows appears elsewhere — the chip inline (a
    relation cell, a doc mention, a reference card) and the card as a tile (a
-   board column, a gallery, a peek). The config is the table's, the same for
+   gallery, a peek). The config is the table's, the same for
    every row: the public-id link, the state, a description preview at one of
    three sizes, and which other fields ride along. Minted per table like the
    description role, held by id, hidden from the grid until unhidden. */
@@ -2086,7 +2086,10 @@ export class Weave {
     const views = (this.state.meta.views ??= {});
     const resolved = blocks.map((b) => {
       const db = this.getTable(b.table);
-      return { dbId: db.id, where: b.where ?? null, view: b.view ?? 'table' };
+      const view = b.view ?? 'table';
+      // Issue #438: a kind the UI does not draw (the board, gone since Issue #75) renders nothing.
+      if (!VOCABULARY.viewKinds.includes(view)) throw new WeaveError(`View kind '${view}' is not drawn; use ${VOCABULARY.viewKinds.join(', ')}`, 'invalid');
+      return { dbId: db.id, where: b.where ?? null, view };
     });
     const v = { id: uuid(), name, blocks: resolved, createdAt: nowISO(), createdBy: this.actor };
     views[v.id] = v;

@@ -16,9 +16,9 @@ repository for current terms.*
 | Install | `git clone` + Node | Docker + a database | Docker Compose + Postgres | Docker or Node | Docker + Postgres |
 | Storage | One SQLite file per workspace | Your MySQL/Postgres/SQLite | Postgres | SQLite | Postgres |
 | Runtime dependencies | None | Many | Many | Many | Many |
-| Users & permissions | **None** | Yes | Yes | Yes | Yes |
+| Users & permissions | Three roles per workspace | Yes | Yes | Yes | Yes |
 | Hosted option | No | Yes | Yes | Yes | Yes |
-| MCP server built in | Yes (23 tools) | Check upstream | Check upstream | Check upstream | Check upstream |
+| MCP server built in | Yes (58 tools) | Check upstream | Check upstream | Check upstream | Check upstream |
 | Markdown documents per record | Yes, any number, as `.md`/`.html`/`.pdf` URLs | No | No | No | No |
 | Formulas | Yes | Yes | Yes | Yes (Python, spreadsheet-grade) | Yes |
 | Relations, lookups, rollups | Yes | Yes | Yes | Yes | Yes |
@@ -64,9 +64,10 @@ in a file you own with no infrastructure around it, your records want documents
 attached to them, and you want an agent to be able to design and drive the
 workspace as capably as a human can.
 
-Read [what weave is not](https://github.com/grunion-ai/weave#what-weave-is-not) before you commit —
-the absence of authentication is the deciding factor for most teams, and it is a
-design position rather than a roadmap gap.
+Read [what weave is not](https://github.com/grunion-ai/weave#what-weave-is-not) before you commit.
+Teams that rule weave out usually do it over access control: three roles per
+workspace, nothing per table or per row, and authentication off until an
+operator turns it on.
 
 ## See also
 

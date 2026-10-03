@@ -200,7 +200,7 @@ Undo (entity mutations only — schema work is not undoable)
   undo --list [--limit 20]           Show what undo would revert, newest first
 Views & automations
   view list | get <id> | delete <id> | share <id> | unshare <id>
-  view create <name> --blocks '[{"table":"Task","view":"board"}]'
+  view create <name> --blocks '[{"table":"Task","where":[["Status","=","Open"]]}]'
   automation list [<table>] | describe [<table>] | delete <id>
   automation create <table> --name N --trigger '{json}' --actions '[json]'
   automation update <id> --patch '{json}'

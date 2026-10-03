@@ -1,6 +1,6 @@
 /* Weave web UI — vanilla JS SPA over the REST API.
    Every writable field and every document field is natively editable in every
-   view (table, board, list, entity page). ⌘K opens universal search with
+   view (table, entity page). ⌘K opens universal search with
    permalinks. #/map visualizes relations and automations. */
 'use strict';
 

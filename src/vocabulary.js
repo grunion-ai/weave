@@ -23,7 +23,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'email', renders: 'inline input, opens a mail client', config: ['default'] },
   { type: 'select', renders: 'one soft chip; click picks from the options', config: ['options', 'default'] },
   { type: 'multiselect', renders: 'a row of chips', config: ['options', 'default'] },
-  { type: 'workflow', renders: 'one state chip, colored by its category; a board groups on it', config: ['states'] },
+  { type: 'workflow', renders: 'one state chip, colored by its category', config: ['states'] },
   { type: 'relation', renders: 'chips carrying the target\'s name, each with ×, plus "+ link"', config: ['targetDb', 'targetDbs', 'cardinality', 'inverseName'], verb: 'add_relation' },
   { type: 'lookup', renders: 'read-only cell on a tinted background, marked ↗', config: ['relationField', 'targetField'] },
   { type: 'rollup', renders: 'read-only cell on a tinted background, marked Σ, wearing the target column\'s costume; on a Workspace/Spaces row a `via` rollup is the figure the grid footer shows under that column', config: ['relationField', 'via', 'where', 'targetField', 'aggregate', 'separator'] },
@@ -206,9 +206,9 @@ export const VOCABULARY = {
   aggregates: ['count', 'sum', 'avg', 'min', 'max', 'join', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'],
   // Off by default; add them where provenance is part of the record.
   systemFields: ['Created At', 'Modified At', 'Created By', 'Modified By', 'Activity'],
-  // A board groups by the first workflow field, falling back to the first
-  // select; a table with neither cannot be a board.
-  viewKinds: ['table', 'board'],
+  // The kinds a saved-view block can take: the ones the UI draws. The board
+  // went in Issue #75 and left this list in Issue #438.
+  viewKinds: ['table'],
   columnWidth: {
     min: 60,
     unsetCap: 260,

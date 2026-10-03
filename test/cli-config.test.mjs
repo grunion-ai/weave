@@ -83,7 +83,7 @@ test('a space is updated and a schema document applies from a file', () => {
 });
 
 test('views and automations are terminal work', () => {
-  const view = json('view', 'create', 'Billing', '--blocks', '[{"table":"Invoice","view":"board"}]');
+  const view = json('view', 'create', 'Billing', '--blocks', '[{"table":"Invoice","view":"table"}]');
   assert.equal(json('view', 'list').length, 1);
   assert.ok(json('view', 'share', view.id).token, 'sharing mints a capability token');
   cli('view', 'unshare', view.id);
