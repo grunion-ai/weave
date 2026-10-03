@@ -14,6 +14,7 @@ import { Store, WeaveError } from './store.js';
 import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
+import { FIELD_TYPE_VOCABULARY } from './vocabulary.js';
 
 /* An icon value is one of the inventory (`lucide:<name>`), a legacy alias that
    still resolves (`iconly:<name>`), or a drawn mark — anything else is refused
@@ -2748,6 +2749,227 @@ export class Weave {
     }
     if (!dryRun && plan.length) this.#audit('schema-applied', { changes: plan.length });
     return plan;
+  }
+
+  // ---------------- a workspace outline in one call (Feature #253) ----------------
+  /* An agent standing up a five-table workspace spent 50 to 100 turns on it,
+     one field, relation or row per call, and applySchema takes the 22 KB
+     document describeSchema emits, which nobody writes by hand. build() takes
+     the short spec an agent does write: spaces, tables, fields (each {name,
+     type} plus that type's config keys, flat; a relation names its table in
+     `to`), rows (values by field name; a relation value is the target row's
+     name). Every step is a verb that already exists, so what is legal here is
+     what createSpace, createTable, addField, addRelation, createEntity and
+     updateEntity already allow.
+
+     Order: the workspace name, spaces, tables, plain fields, relations,
+     lookups and rollups, formulas, rows without their relation values, then
+     the relation values, so a row links by name to a row made in the same
+     build. A space, table or same-typed field that exists is reused and named
+     in `existing`, so resending a whole spec after an error is safe; rows
+     append, so a spec of rows alone is a batch create, and skipExistingRows
+     skips a row whose Name the table already holds.
+
+     A refused cosmetic setting (an icon outside the inventory, an option
+     colour weave cannot name) is dropped and reported in `ignored` with the
+     engine's reason, never allowed to block what wears it: on the second
+     2026-10-02 eval one refused table icon left the table uncreated and
+     failed 42 fields, 20 relations and 96 rows aimed at it. For the same
+     reason a step that only fails because an earlier one did (a lookup over
+     a relation that failed, a row value for a field that failed) is skipped,
+     not charged a second error.
+
+     No transaction spans several verbs. The spec runs first, whole, on a
+     throwaway in-memory copy of this workspace, carrying on past each failure
+     so every error comes back at once with its path. Only a clean trial runs
+     for real; dryRun stops after the trial. */
+  build(spec, { dryRun = false, skipExistingRows = false } = {}) {
+    const trial = this.#buildCopy().#buildRun(spec, { keepGoing: true, skipExistingRows });
+    if (dryRun || trial.errors.length) return { ok: !trial.errors.length, ...(dryRun ? { dryRun: true } : {}), ...trial };
+    // ponytail: the trial is the validation. A real run that still fails halfway
+    // returns what landed plus the error; a rollback needs a store transaction
+    // around many verbs, which the engine does not have.
+    const run = this.#buildRun(spec, { keepGoing: false, skipExistingRows });
+    return { ok: !run.errors.length, ...run };
+  }
+
+  /* The same state in memory: no file, no registry host to write through,
+     and no webhooks, since a trial row must not call out. */
+  #buildCopy() {
+    const state = structuredClone(this.state);
+    for (const a of Object.values(state.automations ?? {})) a.actions = (a.actions ?? []).filter((x) => x.type !== 'webhook');
+    const store = new Store(null);
+    store.load = () => state;
+    return new Weave({ store, actor: this.actor, keystorePath: this.keystorePath, keystoreEnv: this.keystoreEnv });
+  }
+
+  #buildRun(spec, { keepGoing, skipExistingRows }) {
+    const created = { spaces: 0, tables: 0, fields: 0, relations: 0, rows: 0 };
+    const existing = [];
+    const ignored = [];
+    const errors = [];
+    let halted = false;
+    const fail = (path, err) => {
+      if (halted) return;
+      errors.push({ path, error: err.message });
+      if (!keepGoing) halted = true;
+    };
+    const step = (path, fn) => {
+      if (halted) return undefined;
+      try { return fn(); } catch (err) { fail(path, err); return undefined; }
+    };
+    const extra = (path, obj, keys) => {
+      const left = Object.keys(obj).filter((k) => !keys.includes(k));
+      if (left.length) ignored.push({ path, keys: left });
+    };
+    const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+    // The holder without `key` when the check refuses its value, reported.
+    const cosmetic = (path, holder, key, check) => {
+      if (!isObj(holder) || holder[key] == null || holder[key] === '') return holder;
+      try { check(holder[key]); return holder; } catch (err) {
+        const { [key]: _dropped, ...rest } = holder;
+        ignored.push({ path, keys: [key], reason: err.message });
+        return rest;
+      }
+    };
+    const listAt = (path, v) => {
+      if (v == null) return [];
+      if (Array.isArray(v)) return v;
+      fail(path, new WeaveError(`'${path}' must be a list`, 'invalid'));
+      return [];
+    };
+    const result = () => ({ created, existing, ignored, errors });
+    if (!isObj(spec)) {
+      fail('', new WeaveError('A build spec is an object: {workspace?, spaces: [{name, tables: [{name, fields, rows}]}]}', 'invalid'));
+      return result();
+    }
+    extra('', spec, ['workspace', 'description', 'spaces']);
+    if ((spec.workspace != null && spec.workspace !== this.state.meta.name) || spec.description != null) {
+      step('workspace', () => this.updateWorkspace({ name: spec.workspace ?? null, description: spec.description ?? null }));
+    }
+
+    const tables = [];
+    const failedTables = new Set();
+    listAt('spaces', spec.spaces).forEach((sp, i) => {
+      const at = `spaces[${i}]`;
+      if (!isObj(sp)) return fail(at, new WeaveError('A space is an object: {name, icon?, description?, tables}', 'invalid'));
+      extra(at, sp, ['name', 'icon', 'description', 'tables']);
+      sp = cosmetic(at, sp, 'icon', iconValue);
+      let space = sp.name ? this.findSpace(sp.name) : null;
+      if (space) existing.push(`space ${space.name}`);
+      else {
+        space = step(at, () => this.createSpace({ name: sp.name, description: sp.description ?? '', icon: sp.icon ?? '' }));
+        if (!space) return undefined;
+        created.spaces += 1;
+      }
+      listAt(`${at}.tables`, sp.tables).forEach((t, j) => {
+        const tAt = `${at}.tables[${j}]`;
+        if (!isObj(t)) return fail(tAt, new WeaveError('A table is an object: {name, icon?, description?, fields?, rows?}', 'invalid'));
+        extra(tAt, t, ['name', 'icon', 'description', 'fields', 'rows']);
+        const tw = cosmetic(tAt, t, 'icon', iconValue);
+        let db = t.name ? this.findTable(`${space.name}/${t.name}`) : null;
+        if (db) existing.push(`table ${space.name}/${db.name}`);
+        else {
+          db = step(tAt, () => this.createTable({ space: space.id, name: t.name, description: t.description ?? '', icon: tw.icon ?? '' }));
+          if (!db) { if (t.name) failedTables.add(String(t.name).toLowerCase()); return undefined; }
+          created.tables += 1;
+        }
+        // `failed` holds the field names that did not land, so a row naming
+        // one is not charged a second error for it.
+        tables.push({ at: tAt, spec: t, db, failed: new Set() });
+        return undefined;
+      });
+      return undefined;
+    });
+
+    // A table this spec names is the one a relation means, even when another
+    // space holds a namesake.
+    const target = (ref) => {
+      const hit = tables.filter((tb) => tb.db.name.toLowerCase() === String(ref).toLowerCase());
+      return hit.length === 1 ? hit[0].db.id : ref;
+    };
+    const phase = (f) => (f?.type === 'relation' ? 1 : f?.type === 'lookup' || f?.type === 'rollup' ? 2 : f?.type === 'formula' ? 3 : 0);
+    const fields = tables.flatMap((tb) => listAt(`${tb.at}.fields`, tb.spec.fields).map((f, k) => ({ tb, f, at: `${tb.at}.fields[${k}]` })));
+    for (const p of [0, 1, 2, 3]) {
+      for (const { tb, f, at } of fields) {
+        if (phase(f) !== p) continue;
+        if (!isObj(f)) { fail(at, new WeaveError('A field is an object: {name, type, ...config}', 'invalid')); continue; }
+        const { name, type, ...sent } = f;
+        let config = type === 'rating' ? cosmetic(at, sent, 'icon', iconValue) : sent;
+        if (Array.isArray(config.options)) {
+          const hue = (k) => (v) => hueOf({ [k]: v }, { strict: true });
+          config = { ...config, options: config.options.map((o, n) => ['icon', 'hue', 'color']
+            .reduce((acc, k) => cosmetic(`${at}.options[${n}]`, acc, k, k === 'icon' ? iconValue : hue(k)), o)) };
+        }
+        if (Array.isArray(config.states)) {
+          config = { ...config, states: config.states.map((st, n) => cosmetic(`${at}.states[${n}]`, st, 'icon', iconValue)) };
+        }
+        // Downstream of a failure: its own error is already in the list.
+        const reads = type === 'lookup' || type === 'rollup' ? [config.relationField ?? config.relation]
+          : type === 'formula' && typeof config.expression === 'string' ? formulaReferences(config.expression) : [];
+        if (reads.some((r) => r != null && tb.failed.has(r))
+          || (type === 'relation' && !Array.isArray(config.to) && config.to != null && failedTables.has(String(config.to).toLowerCase()))) {
+          tb.failed.add(name);
+          continue;
+        }
+        const have = name ? this.findField(tb.db, name) : null;
+        if (have) {
+          if (have.type === type) existing.push(`field ${this.qualifiedName(tb.db)}.${have.name}`);
+          else {
+            tb.failed.add(name);
+            fail(at, new WeaveError(`Field '${name}' already exists as ${have.type}, not ${type}`, 'conflict'));
+          }
+          continue;
+        }
+        if (type === 'relation') {
+          const { to, cardinality, inverseName, ...rest } = config;
+          if (Object.keys(rest).length) ignored.push({ path: at, keys: Object.keys(rest) });
+          const where = Array.isArray(to) ? { targetDbs: to.map(target) } : { targetDb: to == null ? undefined : target(to) };
+          if (step(at, () => this.addRelation(tb.db.id, { name, ...where, cardinality, inverseName }))) created.relations += 1;
+          else tb.failed.add(name);
+          continue;
+        }
+        const field = step(at, () => this.addField(tb.db.id, { name, type, config }));
+        if (!field) { tb.failed.add(name); continue; }
+        created.fields += 1;
+        /* addField drops a key its type does not take without a word. A key
+           is ignored when the stored config does not carry it and the
+           vocabulary does not list it for the type; a listed key the
+           normaliser left out (format 'number', the default) was taken. */
+        const takes = new Set([...(FIELD_TYPE_VOCABULARY.find((v) => v.type === type)?.config ?? []), 'width', 'description', 'default', 'relation']);
+        const dropped = Object.keys(config).filter((k) => !(k in field.config) && !takes.has(k));
+        if (dropped.length) ignored.push({ path: at, keys: dropped });
+      }
+    }
+
+    const links = [];
+    for (const tb of tables) {
+      // The names a re-run may skip: what the table held, plus what this build adds.
+      const held = skipExistingRows ? new Set(this.listEntities(tb.db.id).map((e) => this.entityName(e))) : null;
+      listAt(`${tb.at}.rows`, tb.spec.rows).forEach((row, k) => {
+        const at = `${tb.at}.rows[${k}]`;
+        if (!isObj(row)) return fail(at, new WeaveError('A row is an object of values by field name', 'invalid'));
+        const rowName = row.Name ?? row.name ?? row[tb.db.fields[tb.db.nameFieldId]?.name];
+        if (held && rowName != null && held.has(String(rowName))) {
+          existing.push(`row ${this.qualifiedName(tb.db)}: ${rowName}`);
+          return undefined;
+        }
+        const values = {};
+        const rel = {};
+        for (const [key, v] of Object.entries(row)) {
+          if (tb.failed.has(key)) continue;
+          (this.findField(tb.db, key)?.type === 'relation' ? rel : values)[key] = v;
+        }
+        const e = step(at, () => this.createEntity(tb.db.id, values));
+        if (!e) return undefined;
+        created.rows += 1;
+        held?.add(this.entityName(e));
+        if (Object.keys(rel).length) links.push({ at, id: e.id, rel });
+        return undefined;
+      });
+    }
+    for (const { at, id, rel } of links) step(at, () => this.updateEntity(id, rel));
+    return result();
   }
 
   /* The half of a table that is not its fields: what it is called in the

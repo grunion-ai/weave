@@ -392,6 +392,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // Feature #229 split them out; the gate follows them.
         || /^\/api\/tables\/[^/]+\/views/.test(path)
         || (/^\/api\/schema$/.test(path))
+        // A build makes spaces, tables and fields as readily as rows.
+        || path === '/api/build'
         || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH')
         // The welcome renames the workspace and may build a template.
         || path === '/api/onboarding');
@@ -873,6 +875,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             dryRun: !!body?.dryRun,
             allowDestructive: !!body?.allowDestructive,
           }));
+        }
+        // Feature #253: a whole outline in one call; 400 when the spec has errors.
+        if (route === 'POST /api/build') {
+          const { spec, dryRun, skipExistingRows, ...bare } = body ?? {};
+          const r = weave.build(spec ?? bare, { dryRun: !!dryRun, skipExistingRows: !!skipExistingRows });
+          return out(r.ok ? 200 : 400, r);
         }
         if (route === 'GET /api/relation-map.mmd') {
           return out(200, weave.relationMapMmd());

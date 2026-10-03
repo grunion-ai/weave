@@ -121,9 +121,10 @@ your provider sign-in first (open the invite `weave account link <name>`
 prints, once, in a browser), and it needs the Architect role, since MCP
 carries the schema tools.
 
-Fifteen tools by default, the ones a workspace build uses, plus `weave_call`,
+Sixteen tools by default, the ones a workspace build uses, `weave_build` among
+them, plus `weave_call`,
 which reaches the other forty-two. `weave mcp --tools all` (or
-`WEAVE_MCP_TOOLS=all`) lists all 57. The same undo the UI has, and
+`WEAVE_MCP_TOOLS=all`) lists all 58. The same undo the UI has, and
 `weave_vocabulary` so an agent reads the allowed values instead of guessing. Full map:
 [Agents: MCP, REST, and CLI](#agents-mcp-rest-and-cli).
 
@@ -203,17 +204,18 @@ servers, so one config block works in each of them:
 }
 ```
 
-It exposes the whole platform as 57 tools. `tools/list` names the core build
+It exposes the whole platform as 58 tools. `tools/list` names the core build
 set (`weave_schema`, `weave_query`, `weave_get_entity`, `weave_create_entity`,
 `weave_update_entity`, `weave_create_space`, `weave_create_table`,
 `weave_add_field`, `weave_update_field`, `weave_add_relation`,
-`weave_import_csv`, `weave_vocabulary`, `weave_workspace`, `weave_search`) and
+`weave_import_csv`, `weave_vocabulary`, `weave_workspace`, `weave_search`,
+`weave_build` for spaces, tables, fields, relations and rows in one call) and
 `weave_call`, whose description lists every other tool (`weave_set_doc`,
 `weave_link`, `weave_set_state`, `weave_update_table`, `weave_apply_schema`,
 `weave_views`, `weave_automations`, `weave_activity` and the rest) in one line
 each; `weave_call {name: "help", args: {tool}}` returns a tool's full schema.
 Add `--tools all` to the `mcp` args, or set `WEAVE_MCP_TOOLS=all`, to list all
-57 directly. An agent designs a schema,
+58 directly. An agent designs a schema,
 fills it, and configures how it reads — icons, option colors, column widths and
 order, hidden columns, saved views — without a human opening the UI.
 
@@ -313,9 +315,9 @@ graph — is the model weave implements, in a single file you own. See
 [docs/PARITY.md](docs/PARITY.md) for the feature-by-feature matrix.
 
 **Can AI agents use it?**
-That is the point. The MCP server exposes 57 tools covering schema design,
+That is the point. The MCP server exposes 58 tools covering schema design,
 CRUD, documents, relations, workflow states, search, automations, and CSV
-import/export, fifteen of them listed by default and the rest one `weave_call`
+import/export, sixteen of them listed by default and the rest one `weave_call`
 away. Agents can build the schema, not just fill it in.
 
 **Do I need Docker, Postgres, or npm install?**

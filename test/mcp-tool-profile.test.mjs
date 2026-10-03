@@ -52,7 +52,10 @@ test('the core list costs well under half the full one', () => withEnv(null, () 
   const all = JSON.stringify(rpc(w, 'tools/list', {}, { tools: 'all' }).result).length;
   // 29,251 bytes for all 56 tools at v0.4.54; 11,942 for the core set.
   assert.ok(core * 2.5 < all, `core ${core} bytes vs all ${all}`);
-  assert.ok(core < 12500, `core tools/list is ${core} bytes`);
+  // weave_build (Feature #253) joined at about 2,000 bytes, most of it the one
+  // worked example spec its description carries on purpose: it stands in for
+  // the 30 to 90 single-field and single-row calls a build used to take.
+  assert.ok(core < 14500, `core tools/list is ${core} bytes`);
 }));
 
 test('--tools all, WEAVE_MCP_TOOLS=all and listTools("all") list every tool', () => {
