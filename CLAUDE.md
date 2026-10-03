@@ -1,3 +1,9 @@
+> **Using weave as a tool for someone?** Stop here and read
+> [AGENTS.md › Using weave](AGENTS.md#using-weave): the primer, the tool map,
+> plans and fixes for common errors. The rest of this file is for agents
+> developing weave itself: the maintainers' workflow, Gerrit landing and the
+> weave docs workspace on `:4400`.
+
 # Weave — working rules for Claude sessions
 
 ## The weave-workspace mandate (non-negotiable)

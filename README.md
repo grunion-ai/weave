@@ -26,6 +26,7 @@
 </p>
 
 <p align="center">
+  <a href="#for-agents">For agents</a> ·
   <a href="#quickstart">Quickstart</a> ·
   <a href="#how-weave-compares">Comparison</a> ·
   <a href="#agents-mcp-rest-and-cli">Agents &amp; MCP</a> ·
@@ -38,6 +39,19 @@
 </p>
 
 ---
+
+## For agents
+
+weave stores structured work (tables, rows, relations, documents) in one SQLite
+file, and an agent drives it over MCP, REST or the CLI.
+
+- Connect over MCP: `node bin/weave.js mcp --data <file.db>`, the same as
+  `weave mcp --data <file>`. In Claude Code:
+  `claude mcp add weave -- node /path/to/weave/bin/weave.js mcp --data /path/to/workspace.db`
+- Or build from a file: `weave build <spec.json> --dry-run`, then again without
+  `--dry-run`.
+- Read [AGENTS.md › Using weave](AGENTS.md#using-weave) first: the primer,
+  every tool by job, plans with turn budgets, and common errors with their fixes.
 
 ## What weave is
 

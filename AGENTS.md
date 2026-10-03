@@ -1,128 +1,203 @@
 # AGENTS.md
 
-Orientation for AI coding agents and autonomous tools working in this repo, and
-for agents evaluating weave as a tool to use. Human contributors want
+This file has two readers. An agent that uses weave as a tool for someone reads
+[Using weave](#using-weave) and can usually stop there; [Reference](#reference)
+holds the detail behind it. An agent that changes weave's own code reads
+[Developing weave](#developing-weave). Human contributors want
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## What this project is
+## Using weave
 
-weave is a local, self-hosted work platform — an open-source alternative to
-Airtable, Fibery, Notion databases, and ClickUp — in which agents are
-first-class users. Spaces hold tables, tables hold entities, entities connect
-through bidirectional relations and carry markdown documents. One workspace is
-one SQLite file.
+weave is a self-hosted work platform in which agents are first-class users.
+Workspaces hold spaces, spaces hold tables, and tables hold rows that link to
+each other through relations and carry markdown documents. One workspace is one
+SQLite file. The MCP server, the REST API, the CLI and the browser UI all run
+the same engine over that file.
 
-If you are an agent looking for a **tool to store and query structured work**,
-weave gives you an MCP server, a REST API, and a CLI over the same engine. Skip
-to [Using weave as an agent](#using-weave-as-an-agent).
+### Primer
 
-## Repo map
+The MCP server sends this text as its `initialize.instructions`, so an MCP
+client reads it before its first call.
 
-| Path | What lives there |
-| --- | --- |
-| `bin/weave.js` | CLI entry point — every command, including `serve` and `mcp` |
-| `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
-| `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
-| `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP server: 58 tools over the engine, 16 listed by default |
-| `src/formula.js` | Formula parser/evaluator |
-| `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
-| `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
-| `test/` | `node --test` suites — the contract for every behavior above |
-| `docs/` | Parity matrix, comparisons, screenshots, the architecture map (`docs/architecture/`) |
-| `scripts/` | Dev tooling (seed data, README screenshots) |
-
-## Rules for changing this repo
-
-1. **Tests first.** Run targeted tests for the changed behavior before committing.
-   New engine or server behavior lands with tests in the same change. Push once
-   to Gerrit, self-review and cast Code-Review +2; the poller runs the authoritative full gate before landing. Parallel
-   workers must not each run `npm test` or invoke a duplicate manual gate.
-2. **Zero runtime dependencies.** Never add a package to `dependencies`. Storage
-   is `node:sqlite`, built into Node. Third-party browser code is vendored and
-   pinned into `public/vendor/` (mermaid 11.4.1, @tabler/core 1.4.0) — never
-   npm-installed. Dev-only tooling under `scripts/` and `brand/` may import a
-   package, but must do so with a **dynamic** `import()` so the test suite still
-   loads without it.
-3. **No build step.** The UI is vanilla JS served as-is. If a change would
-   require compiling, bundling, or transpiling, it is the wrong change.
-4. **Both themes.** UI changes are checked in light and dark (`data-bs-theme`),
-   styled on Tabler tokens (`--tblr-*`).
-5. **Never commit workspace data.** `*.db` (plus `-wal`/`-shm`), legacy
-   `*.json` workspaces, and `files/` are gitignored local state.
-6. **Node ≥ 22.16** is the floor (Node 24 LTS recommended); `node:sqlite`
-   requires it.
-7. **A landing is not a deploy.** A host that runs `weave supervise` with
-   `WEAVE_AUTO_UPDATE=1` (the hosted instance does) installs each new release
-   tag itself, with no restart and no failed request. Never redeploy it to ship
-   a change: a platform redeploy restarts the container, drops requests for up
-   to a minute and resets the supervisor. Redeploy only for a Node version, a
-   `Dockerfile` or a `src/supervisor.js` change. A landed fix reaches the host
-   with the next release.
-
-## Using weave as an agent
-
-Point an MCP client at the stdio server:
-
-```json
-{
-  "mcpServers": {
-    "weave": {
-      "command": "node",
-      "args": ["/path/to/weave/bin/weave.js", "mcp", "--data", "/path/to/workspace.db"]
-    }
-  }
-}
+<!-- primer:start (generated from src/mcp-primer.md by scripts/agent-docs.mjs; edit that file, then run the script) -->
+```text
+weave: build with ONE weave_build call (workspace, spaces, tables, fields, relations and rows; its description shows the spec). Run it with dryRun:true first, fix every error it lists, then run it for real.
+Rules for building in weave:
+- One workspace per domain of life or work (personal-finance, sales), never one per request. Name it as a slug (letters, digits, dash) with the spec's workspace key. A request becomes a space; its records become tables with singular names.
+- A value that names a row of another table is a relation, never text: a field {name, type:"relation", to:<table>, cardinality:"many-to-one"}. In rows, a relation value is the target row's Name.
+- Money is a number field with format:"currency" and currency:"USD". A date field takes grain as a list of parts: ["year","month"] for a month, ["year"] for a year.
+- Colour carries meaning: options stay slate unless the hue says something (green income, red overdue). An option is {name, hue, icon}; status options and workflow states take an icon.
+- Icons are lucide:<name> from the inventory. Most builds need no weave_vocabulary call: weave_build lists a refused icon or colour under ignored, with the nearest icons. To look one up: weave_vocabulary {section:"icons", query:"<word>"} or {section:"optionColors"}.
+- A Sort on a table or view row is "Date desc" (comma-separated for more keys), never JSON or "-Date".
+- Writes answer compact ({id, publicId, name}); pass verbose:true for the full object.
+- Read rows with weave_query (where, sort) and find a row by text with weave_search. weave_call {name, args} runs any tool not listed; weave_call {name:"help", args:{tool}} describes one.
 ```
+<!-- primer:end -->
 
-Or, on a hosted instance with a sign-in provider, over HTTP with a browser
-sign-in in place of a token:
+### Model
+
+Workspace › space › table › row. A row has a Name, a public id (`Deal#12`) and
+any number of markdown documents; its fields hold typed values (the types are
+in `weave_vocabulary`).
+A relation links rows of two tables and works both ways: adding `Deal.Company`
+also adds `Company.Deals`, and a rollup over `Deals` totals them per company.
+
+### Surfaces
+
+Every surface reaches the same engine and the same workspace file.
+
+| Surface | Start it | Pick it when |
+| --- | --- | --- |
+| MCP over stdio | `node bin/weave.js mcp --data <file.db>` (`weave mcp --data <file>`) | you are an MCP client and the workspace is a local file; the default |
+| MCP over HTTP | `POST /api/mcp` on a running `weave serve`; `/mcp` with a sign-in provider | the workspace lives on a server, local or hosted |
+| REST | `weave serve --data <file.db>`, then routes under `/w/<workspace>/api` (`/api` for the default workspace) | you are writing a script or service rather than making tool calls |
+| CLI | `node bin/weave.js <command> --data <file.db>`; `weave build <spec.json> --dry-run` builds from a file | a shell is all you have, or the step belongs in a script |
+| Browser UI | `weave serve`, then http://127.0.0.1:4400 | a person wants to see or edit the result |
+
+Claude Code over stdio, in one line:
 
 ```bash
-claude mcp add --scope user --transport http weave https://weave.example.com/mcp
+claude mcp add weave -- node /path/to/weave/bin/weave.js mcp --data /path/to/workspace.db
 ```
 
-Fifty-eight tools, grouped. Every one of them reaches something the web UI can
-do — there is no configuration that needs a browser, and none that needs a
-human.
+Other stdio clients take the same command as a config block
+([README › Connect your agent](README.md#connect-your-agent)). A hosted
+instance with a sign-in provider takes
+`claude mcp add --scope user --transport http weave https://weave.example.com/mcp`;
+the first call opens the sign-in in a browser. One MCP server serves one
+workspace file; a second workspace is a second file (see
+[One MCP server is one workspace](#the-cli-mirrors-all-of-it)).
 
-**`tools/list` names sixteen of them by default.** The core build set is
-`weave_schema`, `weave_query`, `weave_get_entity`, `weave_create_entity`,
-`weave_update_entity`, `weave_create_space`, `weave_create_table`,
-`weave_add_field`, `weave_update_field`, `weave_add_relation`,
-`weave_import_csv`, `weave_vocabulary`, `weave_workspace`, `weave_search` and
-`weave_build`, plus `weave_call`. Every other tool in the table below is one `weave_call`
-away: `weave_call {name: "weave_set_doc", args: {entity, markdown}}` runs it
-with the same gate, the same compact reply and the same `verbose` switch as a
-direct call. The `weave_call` description lists each of those tools with a few
-words, and `weave_call {name: "help", args: {tool: "weave_set_doc"}}` returns
-that tool's full description and input schema. The full list costs about 12,000
-tokens on every turn and a build uses about twelve tools, so the default lists
-only those (Issue #595). To list all 58 directly, start the server with
-`weave mcp --tools all` or set `WEAVE_MCP_TOOLS=all`; the variable also
-applies to `POST /api/mcp` on `weave serve`.
+### Tool map
 
-| Group | Tools |
+<!-- tool-map:start (generated from src/mcp.js by scripts/agent-docs.mjs) -->
+16 listed by default, out of 58. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
+
+| Job | Tool | What it does |
+| --- | --- | --- |
+| Build | `weave_build` | spaces, tables, fields, relations and rows in one call (dryRun checks) |
+| Read and search | `weave_schema` | every space, table and field, with types and options |
+|  | `weave_query` | rows of one table, filtered (where), sorted, paged |
+|  | `weave_get_entity` | one row in full: values, document, comments, activity |
+|  | `weave_search` | find rows, tables and spaces by text; each hit has a permalink |
+| Write rows | `weave_create_entity` | create one row |
+|  | `weave_update_entity` | change one row's values |
+|  | `weave_import_csv` | many rows into one table from CSV text |
+| Change schema | `weave_create_space` | create a space |
+|  | `weave_create_table` | create a table in a space |
+|  | `weave_add_field` | add a field to a table |
+|  | `weave_update_field` | rename, retype or reconfigure a field (options are a full replacement) |
+|  | `weave_add_relation` | add a relation and its inverse between two tables |
+|  | `weave_workspace` | read or rename the workspace, set its description or logo |
+| Look up allowed values | `weave_vocabulary` | allowed values, one section per call; a build needs at most optionColors and icons (with query) |
+| Everything else | `weave_call` | run any other tool by name; help describes one |
+
+The other 42, through `weave_call {name, args}`:
+
+| Area | Tools |
 | --- | --- |
-| Read the shape | `weave_schema`, `weave_vocabulary`, `weave_relation_map`, `weave_registry` |
-| Spaces & tables | `weave_create_space`, `weave_update_space`, `weave_delete_space`, `weave_restore_space`, `weave_create_table`, `weave_update_table`, `weave_move_table`, `weave_duplicate_table`, `weave_delete_table`, `weave_restore_table` |
-| Fields | `weave_add_field`, `weave_update_field`, `weave_rollback_field`, `weave_delete_field`, `weave_add_relation` |
-| Formulas | `weave_check_formula` — validate + preview an expression before saving it |
-| Build in one call | `weave_build`: spaces, tables, fields, relations and rows from one short spec; see [Build in one call](#build-in-one-call) |
-| Whole schema | `weave_apply_schema` |
-| Entities | `weave_query`, `weave_get_entity`, `weave_create_entity`, `weave_update_entity`, `weave_delete_entity`, `weave_restore_entity`, `weave_trash`, `weave_undo` |
-| Statistics | `weave_stats` — every column of a table summarised in one read (sum, avg, median, min, max, p25/p75, stdev, a histogram for numbers; a ranked distribution for chips; earliest/latest/span for dates), the space rollups pointed at the table, and per-group figures with `by`. To keep a figure on the record, add a rollup on the `Workspace/Spaces` row with `config.via` naming the table (`aggregate` from the vocabulary, optional `where`) — that is the Σ the grid footer draws under the column. A grid draws no Σ row until the table asks for one: `weave_update_table` with `hideRollups: false` (`weave table update <ref> --rollup-row on`) turns it on, `true` puts it away |
-| Relations & state | `weave_link`, `weave_unlink`, `weave_set_state` |
-| Many rows at once | `weave_bulk` — set values, link, move to another table, or roll up into a new parent across a list of ids; the reply names what did not land |
-| Documents & comments | `weave_get_doc`, `weave_set_doc`, `weave_doc_revisions`, `weave_doc_restore`, `weave_add_comment`, `weave_delete_comment` |
-| Search & data | `weave_search`, `weave_export_csv`, `weave_import_csv`, `weave_export_json`, `weave_import_json` |
+| Rows | `weave_delete_entity`, `weave_restore_entity`, `weave_trash`, `weave_undo`, `weave_bulk`, `weave_set_state`, `weave_link`, `weave_unlink` |
+| Documents and comments | `weave_get_doc`, `weave_set_doc`, `weave_doc_revisions`, `weave_doc_restore`, `weave_add_comment`, `weave_delete_comment` |
+| Spaces and tables | `weave_update_space`, `weave_delete_space`, `weave_restore_space`, `weave_update_table`, `weave_move_table`, `weave_duplicate_table`, `weave_delete_table`, `weave_restore_table`, `weave_table_view` |
+| Fields and formulas | `weave_rollback_field`, `weave_delete_field`, `weave_check_formula` |
+| Whole schema | `weave_apply_schema`, `weave_registry`, `weave_relation_map` |
+| Figures | `weave_stats` |
+| Import and export | `weave_export_csv`, `weave_export_json`, `weave_import_json` |
 | Files | `weave_attach_file`, `weave_files` |
-| Table views | `weave_table_view` — the saved views in one table's toolbar menu: which columns show, in what order and how wide, how many are frozen beside #, the state filter, the sort, and the default. One tool reads and writes them; see [Views over a table](#views-over-a-table) |
-| Share pages | `weave_views` — Feature #17's saved multi-table pages with share links (not table views) |
 | Automations | `weave_create_automation`, `weave_automations` |
+| Share pages | `weave_views` |
 | History | `weave_activity`, `weave_audit` |
-| The workspace itself | `weave_workspace`, `weave_accounts`, `weave_keys` |
-| Everything else, by name | `weave_call`: `{name, args}` runs any tool above; `{name: "help", args: {tool}}` returns its schema |
+| Accounts and secrets | `weave_accounts`, `weave_keys` |
+<!-- tool-map:end -->
+
+### Plans
+
+A turn here is one tool call. Each plan shows the one call it needs.
+
+**Build a workspace: 3 turns.** Run `weave_build` with `dryRun: true`, fix
+every entry in its `errors` list, run it again without `dryRun`, then answer
+the user. Put every table, field, relation and starting row in the one spec.
+Skip `weave_vocabulary`: the reply's `ignored` list names any refused icon or
+colour, with the nearest icons. To get them right first time, read only
+`{section: "optionColors"}` and `{section: "icons", query: "<word>"}`, one call
+each.
+
+```json
+{"dryRun": true, "spec": {"workspace": "sales", "spaces": [{"name": "Pipeline", "icon": "lucide:briefcase", "tables": [
+  {"name": "Company", "rows": [{"Name": "Acme"}]},
+  {"name": "Deal", "fields": [
+    {"name": "Value", "type": "number", "format": "currency", "currency": "USD"},
+    {"name": "Stage", "type": "select", "options": [{"name": "Lead"}, {"name": "Won", "hue": "green"}, {"name": "Lost", "hue": "red"}]},
+    {"name": "Closed", "type": "date", "grain": ["year", "month"]},
+    {"name": "Company", "type": "relation", "to": "Company", "cardinality": "many-to-one"}],
+   "rows": [{"Name": "Acme renewal", "Value": 12000, "Stage": "Won", "Closed": "2026-09", "Company": "Acme"}]}]}]}}
+```
+
+**Add rows to existing tables: 1 turn.** Send one `weave_build` whose spec
+holds only the space, the tables and their rows; existing parts are reused and
+`skipExistingRows: true` skips a Name the table already holds. For a CSV file,
+`weave_import_csv` once per table.
+
+```json
+{"skipExistingRows": true, "spec": {"spaces": [{"name": "Pipeline", "tables": [
+  {"name": "Deal", "rows": [{"Name": "Globex pilot", "Value": 4000, "Stage": "Lead", "Company": "Acme"}]}]}]}}
+```
+
+**Answer a question: 1 or 2 turns.** `weave_query` with `where` (conditions
+are ANDed; a dotted path follows a relation). For a total per parent row, add
+a rollup once (`weave_add_field` on Company with `type: "rollup"`,
+`relationField: "Deals"`, `targetField: "Value"`, `aggregate: "sum"`); for a
+whole column, `weave_call` runs `weave_stats {table}`.
+
+```json
+{"db": "Deal", "where": [["Company.Name", "=", "Acme"], ["Stage", "=", "Won"]], "select": ["Name", "Value"]}
+```
+
+**Change a field: 1 turn.** `weave_update_field`. `config.options` is a full
+replacement, so send every option you keep; rows keep their values.
+
+```json
+{"db": "Deal", "field": "Stage", "config": {"options": [{"name": "Lead"}, {"name": "Qualified", "hue": "blue"}, {"name": "Won", "hue": "green"}, {"name": "Lost", "hue": "red"}]}}
+```
+
+**Find a row by text: 1 turn.** `weave_search` matches names, public ids, text
+fields, documents and comments; every hit carries its id and permalink.
+
+```json
+{"query": "renewal", "limit": 5}
+```
+
+### Pitfalls
+
+Each error below is the text weave returns, followed by the fix.
+
+| Error | Fix |
+| --- | --- |
+| `Icon 'lucide:dolar' is not in the inventory; nearest: lucide:dollar-sign (money)` | Use a `nearest` name, or `weave_vocabulary {section: "icons", query: "<word>"}`. `weave_build` drops a refused icon, lists it under `ignored` and goes on. |
+| `grain is a list of parts, e.g. ["year","month"] for a month or ["year"] for a year` | Send `"grain": ["year", "month"]`, never `"month"`. |
+| `Workspace name must be alphanumeric` | Name the workspace as a slug: letters, digits and dashes, starting with a letter or digit (`personal-finance`). |
+| `Field 'Stage' not found in table 'Deal'` | The field was never made because an earlier step failed. Read the build's `errors` (each has a `path` such as `spaces[0].tables[1].fields[2]`), fix that entry and resend the whole spec. |
+| `Invalid number format 'currencyy' (number, currency, percent, compact)` | Pick a value the message lists. |
+| `Field '-Date' not found in table 'Transaction'` (a `Sort` on a `Workspace/Tables` or `Workspace/Views` row) | Write `"Date desc"`, comma-separated for more keys; JSON and `-Date` read as field names (Issue #626). `weave_table_view` takes `sort: [{field, dir}]`. |
+| `Table 'Deals' not found` | Use the name `weave_schema` shows, as `Table` or `Space/Table`. Table names are singular. |
+
+## Reference
+
+The detail behind Using weave, one subsection per topic.
+
+### Tool list and replies
+
+`tools/list` names the default tools in the [Tool map](#tool-map); every other
+tool is one `weave_call` away: `weave_call {name: "weave_set_doc", args: {entity, markdown}}`
+runs it with the same gate, the same compact reply and the same `verbose`
+switch as a direct call. The `weave_call` description lists each of those
+tools with a few words, and `weave_call {name: "help", args: {tool: "weave_set_doc"}}`
+returns that tool's full description and input schema. The full list costs
+about 12,000 tokens on every turn and a build uses about twelve tools, so the
+default lists only those (Issue #595). To list every tool directly, start the
+server with `weave mcp --tools all` or set `WEAVE_MCP_TOOLS=all`; the variable
+also applies to `POST /api/mcp` on `weave serve`. Every tool reaches something
+the web UI can do; no configuration needs a browser or a human.
 
 **Writes answer compact.** Over MCP, the create, update, link, unlink, state,
 delete, restore, move and duplicate writes answer with `{id, publicId, name}`.
@@ -131,6 +206,17 @@ answers `{field, inverse}` in the same shape. Pass `verbose: true` to any of
 them for the whole row or table, or read it back with `weave_get_entity` or
 `weave_schema`. Tool text is one-line JSON. REST and the CLI still return the
 full object (Issue #596).
+
+**Figures.** `weave_stats` summarises every column of a table in one read:
+sum, avg, median, min, max, p25/p75, stdev and a histogram for numbers; a
+ranked distribution for chips; earliest, latest and span for dates; the space
+rollups pointed at the table; and per-group figures with `by`. To keep a
+figure on the record, add a rollup on the `Workspace/Spaces` row with
+`config.via` naming the table (`aggregate` from the vocabulary, optional
+`where`); that is the Σ the grid footer draws under the column. A grid draws no
+Σ row until the table asks for one: `weave_update_table` with
+`hideRollups: false` (`weave table update <ref> --rollup-row on`) turns it on,
+`true` puts it away.
 
 ### Build in one call
 
@@ -452,7 +538,7 @@ Notes that save round trips:
   on a read it was already making and refetches `GET /api/schema` when the two
   disagree; the browser app does exactly that (Issue #274).
 
-## Self-documenting workspace
+### Self-documenting workspace
 
 A `weave` docs workspace is provisioned beside your data at `/w/weave/`. Its
 Handbook, Wiki, Development (roadmap + issues), and Quality (test suites) spaces
@@ -470,3 +556,51 @@ existing docs workspace on the first boot of each build whose pages changed,
 matched by name, so a guide you wrote yourself is never touched.
 `weave handbook check --data weave.db` reports drift (exit 1 when any) and
 `weave handbook sync --data weave.db` applies it on demand.
+
+## Developing weave
+
+For agents changing weave itself: where the code lives and the rules every change follows. weave is a local, self-hosted work platform, an open-source alternative to Airtable, Fibery, Notion databases and ClickUp; the maintainers' own workflow (Gerrit, the weave docs workspace) is in [CLAUDE.md](CLAUDE.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
+
+### Repo map
+
+| Path | What lives there |
+| --- | --- |
+| `bin/weave.js` | CLI entry point — every command, including `serve` and `mcp` |
+| `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
+| `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
+| `src/server.js` | HTTP server: web UI, REST API, document routes |
+| `src/mcp.js` | MCP server: 58 tools over the engine, 16 listed by default |
+| `src/formula.js` | Formula parser/evaluator |
+| `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
+| `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
+| `test/` | `node --test` suites — the contract for every behavior above |
+| `docs/` | Parity matrix, comparisons, screenshots, the architecture map (`docs/architecture/`) |
+| `scripts/` | Dev tooling (seed data, README screenshots) |
+
+### Rules for changing this repo
+
+1. **Tests first.** Run targeted tests for the changed behavior before committing.
+   New engine or server behavior lands with tests in the same change. Push once
+   to Gerrit, self-review and cast Code-Review +2; the poller runs the authoritative full gate before landing. Parallel
+   workers must not each run `npm test` or invoke a duplicate manual gate.
+2. **Zero runtime dependencies.** Never add a package to `dependencies`. Storage
+   is `node:sqlite`, built into Node. Third-party browser code is vendored and
+   pinned into `public/vendor/` (mermaid 11.4.1, @tabler/core 1.4.0) — never
+   npm-installed. Dev-only tooling under `scripts/` and `brand/` may import a
+   package, but must do so with a **dynamic** `import()` so the test suite still
+   loads without it.
+3. **No build step.** The UI is vanilla JS served as-is. If a change would
+   require compiling, bundling, or transpiling, it is the wrong change.
+4. **Both themes.** UI changes are checked in light and dark (`data-bs-theme`),
+   styled on Tabler tokens (`--tblr-*`).
+5. **Never commit workspace data.** `*.db` (plus `-wal`/`-shm`), legacy
+   `*.json` workspaces, and `files/` are gitignored local state.
+6. **Node ≥ 22.16** is the floor (Node 24 LTS recommended); `node:sqlite`
+   requires it.
+7. **A landing is not a deploy.** A host that runs `weave supervise` with
+   `WEAVE_AUTO_UPDATE=1` (the hosted instance does) installs each new release
+   tag itself, with no restart and no failed request. Never redeploy it to ship
+   a change: a platform redeploy restarts the container, drops requests for up
+   to a minute and resets the supervisor. Redeploy only for a Node version, a
+   `Dockerfile` or a `src/supervisor.js` change. A landed fix reaches the host
+   with the next release.
