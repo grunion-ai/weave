@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'node:fs';
 import { vocabularyView } from './vocabulary.js';
+import { guided } from './field-hints.js';
 import { Weave } from './engine.js';
 const PROTOCOL_VERSION = '2024-11-05';
 // Lazy-tolerant, same reason as pdf.js's font path: module-top file reads
@@ -31,7 +32,8 @@ export const COMPACT_TOOLS = new Set([
   'weave_create_table', 'weave_update_table', 'weave_move_table', 'weave_duplicate_table', 'weave_restore_table',
   'weave_add_field', 'weave_update_field', 'weave_add_relation',
 ]);
-const BRIEF_KEYS = ['id', 'publicId', 'name', 'type', 'config', 'deletedAt', 'purged'];
+// next and hints are a schema write's guidance (src/field-hints.js), kept whole.
+const BRIEF_KEYS = ['id', 'publicId', 'name', 'type', 'config', 'deletedAt', 'purged', 'next', 'hints'];
 function brief(obj) {
   const out = {};
   for (const k of BRIEF_KEYS) if (obj?.[k] != null) out[k] = obj[k];
@@ -209,7 +211,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_field',
-    description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {max, icon} for rating (max 1-100, default 5; icon lucide:<name>, default lucide:star; the value is a whole number 0..max); {on, off} for toggle (the two state labels a switch wears, default On/Off — the value stays true/false); {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range) — or, on the Workspace/Spaces registry row only, {via: <table>, targetField, aggregate, where?} for a rollup over a WHOLE table (the figure the grid footer shows under that column; where takes weave_query clauses); {expression} for formula. Any of text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a row.',
+    description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {max, icon} for rating (max 1-100, default 5; the value is a whole number 0..max); {on, off} for toggle (the value stays true/false); {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range) — or, on the Workspace/Spaces registry row only, {via: <table>, targetField, aggregate, where?} for a rollup over a WHOLE table (the figure the grid footer shows under that column; where takes weave_query clauses); {expression} for formula. Any of text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a row. A number takes {format: currency|percent|compact, currency, unit, display}. The reply lists settings still open in next[] and likely slips in hints[].',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
@@ -340,7 +342,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_field',
-    description: 'Change a field: rename it, retype it (values are migrated), or edit its config. config keys ride their own lanes — width (px, 60 minimum, null resets to auto), description (plain text: what the value represents and how it is written; null clears; on a view field it is the description size instead), default (null clears), options/states (a full replacement), on/off (a toggle\'s state labels, one at a time), max/icon (a rating\'s scale and icon, one at a time), expression, and the costume keys for number, date, document and attachments. See weave_vocabulary for every legal value.',
+    description: 'Change a field: rename it, retype it (values are migrated; text to relation takes config:{targetDb, createMissing?} and links rows by name), or edit its config. config keys ride their own lanes — width (px, 60 minimum, null resets to auto), description (plain text: what the value represents and how it is written; null clears; on a view field it is the description size instead), default (null clears), options/states (a full replacement), on/off (a toggle\'s state labels, one at a time), max/icon (a rating\'s scale and icon, one at a time), expression, and the costume keys for number, date, document and attachments. See weave_vocabulary for every legal value.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
@@ -681,11 +683,11 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_search':
       return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
     case 'weave_create_space':
-      return weave.createSpace(pick(args, ['name', 'description', 'icon']));
+      return guided(weave, 'space', weave.createSpace(pick(args, ['name', 'description', 'icon'])));
     case 'weave_create_table':
-      return weave.createTable(pick(args, ['space', 'name', 'description', 'icon']));
+      return guided(weave, 'table', weave.createTable(pick(args, ['space', 'name', 'description', 'icon'])));
     case 'weave_add_field':
-      return weave.addField(args.db, { name: args.name, type: args.type, config: args.config ?? {} });
+      return guided(weave, 'field', weave.addField(args.db, { name: args.name, type: args.type, config: args.config ?? {} }), args.config);
     case 'weave_check_formula':
       return weave.checkFormula(args.db, args.expression, { entity: args.entity ?? null, excludeField: args.excludeField ?? null, scan: Boolean(args.scan) });
     case 'weave_add_relation':
@@ -723,7 +725,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_restore_table':
       return weave.restoreTable(args.db);
     case 'weave_update_field':
-      return weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config']));
+      return guided(weave, 'field', weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config'])), args.type == null ? args.config : {});
     case 'weave_rollback_field':
       return weave.rollbackFieldConfig(args.activity, { table: args.db ?? null, field: args.field ?? null });
     case 'weave_delete_field':

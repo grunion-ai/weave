@@ -7,6 +7,7 @@
 import { Weave, WeaveError, fileHeaders, logoType } from './engine.js';
 import { handleApplet } from './applet.js';
 import { vocabularyView } from './vocabulary.js';
+import { guided } from './field-hints.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 // Loaded on demand: the vendored decklet engine resolves its own directory
@@ -1117,7 +1118,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if (route === 'GET /api/spaces') return out(200, weave.listSpaces());
-        if (route === 'POST /api/spaces') return out(201, weave.createSpace(body));
+        if (route === 'POST /api/spaces') return out(201, guided(weave, 'space', weave.createSpace(body)));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
           if (rx.method === 'PATCH') return out(200, weave.updateSpace(m[1], body));
@@ -1136,7 +1137,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const dbs = weave.listTables(space ? weave.getSpace(space).id : null);
           return out(200, dbs.map((db) => ({ id: db.id, name: db.name, qualified: weave.qualifiedName(db), spaceId: db.spaceId })));
         }
-        if (route === 'POST /api/tables') return out(201, weave.createTable(body));
+        if (route === 'POST /api/tables') return out(201, guided(weave, 'table', weave.createTable(body)));
         if ((m = path.match(/^\/api\/tables\/([^/]+)$/))) {
           if (rx.method === 'GET') {
             const db = weave.getTable(m[1]);
@@ -1174,7 +1175,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields$/)) && rx.method === 'POST') {
-          return out(201, weave.addField(m[1], body));
+          return out(201, guided(weave, 'field', weave.addField(m[1], body), body?.config));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)$/))) {
           if (rx.method === 'PATCH') {
@@ -1185,7 +1186,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const field = weave.updateField(m[1], m[2], body);
             const [last] = weave.activityFeed({ entityId: weave.getTable(m[1]).id, kinds: ['field-config-updated'], limit: 1 }).items;
             const entry = last && last.seq > seq && last.detail.fieldId === field.id ? last : null;
-            return out(200, { ...field, activity: entry?.id ?? null, lossy: !!entry?.detail.lossy });
+            return out(200, { ...guided(weave, 'field', field, body?.type == null ? body?.config : {}), activity: entry?.id ?? null, lossy: !!entry?.detail.lossy });
           }
           if (rx.method === 'DELETE') { weave.deleteField(m[1], m[2]); return out(200, { ok: true }); }
         }

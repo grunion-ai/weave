@@ -29,7 +29,9 @@ function fixture() {
   return w;
 }
 
-const BRIEF = new Set(['id', 'publicId', 'name', 'type', 'config', 'deletedAt', 'purged']);
+// next and hints are a schema write's guidance (src/field-hints.js), not an echo.
+const BRIEF = new Set(['id', 'publicId', 'name', 'type', 'config', 'deletedAt', 'purged', 'next', 'hints']);
+const bare = (obj) => Object.keys(obj).filter((k) => k !== 'next' && k !== 'hints').sort();
 const assertBrief = (obj, label) => {
   const extra = Object.keys(obj).filter((k) => !BRIEF.has(k));
   assert.deepEqual(extra, [], `${label} carries only the brief keys`);
@@ -66,10 +68,10 @@ test('a row write answers with id, publicId and name', () => {
 test('a schema write answers with id and name, a field with its type and stored config', () => {
   const w = fixture();
   const space = call(w, 'weave_create_space', { name: 'Sales', description: 'x' }).data;
-  assert.deepEqual(Object.keys(space).sort(), ['id', 'name']);
+  assert.deepEqual(bare(space), ['id', 'name']);
   assertBrief(call(w, 'weave_update_space', { space: 'Sales', description: 'y' }).data, 'weave_update_space');
   const table = call(w, 'weave_create_table', { space: 'Sales', name: 'Deal' }).data;
-  assert.deepEqual(Object.keys(table).sort(), ['id', 'name'], 'no fields map, no views');
+  assert.deepEqual(bare(table), ['id', 'name'], 'no fields map, no views');
   for (const [name, args] of [
     ['weave_update_table', { db: 'Deal', noun: 'deal' }],
     ['weave_duplicate_table', { db: 'Deal' }],
@@ -81,7 +83,7 @@ test('a schema write answers with id and name, a field with its type and stored 
   assertBrief(call(w, 'weave_restore_space', { space: 'Sales' }).data, 'weave_restore_space');
 
   const field = call(w, 'weave_add_field', { db: 'Deal', name: 'Stage', type: 'select', config: { options: ['Open', 'Won'] } }).data;
-  assert.deepEqual(Object.keys(field).sort(), ['config', 'id', 'name', 'type']);
+  assert.deepEqual(bare(field), ['config', 'id', 'name', 'type']);
   assert.equal(field.type, 'select');
   assert.deepEqual(field.config.options.map((o) => o.name), ['Open', 'Won'], 'the stored config, options resolved');
   const widened = call(w, 'weave_update_field', { db: 'Deal', field: 'Stage', config: { width: 140 } }).data;
@@ -146,6 +148,9 @@ test('a build sequence costs a fraction of the old echo (Issue #596 budget)', ()
   run('weave_add_relation', { db: 'Task', name: 'Project', targetDb: 'Project', cardinality: 'many-to-one', inverseName: 'Tasks' });
   run('weave_create_entity', { db: 'Project', name: 'Apollo', values: { Due: '2026-11-01' } });
   for (let i = 1; i <= 4; i++) run('weave_create_entity', { db: 'Task', name: 'Task ' + i, values: { Hours: i, Priority: 'High', Project: 'Apollo' } });
-  // 17,244 bytes before this change (v0.4.54), 1,614 after.
-  assert.ok(bytes < 2000, `13 build calls answered in ${bytes} bytes`);
+  // 17,244 bytes before this change (v0.4.54), 1,614 after. The schema
+  // writes' next[] and hints[] (Issues #579, #581) add about 620: the
+  // settings a type takes and the slips to fix, which the 2026-10-02 eval
+  // found reach a model that never asks.
+  assert.ok(bytes < 2400, `13 build calls answered in ${bytes} bytes`);
 });
