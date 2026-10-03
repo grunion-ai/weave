@@ -2647,71 +2647,136 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .wv-dist-fill { display: block; height: 100%; background: var(--tblr-primary); opacity: .6; }
 .wv-dist-n { color: var(--tblr-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-/* ---------- the number display (Feature #230) ----------
-   A bar or a ring filled to the value's share of its scale, or a heat tint
-   behind the text. The graphic is drawn to fit the cell it is in and never
-   pushes the row taller than a line; the text beside it stays the tabular
-   figure every number cell prints. */
-:root { --wv-cg-fill: var(--tblr-primary); --wv-cg-track: color-mix(in srgb, var(--tblr-body-color) 12%, transparent); --wv-cg-heat: #f76707; }
-[data-bs-theme="dark"] { --wv-cg-fill: #4c8dff; --wv-cg-track: color-mix(in srgb, var(--tblr-body-color) 18%, transparent); --wv-cg-heat: #ff922b; }
+/* ---------- the rich cells (Features #230, #231, #232, #235) ----------
+   A bar, a ring or a heat tint behind a number; a rating's icons; a
+   formula's sparkline. The shapes are one set (Feature #235): a 6px bar
+   with round ends on an 80px track and the figure to its right in tabular
+   figures, a 16px ring with a 2.5px round-capped stroke, heat as a rounded
+   tint behind the figure, 14px rating icons 1px apart with outlined
+   empties, and an 80 by 18 sparkline drawn at its own size. The graphic
+   never pushes the row taller than a line.
+
+   The colour is the field's `color`, worn as a class on the wrapper:
+   cg-c-ink (Quiet ink, the default), cg-c-icon (Color by icon) or
+   cg-c-accent (One accent hue). Each class sets the working colours a
+   shape reads (--cg-main, --cg-spark, --cg-win, --cg-loss, --cg-heat,
+   --cg-rate) from the tokens below, and every token has a dark twin. The
+   hues are the ramp's own dots (.hue-*), brightened for the dark theme. */
+:root {
+  --wv-cg-ink: var(--tblr-body-color);
+  --wv-cg-ink-2: var(--tblr-secondary);
+  --wv-cg-hair: color-mix(in srgb, var(--tblr-body-color) 11%, transparent);
+  --wv-cg-empty: color-mix(in srgb, var(--tblr-body-color) 34%, transparent);
+  --wv-cg-accent: var(--tblr-primary);
+  --wv-cg-accent-soft: color-mix(in srgb, var(--tblr-primary) 42%, transparent);
+  --wv-cg-teal: #12a594; --wv-cg-blue: #4769eb; --wv-cg-green: #2ea043; --wv-cg-red: #e5484d;
+  --wv-cg-amber: #f59f00; --wv-cg-rose: #e54666; --wv-cg-violet: #8e4ec6; --wv-cg-orange: #f76b15;
+}
+[data-bs-theme="dark"] {
+  --wv-cg-hair: color-mix(in srgb, var(--tblr-body-color) 17%, transparent);
+  --wv-cg-empty: color-mix(in srgb, var(--tblr-body-color) 40%, transparent);
+  --wv-cg-accent: color-mix(in oklab, var(--tblr-primary) 68%, white);
+  --wv-cg-accent-soft: color-mix(in oklab, color-mix(in oklab, var(--tblr-primary) 68%, white) 45%, transparent);
+  --wv-cg-teal: #3fc9b4; --wv-cg-blue: #7b9bff; --wv-cg-green: #56c271; --wv-cg-red: #ff6b6b;
+  --wv-cg-amber: #fab005; --wv-cg-rose: #ff7a93; --wv-cg-violet: #b692f6; --wv-cg-orange: #ff9a52;
+}
+.cg-c-ink { --cg-main: var(--wv-cg-ink); --cg-spark: var(--wv-cg-ink-2); --cg-win: var(--wv-cg-ink); --cg-loss: var(--wv-cg-empty); --cg-heat: color-mix(in srgb, var(--wv-cg-ink) 55%, transparent); --cg-rate: var(--wv-cg-ink); }
+.cg-c-icon { --cg-main: var(--wv-cg-teal); --cg-spark: var(--wv-cg-blue); --cg-win: var(--wv-cg-green); --cg-loss: var(--wv-cg-red); --cg-heat: var(--wv-cg-orange); --cg-rate: var(--wv-cg-accent); }
+.cg-c-accent { --cg-main: var(--wv-cg-accent); --cg-spark: var(--wv-cg-accent); --cg-win: var(--wv-cg-accent); --cg-loss: var(--wv-cg-accent-soft); --cg-heat: var(--wv-cg-accent); --cg-rate: var(--wv-cg-accent); }
+/* Color by icon: a rating's filled icons take the icon's own hue. */
+.wv-rating.cg-c-icon[data-hue="amber"] { --cg-rate: var(--wv-cg-amber); }
+.wv-rating.cg-c-icon[data-hue="rose"] { --cg-rate: var(--wv-cg-rose); }
+.wv-rating.cg-c-icon[data-hue="violet"] { --cg-rate: var(--wv-cg-violet); }
+.wv-rating.cg-c-icon[data-hue="orange"] { --cg-rate: var(--wv-cg-orange); }
+
+/* The number display. */
 .cg-wrap { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; position: relative;
   vertical-align: middle; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
 .cg-wrap .cg { flex: none; display: block; }
 .cg-wrap .cg-text { flex: none; overflow: hidden; text-overflow: ellipsis; }
-.cg-wrap.cg-bar { display: flex; width: 100%; min-width: 64px; }
-.cg-wrap.cg-bar .cg { flex: 1 1 auto; min-width: 24px; height: 8px; }
-.cg-bar .cg-track { fill: var(--wv-cg-track); }
-.cg-bar .cg-fill { fill: var(--wv-cg-fill); }
+/* A bar at the left of the cell and its figure right-aligned after it, so
+   bars start on one line and figures end on another. A ring hugs its
+   percent. */
+.cg-wrap.cg-bar { display: flex; width: 100%; }
+.cg-wrap.cg-bar .cg-text { flex: 1 1 auto; text-align: right; }
+.cg-wrap.cg-bar .cg { width: 80px; height: 6px; }
+.cg-bar .cg-track { fill: var(--wv-cg-hair); }
+.cg-bar .cg-fill { fill: var(--cg-main); }
 .cg-wrap.cg-ring .cg { width: 16px; height: 16px; }
-.cg-ring .cg-track { stroke: var(--wv-cg-track); }
-.cg-ring .cg-fill { stroke: var(--wv-cg-fill); }
-.cg-wrap.cg-heat { padding: 0 6px; border-radius: 4px; isolation: isolate; }
+.cg-ring .cg-track { stroke: var(--wv-cg-hair); }
+.cg-ring .cg-fill { stroke: var(--cg-main); }
+.cg-wrap.cg-heat { padding: 0 8px; min-width: 32px; justify-content: center; border-radius: 4px; isolation: isolate; }
 .cg-wrap.cg-heat .cg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
-.cg-heat .cg-fill { fill: var(--wv-cg-heat); }
+.cg-heat .cg-fill { fill: var(--cg-heat); }
+/* Color by icon runs heat from cool to warm with the share (--cg-f, set on
+   the tint itself by public/cell-graphics.js). */
+.cg-c-icon .cg-heat .cg-fill { fill: color-mix(in oklab, var(--wv-cg-orange) var(--cg-f, 50%), var(--wv-cg-teal)); }
 .wv-grid .cg-wrap { font-size: var(--wv-grid-font); }
-.wv-card-fields dd .cg-wrap.cg-bar, .mention-f .cg-wrap.cg-bar { width: 96px; min-width: 64px; }
+.wv-card-fields dd .cg-wrap.cg-bar, .mention-f .cg-wrap.cg-bar { width: auto; }
+.wv-card-fields dd .cg-wrap.cg-bar .cg-text, .mention-f .cg-wrap.cg-bar .cg-text { flex: none; }
 .cg-wrap.num-dressed { cursor: text; }
 .wv-grid .k-computed:has(.cg-wrap.cg-bar) { display: flex; width: 100%; }
 .cg-preview { display: grid; gap: 6px; max-width: 240px; }
 .cg-preview-row { display: flex; justify-content: flex-end; }
 .cg-preview-row .cg-wrap.cg-bar { width: 100%; }
 
-/* ---------- the rating (Feature #231) ----------
-   A row of icons, the first n filled in amber; the rest are outlines in the
-   muted text colour. Editable icons are bare buttons: no box, no focus stop
+/* The rating: `max` 14px icons 1px apart, the first n filled, the rest as
+   hairline outlines. Editable icons are bare buttons: no box, no focus stop
    of their own (the cell is the stop), a pointer and a hover lift. */
-:root { --wv-rate-on: #f59f00; --wv-rate-off: color-mix(in srgb, var(--tblr-body-color) 30%, transparent); }
-[data-bs-theme="dark"] { --wv-rate-on: #fab005; --wv-rate-off: color-mix(in srgb, var(--tblr-body-color) 35%, transparent); }
 .wv-rating { display: inline-flex; align-items: center; gap: 1px; vertical-align: middle; white-space: nowrap; line-height: 1; }
-.wv-rate-ico { display: inline-flex; padding: 1px; border: 0; background: none; color: var(--wv-rate-off); font-size: 15px; line-height: 1; }
-.wv-rate-ico.on { color: var(--wv-rate-on); }
-.wv-rate-ico.on svg { fill: currentColor; fill-opacity: .9; }
+.wv-rate-ico, .wv-rate-mini { display: inline-flex; flex: none; padding: 0; border: 0; background: none; color: var(--wv-cg-empty); font-size: 14px; line-height: 1; }
+:is(.wv-rate-ico, .wv-rate-mini) .wv-icon, :is(.wv-rate-ico, .wv-rate-mini) .wv-icon svg { width: 14px; height: 14px; margin: 0; }
+:is(.wv-rate-ico, .wv-rate-mini) svg { stroke-width: 1.5; }
+:is(.wv-rate-ico, .wv-rate-mini).on { color: var(--cg-rate, var(--wv-cg-ink)); }
+:is(.wv-rate-ico, .wv-rate-mini).on svg { fill: currentColor; }
 .wv-rating.editable .wv-rate-ico { cursor: pointer; }
-.wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--wv-rate-on); }
+.wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--cg-rate, var(--wv-cg-ink)); }
+/* The compact form (Issue #404), shown by the grid's layout sheet only in
+   a column too narrow for the icons: one icon and "3/12". */
+.wv-rating > .wv-rating-compact { display: none; align-items: center; gap: 3px; font-size: var(--wv-grid-font); color: var(--tblr-body-color); font-variant-numeric: tabular-nums; }
 .wv-rating-max { display: flex; gap: 8px; align-items: center; }
 .wv-rating-icon { display: inline-flex; gap: 6px; align-items: center; }
 /* The default picker (Feature #234): the field's own icons, a size up from
    the grid cell, wrapping when the max is long; focusable for the keys
    (the one focus ring, Issue #378, draws its focus). */
-.wv-rating-default .wv-rating { flex-wrap: wrap; white-space: normal; border-radius: 4px; padding: 2px; }
+.wv-rating-default .wv-rating { flex-wrap: wrap; white-space: normal; border-radius: 4px; padding: 2px; gap: 2px; }
 .wv-rating-default .wv-rate-ico { font-size: 19px; }
+.wv-rating-default .wv-rate-ico .wv-icon, .wv-rating-default .wv-rate-ico .wv-icon svg { width: 19px; height: 19px; }
 
-/* ---------- the sparkline (Feature #232) ----------
-   A formula's list drawn in the cell's own box: a line with a dot on the
-   newest point, columns standing on zero, or win/loss bars about a midline. */
-:root { --wv-spark-loss: #e03131; }
-[data-bs-theme="dark"] { --wv-spark-loss: #ff6b6b; }
-.cg-wrap.cg-sparkwrap { display: inline-flex; width: 96px; min-width: 64px; height: 18px; }
-.cg-wrap.cg-sparkwrap .cg { width: 100%; height: 100%; }
-.cg-spark-line .cg-fill { stroke: var(--wv-cg-fill); fill: none; }
-.cg-spark .cg-dot { fill: var(--wv-cg-fill); }
-.cg-spark-column .cg-fill { fill: var(--wv-cg-fill); }
-.cg-spark-column .cg-fill.cg-neg, .cg-spark-winloss .cg-fill.cg-loss { fill: var(--wv-spark-loss); }
-.cg-spark-winloss .cg-fill.cg-win { fill: var(--wv-cg-fill); }
-.cg-spark-winloss .cg-track { stroke: var(--wv-cg-track); stroke-width: 1; }
-.wv-grid .k-computed:has(.cg-sparkwrap) { display: flex; width: 100%; }
-.wv-grid .k-computed .cg-sparkwrap { flex: 1 1 auto; width: auto; }
-.cg-spark-preview .cg-sparkwrap { width: 200px; height: 28px; }
+/* The sparkline: 80 by 18, never stretched — a line with a dot on the
+   newest point, columns standing on zero, or small win/loss blocks about a
+   midline. */
+.cg-wrap.cg-sparkwrap { display: inline-flex; width: 80px; height: 18px; }
+.cg-wrap.cg-sparkwrap .cg { width: 80px; height: 18px; }
+.cg-spark-line .cg-fill { stroke: var(--cg-spark); fill: none; }
+.cg-spark .cg-dot { fill: var(--cg-spark); }
+.cg-spark-column .cg-fill { fill: var(--cg-spark); }
+.cg-spark-column .cg-fill.cg-neg { fill: var(--cg-loss); }
+.cg-spark-winloss .cg-fill.cg-win { fill: var(--cg-win); }
+.cg-spark-winloss .cg-fill.cg-loss { fill: var(--cg-loss); }
+.cg-spark-winloss .cg-track { stroke: var(--wv-cg-hair); stroke-width: 1; }
+.cg-spark-preview .cg-sparkwrap, .cg-spark-preview .cg-sparkwrap .cg { width: 160px; height: 36px; }
+
+/* The Color picker (Feature #235): three swatches, each a live sample of
+   the field in that setting, beside Display. */
+.wv-color-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.wv-color-opt { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 112px; padding: 6px 8px;
+  border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 12px; cursor: pointer; }
+.wv-color-opt:hover { border-color: color-mix(in srgb, var(--tblr-primary) 45%, var(--tblr-border-color)); }
+.wv-color-opt[aria-pressed="true"] { border-color: var(--tblr-primary); box-shadow: inset 0 0 0 1px var(--tblr-primary); }
+.wv-color-opt .wv-color-sample { display: flex; align-items: center; min-height: 18px; pointer-events: none; }
+.wv-color-opt .wv-color-sample .cg-wrap.cg-bar { width: auto; }
+.wv-color-opt .wv-color-sample .cg-wrap.cg-bar .cg { width: 56px; }
+.wv-color-opt .wv-color-label { color: var(--tblr-secondary); }
+.wv-color-opt[aria-pressed="true"] .wv-color-label { color: var(--tblr-body-color); font-weight: 600; }
+
+/* ---------- the formula tray's reference (Issue #389) ----------
+   The field and function chips fold behind one summary under the result's
+   Display, Style, Color and Sample. */
+.fx-ref { margin-top: 10px; }
+.fx-ref > summary { cursor: pointer; font-size: 12.5px; color: var(--tblr-body-color); font-weight: 600; }
+.fx-ref > summary .fx-ref-hint { margin-left: 8px; font-weight: 400; color: var(--tblr-secondary); }
+.fx-ref[open] > summary { margin-bottom: 6px; }
 
 /* ---------- accessibility baseline (Issue #378) ----------
    Finding F2 of the 2026-09-26 design pass, gated by

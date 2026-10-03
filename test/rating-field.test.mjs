@@ -33,7 +33,7 @@ test('rating is a field type: registered, definable, in the vocabulary, star out
   assert.deepEqual(f.config, { max: 5, icon: 'lucide:star' }, 'both keys written down, so a reader sees them');
   const vocab = VOCABULARY.fieldTypes.find((x) => x.type === 'rating');
   assert.ok(vocab, 'weave_vocabulary lists it');
-  assert.deepEqual(vocab.config, ['max', 'icon', 'default']);
+  assert.deepEqual(vocab.config, ['max', 'icon', 'color', 'default']);
   const d = described(w, 'Vendor', 'Fit');
   assert.equal(d.max, 5);
   assert.equal(d.icon, 'lucide:star');
@@ -177,16 +177,16 @@ test('a lookup and a rollup over a rating carry its max and icon; the chip and t
   w.createEntity(t, { name: 'v2', values: { Fit: 3, Account: acme.id } });
   assert.equal(w.readEntity(acme.id).raw['Avg fit'], 3.5, 'the API returns the figure unrounded');
   const avg = described(w, 'Account', 'Avg fit');
-  assert.deepEqual(avg.rating, { max: 5, icon: 'lucide:heart' }, 'an average stays on the scale');
+  assert.deepEqual(avg.rating, { max: 5, icon: 'lucide:heart', color: 'ink' }, 'an average stays on the scale');
   assert.equal(described(w, 'Account', 'Total fit').rating, undefined, 'a sum leaves the scale and draws as a number');
   assert.equal(described(w, 'Vendor', 'Account name').rating, undefined, 'a lookup of a name is not a rating');
   // A lookup straight onto the rating column.
   const back = w.createTable({ space: 'Ops', name: 'Review' });
   w.addRelation(back, { name: 'Vendor', targetDb: t, cardinality: 'many-to-one', inverseName: 'Reviews' });
   w.addField(back, { name: 'Vendor fit', type: 'lookup', config: { relationField: 'Vendor', targetField: 'Fit' } });
-  assert.deepEqual(described(w, 'Review', 'Vendor fit').rating, { max: 5, icon: 'lucide:heart' });
+  assert.deepEqual(described(w, 'Review', 'Vendor fit').rating, { max: 5, icon: 'lucide:heart', color: 'ink' });
   const r = w.createEntity(back, { name: 'r', values: { Vendor: v1.id } });
   assert.equal(w.readEntity(r.id).raw['Vendor fit'], 4);
   const chip = w.renderView(v1.id, 'chip', { config: { fields: ['Fit'] } });
-  assert.deepEqual(chip.fields, [{ label: 'Fit', value: '4', rating: { value: 4, max: 5, icon: 'lucide:heart' } }]);
+  assert.deepEqual(chip.fields, [{ label: 'Fit', value: '4', rating: { value: 4, max: 5, icon: 'lucide:heart', color: 'ink' } }]);
 });

@@ -68,6 +68,7 @@ Finite numeric value. One type, four costumes — plain, currency, percent, and 
 | \`accounting\` | boolean | negatives in parentheses — ($1,234.57) — the finance convention; needs \`currency\` |
 | \`display\` | \`text\` (default), \`bar\`, \`ring\`, \`heat\` | how the value is drawn: a bar or a ring filled to its share of the scale, or a cell tinted by it; the text rides beside it, and the API still returns the number |
 | \`scale\` | \`column\` (default) or a number above 0 | what 100% is for a bar, ring or heat: the column's largest value, or a fixed figure (\`1\` for a percent, \`5\` for a score out of five) |
+| \`color\` | \`ink\` (default), \`icon\`, \`accent\` | the colour a bar, ring or heat is drawn in (Feature #235): Quiet ink is the text colour on a hairline track and a grey tint; Color by icon draws bars and rings teal and runs heat from cool to warm; One accent hue draws everything in the workspace accent |
 | \`default\` | number | the value a new row starts with |
 
 \`\`\`json
@@ -75,7 +76,7 @@ Finite numeric value. One type, four costumes — plain, currency, percent, and 
   "config": { "format": "currency", "currency": "USD", "decimals": 2 } }
 \`\`\`
 
-Under \`display\` the field's settings tray draws a **Sample**: this column's own smallest, middle and largest figures in the chosen costume, measured against the chosen scale, so a bar on \`column\` shows what the column will look like. A column holding no numbers yet samples a quarter, three fifths and the whole of the scale instead, labelled as examples.
+A bar is 6px tall with round ends on an 80px track, the figure to its right; a ring is 16px; heat is a rounded tint behind the figure. A graphic column opens wide enough for its graphic and its widest figure; a width you drag is kept. Under \`display\` the tray's **Color** picker draws three swatches, each this field's graphic in that setting. The field's settings tray also draws a **Sample**: this column's own smallest, middle and largest figures in the chosen costume, measured against the chosen scale, so a bar on \`column\` shows what the column will look like. A column holding no numbers yet samples a quarter, three fifths and the whole of the scale instead, labelled as examples.
 
 ## Usage
 
@@ -249,6 +250,10 @@ A whole number from 0 to the field's \`max\`, drawn as \`max\` icons with the fi
 \`max\` — how many icons, any whole number from 1 to 100; \`5\` unless named (Feature #234). The field dialog takes any number and offers 3, 5 and 7 as shortcuts. The ceiling of 100 keeps a screen of rows paintable: every icon is a button in every visible cell.
 
 \`icon\` — one icon for the field, picked from the inventory (\`lucide:<name>\`, or a mark): \`lucide:star\` unless named. \`{ "name": "Fit", "type": "rating", "config": { "max": 7, "icon": "lucide:heart" } }\`.
+
+\`color\` — \`ink\` (default) fills the icons in the text colour with hairline outlines for the empties; \`icon\` fills them in the icon's own hue (a star amber, a heart rose, a bolt violet, anything else the accent); \`accent\` fills them in the workspace accent (Feature #235). The tray's **Color** picker shows three of the field's own icons in each setting. A lookup or a rollup of the rating draws in its colour.
+
+Icons are 14px with a 1px gap. A rating column dragged narrower than its icons, or past the fit cap, draws a compact \`★ 3/12\` instead of cutting icons off.
 
 \`default\` — the rating a new row starts with. In the field dialog it is picked on a row of the field's own icons: click the nth to set n, click it again to clear; with the row focused, the arrow keys move it, a digit sets it and \`Backspace\` clears it. Lowering \`max\` below the default brings the default down with it.
 
@@ -503,7 +508,7 @@ An expression over this row's own fields, recomputed on read.
 
 ## Config
 
-\`expression\`, plus every number costume key — \`format\`, \`currency\`, \`unit\`, \`decimals\`, \`separator\`, \`accounting\`, \`display\`, \`scale\` — so a computed figure can wear the same clothes as a stored one; a list result also takes \`display: sparkline\` and its \`style\`. A rollup over a number column wears that column's format and display.
+\`expression\`, plus every number costume key — \`format\`, \`currency\`, \`unit\`, \`decimals\`, \`separator\`, \`accounting\`, \`display\`, \`scale\`, \`color\` — so a computed figure can wear the same clothes as a stored one; a list result also takes \`display: sparkline\` and its \`style\`. A rollup over a number column wears that column's format and display.
 
 \`\`\`json
 { "name": "Total", "type": "formula",
@@ -527,7 +532,7 @@ Renders on a tinted background marked \`ƒ\`. In the field dialog, formula is a 
 
 A formula can return a list or null. A list comes in through a lookup over a to-many relation, in relation order. \`sortby(values, keys)\` orders it by a parallel list, ascending, blank keys last: \`sortby([Deal amounts], [Deal close dates])\` is the amounts in close-date order. Two lookups over one relation keep their blank slots in position, so the pairs stay together (Feature #232).
 
-A list result can wear \`"display": "sparkline"\` with a \`style\` of \`line\` (the default), \`column\` or \`winloss\`. The cell, the chip and the card draw the newest 60 points; the hover lists every value and says when it cut; a screen reader hears the count, the last value, the low and the high. Sort and filter on the column read the last number in the series. The API returns the numbers.
+A list result can wear \`"display": "sparkline"\` with a \`style\` of \`line\` (the default), \`column\` or \`winloss\`. The cell, the chip and the card draw the newest 60 points; the hover lists every value and says when it cut; a screen reader hears the count, the last value, the low and the high. Sort and filter on the column read the last number in the series. The API returns the numbers. \`color\` paints it: \`ink\` (default) in the secondary text colour, win/loss as text colour and muted; \`icon\` a blue line, green wins and red losses; \`accent\` the workspace accent, losses a lighter accent. The sparkline is drawn 80 by 18 at its own size. A rich cell leaves the \`ƒ\` to its column header.
 
 \`\`\`json
 { "name": "Trend", "type": "formula",

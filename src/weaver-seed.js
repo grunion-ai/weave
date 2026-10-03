@@ -129,10 +129,13 @@ function seedShowcaseBase(w) {
   return w;
 }
 
-/* ---------- Showcase additions (Features #230, #231, #232, #234) ----------
+/* ---------- Showcase additions (Features #230, #231, #232, #234, #235) ----------
    The number displays (bar on the column scale, bar and ring on a fixed
    one, heat), the rating at three maxes with two icons and a rollup over
    one, and the formula lists drawn as sparklines in each style, as data.
+   Feature #235 adds a column per colour setting beside the ink ones: a
+   bar, a ring and a heat tint, three ratings (a ten-bolt one wide enough
+   for all ten) and two sparklines, in Color by icon and One accent hue.
    The fresh seed and a workspace seeded before them both go through
    applyShowcaseAdditions, so the two cannot drift. Additive and
    name-matched: a missing field is added after its anchor, a value lands
@@ -157,12 +160,19 @@ export const SHOWCASE_ADDITIONS = [
     { after: 'Progress', name: 'Score', type: 'number', config: { decimals: 1, display: 'bar', scale: 10 } },
     { after: 'Score', name: 'Completion', type: 'number', config: { format: 'percent', decimals: 0, display: 'ring', scale: 1 } },
     { after: 'Completion', name: 'Load', type: 'number', config: { display: 'heat' } },
+    // the colour settings (Feature #235): the columns above are Quiet ink
+    { after: 'Load', name: 'Momentum', type: 'number', config: { display: 'bar', color: 'icon' } },
+    { after: 'Momentum', name: 'Reach', type: 'number', config: { format: 'percent', decimals: 0, display: 'ring', scale: 1, color: 'accent' } },
+    { after: 'Reach', name: 'Warmth', type: 'number', config: { display: 'heat', color: 'icon' } },
     // ratings: 5 stars, 3 bolts, 7 hearts, 12 suns
     { after: 'Load', name: 'Fit', type: 'rating', config: { max: 5, icon: 'lucide:star' } },
     { after: 'Fit', name: 'Effort', type: 'rating', config: { max: 3, icon: 'lucide:zap' } },
     { after: 'Effort', name: 'Love', type: 'rating', config: { max: 7, icon: 'lucide:heart' } },
     // past the old cap of 10, and a default a new row starts at (Feature #234)
     { after: 'Love', name: 'Brightness', type: 'rating', config: { max: 12, icon: 'lucide:sun', default: 6 } },
+    { after: 'Brightness', name: 'Stars', type: 'rating', config: { max: 5, icon: 'lucide:star', color: 'icon' } },
+    { after: 'Stars', name: 'Bolts', type: 'rating', config: { max: 10, icon: 'lucide:zap', color: 'icon' } },
+    { after: 'Bolts', name: 'Hearts', type: 'rating', config: { max: 5, icon: 'lucide:heart', color: 'accent' } },
     // a rating rollup, and the lookups the sparklines read
     { after: 'Peer names', name: 'Peer skill', type: 'rollup', config: { relationField: 'Peers', aggregate: 'avg', targetField: 'Skill' } },
     { after: 'Peer skill', name: 'Peer ages', type: 'lookup', config: { relationField: 'Peers', targetField: 'Age' } },
@@ -174,10 +184,12 @@ export const SHOWCASE_ADDITIONS = [
     { after: 'Age trend', name: 'Delta columns', type: 'formula', config: { expression: `sortby([Peer deltas], ${SPARK_KEYS})`, display: 'sparkline', style: 'column' } },
     { after: 'Delta columns', name: 'Wins and losses', type: 'formula', config: { expression: `sortby([Peer deltas], ${SPARK_KEYS})`, display: 'sparkline', style: 'winloss' } },
     { after: 'Wins and losses', name: 'Skill trend', type: 'formula', config: { expression: `if(empty([Peer skills]), null, sortby([Peer skills], ${SPARK_KEYS}))`, display: 'sparkline', style: 'line' } },
+    { after: 'Skill trend', name: 'Age line', type: 'formula', config: { expression: `sortby([Peer ages], ${SPARK_KEYS})`, display: 'sparkline', style: 'line', color: 'accent' } },
+    { after: 'Age line', name: 'Delta blocks', type: 'formula', config: { expression: `sortby([Peer deltas], ${SPARK_KEYS})`, display: 'sparkline', style: 'winloss', color: 'icon' } },
   ], rows: {
-    'Sensor board': { Progress: 72, Score: 7.5, Completion: 0.8, Load: 9, Fit: 4, Effort: 2, Love: 6, Brightness: 9 },
-    'Sync service': { Progress: 100, Score: 9.2, Completion: 1, Load: 3, Fit: 5, Effort: 1, Love: 7, Brightness: 12 },
-    'Onboarding call': { Progress: 15, Score: 2, Completion: 0.25, Load: 0, Effort: 0, Love: 3, Brightness: 4 },
+    'Sensor board': { Progress: 72, Score: 7.5, Completion: 0.8, Load: 9, Momentum: 40, Reach: 0.6, Warmth: 8, Fit: 4, Effort: 2, Love: 6, Brightness: 9, Stars: 4, Bolts: 7, Hearts: 3 },
+    'Sync service': { Progress: 100, Score: 9.2, Completion: 1, Load: 3, Momentum: 85, Reach: 0.9, Warmth: 2, Fit: 5, Effort: 1, Love: 7, Brightness: 12, Stars: 5, Bolts: 10, Hearts: 5 },
+    'Onboarding call': { Progress: 15, Score: 2, Completion: 0.25, Load: 0, Momentum: 10, Reach: 0.3, Warmth: 5, Effort: 0, Love: 3, Brightness: 4, Stars: 2, Bolts: 3, Hearts: 1 },
   } },
 ];
 

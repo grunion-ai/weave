@@ -13,8 +13,8 @@
    grid sees, which is the thing an agent cannot look at. */
 export const FIELD_TYPE_VOCABULARY = [
   { type: 'text', renders: 'inline text input', config: ['default'] },
-  { type: 'number', renders: 'right-aligned, tabular figures; with a `display` of bar, ring or heat, a small graphic filled to the value\'s share of the `scale` (the column max, or a fixed number) beside the text', config: ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'default'] },
-  { type: 'rating', renders: 'a row of `max` icons (a star unless the config names another from the inventory), the first `n` filled; click the nth to set n, click the current one again to clear to 0; in the grid a digit sets it and Backspace clears; the value is a whole number 0..max, which formulas, sort, filter and CSV read as a number', config: ['max', 'icon', 'default'] },
+  { type: 'number', renders: 'right-aligned, tabular figures; with a `display` of bar, ring or heat, a small graphic filled to the value\'s share of the `scale` (the column max, or a fixed number) beside the text, drawn in the field\'s `color` (ink, icon or accent)', config: ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'color', 'default'] },
+  { type: 'rating', renders: 'a row of `max` icons (a star unless the config names another from the inventory), the first `n` filled; click the nth to set n, click the current one again to clear to 0; in the grid a digit sets it and Backspace clears; the value is a whole number 0..max, which formulas, sort, filter and CSV read as a number; `color` ink draws filled icons in the text colour, icon in the icon\'s own hue, accent in the workspace accent', config: ['max', 'icon', 'color', 'default'] },
   { type: 'date', renders: 'inline date input with a picker button — a calendar, or a month/year, month/day, year or day-of-month picker when the grain stores less', config: ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'default'] },
   { type: 'daterange', renders: 'a pair of date inputs, both wearing the grain and costume; an elapsed span when asked', config: ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'default'] },
   { type: 'checkbox', renders: 'a checkbox', config: ['default'] },
@@ -27,7 +27,7 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'relation', renders: 'chips carrying the target\'s name, each with ×, plus "+ link"', config: ['targetDb', 'targetDbs', 'cardinality', 'inverseName'], verb: 'add_relation' },
   { type: 'lookup', renders: 'read-only cell on a tinted background, marked ↗', config: ['relationField', 'targetField'] },
   { type: 'rollup', renders: 'read-only cell on a tinted background, marked Σ, wearing the target column\'s costume; on a Workspace/Spaces row a `via` rollup is the figure the grid footer shows under that column', config: ['relationField', 'via', 'where', 'targetField', 'aggregate', 'separator'] },
-  { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ; a numeric result can wear a bar, ring or heat display like a number; a list result (a lookup, or sortby over lookups) can wear `display: sparkline` in a `style` of line, column or winloss, drawn from the last 60 points, sorted and filtered on its last value', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style'] },
+  { type: 'formula', renders: 'read-only cell on a tinted background, marked ƒ; a numeric result can wear a bar, ring or heat display like a number; a list result (a lookup, or sortby over lookups) can wear `display: sparkline` in a `style` of line, column or winloss, drawn from the last 60 points, sorted and filtered on its last value; the graphic wears the field\'s `color` like a number', config: ['expression', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style', 'color'] },
   { type: 'document', renders: 'every document field is a column of its own: the description previews its first lines; any other renders as a named chip wearing its kind', config: ['kind'] },
   { type: 'attachments', renders: 'file chips', config: ['multiple'] },
   { type: 'field', renders: 'a field definition as a value — what the Fields registry\'s Definition is', config: ['types', 'depth'] },
@@ -181,6 +181,10 @@ export const VOCABULARY = {
   numberDisplays: ['text', 'bar', 'ring', 'heat'],
   // A formula that returns a list also takes `display: sparkline` (Feature #232).
   sparklineStyles: ['line', 'column', 'winloss'],
+  /* The colour a rich cell is drawn in (Feature #235): ink (Quiet ink, the
+     default), icon (Color by icon) or accent (One accent hue). On a rating,
+     a number with a display, and a formula with a display. */
+  cellColors: ['ink', 'icon', 'accent'],
   dateFormats: ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative'],
   /* A date's grain is which of year · month · day it stores — any contiguous
      run (year, year·month, month·day, month, day) or none at all with a time

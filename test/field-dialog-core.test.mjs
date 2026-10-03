@@ -849,7 +849,7 @@ test('rating is a tile with a star, and a fresh one is five stars', () => {
   assert.ok(tile && !tile.computed, 'a value tile');
   assert.deepEqual(core.RATING_PRESETS, [3, 5, 7]);
   const blank = core.blankState('rating');
-  assert.deepEqual(blank.rating, { max: 5, icon: 'lucide:star' });
+  assert.deepEqual(blank.rating, { max: 5, icon: 'lucide:star', color: 'ink' });
   assert.deepEqual(core.definitionFromState({ ...blank, type: 'rating' }).config, { max: 5, icon: 'lucide:star' }, 'both keys written down, as the engine stores them');
 });
 
@@ -970,4 +970,57 @@ test('the dialog refuses a sparkline where the engine would, in its words', asyn
     try { w.addField('T', { name: `F${type}`, type, config }); } catch (e) { message = e.message; }
     assert.equal(mirrored.error, message, 'the dialog repeats the engine verbatim');
   }
+});
+
+/* ---------- the cell colour (Feature #235) ---------- */
+test('the colour rides the number costume and the rating, canonical-minimal', () => {
+  assert.deepEqual(core.CELL_COLORS, ['ink', 'icon', 'accent']);
+  assert.deepEqual(Object.keys(core.CELL_COLOR_LABELS), core.CELL_COLORS, 'every colour has a label');
+  assert.equal(core.CELL_COLOR_LABELS.ink, 'Quiet ink');
+  const blank = core.blankState('number');
+  assert.equal(blank.number.color, 'ink');
+  assert.equal(core.blankState('rating').rating.color, 'ink');
+  const bar = { ...blank, type: 'number', number: { ...blank.number, display: 'bar', color: 'ink' } };
+  assert.deepEqual(core.definitionFromState(bar).config, { display: 'bar' }, 'ink says nothing');
+  bar.number.color = 'accent';
+  assert.deepEqual(core.definitionFromState(bar).config, { color: 'accent', display: 'bar' });
+  const spark = { ...core.blankState('text'), computed: 'formula', expression: '[A]', number: { ...blank.number, display: 'sparkline', style: 'column', color: 'icon' } };
+  assert.deepEqual(core.definitionFromState(spark).config, { expression: '[A]', color: 'icon', display: 'sparkline', style: 'column' }, 'a sparkline keeps its colour');
+  const rating = { ...core.blankState('rating'), rating: { max: 7, icon: 'lucide:heart', color: 'icon' } };
+  assert.deepEqual(core.definitionFromState(rating).config, { max: 7, icon: 'lucide:heart', color: 'icon' });
+});
+
+test('a colour round-trips through the form and the flat schema view', () => {
+  for (const def of [
+    { type: 'number', config: { color: 'accent', display: 'bar' } },
+    { type: 'formula', config: { expression: '[A] * 2', color: 'icon', display: 'heat' } },
+    { type: 'rating', config: { max: 5, icon: 'lucide:star', color: 'accent' } },
+  ]) assert.deepEqual(core.definitionFromState(core.stateFromDefinition(def)), def);
+  // The schema says ink out loud; the fold-back drops it again.
+  assert.deepEqual(core.definitionFromFieldView({ name: 'R', type: 'rating', max: 5, icon: 'lucide:star', color: 'ink' }).config, { max: 5, icon: 'lucide:star' });
+  assert.deepEqual(core.definitionFromFieldView({ name: 'S', type: 'number', display: 'ring', color: 'ink' }).config, { display: 'ring' });
+  assert.deepEqual(core.definitionFromFieldView({ name: 'S', type: 'number', display: 'ring', color: 'icon' }).config, { display: 'ring', color: 'icon' });
+});
+
+test('an edit sends the colour lane, so going back to ink clears it', () => {
+  const num = { name: 'Score', type: 'number', display: 'bar', color: 'accent' };
+  const ns = core.stateFromDefinition(core.definitionFromFieldView(num));
+  assert.equal(ns.number.color, 'accent');
+  ns.number.color = 'ink';
+  assert.equal(core.editPatchConfig(num, core.definitionFromState(ns), ns).color, null);
+  const rat = { name: 'Fit', type: 'rating', max: 5, icon: 'lucide:star', color: 'icon' };
+  const rs = core.stateFromDefinition(core.definitionFromFieldView(rat));
+  assert.equal(rs.rating.color, 'icon');
+  assert.equal(core.editPatchConfig(rat, core.definitionFromState(rs), rs).color, 'icon');
+  rs.rating.color = 'ink';
+  assert.equal(core.editPatchConfig(rat, core.definitionFromState(rs), rs).color, null);
+});
+
+test('the code pane refuses a colour the engine would refuse, with its words', () => {
+  for (const type of ['number', 'rating', 'formula']) {
+    const r = core.parseDefinition(JSON.stringify({ type, config: { expression: '1', color: 'plaid' } }));
+    assert.equal(r.ok, false);
+    assert.equal(r.error, "Invalid color 'plaid' (ink, icon, accent)");
+  }
+  assert.equal(core.parseDefinition(JSON.stringify({ type: 'rating', config: { color: 'accent' } })).ok, true);
 });

@@ -270,12 +270,13 @@ if (s) {
      gap between two icons, and the cell's ordinary horizontal padding. */
   const geometry = (page) => page.evaluate(() => {
     const td = document.querySelector('.wv-grid tbody tr.entity-row td[data-field="Love"]');
-    const box = td.querySelector('.wv-rating');
+    // The icons, not the compact "★ 7/7" a narrow column swaps in (hidden here).
+    const icons = td.querySelectorAll('.wv-rating > .wv-rate-ico');
     const cs = getComputedStyle(td);
-    const ico = box.children[0].getBoundingClientRect();
+    const ico = icons[0].getBoundingClientRect();
     return {
       icon: Math.round(ico.width),
-      gap: Math.round(box.children[1].getBoundingClientRect().left - ico.right),
+      gap: Math.round(icons[1].getBoundingClientRect().left - ico.right),
       pad: ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0),
     };
   });
@@ -286,7 +287,7 @@ if (s) {
     const tr = document.querySelector('.wv-grid tbody tr.entity-row');
     return Object.fromEntries([...tr.querySelectorAll('td[data-field]')].flatMap((td) => {
       const box = td.querySelector('.wv-rating');
-      if (!box || !box.children.length) return [];
+      if (!box || !box.querySelector('.wv-rate-ico')) return [];
       const cs = getComputedStyle(td);
       const pad = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
       const rect = td.getBoundingClientRect();

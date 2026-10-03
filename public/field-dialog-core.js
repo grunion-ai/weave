@@ -357,6 +357,10 @@
   const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
   // A formula that returns a list can also wear a sparkline (Feature #232).
   const SPARKLINE_STYLES = ['line', 'column', 'winloss'];
+  // Mirrors the engine's CELL_COLORS (Feature #235, source-gated): the colour
+  // a rating, a number display or a formula display is drawn in.
+  const CELL_COLORS = ['ink', 'icon', 'accent'];
+  const CELL_COLOR_LABELS = { ink: 'Quiet ink', icon: 'Color by icon', accent: 'One accent hue' };
   /* A rating's scale (Feature #231, #234): any whole number from 1, five
      unless named, with 3, 5 and 7 as shortcuts. RATING_MAX mirrors the
      engine's guard (contract-tested): every icon is a button in every
@@ -431,13 +435,13 @@
     // A workflow opens on the default lifecycle, never on an empty list the
     // tray would then refuse to save (Issue #251).
     states: type === 'workflow' ? defaultStates() : [],
-    number: { format: 'number', unit: '', currency: 'USD', decimals: null, separator: false, accounting: false, display: 'text', scale: 'column' },
+    number: { format: 'number', unit: '', currency: 'USD', decimals: null, separator: false, accounting: false, display: 'text', scale: 'column', color: 'ink' },
     date: { grain: { year: true, month: true, day: true }, format: DG().DEFAULT_FORMAT, time: false, clock: DG().DEFAULT_CLOCK, zone: 'floating', zoneName: '', pad: false, elapsed: false },
     depth: 1,
     multiple: true,           // attachments: one file or many
     kind: 'markdown',         // document: markdown | html | code
     toggle: { on: 'On', off: 'Off' }, // toggle: the two state labels
-    rating: { max: 5, icon: 'lucide:star' }, // rating: the scale and its icon
+    rating: { max: 5, icon: 'lucide:star', color: 'ink' }, // rating: the scale, its icon and its colour
     relation: { targetDb: '', cardinality: 'many-to-one', inverseName: '' },
     relationField: '',
     // A rollup rolls up through a relation, or — on the Spaces registry —
@@ -487,6 +491,8 @@
     // Compact groups on its own; accounting is a currency convention.
     if (n.separator && n.format !== 'compact') config.separator = true;
     if (n.accounting && n.format === 'currency') config.accounting = true;
+    // The colour (Feature #235): ink is the default and is not written down.
+    if (n.color && n.color !== 'ink') config.color = n.color;
     // A sparkline (Feature #232): the style, line unless said.
     if (n.display === 'sparkline') {
       config.display = 'sparkline';
@@ -574,6 +580,7 @@
     } else if (t === 'rating') {
       config.max = Number(state.rating?.max ?? 5);
       config.icon = state.rating?.icon || 'lucide:star';
+      if (state.rating?.color && state.rating.color !== 'ink') config.color = state.rating.color;
     } else if (t === 'toggle') {
       const tg = state.toggle ?? {};
       config.on = String(tg.on ?? '').trim() || 'On';
@@ -606,7 +613,7 @@
       state.type = 'text'; // grid shows a neutral tile behind the toggle
       state.computed = 'formula';
       state.expression = c.expression ?? '';
-      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column', style: c.style ?? 'line' };
+      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column', style: c.style ?? 'line', color: c.color ?? 'ink' };
       return state;
     }
     if (def.type === 'view') {
@@ -627,7 +634,7 @@
         ? { name: s, category: 'in-progress', default: false }
         : { ...(s.id ? { id: s.id } : {}), name: s.name, category: s.category ?? 'in-progress', ...(s.icon ? { icon: s.icon } : {}), ...(s.default ? { default: true } : {}) }));
     } else if (def.type === 'number') {
-      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column' };
+      state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column', color: c.color ?? 'ink' };
     } else if (def.type === 'date' || def.type === 'daterange') {
       const parts = c.grain ?? ['year', 'month', 'day'];
       state.date = {
@@ -642,7 +649,7 @@
     } else if (def.type === 'toggle') {
       state.toggle = { on: c.on ?? 'On', off: c.off ?? 'Off' };
     } else if (def.type === 'rating') {
-      state.rating = { max: c.max ?? 5, icon: c.icon ?? 'lucide:star' };
+      state.rating = { max: c.max ?? 5, icon: c.icon ?? 'lucide:star', color: c.color ?? 'ink' };
     } else if (def.type === 'attachments') {
       state.multiple = c.multiple !== false;
     } else if (def.type === 'document') {
@@ -707,6 +714,9 @@
       if (c.zone === 'fixed' && c.zoneName && !DG().isZone(c.zoneName)) return fail(`'${c.zoneName}' is not a time zone`);
       if (c.elapsed && def.type !== 'daterange') return fail('elapsed belongs to a range');
       if (c.elapsed && !c.time) return fail('elapsed needs a time of day at both ends');
+    }
+    if (['rating', 'number', 'formula'].includes(def.type) && c.color != null && !CELL_COLORS.includes(c.color)) {
+      return fail(`Invalid color '${c.color}' (${CELL_COLORS.join(', ')})`);
     }
     if (def.type === 'rating' && c.max != null && !(Number.isInteger(c.max) && c.max >= 1 && c.max <= RATING_MAX)) {
       return fail(`A rating's max is a whole number from 1 to ${RATING_MAX}, got '${c.max}'`);
@@ -826,14 +836,14 @@
     const c = {};
     if (f.type === 'select' || f.type === 'multiselect') c.options = f.optionsFull ?? (f.options ?? []).map((n) => ({ name: n, color: '' }));
     if (f.type === 'workflow') c.states = f.states ?? [];
-    if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style']) { if (f[k] != null) c[k] = f[k]; }
+    if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style', 'color']) { if (f[k] != null && !(k === 'color' && f[k] === 'ink')) c[k] = f[k]; }
     if (f.type === 'date' || f.type === 'daterange') for (const k of ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) { if (f[k] != null) c[k] = f[k]; }
     if (f.type === 'formula') c.expression = f.expression ?? '';
     if (f.type === 'field') c.depth = f.depth ?? 1;
     if (f.type === 'text' && f.literal) c.literal = true;
     if (f.type === 'attachments') c.multiple = f.multiple !== false;
     if (f.type === 'toggle') { c.on = f.on ?? 'On'; c.off = f.off ?? 'Off'; }
-    if (f.type === 'rating') { c.max = f.max ?? 5; c.icon = f.icon ?? 'lucide:star'; }
+    if (f.type === 'rating') { c.max = f.max ?? 5; c.icon = f.icon ?? 'lucide:star'; if (f.color && f.color !== 'ink') c.color = f.color; }
     if (f.type === 'document' && f.kind) c.kind = f.kind;
     if (f.type === 'key') { c.kind = f.kind ?? 'apikey'; c.keystore = f.keystore ?? 'local'; }
     /* The schema spells a rollup's RELATION `via` and its whole TABLE
@@ -861,7 +871,7 @@
     // The row term is a lane of its own on the Name field: null clears it.
     if (existing.role === 'name') patch.term = c.term ?? null;
     if (existing.type === 'number' || existing.type === 'formula') {
-      for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style']) patch[k] = c[k] ?? null;
+      for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style', 'color']) patch[k] = c[k] ?? null;
     }
     if (existing.type === 'date' || existing.type === 'daterange') {
       // Every lane, every time: a null clears (a grain back to full drops the key).
@@ -875,7 +885,7 @@
     if (existing.type === 'text') patch.literal = !!state.literal;
     if (existing.type === 'attachments') patch.multiple = state.multiple !== false;
     if (existing.type === 'toggle') { patch.on = c.on; patch.off = c.off; }
-    if (existing.type === 'rating') { patch.max = c.max; patch.icon = c.icon; }
+    if (existing.type === 'rating') { patch.max = c.max; patch.icon = c.icon; patch.color = c.color ?? null; }
     // The shape is the field's identity; everything else is the patch.
     if (existing.type === 'view') { const { shape, ...rest } = c; void shape; Object.assign(patch, rest); }
     if (existing.type === 'document') patch.kind = state.kind ?? 'markdown';
@@ -888,7 +898,7 @@
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, sortLabels, SYSTEM_SORT, migrateState, moveItem,
-    NUMBER_FORMATS, NUMBER_DISPLAYS, SPARKLINE_STYLES, RATING_PRESETS, RATING_MAX, ratingMaxValue, clampRatingDefault, ratingDefaultClick, ratingDefaultLabel, ratingDefaultKey, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, MAX_DEPTH, DEFAULTABLE,
+    NUMBER_FORMATS, NUMBER_DISPLAYS, SPARKLINE_STYLES, CELL_COLORS, CELL_COLOR_LABELS, RATING_PRESETS, RATING_MAX, ratingMaxValue, clampRatingDefault, ratingDefaultClick, ratingDefaultLabel, ratingDefaultKey, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     blankState, definitionFromState, stateFromDefinition, choiceItems, setChoiceDefault,
     definitionFromFieldView, editPatchConfig,
