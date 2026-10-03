@@ -150,6 +150,8 @@ export const SYSTEM_SORT_KEYS = {
   'Created By': 'createdBy', 'Modified By': 'modifiedBy',
   'Public Id': 'publicId',
 };
+/* The where operators that read a value's painted text (Issue #617). */
+const TEXT_OPS = new Set(['contains', 'is-empty', 'not-empty']);
 /* Chip and Card (Kyle, 2026-09-04): every table carries two `view` fields
    that say how one of its rows appears elsewhere — the chip inline (a
    relation cell, a doc mention, a reference card) and the card as a tile (a
@@ -5589,6 +5591,11 @@ export class Weave {
     if (m && this.findTable(m[1])) {
       const found = this.findEntity(m[1], '#' + m[2]);
       if (found) return found;
+      // A trashed row answers its ref the way it answers its id, so a
+      // second delete or a restore by ref finds it (Issue #597).
+      const dbId = this.findTable(m[1]).id;
+      const trashed = this.listEntities(dbId, { includeDeleted: true }).find((x) => x.deletedAt && x.publicId === Number(m[2]));
+      if (trashed) return trashed;
     }
     throw new WeaveError(`Entity '${id}' not found`, 'not-found');
   }
@@ -6081,8 +6088,11 @@ export class Weave {
      relations (so the inverse sides stay consistent) and drops the row. A soft
      delete deliberately leaves the links in place — restoring has to give back
      exactly what was deleted. */
-  deleteEntity(id, { hard = false } = {}) {
-    const e = this.getEntity(id);
+  deleteEntity(ref, { hard = false } = {}) {
+    const e = this.getEntity(ref);
+    // Everything below speaks the row's id, never the ref it was asked by:
+    // a "Table#N" key purged nothing and read back nothing (Issue #597).
+    const id = e.id;
     {
       const db = this.state.tables[e.dbId];
       const meta = this.#interceptDelete(e, db, hard);
@@ -6910,8 +6920,11 @@ export class Weave {
     throw new WeaveError('Invalid where node', 'invalid');
   }
 
+  /* A number compares as its number, whatever costume it wears: a currency
+     column painted "$12,000.00" matched no `> 5000` (Issue #617). Only
+     `contains` and the emptiness tests read the painted text. */
   #matchCondition(e, db, [path, op, value]) {
-    const v = this.#pathValue(e, db, path);
+    const v = this.#pathValue(e, db, path, { numbers: !TEXT_OPS.has(op) });
     const list = Array.isArray(v) ? v : [v];
     switch (op) {
       case '=': return list.some((x) => this.#looseEq(x, value));
@@ -6960,7 +6973,7 @@ export class Weave {
      keeps its display form, because for a multiselect or a joined relation
      the names ARE the value. Same rule a formula reads by (#resolve, the
      'formula' case), less the definition order. */
-  #pathValue(e, db, path, { undressed = false } = {}) {
+  #pathValue(e, db, path, { undressed = false, numbers = false } = {}) {
     const parts = String(path).split('.');
     let current = [{ e, db }];
     for (let i = 0; i < parts.length; i++) {
@@ -6983,7 +6996,8 @@ export class Weave {
         // A sparkline sorts and filters on its last value (Feature #232).
         if (isLast && f.type === 'formula' && f.config.display === 'sparkline' && Array.isArray(resolved)) resolved = lastNumber(resolved);
         if (isLast) {
-          results.push(undressed && (typeof resolved === 'number' || f.type === 'date') ? resolved
+          results.push((undressed || numbers) && typeof resolved === 'number' ? resolved
+            : undressed && f.type === 'date' ? resolved
             : undressed && f.type === 'daterange' ? DG.rangeKey(resolved)
             : undressed && (f.type === 'select' || f.type === 'workflow') ? this.#definitionRank(f, resolved)
             : this.#displayValue(cdb, f, resolved));
