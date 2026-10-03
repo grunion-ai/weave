@@ -117,7 +117,8 @@ test('weave_vocabulary {section:"icons", query} searches the inventory by name, 
 
 test('the MCP tool schema declares section and query', () => {
   const t = TOOLS.find((x) => x.name === 'weave_vocabulary');
-  assert.deepEqual(Object.keys(t.inputSchema.properties).sort(), ['query', 'section']);
+  // sections (Issue #625) names several at once.
+  assert.deepEqual(Object.keys(t.inputSchema.properties).sort(), ['query', 'section', 'sections']);
   assert.match(t.description, /section/);
   assert.match(t.description, /query/);
 });

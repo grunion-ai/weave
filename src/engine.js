@@ -2859,7 +2859,10 @@ export class Weave {
       fail(path, new WeaveError(`'${path}' must be a list`, 'invalid'));
       return [];
     };
-    const result = () => ({ created, existing, ignored, errors });
+    // The computed fields this build made, sampled at the end (Issue #627).
+    const computedMade = [];
+    let computed = null;
+    const result = () => ({ created, existing, ignored, errors, ...(computed ? { computed } : {}) });
     if (!isObj(spec)) {
       fail('', new WeaveError('A build spec is an object: {workspace?, spaces: [{name, tables: [{name, fields, rows}]}]}', 'invalid'));
       return result();
@@ -2885,8 +2888,8 @@ export class Weave {
       }
       listAt(`${at}.tables`, sp.tables).forEach((t, j) => {
         const tAt = `${at}.tables[${j}]`;
-        if (!isObj(t)) return fail(tAt, new WeaveError('A table is an object: {name, icon?, description?, fields?, rows?}', 'invalid'));
-        extra(tAt, t, ['name', 'icon', 'description', 'fields', 'rows']);
+        if (!isObj(t)) return fail(tAt, new WeaveError('A table is an object: {name, icon?, description?, fields?, rows?, fieldOrder?, hidden?, sort?}', 'invalid'));
+        extra(tAt, t, ['name', 'icon', 'description', 'fields', 'rows', 'fieldOrder', 'hidden', 'sort']);
         const tw = cosmetic(tAt, t, 'icon', iconValue);
         let db = t.name ? this.findTable(`${space.name}/${t.name}`) : null;
         if (db) existing.push(`table ${space.name}/${db.name}`);
@@ -2953,6 +2956,7 @@ export class Weave {
         const field = step(at, () => this.addField(tb.db.id, { name, type, config }));
         if (!field) { tb.failed.add(name); continue; }
         created.fields += 1;
+        if (p >= 2) computedMade.push({ tb, name: field.name });
         /* addField drops a key its type does not take without a word. A key
            is ignored when the stored config does not carry it and the
            vocabulary does not list it for the type; a listed key the
@@ -2990,7 +2994,53 @@ export class Weave {
       });
     }
     for (const { at, id, rel } of links) step(at, () => this.updateEntity(id, rel));
+
+    /* Layout per table (Issue #628): an agent set column order, hidden
+       columns and sort with one registry-row write each, up to ten calls
+       after a build. fieldOrder names the leading fields, the rest keep their
+       place; it orders the schema and the default view's columns alike.
+       hidden hides those columns in the default view and leaves the rest as
+       they are (the minted Chip and Card stay hidden); sort is that view's.
+       A field that failed above is left out rather than charged again. */
+    for (const tb of tables) {
+      const ok = (n) => !tb.failed.has(n);
+      const names = (key) => listAt(`${tb.at}.${key}`, tb.spec[key]).filter(ok);
+      if (tb.spec.fieldOrder != null) step(`${tb.at}.fieldOrder`, () => this.#buildOrder(tb.db, names('fieldOrder')));
+      if (tb.spec.hidden != null) step(`${tb.at}.hidden`, () => this.tableView(`${tb.db.id}/${this.tableView(tb.db.id).views[0].name}`, { hide: names('hidden') }));
+      if (tb.spec.sort != null) {
+        step(`${tb.at}.sort`, () => {
+          const raw = typeof tb.spec.sort === 'string' ? parseSort(tb.spec.sort) : listAt(`${tb.at}.sort`, tb.spec.sort);
+          const sort = raw.flatMap((x) => (typeof x === 'string' ? parseSort(x) : [x])).filter((x) => !isObj(x) || ok(x.field));
+          return this.updateTable(tb.db.id, { sort });
+        });
+      }
+    }
+
+    /* What each computed field computed (Issue #627): agents ran 3 to 10
+       weave_query read-backs after a build to see whether a rollup or a
+       formula worked. The reply carries the first three values the grid
+       shows, so a null or an #ERR is seen without another call; a related
+       row reads as its name. Empty when the table has no rows yet. */
+    if (computedMade.length) {
+      const brief = (v) => (Array.isArray(v) ? v.map(brief) : isObj(v) && 'name' in v ? v.name : v);
+      computed = {};
+      for (const { tb, name } of computedMade) {
+        computed[`${this.qualifiedName(tb.db)}.${name}`] = this.query(tb.db.id, { limit: 3, fields: [name] }).items.map((e) => brief(e.fields[name]));
+      }
+    }
     return result();
+  }
+
+  /* A build's fieldOrder: the named fields lead, every other keeps its
+     relative place, in the schema and in the default view. */
+  #buildOrder(db, names) {
+    const lead = names.map((n) => this.getField(db.id, n).id);
+    const order = [...new Set([...lead, ...db.fieldOrder])];
+    this.updateTable(db.id, { fieldOrder: order });
+    const [view] = this.tableView(db.id).views;
+    const shown = new Set(view.fields.map((n) => this.findField(db, n)?.id ?? n));
+    const cols = [...order.filter((id) => shown.has(id)), ...[...shown].filter((id) => !order.includes(id))];
+    this.tableView(`${db.id}/${view.name}`, { fields: cols });
   }
 
   /* The half of a table that is not its fields: what it is called in the

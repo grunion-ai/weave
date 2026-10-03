@@ -21,14 +21,14 @@ client reads it before its first call.
 
 <!-- primer:start (generated from src/mcp-primer.md by scripts/agent-docs.mjs; edit that file, then run the script) -->
 ```text
-weave: build with ONE weave_build call (workspace, spaces, tables, fields, relations and rows; its description shows the spec). Run it with dryRun:true first, fix every error it lists, then run it for real.
+weave: build with ONE weave_build call (workspace, spaces, tables, fields, relations and rows; its description shows the spec). Run it with dryRun:true first, fix every error it lists, then run it for real. Its computed block samples every lookup, rollup and formula.
 Rules for building in weave:
 - One workspace per domain of life or work (personal-finance, sales), never one per request. Name it as a slug (letters, digits, dash) with the spec's workspace key. A request becomes a space; its records become tables with singular names.
 - A value that names a row of another table is a relation, never text: a field {name, type:"relation", to:<table>, cardinality:"many-to-one"}. In rows, a relation value is the target row's Name.
 - Money is a number field with format:"currency" and currency:"USD". A date field takes grain as a list of parts: ["year","month"] for a month, ["year"] for a year.
 - Colour carries meaning: options stay slate unless the hue says something (green income, red overdue). An option is {name, hue, icon}; status options and workflow states take an icon.
-- Icons are lucide:<name> from the inventory. Most builds need no weave_vocabulary call: weave_build lists a refused icon or colour under ignored, with the nearest icons. To look one up: weave_vocabulary {section:"icons", query:"<word>"} or {section:"optionColors"}.
-- A Sort on a table or view row is "Date desc" (comma-separated for more keys), never JSON or "-Date".
+- Icons are lucide:<name> from the inventory. Most builds need no weave_vocabulary call: weave_build lists a refused icon or colour under ignored, with the nearest icons. To look things up, ask for every list in one call: weave_vocabulary {sections:["icons","optionColors"], query:"<word>"}.
+- A build table takes fieldOrder, hidden and sort. A Sort is "Date desc" (comma-separated for more keys), never JSON or "-Date".
 - Writes answer compact ({id, publicId, name}); pass verbose:true for the full object.
 - Read rows with weave_query (where, sort) and find a row by text with weave_search. weave_call {name, args} runs any tool not listed; weave_call {name:"help", args:{tool}} describes one.
 ```
@@ -89,7 +89,7 @@ workspace file; a second workspace is a second file (see
 |  | `weave_update_field` | rename, retype or reconfigure a field (options are a full replacement) |
 |  | `weave_add_relation` | add a relation and its inverse between two tables |
 |  | `weave_workspace` | read or rename the workspace, set its description or logo |
-| Look up allowed values | `weave_vocabulary` | allowed values, one section per call; a build needs at most optionColors and icons (with query) |
+| Look up allowed values | `weave_vocabulary` | allowed values; several sections and icon queries in one call |
 | Everything else | `weave_call` | run any other tool by name; help describes one |
 
 The other 42, through `weave_call {name, args}`:
@@ -118,9 +118,7 @@ A turn here is one tool call. Each plan shows the one call it needs.
 every entry in its `errors` list, run it again without `dryRun`, then answer
 the user. Put every table, field, relation and starting row in the one spec.
 Skip `weave_vocabulary`: the reply's `ignored` list names any refused icon or
-colour, with the nearest icons. To get them right first time, read only
-`{section: "optionColors"}` and `{section: "icons", query: "<word>"}`, one call
-each.
+colour, with the nearest icons, and `computed` samples each computed field.
 
 ```json
 {"dryRun": true, "spec": {"workspace": "sales", "spaces": [{"name": "Pipeline", "icon": "lucide:briefcase", "tables": [
@@ -249,7 +247,7 @@ a spec with only rows is a batch create; on a re-run, `skipExistingRows: true`
 (`--skip-existing-rows`) skips a row whose Name the table already holds. An
 icon outside the inventory or an option colour weave cannot name is dropped and
 reported, never fatal. The reply is one line: `{ok, created: {spaces, tables,
-fields, relations, rows}, existing, ignored, errors}`. `ignored` holds `{path,
+fields, relations, rows}, existing, ignored, errors, computed}`. `ignored` holds `{path,
 keys}` for config keys a field's type does not take, plus a `reason` for a
 refused icon or colour; `errors` holds `{path, error}` with paths like
 `spaces[0].tables[1].fields[2]`. The spec runs first, rows included, on an
@@ -257,6 +255,15 @@ in-memory copy of the workspace, so `dryRun: true` returns every error at once
 and writes nothing, and a spec with any error writes nothing either. A step that
 fails only because an earlier one did (a row value for a field that failed) is
 not reported twice.
+
+`computed` maps each lookup, rollup and formula the build made
+(`"Budget/Category.Spending"`) to the first three values the grid shows for it,
+so a rollup that sums to nothing or a formula that reads null is seen in the
+reply, dry run included; an empty list means the table has no rows yet. A table
+in the spec also takes its layout, applied to its default view after its fields
+exist: `fieldOrder` names the leading columns (the rest keep their order, in the
+schema too), `hidden` names columns to hide, and `sort` is `"Amount desc, Name"`
+or `[{field, dir}]`. A bad name there is an error with its path, like any other.
 
 ### Configuration without a browser
 
@@ -281,7 +288,7 @@ and date formats, document kinds, relation cardinalities, workflow state
 categories, rollup aggregates, the system columns, the two view kinds, and the
 column-width rules (60px floor, 260px cap when unset, a set width is a floor as
 well as a ceiling). Guessing a color that validates still reads wrong.
-`weave_vocabulary {section: "icons"}` returns that section alone, and `{section: "icons", query: "build"}` searches the icon names by name, category and synonym (REST `GET /api/vocabulary?section=icons&query=build`, CLI `weave vocabulary icons build`), so a guessed icon costs one small call, not the whole list. A refused icon names the three nearest inventory icons.
+`weave_vocabulary {section: "icons"}` returns that section alone, `{sections: ["icons", "optionColors", "formulaFunctions"]}` returns several keyed by name (REST `?section=icons,optionColors`, CLI `weave vocabulary icons,optionColors`), a comma list of queries searches several icon words at once, and `{section: "icons", query: "build"}` searches the icon names by name, category and synonym (REST `GET /api/vocabulary?section=icons&query=build`, CLI `weave vocabulary icons build`), so a guessed icon costs one small call, not the whole list. A refused icon names the three nearest inventory icons.
 
 **The registry rows are the schema verbs.** `Workspace/Spaces`,
 `Workspace/Tables` and `Workspace/Fields` are ordinary tables whose rows *are*
