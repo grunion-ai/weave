@@ -9,11 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
 import { Weave, WeaveError, deferMigrations, runDeferredMigrations } from '../src/engine.js';
-import { VOCABULARY } from '../src/vocabulary.js';
 import { startServer, openDefaultWorkspace } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
+import { vocabularyView } from '../src/vocabulary.js';
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -125,8 +125,9 @@ Schema
   schema export [--out file]          The schema as an editable JSON document
   schema apply --file doc.json [--dry-run] [--allow-destructive]
                                       Grow the workspace to match the document
-  vocabulary [section]                Every legal config value and what it looks like
-                                      (icons are lucide:<name>; colors are hex from the palette)
+  vocabulary [section [query]]        Every legal config value and what it looks like
+                                      (icons are lucide:<name>; colors are hex from the palette;
+                                      "vocabulary icons <query>" searches the icon names)
   space create <name> [--description] [--icon lucide:briefcase]
   space list | update <ref> [--name] [--description] [--icon lucide:briefcase] | delete <ref>
   table create <space> <name> [--description] [--icon]
@@ -958,12 +959,9 @@ async function main() {
     /* Everything below reaches a capability the web UI has always had and the
        terminal did not — which made a browser the only way to do it. */
     case 'vocabulary': {
-      const [section] = args;
-      if (section) {
-        if (!(section in VOCABULARY)) throw new WeaveError(`Unknown vocabulary section '${section}' (${Object.keys(VOCABULARY).join(', ')})`);
-        return out(VOCABULARY[section]);
-      }
-      return out(VOCABULARY);
+      const [section, ...query] = args;
+      try { return out(vocabularyView(section, query.join(' '))); }
+      catch (e) { throw new WeaveError(e.message, 'invalid'); }
     }
     case 'view': {
       const [sub, ref] = args;

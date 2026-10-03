@@ -11,6 +11,7 @@ import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
 import { workspaceName, nameFromFile } from './workspace-name.js';
 import { Store, WeaveError } from './store.js';
+import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
 
@@ -23,7 +24,9 @@ function iconValue(v) {
   if (!s) return '';
   const reg = globalThis.weaveIconRegistry, marks = globalThis.weaveMarkIcons;
   if (reg?.resolve(s) || marks?.has(s)) return s;
-  throw new WeaveError(`Icon '${s}' is not in the inventory — use lucide:<name> from the vocabulary, or a mark character`);
+  /* Name the nearest inventory icons so the next write lands (Issue #591). */
+  const near = nearestIcons(s).map((m) => `lucide:${m.name} (${m.category})`);
+  throw new WeaveError(`Icon '${s}' is not in the inventory${near.length ? `; nearest: ${near.join(', ')}` : ''}. Search it with weave_vocabulary {section:"icons", query:"<word>"} (CLI: weave vocabulary icons <word>), or use a mark character`, 'invalid');
 }
 
 // What one row is called (Feature #40): the pure half, shared with the browser.

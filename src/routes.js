@@ -6,7 +6,7 @@
 // and static assets (node reads public/; Workers bind Static Assets).
 import { Weave, WeaveError, fileHeaders, logoType } from './engine.js';
 import { handleApplet } from './applet.js';
-import { VOCABULARY } from './vocabulary.js';
+import { vocabularyView } from './vocabulary.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 // Loaded on demand: the vendored decklet engine resolves its own directory
@@ -630,7 +630,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // Every closed set a config value can come from, and what the choice
         // looks like on screen — served so an agent never has to guess a
         // color, an icon name or a format (src/vocabulary.js).
-        if (route === 'GET /api/vocabulary') return out(200, VOCABULARY);
+        if (route === 'GET /api/vocabulary') {
+          // ?section=icons&query=build searches the icon names (Issue #591).
+          try { return out(200, vocabularyView(rx.searchParams?.get('section'), rx.searchParams?.get('query'))); }
+          catch (e) { throw new WeaveError(e.message, 'invalid'); }
+        }
 
         /* These act on the hub, not the URL workspace (Issue #481). The list
            and search ?all=1 carry only the workspaces whose own wall this

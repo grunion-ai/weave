@@ -3,7 +3,7 @@
 // (Feature #99, the hosted instance). One handler serves both.
 
 import { readFileSync } from 'node:fs';
-import { VOCABULARY } from './vocabulary.js';
+import { vocabularyView } from './vocabulary.js';
 import { Weave } from './engine.js';
 const PROTOCOL_VERSION = '2024-11-05';
 // Lazy-tolerant, same reason as pdf.js's font path: module-top file reads
@@ -267,8 +267,8 @@ export const TOOLS = [
      curl for it, which is a human gate wearing a shell prompt. */
   {
     name: 'weave_vocabulary',
-    description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table.',
-    inputSchema: { type: 'object', properties: {} },
+    description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table. section returns one section alone (e.g. "icons"); {section: "icons", query: "build"} searches the icon names by name, category and synonym.',
+    inputSchema: { type: 'object', properties: { section: { type: 'string' }, query: { type: 'string' } } },
   },
   {
     name: 'weave_update_space',
@@ -667,7 +667,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_attach_file':
       return weave.attachFile(args.entity, { name: args.name, mime: args.mime, bytes: args.contentBase64 });
     case 'weave_vocabulary':
-      return VOCABULARY;
+      return vocabularyView(args.section, args.query);
     case 'weave_update_space':
       return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon']));
     case 'weave_delete_space':

@@ -138,6 +138,7 @@ and date formats, document kinds, relation cardinalities, workflow state
 categories, rollup aggregates, the system columns, the two view kinds, and the
 column-width rules (60px floor, 260px cap when unset, a set width is a floor as
 well as a ceiling). Guessing a color that validates still reads wrong.
+`weave_vocabulary {section: "icons"}` returns that section alone, and `{section: "icons", query: "build"}` searches the icon names by name, category and synonym (REST `GET /api/vocabulary?section=icons&query=build`, CLI `weave vocabulary icons build`), so a guessed icon costs one small call, not the whole list. A refused icon names the three nearest inventory icons.
 
 **The registry rows are the schema verbs.** `Workspace/Spaces`,
 `Workspace/Tables` and `Workspace/Fields` are ordinary tables whose rows *are*

@@ -68,6 +68,88 @@ export const ICON_FORM = 'lucide:<name>';
    through the mark, not offered twice. */
 export const ICONS = globalThis.fieldDialogCore.ICON_INVENTORY;
 
+/* Icon search and the nearest-name suggestion in a refusal (Issue #591). The
+   2026-10-02 agent eval guessed real Lucide names the curated inventory lacks
+   (building-2, handshake, tags, repeat) 17 times; a refusal that names the
+   nearest inventory icons lets the next write land without the 4.4k-token
+   list. Ranking is by name only: an exact stem or substring, then edit
+   distance, with a short synonym list for the words agents reach for first.
+   ponytail: grow ICON_SYNONYMS from refusals in the eval logs, not by guess. */
+const ICON_SYNONYMS = [
+  ['building buildings office company factory warehouse city', 'landmark house'],
+  ['handshake deal partner partnership', 'users briefcase heart'],
+  ['tag tags label labels', 'ticket bookmark hash'],
+  ['repeat loop recurring cycle sync', 'refresh-cw history'],
+  ['idea bulb light-bulb', 'lightbulb sparkles'],
+  ['cog gear', 'settings sliders-horizontal'],
+  ['person account profile', 'user users'],
+  ['comment chat', 'message-circle message-square'],
+  ['graph analytics', 'chart-bar chart-column chart-pie'],
+  ['task todo', 'square-check list-checks'],
+].flatMap(([keys, names]) => keys.split(' ').map((k) => [k, names.split(' ')]));
+const iconCategory = (name) => globalThis.fieldDialogCore.categoryOf(`lucide:${name}`);
+const iconWords = (s) => s.split('-').filter((t) => t && !/^\d+$/.test(t));
+const iconQuery = (v) => String(v ?? '').trim().toLowerCase().replace(/^(lucide|iconly):/, '').replace(/[\s_]+/g, '-');
+function editDistance(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = row;
+  }
+  return prev[b.length];
+}
+/* Lower is nearer: a synonym beats everything (< 0), then a stem or substring
+   (0.2), a legacy alias word (0.25), a shared word (0.3), then edit distance
+   over the whole name or one of its words. */
+function iconDistance(q, qw, name) {
+  for (const [k, names] of ICON_SYNONYMS) if (qw.includes(k) && names.includes(name)) return -1 + names.indexOf(name) / 100; // listed order is the ranking
+  const nw = iconWords(name);
+  const gap = (a, b) => editDistance(a, b) / Math.max(a.length, b.length);
+  // Whole name, or one word of it (a typo in 'mesage' is one letter from the word 'message').
+  let d = Math.min(gap(q, name), 0.1 + Math.min(...qw.flatMap((t) => nw.map((u) => gap(t, u))), 1));
+  if (q.length >= 3 && (name.includes(q) || (name.length >= 3 && q.includes(name)))) d = Math.min(d, 0.2);
+  if (qw.some((t) => t.length >= 3 && nw.some((u) => u === t))) d = Math.min(d, 0.3);
+  if (qw.some((k) => REGISTRY.ALIASES[k] === name)) d = Math.min(d, 0.25); // the legacy Iconly words ('home' → house)
+  return d;
+}
+const iconEntry = (name) => ({ name, category: iconCategory(name) });
+/* Up to `limit` inventory icons nearest to a guessed value ('lucide:building-2',
+   a bare word). Empty when nothing is close: a far suggestion would mislead. */
+export function nearestIcons(value, limit = 3) {
+  const q = iconQuery(value);
+  if (!q) return [];
+  const qw = iconWords(q);
+  return ICONS.map((name) => ({ name, d: iconDistance(q, qw, name) }))
+    .filter((m) => m.d < 0.4)
+    .sort((a, b) => a.d - b.d || a.name.length - b.name.length || (a.name < b.name ? -1 : 1))
+    .slice(0, limit)
+    .map((m) => iconEntry(m.name));
+}
+/* The icons section filtered by a query: names containing it, icons filed
+   under a category of that name, and the synonyms of a word that starts with
+   it. With no such hit, the nearest names by edit distance, marked fuzzy. */
+export function searchIcons(query, limit = 20) {
+  const q = iconQuery(query);
+  const hit = (name) => name.includes(q) || iconCategory(name) === q
+    || ICON_SYNONYMS.some(([k, names]) => (k.startsWith(q) || q.startsWith(k)) && names.includes(name));
+  const direct = q ? ICONS.filter(hit) : [];
+  const out = { form: ICON_FORM, query: String(query ?? '').trim() };
+  if (direct.length) return { ...out, matches: direct.slice(0, limit).map(iconEntry) };
+  return { ...out, fuzzy: true, matches: nearestIcons(q, 5) };
+}
+/* One section of the vocabulary, or all of it; `query` searches icons. The
+   three doors (MCP, REST, CLI) share this so they answer alike. */
+export function vocabularyView(section, query) {
+  const q = query == null || String(query).trim() === '' ? null : query;
+  const name = section == null || section === '' ? (q ? 'icons' : null) : String(section);
+  if (!name) return VOCABULARY;
+  if (!Object.hasOwn(VOCABULARY, name)) throw new Error(`Unknown vocabulary section '${name}' (${Object.keys(VOCABULARY).join(', ')})`);
+  if (q == null) return VOCABULARY[name];
+  if (name !== 'icons') throw new Error(`query searches the icons section only (section 'icons'), not '${name}'`);
+  return searchIcons(q);
+}
+
 /* The formula functions, verbatim from the dialog's catalog: name, signature,
    grammar group, one sentence of doc and an example that parses. The chip a
    person hovers and the entry an agent reads are one list (direction A,
