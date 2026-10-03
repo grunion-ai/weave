@@ -14,9 +14,11 @@ widths and order, hidden columns, saved views, automations. `weave_vocabulary`
 (`GET /api/vocabulary`, `weave vocabulary`) returns every value those settings
 accept and what each looks like on screen, so an agent configures a workspace
 without a human and without guessing. There is no
-cloud, no signup, and no telemetry. It has no authentication of its own: a
-self-hosted instance is expected to sit behind a reverse proxy, SSO proxy, or
-private network.
+cloud, no signup, and no telemetry. A hosted instance signs people in through
+one OpenID Connect provider and agents through `wv_` tokens; with a provider
+configured, `/mcp` is an OAuth 2.1 protected resource, so
+`claude mcp add --transport http weave https://<host>/mcp` signs an agent in
+through the browser.
 
 Requires Node ≥ 22.16 (Node 24 LTS recommended). Install is `git clone` — there
 is nothing to build and nothing to install from npm.

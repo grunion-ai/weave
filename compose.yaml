@@ -31,6 +31,9 @@ services:
       # WEAVE_OIDC_CLIENT_ID: change-me
       # WEAVE_OIDC_CLIENT_SECRET: change-me
       # WEAVE_OIDC_NAME: Clerk
+      # With a provider set, /mcp signs agents in through the browser; a second
+      # domain for it on this service is listed here (Handbook, Door C).
+      # WEAVE_MCP_ORIGINS: https://mcp.weave.example.com
       # The server asks GitHub for the latest release once a day; off stops it.
       # WEAVE_UPDATE_CHECK: "off"
       # With command ["node", "bin/weave.js", "supervise"], 1 installs each newer

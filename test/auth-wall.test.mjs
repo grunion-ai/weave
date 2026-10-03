@@ -122,7 +122,8 @@ test('with requireAuth on, every route the dispatcher serves refuses an anonymou
         continue;
       }
       assert.equal(res.status, 401, `${method} ${path} answered ${res.status} to nobody`);
-      if (path.startsWith('/api/')) {
+      // /mcp is /api/mcp under the hosted MCP door's name (Feature #254): an API.
+      if (path.startsWith('/api/') || path === '/mcp') {
         assert.equal((await res.json()).code, 'unauthorized', `${path} keeps the JSON 401`);
       } else {
         assert.match(res.headers.get('content-type'), /text\/html/, `${path} is a page and gets the HTML 401`);

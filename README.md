@@ -109,6 +109,18 @@ Or add it to Claude Code in one line:
 claude mcp add weave -- node /path/to/weave/bin/weave.js mcp --data /path/to/my-workspace.db
 ```
 
+A hosted instance with a sign-in provider (Door C) is one line too. The first
+call opens the provider's sign-in in your browser; no token to paste:
+
+```bash
+claude mcp add --scope user --transport http weave https://weave.example.com/mcp
+```
+
+`/w/<name>/mcp` serves another workspace. Your account has to be linked to
+your provider sign-in first (open the invite `weave account link <name>`
+prints, once, in a browser), and it needs the Architect role, since MCP
+carries the schema tools.
+
 Fifteen tools by default, the ones a workspace build uses, plus `weave_call`,
 which reaches the other forty-two. `weave mcp --tools all` (or
 `WEAVE_MCP_TOOLS=all`) lists all 57. The same undo the UI has, and

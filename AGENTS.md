@@ -73,6 +73,13 @@ Point an MCP client at the stdio server:
 }
 ```
 
+Or, on a hosted instance with a sign-in provider, over HTTP with a browser
+sign-in in place of a token:
+
+```bash
+claude mcp add --scope user --transport http weave https://weave.example.com/mcp
+```
+
 Fifty-seven tools, grouped. Every one of them reaches something the web UI can
 do — there is no configuration that needs a browser, and none that needs a
 human.
@@ -356,6 +363,22 @@ Notes that save round trips:
   `invites` / `weave invite list` / `GET /api/invites` list the pending ones;
   `revoke-invite` / `weave invite revoke <id>` / `DELETE /api/invites/<id>`
   cancel one. The email stays on the pending invite only (Issue #569).
+- **A hosted agent can sign in through the browser too** (Feature #254).
+  `POST /mcp` (the default workspace) and `POST /w/<name>/mcp` are
+  `POST /api/mcp` as an OAuth 2.1 protected resource: with a provider
+  configured, a call with no credential answers 401 with
+  `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"`
+  (`.../oauth-protected-resource/w/<name>/mcp` for a workspace), and that
+  document names the provider as the authorization server. The client signs
+  the person in there and sends the provider's access token; weave asks the
+  provider's userinfo endpoint whose it is and opens the account that
+  subject is linked to (here or on the hub root), the link a browser makes
+  by opening its invite once. Unlinked: 403. Rejected
+  or expired: 401. Answers are cached a minute by the token's sha256. Writes
+  record `<account> via <client>` (`via oauth` when the token does not name
+  its client). The account needs the Architect role, as for `/api/mcp`.
+  `wv_` tokens work on `/mcp` unchanged; `/api/mcp` takes only them.
+  `WEAVE_MCP_ORIGINS` lists other origins the door answers on.
 - **Secrets never come back to an agent.** A `key` (credential) field holds the
   *name* of a secret; the secret itself is encrypted in a keystore outside the
   workspace, so it is never in a cell, an export, a formula or a query result.

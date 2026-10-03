@@ -58,11 +58,13 @@ const parseCookies = (header) => Object.fromEntries(String(header ?? '').split('
      already checked (Feature #222 phase 3, Feature #209)
    - oidc: createOidc's provider (src/oidc.js), or null when WEAVE_OIDC_* is
      unset — door C, one provider on top of the wv_session cookie (Feature #212)
+   - mcpOrigins: the public origins besides `origin` that the MCP door's
+     resource may name (WEAVE_MCP_ORIGINS, Feature #254)
    - serveStatic: (path) => {status, headers, body} | null, or null when the
      platform serves assets before the dispatcher runs
    Returns handle(rx) where rx = { method, path (decoded pathname),
    searchParams, header(name), readBody() } → {status, headers, body}. */
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [] } = {}) {
   const challenges = new Map();
   const rates = { options: new Map(), failed: new Map() };
   /* limited(kind, ip) counts this call and says whether the minute's budget
@@ -100,6 +102,25 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (origin) return origin;
     const port = String(rx.header('host') ?? '').split(':')[1];
     return `http://localhost${port ? ':' + port : ''}`;
+  };
+  /* The origin the MCP door's resource names: the configured origin whose
+     host the request came in on, else the first configured one, else the
+     loopback form. Never the Host header itself (Feature #254). */
+  const mcpOrigin = (rx) => {
+    const known = [origin, ...mcpOrigins].filter(Boolean);
+    const host = String(rx.header('host') ?? '').toLowerCase();
+    return known.find((o) => new URL(o).host === host) ?? known[0] ?? originFor(rx);
+  };
+  /* The account a provider identity opens on one engine, kept with the
+     identity: identify() hands back the same object until its cache entry
+     lapses, so accountForIdentity (which writes lastUsedAt) runs once a
+     minute per token and engine, not once a call. */
+  const opened = new WeakMap();
+  const accountOn = (who, engine) => {
+    let byEngine = opened.get(who);
+    if (!byEngine) opened.set(who, (byEngine = new Map()));
+    if (!byEngine.has(engine)) byEngine.set(engine, engine.accountForIdentity(who));
+    return byEngine.get(engine);
   };
   const clientIp = (rx) => {
     const fwd = trustProxy ? String(rx.header('x-forwarded-for') ?? '').split(',')[0].trim() : '';
@@ -194,7 +215,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     // caps what it may do; a bad token is a 401, never an anonymous
     // fallthrough. With requireAuth on, anonymous API calls are refused —
     // /api/health stays open so a monitor can still see the instance.
-    const deny = (code, error) => out(code, { error, code: code === 401 ? 'unauthorized' : 'forbidden' });
+    let mcpChallenge = null;
+    const deny = (code, error) => out(code, { error, code: code === 401 ? 'unauthorized' : 'forbidden' },
+      code === 401 && mcpChallenge ? { 'WWW-Authenticate': mcpChallenge } : {});
 
     // A share link is its own authorization (Feature #17): the token names
     // exactly one view, rendered read-only, before any auth wall applies.
@@ -267,10 +290,62 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     let session = null;
     const cookies = parseCookies(rx.header('cookie'));
     const authz = rx.header('authorization');
+    /* ---------- the hosted MCP door (Feature #254) ----------
+       /mcp (the default workspace) and /w/<name>/mcp are /api/mcp behind an
+       OAuth 2.1 protected resource, per the MCP authorization spec: the
+       RFC 9728 metadata names door C's provider as the authorization
+       server; a call without a credential is a 401 pointing at it; the
+       client signs the person in at the provider and brings back the
+       provider's access token. Its userinfo names the subject, and the
+       account door C's invite pinned that subject to (here, or on the hub
+       root, as a browser sign-in finds it) is the caller. wv_ tokens
+       work here as everywhere, and /api/mcp takes nothing but them.
+       ponytail: no RFC 8707 audience check. Clerk does not bind a token to
+       this resource, so a token the provider issued to any of its clients
+       passes userinfo; the account link is what stands in front of the data. */
+    let oauth = null;
+    let mcpDoor = false;
+    if (path.startsWith('/.well-known/oauth-protected-resource') && !wsPrefix) {
+      const rest = path.slice('/.well-known/oauth-protected-resource'.length);
+      const wm = rest.match(/^\/w\/([^/]+)\/mcp$/);
+      if (!oidc || rx.method !== 'GET' || !(rest === '' || rest === '/mcp' || (wm && hub.get(wm[1])))) {
+        return notFound({ error: oidc ? 'No such protected resource' : 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
+      }
+      return out(200, {
+        resource: mcpOrigin(rx) + rest,
+        authorization_servers: [oidc.issuer],
+        scopes_supported: ['openid'],
+        bearer_methods_supported: ['header'],
+      });
+    }
+    if (path === '/mcp') {
+      if (oidc) mcpChallenge = `Bearer resource_metadata="${mcpOrigin(rx)}/.well-known/oauth-protected-resource${wsPrefix}/mcp"`;
+      const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
+      if (oidc && !bearer) return deny(401, `Sign in with ${oidc.name} to use this MCP server`);
+      if (oidc && !bearer.startsWith('wv_')) {
+        /* Each unknown token is a call to the provider, so an address that
+           keeps sending refused ones is held off like a failed sign-in. */
+        const ip = clientIp(rx);
+        if (limited('failed', ip, { peek: true })) return out(429, { error: 'Too many refused tokens: wait a minute and try again', code: 'rate-limited' });
+        let who;
+        try { who = await oidc.identify(bearer); } catch (err) {
+          if (err instanceof WeaveError) { noteFailure(ip); return deny(401, err.message); }
+          return out(502, { error: `${oidc.name} is not answering: ${err.message}`, code: 'bad-gateway' });
+        }
+        const root = hub.get(hub.defaultName);
+        let account = null;
+        const engine = [weave, root].find((e) => (account = accountOn(who, e)));
+        if (!engine) return deny(403, `This ${oidc.name} sign-in opens no account on this workspace. Ask an operator for an invite (weave account link <name>) and open it in a browser once; then sign in here again.`);
+        oauth = { account, engine, client: who.client ?? 'oauth' };
+      }
+      path = '/api/mcp';
+      mcpDoor = true;
+    }
     if (authz && /^Bearer /i.test(authz)) {
-      const account = weave.verifyToken(authz.slice(7).trim());
+      const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
-      weave.actor = account.name;
+      // An OAuth caller is the account and the client it came through.
+      weave.actor = oauth ? `${account.name} via ${oauth.client}`.slice(0, 120) : account.name;
       role = Weave.roleName(account.role);
     } else if (cookies.wv_session) {
       const root = hub.get(hub.defaultName);
@@ -348,6 +423,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
        wall). For routes that act on more than the URL workspace. */
     const roleOn = (w) => {
       if (w === weave) return role;
+      if (oauth) return w === oauth.engine ? Weave.roleName(oauth.account.role) : null;
       if (authz && /^Bearer /i.test(authz)) return Weave.roleName(w.verifyToken(authz.slice(7).trim())?.role) ?? null;
       if (!cookies.wv_session) return null;
       const root = hub.get(hub.defaultName);
@@ -826,6 +902,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
            one JSON-RPC message (or a batch array) per POST, the response in
            the body, 202 for notifications. The same handler as stdio, so the
            hosted instance speaks exactly what a local agent already speaks. */
+        // No stream to open: a 405 tells a streamable-HTTP client so (Feature #254).
+        if (mcpDoor && rx.method !== 'POST') return out(405, { error: 'The MCP door takes POST: JSON-RPC in, JSON out, no stream', code: 'method-not-allowed' }, { Allow: 'POST' });
         if (route === 'POST /api/mcp') {
           const msgs = Array.isArray(body) ? body : [body];
           // The accounts, keys and import tools ask the same gate as REST
