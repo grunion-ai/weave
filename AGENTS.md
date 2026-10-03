@@ -331,11 +331,13 @@ Notes that save round trips:
 - **A provider sign-in opens only a linked account.** With `WEAVE_OIDC_ISSUER`
   and `WEAVE_OIDC_CLIENT_ID` set, `/auth` sends a signed-out browser straight
   to one OpenID Connect provider (`?next` kept, no page in between). Signing in there creates no account: `weave_accounts`
-  `action: link-identity` (or `weave account link <name> --email <address>`,
-  or `POST /api/accounts/<name>/identities`) names the email the provider
-  will vouch for, the first verified sign-in pins the provider's subject to
-  the account, and `unlink-identity` closes it. The session is the same
-  `wv_session` cookie; agents keep the token.
+  `action: link-identity` (or `weave account link <name>`, or
+  `POST /api/accounts/<name>/identities`) mints a one-time invite link that
+  lasts 7 days. The person who opens it and signs in at the provider is
+  linked by the provider's subject, and `unlink-identity` (`--subject`)
+  closes it. weave asks the provider for `openid` alone and stores no email
+  (Feature #252). The session is the same `wv_session` cookie; agents keep
+  the token.
 - **Secrets never come back to an agent.** A `key` (credential) field holds the
   *name* of a secret; the secret itself is encrypted in a keystore outside the
   workspace, so it is never in a cell, an export, a formula or a query result.

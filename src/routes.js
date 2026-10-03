@@ -512,7 +512,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
              redirect URIs), so the trip remembers which engine asked. The
              account is looked for there, then on the hub root, and the
              session minted is the wv_session cookie. A refusal is a page: this is a
-             navigation, not a fetch. */
+             navigation, not a fetch. An invite link is start with ?invite=:
+             the code rides the server-side trip, and the callback redeems it
+             to pin the provider's subject to the invited account (Feature #252). */
           if (path.startsWith('/api/auth/oidc/')) {
             if (!oidc) return notFound({ error: 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
             const refusal = (status, title, detail) => out(status,
@@ -523,13 +525,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (limited('options', ip)) return tooMany();
               const n = String(rx.searchParams?.get('next') ?? '');
               const next = /^\/(?![/\\])/.test(n) ? n : `${wsPrefix}/`;
+              const invite = rx.searchParams?.get('invite') || null;
+              if (invite && !weave.identityInvite(invite)) return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
               let trip;
               try { trip = await oidc.begin({ redirectUri }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
               /* The trip belongs to the browser that started it: a second,
                  unguessable value rides a cookie scoped to these two routes,
                  so a callback URL handed to another browser finishes nothing. */
               const binder = newChallenge();
-              putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave }, trip.state);
+              putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite }, trip.state);
               const secure = originFor(rx).startsWith('https:') ? '; Secure' : '';
               return { status: 302, headers: { Location: trip.url, 'Set-Cookie': `wv_oidc=${binder}; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=${CHALLENGE_TTL_MS / 1000}${secure}`, 'Cache-Control': 'no-store' }, body: '' };
             }
@@ -549,8 +553,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               }
               const root = hub.get(hub.defaultName);
               let account = null;
-              const engine = [c.holder, root].find((e) => (account = e.accountForIdentity(who)));
-              if (!engine) { noteFailure(ip); return refusal(403, 'No account for this identity', `${who.email ?? 'This identity'} signed in at ${oidc.name}, but no account here is linked to it${who.emailVerified ? '' : ' with a verified email'}. Ask an operator to link one (weave account link <name> --email <address>).`); }
+              let engine = null;
+              if (c.invite) {
+                try {
+                  account = c.holder.redeemIdentityInvite(c.invite, who);
+                  engine = c.holder;
+                } catch (err) {
+                  noteFailure(ip);
+                  if (err.code === 'conflict') return refusal(409, 'This identity already opens another account', `You signed in at ${oidc.name} as someone this server already knows, so the invite was not used. Sign out at ${oidc.name} and open the invite link again as the person it was meant for.`);
+                  return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
+                }
+              } else engine = [c.holder, root].find((e) => (account = e.accountForIdentity(who)));
+              if (!engine) { noteFailure(ip); return refusal(403, 'No account for this identity', `You signed in at ${oidc.name}, but no account here is linked to that identity. If an operator sent you an invite link, open it: it links this identity and signs you in. Operators make one with weave account link <name>.`); }
               const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
               return { status: 302, headers: { Location: c.next, 'Set-Cookie': sessionCookie(minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
             }
@@ -644,12 +658,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'GET /api/accounts') return out(200, weave.listAccounts());
         if (route === 'POST /api/accounts') return out(201, weave.createAccount(body ?? {}));
-        // Door C (Feature #212): the email a provider will vouch for, linked
-        // to an account before anyone signs in with it.
+        // Door C (Feature #212, Feature #252): linking mints a one-time
+        // invite link; the person who opens it and signs in is linked.
         if ((m = path.match(/^\/api\/accounts\/([^/]+)\/identities$/))) {
           const ref = decodeURIComponent(m[1]);
-          if (rx.method === 'POST') return out(201, weave.linkIdentity(ref, { issuer: body?.issuer ?? oidc?.issuer, email: body?.email }));
-          if (rx.method === 'DELETE') return out(200, weave.unlinkIdentity(ref, { issuer: rx.searchParams?.get('issuer') ?? null, email: rx.searchParams?.get('email') }));
+          if (rx.method === 'POST') {
+            const made = weave.linkIdentity(ref, { issuer: body?.issuer ?? oidc?.issuer, email: body?.email });
+            return out(201, { ...made, url: `${originFor(rx)}${wsPrefix}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` });
+          }
+          if (rx.method === 'DELETE') return out(200, weave.unlinkIdentity(ref, { issuer: rx.searchParams?.get('issuer') ?? null, subject: rx.searchParams?.get('subject') }));
         }
         if ((m = path.match(/^\/api\/accounts\/(.+)$/)) && rx.method === 'DELETE') {
           return out(200, weave.deleteAccount(decodeURIComponent(m[1])));

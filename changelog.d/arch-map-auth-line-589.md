@@ -1,1 +1,0 @@
-- **The architecture map re-renders again** (Issue #589): the Sign-in node cited `src/auth-page.js` line 176, past the end of the file since Feature #243, and `node scripts/architecture.mjs` refused to re-render. It now cites `renderAuthPage` at line 113.

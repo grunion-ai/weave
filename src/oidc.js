@@ -3,10 +3,12 @@
    Auth0, Keycloak, Authentik, Google — anything that serves
    /.well-known/openid-configuration. The flow is authorization code with
    PKCE; the id token is verified here against the provider's JWKS (RS256 or
-   ES256), with its issuer, audience, expiry and nonce checked. What comes out
-   is who the provider says is there: { issuer, subject, email,
-   emailVerified }. Whether that person has an account is the engine's
-   question (accountForIdentity), and the session is weave's own wv_session.
+   ES256), with its issuer, audience, expiry and nonce checked. The scope is
+   `openid` alone, so the provider is asked for no email and no profile
+   (Feature #252), and what comes out is { issuer, subject }. Whether that
+   subject has an account is the engine's question (accountForIdentity, or
+   redeemIdentityInvite on an invite's trip), and the session is weave's own
+   wv_session.
    ponytail: one provider. A second one is a list here and a button each on
    the sign-in page; the account row already keys identities by issuer. */
 import { createHash, randomBytes, webcrypto } from 'node:crypto';
@@ -103,13 +105,13 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
       const verifier = randomBytes(48).toString('base64url');
       const url = new URL(doc.authorization_endpoint);
       for (const [k, v] of Object.entries({
-        response_type: 'code', client_id: clientId, redirect_uri: redirectUri, scope: 'openid email profile',
+        response_type: 'code', client_id: clientId, redirect_uri: redirectUri, scope: 'openid',
         state, nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
       })) url.searchParams.set(k, v);
       return { url: url.href, state, nonce, verifier };
     },
-    /* The code for a verified identity. Claims the id token leaves out are
-       read from userinfo, which must name the same subject. */
+    /* The code for a verified identity: the issuer and the subject, and
+       nothing else the token may carry. */
     async redeem({ code, redirectUri, verifier, nonce }) {
       const doc = await discover();
       const form = new URLSearchParams({ grant_type: 'authorization_code', code: String(code ?? ''), redirect_uri: redirectUri, code_verifier: verifier });
@@ -119,13 +121,8 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
       else if (methods.includes('client_secret_basic')) headers.Authorization = `Basic ${Buffer.from(`${encodeURIComponent(clientId)}:${encodeURIComponent(clientSecret)}`).toString('base64')}`;
       else { form.set('client_id', clientId); form.set('client_secret', clientSecret); }
       const tokens = await getJson(doc.token_endpoint, { method: 'POST', headers, body: form.toString() });
-      let claims = await verifyIdToken(tokens.id_token, { nonce, doc });
-      if (claims.email == null && doc.userinfo_endpoint && tokens.access_token) {
-        const info = await getJson(doc.userinfo_endpoint, { headers: { Authorization: `Bearer ${tokens.access_token}`, Accept: 'application/json' } });
-        if (info.sub !== claims.sub) throw refuse('The identity provider\'s userinfo names someone else');
-        claims = { ...claims, email: info.email, email_verified: info.email_verified };
-      }
-      return { issuer, subject: String(claims.sub), email: claims.email ? String(claims.email) : null, emailVerified: claims.email_verified === true };
+      const claims = await verifyIdToken(tokens.id_token, { nonce, doc });
+      return { issuer, subject: String(claims.sub) };
     },
   };
 }

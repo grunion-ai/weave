@@ -2,9 +2,10 @@
    sign in with one OpenID Connect provider — Clerk, Auth0, Keycloak, Google —
    on top of door B's session. The provider proves who is there; weave decides
    whether that person has an account. Nobody is provisioned by signing in: an
-   admin links an account to a provider email first, the first sign-in pins
-   the provider's subject to it, and the session that comes out is door B's
-   cookie. The provider is test/lib/idp.mjs. */
+   admin mints a one-time invite for an account, the person signs in at the
+   provider through it, and the provider's subject is pinned to the account.
+   weave asks the provider for `openid` alone and stores no email (Feature
+   #252). The provider is test/lib/idp.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -23,49 +24,149 @@ const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js
 const ISS = 'https://clerk.example.com';
 
 /* ---------------------------------------------------------------- engine */
-test('engine: an identity is linked by email, pinned to the subject on first sign-in, and refused to anyone else', () => {
+const mail = /[\w.+-]+@[\w-]+\.[\w.]+/; // an email address, not the issuer's host
+
+test('engine: linking mints a one-time invite, stored as its hash; redeeming it pins the subject and nothing else', () => {
   const w = new Weave();
   w.createAccount({ name: 'kyle', role: 'admin' });
   w.createAccount({ name: 'eye', role: 'reader' });
-  const linked = w.linkIdentity('kyle', { issuer: ISS, email: 'Kyle@Example.com' });
-  assert.deepEqual([linked.issuer, linked.email, linked.subject], [ISS, 'kyle@example.com', null]);
-  assert.throws(() => w.linkIdentity('eye', { issuer: ISS, email: 'kyle@example.com' }), /already linked/);
-  assert.throws(() => w.linkIdentity('kyle', { issuer: ISS, email: 'nope' }), /email/);
-  assert.throws(() => w.linkIdentity('nobody', { issuer: ISS, email: 'a@b.co' }), /not found/);
+  const inv = w.linkIdentity('kyle', { issuer: `${ISS}/` });
+  assert.equal(inv.account, 'kyle');
+  assert.equal(inv.issuer, ISS);
+  assert.match(inv.code, /^wvi_[\w-]{40,}$/);
+  assert.ok(Date.parse(inv.expiresAt) > Date.now() + 6 * 86400e3, 'an invite lasts days, not minutes');
+  assert.ok(!JSON.stringify(w.state.meta).includes(inv.code), 'only the hash is kept');
+  assert.equal(Object.keys(w.state.meta.identityInvites).length, 1);
+  assert.throws(() => w.linkIdentity('kyle', {}), /issuer/);
+  assert.throws(() => w.linkIdentity('nobody', { issuer: ISS }), /not found/);
+  assert.equal(w.identityInvite(inv.code).account, 'kyle', 'a pending invite can be looked at');
+  assert.equal(w.identityInvite('wvi_made-up'), null);
 
-  assert.equal(w.accountForIdentity({ issuer: ISS, subject: 'user_1', email: 'stranger@example.com', emailVerified: true }), null, 'no account, no entry');
-  assert.equal(w.accountForIdentity({ issuer: ISS, subject: 'user_1', email: 'kyle@example.com', emailVerified: false }), null, 'an unverified email proves nothing');
-  assert.equal(w.accountForIdentity({ issuer: 'https://other.example', subject: 'user_1', email: 'kyle@example.com', emailVerified: true }), null, 'another issuer is another namespace');
-
-  const hit = w.accountForIdentity({ issuer: ISS, subject: 'user_1', email: 'KYLE@example.com', emailVerified: true });
+  assert.throws(() => w.redeemIdentityInvite(inv.code, { issuer: 'https://other.example', subject: 'user_1' }), /another provider/);
+  const hit = w.redeemIdentityInvite(inv.code, { issuer: ISS, subject: 'user_1', email: 'kyle@example.com' });
   assert.equal(hit.name, 'kyle');
   assert.ok(!('tokenHash' in hit));
-  assert.equal(w.listAccounts().find((a) => a.name === 'kyle').identities[0].subject, 'user_1', 'pinned');
-  assert.equal(w.accountForIdentity({ issuer: ISS, subject: 'user_2', email: 'kyle@example.com', emailVerified: true }), null, 'the same email under a new subject is someone else');
-  assert.equal(w.accountForIdentity({ issuer: ISS, subject: 'user_1', email: 'moved@example.com', emailVerified: true }).name, 'kyle', 'once pinned, the subject is the identity');
+  const ids = w.listAccounts().find((a) => a.name === 'kyle').identities;
+  assert.deepEqual(ids.map((i) => [i.issuer, i.subject]), [[ISS, 'user_1']]);
+  assert.ok(!('email' in ids[0]), 'no email on the identity');
+  assert.throws(() => w.redeemIdentityInvite(inv.code, { issuer: ISS, subject: 'user_1' }), /expired or was already used/, 'single use');
+  assert.equal(w.identityInvite(inv.code), null);
+  assert.equal(Object.keys(w.state.meta.identityInvites).length, 0);
 
-  assert.deepEqual(w.unlinkIdentity('kyle', { issuer: ISS, email: 'kyle@example.com' }), { unlinked: 1, remaining: 0 });
-  assert.equal(w.accountForIdentity({ issuer: ISS, subject: 'user_1', email: 'kyle@example.com', emailVerified: true }), null);
-  const actions = w.listAudit({ limit: 20 }).map((e) => e.action);
-  for (const a of ['identity-linked', 'identity-pinned', 'identity-unlinked']) assert.ok(actions.includes(a), a);
+  assert.equal(w.accountForIdentity({ issuer: ISS, subject: 'user_1' }).name, 'kyle');
+  assert.equal(w.accountForIdentity({ issuer: ISS, subject: 'user_2', email: 'kyle@example.com', emailVerified: true }), null, 'an email opens nothing');
+  assert.equal(w.accountForIdentity({ issuer: 'https://other.example', subject: 'user_1' }), null, 'another issuer is another namespace');
+
+  // A subject already pinned elsewhere is refused, and the invite survives for the right person.
+  const second = w.linkIdentity('eye', { issuer: ISS });
+  assert.throws(() => w.redeemIdentityInvite(second.code, { issuer: ISS, subject: 'user_1' }), /already opens 'kyle'/);
+  assert.equal(w.identityInvite(second.code).account, 'eye');
+  assert.equal(w.redeemIdentityInvite(second.code, { issuer: ISS, subject: 'user_eye' }).name, 'eye');
+
+  assert.deepEqual(w.unlinkIdentity('kyle', { issuer: ISS, subject: 'user_1' }), { unlinked: 1, remaining: 0 });
+  assert.throws(() => w.unlinkIdentity('kyle', { subject: 'user_1' }), /not found|No identity/);
+  assert.equal(w.accountForIdentity({ issuer: ISS, subject: 'user_1' }), null);
+  const audit = w.listAudit({ limit: 50 }).filter((e) => e.action.startsWith('identity-'));
+  for (const a of ['identity-invited', 'identity-linked', 'identity-unlinked']) assert.ok(audit.some((e) => e.action === a), a);
+  assert.ok(!mail.test(JSON.stringify(audit)), 'no email in the audit');
+  assert.ok(!mail.test(JSON.stringify(w.state.meta)), 'no email in the workspace');
 });
 
-test('cli: account link takes the issuer from WEAVE_OIDC_ISSUER alone, or from --issuer', () => {
+test('engine: an invite expires', () => {
+  const w = new Weave();
+  w.createAccount({ name: 'kyle', role: 'admin' });
+  const inv = w.linkIdentity('kyle', { issuer: ISS });
+  for (const i of Object.values(w.state.meta.identityInvites)) i.expiresAt = new Date(Date.now() - 1000).toISOString();
+  assert.equal(w.identityInvite(inv.code), null);
+  assert.throws(() => w.redeemIdentityInvite(inv.code, { issuer: ISS, subject: 'user_1' }), /expired or was already used/);
+  assert.equal(w.listAccounts()[0].identities, undefined, 'nothing was pinned');
+  // Minting the next one sweeps the dead ones.
+  w.linkIdentity('kyle', { issuer: ISS });
+  assert.equal(Object.keys(w.state.meta.identityInvites).length, 1);
+});
+
+test('engine: invites never leave through the JSON export, and an import keeps this workspace\'s own', () => {
+  const w = new Weave();
+  w.createAccount({ name: 'kyle', role: 'admin' });
+  const inv = w.linkIdentity('kyle', { issuer: ISS });
+  const dump = w.exportJSON();
+  assert.equal(dump.meta.identityInvites, undefined);
+  w.importJSON(dump);
+  assert.equal(w.identityInvite(inv.code).account, 'kyle');
+  const far = new Weave();
+  far.importJSON(dump);
+  assert.equal(far.identityInvite(inv.code), null);
+});
+
+test('migration: a pinned identity drops its email, an unpinned one is dropped, and the identity audit is scrubbed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'weave-oidc-mig-'));
+  try {
+    const path = join(dir, 'w.db');
+    const w = new Weave({ path });
+    w.createAccount({ name: 'kyle', role: 'admin' });
+    w.createSpace({ name: 'Dev' });
+    const a = Object.values(w.state.meta.accounts)[0];
+    // The shape v0.4.54 wrote: linked by email, pinned at first sign-in.
+    a.identities = [
+      { issuer: ISS, email: 'kyle@example.com', subject: 'user_1', createdAt: '2026-10-01T00:00:00.000Z', lastUsedAt: '2026-10-02T00:00:00.000Z' },
+      { issuer: 'https://dev.example', email: 'kyle@example.com', subject: null, createdAt: '2026-09-29T00:00:00.000Z', lastUsedAt: null },
+    ];
+    w.save();
+    for (const [action, detail] of [
+      ['identity-linked', { name: 'kyle', issuer: ISS, email: 'kyle@example.com' }],
+      ['identity-pinned', { name: 'kyle', issuer: ISS, email: 'kyle@example.com' }],
+      ['identity-unlinked', { name: 'kyle', email: 'old@example.com' }],
+    ]) w.store.audit({ at: new Date().toISOString(), actor: 'local', action, detail });
+    w.store.close?.();
+
+    const again = new Weave({ path });
+    const ids = again.listAccounts()[0].identities;
+    assert.deepEqual(ids, [{ issuer: ISS, subject: 'user_1', createdAt: '2026-10-01T00:00:00.000Z', lastUsedAt: '2026-10-02T00:00:00.000Z' }]);
+    assert.equal(again.accountForIdentity({ issuer: ISS, subject: 'user_1' }).name, 'kyle', 'the pinned person still signs in');
+    const audit = again.listAudit({ limit: -1 }).filter((e) => e.action.startsWith('identity-'));
+    assert.equal(audit.length, 3, 'entries are kept, only the email goes');
+    assert.ok(audit.every((e) => e.detail.name === 'kyle' && !('email' in e.detail)));
+    assert.ok(!mail.test(JSON.stringify(again.state.meta)));
+    assert.ok(!mail.test(JSON.stringify(again.listAudit({ limit: -1 }))));
+    again.store.close?.();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('migration: a dump carrying the old shape is scrubbed on import too', () => {
+  const w = new Weave();
+  w.createAccount({ name: 'kyle', role: 'admin' });
+  const dump = w.exportJSON();
+  Object.values(dump.meta.accounts)[0].identities = [{ issuer: ISS, email: 'kyle@example.com', subject: 'user_1' }, { issuer: ISS, email: 'b@example.com', subject: null }];
+  const far = new Weave();
+  far.importJSON(dump);
+  assert.deepEqual(far.listAccounts()[0].identities, [{ issuer: ISS, subject: 'user_1' }]);
+});
+
+test('cli: account link mints an invite (issuer from WEAVE_OIDC_ISSUER or --issuer); unlink takes the subject', () => {
   const dir = mkdtempSync(join(tmpdir(), 'weave-oidc-'));
   try {
     const data = join(dir, 'w.db');
-    const run = (args, env = {}) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: '', WEAVE_OIDC_CLIENT_ID: '', WEAVE_UPDATE_CHECK: 'off', ...env } });
+    const run = (args, env = {}) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: '', WEAVE_OIDC_CLIENT_ID: '', WEAVE_ORIGIN: '', WEAVE_UPDATE_CHECK: 'off', ...env } });
     assert.equal(run(['account', 'create', 'kyle', '--role', 'admin']).status, 0);
-    const bare = run(['account', 'link', 'kyle', '--email', 'kyle@example.com']);
+    const bare = run(['account', 'link', 'kyle']);
     assert.notEqual(bare.status, 0);
     assert.match(bare.stderr + bare.stdout, /--issuer/);
-    const fromEnv = run(['account', 'link', 'kyle', '--email', 'kyle@example.com'], { WEAVE_OIDC_ISSUER: `${ISS}/` });
+    const fromEnv = run(['account', 'link', 'kyle'], { WEAVE_OIDC_ISSUER: `${ISS}/`, WEAVE_ORIGIN: 'https://weave.example.com' });
     assert.equal(fromEnv.status, 0, fromEnv.stderr);
-    assert.equal(JSON.parse(fromEnv.stdout).issuer, ISS);
-    const flagged = run(['account', 'link', 'kyle', '--email', 'k2@example.com', '--issuer', 'https://other.example']);
-    assert.equal(JSON.parse(flagged.stdout).issuer, 'https://other.example');
-    assert.equal(JSON.parse(run(['account', 'list']).stdout)[0].identities.length, 2);
-    assert.deepEqual(JSON.parse(run(['account', 'unlink', 'kyle', '--email', 'k2@example.com']).stdout), { unlinked: 1, remaining: 1 });
+    const made = JSON.parse(fromEnv.stdout);
+    assert.equal(made.issuer, ISS);
+    assert.equal(made.url, `https://weave.example.com/api/auth/oidc/start?invite=${made.code}`);
+    const flagged = JSON.parse(run(['account', 'link', 'kyle', '--issuer', 'https://other.example']).stdout);
+    assert.equal(flagged.issuer, 'https://other.example');
+    assert.equal(flagged.url, `/api/auth/oidc/start?invite=${flagged.code}`, 'with no WEAVE_ORIGIN the link is a path');
+    const email = run(['account', 'link', 'kyle', '--email', 'kyle@example.com', '--issuer', ISS]);
+    assert.notEqual(email.status, 0, 'linking by email is gone');
+    assert.match(email.stderr, /invite/);
+    const w = new Weave({ path: data });
+    w.redeemIdentityInvite(made.code, { issuer: ISS, subject: 'user_1' });
+    w.store.close?.();
+    assert.equal(JSON.parse(run(['account', 'list']).stdout)[0].identities.length, 1);
+    assert.deepEqual(JSON.parse(run(['account', 'unlink', 'kyle', '--subject', 'user_1']).stdout), { unlinked: 1, remaining: 0 });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -91,7 +192,7 @@ test('page: the sign-in page names the provider only when one is configured', ()
 /* ---------------------------------------------------------------- routes */
 const cookieOf = (res) => (res.headers.get('set-cookie') ?? '').split(';')[0];
 
-async function serve({ idpOptions, link = 'kyle@example.com', configured = true } = {}) {
+async function serve({ idpOptions, link = 'user_kyle', configured = true } = {}) {
   const idp = await startIdp(idpOptions);
   const w = new Weave();
   w.createSpace({ name: 'Dev' });
@@ -99,7 +200,7 @@ async function serve({ idpOptions, link = 'kyle@example.com', configured = true 
   const admin = w.createAccount({ name: 'root', role: 'admin' }).token;
   const reader = w.createAccount({ name: 'eye', role: 'reader' }).token;
   w.createAccount({ name: 'kyle', role: 'writer' });
-  if (link) w.linkIdentity('kyle', { issuer: idp.issuer, email: link });
+  if (link) w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: link });
   w.setRequireAuth(true);
   const oidc = configured ? createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' }) : null;
   const { server } = await startServer(w, { port: 0, origin: null, oidc, limits: { options: 1000, failed: 1000 } });
@@ -111,8 +212,9 @@ async function serve({ idpOptions, link = 'kyle@example.com', configured = true 
     redirect: 'manual',
   });
   /* One trip: start at weave, sign in at the provider, come back. */
-  const signIn = async (claims, { next } = {}) => {
-    const start = await call('GET', `/api/auth/oidc/start${next ? `?next=${encodeURIComponent(next)}` : ''}`);
+  const signIn = async (claims, { next, invite } = {}) => {
+    const q = new URLSearchParams({ ...(next ? { next } : {}), ...(invite ? { invite } : {}) }).toString();
+    const start = await call('GET', `/api/auth/oidc/start${q ? `?${q}` : ''}`);
     const authorize = start.headers.get('location');
     const trip = cookieOf(start);
     const back = idp.approve(authorize, claims);
@@ -145,7 +247,7 @@ test('routes: start sends the browser to the provider with state, nonce and a PK
     assert.equal(q.get('response_type'), 'code');
     assert.equal(q.get('client_id'), s.idp.clientId);
     assert.equal(q.get('redirect_uri'), `${s.base}/api/auth/oidc/callback`);
-    assert.deepEqual(q.get('scope').split(' ').sort(), ['email', 'openid', 'profile']);
+    assert.equal(q.get('scope'), 'openid', 'no email, no profile (Feature #252)');
     assert.equal(q.get('code_challenge_method'), 'S256');
     for (const k of ['state', 'nonce', 'code_challenge']) assert.ok(q.get(k)?.length >= 32, k);
     assert.notEqual(q.get('state'), q.get('nonce'));
@@ -176,30 +278,38 @@ test('routes: a linked person signs in at the provider and comes back with a ses
   } finally { s.stop(); }
 });
 
-test('routes: claims the id token leaves out are read from userinfo', async () => {
-  const s = await serve({ idpOptions: { claimsInIdToken: false } });
-  try {
-    const { res } = await s.signIn(KYLE);
-    assert.equal(res.status, 302);
-    assert.equal(s.idp.seen.userinfo, 1);
-  } finally { s.stop(); }
+test('oidc: what comes back is the issuer and the subject, and userinfo is never read', async () => {
+  for (const claimsInIdToken of [true, false]) {
+    const s = await serve({ idpOptions: { claimsInIdToken } });
+    try {
+      const { res } = await s.signIn(KYLE);
+      assert.equal(res.status, 302);
+      assert.equal(s.idp.seen.userinfo, 0, 'no userinfo trip for an email');
+      const oidc = createOidc({ issuer: s.idp.issuer, clientId: s.idp.clientId, clientSecret: s.idp.clientSecret });
+      const trip = await oidc.begin({ redirectUri: 'http://localhost/cb' });
+      const back = s.idp.approve(trip.url, KYLE);
+      const who = await oidc.redeem({ code: back.searchParams.get('code'), redirectUri: 'http://localhost/cb', verifier: trip.verifier, nonce: trip.nonce });
+      assert.deepEqual(who, { issuer: s.idp.issuer, subject: 'user_kyle' });
+    } finally { s.stop(); }
+  }
 });
 
-test('routes: signing in provisions nobody — a stranger, an unverified email and a new subject are refused', async () => {
+test('routes: signing in provisions nobody — a stranger, and the linked email under a new subject, are refused', async () => {
   const s = await serve();
   try {
     for (const [why, claims] of [
       ['stranger', { sub: 'user_x', email: 'stranger@example.com', email_verified: true }],
-      ['unverified', { sub: 'user_kyle', email: 'kyle@example.com', email_verified: false }],
+      ['same email, new subject', { ...KYLE, sub: 'user_impostor' }],
     ]) {
       const { res } = await s.signIn(claims);
       assert.equal(res.status, 403, why);
       assert.equal(res.headers.get('set-cookie'), null, why);
-      assert.match(await res.text(), /no account/i, why);
+      const page = await res.text();
+      assert.match(page, /No account for this identity/, why);
+      assert.match(page, /invite link/, `${why}: the page says what to do`);
+      assert.ok(!/@/.test(page), `${why}: the page names no email`);
     }
     assert.equal((await s.signIn(KYLE)).res.status, 302);
-    const { res } = await s.signIn({ ...KYLE, sub: 'user_impostor' });
-    assert.equal(res.status, 403);
     assert.equal(Object.keys(s.w.state.meta.sessions).length, 1);
   } finally { s.stop(); }
 });
@@ -215,7 +325,6 @@ test('routes: a token that fails verification never becomes a session', async ()
     }
     s.idp.tamper(null);
     assert.equal(Object.keys(s.w.state.meta.sessions ?? {}).length, 0);
-    assert.equal(s.w.listAccounts().find((a) => a.name === 'kyle').identities[0].subject, null, 'nothing was pinned');
   } finally { s.stop(); }
 });
 
@@ -272,19 +381,73 @@ test('routes: next stays on this origin', async () => {
   } finally { s.stop(); }
 });
 
-test('routes: linking an identity is an admin verb', async () => {
+test('routes: linking is an admin verb that answers with an invite link', async () => {
   const s = await serve({ link: null });
   try {
-    const body = { issuer: s.idp.issuer, email: 'kyle@example.com' };
-    assert.equal((await s.call('POST', '/api/accounts/kyle/identities', { body })).status, 401);
-    assert.equal((await s.call('POST', '/api/accounts/kyle/identities', { body, token: s.reader })).status, 403);
-    assert.equal((await s.signIn(KYLE)).res.status, 403);
-    const made = await s.call('POST', '/api/accounts/kyle/identities', { body: { email: 'kyle@example.com' }, token: s.admin });
+    assert.equal((await s.call('POST', '/api/accounts/kyle/identities', { body: {} })).status, 401);
+    assert.equal((await s.call('POST', '/api/accounts/kyle/identities', { body: {}, token: s.reader })).status, 403);
+    const made = await s.call('POST', '/api/accounts/kyle/identities', { body: {}, token: s.admin });
     assert.equal(made.status, 201);
-    assert.equal((await made.json()).issuer, s.idp.issuer, 'the issuer defaults to the configured provider');
+    const inv = await made.json();
+    assert.equal(inv.issuer, s.idp.issuer, 'the issuer defaults to the configured provider');
+    assert.equal(inv.url, `${s.base}/api/auth/oidc/start?invite=${inv.code}`);
+    assert.ok(inv.expiresAt);
+    const old = await s.call('POST', '/api/accounts/kyle/identities', { body: { email: 'kyle@example.com' }, token: s.admin });
+    assert.equal(old.status, 400, 'an email is refused, not stored');
+  } finally { s.stop(); }
+});
+
+test('routes: an invite link signs the person in through the provider and pins them, once', async () => {
+  const s = await serve({ link: null });
+  try {
+    assert.equal((await s.signIn(KYLE)).res.status, 403, 'not linked yet');
+    const inv = await (await s.call('POST', '/api/accounts/kyle/identities', { body: {}, token: s.admin })).json();
+    const { start, res, cookie } = await s.signIn(KYLE, { invite: inv.code });
+    assert.equal(start.status, 302);
+    assert.equal(new URL(start.headers.get('location')).searchParams.get('scope'), 'openid');
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get('location'), '/');
+    const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();
+    assert.equal(me.account.name, 'kyle');
+    assert.deepEqual(me.account.identities.map((i) => i.subject), ['user_kyle']);
+    assert.ok(!('email' in me.account.identities[0]));
+    // From now on the subject alone signs in.
     assert.equal((await s.signIn(KYLE)).res.status, 302);
-    const gone = await s.call('DELETE', `/api/accounts/kyle/identities?email=${encodeURIComponent('kyle@example.com')}`, { token: s.admin });
+    // The link is spent: start refuses it before the provider is asked.
+    const again = await s.call('GET', `/api/auth/oidc/start?invite=${inv.code}`);
+    assert.equal(again.status, 410);
+    assert.match(await again.text(), /expired or was already used/);
+    assert.ok(!mail.test(JSON.stringify(s.w.state.meta)), 'no email stored');
+    assert.ok(!mail.test(JSON.stringify(s.w.listAudit({ limit: -1 }))), 'no email audited');
+  } finally { s.stop(); }
+});
+
+test('routes: an expired invite, or one for a subject that already opens another account, pins nothing', async () => {
+  const s = await serve({ link: null });
+  try {
+    const expired = await (await s.call('POST', '/api/accounts/kyle/identities', { body: {}, token: s.admin })).json();
+    for (const i of Object.values(s.w.state.meta.identityInvites)) i.expiresAt = new Date(Date.now() - 1000).toISOString();
+    assert.equal((await s.call('GET', `/api/auth/oidc/start?invite=${expired.code}`)).status, 410);
+    assert.equal((await s.call('GET', '/api/auth/oidc/start?invite=wvi_made-up')).status, 410);
+
+    s.w.redeemIdentityInvite(s.w.linkIdentity('eye', { issuer: s.idp.issuer }).code, { issuer: s.idp.issuer, subject: 'user_eye' });
+    const inv = await (await s.call('POST', '/api/accounts/kyle/identities', { body: {}, token: s.admin })).json();
+    const { res } = await s.signIn({ sub: 'user_eye' }, { invite: inv.code });
+    assert.equal(res.status, 409);
+    assert.equal(res.headers.get('set-cookie'), null);
+    assert.match(await res.text(), /already opens another account/);
+    assert.equal(s.w.identityInvite(inv.code).account, 'kyle', 'the invite is still there for the right person');
+    assert.equal(s.w.listAccounts().find((a) => a.name === 'kyle').identities, undefined);
+  } finally { s.stop(); }
+});
+
+test('routes: unlink takes the subject', async () => {
+  const s = await serve();
+  try {
+    assert.equal((await s.signIn(KYLE)).res.status, 302);
+    const gone = await s.call('DELETE', '/api/accounts/kyle/identities?subject=user_kyle', { token: s.admin });
     assert.equal(gone.status, 200);
+    assert.deepEqual(await gone.json(), { unlinked: 1, remaining: 0 });
     assert.equal((await s.signIn(KYLE)).res.status, 403);
   } finally { s.stop(); }
 });
