@@ -1051,6 +1051,7 @@ export class Weave {
         if (docField) e.docs[docField.id] = e.doc;
       }
       delete e.doc;
+      this.#mark(e);
       changed = true;
     }
     if (s.version !== 2) {
@@ -1139,10 +1140,12 @@ export class Weave {
       if (role !== a.role) { a.role = role; changed = true; }
     }
     if (this.#scrubIdentityEmails()) changed = true;
-    if (changed) {
-      this.#dirtyAll = true;
-      this.save();
-    }
+    /* Every entity this pass changes is marked, and the structural rows are
+       compared on every save, so a plain save writes exactly the migration.
+       It used to force a rewrite of every row and search entry, which cost a
+       ten-second stall when a supervised worker settled on a slow volume
+       (Feature #250, 2026-10-03). */
+    if (changed) this.save();
   }
 
   /* The field order names every field exactly once — updateTable refuses
@@ -1496,16 +1499,18 @@ export class Weave {
 
   // The end of a deferred open (see deferMigrations). Re-read what another
   // process wrote meanwhile, migrate whatever state is on hand (a reload
-  // brings back the unmigrated shape), then write anything still held.
+  // brings back the unmigrated shape), then write what is still held. A held
+  // save kept its dirty set, and the structural rows are compared on every
+  // save, so a plain save writes exactly what changed. Forcing every row
+  // here is what stalled the hosted swap on 2026-10-03: a full rewrite of
+  // each workspace, row and search entry, in the worker that had just begun
+  // serving.
   settleDeferred() {
     this.maybeRefresh();
     const held = this.#held;
     this.#held = false;
     this.#migrate();
-    if (held) {
-      this.#dirtyAll = true;
-      this.save();
-    }
+    if (held) this.save();
   }
 
   // Re-read state when another process (CLI beside the server, a second

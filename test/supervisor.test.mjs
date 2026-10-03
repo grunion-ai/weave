@@ -249,6 +249,45 @@ test('the engine holds every write made while migrations are deferred, then sett
   db.close();
 });
 
+/* The live swap on 2026-10-03 (v0.4.57 -> v0.4.58 on Railway) stalled every
+   request for about ten seconds after the switch: settling forced a full
+   rewrite of each workspace (every entity row and its search entry) inside
+   the worker that had just started serving, on a volume where that is slow.
+   A settle writes what the deferred open changed, and nothing else. */
+test('settling a deferred open writes only what it changed, not every row', () => {
+  const dir = mkdtempSync(join(scratch, 'settle-'));
+  const path = join(dir, 'ws.db');
+  const w = new Weave({ path });
+  w.createSpace({ name: 'S' });
+  const t = w.createTable({ space: 'S', name: 'T' });
+  const rows = new Set();
+  for (let i = 0; i < 20; i++) rows.add(w.createEntity(t.id, { Name: `row ${i}` }).id);
+  w.store.close();
+  const db = new DatabaseSync(path);
+  const row = JSON.parse(db.prepare('SELECT json FROM tables WHERE id = ?').get(t.id).json);
+  const full = row.fieldOrder;
+  db.prepare('UPDATE tables SET json = ? WHERE id = ?').run(JSON.stringify({ ...row, fieldOrder: full.slice(1) }), t.id);
+  db.exec(`CREATE TABLE entity_writes (id TEXT);
+    CREATE TRIGGER count_insert AFTER INSERT ON entities BEGIN INSERT INTO entity_writes VALUES (new.id); END;
+    CREATE TRIGGER count_update AFTER UPDATE ON entities BEGIN INSERT INTO entity_writes VALUES (new.id); END;`);
+  const written = () => db.prepare('SELECT id FROM entity_writes').all().map((r) => r.id);
+  let held;
+  deferMigrations();
+  try {
+    held = new Weave({ path });
+  } finally {
+    runDeferredMigrations();
+  }
+  const order = JSON.parse(db.prepare('SELECT json FROM tables WHERE id = ?').get(t.id).json).fieldOrder;
+  assert.deepEqual([...order].sort(), [...full].sort(), 'the repair landed');
+  // The table's own Workspace/Tables row mirrors its Field Order, so it is
+  // the one row the repair rewrites; before the fix all 41 rows were.
+  assert.deepEqual(written().filter((id) => rows.has(id)), [], 'no data row was rewritten to land a table repair');
+  assert.ok(written().length <= 1, `only the table's registry row moved (${written().length} written)`);
+  held.store.close();
+  db.close();
+});
+
 test('a release whose health check fails leaves the old worker serving, and is not retried', async () => {
   const dataPath = dataDir('unhealthy');
   const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: 'process.exit(3);\n' }) });
