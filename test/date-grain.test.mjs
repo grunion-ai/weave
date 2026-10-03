@@ -68,6 +68,24 @@ test('grain is a contiguous run of year·month·day, stored in canonical order, 
   assert.deepEqual(fieldOf(fresh({ grain: [], time: true })).config.grain, [], 'a time-of-day field');
 });
 
+/* Issue #590: agents send grain as a word ({grain:'month'}, {grain:'day'}). A
+   string used to collapse to no parts and the engine blamed the time of day.
+   A bare 'month' is ambiguous (month alone, or year·month), so no alias is
+   accepted: the refusal teaches the list shape instead. */
+test('a grain sent as a string is refused with the shape a grain takes, never the time-of-day error', () => {
+  const SHAPE = 'grain is a list of parts, e.g. ["year","month"] for a month or ["year"] for a year; parts are year, month, day';
+  for (const grain of ['month', 'day', 'year', 'year-month', 'iso', 3, true]) {
+    assert.throws(() => fresh({ grain, format: 'month' }), (e) => e.message === SHAPE && e.code === 'invalid', `grain ${JSON.stringify(grain)}`);
+  }
+  assert.throws(() => fresh({ grain: 'day', format: 'iso' }), (e) => e.message === SHAPE);
+  assert.throws(() => globalThis.weaveDateGrain.normalizeGrain('month'), (e) => e.message === SHAPE, 'the pure rule says it too, so the dialog and the engine cannot differ');
+  // Both accepted shapes still work, and a field updated with a string is refused the same way.
+  assert.deepEqual(fieldOf(fresh({ grain: ['year', 'month'], format: 'month' })).config.grain, ['year', 'month']);
+  assert.deepEqual(fieldOf(fresh({ grain: { month: true, day: true } })).config.grain, ['month', 'day']);
+  const w = fresh({});
+  assert.throws(() => w.updateField('T', 'D', { config: { grain: 'month' } }), (e) => e.message === SHAPE);
+});
+
 test('a partial grain stores the ISO 8601 truncated form, and a fuller value is cut to it — never padded', () => {
   const ym = fresh({ grain: ['year', 'month'] });
   assert.equal(stored(ym, '2026-08'), '2026-08');
