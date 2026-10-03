@@ -1,0 +1,1 @@
+- **The core tool list fits its budget again** (Issue #579): the `weave_add_field` description is shorter, so the core `tools/list` reads 14,465 bytes, under the 14,500 the tool-profile gate allows. Two changes that each passed alone (the build and vocabulary call economy, and the schema-write guidance) landed together at 14,536.
