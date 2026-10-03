@@ -15,6 +15,7 @@ import { markdownToPdf } from './pdf.js';
 // and node-only anyway, so they pay for the import when they are asked for.
 const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister } from './mcp.js';
+import { workspaceSlug } from './workspace-name.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
 import { renderAuthPage, renderRefusalPage } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
@@ -189,6 +190,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     // serving anything from this workspace.
     weave.maybeRefresh();
     versionOf = weave;
+    /* The record is the engine's; the hub's name index is the server's. A
+       slug another workspace holds, in any case, is refused before the write
+       (Issue #599), and REST and MCP rename through this one door. */
+    const updateWorkspace = (patch) => {
+      const slug = patch.name != null ? workspaceSlug(patch.name) : null;
+      const held = slug ? hub.get(slug) : null;
+      if (held && held !== weave) throw new WeaveError(`Workspace '${slug}' already exists`, 'conflict');
+      const was = weave.state.meta.name;
+      const ws = weave.updateWorkspace(patch);
+      if (ws.name !== was) hub.rename(was, ws.name);
+      return ws;
+    };
 
     /* The registry lives at the root (Feature #219), but a member page reads
        and edits the rows that describe it through its own prefix: an entity
@@ -793,9 +806,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (!built.ok) throw new WeaveError(`Couldn't set up ${template.title}: ${built.errors.map((e) => e.error).join('; ')}`, 'invalid');
               table = weave.findTable(`${template.space}/${WeaveStarters.firstTable(template)}`)?.id ?? null;
             }
-            const was = weave.state.meta.name;
-            const ws = weave.updateWorkspace({ name });
-            if (ws.name !== was) hub.rename(was, ws.name);
+            const ws = updateWorkspace({ name });
             me.engine.markOnboarded(me.id);
             return out(200, { id: ws.id, name: ws.name, url: `/w/${ws.id}/`, table });
           }
@@ -951,7 +962,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           // The accounts, keys and import tools ask the same gate as REST
           // (Issue #482), so the caller's role travels with the message.
           const root = hub.get(hub.defaultName);
-          const caller = { role, root, rootRole: roleOn(root) };
+          const caller = { role, root, rootRole: roleOn(root), updateWorkspace };
           const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
           return out(200, Array.isArray(body) ? replies : replies[0]);
@@ -988,13 +999,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (Object.keys(body).length === 1) return out(200, { requireAuth: weave.state.meta.requireAuth });
         }
         if (route === 'PATCH /api/workspace') {
-          // The record is the engine's; the hub's name index is the server's.
-          const renaming = body.name && body.name !== weave.state.meta.name;
-          if (renaming && hub.get(body.name)) throw new WeaveError(`Workspace '${body.name}' already exists`, 'conflict');
-          const was = weave.state.meta.name;
-          const ws = weave.updateWorkspace({ name: body.name ?? null, description: body.description ?? null });
-          if (renaming) hub.rename(was, ws.name);
-          return out(200, { id: ws.id, url: `/w/${ws.id}/`, name: ws.name, description: ws.description });
+          const ws = updateWorkspace({ name: body.name ?? null, description: body.description ?? null });
+          return out(200, { id: ws.id, url: `/w/${ws.id}/`, name: ws.name, title: ws.title, description: ws.description });
         }
         if (route === 'POST /api/markdown') {
           return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention }) });

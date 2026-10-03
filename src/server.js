@@ -6,7 +6,7 @@ import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
-import { workspaceName, nameFromFile } from './workspace-name.js';
+import { workspaceName, workspaceSlug, nameFromFile } from './workspace-name.js';
 import { createRequestHandler } from './routes.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
@@ -269,13 +269,17 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       if (defaultName === oldName) defaultName = newName;
     },
     get(name) {
-      if (instances.has(name)) return instances.get(name);
       // The universal reference rule: a workspace answers to its id as well
-      // as its friendly name, so /w/<id>/ survives any rename.
-      for (const w of instances.values()) if (w.state.meta.id === name) return w;
-      scan();
-      for (const w of instances.values()) if (w.state.meta.id === name) return w;
-      return instances.get(name) ?? null;
+      // as its friendly name, so /w/<id>/ survives any rename. The name is
+      // case-blind (Issue #599); an exact match wins, so two files that
+      // differ only by case, made before that, both still resolve.
+      const find = () => {
+        if (instances.has(name)) return instances.get(name);
+        const lower = String(name).toLowerCase();
+        for (const [n, w] of instances) if (w.state.meta.id === name || n.toLowerCase() === lower) return w;
+        return null;
+      };
+      return find() ?? (scan(), find());
     },
     list({ includeDeleted = false } = {}) {
       scan();
@@ -343,20 +347,26 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       w.syncRegistry();
       return w;
     },
-    create(name) {
+    create(asked) {
       // No name asked for: personal-workspace, or the first -2, -3 the
-      // instance does not hold (Issue #594).
-      if (name == null || name === '') {
+      // instance does not hold (Issue #594). A name asked for is the title
+      // and its slug the file and the URL (Issues #592, #599).
+      let title, name;
+      if (asked == null || asked === '') {
         scan();
-        name = workspaceName({ taken: instances.keys() }).slug;
+        ({ name: title, slug: name } = workspaceName({ taken: instances.keys() }));
+      } else {
+        title = String(asked).trim();
+        name = workspaceSlug(asked);
       }
-      if (!/^[a-z0-9][a-z0-9-_]*$/i.test(name)) throw new WeaveError('Workspace name must be alphanumeric', 'invalid');
+      if (!name) throw new WeaveError('A workspace name needs a letter or a digit: its slug keeps letters, digits, - and _', 'invalid');
       const held = this.get(name);
       if (held?.state.meta.deletedAt) throw new WeaveError(`Workspace '${name}' is in the trash — restore it instead`, 'conflict');
       if (held) throw new WeaveError(`Workspace '${name}' already exists`, 'conflict');
       if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
       const w = new Weave({ path: join(dataDir, `${name}.db`) });
       w.state.meta.name = name;
+      if (title !== name) w.state.meta.title = title;
       // A fresh workspace opens on its own page, and the page's empty state
       // says what to do first (Issue #386) — the job a default description
       // did since Issue #123. The description starts empty and is theirs.

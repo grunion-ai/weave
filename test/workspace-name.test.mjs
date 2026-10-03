@@ -24,7 +24,7 @@ test('workspaceName: "Personal Workspace", slug personal-workspace, the same eve
     assert.deepEqual(workspaceName(), { name: 'Personal Workspace', slug: 'personal-workspace' });
   }
   assert.match(workspaceName().slug, SLUG_RULE);
-  assert.deepEqual(Object.keys(naming).sort(), ['nameFromFile', 'workspaceName'], 'no word lists left behind');
+  assert.deepEqual(Object.keys(naming).sort(), ['nameFromFile', 'workspaceName', 'workspaceSlug'], 'no word lists left behind');
 });
 
 test('workspaceName: a taken slug gets -2, -3 and so on', () => {

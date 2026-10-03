@@ -12457,7 +12457,7 @@ async function showHome() {
     viewHeader({
       crumbs: [],
       permalink: location.origin + (ws.url ?? wsHomeHref()),
-      title: ws.name,
+      title: ws.title ?? ws.name,
       onRename: async (name) => {
         const updated = await api('PATCH', '/workspace', { name });
         // The id permalink survives the rename; the name URL just died.
