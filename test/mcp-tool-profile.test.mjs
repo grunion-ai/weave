@@ -119,7 +119,7 @@ test('the admin gate holds through weave_call', () => {
   const caller = { role: 'writer', root: w, rootRole: 'writer' };
   const res = callTool(w, 'weave_call', { name: 'weave_accounts', args: { action: 'create', name: 'evil', role: 'admin' } }, { caller });
   assert.equal(res.isError, true);
-  assert.match(res.content[0].text, /admin token/);
+  assert.match(res.content[0].text, /architect token/);
   assert.equal(w.listAccounts().length, 1);
 });
 
