@@ -947,7 +947,9 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   // the table's do (Kyle, 2026-08-23: "move the entity 3 dots menu to be in
   // line with the breadcrumbs and include the show/hide eye just like on the
   // table view"). The title row is the title.
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*inPeek \? null : navMenuButton\(\),\s*\n\s*el\('span', \{ class: 'crumb-path' \},[\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, eye, dlBtn, \.\.\.poseControls\)/,
+  // The dock's back arrow leads the path where the page has its nav button,
+  // and its expand and close are the pose controls (Issue #583).
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*inPeek \? \(dockControls\?\.back \?\? null\) : navMenuButton\(\),\s*\n\s*el\('span', \{ class: 'crumb-path' \},[\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, eye, dlBtn, \.\.\.poseControls\)/,
     'the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
   /* The side column (comments, activity, references) follows the table's own
      Activity system toggle — the same switch that adds the ⚡ column to the
@@ -2124,6 +2126,11 @@ test('dock: a repaint releases what the last pass mounted, and the docked row ta
   assert.match(draw, /editors: dock\.editors/, 'the dock owns its editors so the scoped teardown can find them');
   assert.match(draw, /inPeek: true/, 'the dock renders the entity in its narrow pose');
   assert.match(draw, /markDockedRow\(\);\s*\}\s*$/, 'the light is re-marked after every paint');
+  // Issue #583: back / expand / close ride the entity's crumb row, inside
+  // the sticky band, never a row of their own above it.
+  assert.match(draw, /panel\.replaceChildren\(host\)/, 'the entity view is the dock\'s only child');
+  assert.match(draw, /dockControls \}\)/, 'and the dock hands its controls to the crumb row');
+  assert.doesNotMatch(APP + CSS, /dock-head/, 'the separate .dock-head row and its rule are gone');
   const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
   assert.match(grid, /requestAnimationFrame\(\(\) => markClippedCells\(table\)\);[\s\S]{0,200}markDockedRow\(\);/, 'a grid redraw re-marks the docked row');
   const mark = fnBody('markDockedRow');
