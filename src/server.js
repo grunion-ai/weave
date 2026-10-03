@@ -378,16 +378,24 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
    makes the rate limiter read X-Forwarded-For (Railway, Fly and every other
    platform proxy put the client there); off, the socket address is the
    client, so a proxy would rate-limit itself. */
-export function originFromEnv(env = process.env) {
-  const raw = env.WEAVE_ORIGIN?.trim();
+export function originFromEnv(env = process.env, name = 'WEAVE_ORIGIN') {
+  const raw = env[name]?.trim();
   if (!raw) return null;
   let url;
-  try { url = new URL(raw); } catch { throw new WeaveError(`WEAVE_ORIGIN must be an absolute URL like https://weave.example.com (got '${raw}')`, 'invalid'); }
+  try { url = new URL(raw); } catch { throw new WeaveError(`${name} must be an absolute URL like https://weave.example.com (got '${raw}')`, 'invalid'); }
   if (!['http:', 'https:'].includes(url.protocol) || url.pathname !== '/' || url.search || url.hash) {
-    throw new WeaveError(`WEAVE_ORIGIN must be a bare origin — scheme and host only, no path (got '${raw}')`, 'invalid');
+    throw new WeaveError(`${name} must be a bare origin — scheme and host only, no path (got '${raw}')`, 'invalid');
   }
   return url.origin;
 }
+/* The other public origins the MCP door answers on (Feature #254), comma
+   separated: https://mcp.weave.example.com beside WEAVE_ORIGIN on the same
+   service. An MCP client checks that the protected-resource metadata names
+   the URL it dialled, so the resource origin follows the Host header, but
+   only onto an origin listed here or in WEAVE_ORIGIN; a Host header is never
+   echoed. Each host is also served, as WEAVE_ALLOWED_HOSTS would. */
+export const mcpOriginsFromEnv = (env = process.env) => String(env.WEAVE_MCP_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean)
+  .map((o) => originFromEnv({ WEAVE_MCP_ORIGINS: o }, 'WEAVE_MCP_ORIGINS'));
 export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
 
 /* The names this server answers to (Issue #487). Any Host used to do, so a
@@ -408,7 +416,7 @@ export function hostAllowed(host, { origin = null, allowedHosts = [] } = {}) {
    down, so it keeps answering any Host and says so once. */
 export function hostCheckFor({ host, env = process.env }) {
   const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host);
-  if (loopback || env.WEAVE_ORIGIN?.trim() || allowedHostsFromEnv(env).length) return { enforce: true, warning: null };
+  if (loopback || env.WEAVE_ORIGIN?.trim() || env.WEAVE_MCP_ORIGINS?.trim() || allowedHostsFromEnv(env).length) return { enforce: true, warning: null };
   return { enforce: false, warning: `weave: bound to ${host} with neither WEAVE_ORIGIN nor WEAVE_ALLOWED_HOSTS set, so any Host header is answered; set one to refuse DNS-rebound requests` };
 }
 
@@ -442,8 +450,9 @@ const IMMUTABLE = 'public, max-age=31536000, immutable';
 /* Door C (Feature #212): the provider WEAVE_OIDC_* names, or null. */
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv() } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv() } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
+  const answers = [...allowedHosts, ...mcpOrigins.map((o) => new URL(o).hostname)];
 
   // Node adapter around the runtime-agnostic dispatcher (src/routes.js): this
   // side owns the body stream, the response socket, and static files from
@@ -512,6 +521,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     origin,
     trustProxy,
     oidc,
+    mcpOrigins,
     ...(limits ? { limits } : {}),
   });
 
@@ -536,7 +546,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       let path;
       try { path = decodeURIComponent(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
       // Health stays open to any name: platform probes send their own Host.
-      if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts })) {
+      if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts: answers })) {
         return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
       }
       if (crossSiteWrite(req, { origin, trustProxy })) return fail(res, 403, 'Cross-site write refused', 'forbidden');
@@ -560,10 +570,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc } = {}) {
-  const { enforce, warning } = origin || allowedHosts?.length ? { enforce: true, warning: null } : hostCheckFor({ host });
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins } = {}) {
+  const { enforce, warning } = origin || allowedHosts?.length || mcpOrigins?.length ? { enforce: true, warning: null } : hostCheckFor({ host });
   if (warning) console.warn(warning);
-  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}) });
+  const server = createServer(weave, { workspaces, build, backup, limits, checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

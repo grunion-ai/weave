@@ -103,6 +103,15 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       back.searchParams.set('state', q.get('state'));
       return back;
     },
+    /* An access token for `claims`, as if a client finished its own sign-in
+       here (the MCP door, Feature #254): userinfo answers for it. `jwt`
+       mints it JWT-shaped with these extra claims (a client_id, say); the
+       default is opaque, as Clerk's are. */
+    mint(claims, { jwt = null } = {}) {
+      const access = jwt ? signJwt({ iss: issuer, sub: claims.sub, ...jwt }, { privateKey }) : randomBytes(16).toString('hex');
+      codes.set(`access:${access}`, { claims });
+      return access;
+    },
     stop: () => server.close(),
   };
 }

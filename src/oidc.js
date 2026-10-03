@@ -18,6 +18,8 @@ const { subtle } = webcrypto;
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const SKEW_S = 60;
 const DISCOVERY_TTL_MS = 60 * 60 * 1000;
+const TOKEN_TTL_MS = 60 * 1000;
+const TOKEN_CACHE_MAX = 1000;
 const ALGS = {
   RS256: { import: { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, verify: { name: 'RSASSA-PKCS1-v1_5' } },
   ES256: { import: { name: 'ECDSA', namedCurve: 'P-256' }, verify: { name: 'ECDSA', hash: 'SHA-256' } },
@@ -47,6 +49,7 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
   if (!issuer || !clientId) throw new WeaveError('An OIDC provider needs an issuer and a client id', 'invalid');
   let discovered = null;
   let keys = null;
+  const vouched = new Map();
 
   const getJson = async (url, init) => {
     const res = await fetch(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(10_000) });
@@ -140,6 +143,42 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
       const tokens = await getJson(doc.token_endpoint, { method: 'POST', headers, body: form.toString() });
       const claims = await verifyIdToken(tokens.id_token, { nonce, doc });
       return { issuer, subject: String(claims.sub) };
+    },
+    /* Who an access token belongs to, for the MCP door (Feature #254): an
+       agent signed in at the provider on its own and brings the provider's
+       token. The provider's userinfo endpoint is the check, so this works
+       for opaque tokens too. Answers, and refusals, are kept TOKEN_TTL_MS
+       under the token's sha256, never the token. A 401 or 403 from the
+       provider is a WeaveError 'unauthorized'; a provider that is down or
+       answers nonsense throws anything else and is not remembered.
+       client: the token's client_id (or azp) when the token is a JWT, read
+       after userinfo accepted it, for the audit line; an opaque token names
+       none. ponytail: whole-cache clear at TOKEN_CACHE_MAX, not LRU. */
+    async identify(accessToken) {
+      const key = createHash('sha256').update(String(accessToken)).digest('hex');
+      const hit = vouched.get(key);
+      if (hit && Date.now() - hit.at < TOKEN_TTL_MS) {
+        if (hit.refused) throw refuse(hit.refused);
+        return hit.who;
+      }
+      if (vouched.size >= TOKEN_CACHE_MAX) vouched.clear();
+      // A discovery failure is the provider's trouble, not a bad token: never a 401.
+      const doc = await discover().catch((err) => { throw new Error(err.message); });
+      if (!doc.userinfo_endpoint) throw new Error('The identity provider\'s discovery document has no userinfo_endpoint');
+      const res = await fetch(doc.userinfo_endpoint, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(10_000) });
+      if (res.status === 401 || res.status === 403) {
+        const refused = 'The identity provider does not accept this token (expired, revoked or not its own)';
+        vouched.set(key, { at: Date.now(), refused });
+        throw refuse(refused);
+      }
+      const info = await res.json().catch(() => null);
+      if (!res.ok || !info?.sub) throw new Error(`The identity provider answered ${res.status} at ${new URL(doc.userinfo_endpoint).pathname}`);
+      let client = null;
+      try { const c = decodePart(String(accessToken).split('.')[1]); client = c.client_id ?? c.azp ?? null; } catch { /* opaque */ }
+      // The subject alone, as redeem keeps it (Feature #252): no email is read or kept.
+      const who = { issuer, subject: String(info.sub), client: /^[\w.:@-]{1,64}$/.test(String(client ?? '')) ? String(client) : null };
+      vouched.set(key, { at: Date.now(), who });
+      return who;
     },
   };
 }

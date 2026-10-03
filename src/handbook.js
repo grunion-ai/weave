@@ -1666,9 +1666,29 @@ Behind Railway, Fly, Render or any reverse proxy, set \`WEAVE_TRUST_PROXY=1\` so
 
 On every sign-in, weave verifies the id token's signature (RS256 or ES256) against the provider's published keys, then checks the token's issuer, audience, expiry and nonce. Each sign-in carries a one-time state value that expires after five minutes, so a sign-in left open longer than that at the provider is refused. weave sets a cookie in the browser that starts a sign-in and refuses a callback that arrives without it, so a callback link opened in another browser signs nobody in. weave reads the issuer and the subject from the id token and nothing else; it never calls the provider's userinfo endpoint.
 
+## Agents sign in through the browser: the MCP door
+
+With a provider configured, an agent on a hosted instance needs no pasted token. \`/mcp\` serves the default workspace over MCP and \`/w/<name>/mcp\` serves another; both speak what \`POST /api/mcp\` speaks. Add it to Claude Code in one line:
+
+\`\`\`bash
+claude mcp add --scope user --transport http weave https://weave.example.com/mcp
+\`\`\`
+
+The first call opens the provider's sign-in in the browser (in Claude Code, \`/mcp\` then Authenticate); Codex runs \`codex mcp login weave\`. The client stores and refreshes the token. Behind the line, weave is an OAuth 2.1 protected resource as the MCP authorization spec describes:
+
+1. A call with no credential answers \`401\` with \`WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"\` (\`.../oauth-protected-resource/w/<name>/mcp\` for a workspace).
+2. That document (RFC 9728) names \`WEAVE_OIDC_ISSUER\` as the authorization server. The client registers itself there and signs the person in, so the provider must allow dynamic client registration (in Clerk: OAuth applications, dynamic client registration on).
+3. The client sends the provider's access token. weave asks the provider's \`userinfo_endpoint\` who it belongs to and opens the account that subject is linked to on this workspace or on the hub root, the same lookup a browser sign-in makes. weave reads the subject alone and asks for the \`openid\` scope only, as the browser door does. Answers are kept a minute under the token's sha256; the token itself is never stored or logged.
+
+A subject no account is linked to gets \`403\`: the person opens their invite (\`weave account link <name>\`) in a browser once, which pins the subject, and the agent's next call goes through. A token the provider rejects or has expired gets \`401\` with the same \`WWW-Authenticate\` header, and the client signs in again. Five refused tokens in a minute from one address get \`429\` for the rest of that minute, since each unknown token costs a call to the provider; a provider that is down gets \`502\`. MCP carries the schema tools, so the account needs the Architect role, as for \`/api/mcp\`. Writes record \`<account> via <client>\`: the client is the access token's \`client_id\` when the token is a JWT, and \`oauth\` when it is opaque, which Clerk's are. A \`wv_\` token works on \`/mcp\` unchanged and never reaches the provider; \`/api/mcp\` accepts only \`wv_\` tokens and sessions.
+
+The resource names an origin weave was told about: \`WEAVE_ORIGIN\`, or one of the comma-separated \`WEAVE_MCP_ORIGINS\` when the request arrived on that host (\`https://mcp.weave.example.com\` on the same service). A Host header weave was not told about is refused before it reaches the door.
+
 ## Limits
 
 weave supports one provider per process and creates no account at sign-in. Signing out ends the weave session and leaves the provider's own session alone.
+
+The MCP door does not check that a token was issued for this instance (RFC 8707 resource indicators): Clerk does not bind its tokens to a resource, so any access token the provider issued to any of its clients passes userinfo. The account link is what decides who gets in. Revoking a link or an account takes up to a minute to reach a token weave has already checked.
 
 ## How you know it worked
 
@@ -1952,6 +1972,7 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 | \`WEAVE_TRUST_PROXY\` | \`weave serve\` | unset | Set to \`1\` behind Railway, Fly, Render or any reverse proxy: the sign-in rate limits then read the client from \`X-Forwarded-For\`. Unset behind a proxy, every visitor shares the proxy's address and ten sign-in attempts a minute lock everyone out; set with no proxy, a client can forge the header. |
 | \`WEAVE_BACKUP_DEST\` | \`weave serve\`, \`weave backup\` | unset | \`s3://bucket/prefix\`. Set on \`weave serve\`, the server backs up in-process daily at 04:00 UTC and keeps thirty archives; unset, nothing leaves the machine and \`/api/health\` carries no \`backup\` field. Wrong bucket or credentials: the run fails, a \`backup-failed\` audit row and \`lastStatus\` on health say so, the server keeps serving. The endpoint, credentials and passphrase it needs are on the **Backup and restore** guide. |
 | \`WEAVE_OIDC_ISSUER\` | \`weave serve\`, \`weave account link\` | unset | The issuer URL of one OpenID Connect provider, \`https\` off loopback. Set with \`WEAVE_OIDC_CLIENT_ID\`, \`/auth\` sends a signed-out browser to the provider (the **Door C: sign in with a provider** guide). Set without it, \`serve\` stops at startup and names the missing variable. A URL the provider does not call its own issuer fails every sign-in with a page that says so. |
+| \`WEAVE_MCP_ORIGINS\` | \`weave serve\` | unset | Other public origins the MCP door answers on, comma separated, each scheme and host only: \`https://mcp.weave.example.com\`. The protected-resource metadata names the one the request arrived on, else \`WEAVE_ORIGIN\`; each host is also served. Unset, a second domain on the same service gets \`421\`; wrong, the agent's client refuses the metadata because it names another URL (the **Door C: sign in with a provider** guide). |
 | \`WEAVE_OIDC_CLIENT_ID\` | \`weave serve\` | unset | The client id the provider issued for this instance. The provider must hold \`<WEAVE_ORIGIN>/api/auth/oidc/callback\` as a redirect URI, or it refuses the sign-in before weave sees it. |
 | \`WEAVE_OIDC_CLIENT_SECRET\` | \`weave serve\` | unset | The client secret, for a confidential client. Unset, weave signs in as a public client and relies on PKCE alone; a provider that expects the secret answers \`invalid_client\`. |
 | \`WEAVE_OIDC_NAME\` | \`weave serve\` | the issuer's host name | The word on the sign-in link: \`Clerk\` reads "Sign in with Clerk". |
