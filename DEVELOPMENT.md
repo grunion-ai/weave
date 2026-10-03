@@ -234,3 +234,27 @@ integration tests; ordinary jobs use the shared default, which is keyed on a has
 `scripts/test-manager.mjs`. Worktrees on the same manager code share one queue; a
 worktree with changed manager code gets its own manager, and the old one exits after
 five idle minutes. `--stop` cancels active work, so inspect `--status` first.
+
+## Flicker loop
+
+A flicker is something the reader saw that should not have been there: a node
+painted for a beat and gone, a list painted empty and refilled, a class that
+flipped and flipped back, content that jumped with no input, a screencast
+frame that differs from both neighbours while they match. `test/lib/flicker.mjs`
+is the probe; `test/lib/journeys.mjs` is the nine journeys it walks (load,
+open a table, scroll, edit a cell, open a row, switch view, type in a
+document, trash and undo, flip the theme).
+
+```bash
+node scripts/flicker-sweep.mjs                         # 3 runs, keeps what 2 saw
+node scripts/flicker-sweep.mjs --journey open-row --runs 1 --min 1   # reproduce one
+```
+
+The harness routine `weave-flicker` runs the sweep nightly against gerrit/main
+and files each confirmed finding as an Issue row carrying its fingerprint
+(`journey|kind|selector`) and the frames around it. The overnight fixer picks
+those rows up like any other. **Fixing one:** reproduce with the sweep, fix,
+and add the fingerprint to `test/flicker-fixed.json` with the Issue number in
+the same change. `test/flicker-gate-browser.test.mjs` walks every journey in
+the gate and fails when a listed fingerprint comes back, so a fixed flicker
+stays fixed. A journey whose selectors rot fails the gate too.
