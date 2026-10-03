@@ -252,6 +252,18 @@ export function frameFlashes(frames, { maxMs = 120, eps = 0.002, min = 0.005 } =
   return out;
 }
 
+/* The three frames a row carries. A DOM flicker was up from at - ms until
+   at: the last frame before it, the last frame inside it, the first after.
+   A frame flash already names its middle frame by index. */
+export function evidenceFrames(frames, e) {
+  if (!frames.length) return [];
+  const at = (k) => frames[Math.min(frames.length - 1, Math.max(0, k))];
+  if (e.kind === 'frame' && Number.isInteger(e.i)) return [at(e.i - 1), at(e.i), at(e.i + 1)];
+  const last = (t) => frames.findLastIndex((x) => x.t < t);
+  const after = frames.findIndex((x) => x.t >= e.at);
+  return [at(last(e.at - (e.ms || 0))), at(last(e.at)), at(after < 0 ? frames.length - 1 : after)];
+}
+
 /* runs: [{ journey: events[] }, …]. Keeps the fingerprints `min` runs saw,
    one count per run however often a run saw it. */
 export function confirm(runs, { min = 2 } = {}) {

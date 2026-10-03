@@ -11,7 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fingerprint, confirm, frameFlashes, diffRatio, regressed, GATED } from './lib/flicker.mjs';
+import { fingerprint, confirm, frameFlashes, diffRatio, regressed, evidenceFrames, GATED } from './lib/flicker.mjs';
 
 const ev = (kind, sel, extra = {}) => ({ kind, sel, ms: 40, ...extra });
 
@@ -89,4 +89,13 @@ test('every fixed fingerprint names the Issue that fixed it', () => {
     assert.match(fp, /^[a-z-]+\|(transient|blank|revert|shift)\|.+/, `${fp} is a gated fingerprint`);
     assert.ok(Number.isInteger(row.issue) && row.issue > 0, `${fp} names its Issue`);
   }
+});
+
+test('evidence: a DOM flicker gets the frames around its window; a frame flash gets A, B, A itself', () => {
+  const fr = [0, 100, 140, 200, 300].map((t) => ({ t }));
+  // A transient up from 120 until 190: last frame before it, last inside it, first after it.
+  assert.deepEqual(evidenceFrames(fr, { kind: 'transient', at: 190, ms: 70 }).map((f) => f.t), [100, 140, 200]);
+  // A frame flash at index 2 is frames 1, 2, 3, whatever its timestamps say.
+  assert.deepEqual(evidenceFrames(fr, { kind: 'frame', i: 2, at: 140, ms: 60 }).map((f) => f.t), [100, 140, 200]);
+  assert.deepEqual(evidenceFrames([], { kind: 'blank', at: 5, ms: 1 }), []);
 });

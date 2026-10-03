@@ -22,7 +22,7 @@ import { loadavg } from 'node:os';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { JOURNEYS, seed, walk } from '../test/lib/journeys.mjs';
-import { installProbe, readProbe, resetProbe, recordFrames, frameFlashes, diffBox, confirm, fingerprint } from '../test/lib/flicker.mjs';
+import { installProbe, readProbe, resetProbe, recordFrames, frameFlashes, diffBox, evidenceFrames, confirm, fingerprint } from '../test/lib/flicker.mjs';
 
 const { values: a } = parseArgs({ options: {
   runs: { type: 'string', default: '3' },
@@ -64,20 +64,14 @@ try {
       // The screencast's own witness: A, B, A in composited frames.
       for (const f of frameFlashes(got.frames)) {
         const box = diffBox(got.frames[f.i - 1].px, got.frames[f.i].px);
-        events.push({ kind: 'frame', sel: box ? `box ${snap(box.x)},${snap(box.y)} ${snap(box.w)}x${snap(box.h)}` : 'box ?', ms: f.ms, value: f.ratio, at: f.at });
+        events.push({ kind: 'frame', sel: box ? `box ${snap(box.x)},${snap(box.y)} ${snap(box.w)}x${snap(box.h)}` : 'box ?', ms: f.ms, value: f.ratio, at: f.at, i: f.i });
       }
       run[j.name] = events;
       // Frames around the first sighting of each fingerprint.
       for (const e of events) {
         const fp = fingerprint(j.name, e);
         if (evidence.has(fp) || !got.frames.length) continue;
-        // The flicker was up from at - ms until at: the last frame before
-        // it, the last frame inside it, the first frame after it.
-        const fr = got.frames;
-        const last = (t) => Math.max(0, fr.findLastIndex((x) => x.t < t));
-        const after = fr.findIndex((x) => x.t >= e.at);
-        const pick = [fr[last(e.at - (e.ms || 0))], fr[last(e.at)], fr[after < 0 ? fr.length - 1 : after]];
-        evidence.set(fp, pick.map((fr) => fr.png));
+        evidence.set(fp, evidenceFrames(got.frames, e).map((fr) => fr.png));
       }
     }
     runs.push(run);
