@@ -86,7 +86,7 @@ Server
   serve [--port 4400] [--host 127.0.0.1]
                                       Start the web app + REST API
                                       (--host 0.0.0.0 exposes it to this network)
-  mcp                                 Start the MCP stdio server (for agents)
+  mcp [--tools all]                   Start the MCP stdio server (for agents); core tools + weave_call by default
 
 Service (macOS launchd — auto-start on login, restart on crash)
   service install [--port 4400] [--data path] [--label ai.grunion.weave.<port>]
@@ -357,8 +357,13 @@ async function main() {
     return;
   }
   if (command === 'mcp') {
+    // --tools all (or WEAVE_MCP_TOOLS=all) lists every tool; core is the default (Issue #595).
+    if (flags.tools != null && !['core', 'all'].includes(flags.tools)) {
+      console.error(`--tools takes core or all, not ${JSON.stringify(flags.tools)}`);
+      process.exit(1);
+    }
     const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
-    startMcpServer(w);
+    startMcpServer(w, flags.tools ? { tools: flags.tools } : {});
     return; // stays alive on stdin
   }
 

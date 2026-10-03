@@ -47,7 +47,16 @@ test('a notification is accepted with 202 and no body', async () => {
 test('tools/list and tools/call round-trip through the engine', async () => {
   const list = await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
   const names = list.data.result.tools.map((t) => t.name);
-  assert.ok(names.includes('weave_undo'), 'undo rides the HTTP transport too');
+  assert.ok(names.includes('weave_call') && !names.includes('weave_undo'), 'the core profile rides HTTP too (Issue #595)');
+  const undo = await rpc({ jsonrpc: '2.0', id: 21, method: 'tools/call', params: { name: 'weave_call', arguments: { name: 'weave_undo', args: { list: true } } } });
+  assert.ok(!undo.data.result.isError, 'undo is one weave_call away');
+  process.env.WEAVE_MCP_TOOLS = 'all';
+  try {
+    const all = await rpc({ jsonrpc: '2.0', id: 22, method: 'tools/list' });
+    assert.ok(all.data.result.tools.some((t) => t.name === 'weave_undo'), 'WEAVE_MCP_TOOLS=all lists every tool over HTTP');
+  } finally {
+    delete process.env.WEAVE_MCP_TOOLS;
+  }
 
   await rpc({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'weave_create_space', arguments: { name: 'S' } } });
   await rpc({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'weave_create_table', arguments: { space: 'S', name: 'T' } } });

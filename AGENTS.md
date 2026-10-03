@@ -24,7 +24,7 @@ to [Using weave as an agent](#using-weave-as-an-agent).
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
 | `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP stdio server — 56 tools over the engine |
+| `src/mcp.js` | MCP server: 57 tools over the engine, 15 listed by default |
 | `src/formula.js` | Formula parser/evaluator |
 | `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
 | `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
@@ -66,9 +66,25 @@ Point an MCP client at the stdio server:
 }
 ```
 
-Fifty-six tools, grouped. Every one of them reaches something the web UI can
+Fifty-seven tools, grouped. Every one of them reaches something the web UI can
 do — there is no configuration that needs a browser, and none that needs a
 human.
+
+**`tools/list` names fifteen of them by default.** The core build set is
+`weave_schema`, `weave_query`, `weave_get_entity`, `weave_create_entity`,
+`weave_update_entity`, `weave_create_space`, `weave_create_table`,
+`weave_add_field`, `weave_update_field`, `weave_add_relation`,
+`weave_import_csv`, `weave_vocabulary`, `weave_workspace` and `weave_search`,
+plus `weave_call`. Every other tool in the table below is one `weave_call`
+away: `weave_call {name: "weave_set_doc", args: {entity, markdown}}` runs it
+with the same gate, the same compact reply and the same `verbose` switch as a
+direct call. The `weave_call` description lists each of those tools with a few
+words, and `weave_call {name: "help", args: {tool: "weave_set_doc"}}` returns
+that tool's full description and input schema. The full list costs about 12,000
+tokens on every turn and a build uses about twelve tools, so the default lists
+only those (Issue #595). To list all 57 directly, start the server with
+`weave mcp --tools all` or set `WEAVE_MCP_TOOLS=all`; the variable also
+applies to `POST /api/mcp` on `weave serve`.
 
 | Group | Tools |
 | --- | --- |
@@ -89,6 +105,7 @@ human.
 | Automations | `weave_create_automation`, `weave_automations` |
 | History | `weave_activity`, `weave_audit` |
 | The workspace itself | `weave_workspace`, `weave_accounts`, `weave_keys` |
+| Everything else, by name | `weave_call`: `{name, args}` runs any tool above; `{name: "help", args: {tool}}` returns its schema |
 
 **Writes answer compact.** Over MCP, the create, update, link, unlink, state,
 delete, restore, move and duplicate writes answer with `{id, publicId, name}`.
