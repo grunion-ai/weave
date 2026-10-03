@@ -112,7 +112,8 @@ test('workspace name and description are engine verbs, not server-only', () => {
   const got = w.updateWorkspace({ name: 'ops-hub', description: 'the hub' });
   assert.equal(got.name, 'ops-hub');
   assert.equal(w.getWorkspace().description, 'the hub');
-  assert.throws(() => w.updateWorkspace({ name: 'not a name' }), /alphanumeric/i);
+  assert.equal(w.updateWorkspace({ name: 'Ops hub' }).name, 'ops-hub', 'a display name keeps its slug (Issue #592)');
+  assert.throws(() => w.updateWorkspace({ name: '!!!' }), /letters, digits, - and _/);
 });
 
 /* ---------- the description survives the round trip (Kyle, 2026-08-27) ----

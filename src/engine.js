@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { uuid, slug } from './ids.js';
-import { workspaceName, nameFromFile } from './workspace-name.js';
+import { workspaceName, workspaceSlug, nameFromFile } from './workspace-name.js';
 import { Store, WeaveError } from './store.js';
 import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
@@ -3126,14 +3126,21 @@ export class Weave {
      hub's name index, which it re-keys after the write. */
   getWorkspace() {
     const m = this.state.meta;
-    return { id: m.id, name: m.name, description: m.description ?? '', logo: !!m.logo, requireAuth: !!m.requireAuth };
+    return { id: m.id, name: m.name, title: m.title ?? m.name, description: m.description ?? '', logo: !!m.logo, requireAuth: !!m.requireAuth };
   }
 
+  /* `name` is what a person calls the workspace, any text (Issue #592): it
+     is kept as the title, and meta.name takes its slug, the /w/<slug>/
+     address. A name equal to the slug held, mixed-case ones from before
+     Issue #599 included, changes nothing. */
   updateWorkspace({ name = null, description = null } = {}) {
     if (description != null) this.state.meta.description = String(description);
     if (name != null && name !== this.state.meta.name) {
-      if (!/^[a-z0-9][a-z0-9-_]*$/i.test(name)) throw new WeaveError('Workspace name must be alphanumeric', 'invalid');
-      this.state.meta.name = name;
+      const slug = workspaceSlug(name);
+      if (!slug) throw new WeaveError('A workspace name needs a letter or a digit: its slug keeps letters, digits, - and _', 'invalid');
+      this.state.meta.name = slug;
+      this.state.meta.title = String(name).trim();
+      if (this.state.meta.title === slug) delete this.state.meta.title;
     }
     this.#audit('workspace-updated', { name: this.state.meta.name });
     this.save();
