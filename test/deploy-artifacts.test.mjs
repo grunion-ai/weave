@@ -240,8 +240,8 @@ test('G3: docker build, run with the six variables, health ok, an entity survive
       }
     };
     const first = await healthy();
-    // A fresh volume names its workspace at random, adjective-animal (Issue #594).
-    assert.match(first.workspace, /^[a-z]+-[a-z]+$/, 'the workspace on the volume is the one the health reports');
+    // A fresh volume's workspace is personal-workspace (Issue #594).
+    assert.equal(first.workspace, 'personal-workspace', 'the workspace on the volume is the one the health reports');
     await api(base, 'POST', '/api/spaces', { name: 'G3' });
     const table = await api(base, 'POST', '/api/tables', { space: 'G3', name: 'Note' });
     await api(base, 'POST', `/api/tables/${table.id}/entities`, { name: 'survives a restart' });

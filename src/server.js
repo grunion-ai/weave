@@ -195,16 +195,16 @@ async function readBody(req, { requireJson = false } = {}) {
 }
 
 // The workspace `weave serve` opens at / (Issue #594). Fresh, it takes its
-// file's name when someone chose one (`--data acme.db`), and otherwise a
-// random adjective-animal slug that no workspace file beside it already
-// names. A workspace that was never served still carries the old seed name
-// 'Weave Workspace' and takes its file's basename, as it always did; one that
-// was (so is called 'workspace', say) keeps its name.
-export function openDefaultWorkspace(dataPath, { actor, random } = {}) {
+// file's name when someone chose one (`--data acme.db`), and otherwise
+// personal-workspace, or -2, -3 when a workspace file beside it already
+// holds that name. A workspace that was never served still carries the old
+// seed name 'Weave Workspace' and takes its file's basename, as it always
+// did; one that was (so is called 'workspace', say) keeps its name.
+export function openDefaultWorkspace(dataPath, { actor } = {}) {
   const dir = dirname(dataPath);
   const stem = (f) => f.split('/').pop().replace(/\.(json|db)$/, '');
   const taken = existsSync(dir) ? readdirSync(dir).filter((f) => /\.(json|db)$/.test(f)).map(stem) : [];
-  const name = nameFromFile(dataPath) ?? workspaceName({ taken, random }).slug;
+  const name = nameFromFile(dataPath) ?? workspaceName({ taken }).slug;
   const w = new Weave({ path: dataPath, actor, name });
   if (!w.state.meta.name || w.state.meta.name === 'Weave Workspace') {
     w.state.meta.name = stem(dataPath);
@@ -343,7 +343,8 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       return w;
     },
     create(name) {
-      // No name asked for: draw one the instance does not hold (Issue #594).
+      // No name asked for: personal-workspace, or the first -2, -3 the
+      // instance does not hold (Issue #594).
       if (name == null || name === '') {
         scan();
         name = workspaceName({ taken: instances.keys() }).slug;

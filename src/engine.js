@@ -988,7 +988,7 @@ export class Weave {
   // `name` seeds a FRESH workspace only, for a caller that knows the address
   // (the Worker's route, `weave serve` checking the names on the instance);
   // without it a file someone named names the workspace, and otherwise the
-  // seed draws a random adjective-animal slug (Issue #594).
+  // seed is personal-workspace (Issue #594).
   constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null, revisionWindowMs = DOC_REVISION_WINDOW_MS, name = null } = {}) {
     this.actor = actor;
     // Writes by one actor to one document inside this window are one
