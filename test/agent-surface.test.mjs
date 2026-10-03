@@ -90,7 +90,10 @@ const SURFACE = [
      the sign-in itself is the browser's trip through the provider, and the
      session it mints is listed and revoked from the CLI and MCP. The passkey
      door's invite and credential verbs were removed (Feature #243). */
-  ['auth.identities', ['linkIdentity', 'unlinkIdentity', 'accountForIdentity'], 'weave_accounts', 'account link', ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback']],
+  /* Feature #252: link mints a one-time invite; the browser's trip through
+     the provider with ?invite= checks it at start and redeems it at the
+     callback, so those two verbs have no door of their own. */
+  ['auth.identities', ['linkIdentity', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'], 'weave_accounts', 'account link', ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback']],
   ['auth.sessions', ['createSession', 'listSessions', 'revokeSession'], 'weave_accounts', 'account sessions', ['GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref']],
   ['keys', ['setKey', 'listKeys', 'deleteKey'], 'weave_keys', 'key', ['GET /api/keys', 'POST /api/keys', 'DELETE /api/keys/:rest']],
   /* Reveal has no MCP tool ON PURPOSE (Feature #143). A human asking for their

@@ -418,10 +418,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_accounts',
-    description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor — observer reads and comments, editor writes rows, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, email, issuer — the email an OpenID Connect provider will vouch for; signing in at the provider provisions nobody, so an account opens to a provider identity only after this; issuer defaults to WEAVE_OIDC_ISSUER) | unlink-identity (account, email).',
+    description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor — observer reads and comments, editor writes rows, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, issuer — mints a one-time invite link, good for 7 days; the person who opens it and signs in at the OpenID Connect provider is linked by subject, and weave stores no email. Signing in at the provider provisions nobody, so an account opens to a provider identity only through this. issuer defaults to WEAVE_OIDC_ISSUER; the url is rooted at WEAVE_ORIGIN) | unlink-identity (account, subject, issuer — the subject account list shows).',
     inputSchema: {
       type: 'object',
-      properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, email: { type: 'string' }, issuer: { type: 'string' } },
+      properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, subject: { type: 'string' }, issuer: { type: 'string' } },
       required: ['action'],
     },
   },
@@ -741,9 +741,15 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         case 'require-auth': return weave.setRequireAuth(Boolean(args.on));
         case 'sessions': return { sessions: weave.listSessions(args.account ?? args.name) };
         case 'revoke-session': return weave.revokeSession(args.account ?? args.name, { id: args.session ?? null, all: Boolean(args.all) });
-        // Door C (Feature #212): the issuer defaults to the configured provider.
-        case 'link-identity': return weave.linkIdentity(args.account ?? args.name, { issuer: args.issuer ?? process.env.WEAVE_OIDC_ISSUER, email: args.email });
-        case 'unlink-identity': return weave.unlinkIdentity(args.account ?? args.name, { issuer: args.issuer ?? null, email: args.email });
+        /* Door C (Feature #212, Feature #252): the issuer defaults to the
+           configured provider. ponytail: the url is the default workspace's
+           address; a hub member's invite opens under /w/<name>/ instead. */
+        case 'link-identity': {
+          const made = weave.linkIdentity(args.account ?? args.name, { issuer: args.issuer ?? process.env.WEAVE_OIDC_ISSUER, email: args.email });
+          const origin = process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
+          return { ...made, url: `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` };
+        }
+        case 'unlink-identity': return weave.unlinkIdentity(args.account ?? args.name, { issuer: args.issuer ?? null, subject: args.subject });
         default: throw new Error(`Unknown accounts action '${args.action}' (list, create, delete, require-auth, sessions, revoke-session, link-identity, unlink-identity)`);
       }
     case 'weave_keys':

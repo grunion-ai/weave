@@ -1417,7 +1417,7 @@ weave on a laptop binds \`127.0.0.1\` and needs no login. weave on a server need
 
 ## Door B was removed
 
-weave used to ship a third door, B: passkeys built into weave, registered from a one-time invite link. It was removed in the 0.4 series, in the first release after 0.4.52 (Feature #243). The CLI verbs \`weave account invite\` and \`weave account remove-credential\` and the \`/api/auth/register/*\` and \`/api/auth/login/*\` routes went with it. A passkey already stored on an account row stays in the data and is ignored. To keep a person signing in, link their account to a provider identity before you upgrade (\`weave account link <name> --email <address>\`).
+weave used to ship a third door, B: passkeys built into weave, registered from a one-time invite link. It was removed in the 0.4 series, in the first release after 0.4.52 (Feature #243). The CLI verbs \`weave account invite\` and \`weave account remove-credential\` and the \`/api/auth/register/*\` and \`/api/auth/login/*\` routes went with it. A passkey already stored on an account row stays in the data and is ignored. To keep a person signing in, link their account to a provider identity before you upgrade: \`weave account link <name>\` prints an invite link for them.
 
 ## Tailscale, stated plainly
 
@@ -1552,13 +1552,15 @@ Door C signs people in with one OpenID Connect (OIDC) provider. The provider has
 
 ## Accounts and identities
 
-Signing in at the provider creates no account in weave. You link an existing weave account to the email the provider will vouch for, and weave stores that link as an identity on the account. The first sign-in that arrives with that email marked verified pins the provider's subject (the \`sub\` claim) to the account; until then, weave refuses a sign-in whose email is unverified. After the pin, weave matches on the subject alone, so a changed email still signs in and the same email under a different subject is refused.
+Signing in at the provider creates no account in weave. To link an existing weave account, you mint an invite: a one-time link that lasts 7 days. The person opens it and signs in at the provider, and weave stores the provider's issuer and subject (the \`sub\` claim) on the account as an identity. From then on the subject alone signs that person in.
 
-A hosted provider with open sign-up lets anyone create a user there. A sign-in at the provider proves who someone is, and weave admits that person only when you have linked an account to their email.
+weave asks the provider for the \`openid\` scope only, so the consent screen lists one line, and weave stores no email address or profile for sign-in. The provider keeps whatever it needs to run its own sign-in.
+
+A hosted provider with open sign-up lets anyone create a user there. A sign-in at the provider proves who someone is, and weave admits that person only after they have redeemed an invite for an account. weave keeps only the invite's hash, like a token or a session, and an invite works once.
 
 ## Application at the provider
 
-Register an OAuth or OIDC application that uses the authorization code flow with PKCE, the scopes \`openid email profile\` and one redirect URI:
+Register an OAuth or OIDC application that uses the authorization code flow with PKCE, the scope \`openid\` and one redirect URI:
 
 \`\`\`
 <WEAVE_ORIGIN>/api/auth/oidc/callback
@@ -1579,29 +1581,34 @@ Issuer and client id switch the door on together. Set one without the other and 
 
 ## Account linking
 
-Link an account from the CLI, the HTTP API or MCP. Each takes the account name and the email. From the CLI:
+Link an account from the CLI, the HTTP API or MCP. Each takes the account name and answers with an invite: the code, its expiry and a \`url\` to send the person. From the CLI:
 
 \`\`\`bash
-weave account link kyle --email kyle@example.com
+weave account link kyle
 \`\`\`
 
-Add \`--issuer <url>\` when \`WEAVE_OIDC_ISSUER\` is not set in your shell. The HTTP call needs an admin bearer token:
+Add \`--issuer <url>\` when \`WEAVE_OIDC_ISSUER\` is not set in your shell. The CLI roots the link at \`WEAVE_ORIGIN\` and prints a bare path without it. The HTTP call needs an architect bearer token and answers with the full link:
 
 \`\`\`bash
 curl -X POST https://weave.example.com/api/accounts/kyle/identities \\
-  -H "Authorization: Bearer wv_<admin token>" \\
-  -H "Content-Type: application/json" \\
-  -d '{"email": "kyle@example.com"}'
+  -H "Authorization: Bearer wv_<architect token>" \\
+  -H "Content-Type: application/json" -d '{}'
+# {"account":"kyle","issuer":"…","code":"wvi_…","expiresAt":"…",
+#  "url":"https://weave.example.com/api/auth/oidc/start?invite=wvi_…"}
 \`\`\`
 
 From MCP, call the \`weave_accounts\` tool with \`action: link-identity\`.
 
-To unlink:
+The invite link goes straight to the provider. After the person signs in there, weave pins their subject to the account and opens the workspace. A spent or expired link answers \`410\`; a provider identity that already opens another account answers \`409\` and leaves the invite unused. A person who signed in before an operator linked them sees **No account for this identity**; opening the invite link from that page links them in one step.
+
+To unlink, name the subject that \`weave account list\` shows:
 
 \`\`\`bash
-weave account unlink kyle --email kyle@example.com
-# or over HTTP: DELETE /api/accounts/kyle/identities?email=kyle@example.com
+weave account unlink kyle --subject user_2abc
+# or over HTTP: DELETE /api/accounts/kyle/identities?subject=user_2abc
 \`\`\`
+
+An account linked by email before this release keeps any identity the provider had already pinned, minus the email. An identity that was never pinned is dropped on the first open, and the email is removed from the old identity entries in the audit log. Mint an invite for anyone who had not signed in yet.
 
 ## Clerk
 
@@ -1629,7 +1636,7 @@ weave account sessions kyle                     # what is signed in, and from wh
 weave account revoke-session kyle --all         # every session ends now
 \`\`\`
 
-Every step lands in the audit log: \`identity-linked\`, \`identity-pinned\`, \`identity-unlinked\`, \`session-created\`, \`session-revoked\`. An admin \`wv_\` token is the rescue path, and \`weave account\` runs on the data file without a server.
+Every step lands in the audit log: \`identity-invited\`, \`identity-linked\`, \`identity-unlinked\`, \`session-created\`, \`session-revoked\`. An admin \`wv_\` token is the rescue path, and \`weave account\` runs on the data file without a server.
 
 ## \`WEAVE_ORIGIN\` and \`WEAVE_TRUST_PROXY\`
 
@@ -1639,7 +1646,7 @@ Behind Railway, Fly, Render or any reverse proxy, set \`WEAVE_TRUST_PROXY=1\` so
 
 ## Sign-in verification
 
-On every sign-in, weave verifies the id token's signature (RS256 or ES256) against the provider's published keys, then checks the token's issuer, audience, expiry and nonce. Each sign-in carries a one-time state value that expires after five minutes, so a sign-in left open longer than that at the provider is refused. weave sets a cookie in the browser that starts a sign-in and refuses a callback that arrives without it, so a callback link opened in another browser signs nobody in. If the id token carries no email, weave reads the email from the provider's userinfo endpoint, and refuses the sign-in unless userinfo names the same subject as the id token.
+On every sign-in, weave verifies the id token's signature (RS256 or ES256) against the provider's published keys, then checks the token's issuer, audience, expiry and nonce. Each sign-in carries a one-time state value that expires after five minutes, so a sign-in left open longer than that at the provider is refused. weave sets a cookie in the browser that starts a sign-in and refuses a callback that arrives without it, so a callback link opened in another browser signs nobody in. weave reads the issuer and the subject from the id token and nothing else; it never calls the provider's userinfo endpoint.
 
 ## Limits
 
@@ -1648,9 +1655,9 @@ weave supports one provider per process and creates no account at sign-in. Signi
 ## How you know it worked
 
 1. Open \`/auth\` in a private window: the browser goes straight to the provider's sign-in.
-2. Sign in at the provider with the linked email: you land in the workspace.
-3. Sign in with an email that has no linked account: weave answers \`403\` with a page reading **No account for this identity**.
-4. Run \`weave account list\` after the first sign-in: the account's entry in \`identities[]\` has its \`subject\` filled in.
+2. Open an invite link from \`weave account link <name>\` and sign in at the provider: you land in the workspace.
+3. Sign in at the provider as someone with no invite: weave answers \`403\` with a page reading **No account for this identity**.
+4. Run \`weave account list\`: the account's entry in \`identities[]\` carries the issuer and the \`subject\`, and no email.
 5. \`weave account revoke-session <name> --all\`: the next page load in that browser is the sign-in page.`,
   },
   {

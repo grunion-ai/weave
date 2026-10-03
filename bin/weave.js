@@ -180,9 +180,9 @@ Accounts & audit (Feature #14)
 Browser sessions (Feature #222)
   account sessions <name>                             Browser sessions the account holds
   account revoke-session <name> (--all | --id <id>)  End sessions — the lost-phone verb
-Provider sign-in (Feature #212, door C)
-  account link <name> --email <address> [--issuer <url>]    Open the account to the provider identity with that verified email
-  account unlink <name> --email <address>                   Close it again
+Provider sign-in (Feature #212, door C; Feature #252)
+  account link <name> [--issuer <url>]         Mint a one-time link (7 days); whoever opens it and signs in at the provider is linked
+  account unlink <name> --subject <sub>        Close the account to that provider subject (see account list)
 Undo (entity mutations only — schema work is not undoable)
   undo [--steps n]                    Revert the last n entity mutations
   undo --list [--limit 20]           Show what undo would revert, newest first
@@ -637,15 +637,24 @@ async function main() {
         if (!flags.all && (flags.id == null || flags.id === true)) throw new WeaveError('account revoke-session needs --all or --id <session id>', 'invalid');
         return out(w.revokeSession(ref, { all: Boolean(flags.all), id: flags.all ? null : String(flags.id) }));
       }
-      /* Door C (Feature #212): the email a provider will vouch for. Nobody
-         is provisioned by signing in, so this verb is how an account gets a
-         provider identity. The issuer defaults to WEAVE_OIDC_ISSUER. */
+      /* Door C (Feature #212, Feature #252): link mints a one-time invite
+         link; the person who opens it and signs in at the provider is linked
+         by subject, and weave keeps no email. Nobody is provisioned by
+         signing in, so this verb is how an account gets a provider identity.
+         The issuer defaults to WEAVE_OIDC_ISSUER, the link's origin to
+         WEAVE_ORIGIN (a bare path without it). */
       if (sub === 'link' || sub === 'unlink') {
-        if (!ref || !flags.email || flags.email === true) throw new WeaveError(`account ${sub} needs a name and --email <address>`, 'invalid');
+        if (!ref) throw new WeaveError(`account ${sub} needs an account name`, 'invalid');
+        if (flags.email !== undefined) throw new WeaveError('weave no longer links by email (Feature #252): run account link <name> and send the invite link it prints', 'invalid');
         const issuer = flags.issuer ?? (process.env.WEAVE_OIDC_ISSUER?.trim().replace(/\/+$/, '') || null);
-        if (sub === 'unlink') return out(w.unlinkIdentity(ref, { issuer: issuer ?? null, email: flags.email }));
+        if (sub === 'unlink') {
+          if (!flags.subject || flags.subject === true) throw new WeaveError('account unlink needs --subject <provider subject> (account list shows it)', 'invalid');
+          return out(w.unlinkIdentity(ref, { issuer: issuer ?? null, subject: String(flags.subject) }));
+        }
         if (!issuer) throw new WeaveError('account link needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
-        return out(w.linkIdentity(ref, { issuer, email: flags.email }));
+        const made = w.linkIdentity(ref, { issuer });
+        const origin = process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
+        return out({ ...made, url: `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` });
       }
       throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete, sessions, revoke-session, link, unlink`);
     }

@@ -49,7 +49,7 @@ async function serve({ requireAuth = true } = {}) {
   const kyle = w.createAccount({ name: 'kyle', role: 'admin' });
   w.state.meta.accounts[kyle.account.id].credentials = [structuredClone(OLD_CREDENTIAL)];
   w.save();
-  w.linkIdentity('kyle', { issuer: idp.issuer, email: 'kyle@example.com' });
+  w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
   if (requireAuth) w.setRequireAuth(true);
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
   const { server } = await startServer(w, { port: 0, origin: null, oidc, limits: { options: 1000, failed: 1000 } });

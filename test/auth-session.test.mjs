@@ -78,8 +78,7 @@ async function serve({ requireAuth = true, origin, limits = { options: 1000, fai
   const admin = w.createAccount({ name: 'root', role: 'admin' }).token;
   w.createAccount({ name: 'kyle', role: 'admin' });
   w.createAccount({ name: 'eye', role: 'reader' });
-  w.linkIdentity('kyle', { issuer: idp.issuer, email: KYLE.email });
-  w.linkIdentity('eye', { issuer: idp.issuer, email: EYE.email });
+  for (const [name, who] of [['kyle', KYLE], ['eye', EYE]]) w.redeemIdentityInvite(w.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: who.sub });
   if (requireAuth) w.setRequireAuth(true);
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
   const { server } = await startServer(w, { port: 0, origin: origin ?? null, limits, oidc, ...(trustProxy ? { trustProxy } : {}) });
