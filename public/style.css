@@ -1285,12 +1285,23 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .list-row.list-row-add { cursor: default; }
 .list-row.list-row-add:hover { background: none; }
 /* The registry grids, folded: structure as rows, one click away. */
-.wv-schema { margin-top: 14px; }
-.wv-schema > summary { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); cursor: pointer; padding: 4px 0; }
-.wv-schema > summary:hover { color: var(--tblr-body-color); }
-.wv-schema > summary::-webkit-details-marker { display: none; }
-.wv-schema > summary::before { content: ''; width: 0; height: 0; border: 4px solid transparent; border-left: 5px solid currentColor; border-right: 0; transition: transform .15s; }
-.wv-schema[open] > summary::before { transform: rotate(90deg); }
+.wv-schema, .wv-members-box { margin-top: 14px; }
+.wv-schema > summary, .wv-members-box > summary { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); cursor: pointer; padding: 4px 0; }
+.wv-schema > summary:hover, .wv-members-box > summary:hover { color: var(--tblr-body-color); }
+.wv-schema > summary::-webkit-details-marker, .wv-members-box > summary::-webkit-details-marker { display: none; }
+.wv-schema > summary::before, .wv-members-box > summary::before { content: ''; width: 0; height: 0; border: 4px solid transparent; border-left: 5px solid currentColor; border-right: 0; transition: transform .15s; }
+.wv-schema[open] > summary::before, .wv-members-box[open] > summary::before { transform: rotate(90deg); }
+.wv-members { display: grid; gap: 8px; max-width: 760px; }
+.wv-members-sub { font-size: 12px; font-weight: 600; color: var(--tblr-secondary); margin-top: 4px; }
+.wv-members-empty { font-size: 13px; color: var(--tblr-secondary); }
+.wv-invite-form { display: flex; gap: 6px; flex-wrap: wrap; }
+.wv-invite-form input { flex: 1 1 220px; min-width: 0; }
+.wv-invite-form .picker-wrap { flex: 0 0 200px; width: 200px; }
+.wv-invite-link { padding: 10px 12px; display: grid; gap: 6px; }
+.wv-invite-link-head { font-size: 13px; font-weight: 600; }
+.wv-invite-link-row { display: flex; gap: 6px; }
+.wv-invite-link-row input { flex: 1; min-width: 0; font-family: var(--tblr-font-monospace); font-size: 12px; }
+.wv-invite-note { font-size: 12px; color: var(--tblr-secondary); }
 .wv-schema[open] > summary { margin-bottom: 8px; }
 .system-chip, .activity-kind { font-size: 11px; padding: 1px 7px; color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); }
 .wv-note { color: var(--tblr-secondary); font-size: 12px; margin: 0 0 10px; }

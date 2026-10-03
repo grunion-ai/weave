@@ -297,7 +297,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'));
       const schemaWrite = !read && (
-        /^\/api\/(spaces|automations|accounts|registry)/.test(path)
+        /^\/api\/(spaces|automations|accounts|invites|registry)/.test(path)
         // MCP carries every tool, schema tools included — a capped token must
         // not widen itself through the tunnel. Architect (or the edge gate) only.
         || path === '/api/mcp'
@@ -725,12 +725,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         // Accounts (Feature #14). Once any account exists, only an architect
         // token manages them — the anonymous door closes behind the first key.
-        if (path.startsWith('/api/accounts') || (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {}))) {
+        if (path.startsWith('/api/accounts') || path.startsWith('/api/invites') || (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {}))) {
           if (!mayAdminister(weave, role)) {
             return deny(role ? 403 : 401, 'Managing accounts needs an architect token');
           }
         }
         if (route === 'GET /api/accounts') return out(200, weave.listAccounts());
+        /* A new person, invited to this workspace (Issue #569): the link is
+           the invite, handed out once; weave sends no email yet. */
+        if (route === 'GET /api/invites') return out(200, weave.listInvites());
+        if (route === 'POST /api/invites') {
+          const made = weave.inviteMember({ email: body?.email, role: body?.role ?? 'editor', issuer: body?.issuer ?? oidc?.issuer });
+          return out(201, { ...made, url: `${originFor(rx)}${wsPrefix}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` });
+        }
+        if ((m = path.match(/^\/api\/invites\/([^/]+)$/)) && rx.method === 'DELETE') return out(200, weave.revokeInvite(decodeURIComponent(m[1])));
         if (route === 'POST /api/accounts') return out(201, weave.createAccount(body ?? {}));
         // Door C (Feature #212, Feature #252): linking mints a one-time
         // invite link; the person who opens it and signs in is linked.

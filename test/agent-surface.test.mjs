@@ -94,6 +94,7 @@ const SURFACE = [
      the provider with ?invite= checks it at start and redeems it at the
      callback, so those two verbs have no door of their own. */
   ['auth.identities', ['linkIdentity', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'], 'weave_accounts', 'account link', ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback']],
+  ['auth.invites', ['inviteMember', 'listInvites', 'revokeInvite'], 'weave_accounts', 'invite', ['GET /api/invites', 'POST /api/invites', 'DELETE /api/invites/:ref']],
   ['auth.sessions', ['createSession', 'listSessions', 'revokeSession'], 'weave_accounts', 'account sessions', ['GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref']],
   ['keys', ['setKey', 'listKeys', 'deleteKey'], 'weave_keys', 'key', ['GET /api/keys', 'POST /api/keys', 'DELETE /api/keys/:rest']],
   /* Reveal has no MCP tool ON PURPOSE (Feature #143). A human asking for their

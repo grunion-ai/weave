@@ -261,7 +261,7 @@ workspace. Every MCP tool has a command:
 | `weave doc-revisions <ref> [--field F] [--seq n]` | `weave doc-restore <ref> --seq n [--field F]` | |
 | `weave audit` | `weave view` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
 | `weave workspace` | `weave workspace logo` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
-| `weave audit` | `weave account sessions` / `weave account revoke-session` / `weave account link` / `weave account unlink` | |
+| `weave audit` | `weave account sessions` / `weave account revoke-session` / `weave account link` / `weave account unlink` | `weave invite <email>` / `weave invite list` / `weave invite revoke` |
 
 Two operator verbs work on the whole data directory rather than one workspace
 and have no MCP tool on purpose — an agent holding a token must not be able to
@@ -338,6 +338,16 @@ Notes that save round trips:
   closes it. weave asks the provider for `openid` alone and stores no email
   (Feature #252). The session is the same `wv_session` cookie; agents keep
   the token.
+- **A new person is invited, never provisioned by signing in.** An architect
+  invites an email with a role (`observer`, `editor` by default, or
+  `architect`): `weave_accounts` `action: invite`, `weave invite <email>
+  --role <r>`, `POST /api/invites`, or **Members** on the workspace's home
+  page. The answer carries a one-time `url`, good for 7 days; weave sends no
+  email, so hand the link over. Signing in through it makes the account at
+  that role, named after the email's local part, and spends the invite.
+  `invites` / `weave invite list` / `GET /api/invites` list the pending ones;
+  `revoke-invite` / `weave invite revoke <id>` / `DELETE /api/invites/<id>`
+  cancel one. The email stays on the pending invite only (Issue #569).
 - **Secrets never come back to an agent.** A `key` (credential) field holds the
   *name* of a secret; the secret itself is encrypted in a keystore outside the
   workspace, so it is never in a cell, an export, a formula or a query result.

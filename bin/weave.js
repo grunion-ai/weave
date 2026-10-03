@@ -186,6 +186,10 @@ Browser sessions (Feature #222)
 Provider sign-in (Feature #212, door C; Feature #252)
   account link <name> [--issuer <url>]         Mint a one-time link (7 days); whoever opens it and signs in at the provider is linked
   account unlink <name> --subject <sub>        Close the account to that provider subject (see account list)
+Invite a new person (Issue #569)
+  invite <email> [--role editor] [--issuer <url>]   A one-time sign-in link that makes the account at that role
+  invite list                                       Pending invites
+  invite revoke <id>                                Cancel one
 Undo (entity mutations only — schema work is not undoable)
   undo [--steps n]                    Revert the last n entity mutations
   undo --list [--limit 20]           Show what undo would revert, newest first
@@ -694,6 +698,18 @@ async function main() {
         return out({ ...made, url: `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` });
       }
       throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete, sessions, revoke-session, link, unlink`);
+    }
+    /* A new person (Issue #569): weave sends no email, so the link is
+       printed for the operator to hand over. */
+    case 'invite': {
+      const [sub, ref] = args;
+      if (sub === 'list') return out(w.listInvites());
+      if (sub === 'revoke') return out(w.revokeInvite(ref));
+      const issuer = flags.issuer ?? (process.env.WEAVE_OIDC_ISSUER?.trim().replace(/\/+$/, '') || null);
+      if (!issuer) throw new WeaveError('invite needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
+      const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
+      const origin = process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
+      return out({ ...made, url: `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` });
     }
     case 'key': {
       const [sub, name] = args;

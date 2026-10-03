@@ -12320,6 +12320,65 @@ async function showHome() {
       renderTable(body, reg, mineOnly(res.items), onSaved, onAdd);
     });
   }
+  await membersSection(main);
+}
+
+/* Members (Issue #569): who has an account here, the pending invites, and
+   the form that invites a new person by email. The server answers the two
+   reads only for a caller who may manage accounts, an architect, so anyone
+   else never sees the section. weave sends no email yet: the invite answers
+   a one-time sign-in link, shown once, for the architect to hand over. The
+   labels are Kyle's billing words; weave bills nobody (Feature #256). */
+const ROLE_LABELS = { editor: 'Editor, paid seat', observer: 'Observer, free', architect: 'Architect, paid' };
+async function membersSection(parent) {
+  const [acc, inv] = await Promise.allSettled([api('GET', '/accounts'), api('GET', '/invites')]);
+  if (acc.status !== 'fulfilled' || inv.status !== 'fulfilled') return;
+  const body = el('div', { class: 'wv-members' });
+  const box = el('details', { class: 'wv-members-box' }, el('summary', {}, 'Members'), body);
+  const day = (iso) => String(iso ?? '').slice(0, 10);
+  const draw = (accounts, invites, link = null) => {
+    const email = el('input', { class: 'form-control', type: 'email', placeholder: 'name@company.com', 'aria-label': 'Email to invite', required: '' });
+    const role = pickerSelect({ name: 'invite-role', title: 'Role', value: 'editor',
+      options: Object.entries(ROLE_LABELS).map(([id, label]) => ({ id, label })) });
+    const form = el('form', { class: 'wv-invite-form', onsubmit: async (ev) => {
+      ev.preventDefault();
+      try {
+        const made = await api('POST', '/invites', { email: email.value.trim(), role: role.input.value });
+        const [a2, i2] = await Promise.all([api('GET', '/accounts'), api('GET', '/invites')]);
+        draw(a2, i2, made);
+      } catch (err) { toast(err.message, true); }
+    } }, email, role, el('button', { class: 'btn btn-primary', type: 'submit' }, 'Invite'));
+    const shown = link ? el('div', { class: 'wv-invite-link card' },
+      el('div', { class: 'wv-invite-link-head' }, `Sign-in link for ${link.email}`),
+      el('div', { class: 'wv-invite-link-row' },
+        el('input', { class: 'form-control form-control-sm', readonly: '', value: link.url, 'aria-label': 'Sign-in link', onfocus: (e) => e.target.select() }),
+        el('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(link.url, 'Link copied') }, 'Copy link')),
+      el('div', { class: 'wv-invite-note' }, 'Send this link yourself: weave does not send email yet. It works once and expires in 7 days.')) : null;
+    body.replaceChildren(
+      el('div', { class: 'wv-members-sub' }, 'Accounts'),
+      accounts.length ? el('div', { class: 'card list-rows' },
+        ...accounts.map((a) => el('div', { class: 'list-row' },
+          el('span', {}, a.name), el('span', { class: 'spacer' }),
+          el('span', { class: 'pid' }, ROLE_LABELS[a.role] ?? a.role))))
+        : el('div', { class: 'wv-members-empty' }, 'None'),
+      el('div', { class: 'wv-members-sub' }, 'Pending invites'),
+      invites.length ? el('div', { class: 'card list-rows' },
+        ...invites.map((i) => el('div', { class: 'list-row', dataset: { invite: i.id } },
+          el('span', {}, i.email), el('span', { class: 'pid' }, ROLE_LABELS[i.role] ?? i.role),
+          el('span', { class: 'spacer' }),
+          el('span', { class: 'pid' }, `invited by ${i.invitedBy ?? 'unknown'} on ${day(i.createdAt)}`),
+          el('button', { class: 'btn btn-sm btn-ghost-danger', type: 'button', onclick: async () => {
+            try {
+              await api('DELETE', `/invites/${i.id}`);
+              toast('Invite revoked');
+              draw(accounts, await api('GET', '/invites'));
+            } catch (err) { toast(err.message, true); }
+          } }, 'Revoke'))))
+        : el('div', { class: 'wv-members-empty' }, 'None'),
+      form, shown);
+  };
+  draw(acc.value, inv.value);
+  parent.append(box);
 }
 
 /* ---------- universal search (sidebar + ⌘K palette) ----------

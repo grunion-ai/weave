@@ -1554,7 +1554,7 @@ Door C signs people in with one OpenID Connect (OIDC) provider. The provider has
 
 ## Accounts and identities
 
-Signing in at the provider creates no account in weave. To link an existing weave account, you mint an invite: a one-time link that lasts 7 days. The person opens it and signs in at the provider, and weave stores the provider's issuer and subject (the \`sub\` claim) on the account as an identity. From then on the subject alone signs that person in.
+Signing in at the provider creates no account in weave. An architect either invites a new person to a workspace (below, **Invite a new person**), which makes the account when they sign in, or links an existing weave account by minting an invite: a one-time link that lasts 7 days. The person opens it and signs in at the provider, and weave stores the provider's issuer and subject (the \`sub\` claim) on the account as an identity. From then on the subject alone signs that person in.
 
 weave asks the provider for the \`openid\` scope only, so the consent screen lists one line, and weave stores no email address or profile for sign-in. The provider keeps whatever it needs to run its own sign-in.
 
@@ -1611,6 +1611,22 @@ weave account unlink kyle --subject user_2abc
 \`\`\`
 
 An account linked by email before this release keeps any identity the provider had already pinned, minus the email. An identity that was never pinned is dropped on the first open, and the email is removed from the old identity entries in the audit log. Mint an invite for anyone who had not signed in yet.
+
+## Invite a new person
+
+An architect invites someone who has no account yet from the workspace's home page: open **Members**, enter the email, pick the role (Editor, paid seat, by default; Observer, free; Architect, paid) and choose **Invite**. weave answers with a one-time sign-in link. weave sends no email yet, so copy the link and send it yourself; it is shown once, works once and expires in 7 days. The same section lists the pending invites, with the role, who invited and when, and **Revoke** cancels one.
+
+The person opens the link and signs in at the provider, signing up there first if they have to. weave then makes their account at the invited role, named after the email's local part (\`dylan@example.com\` becomes \`dylan\`, then \`dylan-2\` when that name is taken), pins their subject to it, spends the invite and opens the workspace. Their next sign-in needs no link. The email lives on the pending invite only: the account, the audit log and \`weave export\` never carry it.
+
+An invite opens the workspace it was made in. An invite made on the hub root makes a root account, which opens every workspace the way a root account always has. A link that was revoked, spent, expired or made in another workspace answers \`410\` before the provider; a sign-in with no invite gets the refusal page, **No access to** the workspace.
+
+\`\`\`bash
+weave invite dylan@example.com --role observer   # prints the invite and its url
+weave invite list                                # the pending ones
+weave invite revoke <id>
+# HTTP, with an architect token: POST /api/invites {"email", "role"}, GET /api/invites, DELETE /api/invites/<id>
+# MCP: weave_accounts with action invite, invites or revoke-invite
+\`\`\`
 
 ## Clerk
 
