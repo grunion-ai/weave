@@ -105,6 +105,7 @@ async function serve() {
    passkey ceremonies under /api/auth/register/ and /api/auth/login/ were
    removed (Feature #243). */
 const OPEN = (method, path) => path === '/api/health' || path === '/auth'
+  || (method === 'GET' && (path === '/privacy' || path === '/terms')) // Feature #251: the public legal pages
   || /^\/api\/auth\/oidc\/(start|callback)$/.test(path)
   || path === '/api/auth/logout'
   || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || path.startsWith('/t/')
