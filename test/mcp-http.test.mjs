@@ -56,7 +56,7 @@ test('tools/list and tools/call round-trip through the engine', async () => {
   assert.match(made.data.result.content[0].text, /"row"/);
 
   const q = await rpc({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'weave_query', arguments: { db: 'T' } } });
-  assert.match(q.data.result.content[0].text, /"total": 1/);
+  assert.match(q.data.result.content[0].text, /"total":1/);
 });
 
 test('a batch array returns an array, notifications elided', async () => {

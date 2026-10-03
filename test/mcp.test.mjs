@@ -75,12 +75,13 @@ test('MCP tool calls drive a full workflow', async () => {
   await toolCall('weave_add_field', { db: 'Ticket', name: 'Hours', type: 'number' });
 
   const created = await toolCall('weave_create_entity', { db: 'Ticket', name: 'Login broken', values: { Hours: 2 }, doc: '# Repro\n\nSteps here.' });
-  assert.equal(created.data.fields.Status, 'New');
+  assert.deepEqual(created.data, { id: created.data.id, publicId: 1, name: 'Login broken' }, 'a write answers compact (Issue #596)');
+  assert.equal((await toolCall('weave_get_entity', { entity: 'Ticket#1' })).data.fields.Status, 'New');
 
-  const updated = await toolCall('weave_update_entity', { entity: 'Ticket#1', values: { Hours: 3 } });
-  assert.equal(updated.data.fields.Hours, 3);
+  const updated = await toolCall('weave_update_entity', { entity: 'Ticket#1', values: { Hours: 3 }, verbose: true });
+  assert.equal(updated.data.fields.Hours, 3, 'verbose returns the whole row');
 
-  const moved = await toolCall('weave_set_state', { entity: 'Ticket#1', field: 'Status', state: 'Resolved' });
+  const moved = await toolCall('weave_set_state', { entity: 'Ticket#1', field: 'Status', state: 'Resolved', verbose: true });
   assert.equal(moved.data.fields.Status, 'Resolved');
 
   const doc = await toolCall('weave_get_doc', { entity: 'Ticket#1' });

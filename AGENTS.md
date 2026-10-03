@@ -90,6 +90,14 @@ human.
 | History | `weave_activity`, `weave_audit` |
 | The workspace itself | `weave_workspace`, `weave_accounts`, `weave_keys` |
 
+**Writes answer compact.** Over MCP, the create, update, link, unlink, state,
+delete, restore, move and duplicate writes answer with `{id, publicId, name}`.
+A field write adds its `type` and stored `config`, and `weave_add_relation`
+answers `{field, inverse}` in the same shape. Pass `verbose: true` to any of
+them for the whole row or table, or read it back with `weave_get_entity` or
+`weave_schema`. Tool text is one-line JSON. REST and the CLI still return the
+full object (Issue #596).
+
 ### Configuration without a browser
 
 A space and a table are born with everything they need: `weave_create_space`

@@ -13,9 +13,35 @@ try {
   VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 } catch { /* bundled runtime — version arrives via handleMcpMessage opts */ }
 
+// One line: indentation is bytes an agent re-reads on every later turn (Issue #596).
 function textResult(data) {
-  return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 1) }] };
+  return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data) }] };
 }
+
+/* Issue #596: an MCP write answers with what the next call needs — id,
+   publicId, name, and a field's type and stored config — instead of echoing
+   the whole row or table (3-5 KB a call in the 2026-10-02 eval, re-read every
+   turn after). `verbose: true` on any of these returns the full object. Only
+   the MCP door compacts; dispatchTool, REST and the CLI keep the full reply. */
+export const COMPACT_TOOLS = new Set([
+  'weave_create_entity', 'weave_update_entity', 'weave_delete_entity', 'weave_restore_entity',
+  'weave_set_state', 'weave_link', 'weave_unlink',
+  'weave_create_space', 'weave_update_space', 'weave_restore_space',
+  'weave_create_table', 'weave_update_table', 'weave_move_table', 'weave_duplicate_table', 'weave_restore_table',
+  'weave_add_field', 'weave_update_field', 'weave_add_relation',
+]);
+const BRIEF_KEYS = ['id', 'publicId', 'name', 'type', 'config', 'deletedAt', 'purged'];
+function brief(obj) {
+  const out = {};
+  for (const k of BRIEF_KEYS) if (obj?.[k] != null) out[k] = obj[k];
+  return out;
+}
+function compactResult(name, result) {
+  if (!COMPACT_TOOLS.has(name) || !result || typeof result !== 'object') return result;
+  if (name === 'weave_add_relation') return { field: brief(result.field), ...(result.inverse ? { inverse: brief(result.inverse) } : {}) };
+  return brief(result);
+}
+const VERBOSE = { type: 'boolean', description: 'Return the whole object' };
 
 // Only the keys a caller actually named: an absent key means "leave it", and
 // the engine's patches distinguish that from an explicit null.
@@ -440,6 +466,7 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { state: { type: 'object' } }, required: ['state'] },
   },
 ];
+for (const t of TOOLS) if (COMPACT_TOOLS.has(t.name)) t.inputSchema.properties.verbose = VERBOSE;
 
 /* The one gate for accounts, the wall, the keystore and whole-workspace
    import (Issue #482). REST and the MCP dispatcher both ask it, so the two
@@ -690,8 +717,9 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null 
         return reply({ tools: TOOLS });
       case 'tools/call': {
         try {
-          const result = dispatchTool(weave, params.name, params.arguments ?? {}, { caller });
-          return reply(textResult(result));
+          const { verbose, ...args } = params.arguments ?? {};
+          const result = dispatchTool(weave, params.name, COMPACT_TOOLS.has(params.name) ? args : (params.arguments ?? {}), { caller });
+          return reply(textResult(verbose === true ? result : compactResult(params.name, result)));
         } catch (err) {
           return reply({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
         }
