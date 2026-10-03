@@ -263,7 +263,7 @@ async function main() {
        below only when told the old worker has exited (Feature #250). */
     const deferred = process.env.WEAVE_DEFER_MIGRATIONS === '1' && !!process.send;
     if (deferred) deferMigrations();
-    // Fresh: a random adjective-animal name; legacy 'Weave Workspace': the basename.
+    // Fresh: personal-workspace; legacy 'Weave Workspace': the basename.
     const w = openDefaultWorkspace(dataPath, { actor: CLI_ACTOR });
     const bootWrites = async () => {
       // The self-referential docs workspace ("weave") always exists alongside.
