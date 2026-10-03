@@ -634,11 +634,11 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.doesNotMatch(APP, /crumb-offset/, 'the crumb no longer indents around a corner control');
   assert.doesNotMatch(CSS, /crumb-offset/);
 
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, eye, dlBtn, \.\.\.poseControls\)/,
-    'the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, dlBtn, \.\.\.poseControls\)/,
+    'the Activity clock-arrow, the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
   const body = fnBody('renderEntityView');
   assert.match(body, /const sideOpen = \(db\.systemFields \?\? \[\]\)\.includes\('Activity'\);/, 'the column opens with the Activity system field');
-  assert.ok(!body.includes('activity-btn') && !body.includes('wv-entity-side'), 'no second switch, no per-browser memory');
+  assert.ok(!/localStorage/.test(body.slice(body.indexOf('activityBtn'), body.indexOf('activityBtn') + 600)) && !body.includes('wv-entity-side'), 'the Activity icon keeps no per-browser memory, and the side column has no second switch');
   assert.match(body, /grid\.classList\.toggle\('side-open', sideOpen\)/, 'the grid carries the state');
   assert.equal(rulesFor('.entity-grid')['grid-template-columns'], 'minmax(0, 1fr)', 'one column at rest');
   assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) 320px; \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');

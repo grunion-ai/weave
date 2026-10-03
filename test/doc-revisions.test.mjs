@@ -259,6 +259,19 @@ test('a restore names the revision it brought back, on its revision and on its o
   assert.equal(list[0].restoredFrom, null);
 });
 
+test('restoring the version the document already holds writes nothing and says so, so a toast offers no Undo for it (Issue #429)', () => {
+  const w = build({ revisionWindowMs: 0 });
+  const e = w.createEntity('Article', { name: 'A', doc: 'v1' });
+  w.setDoc(e.id, 'v2');
+  const [current, first] = w.listDocRevisions(e.id).revisions;
+  const undoBefore = w.listUndo({ limit: 1 })[0];
+  const same = w.restoreDocRevision(e.id, null, current.seq);
+  assert.equal(same.changed, false);
+  assert.equal(w.listDocRevisions(e.id).revisions.length, 2, 'no revision');
+  assert.deepEqual(w.listUndo({ limit: 1 })[0], undoBefore, 'no undo entry');
+  assert.equal(w.restoreDocRevision(e.id, null, first.seq).changed, true);
+});
+
 test('a revision is looked up by its own document: a wrong field or seq is not-found', () => {
   const w = build({ revisionWindowMs: 0 });
   const e = w.createEntity('Article', { name: 'A', doc: 'v1' });

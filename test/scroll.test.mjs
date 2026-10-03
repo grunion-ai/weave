@@ -76,14 +76,15 @@ test('nothing in the app calls scrollIntoView any more', () => {
     'scrollIntoView scrolls every scrollable ancestor — use scrollTargetIntoView');
 });
 
-test('the four programmatic scrolls all go through scrollTargetIntoView', () => {
+test('the five programmatic scrolls all go through scrollTargetIntoView', () => {
   const calls = CODE.match(/scrollTargetIntoView\(/g) ?? [];
-  assert.equal(calls.length, 5, 'one definition and the four call sites');
+  assert.equal(calls.length, 6, 'one definition and the five call sites');
   assert.match(CODE, /doc-rail-dash[^]{0,500}scrollTargetIntoView\(heads\[i\]/, 'the outline rail');
   assert.match(CODE, /scrollTargetIntoView\(host\.querySelector\('\.vditor-hint--current'\)/,
     "the editor's slash menu");
   assert.match(CODE, /scrollTargetIntoView\(rowEls\[sel\]/, 'the search palette');
   assert.match(CODE, /scrollTargetIntoView\(row,/, 'a new grid row taking focus');
+  assert.match(CODE, /const reveal = \(node\) => \{ if \(st\.scroll\) \{ st\.scroll = false; scrollTargetIntoView\(node,/, 'the Activity panel bringing a picked change into view (Issue #429)');
 });
 
 test('the helper moves the resolved box and nothing else', () => {

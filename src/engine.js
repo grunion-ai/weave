@@ -6137,12 +6137,13 @@ export class Weave {
 
   restoreDocRevision(entityId, fieldRef, seq) {
     const rev = this.getDocRevision(entityId, fieldRef, seq);
+    const changed = this.getDoc(entityId, fieldRef) !== rev.text;
     this.#docRevisionFresh = true;
     this.#restoring = rev;
     try { this.setDoc(entityId, rev.text, fieldRef); } finally { this.#docRevisionFresh = false; this.#restoring = null; }
     const e = this.getEntity(entityId);
     const f = this.#resolveDocField(this.state.tables[e.dbId], fieldRef);
-    return { ok: true, field: f.name, seq: rev.seq, at: rev.at, length: rev.text.length };
+    return { ok: true, changed, field: f.name, seq: rev.seq, at: rev.at, length: rev.text.length };
   }
 
   addComment(entityId, { author = 'anonymous', text }) {

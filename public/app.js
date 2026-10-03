@@ -11808,6 +11808,8 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   // Upper-left ⋯ menu: whole-entity downloads + delete (with confirmation).
   const entBase = `${WS_PREFIX}/e/${id}/entity`;
   const dlBtn = dotsMenu([
+    inPeek ? { label: 'Activity', run: () => activityPanel.toggle(id, null, mount) } : null,
+    inPeek ? 'divider' : null,
     ...['md', 'html', 'pdf'].map((ext) => ({
       label: `Download .${ext}`, href: `${entBase}.${ext}`,
       download: `${(entity.name || 'entity')}.${ext}`,
@@ -11846,6 +11848,10 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
      column to the grid. Stored on the table like every visibility choice;
      the separate button and its per-browser memory went with Issue #177. */
   const sideOpen = (db.systemFields ?? []).includes('Activity');
+  const activityBtn = inPeek ? null : el('button', {
+    class: 'btn btn-sm activity-btn', type: 'button', title: 'Activity', 'aria-label': 'Activity',
+    'aria-pressed': String(activityPanel.openFor === id), onclick: () => activityPanel.toggle(id, null, mount),
+  }, iconEl('lucide:history', 'wv-icon'));
   const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields', 'aria-label': 'Show or hide fields' }, eyeGlyph());
   eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false }); });
   /* One entity surface: the full page IS the dock's expanded pose, so its
@@ -11879,7 +11885,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
           // workspace › space › table head and the first row (Issue #668).
           foldFrom: inPeek ? 1 : 4,
         }),
-        el('span', { class: 'crumb-actions wv-toolbar' }, eye, dlBtn, ...poseControls)),
+        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, nameInput))),
   );
   /* The crumb's table link on the full page means "re-dock", not "leave":
@@ -11942,95 +11948,13 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     };
     let showingSource = false;
     let mounted = false;
-    /* History (Feature #225): a control beside the source toggle, hidden
-       until the document has a past — one revision is nothing to browse.
-       It opens a panel inside the section, never a modal: the list newest
-       first, a row previews read-only where the editor was, Restore writes
-       the text back through the ordinary doc write and re-renders. */
     const fieldQ = `field=${encodeURIComponent(f.name)}`;
-    let histPanel = null;
-    let preview = null;
-    const editorVisible = (on) => {
-      if (appFrame) {
-        appFrame.classList.toggle('hidden', !on || showingSource);
-        host.classList.toggle('hidden', !on || !showingSource);
-      } else host.classList.toggle('hidden', !on);
-    };
-    const onEsc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeHistory(); } };
-    const closeHistory = () => {
-      histPanel?.remove(); histPanel = null;
-      preview?.remove(); preview = null;
-      histBtn.classList.remove('active');
-      editorVisible(true);
-      document.removeEventListener('keydown', onEsc);
-    };
-    const checkHistory = async () => {
-      try {
-        const { revisions } = await api('GET', `/entities/${id}/doc/revisions?${fieldQ}&limit=2`);
-        histBtn.hidden = revisions.length < 2;
-      } catch { /* an older server: no history door, no control */ }
-    };
-    const restoreRevision = async (rev) => {
-      try {
-        await flushDocSave(id, f.name);
-        await api('POST', `/entities/${id}/doc/revisions/${rev.seq}/restore`, { field: f.name });
-        closeHistory();
-        toast(`Restored ${f.name} from ${relTime(rev.at)}`);
-        refresh();
-      } catch (err) { toast(err.message, true); }
-    };
-    const viewRevision = async (rev, row, current) => {
-      let text, html = null;
-      try {
-        ({ text } = await api('GET', `/entities/${id}/doc/revisions/${rev.seq}?${fieldQ}`));
-        if (mode === 'markdown') ({ html } = await api('POST', '/markdown', { md: text }));
-      } catch (err) { return toast(err.message, true); }
-      for (const r of histPanel?.querySelectorAll('.wv-rev-row') ?? []) r.classList.toggle('selected', r === row);
-      const view = el('div', { class: 'wv-rev-view' + (html != null ? ' vditor-reset' : '') });
-      if (html != null) view.innerHTML = html;
-      else view.append(el('pre', { class: 'wv-rev-source' }, text));
-      const bar = el('div', { class: 'wv-rev-bar' },
-        el('span', { class: 'wv-rev-bar-text' }, current ? 'Viewing the current text' : `Viewing revision from ${new Date(rev.at).toLocaleString()}`),
-        current ? null : el('button', { class: 'btn btn-sm btn-primary wv-rev-restore', type: 'button', onclick: () => restoreRevision(rev) }, 'Restore'),
-        el('button', { class: 'btn btn-sm wv-rev-back', type: 'button', onclick: closeHistory }, 'Back'));
-      preview?.remove();
-      preview = el('div', { class: 'wv-rev-preview' }, bar, view);
-      histPanel.after(preview);
-      editorVisible(false);
-    };
-    const openHistory = async () => {
-      if (histPanel) return closeHistory();
-      let revisions;
-      try {
-        await flushDocSave(id, f.name);
-        ({ revisions } = await api('GET', `/entities/${id}/doc/revisions?${fieldQ}&limit=200`));
-      } catch (err) { return toast(err.message, true); }
-      const rows = revisions.map((rev, i) => {
-        const prev = revisions[i + 1];
-        const delta = prev ? rev.len - prev.len : rev.len;
-        const source = rev.restoredFrom == null ? null : revisions.find((r) => r.seq === rev.restoredFrom);
-        const restored = rev.restoredFrom == null ? null
-          : el('span', { class: 'wv-rev-restored', title: source ? `Restored the version from ${new Date(source.at).toLocaleString()}${source.actor ? ` by ${source.actor}` : ''}` : 'Restored a version no longer kept' },
-            iconEl('lucide:history', 'wv-icon'), source ? `Restored from ${relTime(source.at)}` : 'Restored an earlier version');
-        const row = el('button', { class: 'wv-rev-row', type: 'button', title: new Date(rev.at).toLocaleString() },
-          el('span', { class: 'wv-rev-when' }, i === 0 ? 'Current' : relTime(rev.at), restored),
-          el('span', { class: 'wv-rev-actor' }, actorChipEl(rev.actor, { link: false }) || '—'),
-          el('span', { class: 'wv-rev-delta' + (delta > 0 ? ' pos' : delta < 0 ? ' neg' : '') },
-            delta > 0 ? `+${delta}` : delta < 0 ? `−${-delta}` : '±0'));
-        row.addEventListener('click', () => viewRevision(rev, row, i === 0));
-        return row;
-      });
-      histPanel = el('div', { class: 'wv-doc-history' },
-        el('div', { class: 'wv-doc-history-head' },
-          `${revisions.length} revision${revisions.length === 1 ? '' : 's'}`,
-          el('span', { class: 'wv-doc-history-hint' }, 'Select one to view it · Esc closes')),
-        el('div', { class: 'wv-rev-list' }, ...rows));
-      body.prepend(histPanel);
-      histBtn.classList.add('active');
-      document.addEventListener('keydown', onEsc);
-    };
-    const histBtn = el('span', { class: 'doc-anchor doc-history-btn', title: 'History', hidden: '', onclick: openHistory },
-      iconEl('lucide:history', 'wv-icon'));
+    const histBtn = el('span', {
+      class: 'doc-anchor doc-history-btn', title: 'History', 'aria-label': `${f.name} history`, hidden: '',
+      onclick: () => activityPanel.toggle(id, f.name, mount),
+    }, iconEl('lucide:history', 'wv-icon'));
+    const checkHistory = () => api('GET', `/entities/${id}/doc/revisions?${fieldQ}&limit=2`)
+      .then((r) => { histBtn.hidden = r.revisions.length < 2; }, () => { histBtn.hidden = true; });
     checkHistory();
     const sourceToggle = appFrame ? el('span', {
       class: 'doc-anchor', title: 'Edit source',
@@ -12053,7 +11977,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         docSectionCollapse(id, f.name, open);
       },
     });
-    const section = el('section', { class: 'doc-section' },
+    const section = el('section', { class: 'doc-section', 'data-doc-field': f.name },
       el('div', { class: 'doc-section-head', draggable: 'true' },
         el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         caret,
@@ -12396,7 +12320,255 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   // The side column reads top-down as what people said (Comments) and what
   // happened (Activity); the body holds what the record is and carries.
   right.append(commentsPanel, actPanel); // delete lives in the ⋮ menu
+  activityPanel.mounted(id, mount);
 }
+
+const activityPanel = (() => {
+  const H = () => window.weaveHistoryCore;
+  let st = null;
+  let panel = null;
+
+  const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const stamp = (iso) => `${H().dayLabel(iso) === 'Today' ? '' : `${new Date(iso).toLocaleDateString([], { weekday: 'short' })} `}${clock(iso)}`;
+  const val = (v, cls = '') => el('span', { class: `wv-act-val ${cls}`.trim() }, String(v ?? '—'));
+  const arrow = () => el('span', { class: 'wv-act-arr' }, iconEl('lucide:arrow-right', 'wv-icon'));
+  const byId = (id) => st?.items.find((it) => it.id === id);
+  const revsOf = (field) => st.items.filter((it) => it.kind === 'rev' && it.field === field);
+  const prevOf = (r) => { const l = revsOf(r.field); return l[l.indexOf(r) + 1] ?? null; };
+  const sections = () => [...(st?.mount ?? document).querySelectorAll('.doc-section[data-doc-field]')];
+  const sectionFor = (field) => sections().find((s) => s.dataset.docField === field);
+
+  async function load() {
+    const [ent, act] = await Promise.all([api('GET', `/entities/${st.id}`), api('GET', `/activity?entity=${st.id}&limit=500`)]);
+    const db = allTables().find((d) => d.id === ent.dbId);
+    const docFields = (db?.fields ?? []).filter((f) => f.type === 'document').map((f) => f.name);
+    const documents = await Promise.all(docFields.map(async (field) => ({
+      field, revisions: (await api('GET', `/entities/${st.id}/doc/revisions?field=${encodeURIComponent(field)}&limit=200`)).revisions,
+    })));
+    const optionName = (field, v) => {
+      const f = (db?.fields ?? []).find((x) => x.name === field);
+      return (f?.optionsFull ?? []).find((o) => o?.id === v)?.name ?? v;
+    };
+    st.docFields = docFields;
+    st.items = H().feed({ documents, activity: act.items, comments: ent.comments ?? [], optionName });
+    if (st.sel && !byId(st.sel)) st.sel = null;
+  }
+  const text = async (r) => {
+    if (!st.texts.has(r.seq)) st.texts.set(r.seq, (await api('GET', `/entities/${st.id}/doc/revisions/${r.seq}?field=${encodeURIComponent(r.field)}`)).text);
+    return st.texts.get(r.seq);
+  };
+
+  const undoTop = async () => (await api('GET', '/undo?limit=1'))[0] ?? null;
+  async function afterWrite(msg, top) {
+    st.done = { id: st.sel, top };
+    await refreshView();
+    await load();
+    render();
+    toast(msg, false, { label: 'Undo', run: undo });
+  }
+  async function restore(r) {
+    try {
+      await flushDocSave(st.id, r.field);
+      const out = await api('POST', `/entities/${st.id}/doc/revisions/${r.seq}/restore`, { field: r.field });
+      if (out.changed === false) return toast(`${r.field} already reads as the version from ${stamp(r.at)}`);
+      const mine = await undoTop();
+      await load();
+      const top = revsOf(r.field)[0];
+      st.sel = top.id; st.from = null;
+      await afterWrite(`${r.field} restored from ${stamp(r.at)}`, mine);
+    } catch (err) { toast(err.message, true); }
+  }
+  async function revert(a) {
+    try {
+      if (a.kind === 'comment') await api('DELETE', `/entities/${st.id}/comments/${a.commentId}`);
+      else await api('PATCH', `/entities/${st.id}`, { values: { [a.field]: a.from } });
+      const mine = await undoTop();
+      st.sel = a.id;
+      await afterWrite(a.kind === 'comment' ? 'Comment deleted' : `${a.field} reverted`, mine);
+    } catch (err) { toast(err.message, true); }
+  }
+  async function undo() {
+    const done = st?.done; if (!done) return;
+    try {
+      const top = await undoTop();
+      const same = top && done.top && top.ts === done.top.ts && top.kind === done.top.kind && top.entityId === done.top.entityId;
+      if (!same) return toast('Changed since, so nothing was undone', true);
+      await api('POST', '/undo', { steps: 1 });
+      st.done = null;
+      await refreshView();
+      await load();
+      const it = byId(st.sel);
+      if (it?.kind === 'rev') st.sel = revsOf(it.field)[0]?.id ?? null;
+      render();
+      toast('Undone');
+    } catch (err) { toast(err.message, true); }
+  }
+
+  function cmpSelect(r) {
+    const prev = prevOf(r), others = revsOf(r.field).filter((x) => x !== r);
+    if (!others.length) return null;
+    const p = pickerSelect({
+      name: 'compare', title: 'Compare with', value: st.from ?? prev?.id ?? others[0].id,
+      options: others.map((x) => ({ id: x.id, label: `vs ${stamp(x.at)} · ${x.actor ?? ''}` })),
+    });
+    p.classList.add('wv-act-cmp');
+    p.input.addEventListener('change', () => { st.from = prev && p.input.value === prev.id ? null : p.input.value; render(); });
+    return p;
+  }
+  function tray(it) {
+    const btn = (label, icon, run, primary = false) => el('button', { class: `btn btn-sm${primary ? ' btn-primary' : ''}`, type: 'button', onclick: run }, iconEl(icon, 'wv-icon'), label);
+    if (st.done?.id === it.id) return el('div', { class: 'wv-act-tray' }, btn('Undo', 'lucide:undo', undo), it.kind === 'rev' ? cmpSelect(it) : null);
+    if (it.kind === 'rev') {
+      return it.current ? (cmpSelect(it) ? el('div', { class: 'wv-act-tray' }, cmpSelect(it)) : null)
+        : el('div', { class: 'wv-act-tray' }, btn('Restore', 'lucide:undo', () => restore(it), true), cmpSelect(it));
+    }
+    if (it.kind === 'undo' || it.undone) return null;
+    if (it.kind === 'comment') return el('div', { class: 'wv-act-tray' }, btn('Delete', 'lucide:trash-2', () => revert(it)));
+    return el('div', { class: 'wv-act-tray' }, btn(`Revert to ${it.from}`, 'lucide:undo', () => revert(it), true));
+  }
+  function row(it) {
+    const on = st.sel === it.id;
+    let icon, what, who = clock(it.at), act = null;
+    if (it.kind === 'rev') {
+      icon = it.restoredFrom != null || it.undo ? 'lucide:undo' : 'lucide:file-text';
+      what = [el('span', { class: 'name' }, it.field),
+        it.restoredFrom != null ? el('span', {
+          class: 'wv-act-src',
+          title: it.source ? `Restored the version from ${new Date(it.source.at).toLocaleString()}${it.source.actor ? ` by ${it.source.actor}` : ''}` : 'Restored a version no longer kept',
+        }, it.source ? `restored from ${stamp(it.source.at)}` : 'restored from an earlier version') : null,
+        it.delta ? el('span', { class: `wv-act-delta ${it.delta > 0 ? 'pos' : 'neg'}` }, it.delta > 0 ? `+${it.delta}` : `−${-it.delta}`) : null];
+      if (it.current) who += ' · current'; else if (it.undo) who += ' · undo';
+      if (!it.current && !on) act = { title: 'Restore this version', icon: 'lucide:undo', run: () => restore(it) };
+    } else if (it.kind === 'comment') {
+      icon = 'lucide:message-square';
+      what = [el('span', { class: 'quote' }, `“${it.body}”`)];
+      if (!on) act = { title: 'Delete comment', icon: 'lucide:trash-2', run: () => revert(it) };
+    } else {
+      icon = it.kind === 'undo' ? 'lucide:undo' : it.kind === 'state' ? 'lucide:workflow' : 'lucide:pencil';
+      what = [el('span', { class: 'name' }, it.field), val(it.from), arrow(), val(it.to, 'new')];
+      if (it.undone) who += ' · undone';
+      if (!on && !it.undone && it.kind !== 'undo') act = { title: `Revert to ${it.from}`, icon: 'lucide:undo', run: () => revert(it) };
+    }
+    const node = el('div', { class: `wv-act-row${on ? ' sel' : ''}${it.undone ? ' undone' : ''}`, tabindex: '0', 'data-id': it.id },
+      el('span', { class: 'wv-act-kind' }, iconEl(icon, 'wv-icon')),
+      el('span', { class: 'wv-act-what' }, ...what),
+      act ? el('button', { class: 'wv-act-icon', type: 'button', title: act.title, 'aria-label': act.title, onclick: (e) => { e.stopPropagation(); act.run(); } }, iconEl(act.icon, 'wv-icon')) : el('span'),
+      el('span', { class: 'wv-act-who' }, ...(() => { const chip = actorChipEl(it.actor, { link: false }); return chip ? [chip, ` · ${who}`] : [who]; })()),
+      on ? tray(it) : null);
+    node.addEventListener('click', (e) => {
+      if (e.target.closest('.wv-act-tray')) return;
+      st.sel = it.id; st.from = null; st.done = null; st.scroll = true; render();
+    });
+    node.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === node) node.click(); });
+    return node;
+  }
+  function renderPanel() {
+    const chips = [['all', 'All'], ...st.docFields.map((f) => [`doc:${f}`, f]), ['fields', 'Fields'], ['comments', 'Comments']];
+    const filters = el('div', { class: 'wv-act-filters', role: 'toolbar', 'aria-label': 'Show' },
+      ...chips.map(([k, label]) => el('button', { type: 'button', 'aria-pressed': String(st.filter === k), onclick: () => { st.filter = k; render(); } }, label)));
+    const list = el('div', { class: 'wv-act-list' });
+    let day = '';
+    for (const it of H().filterFeed(st.items, st.filter)) {
+      const d = H().dayLabel(it.at);
+      if (d !== day) { list.append(el('div', { class: 'wv-act-day' }, d)); day = d; }
+      list.append(row(it));
+    }
+    if (!list.children.length) list.append(el('div', { class: 'wv-empty' }, 'No changes yet.'));
+    const keep = panel?.querySelector('.wv-act-list')?.scrollTop ?? 0;
+    const next = el('aside', { class: 'wv-activity', 'aria-label': 'Activity' },
+      el('div', { class: 'wv-act-head' }, el('h3', {}, 'Activity'),
+        el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
+      filters, list);
+    if (panel) panel.replaceWith(next); else document.body.append(next);
+    panel = next;
+    const dock = st.mount?.closest?.('#dock');
+    if (dock) panel.style.right = `${innerWidth - dock.getBoundingClientRect().left + 8}px`;
+    list.scrollTop = keep;
+    const s = list.querySelector('.wv-act-row.sel');
+    if (s) {
+      const lb = list.getBoundingClientRect(), sb = s.getBoundingClientRect();
+      if (sb.bottom > lb.bottom) list.scrollTop += sb.bottom - lb.bottom + 8;
+      else if (sb.top < lb.top + 28) list.scrollTop -= lb.top + 28 - sb.top;
+    }
+  }
+
+  const reveal = (node) => { if (st.scroll) { st.scroll = false; scrollTargetIntoView(node, { padding: 12 }); } };
+  function clearViews() {
+    for (const v of document.querySelectorAll('.wv-act-view')) {
+      const body = v.closest('.doc-section')?.querySelector(':scope > .doc-section-body');
+      if (body) body.hidden = false;
+      v.remove();
+    }
+    for (const b of document.querySelectorAll('.doc-history-btn.active')) b.classList.remove('active');
+  }
+  async function renderView() {
+    clearViews();
+    const it = byId(st?.sel);
+    if (!it) return;
+    if (it.kind === 'rev') {
+      const sec = sectionFor(it.field); if (!sec) return;
+      const body = sec.querySelector(':scope > .doc-section-body');
+      const from = st.from ? byId(st.from) : prevOf(it);
+      const view = el('div', { class: 'wv-act-view' });
+      body.hidden = true; body.after(view);
+      sec.querySelector('.doc-history-btn')?.classList.add('active');
+      const [ft, tt] = await Promise.all([from ? text(from) : '', text(it)]);
+      if (!view.isConnected) return;
+      const diff = el('div', { class: 'wv-act-diff' }); diff.innerHTML = H().renderDiff(ft, tt);
+      view.append(el('div', { class: 'wv-act-bar' }, from ? val(stamp(from.at), 'from') : null, from ? arrow() : null, val(stamp(it.at), 'to')), diff);
+      reveal(sec);
+      return;
+    }
+    const host = st.mount?.querySelector('.entity-body'); if (!host) return;
+    const view = el('div', { class: 'wv-act-view top' }, el('div', { class: 'wv-act-card' },
+      ...(it.kind === 'comment' ? [iconEl('lucide:message-square', 'wv-icon'), el('span', {}, it.body)]
+        : [el('b', {}, it.field), val(it.from), arrow(), val(it.to, 'new')])));
+    host.prepend(view);
+    reveal(view);
+  }
+  function render() {
+    if (!st) return;
+    renderPanel();
+    renderView();
+    for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'true');
+  }
+
+  async function open(id, field, mount) {
+    if (st?.id !== id) st = { id, texts: new Map() };
+    Object.assign(st, { mount: mount ?? st.mount ?? $('#main'), filter: field ? `doc:${field}` : 'all', from: null, done: null, scroll: !field });
+    try { await flushDocSaves(); await load(); } catch (err) { st = null; return toast(err.message, true); }
+    const first = H().filterFeed(st.items, st.filter)[0];
+    st.sel = first?.id ?? null;
+    document.body.classList.toggle('wv-activity-open', !!st.mount?.closest?.('#main'));
+    render();
+  }
+  function close() {
+    panel?.remove(); panel = null;
+    clearViews();
+    document.body.classList.remove('wv-activity-open');
+    for (const b of document.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'false');
+    st = null;
+  }
+  function toggle(id, field, mount) {
+    const want = field ? `doc:${field}` : 'all';
+    if (st?.id === id && panel && st.filter === want) return close();
+    return open(id, field, mount);
+  }
+  function mounted(id, mount) {
+    if (!st || !panel) return;
+    if (st.id !== id) { if (!st.mount?.isConnected) close(); return; }
+    st.mount = mount;
+    for (const b of mount.querySelectorAll('.activity-btn')) b.setAttribute('aria-pressed', 'true');
+    renderView();
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !panel || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop')) return;
+    e.stopPropagation();
+    close();
+  }, true);
+  window.addEventListener('hashchange', () => setTimeout(() => { if (st && !st.mount?.isConnected) close(); }, 0));
+  return { toggle, open, close, mounted, get openFor() { return panel ? st?.id : null; } };
+})();
 
 /* ---------- create & schema dialogs ---------- */
 
