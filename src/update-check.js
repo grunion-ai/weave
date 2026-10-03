@@ -46,12 +46,18 @@ export function createReleaseCheck({ version, enabled = true, cacheFile = null, 
     if (inflight) return inflight;
     if (state.attemptedAt && now() - state.attemptedAt < interval) return Promise.resolve();
     state.attemptedAt = now();
+    /* Not AbortSignal.timeout: its timer is unref'd, so the cut-off landed only while
+       something else held the event loop open. A real socket does; an injected fetch
+       that just hangs does not, and the loop drained before the abort (Issue #563).
+       This timer is ref'd and cleared on every path below. */
+    const ac = new AbortController();
+    const cutoff = setTimeout(() => ac.abort(new Error(`no answer from ${RELEASES_URL} in ${timeoutMs}ms`)), timeoutMs);
     inflight = (async () => {
       try {
         const res = await fetch(RELEASES_URL, {
           method: 'GET',
           headers: { accept: 'application/vnd.github+json', 'user-agent': 'weave' },
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: ac.signal,
         });
         if (!res.ok) return;
         const tag = String((await res.json())?.tag_name ?? '').replace(/^v/, '');
@@ -59,6 +65,7 @@ export function createReleaseCheck({ version, enabled = true, cacheFile = null, 
         state.latest = tag;
         state.checkedAt = state.attemptedAt;
       } catch { /* offline, timed out or malformed: nothing changes */ } finally {
+        clearTimeout(cutoff);
         save();
         inflight = null;
       }

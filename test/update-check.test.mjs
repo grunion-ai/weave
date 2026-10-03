@@ -13,6 +13,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { createReleaseCheck, updateCheckFromEnv, newerVersion, RELEASES_URL } from '../src/update-check.js';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -149,6 +151,45 @@ test('a hung request times out in seconds and never blocks a status call', async
   await check.refresh();
   assert.equal(aborted, true, 'the request was cut off');
   assert.equal(check.status(), null);
+});
+
+/* Issue #563: the timeout has to fire on its own. AbortSignal.timeout's timer is
+   unref'd, so a hung request was cut off only while something else happened to hold
+   the event loop open: the test runner's own handles on node 24, nothing on 22.16,
+   where the case above and every case after it were cancelled with "Promise
+   resolution is still pending but the event loop has already resolved" and reddened
+   both 22.16 legs of the tests workflow. A bare child process holds no such handles,
+   so it reproduces that on any node. */
+test('the timeout fires with nothing else holding the event loop open', () => {
+  const src = JSON.stringify(fileURLToPath(new URL('../src/update-check.js', import.meta.url)));
+  const script = `
+    const { createReleaseCheck } = await import(${src});
+    let aborted = false;
+    const hang = (url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => { aborted = true; reject(init.signal.reason); }));
+    await createReleaseCheck({ version: '0.4.51', fetch: hang, timeoutMs: 50 }).refresh();
+    console.log(aborted ? 'aborted' : 'never aborted');
+  `;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `the check alone has to keep the loop alive until it times out; exit ${r.status}: ${r.stderr}`);
+  assert.equal(r.stdout.trim(), 'aborted', 'the hung request was cut off');
+});
+
+/* The other side of that timer: it is ref'd, so a cut-off left armed after the answer
+   would hold weave open for the rest of timeoutMs. The child asks for a 20 s cut-off and
+   gets its answer at once, so it exits in milliseconds or not before this call's 4 s. */
+test('the cut-off is cleared when the answer lands, so the process still exits at once', () => {
+  const src = JSON.stringify(fileURLToPath(new URL('../src/update-check.js', import.meta.url)));
+  const script = `
+    const { createReleaseCheck } = await import(${src});
+    const reply = async () => new Response('{"tag_name":"v0.4.52"}', { status: 200 });
+    const check = createReleaseCheck({ version: '0.4.51', fetch: reply, timeoutMs: 20_000 });
+    await check.refresh();
+    console.log(check.status().latestRelease);
+  `;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 4000 });
+  assert.equal(r.signal, null, 'the answered check kept the process alive for its whole cut-off');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), '0.4.52');
 });
 
 test('an unreadable cache is ignored, not fatal', async () => {
