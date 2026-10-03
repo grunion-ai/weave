@@ -556,7 +556,7 @@ export const ONTOLOGY = {
       key: 'account', name: 'Account', storedIn: 'state.meta.accounts',
       definition: 'A named token holder with a role — architect, editor, or observer (admin, writer and reader before 2026-10-02, rewritten on open). Only the token hash is kept. Browser sessions are kept beside it as sha256 hashes (Feature #222 part 2). A credentials[] array left on a row by the passkey door removed in Feature #243 is kept and ignored. Provider identities ({ issuer, subject }, no email) live on the row as identities[] (Feature #212, Feature #252); an identity is linked by redeeming a one-time invite kept as its sha256 in meta.identityInvites.',
       identity: 'uuid; name unique in the workspace',
-      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'listSessions', 'revokeSession', 'linkIdentity', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'],
+      api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'listSessions', 'revokeSession', 'linkIdentity', 'inviteMember', 'listInvites', 'revokeInvite', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'],
     },
     {
       key: 'key', name: 'Credential', storedIn: 'keystore',
@@ -3304,8 +3304,10 @@ export class Weave {
      provider's { issuer, subject } to the account (account.identities[]).
      From then on the subject alone is the identity. Identities are keyed by
      issuer, so two providers never share a namespace.
-     ponytail: no verb lists or cancels a pending invite; it expires on its
-     own. Add one beside listSessions when an operator needs it. */
+     An invite can also be for someone with no account yet (inviteMember):
+     redeeming it makes the account. listInvites and revokeInvite cover the
+     pending member invites; a link invite still expires on its own.
+     revokeInvite takes either kind by id. */
   static INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
   #issuer(issuer) { return String(issuer ?? '').trim().replace(/\/+$/, ''); }
@@ -3315,30 +3317,90 @@ export class Weave {
     const iss = this.#issuer(issuer);
     if (!iss) throw new WeaveError('An identity needs the issuer of the provider that vouches for it', 'invalid');
     if (email !== undefined) throw new WeaveError('weave no longer links by email (Feature #252): link mints an invite link, and the person who opens it and signs in is linked', 'invalid');
-    const invites = (this.state.meta.identityInvites ??= {});
-    const now = Date.now();
-    for (const [h, i] of Object.entries(invites)) if (Date.parse(i.expiresAt) <= now) delete invites[h];
-    const code = 'wvi_' + randomBytes(32).toString('base64url');
-    const expiresAt = new Date(now + Weave.INVITE_TTL_MS).toISOString();
-    invites[this.#hash(code)] = { accountId: a.id, issuer: iss, createdAt: new Date(now).toISOString(), expiresAt };
-    this.save();
+    const { code, expiresAt } = this.#mintInvite({ accountId: a.id, issuer: iss });
     this.#audit('identity-invited', { name: a.name, issuer: iss });
     return { account: a.name, issuer: iss, code, expiresAt };
   }
 
+  #mintInvite(entry) {
+    const invites = (this.state.meta.identityInvites ??= {});
+    const now = Date.now();
+    for (const [h, i] of Object.entries(invites)) if (Date.parse(i.expiresAt) <= now) delete invites[h];
+    const code = 'wvi_' + randomBytes(32).toString('base64url');
+    const h = this.#hash(code);
+    const expiresAt = new Date(now + Weave.INVITE_TTL_MS).toISOString();
+    invites[h] = { ...entry, createdAt: new Date(now).toISOString(), expiresAt };
+    this.save();
+    return { code, h, expiresAt };
+  }
+
+  /* A member invite has no account until it is redeemed: `a` is null. */
   #invite(code) {
     const h = this.#hash(code);
     const i = code ? this.state.meta.identityInvites?.[h] : null;
     if (!i || Date.parse(i.expiresAt) <= Date.now()) return null;
+    if (!i.accountId) return { h, i, a: null };
     const a = this.state.meta.accounts?.[i.accountId];
     return a ? { h, i, a } : null;
+  }
+
+  /* An invite for a new person (Issue #569; Kyle, 2026-10-02: a new person
+     is invited to an existing workspace). An architect names an email and a
+     role, Editor by default; the invite is linkIdentity's one-time code, and
+     redeeming it makes the account at that role and pins the provider's
+     subject to it. The email only says who the invite is for: it lives on
+     the pending invite, which redeeming, revoking or expiring deletes, and
+     never reaches the account or the audit log (Feature #252). */
+  inviteMember({ email, role: asked = 'editor', issuer } = {}) {
+    const iss = this.#issuer(issuer);
+    if (!iss) throw new WeaveError('Inviting needs a sign-in provider: set WEAVE_OIDC_ISSUER (the issuer the person signs in at)', 'invalid');
+    const mail = String(email ?? '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) throw new WeaveError(`An invite needs an email address (got '${email ?? ''}')`, 'invalid');
+    const role = Weave.roleName(asked);
+    if (!Weave.ROLES.includes(role)) throw new WeaveError(`Invalid role '${asked}' (${Weave.ROLES.join(', ')})`, 'invalid');
+    if (this.listInvites().some((i) => i.email === mail)) throw new WeaveError(`${mail} already has a pending invite; revoke it to send a new one`, 'conflict');
+    const { code, h } = this.#mintInvite({ accountId: null, issuer: iss, email: mail, role, invitedBy: this.actor });
+    this.#audit('member-invited', { role, issuer: iss });
+    return { ...this.listInvites().find((i) => i.id === h), code };
+  }
+
+  listInvites() {
+    const now = Date.now();
+    return Object.entries(this.state.meta.identityInvites ?? {})
+      .filter(([, i]) => !i.accountId && Date.parse(i.expiresAt) > now)
+      .map(([id, i]) => ({ id, email: i.email, name: this.#memberName(i.email), role: i.role, roleLabel: Weave.ROLE_LABELS[i.role], workspace: this.state.meta.name, invitedBy: i.invitedBy, createdAt: i.createdAt, expiresAt: i.expiresAt }))
+      .sort((x, y) => x.createdAt.localeCompare(y.createdAt));
+  }
+
+  /* By id, the hash the list shows, or a prefix of it at least 8 long. */
+  revokeInvite(id) {
+    const invites = this.state.meta.identityInvites ?? {};
+    const key = String(id ?? '').length >= 8 ? Object.keys(invites).find((h) => h.startsWith(String(id))) : null;
+    if (!key) throw new WeaveError(`Invite '${id ?? ''}' not found`, 'not-found');
+    delete invites[key];
+    this.save();
+    this.#audit('invite-revoked', {});
+    return { revoked: 1 };
+  }
+
+  /* The name an invited person's account gets: the email's local part, as
+     an account name is written by hand ('kyle', 'deploy-check'), with -2,
+     -3 on when it is taken. */
+  #memberName(email) {
+    const base = String(email ?? '').split('@')[0].toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || 'member';
+    const taken = new Set(Object.values(this.state.meta.accounts ?? {}).map((a) => a.name));
+    for (let n = 1; ; n++) {
+      const name = n === 1 ? base : `${base}-${n}`;
+      if (taken.has(name)) continue;
+      try { refuseReserved('account', name); return name; } catch { /* a reserved word: try the next */ }
+    }
   }
 
   /* A pending invite, or null: what the start of a sign-in checks before it
      sends anyone to the provider. */
   identityInvite(code) {
     const found = this.#invite(code);
-    return found ? { account: found.a.name, issuer: found.i.issuer, expiresAt: found.i.expiresAt } : null;
+    return found ? { account: found.a?.name ?? this.#memberName(found.i.email), issuer: found.i.issuer, expiresAt: found.i.expiresAt } : null;
   }
 
   /* The invite's end of a sign-in: the provider has vouched for { issuer,
@@ -3353,13 +3415,22 @@ export class Weave {
     if (iss !== i.issuer) throw new WeaveError('This invite is for another provider', 'invalid');
     if (!subject) throw new WeaveError('The provider named nobody', 'invalid');
     const sub = String(subject);
-    for (const other of Object.values(this.state.meta.accounts)) {
-      if (other.id !== a.id && (other.identities ?? []).some((x) => x.issuer === iss && x.subject === sub)) {
+    for (const other of Object.values(this.state.meta.accounts ?? {})) {
+      if (other.id !== a?.id && (other.identities ?? []).some((x) => x.issuer === iss && x.subject === sub)) {
         throw new WeaveError(`This identity already opens '${other.name}'`, 'conflict');
       }
     }
     delete this.state.meta.identityInvites[h];
     const at = nowISO();
+    if (!a) {
+      const { account } = this.createAccount({ name: this.#memberName(i.email), role: i.role });
+      const row = this.state.meta.accounts[account.id];
+      row.identities = [{ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at }];
+      this.save();
+      this.#audit('member-joined', { name: row.name, role: row.role, invitedBy: i.invitedBy ?? null });
+      const { tokenHash, ...pub } = row;
+      return pub;
+    }
     let identity = (a.identities ?? []).find((x) => x.issuer === iss && x.subject === sub);
     if (!identity) {
       identity = { issuer: iss, subject: sub, createdAt: at, lastUsedAt: at };
@@ -7678,7 +7749,7 @@ export class Weave {
     }
     for (const kind of ['sessions', 'identityInvites']) {
       if (meta[kind] !== undefined || !prior[kind]) continue;
-      const kept = Object.entries(prior[kind]).filter(([, s]) => meta.accounts?.[s.accountId]);
+      const kept = Object.entries(prior[kind]).filter(([, s]) => (kind === 'identityInvites' && !s.accountId) || meta.accounts?.[s.accountId]);
       if (kept.length) meta[kind] = Object.fromEntries(kept);
     }
   }

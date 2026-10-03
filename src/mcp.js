@@ -418,10 +418,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_accounts',
-    description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor — observer reads and comments, editor writes rows, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, issuer — mints a one-time invite link, good for 7 days; the person who opens it and signs in at the OpenID Connect provider is linked by subject, and weave stores no email. Signing in at the provider provisions nobody, so an account opens to a provider identity only through this. issuer defaults to WEAVE_OIDC_ISSUER; the url is rooted at WEAVE_ORIGIN) | unlink-identity (account, subject, issuer — the subject account list shows).',
+    description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor — observer reads and comments, editor writes rows, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, issuer — mints a one-time invite link, good for 7 days; the person who opens it and signs in at the OpenID Connect provider is linked by subject, and weave stores no email. Signing in at the provider provisions nobody, so an account opens to a provider identity only through this. issuer defaults to WEAVE_OIDC_ISSUER; the url is rooted at WEAVE_ORIGIN) | unlink-identity (account, subject, issuer — the subject account list shows) | invite (email, role default editor, issuer — invites a new person: answers a one-time sign-in link, good for 7 days, that makes the account at that role when they sign in; weave sends no email, so hand the link over) | invites (the pending ones: email, role, invitedBy, createdAt) | revoke-invite (invite: the id invites shows).',
     inputSchema: {
       type: 'object',
-      properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, subject: { type: 'string' }, issuer: { type: 'string' } },
+      properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, subject: { type: 'string' }, issuer: { type: 'string' }, email: { type: 'string' }, invite: { type: 'string' } },
       required: ['action'],
     },
   },
@@ -750,7 +750,15 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
           return { ...made, url: `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` };
         }
         case 'unlink-identity': return weave.unlinkIdentity(args.account ?? args.name, { issuer: args.issuer ?? null, subject: args.subject });
-        default: throw new Error(`Unknown accounts action '${args.action}' (list, create, delete, require-auth, sessions, revoke-session, link-identity, unlink-identity)`);
+        // A new person, invited to this workspace (Issue #569).
+        case 'invite': {
+          const made = weave.inviteMember({ email: args.email, role: args.role ?? 'editor', issuer: args.issuer ?? process.env.WEAVE_OIDC_ISSUER });
+          const origin = process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
+          return { ...made, url: `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` };
+        }
+        case 'invites': return { invites: weave.listInvites() };
+        case 'revoke-invite': return weave.revokeInvite(args.invite ?? args.id);
+        default: throw new Error(`Unknown accounts action '${args.action}' (list, create, delete, require-auth, sessions, revoke-session, link-identity, unlink-identity, invite, invites, revoke-invite)`);
       }
     case 'weave_keys':
       switch (args.action) {
