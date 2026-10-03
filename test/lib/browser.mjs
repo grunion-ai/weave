@@ -11,6 +11,7 @@
    both. The seed is the suite's own business and stays in the suite; the
    rest lives here. */
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { Weave } from '../../src/engine.js';
 import { startServer } from '../../src/server.js';
 
@@ -18,7 +19,79 @@ import { startServer } from '../../src/server.js';
    Safari, and a drag that Chromium accepts can be one WebKit refuses. The
    export keeps its old name; every suite only ever calls launch(). */
 const pw = await import('playwright').catch(() => null);
-export const chromium = pw && (pw[process.env.WEAVE_BROWSER || 'chromium'] ?? pw.chromium);
+const browserType = pw && (pw[process.env.WEAVE_BROWSER || 'chromium'] ?? pw.chromium);
+
+/* Feature #236: launch() connects to the test manager's warm browser
+   instead of starting a Chromium per suite. Each connection owns its
+   contexts; close disconnects this client only. Inside a manager job the
+   job's allocation hands out the endpoint; a raw `node --test` caller
+   leases the same queue instead of launching Chromium beside it. */
+const ROOT = fileURLToPath(new URL('../../', import.meta.url));
+
+/* One lease per process, counted. A suite that calls launch() twice (two
+   workspaces, first-run-browser) would otherwise queue its second lease
+   behind its first, which only test.after releases: a deadlock until the
+   queue wait ran out (change 446 review). Each launch() still opens its
+   own connection, so a suite's contexts stay its own. The lease carries
+   the caller's admission overrides; the manager reads them from job env. */
+let held = null;
+function lease(manager) {
+  if (!held) {
+    const fresh = { refs: 0 };
+    fresh.ready = manager.request({ type: 'lease', root: ROOT, files: [], env: { WEAVE_BROWSER: process.env.WEAVE_BROWSER, ...manager.admissionEnv() } }, { start: true, lease: true })
+      .then((r) => {
+        if (r.endpoint) return r;
+        const refused = r.code === manager.NOT_ADMITTED ? `TEST MANAGER NOT ADMITTED: ${r.error}` : r.error || 'test manager provided no browser endpoint';
+        throw Object.assign(new Error(refused), { code: r.code });
+      });
+    fresh.ready.catch(() => { if (held === fresh) held = null; });
+    held = fresh;
+  }
+  const shared = held;
+  shared.refs++;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    if (--shared.refs) return;
+    if (held === shared) held = null;
+    shared.ready.then((r) => r.release(), () => {});
+  };
+  return shared.ready.then((r) => ({ endpoint: r.endpoint, release }), (error) => { release(); throw error; });
+}
+
+export const chromium = browserType && new Proxy(browserType, {
+  get(target, name) {
+    if (name !== 'launch') { const value = target[name]; return typeof value === 'function' ? value.bind(target) : value; }
+    return async () => {
+      let leased;
+      let endpoint = process.env.WEAVE_TEST_BROWSER_ENDPOINT;
+      if (!endpoint) {
+        const manager = await import('../../scripts/test-manager.mjs');
+        if (process.env.WEAVE_TEST_JOB) {
+          const r = await manager.request({ type: 'browser', job: process.env.WEAVE_TEST_JOB });
+          if (!r.endpoint) throw new Error(r.error || 'test manager provided no browser endpoint');
+          endpoint = r.endpoint;
+        } else ({ endpoint } = leased = await lease(manager));
+      }
+      let connected;
+      try { connected = await target.connect(endpoint); }
+      catch (error) { leased?.release(); throw error; }
+      if (leased) {
+        const close = connected.close.bind(connected);
+        connected.close = async () => { try { await close(); } finally { leased.release(); } };
+        connected.once('disconnected', leased.release);
+      }
+      return connected;
+    };
+  },
+});
+
+/* A suite pinned to another engine (options.engine, Issue #546) launches its
+   own browser: the manager holds one browser kind at a time, and switching
+   it would close the warm browser under the suites still connected to it.
+   ponytail: per-kind warm browsers in the manager if pinned suites multiply. */
+const engineFor = (engine) => (!engine || pw[engine] === browserType ? chromium : pw[engine]);
 
 /* launch(name, seed, options)
      name    — names the skip when playwright is missing
@@ -36,16 +109,19 @@ export async function launch(name, seed = () => {}, options = {}) {
     test(`${name} (browser)`, { skip: 'playwright not installed' }, () => {});
     return null;
   }
-  const weave = new Weave();
-  const handles = (await seed(weave)) ?? {};
-  const { server } = await startServer(weave, { port: 0, ...(options.server?.(weave) ?? {}) });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const browser = await (options.engine ? pw[options.engine] : chromium).launch();
+  /* The browser connects first and test.after is registered before the
+     seed runs, so a seed that throws still releases the connection. */
+  const browser = await engineFor(options.engine).launch();
   if (THROTTLE) throttle(browser);
+  const weave = new Weave();
+  let server;
   test.after(async () => {
     await browser?.close();
     server?.close();
   });
+  const handles = (await seed(weave)) ?? {};
+  ({ server } = await startServer(weave, { port: 0, ...(options.server?.(weave) ?? {}) }));
+  const base = `http://127.0.0.1:${server.address().port}`;
   return { weave, server, base, browser, ...handles };
 }
 

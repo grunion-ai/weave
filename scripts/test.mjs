@@ -33,9 +33,29 @@
    does not drive a browser at node's default, then the browser suites at
    half the cores. The retry stays for what is left.
 
+   The lanes keep one run from loading the machine; they cannot stop several
+   worktrees from each starting one (Feature #236). So the command does not
+   run the suite itself: it queues a job with scripts/test-manager.mjs, one
+   per-user FIFO across worktrees that admits a job only with disk, memory
+   and load headroom and keeps one warm browser the suites connect to. The
+   manager runs this file again as the job's worker (WEAVE_TEST_JOB set),
+   and that process calls run() below with the same lanes and retry.
+
    Usage: node scripts/test.mjs [file ...] [node --test flags ...]
    With no files named it runs the whole suite; `npm test -- --only` and the
-   like reach node --test as written. */
+   like reach node --test as written. `--targeted <file ...>` refuses an
+   empty selection, `--affected [--base=<ref>] [--plan]` picks the files a
+   diff can reach (scripts/test-selection.mjs), and `--status`, `--stop`,
+   `--cancel=<id>` and `--timeout=<ms>` reach the manager.
+
+   A job runs for at most --timeout ms once admitted (default and cap
+   3600000, the gate's 3600 s wall clock) and waits at most
+   WEAVE_TEST_QUEUE_WAIT_MS to be admitted (default 1800000). Admission
+   needs WEAVE_TEST_MIN_FREE_GB of disk (10), WEAVE_TEST_MIN_MEMORY_PERCENT
+   of memory (10) and a one-minute load of at most WEAVE_TEST_MAX_LOAD (two
+   per core). A job that is never admitted exits 75 after the line
+   `# TEST MANAGER NOT ADMITTED: <reason>`: the tests did not run, so a gate
+   should not vote on it. */
 
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -104,6 +124,7 @@ export const childEnv = ({ NODE_TEST_CONTEXT, ...rest } = process.env) => rest;
 /* Both lanes always run, so one gate names every red; the verdict is red if
    either is. */
 export function run(files, extraArgs = [], opts = {}) {
+  if (!files.length) throw new Error('Empty test selection refused');
   const { unit, browser } = lanes(files);
   let code = 0;
   if (unit.length) code = runLane(unit, extraArgs, 0, opts) || code;
@@ -143,8 +164,49 @@ function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, 
    with this file as argv[1]; NODE_TEST_CONTEXT marks that process, and it
    must not start a second suite beside the first (Issue #435). */
 if (!process.env.NODE_TEST_CONTEXT && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const argv = process.argv.slice(2).filter((a) => a !== '--');
-  const named = argv.filter((a) => !a.startsWith('-'));
-  const flags = argv.filter((a) => a.startsWith('-'));
-  process.exit(run(named.length ? named : testFiles(), flags));
+  try {
+    const argv = process.argv.slice(2).filter((a) => a !== '--');
+    const { request, fingerprint, NOT_ADMITTED } = await import('./test-manager.mjs');
+    const control = argv.find((a) => ['--status', '--stop'].includes(a) || a.startsWith('--cancel='));
+    if (control) {
+      const type = control.slice(2).split('=')[0];
+      const result = await request({ type, id: control.split('=')[1] }).catch((error) => {
+        if (type === 'status' && ['ENOENT', 'ECONNREFUSED'].includes(error.code)) return { type: 'status', running: false };
+        throw error;
+      });
+      console.log(JSON.stringify(result, null, 2)); process.exit(result.code || 0);
+    }
+    const affected = argv.includes('--affected');
+    const targeted = argv.includes('--targeted');
+    const base = argv.find((a) => a.startsWith('--base='))?.slice(7) || 'HEAD';
+    const timeoutArg = argv.find((a) => a.startsWith('--timeout='));
+    const timeout = timeoutArg ? Number(timeoutArg.slice(10)) : undefined;
+    if (timeoutArg && (!Number.isFinite(timeout) || timeout < 100)) throw new Error('--timeout requires milliseconds >= 100');
+    const args = argv.filter((a) => !['--affected', '--targeted', '--plan'].includes(a) && !/^--(?:base|timeout)=/.test(a));
+    const valued = new Set(['--test-name-pattern', '--test-skip-pattern', '--test-concurrency', '--test-timeout']);
+    for (let i = 0; i < args.length; i++) if (valued.has(args[i])) {
+      if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error(`${args[i]} requires a value`);
+      args.splice(i, 2, `${args[i]}=${args[i + 1]}`);
+    }
+    const named = args.filter((a) => !a.startsWith('-'));
+    const flags = args.filter((a) => a.startsWith('-'));
+    if (targeted && !named.length) throw new Error('--targeted requires a non-empty file selection');
+    if (affected && named.length) throw new Error('Use --affected or explicit test files, not both');
+    const selection = affected
+      ? (await import('./test-selection.mjs')).affectedTests(ROOT, base)
+      : { files: named.length ? [...new Set(named)] : testFiles(), mode: named.length ? 'targeted' : 'full', reasons: [named.length ? 'Explicit test selection.' : 'Full verification requested.'] };
+    if (!selection.files.length) throw new Error('Empty test selection refused');
+    for (const file of selection.files) if (!existsSync(resolve(ROOT, file))) throw new Error(`Test file does not exist: ${file}`);
+    if (argv.includes('--plan')) { console.log(JSON.stringify(selection, null, 2)); process.exit(0); }
+    if (process.env.WEAVE_TEST_JOB) process.exit(run(selection.files, flags));
+    console.log(`# TEST SELECTION ${selection.mode}: ${selection.reasons.join(' ')}`);
+    const result = await request({ type: 'run', root: ROOT, node: process.execPath, files: selection.files, flags, timeout,
+      env: childEnv(), fingerprint: fingerprint(ROOT, selection.files) }, { start: true, onMessage(message) {
+        if (message.stream) process[message.stream].write(Buffer.from(message.data, 'base64'));
+        if (message.event) console.log(message.event);
+      } });
+    if (result.code === NOT_ADMITTED) console.log(`# TEST MANAGER NOT ADMITTED: ${result.error}`);
+    else if (result.error) console.error(`# TEST MANAGER ${result.error}`);
+    process.exit(result.code);
+  } catch (error) { console.error(error.message); process.exit(1); }
 }
