@@ -5,7 +5,8 @@
    scrollable ancestor of its target, so jumping to a heading in a docked
    document used to drag the page behind the dock along with it. Weave's own
    helper moves one box. Only a live layout — a document that overflows its
-   dock, inside a table page that overflows the window — can show that.
+   dock, inside a table page that overflows its panel — can show that. The
+   page behind the dock is the main panel's scroll since Issue #609.
    Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,7 +48,7 @@ if (s) {
     const dock = document.querySelector('#dock');
     return {
       dock: dock.scrollHeight - dock.clientHeight,
-      page: document.documentElement.scrollHeight - innerHeight,
+      page: document.querySelector('#main').scrollHeight - document.querySelector('#main').clientHeight,
     };
   });
 
@@ -56,11 +57,11 @@ if (s) {
     try {
       const r = await room(page);
       assert.ok(r.dock > 200, `the docked document overflows its panel (${r.dock}px of travel)`);
-      assert.ok(r.page > 200, `and the table page overflows the window (${r.page}px)`);
+      assert.ok(r.page > 200, `and the table page overflows its panel (${r.page}px)`);
 
-      await page.evaluate(() => window.scrollTo(0, 300));
-      await page.waitForFunction(() => window.scrollY >= 295, null, { timeout: 20000 });
-      const before = await page.evaluate(() => Math.round(window.scrollY));
+      await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 300, behavior: 'instant' }));
+      await page.waitForFunction(() => document.querySelector('#main').scrollTop >= 295, null, { timeout: 20000 });
+      const before = await page.evaluate(() => Math.round(document.querySelector('#main').scrollTop));
 
       // The first click anywhere on the rail opens the outline; only then
       // does a dash click jump.
@@ -74,7 +75,7 @@ if (s) {
       await page.waitForTimeout(700);
       const after = await page.evaluate(() => ({
         dock: document.querySelector('#dock').scrollTop,
-        win: Math.round(window.scrollY),
+        win: Math.round(document.querySelector('#main').scrollTop),
       }));
       assert.ok(after.dock > 100, 'the dock brought the heading up');
       assert.equal(after.win, before,

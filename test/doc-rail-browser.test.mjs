@@ -35,8 +35,9 @@ if (s) {
     await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
     // Scrolled into the document, so the sticky track is pinned mid-page —
     // the case where a viewport-centred panel and an in-place one differ.
-    await page.evaluate(() => window.scrollTo(0, 400));
-    await page.waitForFunction(() => window.scrollY >= 395, null, { timeout: 20000 });
+    // The main panel is the page's scroller since Issue #609.
+    await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 400, behavior: 'instant' }));
+    await page.waitForFunction(() => document.querySelector('#main').scrollTop >= 395, null, { timeout: 20000 });
     const closed = await box(page);
     assert.equal(closed.open, false);
     await page.evaluate(() => document.querySelector('.doc-rail').click());

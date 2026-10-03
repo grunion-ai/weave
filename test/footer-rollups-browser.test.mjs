@@ -163,12 +163,13 @@ if (s) {
       // A FIELD header, not the corner: th.col-head used to override the sticky.
       const th = document.querySelector('.wv-grid thead tr:first-child th.col-head').getBoundingClientRect();
       const foot = document.querySelector('thead tr.wv-foot td.foot-mark').getBoundingClientRect();
-      return { pageScroll: window.scrollY, headTop: th.top, headBottom: th.bottom, footTop: foot.top, footBottom: foot.bottom, innerHeight };
+      return { pageScroll: document.querySelector('#main').scrollTop, headTop: th.top, headBottom: th.bottom, footTop: foot.top, footBottom: foot.bottom, innerHeight };
     });
     const before = await geo();
     assert.ok(Math.abs(before.footTop - before.headBottom) <= 1, `the Σ row sits flush under the header: ${JSON.stringify(before)}`);
-    await page.evaluate(() => window.scrollTo(0, 600));
-    await page.waitForFunction(() => window.scrollY > 300);
+    // The page is the main panel's scroll since Issue #609.
+    await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 600, behavior: 'instant' }));
+    await page.waitForFunction(() => document.querySelector('#main').scrollTop > 300);
     await page.waitForTimeout(150);
     const after = await geo();
     // Under the view header, which holds at the top edge itself (Issue #321).

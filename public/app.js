@@ -1120,12 +1120,14 @@ function iconButton(current, onPick) {
    over four lines of description park at different heights, and the
    description arrives from /markdown after the grid is drawn. The reading
    goes on the root as --wv-view-h, which style.css adds to the `top` of the
-   grid's field headers and the Σ row and hands to scroll-padding.
+   grid's field headers and the Σ row and hands to #main's scroll-padding.
+   The room it is judged against is the main panel's, the box that scrolls
+   since the shell stopped scrolling the window (Issue #609).
    The docked pane is its own scroller with a header of its own (Issue
    #411): its reading goes on #dock under the same name, so the section heads
    inside it pin under the dock's header, and the page's stays the page's. */
 function publishViewHeaderHeight() {
-  publishHeaderOn(document.documentElement, document.querySelector('#main > .view-header'), innerHeight);
+  publishHeaderOn(document.documentElement, document.querySelector('#main > .view-header'), document.querySelector('#main')?.clientHeight || innerHeight);
   const dock = document.querySelector('#dock');
   publishHeaderOn(dock, dock?.querySelector('.dock-entity > .view-header'), dock?.clientHeight ?? 0);
 }
@@ -2376,7 +2378,9 @@ const GRID_BOX_GUTTER = 40;      // breathing room under the box
 const GRID_BOX_MIN = 120;        // below this the box is not worth the split
 function fitGridScroller(wrap, was = null) {
   if (!wrap.isConnected || !wrap.classList.contains('wv-grid-scroll')) { wrap.style.maxHeight = ''; return; }
-  const top = Math.round(wrap.getBoundingClientRect().top + window.scrollY);
+  // The wrap's top as it sits with its pane scrolled home (Issue #609: the
+  // pane scrolls, the window does not).
+  const top = Math.round(wrap.getBoundingClientRect().top + (paneOf(wrap)?.scrollTop ?? window.scrollY));
   // vh, not the measured pixels: a window resized shorter re-cuts itself.
   wrap.style.maxHeight = window.innerHeight - top - GRID_BOX_GUTTER < GRID_BOX_MIN
     ? '' : `calc(100vh - ${top}px - ${GRID_BOX_GUTTER}px)`;
@@ -2401,6 +2405,13 @@ function fitGridScroller(wrap, was = null) {
    on and would otherwise never land. */
 const smoothScrollOk = () =>
   !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* The shell pane a node scrolls in (Issue #609): the main panel or the dock,
+   each its own scroller now that the window never scrolls. Null outside the
+   shell — a popover hung off <body>, a standalone page. */
+function paneOf(node) {
+  return node?.closest?.('#main, #dock') ?? null;
+}
 
 // The one box that scrolls, or null for the page itself.
 function scrollBoxOf(target) {
@@ -2462,10 +2473,14 @@ function stuckHeaderHeight(node) {
   return header && getComputedStyle(header).position === 'sticky' ? header.getBoundingClientRect().height : 0;
 }
 // How much of the bottom edge the grid's sticky foot covers — 0 where the
-// foot sits in the flow (the entity page's related sections).
+// foot sits in the flow (the entity page's related sections). A foot stuck
+// to a pane rests on the pane's content edge, so the pane's bottom padding
+// under it is covered too (Issue #609); a grid's own scroll box has none.
 function stickyFootHeight(row) {
   const foot = row.closest('table')?.querySelector('tr.add-entity-row td');
-  return foot && getComputedStyle(foot).position === 'sticky' ? foot.offsetHeight : 0;
+  if (!foot || getComputedStyle(foot).position !== 'sticky') return 0;
+  const pane = row.closest('.wv-grid-scroll') ? null : paneOf(row);
+  return foot.offsetHeight + (pane ? parseFloat(getComputedStyle(pane).paddingBottom) || 0 : 0);
 }
 function focusNewRow(eid, { field = null, scope = '#main', select = false, frames = 120, grace = 30 } = {}) {
   const turn = ++newRowTurn;
@@ -6141,10 +6156,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     return tr;
   };
   // Which box scrolls the body: the wrap when it is the scroller (a grid
-  // wider than its card on the table page), else the page. Geometry is
-  // body-relative — how much of the <tbody> sits above the viewport's top
-  // edge — so one arithmetic serves both.
-  const scroller = () => (wrap.classList.contains('wv-grid-scroll') ? wrap : null);
+  // wider than its card on the table page), else the pane it sits in — the
+  // main panel or the dock (Issue #609), the window only outside the shell.
+  // Geometry is body-relative — how much of the <tbody> sits above the
+  // box's top edge — so one arithmetic serves every case.
+  const scroller = () => (wrap.classList.contains('wv-grid-scroll') ? wrap : paneOf(wrap));
   const geometry = () => {
     const box = scroller();
     /* Where the reader's window really starts. A wrap that scrolls starts at
@@ -6213,7 +6229,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; rewindow(); }); };
   const onScroll = (e) => {
     if (!wrap.isConnected) return document.removeEventListener('scroll', onScroll, true);
-    if (e.target === document || e.target === wrap) schedule();
+    if (e.target === document || e.target === wrap || e.target === paneOf(wrap)) schedule();
   };
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
   // Bring row i into view with the least motion and paint the window there,
@@ -10676,7 +10692,11 @@ function refreshDashRail(st) {
   const spec = lib.railSpec(heads.map((h) => ({ level: +h.tagName[1], text: headText(h) })));
   if (!spec.length) { st.close(); st.rail.remove(); return; } // < 3 headings: no rail
   if (!st.rail.isConnected) st.section.append(st.rail);
-  const current = lib.currentSection(heads.map((h) => h.getBoundingClientRect().top), DASH_READING_LINE);
+  // The reading line hangs from the top of the box the document scrolls in
+  // — the main panel or the dock, 8px under the window (Issue #609) — the
+  // same edge a dash click lands its heading against.
+  const lineTop = scrollBoxOf(heads[0])?.getBoundingClientRect().top ?? 0;
+  const current = lib.currentSection(heads.map((h) => h.getBoundingClientRect().top - lineTop), DASH_READING_LINE);
   // A dash is a tick plus its heading's words. The words are display:none
   // until the rail is hovered, so the resting rail stays a minimap and the
   // dash keeps the tick's own width.
@@ -12975,10 +12995,14 @@ function placeGridLoader() {
   const node = main?.querySelector(':scope > .grid-loader');
   const wrap = main?.querySelector(':scope > .table-wrap');
   if (!node || !wrap) return;
+  /* The loader hangs off #main, which scrolls (Issue #609): an absolute
+     child is placed in the panel's scrolled content, so the panel's own
+     scroll is added back, and the part in view is the part inside the
+     panel's frame. */
   const m = main.getBoundingClientRect(), w = wrap.getBoundingClientRect();
-  const top = Math.max(w.top, 0), bottom = Math.min(w.bottom, innerHeight);
+  const top = Math.max(w.top, m.top), bottom = Math.min(w.bottom, m.bottom);
   Object.assign(node.style, {
-    top: `${top - m.top}px`, left: `${w.left - m.left}px`,
+    top: `${top - m.top + main.scrollTop}px`, left: `${w.left - m.left + main.scrollLeft}px`,
     width: `${w.width}px`, height: `${Math.max(0, bottom - top)}px`,
   });
 }

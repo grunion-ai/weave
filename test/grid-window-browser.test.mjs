@@ -54,7 +54,7 @@ if (s) {
   });
   const scrollTo = (page, top) => page.evaluate((t) => {
     const wrap = document.querySelector('.table-wrap');
-    const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.scrollingElement;
+    const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main');
     // Instant: Tabler asks the page for smooth scrolling, and a jump that
     // animates is not the fast scroll under test.
     box.scrollTo({ top: t, behavior: 'instant' });
@@ -64,7 +64,7 @@ if (s) {
   }, top);
   const scrollMax = (page) => page.evaluate(() => {
     const wrap = document.querySelector('.table-wrap');
-    const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.scrollingElement;
+    const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main');
     return box.scrollHeight - box.clientHeight;
   });
   const frames = (page, n = 2) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
@@ -99,7 +99,7 @@ if (s) {
         // placeholder at the row height while its page lands — and never a
         // spacer's span.
         const wrap = document.querySelector('.table-wrap');
-        const box = wrap.classList.contains('wv-grid-scroll') ? wrap.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+        const box = wrap.classList.contains('wv-grid-scroll') ? wrap.getBoundingClientRect() : document.querySelector('#main').getBoundingClientRect();
         // A field header CELL, not the <thead>: the cells are what is sticky,
         // so their lower edge is where the readable body starts — below the
         // view header, which holds at the top itself (Issue #321).
@@ -158,7 +158,7 @@ if (s) {
     const page = await open();
     try {
       const box = await scrollBox(page);
-      const top = () => page.evaluate((b) => (b === 'wrap' ? document.querySelector('.table-wrap') : document.scrollingElement).scrollTop, box);
+      const top = () => page.evaluate((b) => (b === 'wrap' ? document.querySelector('.table-wrap') : document.querySelector('#main')).scrollTop, box);
       await page.click(`tr[data-eid="${ids[0]}"] td[data-field="Name"] input`);
       await page.evaluate(() => document.activeElement.setSelectionRange(2, 2));
       const before = await top();
@@ -212,7 +212,7 @@ if (s) {
       const eid = await page.evaluate(() => {
         // A drawn row that is on screen.
         const wrap = document.querySelector('.table-wrap');
-        const box = wrap.classList.contains('wv-grid-scroll') ? wrap.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+        const box = wrap.classList.contains('wv-grid-scroll') ? wrap.getBoundingClientRect() : document.querySelector('#main').getBoundingClientRect();
         // A field header CELL, not the <thead>: the cells are what is sticky,
         // so their lower edge is where the readable body starts — below the
         // view header, which holds at the top itself (Issue #321).
@@ -221,7 +221,7 @@ if (s) {
       });
       const before = await page.evaluate(() => {
         const wrap = document.querySelector('.table-wrap');
-        const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.scrollingElement;
+        const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main');
         return box.scrollTop;
       });
       assert.ok(before > 1000, `scrolled well down (${before})`);
@@ -237,7 +237,7 @@ if (s) {
       }, eid, { timeout: 5000 });
       const after = await page.evaluate(() => {
         const wrap = document.querySelector('.table-wrap');
-        const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.scrollingElement;
+        const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main');
         return { top: box.scrollTop, rowH: document.querySelector('.wv-grid tbody tr.entity-row').getBoundingClientRect().height, drawn: document.querySelectorAll('.wv-grid tbody tr.entity-row').length, name: document.querySelector(`tr[data-eid="${document.activeElement.closest('tr').dataset.eid}"] td[data-field="Name"] input`)?.value };
       });
       // Held to within a row: the redraw's spacers are sized on a remembered

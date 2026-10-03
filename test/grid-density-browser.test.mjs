@@ -145,7 +145,7 @@ if (s) {
     return {
       scroller: box ? 'wrap' : 'page',
       top,
-      scrollTop: Math.round((box ?? document.scrollingElement).scrollTop),
+      scrollTop: Math.round((box ?? document.querySelector('#main')).scrollTop),
       rowH: Math.round(table.querySelector('tbody tr.entity-row').getBoundingClientRect().height * 10) / 10,
       density: table.dataset.density,
     };
@@ -153,7 +153,7 @@ if (s) {
   const scrollTo = async (page, top) => {
     await page.evaluate((t) => {
       const wrap = document.querySelector('.table-wrap');
-      (wrap.classList.contains('wv-grid-scroll') ? wrap : document.scrollingElement).scrollTo({ top: t, behavior: 'instant' });
+      (wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main')).scrollTo({ top: t, behavior: 'instant' });
     }, top);
     await page.waitForTimeout(400);
   };
