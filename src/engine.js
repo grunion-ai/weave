@@ -3140,6 +3140,24 @@ export class Weave {
     return { id: a.id, deleted: true };
   }
 
+  /* The onboarding welcome runs once per person (Feature #248), finished or
+     skipped, on every device. A signed-in person's mark is on their account
+     row; with nobody signed in it is the workspace's own. The first time is
+     kept. */
+  onboardedAt(accountId = null) {
+    return (accountId ? this.state.meta.accounts?.[accountId]?.onboardedAt : this.state.meta.onboardedAt) ?? null;
+  }
+
+  markOnboarded(accountId = null) {
+    const holder = accountId ? own(this.state.meta.accounts ?? {}, accountId) : this.state.meta;
+    if (!holder) throw new WeaveError(`Account '${accountId}' not found`, 'not-found');
+    if (holder.onboardedAt) return holder.onboardedAt;
+    holder.onboardedAt = nowISO();
+    this.save();
+    this.#audit('onboarded', accountId ? { name: holder.name } : {});
+    return holder.onboardedAt;
+  }
+
   setRequireAuth(on) {
     this.state.meta.requireAuth = !!on;
     this.save();

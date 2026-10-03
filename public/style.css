@@ -1390,6 +1390,28 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 #modal h2 { margin: 0 0 12px; font-size: 16px; }
 #modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 #modal input, #modal select { margin-bottom: 6px; }
+/* The onboarding welcome (Feature #248): the same held dialog, one step at
+   a time. Progress is three soft squared bars, the step's Lucide icon sits
+   on a primary-tinted square, Skip is quiet on the left and the one primary
+   button on the right. The starter cards are the empty state's own. */
+#modal.wv-onboard { width: 460px; padding: 24px; }
+.wv-onboard-dots { display: flex; gap: 6px; margin-bottom: 18px; }
+.wv-onboard-dots span { width: 22px; height: 4px; border-radius: 2px; background: var(--tblr-border-color); }
+.wv-onboard-dots span.on { background: var(--tblr-primary); }
+.wv-onboard-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin-bottom: 12px; border-radius: 8px; color: var(--tblr-primary); background: var(--tblr-primary-lt); font-size: 20px; }
+#modal.wv-onboard h2 { font-size: 20px; margin: 0 0 6px; }
+.wv-onboard-line { margin: 0; color: var(--tblr-secondary); }
+.wv-onboard-body:not(:empty) { margin-top: 14px; }
+.wv-onboard-body input { width: 100%; margin-bottom: 0; }
+.wv-onboard .actions { justify-content: space-between; align-items: center; margin-top: 20px; }
+.wv-onboard-skip { background: transparent; border-color: transparent; color: var(--tblr-secondary); box-shadow: none; }
+.wv-onboard-skip:hover, .wv-onboard-skip:focus-visible { color: var(--tblr-body-color); background: var(--tblr-active-bg); }
+.wv-onboard .wv-start-templates { grid-template-columns: 1fr; gap: 8px; }
+@media (max-width: 480px) {
+  #modal.wv-onboard { padding: 20px 16px; }
+  .wv-onboard .actions { flex-wrap: wrap-reverse; }
+  .wv-onboard .actions .btn { flex: 1 1 auto; }
+}
 /* The key sheet (Issue #268): modal() with a read-only body. A key column
    and what it does, one table per place the keys work. The kbd chips take
    the ⌘K button's tokens so the two read as the same kind of thing. */

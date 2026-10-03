@@ -18,6 +18,9 @@ import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
 import { renderAuthPage } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
+// The welcome builds a starter from the same template data the page shows (Feature #248).
+import '../public/starter-core.js';
+const { WeaveStarters } = globalThis;
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
@@ -314,7 +317,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // Feature #229 split them out; the gate follows them.
         || /^\/api\/tables\/[^/]+\/views/.test(path)
         || (/^\/api\/schema$/.test(path))
-        || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH'));
+        || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH')
+        // The welcome renames the workspace and may build a template.
+        || path === '/api/onboarding');
       // Registry rows ARE structure: writing Spaces/Tables/Fields rows through
       // the entity door is a schema change wearing entity clothes. A CSV
       // import creates rows the same way (Issue #489).
@@ -627,6 +632,57 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { name: w.state.meta.name, deletedAt: w.state.meta.deletedAt });
         }
 
+
+        /* ---------- the onboarding welcome (Feature #248) ----------
+           Runs once per person, on an instance where they have built
+           nothing: not yet onboarded, allowed to rename this workspace (no
+           role, or architect), no tables of its own here, and none in any other
+           workspace they can open, the weave docs workspace aside. The
+           person is the signed-in account, whose row keeps the mark; with
+           nobody signed in, the hub root keeps it. The default name is the
+           account's first name, else this workspace's current name. */
+        if (path === '/api/onboarding') {
+          const root = hub.get(hub.defaultName);
+          const token = authz && /^Bearer /i.test(authz) ? weave.verifyToken(authz.slice(7).trim()) : null;
+          const me = token ? { engine: weave, id: token.id, name: token.name }
+            : session ? { engine: weave.verifySession(cookies.wv_session) ? weave : root, id: session.id, name: session.name }
+              : { engine: root, id: null, name: null };
+          const taken = (n) => { const h = hub.get(n); return !!h && h !== weave; };
+          const firstName = WeaveStarters.workspaceName(String(me.name ?? '').trim().split(/\s+/)[0].toLowerCase());
+          const fallback = WeaveStarters.workspaceName(weave.state.meta.name) || 'workspace';
+          const byDefault = firstName && !taken(firstName) ? firstName : fallback;
+          if (rx.method === 'GET') {
+            const show = !me.engine.onboardedAt(me.id)
+              && (!role || role === 'architect')
+              && weave.state.meta.name !== 'weave'
+              && !weave.userTables().length
+              && hub.list().every((x) => x.name === 'weave' || !x.tables || hub.get(x.name) === weave || !canOpen(hub.get(x.name)));
+            return out(200, { show, name: byDefault }, { 'Cache-Control': 'no-store' });
+          }
+          if (rx.method === 'POST') {
+            // Skip and finish are one call: an absent name is the default.
+            const name = WeaveStarters.workspaceName(body?.name) || byDefault;
+            if (taken(name)) throw new WeaveError(`Workspace '${name}' already exists`, 'conflict');
+            const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
+            if (body?.template && !template) throw new WeaveError(`Unknown template '${body.template}'`, 'invalid');
+            // The name is checked first, so a refusal builds nothing.
+            let table = null;
+            if (template) {
+              const hasSpace = !!weave.listSpaces().find((s) => !s.system && s.name === template.space);
+              for (const step of WeaveStarters.steps(template, { hasSpace })) {
+                if (step.op === 'space') weave.createSpace(step.body);
+                else if (step.op === 'table') { const made = weave.createTable(step.body).id; table ??= made; }
+                else if (step.op === 'field') weave.addField(step.table, step.body);
+                else weave.addRelation(step.table, step.body);
+              }
+            }
+            const was = weave.state.meta.name;
+            const ws = weave.updateWorkspace({ name });
+            if (ws.name !== was) hub.rename(was, ws.name);
+            me.engine.markOnboarded(me.id);
+            return out(200, { id: ws.id, name: ws.name, url: `/w/${ws.id}/`, table });
+          }
+        }
 
         if (route === 'GET /api/workspace') {
           const ws = weave.getWorkspace();

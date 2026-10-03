@@ -11679,6 +11679,119 @@ function emptyWorkspace() {
         el('span', { class: 'wv-start-blurb' }, t.blurb))))));
 }
 
+/* ---------- the onboarding welcome (Feature #248) ----------
+   Kyle, 2026-10-02: "starting from naming the first workspace give
+   defaults, but let the user rename always allow skip ... friendly welcome
+   low text." One held dialog (holdPage, Issue #263) walks three steps:
+   welcome, name the workspace (the server's default arrives filled in),
+   and an optional starter from starter-core's templates. Skip on every step
+   and Esc finish with the defaults; Enter takes the primary button. The
+   server decides whether to ask (GET /api/onboarding: once per person, only
+   while they have built nothing) and does the work in one call, so a
+   refused name builds nothing. Asked once per page load, from an empty
+   home only. */
+let onboardingAsked = false;
+async function maybeOnboard() {
+  if (onboardingAsked || document.querySelector('#modal-back')) return;
+  onboardingAsked = true;
+  let got;
+  try { got = await api('GET', '/onboarding'); } catch { return; } // an older server has no welcome
+  if (got.show && !document.querySelector('#modal-back')) onboard(got.name);
+}
+
+function onboard(defaultName) {
+  const STEPS = [
+    { icon: 'lucide:sparkles', title: 'Welcome to weave' },
+    { icon: 'lucide:house', title: 'Your workspace', line: 'Rename it anytime from the sidebar.' },
+    { icon: 'lucide:layout-grid', title: 'Your first space' },
+  ];
+  const back = el('div', { id: 'modal-back', class: 'wv-onboard-back' });
+  const dots = el('div', { class: 'wv-onboard-dots', 'aria-hidden': 'true' }, ...STEPS.map(() => el('span')));
+  const marker = el('span', { class: 'visually-hidden' });
+  const iconSlot = el('div', { class: 'wv-onboard-icon' });
+  const heading = el('h2', {});
+  const line = el('p', { class: 'wv-onboard-line' });
+  const body = el('div', { class: 'wv-onboard-body' });
+  const skip = el('button', { class: 'btn wv-onboard-skip', type: 'button', onclick: () => finish() }, 'Skip setup');
+  const actions = el('div', { class: 'actions' }, skip);
+  const box = el('div', { id: 'modal', class: 'wv-onboard' }, dots, marker, iconSlot, heading, line, body, actions);
+  back.append(box);
+  holdPage(back, box);
+  let name = defaultName;
+  let busy = false;
+
+  const primary = (label, run) => el('button', { class: 'btn btn-primary wv-onboard-next', type: 'button', onclick: run }, label);
+  function show(i) {
+    const step = STEPS[i];
+    box.dataset.step = String(i + 1);
+    [...dots.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+    marker.textContent = `Step ${i + 1} of ${STEPS.length}`;
+    const icon = iconEl(step.icon, 'wv-icon wv-onboard-glyph');
+    iconSlot.replaceChildren(icon);
+    heading.textContent = step.title;
+    line.textContent = step.line ?? '';
+    line.hidden = !step.line;
+    actions.querySelector('.wv-onboard-next')?.remove();
+    let focus;
+    if (i === 0) {
+      body.replaceChildren();
+      actions.append(focus = primary('Get started', () => show(1)));
+    } else if (i === 1) {
+      const input = el('input', { name: 'name', value: name, class: 'form-control', 'aria-label': 'Workspace name', autocomplete: 'off', spellcheck: 'false' });
+      input.addEventListener('input', () => { name = input.value; });
+      // A form, so Enter in the field is the primary button.
+      const form = el('form', { class: 'wv-onboard-form' }, input);
+      form.addEventListener('submit', (e) => { e.preventDefault(); name = input.value; show(2); });
+      body.replaceChildren(form);
+      actions.append(primary('Continue', () => form.requestSubmit()));
+      focus = input;
+    } else {
+      body.replaceChildren(el('div', { class: 'wv-start-templates' },
+        ...WeaveStarters.TEMPLATES.map((t) => el('button', {
+          class: 'wv-start-template', type: 'button', dataset: { template: t.id },
+          onclick: () => finish({ name, template: t }),
+        },
+        el('span', { class: 'wv-start-title' }, t.title),
+        el('span', { class: 'wv-start-blurb' }, t.blurb)))));
+      actions.append(focus = primary('Start with your empty workspace', () => finish({ name })));
+    }
+    focus.focus();
+    if (i === 1) focus.select();
+    if (icon?.classList.contains('mi')) playIcon(icon);
+  }
+
+  /* Skip is finish() with nothing: the server keeps the default name and
+     builds nothing. A template is built before the rename, server side, so
+     the page's own URL stays good until it moves to the result. */
+  async function finish(choice = {}) {
+    if (busy) return;
+    busy = true;
+    const controls = [...box.querySelectorAll('button, input')];
+    for (const c of controls) c.disabled = true;
+    if (choice.template) toast(`Setting up ${choice.template.title}…`);
+    try {
+      const done = await api('POST', '/onboarding', { ...(choice.name != null ? { name: choice.name } : {}), ...(choice.template ? { template: choice.template.id } : {}) });
+      // A member's URL may carry its old name; the id survives the rename.
+      const base = WS_PREFIX ? done.url : '/';
+      location.href = base + (done.table ? `#/table/${done.table}` : '#/');
+      // Same page, new hash: reload, so the rail and the header read the new name.
+      if (location.pathname === base) location.reload();
+    } catch (err) {
+      busy = false;
+      for (const c of controls) c.disabled = false;
+      toast(err.message, true);
+      // A refused name is the one thing the person can fix: back to it.
+      if (choice.name != null) show(1);
+    }
+  }
+
+  addEventListener('keydown', function esc(e) {
+    if (!back.isConnected) return removeEventListener('keydown', esc);
+    if (e.key === 'Escape' && !e.target.closest?.('#wv-toasts')) { e.preventDefault(); finish(); }
+  });
+  show(0);
+}
+
 /* The registry grid under a Schema disclosure: one click away for whoever
    edits structure as rows, out of a first-timer's first screen. Open or shut
    is remembered per browser; the grid is drawn on first open, so a closed
@@ -12153,6 +12266,9 @@ async function showHome() {
   if (mine.length) {
     const card = await relationMapCard('Relation map');
     if (card) main.append(card);
+  } else {
+    // A person who has built nothing may be new here (Feature #248).
+    maybeOnboard();
   }
   // The spaces of this workspace, AS the Spaces registry grid (Kyle,
   // 2026-08-24): every field of the registry, editable in place; opening a
