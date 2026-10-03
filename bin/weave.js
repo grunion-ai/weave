@@ -173,7 +173,7 @@ Credentials (#64, #143 — secrets live encrypted in ~/.weave/keystore.json, nev
   key unshare <name> --with <account>
   key delete <name>
 Accounts & audit (Feature #14)
-  account create <name> [--role admin|writer|reader]
+  account create <name> [--role architect|editor|observer]   Default editor; admin|writer|reader are deprecated aliases
   account list
   account delete <ref>
   audit [--limit 50]
@@ -623,7 +623,7 @@ async function main() {
     }
     case 'account': {
       const [sub, ref] = args;
-      if (sub === 'create') return out(w.createAccount({ name: ref, role: flags.role ?? 'writer' }));
+      if (sub === 'create') return out(w.createAccount({ name: ref, role: flags.role ?? 'editor' }));
       if (sub === 'delete') return out(w.deleteAccount(ref));
       if (sub === 'list' || !sub) return out(w.listAccounts());
       /* Browser sessions (Feature #222 part 2): the lost-device path. */

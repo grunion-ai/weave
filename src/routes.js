@@ -264,13 +264,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const account = weave.verifyToken(authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
       weave.actor = account.name;
-      role = account.role;
+      role = Weave.roleName(account.role);
     } else if (cookies.wv_session) {
       const root = hub.get(hub.defaultName);
       session = weave.verifySession(cookies.wv_session) ?? (root !== weave ? root.verifySession(cookies.wv_session) : null);
       if (session) {
         weave.actor = session.name;
-        role = session.role;
+        role = Weave.roleName(session.role);
       } else if (weave.state.meta.requireAuth && !openDoor) {
         // A dead cookie: the browser goes to the sign-in page and the cookie
         // is cleared on the way; an API caller keeps the JSON 401.
@@ -281,20 +281,21 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     } else if (weave.state.meta.requireAuth && !openDoor) {
       return path.startsWith('/api/') ? deny(401, 'This workspace requires authentication') : wall();
     }
-    // The caps reach the page routes too: every page is a read, so a reader
-    // may GET any of them and POST at none (Feature #222 phase 0). The auth
-    // verbs are every account's own — a reader may sign out.
-    if (role && role !== 'admin') {
+    // The caps reach the page routes too: every page is a read, so an
+    // observer may GET any of them and POST at none but a comment (Feature
+    // #222 phase 0). The auth verbs are every account's own — an observer
+    // may sign out.
+    if (role && role !== 'architect') {
       const m2 = rx.method;
       const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'));
       const schemaWrite = !read && (
         /^\/api\/(spaces|automations|accounts|registry)/.test(path)
         // MCP carries every tool, schema tools included — a capped token must
-        // not widen itself through the tunnel. Admin (or the edge gate) only.
+        // not widen itself through the tunnel. Architect (or the edge gate) only.
         || path === '/api/mcp'
         // Replacing the whole workspace is every schema change at once
-        // (Issue #230): a writer barred from one field cannot swap them all.
+        // (Issue #230): an editor barred from one field cannot swap them all.
         || path === '/api/import'
         || /^\/api\/tables$/.test(path)
         || (/^\/api\/tables\/[^/]+$/.test(path) && (m2 === 'PATCH' || m2 === 'DELETE'))
@@ -322,18 +323,26 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return !!ref?.system;
         } catch { return false; }
       })();
-      if (role === 'reader' && !read) return deny(403, 'This token is read-only');
-      if (role === 'writer' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
+      // An observer's one write is its own voice (Kyle, 2026-10-02): a
+      // comment, posted under its own name, and deleting a comment it made.
+      // A role weave does not know is held to the same, never to more.
+      const observer = role !== 'editor';
+      const cm = observer && !read && path.match(/^\/api\/entities\/([^/]+)\/comments(?:\/([^/]+?))?$/);
+      const ownComment = cm && (cm[2] == null ? m2 === 'POST' : m2 === 'DELETE' && (() => {
+        try { return weave.getEntity(cm[1]).comments.find((c) => c.id === cm[2])?.author === weave.actor; } catch { return false; }
+      })());
+      if (observer && !read && !ownComment) return deny(403, 'An observer may read and comment, nothing else');
+      if (role === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
     }
     /* The caller's role on another workspace of this hub, verified there: its
        Bearer token, or its session (a root session opens a member, as at the
        wall). For routes that act on more than the URL workspace. */
     const roleOn = (w) => {
       if (w === weave) return role;
-      if (authz && /^Bearer /i.test(authz)) return w.verifyToken(authz.slice(7).trim())?.role ?? null;
+      if (authz && /^Bearer /i.test(authz)) return Weave.roleName(w.verifyToken(authz.slice(7).trim())?.role) ?? null;
       if (!cookies.wv_session) return null;
       const root = hub.get(hub.defaultName);
-      return (w.verifySession(cookies.wv_session) ?? (w !== root ? root.verifySession(cookies.wv_session) : null))?.role ?? null;
+      return Weave.roleName((w.verifySession(cookies.wv_session) ?? (w !== root ? root.verifySession(cookies.wv_session) : null))?.role) ?? null;
     };
 
     // Resolves [[Table#12]] mentions in rendered documents (active workspace).
@@ -579,13 +588,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         /* These act on the hub, not the URL workspace (Issue #481). The list
            and search ?all=1 carry only the workspaces whose own wall this
-           caller would pass; create, restore and delete need an admin on the
+           caller would pass; create, restore and delete need an architect on the
            hub root once the root holds an account. */
         const canOpen = (w) => !w.state.meta.requireAuth || roleOn(w) != null;
         if (/^\/api\/workspaces(\/|$)/.test(path) && rx.method !== 'GET') {
           const hubRoot = hub.get(hub.defaultName);
           const rootRole = roleOn(hubRoot);
-          if (!mayAdminister(hubRoot, rootRole)) return deny(rootRole ? 403 : 401, 'Managing workspaces needs an admin on the hub root');
+          if (!mayAdminister(hubRoot, rootRole)) return deny(rootRole ? 403 : 401, 'Managing workspaces needs an architect on the hub root');
         }
         if (route === 'GET /api/workspaces') {
           const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
@@ -617,11 +626,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { ...ws, url: `/w/${ws.id}/`, schemaVersion: weave.schemaVersion() });
         }
 
-        // Accounts (Feature #14). Once any account exists, only an admin
+        // Accounts (Feature #14). Once any account exists, only an architect
         // token manages them — the anonymous door closes behind the first key.
         if (path.startsWith('/api/accounts') || (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {}))) {
           if (!mayAdminister(weave, role)) {
-            return deny(role ? 403 : 401, 'Managing accounts needs an admin token');
+            return deny(role ? 403 : 401, 'Managing accounts needs an architect token');
           }
         }
         if (route === 'GET /api/accounts') return out(200, weave.listAccounts());
@@ -637,7 +646,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.deleteAccount(decodeURIComponent(m[1])));
         }
         // Keystore (Feature #64): set, list, delete — never read back. The
-        // same admin gate as accounts once any account exists — the hub
+        // same architect gate as accounts once any account exists — the hub
         // root's accounts, whichever workspace the URL names, because one
         // keystore serves the whole process (Issue #480). A root caller on
         // a key's access list may reveal it; its owner may rotate or drop it.
@@ -650,7 +659,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             : km && !km[2] && rx.method === 'DELETE' ? decodeURIComponent(km[1]) : null;
           const owns = !!rootRole && target != null && weave.listKeys().find((k) => k.name === target)?.owner === weave.actor;
           if (!mayAdminister(root, rootRole) && !(reveal && rootRole) && !owns) {
-            return deny(rootRole ? 403 : 401, 'Managing keys needs an admin on the hub root');
+            return deny(rootRole ? 403 : 401, 'Managing keys needs an architect on the hub root');
           }
           if (route === 'GET /api/keys') return out(200, weave.listKeys());
           if (route === 'POST /api/keys') return out(201, weave.setKey(body?.name, body?.value));
@@ -723,9 +732,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'POST /api/bulk') {
           const { ids, op, ...params } = body ?? {};
           /* The ids are in the body, so the entity doors' system-table check
-             never saw them (Issue #489): a writer's bulk is refused whole when
+             never saw them (Issue #489): an editor's bulk is refused whole when
              any row it names, or any table it writes into, is structure. */
-          if (role === 'writer') {
+          if (role === 'editor') {
             const sys = (fn) => { try { return !!fn()?.system; } catch { return false; } };
             const list = ids == null ? [] : [].concat(ids);
             const into = op === 'rollup' && params.table == null
@@ -1099,7 +1108,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments$/)) && rx.method === 'POST') {
-          return out(201, weave.addComment(m[1], body));
+          return out(201, weave.addComment(m[1], role && !['architect', 'editor'].includes(role) ? { ...body, author: weave.actor } : body));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments\/([^/]+)$/)) && rx.method === 'DELETE') {
           weave.deleteComment(m[1], m[2]);
@@ -1154,7 +1163,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/export') return out(200, weave.exportJSON());
         if (route === 'POST /api/import') {
           // The import replaces the accounts too: the accounts gate (Issue #482).
-          if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Replacing the workspace needs an admin token');
+          if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Replacing the workspace needs an architect token');
           weave.importJSON(body);
           return out(200, { ok: true });
         }

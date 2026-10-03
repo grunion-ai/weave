@@ -67,7 +67,7 @@ or an entity view.
 | --- | --- | --- |
 | **Saved view** | `state.meta.views` | A saved arrangement of table blocks with filters and layouts, optionally shared by token. Distinct from the entity view every entity has by existing. |
 | **Automation** | `state.automations` | A rule bound to one table: a trigger, and the actions it fires. |
-| **Account** | `state.meta.accounts` | A named token holder with a role — admin, writer, reader. Only the hash is kept. |
+| **Account** | `state.meta.accounts` | A named token holder with a role — architect, editor, observer. Only the hash is kept. |
 | **Credential** | the keystore, *outside* the workspace | A named secret — API key, token, password, id or pair. A key field stores the NAME; the value never enters the .db, and reading it back is gated by the credential's own access list. |
 | **Audit entry** | `store.audit_log` | A workspace-level record of a structural change. |
 | **Undo step** | `store.undo_log` | A reversible before-image of one entity mutation. |
@@ -260,7 +260,8 @@ number already handed out. `weave export` carries `seq` and the counter, and
 `weave import` keeps them as written.
 
 ### Account
-A named token holder with a role: admin, writer, or reader. The workspace stores
+A named token holder with a role: architect, editor, or observer (admin, writer
+and reader before 2026-10-02). The workspace stores
 the token's hash, never the token. An "account" row in a CRM table is a Row like
 any other; the Account kind here is a token holder with a role. Same word, two
 levels.

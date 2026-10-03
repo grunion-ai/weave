@@ -203,7 +203,7 @@ test('Issue #230 (a): an export carries no account hash and no share token, on e
     // someone shares it again — which mints a fresh token, not the old one.
     const far = new Weave();
     far.importJSON(JSON.parse(surfaces.http));
-    assert.deepEqual(far.listAccounts().map((a) => [a.name, a.role]).sort(), [['bot', 'writer'], ['eye', 'reader'], ['root', 'admin']]);
+    assert.deepEqual(far.listAccounts().map((a) => [a.name, a.role]).sort(), [['bot', 'editor'], ['eye', 'observer'], ['root', 'architect']]);
     assert.equal(far.verifyToken(admin), null, 'a token minted on the near side does not open the far side');
     assert.equal(far.listViews().find((v) => v.id === view.id).shared, false);
     assert.equal(far.viewByShareToken(share), null);

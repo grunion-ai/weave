@@ -220,7 +220,7 @@ test('data: an account that still carries credentials[] loads, lists, exports an
   w.state.meta.accounts[account.id].credentials = [structuredClone(OLD_CREDENTIAL)];
   w.state.meta.invites = { deadbeef: { accountId: account.id, expiresAt: '2026-09-01T00:00:00.000Z' } };
   const listed = w.listAccounts().find((a) => a.name === 'kyle');
-  assert.equal(listed.role, 'admin');
+  assert.equal(listed.role, 'architect');
   assert.ok(!('credentials' in listed), 'the listing no longer shows stored passkeys');
   assert.ok(!('tokenHash' in listed));
   assert.deepEqual(w.state.meta.accounts[account.id].credentials, [OLD_CREDENTIAL], 'the stored data is left in place');
