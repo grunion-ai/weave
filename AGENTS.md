@@ -365,6 +365,10 @@ Notes that save round trips:
   `.pdf` return the rendered document directly; no tool call needed to read one.
 - **Entities can hold several documents.** `weave_get_doc` / `weave_set_doc`
   take a field name; the default is the table's first document field.
+- **A document write carries its text or it is refused.** Over HTTP,
+  `PUT /api/entities/:ref/doc` and `POST …/doc` take the text under `doc` or
+  `markdown`. A body with neither key is a 400, never a silent erase. Clearing
+  a document stays explicit: send `{"doc": ""}`.
 - **Every document keeps its history.** `weave_doc_revisions` lists a
   document's revisions newest first (`seq`, `at`, `actor`, `len`) — one per
   editing session, since writes by one actor inside ten minutes fold into

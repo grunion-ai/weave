@@ -6997,13 +6997,23 @@ export class Weave {
     return e.docs?.[f.id] ?? '';
   }
 
+  /* A document write carries its text or nothing happens (Issue #572). An
+     empty string is a legitimate write — clearing a document is an ordinary
+     edit — so only an absent value is refused, and it is refused loudly:
+     every caller above coerced `undefined` to '' and erased the document
+     while answering success. */
+  #docText(markdown, verb) {
+    if (markdown == null) throw new WeaveError(`A document ${verb} needs its text: pass the markdown, '' to clear the document. Nothing was passed.`, 'invalid');
+    return String(markdown);
+  }
+
   setDoc(entityId, markdown, fieldRef = null) {
     const e = this.getEntity(entityId);
+    const after = this.#docText(markdown, 'write');
     const db = this.state.tables[e.dbId];
     const f = this.#resolveDocField(db, fieldRef);
     e.docs = e.docs ?? {};
     const before = e.docs[f.id] ?? '';
-    const after = String(markdown ?? '');
     // Autosave writes on every pause, so identical text arrives often. Nothing
     // changed, nothing happened: no timestamp bump and no entry in the feed.
     if (before === after) return e;
@@ -7020,11 +7030,12 @@ export class Weave {
 
   appendDoc(entityId, markdown, fieldRef = null) {
     const e = this.getEntity(entityId);
+    const addition = this.#docText(markdown, 'append');
     const db = this.state.tables[e.dbId];
     const f = this.#resolveDocField(db, fieldRef);
     e.docs = e.docs ?? {};
     const before = e.docs[f.id] ?? '';
-    const after = (before ? before.replace(/\n*$/, '\n\n') : '') + String(markdown ?? '');
+    const after = (before ? before.replace(/\n*$/, '\n\n') : '') + addition;
     if (before === after) return e;
     const prior = { at: e.updatedAt, by: e.modifiedBy };
     e.docs[f.id] = after;

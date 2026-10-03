@@ -586,6 +586,8 @@ weave doc export Task#5 --format pdf --out t5.pdf
 
 Every document is addressable as MD, HTML, MMD and PDF at \`/e/<id>/doc/<Field>.<fmt>\`.
 
+A write over HTTP carries its text under \`doc\` or \`markdown\`: \`PUT /api/entities/<id>/doc\` replaces, \`POST\` appends, and \`field\` in the body picks a named document. A body with neither key is a 400. Clearing stays explicit, \`{"doc": ""}\` over HTTP and \`weave doc set --content ''\` from the CLI, so leaving the text out is a mistake rather than a blank document.
+
 ## History
 
 Every document keeps its own revisions. A revision is one editing session: writes by the same actor to the same field within ten minutes fold into one, so a pause is not a snapshot and a keystroke log never builds up. Identical text records nothing. Two hundred revisions are kept per document, oldest trimmed; the trash keeps them, a purge drops them with the row.

@@ -257,7 +257,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // The applet sits ahead of the dispatcher's own try/catch; without
         // this a throw here would leave the phone waiting forever.
         const json = { error: err.message, code: err.code ?? 'error' };
-        return err instanceof WeaveError && err.code === 'not-found' ? notFound(json) : out(500, json);
+        // A refused write is the phone's mistake, not the server's: 400 and
+        // the rest of the ladder, same as the dispatcher's own catch below.
+        return err instanceof WeaveError && err.code === 'not-found' ? notFound(json) : out(statusFor(err), json);
       }
     }
 
@@ -1286,8 +1288,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc$/))) {
           const fieldRef = rx.searchParams.get('field') ?? body.field ?? null;
           if (rx.method === 'GET') return out(200, { field: fieldRef, doc: weave.getDoc(m[1], fieldRef) });
-          if (rx.method === 'PUT') { weave.setDoc(m[1], body.doc ?? body.markdown ?? '', fieldRef); return out(200, { ok: true }); }
-          if (rx.method === 'POST') { weave.appendDoc(m[1], body.doc ?? body.markdown ?? '', fieldRef); return out(200, { ok: true }); }
+          /* The text under one of the two keys this route reads, and under no
+             other (Issue #572): a body spelling it anything else used to write
+             the `?? ''` fallback, so a PUT answered 200 and left the document
+             blank. `{"doc": ""}` still clears it — that is the write a person
+             makes on purpose, and it is the one thing a missing key is not. */
+          if (rx.method === 'PUT' || rx.method === 'POST') {
+            const text = body.doc ?? body.markdown;
+            if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither. Send `{"doc": ""}` to clear the document.', 'invalid');
+            if (rx.method === 'PUT') weave.setDoc(m[1], text, fieldRef);
+            else weave.appendDoc(m[1], text, fieldRef);
+            return out(200, { ok: true });
+          }
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/fields\/([^/]+)\/files$/)) && rx.method === 'POST') {

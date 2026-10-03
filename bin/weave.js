@@ -919,8 +919,15 @@ async function main() {
       const content = flags.file ? readFileSync(flags.file, 'utf8') : flags.content;
       const docField = flags.field === true ? null : flags.field ?? null; // named document field, default = first
       if (sub === 'get') return out(w.getDoc(e.id, docField));
-      if (sub === 'set') { w.setDoc(e.id, content ?? '', docField); return out({ ok: true }); }
-      if (sub === 'append') { w.appendDoc(e.id, content ?? '', docField); return out({ ok: true }); }
+      /* Text, or nothing happens (Issue #572). `--content ''` clears the
+         document; no flag at all is a mistake, and it used to be a silent
+         erase that printed {"ok": true}. */
+      if (sub === 'set' || sub === 'append') {
+        if (content == null || content === true) throw new WeaveError(`doc ${sub} needs its text: --content <markdown> or --file <path>. Use --content '' to clear the document.`, 'invalid');
+        if (sub === 'set') w.setDoc(e.id, content, docField);
+        else w.appendDoc(e.id, content, docField);
+        return out({ ok: true });
+      }
       if (sub === 'export') {
         const read = w.readEntity(e.id);
         const markdown = w.getDoc(e.id, docField);

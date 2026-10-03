@@ -18,7 +18,7 @@ import '../public/vendor/lucide-moving.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { renderMarkdown } from './markdown.js';
 import { markParts, PALETTE } from './mark.js';
-import { fileHeaders } from './engine.js';
+import { fileHeaders, WeaveError } from './engine.js';
 
 const COOKIE = 'wv_applet';
 const YEAR = 31536000;
@@ -223,7 +223,10 @@ export function handleApplet({ weave, rx, path, out, mount }) {
   if ((m = path.match(/^\/t\/entity\/([^/]+)\/doc$/)) && (rx.method === 'PUT' || rx.method === 'POST')) {
     const e = mine(m[1]);
     if (!e) return out(404, { error: 'No such task', code: 'not-found' });
-    weave.setDoc(e.id, String(body.doc ?? body.markdown ?? ''), body.field ?? null);
+    // The two keys the API route takes, and no silent empty fallback (Issue #572).
+    const text = body.doc ?? body.markdown;
+    if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither.', 'invalid');
+    weave.setDoc(e.id, text, body.field ?? null);
     const full = weave.readEntity(e.id);
     return out(200, { ok: true, doc: full.doc ?? '', docHtml: renderMarkdown(full.doc ?? '') });
   }

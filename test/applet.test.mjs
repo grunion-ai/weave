@@ -533,6 +533,29 @@ test('applet: the description is written from the page it is read on', async () 
   } finally { s.stop(); }
 });
 
+/* The applet route took the same `?? ''` fallback the API route did
+   (Issue #572): a body spelling the text anything but `doc` or `markdown`
+   blanked the document and got 200 back. */
+test('applet: a doc write with no recognized key is refused and changes nothing', async () => {
+  const s = await stand();
+  try {
+    const cookie = cookieFrom(await unlock(s.base));
+    const id = s.tasks[1].id;
+    const put = (body) => fetch(`${s.base}/t/entity/${id}/doc`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify(body),
+    });
+
+    assert.equal((await put({ doc: 'kept prose' })).status, 200);
+    const res = await put({ content: 'under the wrong key' });
+    assert.equal(res.status, 400, 'the phone hears that its body was not understood');
+    assert.match((await res.json()).error, /doc.*markdown|markdown.*doc/s);
+    assert.equal(s.weave.getDoc(id), 'kept prose', 'and the document is still there');
+
+    assert.equal((await put({ doc: '' })).status, 200, 'clearing it on purpose still works');
+    assert.equal(s.weave.getDoc(id), '');
+  } finally { s.stop(); }
+});
+
 /* Issue #247 (Kyle, 2026-09-08: "mobile descriptions not captured on save,
    need autosave"). The sheet wrote only from its Save button, so a scrim tap
    or a trip to the app switcher threw the text away. The browser suite
