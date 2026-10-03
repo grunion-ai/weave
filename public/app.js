@@ -2707,11 +2707,17 @@ function markClippedCells(grid) {
     if (overflowsX(c)) cutOff.add(c.closest('td'));
   }
   // A value chip's label truncates inside the chip, so the chip never
-  // outgrows the cell either (Issue #423). A cut label marks its cell and
-  // carries the whole value as its title; a label that fits carries none.
+  // outgrows the cell either (Issue #423). A cut label marks its cell and its
+  // chip carries the whole value as its title: on the chip, not the label,
+  // because the chip's own title (the field name) answered every hover on
+  // its padding (Issue #584). A chip that fits gets back the title it was
+  // drawn with. This runs again after a column resize, so the title follows.
   for (const label of grid.querySelectorAll('tbody td .k > .k-label')) {
-    if (overflowsX(label)) { cutOff.add(label.closest('td')); label.title = label.textContent; }
-    else label.removeAttribute('title');
+    const chip = label.parentElement;
+    chip.dataset.fieldTitle ??= chip.getAttribute('title') ?? '';
+    if (overflowsX(label)) { cutOff.add(label.closest('td')); chip.title = label.textContent; }
+    else if (chip.dataset.fieldTitle) chip.title = chip.dataset.fieldTitle;
+    else chip.removeAttribute('title');
   }
   for (const td of grid.querySelectorAll('tbody td')) {
     // A description holds lines the row has no height for; they are in the
@@ -5788,6 +5794,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         // A registry grid has no views: the width stays the field's own.
         f.width = Math.max(MIN_COLUMN_WIDTH, w);
         refreeze(); paintLayout();
+        requestAnimationFrame(() => markClippedCells(table));
         await api('PATCH', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`, { config: { width: f.width } });
         loadSchema().catch(() => {});
       }

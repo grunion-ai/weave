@@ -70,7 +70,8 @@ if (s) {
         // the label ends inside the fill, keeping the chip's right padding
         insideFill: l.right <= c.right - parseFloat(ccs.paddingRight) + 0.5,
         insideCell: c.right <= t.right + 0.5,
-        title: label.title,
+        title: chip.title,
+        labelTitle: label.title,
         clipped: td.classList.contains('clipped'),
       };
     }
@@ -90,23 +91,27 @@ if (s) {
           assert.equal(r.chipOverflow, 'hidden', `${field}: nothing paints past the chip's fill`);
           assert.ok(r.insideFill, `${field}: the label ends inside the fill, before the chip's right padding`);
           assert.ok(r.insideCell, `${field}: the chip fits its column`);
-          assert.equal(r.title, r.text, `${field}: hovering the cut label shows the whole value`);
+          assert.equal(r.title, r.text, `${field}: hovering anywhere on the cut chip shows the whole value (Issue #584)`);
+          assert.equal(r.labelTitle, '', `${field}: the chip owns the tooltip, so the label carries none of its own`);
           assert.equal(r.clipped, true, `${field}: the cell is marked clipped, so the hover expansion still opens`);
         }
       } finally { await page.close(); }
     });
   }
 
-  test('a chip that fits is left whole: no ellipsis, no title, no clipped marker', async () => {
+  test('a chip that fits is left whole: no ellipsis, its own title, no clipped marker', async () => {
     const page = await grid('light');
     try {
       const m = await measure(page, shortRow.id);
       for (const field of ['Program', 'Tags']) {
         assert.ok(m[field].label, `${field}: the short chip has its label span too`);
         assert.equal(m[field].truncated, false, `${field}: a value that fits is not cut`);
-        assert.equal(m[field].title, '', `${field}: and carries no title, since nothing is hidden`);
         assert.equal(m[field].clipped, false, `${field}: and the cell is not marked`);
       }
+      // Nothing is hidden, so the chip keeps the title it was drawn with:
+      // the field name on a select, none on a multi chip (Issue #584).
+      assert.equal(m.Program.title, 'Program', 'a select chip that fits keeps its field name as its title');
+      assert.equal(m.Tags.title, '', 'a multi chip that fits carries no title');
     } finally { await page.close(); }
   });
 
@@ -139,6 +144,27 @@ if (s) {
       assert.equal(m.Program.textOverflow, 'ellipsis');
       assert.equal(m.Program.truncated, true);
       assert.ok(m.Program.insideFill, 'and still ends inside its fill');
+    } finally { await page.close(); }
+  });
+
+  // Last in the file: the drag saves the wider column into the view.
+  test('a column resize rechecks the title: widened to fit, the chip gets its field name back (Issue #584)', async () => {
+    const page = await grid('light');
+    const chip = `tr[data-eid="${row.id}"] td[data-field="Program"] .k-select`;
+    try {
+      assert.equal(await page.getAttribute(chip, 'title'), PROGRAM, 'cut at the start, the chip shows the whole value');
+      const grip = await page.locator('table.wv-grid th.col-head:has(.col-label:text-is("Program")) .col-resize').boundingBox();
+      const y = grip.y + grip.height / 2;
+      await page.mouse.move(grip.x + grip.width / 2, y);
+      await page.mouse.down();
+      await page.mouse.move(grip.x + 300, y, { steps: 6 });
+      await page.mouse.up();
+      await page.waitForFunction((sel) => {
+        const l = document.querySelector(`${sel} > .k-label`);
+        return l && l.scrollWidth <= l.clientWidth;
+      }, chip);
+      await page.waitForTimeout(300);
+      assert.equal(await page.getAttribute(chip, 'title'), 'Program', 'the value fits now, so the title is the field name again');
     } finally { await page.close(); }
   });
 }
