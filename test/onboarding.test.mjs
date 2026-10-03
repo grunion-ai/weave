@@ -154,6 +154,78 @@ test('the starter path builds each template in one build call and names its firs
   } finally { docs.close(); }
 });
 
+/* Every path through the one POST: the name kept or edited, times no starter
+   or each template. Each lands named, built exactly as the template's spec
+   says (tables, field types, relation inverses, sample rows), opened on its
+   first table, and marked. */
+const qualified = (w) => w.userTables().map((t) => w.qualifiedName(t)).sort();
+const tablesOf = (t) => (t ? S.spec(t).spaces[0].tables : []);
+const builds = (t) => tablesOf(t).map((x) => `${t.space}/${x.name}`).sort();
+for (const name of [undefined, 'Acme Team']) {
+  for (const template of [null, ...S.TEMPLATES]) {
+    test(`path: ${name ? 'edited name' : 'default name'}, ${template ? `${template.id} starter` : 'no starter'}`, async () => {
+      const f = await fresh();
+      try {
+        const r = await f.call('POST', '/api/onboarding', { ...(name ? { name } : {}), ...(template ? { template: template.id } : {}) });
+        assert.equal(r.status, 200);
+        assert.equal(r.body.name, name ? 'acme-team' : 'workspace');
+        assert.equal(f.root.state.meta.name, r.body.name);
+        assert.deepEqual(qualified(f.root), builds(template), 'exactly the template\'s tables');
+        if (template) {
+          const table = (n) => f.root.findTable(`${template.space}/${n}`);
+          for (const t of tablesOf(template)) {
+            for (const fd of t.fields) {
+              assert.equal(f.root.findField(table(t.name), fd.name)?.type, fd.type, `${t.name}.${fd.name}`);
+              if (fd.type === 'relation') assert.ok(f.root.findField(table(fd.to), fd.inverseName), `${t.name}.${fd.name}: its inverse`);
+            }
+            assert.equal(f.root.listEntities(table(t.name).id).length, (t.rows ?? []).length, `${t.name}: its sample rows`);
+          }
+          assert.equal(r.body.table, table(S.firstTable(template)).id, 'opens on the first table');
+        } else {
+          assert.equal(r.body.table, null);
+        }
+        assert.ok(f.root.onboardedAt(), 'marked');
+        assert.equal((await f.call('GET', '/api/onboarding')).body.show, false, 'never asks again');
+      } finally { f.close(); }
+    });
+  }
+}
+
+test('a name with nothing usable in it keeps the default', async () => {
+  for (const name of ['', '   ', '!!!']) {
+    const f = await fresh();
+    try {
+      const r = await f.call('POST', '/api/onboarding', { name, template: 'tasks' });
+      assert.equal(r.status, 200, JSON.stringify(name));
+      assert.equal(r.body.name, 'workspace', JSON.stringify(name));
+      assert.deepEqual(qualified(f.root), ['Work/Tasks']);
+    } finally { f.close(); }
+  }
+});
+
+test('a starter whose space already exists, empty, builds into it rather than beside it', async () => {
+  const f = await fresh({ seed: (root) => { root.createSpace({ name: 'Work' }); } });
+  try {
+    assert.equal((await f.call('GET', '/api/onboarding')).body.show, true, 'an empty space is not a workspace of their own');
+    const r = await f.call('POST', '/api/onboarding', { template: 'tasks' });
+    assert.equal(r.status, 200);
+    assert.equal(f.root.listSpaces().filter((s) => s.name === 'Work').length, 1, 'one Work space');
+    assert.deepEqual(qualified(f.root), ['Work/Tasks']);
+  } finally { f.close(); }
+});
+
+test('an unknown starter is refused before anything is built or marked', async () => {
+  const f = await fresh();
+  try {
+    const r = await f.call('POST', '/api/onboarding', { name: 'acme', template: 'nope' });
+    assert.equal(r.status, 400);
+    assert.equal(f.root.state.meta.name, 'workspace', 'not renamed');
+    assert.equal(f.root.userTables().length, 0);
+    assert.equal(f.root.onboardedAt(), null, 'not marked');
+    assert.equal((await f.call('GET', '/api/onboarding')).body.show, true, 'asks again');
+  } finally { f.close(); }
+});
+
 test('a taken name is refused before anything is built or marked', async () => {
   const f = await fresh();
   try {
