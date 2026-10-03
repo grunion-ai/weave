@@ -381,3 +381,78 @@ test('a schema document round-trips every grain and costume key', () => {
   assert.equal(f('Hours').elapsed, true);
   assert.deepEqual(w2.applySchema(doc, { dryRun: true }), [], 'applying the same document again is a no-op');
 });
+
+/* ---------- a formula that returns a date (Issue #576) ----------
+   A tester picked Date, unticked year and day, ticked Formula and pointed it
+   at a date: the column showed 2026-08-15. The grain was dropped three times
+   (the dialog, addField, the display). A formula opts into the date costume
+   by carrying `grain`, written whole even when it is the full grain, so a
+   formula that says nothing keeps its raw ISO (formulas do date math, in
+   number-format.test.mjs). */
+
+const withFormula = (config) => {
+  const w = fresh();
+  w.addField('T', { name: 'F', type: 'formula', config: { expression: '[D]', ...config } });
+  const e = w.createEntity('T', { name: 'x', values: { D: '2026-08-15' } });
+  const formula = Object.values(w.getTable('T').fields).find((f) => f.name === 'F');
+  return { w, e, formula, shown: () => w.readEntity(e.id).fields.F };
+};
+const dressed = (config, iso = '2026-08-15') => core.formatDate(iso, { ...config, now: NOW, viewerZone: 'UTC' });
+
+test('a date formula wears its grain: month alone, year·month, the full grain', () => {
+  const month = withFormula({ grain: ['month'] });
+  assert.deepEqual(month.formula.config.grain, ['month'], 'addField keeps the grain on a formula');
+  assert.equal(month.shown(), dressed({ grain: ['month'] }));
+  assert.doesNotMatch(String(month.shown()), /2026|15/, 'month alone prints no year and no day');
+  assert.equal(withFormula({ grain: ['year', 'month'], format: 'us' }).shown(), dressed({ grain: ['year', 'month'], format: 'us' }));
+  const full = withFormula({ grain: ['year', 'month', 'day'] });
+  assert.deepEqual(full.formula.config.grain, ['year', 'month', 'day'], 'the full grain is written down: it is the opt-in');
+  assert.equal(full.shown(), dressed({}));
+  assert.equal(withFormula({}).shown(), '2026-08-15', 'a formula without a grain keeps its raw ISO');
+  // raw is the value the formula computed, untouched by the costume.
+  assert.equal(month.w.readEntity(month.e.id).raw.F, '2026-08-15');
+});
+
+test('a date formula refuses a costume its grain cannot print, and a number costume beside a grain', () => {
+  const w = fresh();
+  assert.throws(() => w.addField('T', { name: 'F', type: 'formula', config: { expression: '[D]', grain: ['month'], format: 'ordinal' } }), /day/i);
+  assert.throws(() => w.addField('T', { name: 'G', type: 'formula', config: { expression: '[D]', grain: ['month'], format: 'currency' } }));
+  assert.throws(() => w.addField('T', { name: 'H', type: 'formula', config: { expression: '[D]', grain: 'month' } }), /list of parts/);
+});
+
+test('a date formula error still reads as the error', () => {
+  const { w } = withFormula({ grain: ['month'] });
+  w.addField('T', { name: 'Bad', type: 'formula', config: { expression: 'month("soon")', grain: ['month'] } });
+  const e = w.createEntity('T', { name: 'y', values: { D: '2026-01-02' } });
+  const v = w.readEntity(e.id).fields.Bad;
+  assert.ok(v == null || typeof v === 'number' || /#ERR|soon/.test(String(v)), `got ${v}`);
+});
+
+test('updateField moves a formula between the date and the number costume', () => {
+  const { w, shown } = withFormula({ format: 'currency' });
+  w.updateField('T', 'F', { config: { grain: ['year', 'month'] } });
+  const cfg = () => Object.values(w.getTable('T').fields).find((f) => f.name === 'F').config;
+  assert.deepEqual(cfg().grain, ['year', 'month']);
+  assert.equal(cfg().format, undefined, 'the number format goes with the number costume');
+  assert.equal(shown(), dressed({ grain: ['year', 'month'] }));
+  w.updateField('T', 'F', { config: { format: 'us' } });
+  assert.equal(shown(), dressed({ grain: ['year', 'month'], format: 'us' }));
+  w.updateField('T', 'F', { config: { width: 120 } });
+  assert.deepEqual(cfg().grain, ['year', 'month'], 'a width edit keeps the grain');
+  w.updateField('T', 'F', { config: { grain: null } });
+  assert.equal(cfg().grain, undefined);
+  assert.equal(cfg().format, undefined, 'the date format goes with the date costume');
+  assert.equal(shown(), '2026-08-15');
+});
+
+test('a date formula travels through describeSchema and applySchema', () => {
+  const { w } = withFormula({ grain: ['month'], format: 'short' });
+  const doc = w.describeSchema();
+  const desc = doc.find((sp) => sp.space === 'Dev').tables[0].fields.find((f) => f.name === 'F');
+  assert.deepEqual(desc.grain, ['month']);
+  assert.equal(desc.format, 'short');
+  const w2 = new Weave();
+  w2.applySchema(doc);
+  assert.deepEqual(Object.values(w2.getTable('T').fields).find((f) => f.name === 'F').config.grain, ['month']);
+  assert.deepEqual(w2.applySchema(doc, { dryRun: true }), [], 'applying the same document again is a no-op');
+});

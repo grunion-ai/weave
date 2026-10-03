@@ -123,6 +123,32 @@ test('formula toggle wins over the grid type', () => {
   assert.deepEqual(def, { type: 'formula', config: { expression: 'if(Estimate > 5, "big", "small")' } });
 });
 
+/* Issue #576: Date picked, year and day unticked, Formula ticked. The grain
+   was dropped here first; a formula over the Date tile now carries it, whole
+   even when full, since the grain is what marks a date result. */
+test('a formula over the Date tile carries its grain and style, and reopens on the Date tile', () => {
+  const month = core.definitionFromState({
+    ...core.blankState('date'), computed: 'formula', expression: '[Date]',
+    date: { ...core.blankState('date').date, grain: { year: false, month: true, day: false } },
+  });
+  assert.deepEqual(month, { type: 'formula', config: { expression: '[Date]', grain: ['month'] } });
+  const full = core.definitionFromState({ ...core.blankState('date'), computed: 'formula', expression: '[Date]', date: { ...core.blankState('date').date, format: 'us' } });
+  assert.deepEqual(full.config, { expression: '[Date]', format: 'us', grain: ['year', 'month', 'day'] });
+  const back = core.stateFromDefinition(month);
+  assert.equal(back.type, 'date');
+  assert.equal(back.computed, 'formula');
+  assert.deepEqual(back.date.grain, { year: false, month: true, day: false });
+  assert.deepEqual(core.definitionFromState(back), month, 'the definition round-trips');
+  // The schema's flat view folds back to the same definition, and an edit sends every date lane.
+  const view = core.definitionFromFieldView({ type: 'formula', expression: '[Date]', grain: ['month'], format: 'short' });
+  assert.deepEqual(view.config, { format: 'short', expression: '[Date]', grain: ['month'] });
+  const patch = core.editPatchConfig({ type: 'formula' }, month, back);
+  assert.deepEqual(patch.grain, ['month']);
+  for (const k of ['currency', 'time', 'clock', 'zone']) assert.equal(patch[k], null, `${k} clears`);
+  // A formula over any other tile keeps the number costume and no grain.
+  assert.equal(core.editPatchConfig({ type: 'formula' }, { type: 'formula', config: { expression: '1' } }, {}).grain, null);
+});
+
 test('rollup includes targetField only when aggregate needs one', () => {
   const count = core.definitionFromState({ type: 'rollup', relationField: 'Tasks', aggregate: 'count', targetField: 'Estimate' });
   assert.deepEqual(count.config, { relationField: 'Tasks', aggregate: 'count' });

@@ -528,8 +528,24 @@
     }
     return config;
   }
+  /* A stored date costume -> the dialog's date state. */
+  function dateState(c) {
+    const parts = c.grain ?? ['year', 'month', 'day'];
+    return {
+      grain: { year: parts.includes('year'), month: parts.includes('month'), day: parts.includes('day') },
+      format: c.format ?? DG().DEFAULT_FORMAT, time: !!c.time, clock: c.clock ?? DG().DEFAULT_CLOCK, zone: c.zone ?? 'floating',
+      zoneName: c.zoneName ?? '', pad: !!c.pad, elapsed: !!c.elapsed,
+    };
+  }
   function definitionFromState(state) {
     if (state.computed === 'formula') {
+      /* A formula picked over the Date tile returns a date and wears its
+         grain (Issue #576), the grain written whole: it is what tells the
+         engine the result is a date, the full one included. */
+      if (state.type === 'date') {
+        const g = state.date?.grain ?? { year: true, month: true, day: true };
+        return { type: 'formula', config: { expression: state.expression ?? '', ...dateCostume(state.date), grain: ['year', 'month', 'day'].filter((p) => g[p]) } };
+      }
       return { type: 'formula', config: { expression: state.expression ?? '', ...numberCostume(state.number) } };
     }
     const t = state.type;
@@ -610,7 +626,10 @@
     const c = def.config ?? {};
     if (c.term && c.term.singular) state.term = { ...c.term };
     if (def.type === 'formula') {
-      state.type = 'text'; // grid shows a neutral tile behind the toggle
+      // The grid shows a neutral tile behind the toggle, or the Date tile
+      // for a formula that returns a date (Issue #576).
+      state.type = c.grain ? 'date' : 'text';
+      if (c.grain) state.date = dateState(c);
       state.computed = 'formula';
       state.expression = c.expression ?? '';
       state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column', style: c.style ?? 'line', color: c.color ?? 'ink' };
@@ -636,12 +655,7 @@
     } else if (def.type === 'number') {
       state.number = { format: c.format ?? 'number', unit: c.unit ?? '', currency: c.currency ?? 'USD', decimals: c.decimals ?? null, separator: !!c.separator, accounting: !!c.accounting, display: c.display ?? 'text', scale: c.scale ?? 'column', color: c.color ?? 'ink' };
     } else if (def.type === 'date' || def.type === 'daterange') {
-      const parts = c.grain ?? ['year', 'month', 'day'];
-      state.date = {
-        grain: { year: parts.includes('year'), month: parts.includes('month'), day: parts.includes('day') },
-        format: c.format ?? DG().DEFAULT_FORMAT, time: !!c.time, clock: c.clock ?? DG().DEFAULT_CLOCK, zone: c.zone ?? 'floating',
-        zoneName: c.zoneName ?? '', pad: !!c.pad, elapsed: !!c.elapsed,
-      };
+      state.date = dateState(c);
     } else if (def.type === 'field') {
       state.depth = c.depth ?? 1;
     } else if (def.type === 'text') {
@@ -838,7 +852,11 @@
     if (f.type === 'workflow') c.states = f.states ?? [];
     if (f.type === 'number' || f.type === 'formula') for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style', 'color']) { if (f[k] != null && !(k === 'color' && f[k] === 'ink')) c[k] = f[k]; }
     if (f.type === 'date' || f.type === 'daterange') for (const k of ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) { if (f[k] != null) c[k] = f[k]; }
-    if (f.type === 'formula') c.expression = f.expression ?? '';
+    if (f.type === 'formula') {
+      c.expression = f.expression ?? '';
+      // A date formula's costume (Issue #576); its `format` came across above.
+      for (const k of ['grain', 'time', 'clock', 'zone', 'zoneName', 'pad']) { if (f[k] != null) c[k] = f[k]; }
+    }
     if (f.type === 'field') c.depth = f.depth ?? 1;
     if (f.type === 'text' && f.literal) c.literal = true;
     if (f.type === 'attachments') c.multiple = f.multiple !== false;
@@ -873,6 +891,8 @@
     if (existing.type === 'number' || existing.type === 'formula') {
       for (const k of ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style', 'color']) patch[k] = c[k] ?? null;
     }
+    // A formula's date lanes too (Issue #576): a null grain is the number costume.
+    if (existing.type === 'formula') for (const k of ['grain', 'time', 'clock', 'zone', 'zoneName', 'pad']) patch[k] = c[k] ?? null;
     if (existing.type === 'date' || existing.type === 'daterange') {
       // Every lane, every time: a null clears (a grain back to full drops the key).
       for (const k of ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed']) patch[k] = c[k] ?? null;

@@ -8645,13 +8645,15 @@ function fieldDialog(db, existing, after) {
         .then(() => { this.answered = true; }));
     },
     /* A list column's own series, for the sparkline Sample (Issue #388):
-       the first row whose value holds two numbers or more. */
+       the first row whose value holds two numbers or more, read from the
+       rows that hold a value at all. A plain first page of 50 missed a list
+       that sat further down the table (Issue #620). */
     series: null,
     seriesRow: null,
     seriesAnswered: false,
     seriesPending: null,
     loadSeries() {
-      return (this.seriesPending ??= api('POST', `/tables/${db.id}/query`, { limit: 50 })
+      return (this.seriesPending ??= api('POST', `/tables/${db.id}/query`, { where: [[existing.name, 'not-empty']], limit: 50 })
         .then((res) => {
           const row = (res.items ?? []).find((it) => (Array.isArray(it.raw?.[existing.name]) ? it.raw[existing.name] : []).filter((v) => typeof v === 'number').length >= 2);
           if (row) { this.series = row.raw[existing.name]; this.seriesRow = row.name || 'Untitled'; }
@@ -8755,7 +8757,9 @@ function fieldDialog(db, existing, after) {
       // (direction B), and stays for a table with no rows to type it on.
       const costumeWrap = el('div', { class: 'full' });
       let resultType = null, fxTail = null;
-      const drawCostume = () => costumeWrap.replaceChildren(...(resultType === 'list' || state.number.display === 'sparkline'
+      // A formula over the Date tile keeps the date's grain and style (Issue #576).
+      const drawCostume = () => costumeWrap.replaceChildren(...(state.type === 'date' ? dateCostumeControls(state, drawCostume, changed)
+        : resultType === 'list' || state.number.display === 'sparkline'
         ? sparklineControls(state.number, drawCostume, changed, column)
         : resultType === null || resultType === 'number' ? numberCostumeControls(state, drawCostume, changed, { label: 'Result format', column }) : []));
       kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null, fieldName: () => nameInput.value, onType: (t) => { resultType = t; drawCostume(); }, onTail: (tail) => { fxTail = tail; } })));

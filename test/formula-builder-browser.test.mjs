@@ -250,3 +250,39 @@ if (s) {
     await page.close();
   });
 }
+
+/* Issue #576, the tester's path: Date picked, Year and Day unticked, Formula
+   ticked, the Close Date chip, named Month. The grain controls stay under
+   the script, the field stores its grain, and the new column's first paint
+   is the month, never the ISO date. */
+if (s) {
+  const { browser, base, weave } = s;
+  test('a formula over the Date tile keeps its grain, and the new column paints the month first time', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+    await page.click('.wv-grid .add-field-btn');
+    await page.waitForSelector('#tray');
+    await page.fill('#tray input[name="name"]', 'Month');
+    await page.locator('#tray .type-tile[title="date"]').click();
+    const grain = page.locator('#tray .date-grain');
+    await grain.locator('label', { hasText: /^Year$/ }).locator('input').uncheck();
+    await grain.locator('label', { hasText: /^Day$/ }).locator('input').uncheck();
+    await page.locator('#tray .fx-toggle input').check();
+    await page.waitForSelector('#tray .fx-expr');
+    assert.equal(await grain.count(), 1, 'the grain controls stay under the script');
+    assert.equal(await grain.locator('label', { hasText: /^Month$/ }).locator('input').isChecked(), true);
+    assert.equal(await grain.locator('label', { hasText: /^Year$/ }).locator('input').isChecked(), false, 'the unticked year stays unticked');
+    await page.locator('#tray .fx-chip:not(.fn):not(.excluded)', { hasText: 'Close Date' }).click();
+    await page.waitForSelector('#tray .fx-status.ok');
+    await page.locator('#tray .btn-primary').click();
+    await page.waitForSelector('#tray', { state: 'detached' });
+    assert.deepEqual(weave.getField(deals, 'Month').config.grain, ['month']);
+    const acme = weave.query(deals, { where: [['Name', '=', 'Acme deal']] }).items[0].id;
+    const cell = page.locator(`.wv-grid tr[data-eid="${acme}"] td[data-field="Month"]`);
+    await cell.waitFor();
+    const first = await cell.textContent();
+    assert.match(first, /Oct/, `first paint: ${first}`);
+    assert.doesNotMatch(first, /2026|-10-01/, `month alone, no year and no ISO date: ${first}`);
+    await page.close();
+  });
+}

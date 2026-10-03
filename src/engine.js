@@ -276,8 +276,6 @@ export const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
 export const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
 const DEFAULT_PAIR_PARTS = [{ name: 'id', secret: false }, { name: 'secret', secret: true }];
 const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'color'];
-/* A formula wears every number key, plus a sparkline's style (Feature #232). */
-const FORMULA_COSTUME_KEYS = [...NUMBER_COSTUME_KEYS, 'style'];
 /* How a number is drawn (Feature #230): text, or a graphic drawn against a
    scale — the column's max unless the field names a fixed one. Stars are not
    here: a rating is its own type. public/cell-graphics.js draws them. */
@@ -316,6 +314,10 @@ const RATING_SCALE_AGGS = ['avg', 'min', 'max', 'median'];
 const ratingValue = (n, max) => Math.min(max, Math.max(0, Math.round(n)));
 /* Grain and costume keys of a date (Feature #164) — the rules live in public/date-grain.js. */
 const DATE_COSTUME_KEYS = ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed'];
+/* A formula wears every number key, plus a sparkline's style (Feature #232),
+   or a date's costume when it returns a date (Issue #576): `formulaCostume`
+   picks one. `elapsed` belongs to a range, which no formula returns. */
+const FORMULA_COSTUME_KEYS = [...new Set([...NUMBER_COSTUME_KEYS, 'style', ...DATE_COSTUME_KEYS.filter((k) => k !== 'elapsed')])];
 const DG = globalThis.weaveDateGrain;
 const DEFAULTABLE_TYPES = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
@@ -622,6 +624,17 @@ const { dressNumber } = globalThis.weaveNumberCore;
    reading of them — '2026-08-21' must never render as Aug 20. */
 const COSTUME_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function dressDate(c, iso) { return DG.formatDate(iso, c); }
+
+/* A formula's costume (Issue #576): a `grain` says the result is a date and
+   takes the date costume, written whole even for the full grain, since the
+   grain is the opt-in; without one a numeric result wears the number costume
+   and anything else passes through as computed. The two never mix: `format`
+   is a date style on one and a number format on the other. */
+function formulaCostume(config) {
+  if (config.grain == null) return normalizeSelfContainedConfig('number', config, { formula: true });
+  const date = normalizeSelfContainedConfig('date', config);
+  return { ...date, grain: date.grain ?? [...DG.PARTS] };
+}
 
 /* A range wears the same costume at both ends (Issue #91). The read side
    had no case for daterange at all, so `{ start, end }` walked to the
@@ -4894,8 +4907,9 @@ export class Weave {
       const checked = checkExpression(config.expression, Object.values(db.fields).map((f) => f.name));
       if (!checked.ok) throw new WeaveError(checked.error, 'invalid');
       this.#refuseFormulaCycle(db, field.id, field.name, config.expression);
-      // A numeric result wears the number costume (unit / currency / decimals).
-      field.config = { expression: config.expression, ...normalizeSelfContainedConfig('number', config, { formula: true }) };
+      // A numeric result wears the number costume (unit / currency / decimals),
+      // a date the date costume (Issue #576).
+      field.config = { expression: config.expression, ...formulaCostume(config) };
     }
     if (config.default !== undefined && config.default !== null) {
       field.config.default = this.#validateDefault(field, config.default);
@@ -5091,7 +5105,12 @@ export class Weave {
       if (field.type === 'number' || field.type === 'formula') {
         // Merge the costume keys through the same validation addField runs;
         // absent keys keep their value, width/default ride their own lanes.
-        const costume = normalizeSelfContainedConfig('number', { ...field.config, ...patch.config }, { formula: field.type === 'formula' });
+        /* A formula that moves between the number and the date costume
+           (Issue #576) takes only what the edit sends: the stored keys of
+           the costume it leaves behind would be read as the new one's. */
+        const switched = field.type === 'formula' && 'grain' in patch.config && (patch.config.grain == null) !== (field.config.grain == null);
+        const merged = switched ? patch.config : { ...field.config, ...patch.config };
+        const costume = field.type === 'formula' ? formulaCostume(merged) : normalizeSelfContainedConfig('number', merged);
         for (const k of field.type === 'formula' ? FORMULA_COSTUME_KEYS : NUMBER_COSTUME_KEYS) {
           // A stored key the canonical costume drops goes too: a fixed scale
           // left behind by a display gone back to text (Feature #230).
@@ -5462,7 +5481,7 @@ export class Weave {
       // A type change is a formula save too, and can close the same loop a
       // direct edit is refused for (Issue #283).
       this.#refuseFormulaCycle(db, field.id, field.name, config.expression);
-      nextConfig = { expression: config.expression, ...normalizeSelfContainedConfig('number', config, { formula: true }) };
+      nextConfig = { expression: config.expression, ...formulaCostume(config) };
     } else {
       nextConfig = normalizeSelfContainedConfig(toType, config);
     }
@@ -6648,8 +6667,10 @@ export class Weave {
       case 'number':
         return dressNumber(field.config, resolved);
       case 'formula':
-        // A numeric result wears the field's number costume; anything else
-        // (text, dates) is already in display form.
+        // A date formula wears its grain and style (Issue #576); a numeric
+        // result wears the field's number costume; anything else (text, a
+        // date with no grain) is already in display form.
+        if (field.config.grain) return typeof resolved === 'string' ? dressDate({ ...field.config, now: this.now(), viewerZone: this.viewerZone ?? 'UTC' }, resolved) : resolved;
         return typeof resolved === 'number' ? dressNumber(field.config, resolved) : resolved;
       case 'view':
         return resolved && typeof resolved === 'object' ? this.#viewLine(resolved) : resolved;
@@ -6659,6 +6680,17 @@ export class Weave {
           return t ? this.entityName(t) : id;
         });
         return field.config.many ? names : (names[0] ?? null);
+      }
+      case 'lookup': {
+        /* A looked-up option or state wears the far field's name for it, the
+           way that column paints itself: the slug "credit-card" stood in for
+           "Credit card" (Issue #598). Other types keep their value as read. */
+        const rel = db.fields[field.config.relationField];
+        const targetDb = rel && this.state.tables[rel.config.targetDb];
+        const target = targetDb?.fields[field.config.targetField];
+        if (!['select', 'multiselect', 'workflow'].includes(target?.type)) return resolved;
+        const dress = (v) => this.#displayValue(targetDb, target, v);
+        return rel.config.many ? resolved.map(dress) : dress(resolved);
       }
       case 'rollup': {
         // The figure wears the column it summarises: a sum of dollars is
