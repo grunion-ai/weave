@@ -8,6 +8,11 @@
    truncates, the chip clips at its fill, and a truncated label carries the
    whole value as its title. State, multi-select and key chips share `.k`, so
    they are held to the same rule.
+   Since Issue #614 (Kyle, 2026-10-03: "make sure no part of the toggle or
+   box can be cut off by field resize") a select, a state and a multi-select
+   column floors at its widest option's chip, so the stored 124px below is
+   raised and those chips show whole. A key chip names a credential, which is
+   free text, so it still truncates and carries the ellipsis rule here.
    Geometry, not source: this suite drives a real browser. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,8 +47,8 @@ if (s) {
   const { base, browser } = s;
   const CHIPS = { Program: '.k-select', Stage: '.k-state', Tags: '.k-multi', Secret: '.k-key' };
 
-  async function grid(colorScheme) {
-    const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
+  async function grid(colorScheme, width = 1400) {
+    const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme });
     await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`tr[data-eid="${row.id}"] .k-select`);
     await page.waitForTimeout(300); // the clipped marker is written in a rAF after layout
@@ -86,13 +91,20 @@ if (s) {
         for (const [field, r] of Object.entries(m)) {
           assert.ok(r.chip, `${field}: the chip is drawn`);
           assert.ok(r.label, `${field}: the chip's label is its own span, so it can truncate`);
-          assert.equal(r.truncated, true, `${field}: the long value really is cut short (it needs more than ${COL}px)`);
-          assert.equal(r.textOverflow, 'ellipsis', `${field}: and it is cut with an ellipsis, not mid-letter`);
+          assert.equal(r.textOverflow, 'ellipsis', `${field}: a cut label ends in an ellipsis, not mid-letter`);
           assert.equal(r.chipOverflow, 'hidden', `${field}: nothing paints past the chip's fill`);
           assert.ok(r.insideFill, `${field}: the label ends inside the fill, before the chip's right padding`);
           assert.ok(r.insideCell, `${field}: the chip fits its column`);
-          assert.equal(r.title, r.text, `${field}: hovering anywhere on the cut chip shows the whole value (Issue #584)`);
           assert.equal(r.labelTitle, '', `${field}: the chip owns the tooltip, so the label carries none of its own`);
+          if (field !== 'Secret') {
+            // An option chip floors its column (Issue #614): the stored
+            // 124px is raised and the long value shows whole.
+            assert.equal(r.truncated, false, `${field}: the column is raised to the long option, so it is not cut`);
+            assert.equal(r.clipped, false, `${field}: and the cell is not marked clipped`);
+            continue;
+          }
+          assert.equal(r.truncated, true, `${field}: the long value really is cut short (it needs more than ${COL}px)`);
+          assert.equal(r.title, r.text, `${field}: hovering anywhere on the cut chip shows the whole value (Issue #584)`);
           assert.equal(r.clipped, true, `${field}: the cell is marked clipped, so the hover expansion still opens`);
         }
       } finally { await page.close(); }
@@ -131,6 +143,9 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  /* Since Issue #614 the column holds the long option whole, so the repaint
+     is checked for its label span and the ellipsis rule it carries, and for
+     landing uncut. */
   test('a repainted select chip keeps its truncating label', async () => {
     const page = await grid('light');
     try {
@@ -142,18 +157,22 @@ if (s) {
       const m = await measure(page, shortRow.id);
       assert.ok(m.Program.label, 'the repainted chip still has its label span');
       assert.equal(m.Program.textOverflow, 'ellipsis');
-      assert.equal(m.Program.truncated, true);
+      assert.equal(m.Program.truncated, false, 'the column already holds the widest option, so the picked one lands whole (Issue #614)');
       assert.ok(m.Program.insideFill, 'and still ends inside its fill');
     } finally { await page.close(); }
   });
 
-  // Last in the file: the drag saves the wider column into the view.
+  /* Last in the file: the drag saves the wider column into the view. A key
+     chip, because an option chip is never cut since Issue #614; the option
+     columns ahead of it open wider for the same reason, so the page is wide
+     enough to drag it in view. */
   test('a column resize rechecks the title: widened to fit, the chip gets its field name back (Issue #584)', async () => {
-    const page = await grid('light');
-    const chip = `tr[data-eid="${row.id}"] td[data-field="Program"] .k-select`;
+    const page = await grid('light', 2400);
+    const chip = `tr[data-eid="${row.id}"] td[data-field="Secret"] .k-key`;
     try {
-      assert.equal(await page.getAttribute(chip, 'title'), PROGRAM, 'cut at the start, the chip shows the whole value');
-      const grip = await page.locator('table.wv-grid th.col-head:has(.col-label:text-is("Program")) .col-resize').boundingBox();
+      const whole = await page.textContent(`${chip} > .k-label`);
+      assert.equal(await page.getAttribute(chip, 'title'), whole, 'cut at the start, the chip shows the whole value');
+      const grip = await page.locator('table.wv-grid th.col-head:has(.col-label:text-is("Secret")) .col-resize').boundingBox();
       const y = grip.y + grip.height / 2;
       await page.mouse.move(grip.x + grip.width / 2, y);
       await page.mouse.down();
@@ -164,7 +183,7 @@ if (s) {
         return l && l.scrollWidth <= l.clientWidth;
       }, chip);
       await page.waitForTimeout(300);
-      assert.equal(await page.getAttribute(chip, 'title'), 'Program', 'the value fits now, so the title is the field name again');
+      assert.match(await page.getAttribute(chip, 'title'), /^Secret — /, 'the value fits now, so the title is the one the chip was drawn with again');
     } finally { await page.close(); }
   });
 }

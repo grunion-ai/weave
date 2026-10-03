@@ -51,3 +51,37 @@ test('a value floor past the default wins for that column only; a stored width u
   assert.equal(CR.fit({ content: 40, floor: 63 }), 63, 'an autofit stops at it');
   assert.equal(CR.width({ base: 124, startX: 500, x: 300, floor: 63 }), 63, 'a drag stops at it');
 });
+
+/* Issue #614: no control of fixed shape is cut by a resize. A select or a
+   state floors at its widest option's chip; a multi-select at its widest
+   chip plus the +N count that says more are hidden, never the sum of every
+   chip. app.js measures the chips off the rendered cell; this composes them
+   with the cell's padding. Free text is not floored. */
+test('a chip floor holds the widest chip and the cell padding', () => {
+  assert.equal(CR.chipWidth({ chip: 112.3 }), 121, 'the widest chip, 112.3, + the ordinary cell\'s 8, rounded up');
+  assert.equal(CR.chipWidth({ chip: 112, pad: 24 }), 136, 'the row\'s last cell carries Tabler\'s 20px right pad, measured and passed in');
+  assert.equal(CR.chipWidth({ chip: 90, more: 21.5, gap: 4 }), 124, 'a multi-select keeps one chip, the gap and the +N count whole');
+  assert.equal(CR.chipWidth({ chip: 90, gap: 4 }), 98, 'no +N count (a single option) adds no gap');
+  assert.equal(CR.chipWidth(), 0, 'nothing measured, nothing floored');
+});
+
+test('a rating floors at every icon, up to the fit ceiling', () => {
+  assert.equal(CR.ratingFloor({ type: 'rating', max: 5 }), 82, 'five 14px icons (Feature #235\'s redrawn cell), four 1px gaps, the cell\'s 8');
+  assert.equal(CR.ratingFloor({ type: 'rating', max: 7 }, 24), 128, 'the last cell\'s padding is measured and passed in');
+  assert.equal(CR.ratingFloor({ type: 'rating', max: 100 }), CR.maxWidth({ type: 'rating' }), 'a hundred icons draw the compact form, not 1507px of icons');
+  assert.equal(CR.ratingFloor({ type: 'text' }), 0, 'only a rating has icons');
+});
+
+test('a chip or rating floor binds a stored width, a drag, a nudge and a fit for that column only', () => {
+  const floor = CR.chipWidth({ chip: 150.2 });
+  const out = CR.layout([
+    { name: 'State', type: 'workflow', floor, stored: 60 },
+    { name: 'Tags', type: 'multiselect', floor: CR.chipWidth({ chip: 40, more: 20, gap: 4 }) },
+    { name: 'Fit', type: 'rating', max: 5, floor: CR.ratingFloor({ type: 'rating', max: 5 }), stored: 50 },
+    { name: 'Note', type: 'text', stored: 40 },
+  ]);
+  assert.deepEqual(out, { State: 159, Tags: 180, Fit: 82, Note: 40 }, 'free text keeps a narrow stored width; it truncates');
+  assert.equal(CR.nudge({ width: 165, delta: -8, floor }), 159);
+  assert.equal(CR.fit({ content: 70, floor }), 159);
+  assert.equal(CR.width({ base: 200, startX: 500, x: 300, floor }), 159);
+});

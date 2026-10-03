@@ -253,7 +253,7 @@ A whole number from 0 to the field's \`max\`, drawn as \`max\` icons with the fi
 
 \`color\` — \`ink\` (default) fills the icons in the text colour with hairline outlines for the empties; \`icon\` fills them in the icon's own hue (a star amber, a heart rose, a bolt violet, anything else the accent); \`accent\` fills them in the workspace accent (Feature #235). The tray's **Color** picker shows three of the field's own icons in each setting. A lookup or a rollup of the rating draws in its colour.
 
-Icons are 14px with a 1px gap. A rating column dragged narrower than its icons, or past the fit cap, draws a compact \`★ 3/12\` instead of cutting icons off.
+Icons are 14px with a 1px gap. A rating column's floor holds every icon, so a drag, a nudge or a stored width never cuts one; past the fit cap (320px) the column stops there and draws a compact \`★ 3/12\` instead.
 
 \`default\` — the rating a new row starts with. In the field dialog it is picked on a row of the field's own icons: click the nth to set n, click it again to clear; with the row focused, the arrow keys move it, a digit sets it and \`Backspace\` clears it. Lowering \`max\` below the default brings the default down with it.
 
