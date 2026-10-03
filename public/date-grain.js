@@ -39,9 +39,14 @@
 
   /* A grain as a canonical array, or null for the full year·month·day (the
      default, which says nothing). Accepts an array or the tray's
-     { year, month, day } flags. Throws a plain Error the engine re-wraps. */
+     { year, month, day } flags. Anything else (a word like 'month') is
+     refused with the shape a grain takes: a bare 'month' is ambiguous between
+     month alone and year·month, so no alias is guessed (Issue #590). Throws a
+     plain Error the engine re-wraps. */
+  const GRAIN_SHAPE = 'grain is a list of parts, e.g. ["year","month"] for a month or ["year"] for a year; parts are year, month, day';
   function normalizeGrain(grain) {
     if (grain == null) return null;
+    if (typeof grain !== 'object') throw new Error(GRAIN_SHAPE);
     const list = Array.isArray(grain) ? grain.map(String) : PARTS.filter((p) => grain[p]);
     for (const p of list) if (!PARTS.includes(p)) throw new Error(`Unknown grain part '${p}' (year, month, day)`);
     const canon = PARTS.filter((p) => list.includes(p));

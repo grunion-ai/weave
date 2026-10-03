@@ -106,6 +106,8 @@ export const VOCABULARY = {
      month and quarter need a month, ordinal a day, relative a year. Stored
      forms are ISO 8601 truncations: 2026-08, 2026, --08-15, --08, ---15, 09:15. */
   dateGrains: ['year', 'month', 'day'],
+  // config.grain is a list of those parts (or the dialog's {year, month, day} flags); a word is refused (Issue #590).
+  dateGrainForm: 'a list of parts, e.g. ["year","month"] for a month or ["year"] for a year',
   dateStyleNeeds: { month: ['month'], quarter: ['month'], ordinal: ['day'], relative: ['year'] },
   clocks: ['24h', '12h'],
   // What a clock time means: floating (the wall clock as typed, no zone —
