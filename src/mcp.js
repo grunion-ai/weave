@@ -476,7 +476,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_import_json',
-    description: 'Replace the workspace with a JSON export. Destructive: everything not in the document is gone.',
+    description: 'Replace the workspace with a JSON export. Destructive: everything not in the document is gone. The result names every file that arrived without its bytes (missing).',
     inputSchema: { type: 'object', properties: { state: { type: 'object' } }, required: ['state'] },
   },
 ];
@@ -831,8 +831,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       // and GET /api/export are the backup surfaces and carry the blobs.
       return weave.exportJSON({ blobs: args.blobs === true });
     case 'weave_import_json':
-      weave.importJSON(args.state);
-      return { ok: true };
+      return { ok: true, ...weave.importJSON(args.state) };
     default:
       throw Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
   }

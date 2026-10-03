@@ -758,7 +758,7 @@ In the app, drop files from your desktop onto the field's cell in the grid, or o
 
 ## Gotchas
 
-Files are not documents. A document is written and rendered; an attachment is stored and handed back. Copying the \`.db\` on its own drops every attachment — back up \`files/\` beside it, or take a \`weave export\`, whose JSON carries the bytes inline and lands them in \`files/\` again on import.
+Files are not documents. A document is written and rendered; an attachment is stored and handed back. Copying the \`.db\` on its own drops every attachment — back up \`files/\` beside it, or take a \`weave export\`, whose JSON carries the bytes inline and lands them in \`files/\` again on import. The MCP \`weave_export_json\` leaves the bytes out unless it is called with \`blobs: true\`; import that dump into another data directory and each file arrives as a name only. The import result counts the files and lists each one without bytes under \`missing\`.
 
 A file whose bytes are gone keeps its name and is marked \`(missing)\` in the cell and on the record. Metadata outlives the blob, so weave says which file was lost rather than offering a link that cannot open.
 

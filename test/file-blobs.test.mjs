@@ -190,3 +190,73 @@ test('a missing file is named in the cell, not silently dropped', () => {
   rmSync(join(dir, 'files', file));
   assert.equal(w.readEntity(entity).fields.Slides, 'c-json-editor.html (missing)');
 });
+
+/* Issue #622: weave_query with a `select` naming an attachments column said
+   `(missing)` for a file that was there. The select path resolved the path
+   without the row, so the file ledger it looks names up in was empty. An
+   agent reading that concludes the upload failed and uploads it again. */
+test('a query select names an attached file the way the record does', () => {
+  const dir = tmp();
+  const w = new Weave({ path: join(dir, 'ws.db') });
+  const { file } = seed(w);
+  const [row] = dispatchTool(w, 'weave_query', { db: 'Deck', select: ['Name', 'Slides'] }).items;
+  assert.equal(row.Slides, 'c-json-editor.html');
+  rmSync(join(dir, 'files', file));
+  const [gone] = dispatchTool(w, 'weave_query', { db: 'Deck', select: ['Slides'] }).items;
+  assert.equal(gone.Slides, 'c-json-editor.html (missing)', 'a lost blob still names its file');
+});
+
+/* Issue #462: the MCP dump leaves the bytes out by design (above), and
+   importing it into a fresh data directory lands every file as a name with
+   no bytes. The import used to report nothing, so the rows looked like the
+   Issue #250 casualties. The import now counts the files it holds and names
+   every one that arrived without bytes, on every surface that imports. */
+test('importing a dump without bytes names every file it could not land', () => {
+  const src = new Weave({ path: join(tmp(), 'src.db') });
+  const { entity, file } = seed(src);
+  const dump = JSON.parse(JSON.stringify(dispatchTool(src, 'weave_export_json', {})));
+  const dst = new Weave({ path: join(tmp(), 'dst.db') });
+  const res = dispatchTool(dst, 'weave_import_json', { state: dump });
+  assert.equal(res.ok, true);
+  assert.equal(res.files, 1);
+  assert.deepEqual(res.missing, [{ entity, file, name: 'c-json-editor.html' }]);
+  assert.match(res.warning, /1 of 1 files? arrived without (its|their) bytes/);
+});
+
+test('a dump that carries its bytes imports with nothing missing', () => {
+  const src = new Weave({ path: join(tmp(), 'src.db') });
+  seed(src);
+  const dump = JSON.parse(JSON.stringify(src.exportJSON()));
+  const res = new Weave({ path: join(tmp(), 'dst.db') }).importJSON(dump);
+  assert.deepEqual(res, { files: 1, missing: [] });
+});
+
+test('the MCP dump imported back into its own workspace finds its bytes', () => {
+  const w = new Weave({ path: join(tmp(), 'ws.db') });
+  seed(w);
+  const dump = JSON.parse(JSON.stringify(dispatchTool(w, 'weave_export_json', {})));
+  assert.deepEqual(w.importJSON(dump), { files: 1, missing: [] });
+});
+
+test('POST /api/import and the CLI report the files without bytes', async () => {
+  const srcDir = tmp();
+  const src = new Weave({ path: join(srcDir, 'src.db') });
+  const { file } = seed(src);
+  const dump = dispatchTool(src, 'weave_export_json', {});
+  const dst = new Weave({ path: join(tmp(), 'dst.db') });
+  const { server } = await startServer(dst, { port: 0 });
+  try {
+    const res = await (await fetch(`http://127.0.0.1:${server.address().port}/api/import`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dump),
+    })).json();
+    assert.equal(res.ok, true);
+    assert.equal(res.missing[0].file, file);
+  } finally {
+    server.close();
+  }
+  const dumpPath = join(srcDir, 'reader.json');
+  writeFileSync(dumpPath, JSON.stringify(dump));
+  const out = JSON.parse(execFileSync('node', [CLI, 'import', '--file', dumpPath, '--data', join(tmp(), 'cli.db')], { encoding: 'utf8' }));
+  assert.equal(out.missing[0].file, file);
+  assert.match(out.warning, /without/);
+});

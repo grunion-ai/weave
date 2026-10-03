@@ -991,8 +991,7 @@ async function main() {
     }
     case 'import': {
       if (!flags.file) throw new WeaveError('import needs --file');
-      w.importJSON(JSON.parse(readFileSync(flags.file, 'utf8')));
-      return out({ ok: true });
+      return out({ ok: true, ...w.importJSON(JSON.parse(readFileSync(flags.file, 'utf8'))) });
     }
     /* Everything below reaches a capability the web UI has always had and the
        terminal did not — which made a browser the only way to do it. */
