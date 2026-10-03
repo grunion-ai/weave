@@ -20,6 +20,7 @@ test('every field type has a default width; the mockup values hold exactly', () 
   assert.equal(d('text'), 180);
   assert.equal(d('document'), 280, 'long text');
   assert.equal(d('document', { role: 'description' }), 280);
+  assert.equal(d('document', { role: 'description', empty: true }), 180, 'an empty description opens at the text width (Issue #575)');
   assert.equal(d('select'), 124);
   assert.equal(d('relation'), 136, 'a person is a relation to a row');
   assert.equal(d('date'), 112);

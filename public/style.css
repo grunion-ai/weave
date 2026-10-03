@@ -452,6 +452,10 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 #main .table-wrap.wv-fit .wv-grid thead th { top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px)); }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* A figure whose costume printed its raw text rests as the input itself
+   (44.22 at two decimals), and an input aligns its text left whatever the
+   cell says: it ends on the same right edge as a dressed 44.20 (Issue #574). */
+.wv-grid td.num input.inline-edit { text-align: right; }
 /* The id column carries a short "#12 ↗" link — collapse it to its content
    instead of letting the table hand it an equal share of the width. */
 .wv-grid th.pid-head, .wv-grid td.pid-cell { width: 1%; white-space: nowrap; text-align: left; padding-right: 6px; }

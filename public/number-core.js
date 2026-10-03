@@ -35,7 +35,10 @@
     // 10.000000000000002) never reaches the reader.
     const scaled = c.format === 'percent' ? Math.round(n * 100 * 1e8) / 1e8 : n;
     // Zero decimals unless the field says otherwise (currency above: two).
-    let text = scaled.toFixed(c.decimals ?? 0);
+    // A separator alone only groups thousands: 44.22 stays 44.22, never 44
+    // (Issue #574). Up to six places, which keeps float noise out.
+    const own = c.decimals == null && c.separator && c.format == null && c.unit == null;
+    let text = own ? String(Math.round(scaled * 1e6) / 1e6) : scaled.toFixed(c.decimals ?? 0);
     if (c.separator) {
       const [int, frac] = text.split('.');
       text = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (frac ? '.' + frac : '');

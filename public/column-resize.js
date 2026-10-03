@@ -138,6 +138,9 @@
     // is still a number box, and the box wants its 88px.
     if (rich != null) return Math.min(maxWidth(f), Math.ceil(Math.max(rich, DEFAULT_WIDTHS.number)));
     if (f.type === 'number' && f.currency) return CURRENCY_WIDTH;
+    // A document with nothing in it opens at the text width (Issue #575);
+    // prose earns the long-text width.
+    if (f.type === 'document' && f.empty) return DEFAULT_WIDTHS.text;
     return DEFAULT_WIDTHS[f.type] ?? FALLBACK_WIDTH;
   };
 
