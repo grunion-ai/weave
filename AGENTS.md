@@ -50,6 +50,13 @@ to [Using weave as an agent](#using-weave-as-an-agent).
    `*.json` workspaces, and `files/` are gitignored local state.
 6. **Node ≥ 22.16** is the floor (Node 24 LTS recommended); `node:sqlite`
    requires it.
+7. **A landing is not a deploy.** A host that runs `weave supervise` with
+   `WEAVE_AUTO_UPDATE=1` (the hosted instance does) installs each new release
+   tag itself, with no restart and no failed request. Never redeploy it to ship
+   a change: a platform redeploy restarts the container, drops requests for up
+   to a minute and resets the supervisor. Redeploy only for a Node version, a
+   `Dockerfile` or a `src/supervisor.js` change. A landed fix reaches the host
+   with the next release.
 
 ## Using weave as an agent
 
