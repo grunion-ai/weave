@@ -91,7 +91,7 @@ At [Entity name], we strive to apply the same data rights to all customers, rega
 
 Many of these rights can be exercised by signing in and updating your account information. Please note that certain information may be exempt from such requests under applicable law; for example, we need to retain certain information in order to provide our services to you.
 
-In some cases, we also need to take reasonable steps to verify your identity before responding to a request, which may include, at a minimum, depending on the sensitivity of the information you are requesting and the type of request you are making, verifying your name and email address. If we are unable to verify you, we may be unable to respond to your requests. If you have questions about exercising these rights or need assistance, please contact us at [Contact email] or at [Entity name], [Address]. If an authorized agent is corresponding on your behalf, we will need written consent with a signature from the account holder before proceeding.
+In some cases, we also need to take reasonable steps to verify your identity before responding to a request, which may include, at a minimum, depending on the sensitivity of the information you are requesting and the type of request you are making, verifying your name and email address. If we are unable to verify you, we may be unable to respond to your requests. If you have questions about exercising these rights or need assistance, please contact us at [weave@grunion.ai](mailto:weave@grunion.ai). If an authorized agent is corresponding on your behalf, we will need written consent with a signature from the account holder before proceeding.
 
 Depending on applicable law, you may have the right to appeal our decision to deny your request, if applicable. We will provide information about how to exercise that right in our response denying the request. You also have the right to lodge a complaint with a supervisory authority. If you are in the EU or UK, you can contact your data protection authority to file a complaint or learn more about local privacy laws.
 
@@ -117,7 +117,7 @@ Weave and our other web properties are operated in the United States. If you are
 
 We may update this policy as needed to comply with relevant regulations and reflect any new practices. You can view a history of the changes to this policy in weave's public repository, [github.com/grunion-ai/weave](https://github.com/grunion-ai/weave). Whenever we make a significant change to our policies, we will refresh the date at the top of this page and take any other appropriate steps to notify users.
 
-Have any questions, comments, or concerns about this privacy policy, your data, or your rights with respect to your information? Please get in touch by emailing us at [Contact email] and we'll be happy to try to answer them!
+Have any questions, comments, or concerns about this privacy policy, your data, or your rights with respect to your information? Please get in touch by emailing us at [weave@grunion.ai](mailto:weave@grunion.ai) and we'll be happy to try to answer them!
 
 ---
 
@@ -140,7 +140,7 @@ We may update these Terms of Service ("Terms") in the future. You can track all 
 
 By using our Services, now or in the future, you are agreeing to the latest Terms. There may be times where we do not exercise or enforce a right or provision of the Terms; however, that does not mean we are waiving that right or provision. **These Terms do contain a limitation of our liability.**
 
-If you violate any of the Terms, we may terminate your account. That's a broad statement and it means you need to place a lot of trust in us. We keep an open door to your feedback at [Contact email].
+If you violate any of the Terms, we may terminate your account. That's a broad statement and it means you need to place a lot of trust in us. We keep an open door to your feedback at [weave@grunion.ai](mailto:weave@grunion.ai).
 
 ## Account Terms
 
@@ -151,7 +151,7 @@ If you violate any of the Terms, we may terminate your account. That's a broad s
 
 ## Cancellation and Termination
 
-1. You are solely responsible for properly canceling your account. To cancel your account, or if you need help canceling it, contact us at [Contact email].
+1. You are solely responsible for properly canceling your account. To cancel your account, or if you need help canceling it, contact us at [weave@grunion.ai](mailto:weave@grunion.ai).
 2. All of your content will be inaccessible from the Services immediately upon account cancellation. Within 30 days, all content will be permanently deleted from active systems and logs. Within 60 days, all content will be permanently deleted from our backups. We cannot recover this information once it has been permanently deleted. If you want to export any data before your account is canceled, use weave's workspace export.
 3. We have the right to suspend or terminate your account and refuse any and all current or future use of our Services for any reason at any time. Suspension means you and any other users on your account will not be able to access the account or any content in the account; termination will furthermore delete your account or your access to your account, and you forfeit and relinquish all content in your account. We also reserve the right to refuse the use of the Services to anyone for any reason at any time (for more details, see the Use Restrictions section below).
 4. Verbal, physical, written or other abuse (including threats of abuse or retribution) of a Company employee or officer will result in immediate account termination.
@@ -164,7 +164,7 @@ Sometimes it becomes technically impossible to continue a feature or we redesign
 
 1. Your use of the Services is at your sole risk. We provide these Services on an "as is" and "as available" basis. We do not offer service-level agreements for our Services, but do take uptime of our applications seriously.
 2. We reserve the right to temporarily disable your account if your usage significantly exceeds the average usage of other customers of the Services. Of course, we'll reach out to the account owner before taking any action except in rare cases where the level of use may negatively impact how the Service performs for other customers.
-3. We take measures to protect and secure your data, including encryption, and we enforce encryption for data transmission from the public Internet. To report a security incident or threat, email [Contact email].
+3. We take measures to protect and secure your data, including encryption, and we enforce encryption for data transmission from the public Internet. To report a security incident or threat, email [weave@grunion.ai](mailto:weave@grunion.ai).
 4. By using our Services, you entrust us with your data. We take that trust to heart. You agree that [Entity name] may process your data as described in our [Privacy policy](/privacy) and for no other purpose. We as humans can access your data for the following reasons:
   * **To help you with support requests you make.** We'll ask for express consent before accessing your account.
   * **On the rare occasions when an error occurs that stops an automated process partway through.** We get automated alerts when such errors occur. If we can fix the issue and restart automated processing without looking at any personal data, we do. In rare cases, we have to look at a minimum amount of personal data to fix the issue. In these rare cases, we aim to fix the root cause to prevent the errors from recurring.
@@ -175,10 +175,10 @@ Sometimes it becomes technically impossible to continue a feature or we redesign
 
 ## Copyright and Content Ownership
 
-1. All content posted on the Services must comply with U.S. copyright law. To file a copyright infringement claim, email [Contact email].
+1. All content posted on the Services must comply with U.S. copyright law. To file a copyright infringement claim, email [weave@grunion.ai](mailto:weave@grunion.ai).
 2. You give us a limited license to use the content posted by you and your users in order to provide the Services to you, but we claim no ownership rights over those materials. All materials you submit to the Services remain yours.
 3. We do not pre-screen content, but we reserve the right (but not the obligation) in our sole discretion to refuse or remove any content that is available via the Service.
-4. The Company or its licensors own all right, title, and interest in and to the Services, including all intellectual property rights therein, and you obtain no ownership rights in the Services as a result of your use. Except as the license of weave's public source code allows, you may not duplicate, copy, or reuse any portion of the HTML, CSS, JavaScript, or visual design elements without express written permission from the Company. You must request permission to use the Company's logos or any Service logos for promotional purposes. Please email requests to use logos to [Contact email]. We reserve the right to rescind any permissions if you violate these Terms.
+4. The Company or its licensors own all right, title, and interest in and to the Services, including all intellectual property rights therein, and you obtain no ownership rights in the Services as a result of your use. Except as the license of weave's public source code allows, you may not duplicate, copy, or reuse any portion of the HTML, CSS, JavaScript, or visual design elements without express written permission from the Company. You must request permission to use the Company's logos or any Service logos for promotional purposes. Please email requests to use logos to [weave@grunion.ai](mailto:weave@grunion.ai). We reserve the right to rescind any permissions if you violate these Terms.
 5. Except as the license of weave's public source code allows, you agree not to reproduce, duplicate, copy, sell, resell or exploit any portion of the Services, use of the Services, or access to the Services without the express written permission of the Company.
 
 ## Features and Bugs
@@ -212,7 +212,7 @@ By using the Services, you acknowledge that you may not:
 
 Accounts found to be in violation of any of the above are subject to cancellation without prior notice.
 
-Violations can be reported by emailing [Contact email] and should include detailed information about the account, the content or behavior you are reporting, and how you found it, including URLs or screenshots. We will not disclose your identity to anyone associated with the reported account.
+Violations can be reported by emailing [weave@grunion.ai](mailto:weave@grunion.ai) and should include detailed information about the account, the content or behavior you are reporting, and how you found it, including URLs or screenshots. We will not disclose your identity to anyone associated with the reported account.
 
 ## Liability
 
@@ -222,7 +222,7 @@ We mention liability throughout these Terms but to put it all in one section:
 
 In other words: choosing to use our Services does mean you are making a bet on us. If the bet does not work out, that's on you, not us.
 
-If you have a question about any of these Terms, please contact us at [Contact email].
+If you have a question about any of these Terms, please contact us at [weave@grunion.ai](mailto:weave@grunion.ai).
 
 ---
 
