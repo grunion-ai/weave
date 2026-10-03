@@ -493,8 +493,26 @@ export const CORE_TOOLS = new Set([
   'weave_create_space', 'weave_create_table', 'weave_add_field', 'weave_update_field', 'weave_add_relation',
   'weave_import_csv', 'weave_vocabulary', 'weave_workspace', 'weave_search', 'weave_build', 'weave_call',
 ]);
-// The line weave_call shows for each tool the core list leaves out.
-const SUMMARY = {
+// One line per tool: weave_call shows the lines for the tools the core list
+// leaves out, and scripts/agent-docs.mjs prints all of them in AGENTS.md's
+// tool map (Feature #258).
+export const SUMMARY = {
+  weave_build: 'spaces, tables, fields, relations and rows in one call (dryRun checks)',
+  weave_schema: 'every space, table and field, with types and options',
+  weave_query: 'rows of one table, filtered (where), sorted, paged',
+  weave_get_entity: 'one row in full: values, document, comments, activity',
+  weave_search: 'find rows, tables and spaces by text; each hit has a permalink',
+  weave_create_entity: 'create one row',
+  weave_update_entity: 'change one row\'s values',
+  weave_import_csv: 'many rows into one table from CSV text',
+  weave_create_space: 'create a space',
+  weave_create_table: 'create a table in a space',
+  weave_add_field: 'add a field to a table',
+  weave_update_field: 'rename, retype or reconfigure a field (options are a full replacement)',
+  weave_add_relation: 'add a relation and its inverse between two tables',
+  weave_workspace: 'read or rename the workspace, set its description or logo',
+  weave_vocabulary: 'allowed values, one section per call; a build needs at most optionColors and icons (with query)',
+  weave_call: 'run any other tool by name; help describes one',
   weave_delete_entity: 'trash a row (hard: true purges)',
   weave_restore_entity: 'bring a row back from the trash',
   weave_trash: 'list trashed rows',
@@ -822,6 +840,19 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
    transport-free, so stdio and POST /api/mcp (Feature #99) cannot drift.
    HTTP note: requests are stateless, so the actor set by `initialize` lasts
    one request; HTTP clients name themselves per call with x-weave-actor. */
+/* Feature #258: initialize.instructions is what an MCP client shows its model
+   before the first call, and Claude Code keeps the first 2,048 characters. The
+   primer is src/mcp-primer.md, read on the first initialize rather than at
+   module top (the workerd note above); without the file the handshake simply
+   carries no instructions. */
+let PRIMER;
+export function primer() {
+  if (PRIMER === undefined) {
+    try { PRIMER = readFileSync(new URL('./mcp-primer.md', import.meta.url), 'utf8'); } catch { PRIMER = null; }
+  }
+  return PRIMER;
+}
+
 export function handleMcpMessage(weave, msg, { version = VERSION, caller = null, tools = toolProfile() } = {}) {
   const { id, method, params } = msg ?? {};
   const reply = (result) => (id !== undefined ? { jsonrpc: '2.0', id, result } : null);
@@ -835,6 +866,7 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
           protocolVersion: params?.protocolVersion ?? PROTOCOL_VERSION,
           capabilities: { tools: {} },
           serverInfo: { name: 'weave', version },
+          ...(primer() ? { instructions: primer() } : {}),
         });
       case 'notifications/initialized':
       case 'initialized':
