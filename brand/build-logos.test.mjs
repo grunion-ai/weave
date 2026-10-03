@@ -121,10 +121,11 @@ test("light-mode secondary strand is ink navy (decision 5B)", () => {
   assert.ok(light.includes("#0c1b33"));
 });
 
-test("build() writes every variant as an svg file", () => {
+test("build() writes every variant as an svg file, plus the app's loader fragment", () => {
   const dir = mkdtempSync(join(tmpdir(), "weave-brand-"));
   const written = build(dir);
-  assert.equal(written.length, VARIANTS.length);
+  assert.equal(written.length, VARIANTS.length + 1);
+  assert.ok(readFileSync(join(dir, "weave-loader-rope.html"), "utf8").startsWith("<style>"), "the fragment carries its CSS first");
   const onDisk = readdirSync(dir).filter(f => f.endsWith(".svg"));
   assert.equal(onDisk.length, VARIANTS.length);
   for (const f of onDisk) {

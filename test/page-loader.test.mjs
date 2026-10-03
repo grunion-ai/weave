@@ -13,7 +13,10 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { LOADER_CYCLE_MS, VARIANTS } from '../brand/build-logos.mjs';
+import {
+  LOADER_CYCLE_MS, VARIANTS, PALETTE, ROPE, loaderDraw, loaderStill, loaderRopeHtml, loaderRopeCss,
+  ropePose, ropeStops, strandPose, dashOffset,
+} from '../brand/build-logos.mjs';
 import { APP, HTML, CSS, px } from './lib/source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,10 +35,76 @@ test('a shown loader always finishes at least one whole cycle', () => {
   assert.match(APP, /const elapsed = Date\.now\(\) - loading\.shownAt/);
 });
 
-test('showing the loader restarts the clock so the cycle starts at the start', () => {
+test('showing the loader restarts the rope so the cycle starts at the start', () => {
+  // The rope's animations are CSS on elements inside the host, and [hidden] is
+  // display:none, so un-hiding the host starts it again at 0 (Issue #390).
+  // SMIL's setCurrentTime is gone with SMIL.
+  assert.match(CSS, /#page-loader\[hidden\] \{ display: none; \}/);
+  assert.match(CSS, /#main > \.grid-loader\[hidden\] \{ display: none; \}/);
   const show = APP.slice(APP.indexOf('function showPageLoader'));
-  assert.match(show.slice(0, 500), /setCurrentTime\(0\)/,
-    'an <img> timeline free-runs; only a restarted inline SVG begins a whole weave');
+  assert.match(show.slice(0, 400), /host\.hidden = false/);
+  assert.doesNotMatch(APP, /setCurrentTime/, 'no SMIL clock is left to restart');
+});
+
+/* Issue #390: the rope froze whenever the main thread was busy, because it
+   animated stroke-dashoffset with SMIL. The app now shows the weave-on rope at
+   rest through windows that move by transform only; the compositor owns that
+   motion. Kyle ruled on the look (2026-09-28): the moving ends are the old
+   round caps and the unweave ends on the two end dots. The browser half of the
+   gate is page-loader-browser. */
+const FRAGMENT = loaderRopeHtml();
+const strip = (svg) => svg.replace(/ pathLength="100" stroke-dasharray="100 110"/g, '')
+  .replace(/<animate [^>]*\/>/g, '').replace(/(<path [^>]*)><\/path>/g, '$1/>');
+
+test('the still rope is the weave-on mark at rest: same paths, same masks', () => {
+  for (const [c2, id] of [[PALETTE.sky, 'sd'], [PALETTE.ink, 'sl']]) {
+    assert.equal(loaderStill({ c1: PALETTE.blue, c2, id }), strip(loaderDraw({ c1: PALETTE.blue, c2, id })));
+  }
+  // Each strand the app shows is that mark's own path under its own mask.
+  for (const [c2, id] of [[PALETTE.sky, 'rd'], [PALETTE.ink, 'rl']]) {
+    const drawn = strip(loaderDraw({ c1: PALETTE.blue, c2, id }));
+    for (const el of drawn.match(/<mask [\s\S]*?<\/mask>|<path [^>]*mask="url[^>]*\/>/g)) {
+      assert.ok(FRAGMENT.includes(el), `the fragment carries ${el.slice(0, 60)}`);
+    }
+  }
+});
+
+test('each end of the rope rides the dash end it replaces', () => {
+  const K = ROPE.tailScale;
+  for (const end of ['head', 'tail']) {
+    const stops = ropeStops(end);
+    for (let k = 0; k <= 400; k++) {
+      const u = k / 400;
+      const i = Math.max(1, stops.findIndex(([o]) => o >= u));
+      const [a, b] = [stops[i - 1], stops[i]];
+      const got = a.map((v, c) => v + (b[c] - v) * (u - a[0]) / (b[0] - a[0] || 1));
+      const want = ropePose(u, end);
+      for (const c of [1, 2, 3]) assert.ok(Math.abs(got[c] - want[c - 1]) <= 0.05, `${end} u=${u}: coordinate ${c}`);
+      assert.ok(Math.abs(got[4] - want[3]) <= 1, `${end} u=${u}: direction`);
+      // And the pose is where the old dash had that end.
+      const o = dashOffset(u), s = end === 'head' ? 100 - o : -o * K;
+      const on = end === 'head' ? u < 0.62 && s > 0 : u >= 0.62 && s < 100;
+      const whole = on && (end === 'head' ? s >= 100 : s <= 0);
+      if (whole) {
+        // At rest the far-side window alone shows the whole strand, the rest parked.
+        assert.deepEqual(want, [ROPE.whole[end], ...ROPE.park[end === 'head' ? 'tail' : 'head']], `${end} u=${u} shows it whole`);
+      } else if (on) assert.deepEqual(want.slice(1), strandPose(Math.min(s, 100)), `${end} u=${u} sits on the dash end`);
+      else assert.deepEqual(want.slice(1), ROPE.park[end], `${end} u=${u} waits off the strand`);
+    }
+  }
+});
+
+test('the rope moves by transform only, on the published cycle', () => {
+  const css = loaderRopeCss();
+  assert.ok(FRAGMENT.includes(`<style>\n${css}</style>`), 'the fragment carries the generated CSS');
+  const frames = css.slice(css.indexOf('@keyframes'));
+  const props = new Set([...frames.matchAll(/\{\s*([a-z-]+):/g)].map((m) => m[1]));
+  assert.deepEqual([...props], ['transform'], 'only transform keeps the rope on the compositor');
+  const runs = [...css.matchAll(/animation: (rope-[a-z-]+) (\d+)ms linear infinite;/g)];
+  assert.equal(runs.length, 12, 'three windows and their contents at each end');
+  for (const [, , ms] of runs) assert.equal(Number(ms), LOADER_CYCLE_MS);
+  assert.doesNotMatch(css, /stroke-dashoffset|clip-path|mask-position/);
+  assert.doesNotMatch(CSS, /stroke-dashoffset/);
 });
 
 test('a fast route never pays for the loader', () => {
@@ -115,18 +184,18 @@ test('the inlined rope is given a size', () => {
 });
 
 test('both themes are shipped and selected the same way as the rail mark', () => {
-  assert.match(APP, /weave-loader-\$\{theme\}\.svg/);
+  assert.match(APP, /fetch\('\/brand\/weave-loader-rope\.html'\)/);
+  assert.match(FRAGMENT, /<span class="mark-light">/);
+  assert.match(FRAGMENT, /<span class="mark-dark">/);
   assert.match(CSS, /\[data-bs-theme="dark"\] #page-loader \.mark-light \{ display: none; \}/);
   assert.match(CSS, /\[data-bs-theme="dark"\] #page-loader \.mark-dark \{ display: block; \}/);
 });
 
 test('the served loaders are byte-identical to the generated brand assets', () => {
-  for (const theme of ['dark', 'light']) {
-    const file = `weave-loader-${theme}.svg`;
-    assert.ok(VARIANTS.some((v) => v.file === file), `${file} is a build variant`);
-    assert.equal(read(`public/brand/${file}`), read(`brand/assets/${file}`),
-      `public/brand/${file} is a stale copy — re-run brand/build-logos.mjs and copy it across`);
-  }
+  const file = 'weave-loader-rope.html';
+  assert.equal(read(`public/brand/${file}`), read(`brand/assets/${file}`),
+    `public/brand/${file} is a stale copy — re-run brand/build-logos.mjs and copy it across`);
+  assert.equal(read(`brand/assets/${file}`), FRAGMENT + '\n', `brand/assets/${file} is stale — re-run brand/build-logos.mjs`);
 });
 
 test('the README\'s inline HTML survives GitHub\'s tag scanner', () => {
