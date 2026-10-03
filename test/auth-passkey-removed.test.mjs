@@ -99,9 +99,36 @@ test('page: the sign-in page has no passkey or register-device control and still
     const page = await (await s.call('GET', '/auth?signed-out=1')).text();
     assert.match(page, /Sign in with Clerk/);
     assert.doesNotMatch(page, /passkey|Register this device/i);
-    const wall = await (await s.call('GET', '/')).text();
+    const wall = await (await s.call('GET', '/', { token: 'wv_bogus' })).text();
     assert.doesNotMatch(wall, /passkey/i, 'the wall page no longer points at passkeys');
     assert.match(wall, /Sign in with Clerk/);
+  } finally { s.stop(); }
+});
+
+/* Kyle, 2026-10-02 (Issue #569): "remove this page a redirect directly to
+   clerk login". With a provider, a signed-out browser never sees the wall
+   page: it gets a 302 to /auth, which goes on to the provider. An API
+   caller keeps the JSON 401, and a bad Bearer token keeps the 401 page,
+   since sign-in is no answer to a wrong token and the header would follow
+   the redirect round. */
+test('routes: with a provider, the wall sends a signed-out browser to sign-in; the API keeps its 401', async () => {
+  const s = await serve();
+  try {
+    const name = s.w.state.meta.name;
+    for (const [path, next] of [['/', '/'], ['/e/nope/doc.html', '/e/nope/doc.html'], [`/w/${name}/`, `/w/${name}/`]]) {
+      const res = await s.call('GET', path);
+      assert.equal(res.status, 302, `${path} answered ${res.status}`);
+      const prefix = path.startsWith('/w/') ? `/w/${name}` : '';
+      assert.equal(res.headers.get('location'), `${prefix}/auth?next=${encodeURIComponent(next)}`);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      assert.equal(await res.text(), '', 'no wall page');
+    }
+    const api = await s.call('GET', '/api/schema');
+    assert.equal(api.status, 401);
+    assert.equal((await api.json()).code, 'unauthorized');
+    const bad = await s.call('GET', '/e/nope/doc.html', { token: 'wv_bogus' });
+    assert.equal(bad.status, 401);
+    assert.match(await bad.text(), /This workspace requires authentication/);
   } finally { s.stop(); }
 });
 
@@ -130,10 +157,10 @@ test('routes: a signed-out visit to /auth goes straight to the provider, keeping
     assert.equal(start.status, 302);
     const to = new URL(start.headers.get('location'));
     assert.equal(to.origin + to.pathname, `${s.idp.issuer}/oauth/authorize`);
-    // From the wall: the page's own link lands on the provider in two hops.
-    const wall = await (await s.call('GET', '/e/nope/doc.html')).text();
-    const href = wall.match(/href="([^"]+)"/)[1].replace(/&amp;/g, '&');
-    const hop = await s.call('GET', href);
+    // From the wall: a signed-out page lands on the provider in three hops.
+    const wall = await s.call('GET', '/e/nope/doc.html');
+    assert.equal(wall.status, 302);
+    const hop = await s.call('GET', wall.headers.get('location'));
     assert.equal(hop.status, 302);
     assert.match(hop.headers.get('location'), /^\/api\/auth\/oidc\/start\?next=%2Fe%2Fnope%2Fdoc\.html$/);
     // A dead session cookie is signed out too.

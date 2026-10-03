@@ -107,10 +107,10 @@ async function serve({ requireAuth = true, origin, limits = { options: 1000, fai
 test('routes: a provider sign-in sets a session cookie that opens the wall; logout closes it again', async () => {
   const s = await serve();
   try {
-    // The wall, with the sign-in page as its door.
+    // The wall sends a signed-out browser to the sign-in door (Issue #569).
     const walled = await s.call('GET', `/e/${s.task.id}/doc.html`);
-    assert.equal(walled.status, 401);
-    assert.match(await walled.text(), /href="\/auth\?next=/);
+    assert.equal(walled.status, 302);
+    assert.equal(walled.headers.get('location'), `/auth?next=${encodeURIComponent(`/e/${s.task.id}/doc.html`)}`);
     const door = await s.call('GET', '/auth');
     assert.equal(door.status, 302, 'the sign-in door is open and goes straight to the provider');
     assert.equal(door.headers.get('location'), '/api/auth/oidc/start');

@@ -241,10 +241,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
        are needed before anyone can sign in: /api/health for a monitor, the
        share link and the applet above, the sign-in page at /auth with its
        ceremonies under /api/auth/ (part 2), and the static CSS/JS/font/image
-       assets — never a .html, which is the app itself. A browser gets a
-       page, an API caller keeps the JSON. */
+       assets — never a .html, which is the app itself. A browser gets
+       sign-in or a page, an API caller keeps the JSON. */
     const authHref = `${wsPrefix}/auth?next=${encodeURIComponent(wsPrefix + path)}`;
     const wallPage = () => out(401, wallPageHtml(authHref, oidc?.name), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    // With a provider, a signed-out browser skips the page: /auth sends it
+    // on to the provider, ?next kept (Issue #569). The page stays for token
+    // and share-link instances, and for a bad Bearer token.
+    const wall = () => (oidc ? { status: 302, headers: { Location: authHref, 'Cache-Control': 'no-store' }, body: '' } : wallPage());
     const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/')
       || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
@@ -275,7 +279,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(rx), 'Cache-Control': 'no-store' }, body: '' };
       }
     } else if (weave.state.meta.requireAuth && !openDoor) {
-      return path.startsWith('/api/') ? deny(401, 'This workspace requires authentication') : wallPage();
+      return path.startsWith('/api/') ? deny(401, 'This workspace requires authentication') : wall();
     }
     // The caps reach the page routes too: every page is a read, so a reader
     // may GET any of them and POST at none (Feature #222 phase 0). The auth
