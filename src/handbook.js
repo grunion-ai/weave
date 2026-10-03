@@ -1703,6 +1703,12 @@ Service → **Settings → Networking → Custom Domain** → \`weave.example.co
 
 The custom domain is public. Turn \`requireAuth\` on (\`weave workspace require-auth\` from a shell on the service, or \`PATCH /api/workspace\` with \`{"requireAuth": true}\` and an architect token) and put a door in front: **Door C: sign in with a provider** (set \`WEAVE_ORIGIN\` to the custom domain, \`WEAVE_TRUST_PROXY=1\` and the \`WEAVE_OIDC_*\` variables, then \`weave account link\` from a shell on the service) or **Door A: an edge gate**.
 
+## 7. Updates in place
+
+A volume-backed service runs one deployment at a time, so every Railway redeploy stops the old container before the new one answers: a minute or more of failed requests. weave updates itself instead. Service → **Settings → Deploy → Custom Start Command** \`node bin/weave.js supervise\`, and under **Variables** \`WEAVE_AUTO_UPDATE=1\`. Redeploy once to install the supervisor; that deploy has the usual short gap, and it is the last one a release needs.
+
+The supervisor holds \`PORT\` and runs \`weave serve\` as a worker behind it. Every ten minutes it asks GitHub for the latest release. A newer one is taken only when its tag's commit is on \`grunion-ai/weave\` main; it is unpacked to \`/data/releases/v<version>/\`, started as a second worker on the same workspace files, and checked on its own \`/api/health\`. Healthy, it takes new requests; the old worker finishes the ones it holds and exits; then the new one writes its migrations, and writes that arrive in that moment wait in the supervisor instead of failing. A release that fails any step stays off, the old worker keeps serving, and that version is not tried again. A restart boots the newest release on the volume that finished a swap. Railway still has to rebuild for a change to the Node version, the \`Dockerfile\` or the supervisor itself.
+
 ## Backups
 
 Railway's cron is a separate service and cannot share the volume, so backup runs inside the weave process, not as a Railway cron: phase 3 adds \`weave backup\` and the in-process nightly switch (\`WEAVE_BACKUP_DEST\`). Until then the **Backup and restore** page has the manual copy, and paid Railway plans snapshot the volume.
@@ -1711,7 +1717,8 @@ Railway's cron is a separate service and cannot share the volume, so backup runs
 
 1. \`curl -s https://weave.example.com/api/health\` answers \`{"ok":true,"name":"weave","version":"…","workspace":"workspace",…}\` and the Deployments tab shows the health check passed.
 2. Create a row, then **Redeploy** from the dashboard. The row is still there: the volume, not the container, holds it.
-3. The service shows **1 replica** and one volume at \`/data\`; the log has no \`EACCES\`.`,
+3. The service shows **1 replica** and one volume at \`/data\`; the log has no \`EACCES\`.
+4. With step 7 in place, \`/api/health\` carries a \`supervisor\` object. After the next release it reads \`"release":"v<that version>"\` with \`lastSwap.ok: true\`, \`version\` is the new one, and the Deployments tab shows no new deployment.`,
   },
   {
     name: "Deploy: Fly.io, Render, a VPS, Docker",
@@ -1933,10 +1940,11 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 | \`WEAVE_OIDC_CLIENT_SECRET\` | \`weave serve\` | unset | The client secret, for a confidential client. Unset, weave signs in as a public client and relies on PKCE alone; a provider that expects the secret answers \`invalid_client\`. |
 | \`WEAVE_OIDC_NAME\` | \`weave serve\` | the issuer's host name | The word on the sign-in link: \`Clerk\` reads "Sign in with Clerk". |
 | \`WEAVE_UPDATE_CHECK\` | \`weave serve\` | on | Set to \`off\` and the server makes no request to GitHub. On, it asks \`api.github.com/repos/grunion-ai/weave/releases/latest\` at most once a day (no token, nothing about the install), keeps the answer in \`update-check.json\` beside \`WEAVE_DATA\`, and \`/api/health\` carries \`latestRelease\`, \`releaseCheckedAt\` and \`releaseBehind\`; the sidebar instance chip turns amber when a newer release exists. Offline, rate-limited or blocked, the check stays silent and nothing else changes. |
+| \`WEAVE_AUTO_UPDATE\` | \`weave supervise\` | unset | Set to \`1\` and \`weave supervise\` holds the port, runs the server as a worker, and installs each newer release in place: every ten minutes it asks GitHub for the latest release, takes it only when the tag's commit is on \`grunion-ai/weave\` main, unpacks it to \`releases/v<version>/\` beside \`WEAVE_DATA\`, and moves requests to the new worker once its \`/api/health\` answers. Unset, \`supervise\` is \`serve\`. A release that fails its health check stays off and is not tried again; \`/api/health\` carries the supervisor's \`release\`, \`dir\`, \`lastSwap\` and \`failed\`. |
 
 ## The container
 
-The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOST=0.0.0.0\`, \`WEAVE_DATA=/data/workspace.db\`, \`WEAVE_KEYSTORE=/data/keystore.json\`. A platform overrides \`PORT\`; you supply \`WEAVE_KEYSTORE_PASSPHRASE\`. \`WEAVE_ORIGIN\`, \`WEAVE_TRUST_PROXY\`, \`WEAVE_BACKUP_DEST\` and the four provider sign-in variables are listed as comments, each off unless set, and \`WEAVE_UPDATE_CHECK\` is listed as the one that is on unless set to \`off\`, so the contract is visible in one place.
+The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOST=0.0.0.0\`, \`WEAVE_DATA=/data/workspace.db\`, \`WEAVE_KEYSTORE=/data/keystore.json\`. A platform overrides \`PORT\`; you supply \`WEAVE_KEYSTORE_PASSPHRASE\`. \`WEAVE_ORIGIN\`, \`WEAVE_TRUST_PROXY\`, \`WEAVE_BACKUP_DEST\` and the four provider sign-in variables are listed as comments, each off unless set, \`WEAVE_UPDATE_CHECK\` is listed as the one that is on unless set to \`off\`, and \`WEAVE_AUTO_UPDATE\` as the switch \`supervise\` reads, so the contract is visible in one place.
 
 ## How you know it worked
 

@@ -33,6 +33,9 @@ services:
       # WEAVE_OIDC_NAME: Clerk
       # The server asks GitHub for the latest release once a day; off stops it.
       # WEAVE_UPDATE_CHECK: "off"
+      # With command ["node", "bin/weave.js", "supervise"], 1 installs each newer
+      # release from grunion-ai/weave main in place (Handbook → "Deploy: Railway").
+      # WEAVE_AUTO_UPDATE: "1"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4400/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 30s

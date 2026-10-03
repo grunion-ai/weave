@@ -924,11 +924,33 @@ function schemaFingerprint(state) {
   return `${text.length.toString(16)}${h.toString(16).padStart(8, '0')}`;
 }
 
+/* Deferred migrations (Feature #250). The supervisor starts a new release's
+   worker beside the one still serving, against the same .db files. Opening a
+   workspace migrates it (#migrate, the registry tables, the boot syncs), and
+   the old build must never read a shape it does not know, so in that worker
+   every save is held: the open-time repairs live in memory only. Once the old
+   worker has exited, runDeferredMigrations() settles each workspace opened
+   meanwhile: re-read it when someone else wrote to it since, and migrate
+   that; otherwise write what was held. The supervisor sends the new worker
+   reads only until then, so nothing a client sends is held. The store's own
+   CREATE TABLE IF NOT EXISTS still runs at open: it only adds tables, and an
+   old build never reads one it does not know. */
+let HELD = null;
+export function deferMigrations() { HELD ??= new Set(); }
+export function runDeferredMigrations() {
+  const held = HELD;
+  HELD = null;
+  for (const w of held ?? []) {
+    try { w.settleDeferred(); } catch (err) { console.warn(`weave: deferred migration of ${w.store.path} failed: ${err.message}`); }
+  }
+}
+
 export class Weave {
   // Entity ids mutated since the last save — the store flushes only these
   // rows. An id missing from state at save time means "delete the row".
   #dirty = new Set();
   #dirtyAll = false;
+  #held = false; // a save happened while migrations were deferred
 
   // Memo for schemaVersion(): cleared by every save and every reload, so it
   // is recomputed at most once per write and only when someone asks.
@@ -978,6 +1000,9 @@ export class Weave {
     // .json migration writes state straight through the store, blobs and
     // all. Land them the same way importJSON does (Issue #121).
     if (this.#landBlobs()) this.save();
+    // Only a workspace that opened is settled later (a file the hub's scan
+    // refuses throws above and is never seen again).
+    HELD?.add(this);
   }
 
   // Upgrade v1 workspaces in place: `databases` state key → `tables`, and the
@@ -1404,9 +1429,12 @@ export class Weave {
   }
 
   save() {
-    this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll });
-    this.#dirty.clear();
-    this.#dirtyAll = false;
+    if (HELD) this.#held = true;
+    else {
+      this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll });
+      this.#dirty.clear();
+      this.#dirtyAll = false;
+    }
     this.#schemaVersion = null;
     this.#scales.clear();
   }
@@ -1461,6 +1489,20 @@ export class Weave {
     const id = typeof entityOrId === 'string' ? entityOrId : entityOrId.id;
     this.#dirty.add(id);
     this.#touching?.add(id);
+  }
+
+  // The end of a deferred open (see deferMigrations). Re-read what another
+  // process wrote meanwhile, migrate whatever state is on hand (a reload
+  // brings back the unmigrated shape), then write anything still held.
+  settleDeferred() {
+    this.maybeRefresh();
+    const held = this.#held;
+    this.#held = false;
+    this.#migrate();
+    if (held) {
+      this.#dirtyAll = true;
+      this.save();
+    }
   }
 
   // Re-read state when another process (CLI beside the server, a second

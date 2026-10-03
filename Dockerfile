@@ -19,6 +19,7 @@ COPY --chown=node:node . .
 #   WEAVE_OIDC_CLIENT_SECRET   the client secret; unset = public client, PKCE alone (unset)
 #   WEAVE_OIDC_NAME            the word on the sign-in link                (issuer's host)
 #   WEAVE_UPDATE_CHECK         off: never ask GitHub for a newer release   (on: once a day)
+#   WEAVE_AUTO_UPDATE          1 with `supervise`: install newer releases in place (unset = off)
 #   WEAVE_BACKUP_DEST          s3://bucket/prefix: nightly backup at 04:00 UTC   (unset = off)
 ENV PORT=4400 \
     WEAVE_HOST=0.0.0.0 \
