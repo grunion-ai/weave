@@ -45,7 +45,8 @@ if (s) {
 
   /* One reading of the page: the entity header, each section head, and the
      section each head belongs to, in viewport coordinates. `pane` names the
-     box that scrolls: the window on the full page, #dock in the split. */
+     box that scrolls: #main on the full page (the window never scrolls since
+     Issue #609), #dock in the split. */
   const read = (page, pane) => page.evaluate((pane) => {
     const root = pane === 'dock' ? document.querySelector('#dock') : document;
     const header = root.querySelector(pane === 'dock' ? '.dock-entity > .view-header' : '#main > .view-header');
@@ -55,12 +56,12 @@ if (s) {
       head: r(sec.querySelector('.doc-section-head')).toJSON(),
       sec: r(sec).toJSON(),
     }));
-    return { header: r(header).toJSON(), secs, paneTop: pane === 'dock' ? r(root).top : 0, ih: innerHeight };
+    return { header: r(header).toJSON(), secs, paneTop: r(document.querySelector(pane === 'dock' ? '#dock' : '#main')).top, ih: innerHeight };
   }, pane);
   const scroll = (page, pane, y) => page.evaluate(([pane, y]) => {
     // Instant: Tabler's reboot makes the root scroll smoothly, and a glide
     // would still be under way when the reading is taken.
-    (pane === 'dock' ? document.querySelector('#dock') : window).scrollTo({ top: y, behavior: 'instant' });
+    document.querySelector(pane === 'dock' ? '#dock' : '#main').scrollTo({ top: y, behavior: 'instant' });
   }, [pane, y]).then(() => page.waitForTimeout(250));
   const section = (reading, name) => reading.secs.find((x) => x.name.toLowerCase() === name.toLowerCase());
   const near = (a, b, msg) => assert.ok(Math.abs(a - b) <= 2, `${msg}: ${a} vs ${b}`);

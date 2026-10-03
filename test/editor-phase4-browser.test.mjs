@@ -324,8 +324,9 @@ if (s) {
       const top = () => page.evaluate(() =>
         document.querySelector('.doc-rail-track').getBoundingClientRect().top);
       const resting = await top();
-      await page.evaluate(() => window.scrollBy(0, 600));
-      await page.waitForFunction(() => window.scrollY >= 590, null, { timeout: 20000 });
+      // The main panel is the page's scroller since Issue #609.
+      await page.evaluate(() => document.querySelector('#main').scrollBy({ top: 600, behavior: 'instant' }));
+      await page.waitForFunction(() => document.querySelector('#main').scrollTop >= 590, null, { timeout: 20000 });
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       const scrolled = await top();
       assert.ok(scrolled > 0, 'the track never scrolls off the top of the viewport');

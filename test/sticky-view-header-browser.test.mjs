@@ -12,6 +12,10 @@
    page-scrolling mode they stick to the same box as the header. They start
    where it ends instead of sliding under it.
 
+   "The page" is the main panel since the shell stopped scrolling the window
+   (Issue #609): #main is the box that scrolls, and the header holds at its
+   top edge, 8px under the window's.
+
    An opened long description is capped (Issue #412): it scrolls inside the
    header, so the held block never grows taller than the screen and the
    rows keep the viewport.
@@ -57,6 +61,9 @@ if (s) {
     return n ? { ...n.getBoundingClientRect().toJSON(), ih: innerHeight, iw: innerWidth } : null;
   }, sel);
   const onScreen = (r) => r && r.height > 0 && r.top >= -1 && r.bottom <= r.ih + 1;
+  // The main panel is the page's scroller (Issue #609); its top edge is where a held header rests.
+  const scrollMain = (page, y) => page.evaluate((t) => document.querySelector('#main').scrollTo({ top: t, behavior: 'instant' }), y);
+  const mainTop = (page) => page.evaluate(() => ({ top: document.querySelector('#main').getBoundingClientRect().top, scrolled: document.querySelector('#main').scrollTop }));
   const open = async (id, theme = null) => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     await page.goto(`${base}/#/table/${id}`, { waitUntil: 'networkidle' });
@@ -71,11 +78,13 @@ if (s) {
     const page = await open(tasks.id);
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.table-wrap')).overflowX), 'clip',
       'the fitting grid clips, so the page is the box that scrolls');
-    await page.evaluate(() => scrollTo(0, 2000));
+    await scrollMain(page, 2000);
     await page.waitForTimeout(200);
-    assert.ok(await page.evaluate(() => scrollY) > 500, 'the page really scrolled');
+    const main = await mainTop(page);
+    assert.ok(main.scrolled > 500, 'the page really scrolled');
+    assert.equal(await page.evaluate(() => document.scrollingElement.scrollTop), 0, 'inside the panel, never the window');
     const header = await box(page, '#main > .view-header');
-    assert.ok(header.top >= -1 && header.top < 2, `the header is parked at the top of the viewport: top=${header.top}`);
+    assert.ok(Math.abs(header.top - main.top) < 2, `the header is parked at the top of the panel: top=${header.top} panel=${main.top}`);
     for (const sel of ['.view-header .crumb-path', '.view-header .view-title', '.view-header .view-desc-body', '.view-header .crumb-actions']) {
       assert.ok(onScreen(await box(page, sel)), `${sel} is still on screen after scrolling`);
     }
@@ -85,8 +94,9 @@ if (s) {
   test('the field headers and the Σ row start where the view header ends', async () => {
     const page = await open(tasks.id);
     await page.waitForSelector('.wv-grid thead tr.wv-foot td');
-    await page.evaluate(() => scrollTo(0, 2000));
+    await scrollMain(page, 2000);
     await page.waitForTimeout(200);
+    assert.ok((await mainTop(page)).scrolled > 500, 'the rows have gone under the headers');
     const header = await box(page, '#main > .view-header');
     const th = await box(page, '.wv-grid thead th.col-head');
     const foot = await box(page, '.wv-grid thead tr.wv-foot td');
@@ -196,7 +206,7 @@ if (s) {
         await page.waitForSelector('.view-desc-more');
         await page.click('.view-desc-more');
         await page.waitForTimeout(400);
-        await page.evaluate(() => scrollTo(0, 4000));
+        await scrollMain(page, 4000);
         await page.waitForTimeout(400);
         const m = await page.evaluate(() => {
           const rect = (n) => n.getBoundingClientRect().toJSON();
@@ -206,7 +216,7 @@ if (s) {
           const h = rect(hdr);
           const x = rect(th).left + 20;
           return {
-            scrollY, ih: innerHeight, hdr: h, th: rect(th),
+            scrollY: document.querySelector('#main').scrollTop, mainTop: document.querySelector('#main').getBoundingClientRect().top, ih: innerHeight, hdr: h, th: rect(th),
             pos: getComputedStyle(hdr).position,
             parts: Object.fromEntries(['.crumb-path', '.view-title', '.view-desc', '.crumb-actions', '.view-desc-more']
               .map((q) => [q, rect(hdr.querySelector(q))])),
@@ -216,7 +226,7 @@ if (s) {
         });
         assert.ok(m.scrollY > 3000, `the page scrolled: ${m.scrollY}`);
         assert.equal(m.pos, 'sticky', 'the header still holds');
-        assert.ok(m.hdr.top >= -1 && m.hdr.top < 2, `the block rests at the top of the viewport: ${JSON.stringify(m.hdr)}`);
+        assert.ok(Math.abs(m.hdr.top - m.mainTop) < 2, `the block rests at the top of the panel: ${JSON.stringify(m.hdr)}`);
         for (const [q, r] of Object.entries(m.parts)) {
           assert.ok(r.top >= -1 && r.bottom <= m.hdr.bottom + 0.5, `long description, opened: ${q} is on screen inside the header block ${JSON.stringify({ r, hdr: m.hdr })}`);
         }

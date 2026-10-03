@@ -66,6 +66,7 @@ if (s) {
       scrollTop: dock.scrollTop,
       pane: { top: pane.top, bottom: dock.getBoundingClientRect().top + dock.clientHeight },
       dockHeads: dock.querySelectorAll('.dock-head').length,
+      header: dock.querySelector('.dock-entity > .view-header')?.getBoundingClientRect().top ?? null,
       row: row ? { top: row.getBoundingClientRect().top } : null,
       path: path ? { left: path.getBoundingClientRect().left, top: path.getBoundingClientRect().top, bottom: path.getBoundingClientRect().bottom } : null,
       expand: pick('.pose-btn'),
@@ -95,7 +96,11 @@ if (s) {
       assert.ok(await toBottom(page) > 400, 'the pane really scrolls');
       const r = await read(page);
       assert.ok(r.row, 'the dock has a crumb row');
-      near(r.row.top, r.pane.top, 'the crumb row is pinned to the top of the pane while the body scrolls');
+      // The header band meets the pane's top edge and carries the pane's
+      // padding as its ground, so the crumb row holds where it rested
+      // (Issue #608) instead of climbing into the padding.
+      near(r.header, r.pane.top, 'the header band is pinned to the top of the pane while the body scrolls');
+      near(r.row.top, r0.row.top, 'the crumb row keeps the top it had at rest');
       visibleOneRow(r, 'expand', r.expand);
       visibleOneRow(r, 'close', r.close);
       assert.deepEqual(r.order.filter((x) => ['eye', 'expand', 'close'].includes(x)), ['eye', 'expand', 'close'], `expand and close follow the eye: ${r.order}`);

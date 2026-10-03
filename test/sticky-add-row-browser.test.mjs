@@ -59,18 +59,20 @@ if (s) {
   test('the + New row is on screen from the top of a 200-row table, once', async () => {
     const page = await browser.newPage({ viewport: FIT });
     await openTasks(page);
-    assert.equal(await page.evaluate(() => scrollY), 0, 'the page opens at the top');
+    // The main panel is the page's scroller (Issue #609).
+    assert.equal(await page.evaluate(() => document.querySelector('#main').scrollTop), 0, 'the page opens at the top');
     assert.equal(await page.locator('.wv-grid .add-entity-btn').count(), 1, 'one foot button');
     const btn = await rect(page, '.wv-grid .add-entity-btn');
     assert.ok(inView(btn), `the foot sits inside the viewport: ${JSON.stringify(btn)}`);
     assert.ok(btn.bottom > btn.ih - 60, 'and at its bottom edge');
     // The header holds at the top edge too — the wrap no longer swallows sticky.
     // It parks under the view header, which holds there itself (Issue #321).
-    await page.evaluate(() => scrollTo(0, 2000));
+    await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 2000, behavior: 'instant' }));
     await page.waitForTimeout(150);
     const th = await rect(page, '.wv-grid thead th.col-head');
     const chrome = await rect(page, '#main > .view-header');
-    assert.ok(chrome.top >= -1 && chrome.top < 2, `the view header is at the top edge: top=${chrome.top}`);
+    const panel = await rect(page, '#main');
+    assert.ok(Math.abs(chrome.top - panel.top) < 2, `the view header is at the panel's top edge: top=${chrome.top} panel=${panel.top}`);
     assert.ok(th.top >= chrome.bottom - 1 && th.top < chrome.bottom + 40, `the field headers stay under it while scrolling: top=${th.top}, view header bottom=${chrome.bottom}`);
     const mid = await rect(page, '.wv-grid .add-entity-btn');
     assert.ok(inView(mid), 'the foot is still on screen mid-table');
@@ -80,7 +82,7 @@ if (s) {
   test('at the end of the table the foot rests in its natural place, the last row of the grid', async () => {
     const page = await browser.newPage({ viewport: FIT });
     await openTasks(page);
-    await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+    await page.evaluate(() => { const m = document.querySelector('#main'); m.scrollTo({ top: m.scrollHeight, behavior: 'instant' }); });
     await page.waitForTimeout(150);
     assert.equal(await page.locator('.wv-grid .add-entity-btn').count(), 1, 'still exactly one');
     const btn = await rect(page, '.wv-grid .add-entity-btn');

@@ -13,7 +13,9 @@ import { ROOT, APP, HTML, CSS, rulesFor, px, fnBody } from './lib/source.mjs';
 
 
 /* ---------- defect: collapsed left nav could not be re-opened ----------
-   #ws-rail is position:sticky, which ALWAYS creates a stacking context, so
+   #ws-rail is positioned with a z-index (it was position:sticky until the
+   shell stopped scrolling the window, Issue #609), so it creates a stacking
+   context, and
    #nav-expand's z-index is scoped inside the rail. #main (position:relative,
    z-index:auto) is a later sibling, so it painted over the fixed expand
    chevron at left:60px and swallowed the click. The rail therefore needs its
@@ -22,7 +24,7 @@ import { ROOT, APP, HTML, CSS, rulesFor, px, fnBody } from './lib/source.mjs';
 
 test('#ws-rail carries a positive z-index so the expand chevron stays clickable', () => {
   const rail = rulesFor('#ws-rail');
-  assert.equal(rail.position, 'sticky', 'rail is sticky — it creates a stacking context');
+  assert.ok(['relative', 'sticky'].includes(rail.position), `rail is positioned — with its z-index it is a stacking context, got ${rail.position}`);
   assert.ok(rail['z-index'], '#ws-rail must declare a z-index or #main paints over #nav-expand');
   assert.ok(px(rail['z-index']) > 0, `#ws-rail z-index must be > 0, got ${rail['z-index']}`);
 });
@@ -2157,11 +2159,14 @@ test('dock: the #id link docks plain rows only; registry rows and modified click
   assert.doesNotMatch(opener, /state\.route\.dbId === db\.id/, 'the entity\'s own table never decides a navigation');
 });
 
-test('dock: the panel is styled as the table\'s twin, sticky, and lights its row in both themes', () => {
+test('dock: the panel is styled as the table\'s twin, its own scroller, and lights its row in both themes', () => {
   const rule = CSS.match(/^#dock \{[^}]+\}/m)?.[0];
   assert.ok(rule, '#dock has a rule');
-  for (const decl of ['background: var(--tblr-bg-surface)', 'box-shadow: var(--wv-panel-shadow)', 'border-radius: 16px', 'position: sticky', 'top: 8px', 'align-self: flex-start', 'overflow-y: auto'])
+  // The shell holds the pane in place (Issue #609): no sticky, no window to
+  // scroll it away; the pane scrolls itself.
+  for (const decl of ['background: var(--tblr-bg-surface)', 'box-shadow: var(--wv-panel-shadow)', 'border-radius: 16px', 'overflow-y: auto', 'position: relative'])
     assert.ok(rule.includes(decl), `#dock lacks ${decl}`);
+  assert.doesNotMatch(rule, /position: sticky/, 'the dock is a plain column of the shell');
   assert.doesNotMatch(rule, /display:/, 'no display of its own, so the hidden attribute keeps working');
   const light = CSS.match(/tr\.entity-row\.row-docked td \{[^}]+\}/)?.[0];
   assert.ok(light, 'the docked row has a light');

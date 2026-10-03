@@ -187,10 +187,10 @@ if (s) {
       let page = await open(small, theme);
       try {
         assert.equal(await outer(page), 0, 'no shadow at rest');
-        await page.evaluate(() => scrollTo(0, 1500));
+        await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 1500, behavior: 'instant' })); // the page's scroller (Issue #609)
         await page.waitForTimeout(150);
         assert.equal(await outer(page), 1, 'a shadow once the page scrolls the rows under it');
-        await page.evaluate(() => scrollTo(0, 0));
+        await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 0, behavior: 'instant' }));
         await page.waitForTimeout(150);
         assert.equal(await outer(page), 0, 'and none back at the top');
       } finally { await page.close(); }

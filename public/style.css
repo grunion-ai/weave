@@ -121,19 +121,27 @@ html, body { overscroll-behavior-x: none; }
    (16px in Safari with a mouse attached) on every view that scrolls the page:
    the rail and sidebar moved between a long table and a short one (Issue #546). */
 :root { margin-left: 0; }
-/* Anything scrolled to by the browser itself — a focused control, a hash
-   anchor, find-in-page — stops below the view header instead of behind it
-   (Issue #321). The app's own scrolls go through scrollTargetIntoView. */
-:root { scroll-padding-top: var(--wv-view-h, 0px); }
 body { font-size: 14px; background: var(--wv-canvas); }
-#app { display: flex; min-height: 100vh; }
+/* The app shell is a fixed frame (Issue #609): the document never scrolls.
+   The workspace rail, the left nav, the main panel and the dock each own one
+   scroller, and a wheel over one never moves another: the panes are siblings,
+   so a scroll that runs out at one edge can only chain to the document, which
+   no longer scrolls. Before this the window scrolled: #main grew to its
+   content, and the rail and nav faked holding still with `position: sticky`.
+   Scoped to a page that has the shell, so a page without one still scrolls.
+   The nav and rail also say `overscroll-behavior: contain`; the main panel
+   and the dock must not: in Chromium it stops End from moving the caret in
+   a document's code block (code-raw-toggle-browser), and the hidden
+   document already ends the chain. */
+html:has(> body > #app), body:has(> #app) { height: 100%; overflow: hidden; }
+#app { display: flex; height: 100vh; height: 100dvh; }
 
 /* ---------- sidebar ---------- */
 /* Sidebar sits directly on the cream canvas — no border, no surface of its
    own; the white content panel provides all the separation (Buzz idiom). */
 /* 264px is the comfortable minimum (Kyle, 2026-08-25, Issue #77): 240px
    compacted the rows once counts and carets joined the labels. */
-#sidebar { width: 264px; flex-shrink: 0; background: transparent; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+#sidebar { width: 264px; flex-shrink: 0; background: transparent; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; height: 100%; overflow-y: auto; overscroll-behavior: contain; }
 .brand { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
 /* The workspace name is the way home (Kyle, 2026-08-24). It stays the
    wordmark — brand color, no link blue — and earns an underline on hover;
@@ -185,15 +193,19 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .search-like kbd { font: 11px var(--tblr-font-monospace); background: var(--wv-pill-hover); border: 0; border-radius: 4px; padding: 1px 5px; color: var(--wv-canvas-muted); }
 
 /* ---------- workspace icon rail (far-left) ---------- */
-/* z-index is load-bearing: position:sticky creates a stacking context, so the
-   rail's own layer — not #nav-expand's z-index — is what must clear #main.
+/* z-index is load-bearing: the positioned rail is its own stacking context,
+   so the rail's layer — not #nav-expand's z-index — is what must clear #main.
    Without it #main (position:relative, later sibling) paints over the expand
    chevron that overhangs the rail, and the collapsed nav can never re-open. */
 /* Top padding centres the first (weave) chip on the sidebar wordmark:
    #sidebar padding-top (14px) + half the .ws-wordmark line box (22px)
    − half the .ws-weave chip (46px) = 2px. Keep the terms in sync if any
    of those three change — the UI contract test asserts the equality. */
-#ws-rail { width: 52px; flex-shrink: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: calc(14px + 22px / 2 - 46px / 2) 0 12px; position: sticky; top: 0; height: 100vh; z-index: 60; }
+#ws-rail { width: 52px; flex-shrink: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: calc(14px + 22px / 2 - 46px / 2) 0 12px; position: relative; height: 100%; z-index: 60;
+  /* A long workspace list scrolls the rail alone (Issue #609); it is chrome,
+     so the bar stays hidden. */
+  overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+#ws-rail::-webkit-scrollbar { display: none; }
 /* flex-shrink:0 is load-bearing: the rail is a column flexbox, so height is
    the main axis and a declared chip height is otherwise only a maximum —
    chips silently shrink to their content and the centring calc goes stale. */
@@ -268,7 +280,7 @@ a.nav-space:hover { color: var(--tblr-primary); }
 @media (max-width: 600px) {
   #ws-rail { display: none; }
   #app.nav-peek #ws-rail { display: flex; position: fixed; left: 0; top: 0; height: 100dvh; z-index: 71; background: var(--wv-canvas); }
-  #main { margin-left: 8px; padding: 16px 14px; }
+  #main { --wv-pane-pad: 16px; --wv-pane-pad-x: 14px; margin-left: 8px; padding: var(--wv-pane-pad) var(--wv-pane-pad-x); }
 }
 /* Disclosure caret: a hairline chevron in a full 24px target, TRAILING the
    space label — "Routines ›" (UAT round 2, Kyle, 2026-08-16). It points right
@@ -298,9 +310,25 @@ a.nav-space:hover { color: var(--tblr-primary); }
    z-index 6 clears every sticky layer the grid has (Issue #252 tops out at
    5) and ties with the overlays that must still open over it — the cell
    expansion and the field menu — which a tie hands to the later element in
-   the document, and every one of them is later. */
+   the document, and every one of them is later.
+   The panel is the scroller (Issue #609), and a sticky box stops at its
+   scroller's CONTENT edge, under the panel's top padding: `top` takes the
+   padding back so the held header meets the panel's own top edge.
+   --wv-pane-pad is that padding, set on #main and #dock, and every sticky
+   layer under the header (grid headers, Σ row, section heads, doc rail)
+   sits at --wv-view-h less it. */
 .view-header { padding-bottom: 16px; }
-#main > .view-header { position: sticky; top: 0; z-index: 6; background: var(--tblr-bg-surface); }
+#main > .view-header { position: sticky; top: calc(-1 * var(--wv-pane-pad, 0px)); z-index: 6; background: var(--tblr-bg-surface); }
+/* The frame holds (Issue #608): the header leading its pane takes the pane's
+   top and side padding as its own ground, so the panel's rounded top edge,
+   the band above the crumb row, the crumb row and the title never move, and
+   only what sits below the title scrolls, under the header. Before, the
+   panel's padding scrolled away above a header pinned flush to the edge, and
+   the header floated with no frame round it. At rest it lays out exactly as
+   before; held, its top meets the panel's own. */
+:is(#main, #dock > .dock-entity) > .view-header:first-child {
+  margin: calc(-1 * var(--wv-pane-pad, 0px)) calc(-1 * var(--wv-pane-pad-x, 0px)) 0;
+  padding: var(--wv-pane-pad, 0px) var(--wv-pane-pad-x, 0px) 16px; }
 /* A header that would take half the window does not pin: in a 200px-tall
    window it would hold nothing but header, and the Show less control at its
    foot would sit off screen with no way to scroll to it, because the pinned
@@ -370,7 +398,13 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
 /* The content panel is THE surface: white, big rounded corners, floating on
    the cream with visible margin on top/right/bottom (Buzz idiom). The nav
    never touches it — the gap is the separation. */
-#main { flex: 1; padding: 24px 28px; min-width: 0; margin: 8px 8px 8px 0; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-height: calc(100vh - 16px); }
+/* The panel is the page's one scroller (Issue #609): the shell's height
+   stretches it to the window less its 8px margins, and its content scrolls
+   inside the rounded frame. Anything the browser scrolls to by itself — a
+   focused control, a hash anchor, find-in-page — stops below the pinned view
+   header instead of behind it (Issue #321); the app's own scrolls go through
+   scrollTargetIntoView. */
+#main { --wv-pane-pad: 24px; --wv-pane-pad-x: 28px; flex: 1; padding: var(--wv-pane-pad) var(--wv-pane-pad-x); min-width: 0; margin: 8px 8px 8px 0; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); }
 .wv-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .wv-toolbar h1 { font-size: 19px; margin: 0 auto 0 0; }
 
@@ -415,7 +449,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    table page, the registry grids on a space page, the dock) and its header
    belongs at ITS top edge: offsetting those pushed the header down inside a
    box only as tall as the table, onto the rows. */
-#main .table-wrap.wv-fit .wv-grid thead th { top: var(--wv-view-h, 0px); }
+#main .table-wrap.wv-fit .wv-grid thead th { top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px)); }
 .wv-grid td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* The id column carries a short "#12 ↗" link — collapse it to its content
@@ -821,6 +855,15 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
    the label turns to the accent instead (Feature #240). */
 .wv-grid tr.add-entity-row td { padding: 0; border-bottom: 0; position: sticky; bottom: 0; z-index: 1; background: var(--tblr-bg-surface); }
 .wv-grid tr.add-entity-row:hover td { background: var(--tblr-bg-surface); }
+/* A grid that fits scrolls in the main panel (Issue #609), and a sticky foot
+   stops at the panel's content edge, 24px of padding above the panel's
+   bottom: rows passing under it showed through that band. A strip of the
+   surface hung under the foot, one padding deep, fills the band without
+   moving the foot or the layout; at rest it lies on the panel's empty
+   bottom padding. (A box-shadow would do, but a collapsed-border table
+   paints none on its cells.) */
+#main > .table-wrap.wv-fit .wv-grid tr.add-entity-row td { overflow: visible; }
+#main > .table-wrap.wv-fit .wv-grid tr.add-entity-row td::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: var(--wv-pane-pad, 24px); background: var(--tblr-bg-surface); pointer-events: none; }
 .add-entity-btn { width: 100%; display: block; padding: 7px 12px; background: none; border: 0; color: var(--tblr-secondary); font: inherit; text-align: left; cursor: pointer; }
 .add-entity-btn:hover { color: var(--tblr-primary); }
 /* The row window (Issue #271): two spacer rows stand in for the rows not
@@ -1600,7 +1643,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
    screens have no gutter, so no rail. The track pins just under the entity
    header, whose height --wv-view-h carries (Issue #411). */
 .doc-rail { position: absolute; left: -26px; top: 0; bottom: 0; width: 22px; cursor: pointer; }
-.doc-rail-track { position: sticky; top: calc(var(--wv-view-h, 0px) + 8px); width: max-content; display: flex; flex-direction: column;
+.doc-rail-track { position: sticky; top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px) + 8px); width: max-content; display: flex; flex-direction: column;
   gap: 1px; align-items: flex-start; padding: 8px 10px; margin: 26px -10px 0; border-radius: 10px;
   border: 1px solid transparent; transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
   /* A long document out-maps the viewport: the track scrolls itself, and the
@@ -1649,11 +1692,12 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 /* The head holds under the entity header while its own section is in view,
    and leaves with the section's end, so the next document's head takes the
    same place (Issue #411). --wv-view-h is the pinned header's height: the
-   page's on the root, the dock's on #dock. The band is opaque so the text
+   page's on the root, the dock's on #dock; less the pane's top padding, it
+   is the head's offset from the pane's content edge. The band is opaque so the text
    scrolls under it, z-index 5 clears the heading carets (4) and stays under
    the entity header (6). */
 .doc-section-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px;
-  position: sticky; top: var(--wv-view-h, 0px); z-index: 5; background: var(--tblr-bg-surface); }
+  position: sticky; top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px)); z-index: 5; background: var(--tblr-bg-surface); }
 .doc-section-name { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--tblr-secondary); }
 .doc-caret { border: 0; background: none; padding: 0 2px; cursor: pointer; color: var(--tblr-secondary); line-height: 1; }
 .doc-caret::before { content: "▾"; display: inline-block; transition: transform .12s ease; }
@@ -1991,15 +2035,15 @@ body:has(#tray-back) #hub-foot { display: none; }
    The split pane the table view opens an entity into: a real layout column
    beside #main, styled as its twin panel — not an overlay. The rules live
    in public/entity-surface-core.js; app.js paints them here. */
-/* Sticky, so a long table scrolling beside it never carries the dock off
-   the screen: the pane is its own scroll box, pinned to the viewport.
+/* The pane is its own scroll box (Issue #609), a flex column of the shell
+   like #main, so a long table scrolling beside it never moves it.
    Default is an equal split — #main and #dock each flex to half the room
    left of the nav (Kyle, 2026-09-02). A dragged divider pins the dock to a
    px flex basis it may shrink from (Issue #326); double-click hands it back
    to the even split.
    Side padding matches #main's 28px, so the entity reads on the page's
    grid (Kyle, 2026-09-02: padding on either edge of the split dock). */
-#dock { flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: 14px 28px 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: calc(100vh - 16px); max-height: calc(100vh - 16px); overflow-y: auto; position: sticky; top: 8px; align-self: flex-start; }
+#dock { --wv-pane-pad: 14px; --wv-pane-pad-x: 28px; flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); position: relative; }
 /* The divider is the canvas gap itself: a 16px flex column between the two
    panels (Kyle, 2026-09-02 — never a strip inside either panel). Its
    hairline waits for the pointer or a drag, centered mid-gap. */
@@ -2026,20 +2070,18 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
    align-self goes back to auto: on a positioned box flex-start means "as
    tall as the content", and a long record ran 62px past the screen. */
 @media (max-width: 600px) {
-  #dock { position: fixed; inset: 0; z-index: 62; align-self: auto; height: 100dvh; margin: 0; padding: 14px 14px 24px; border-radius: 0; box-shadow: none; min-height: 0; max-height: none; overscroll-behavior: contain; }
+  #dock { --wv-pane-pad-x: 14px; position: fixed; inset: 0; z-index: 62; align-self: auto; height: 100dvh; margin: 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; border-radius: 0; box-shadow: none; min-height: 0; max-height: none; overscroll-behavior: contain; }
   #dock-gutter:not([hidden]) { display: none; }
   #main:has(+ #dock-gutter:not([hidden])) { min-width: 0; margin-right: 8px; }
 }
 /* The pane is narrower than a page: the field grid single-columns. The
    entity header pins to the top of the pane, as it does on the full page
-   (Issue #411); the pane's top padding scrolls away above it. Past half the
-   pane it sits in the flow, the page header's rule. */
+   (Issue #411), carrying the pane's top padding as its own ground so the
+   frame holds (Issue #608). Past half the pane it sits in the flow, the
+   page header's rule. */
 #dock .dock-entity .entity-grid { grid-template-columns: minmax(0, 1fr); }
-#dock .dock-entity .view-header { position: sticky; top: -14px; z-index: 6; background: var(--tblr-bg-surface); }
+#dock .dock-entity .view-header { position: sticky; top: calc(-1 * var(--wv-pane-pad, 0px)); z-index: 6; background: var(--tblr-bg-surface); }
 #dock.view-header-loose .dock-entity .view-header { position: static; }
-/* The section heads' sticky edge is the pane's content edge, 14px of
-   padding below the edge the header climbs into. */
-#dock .doc-section-head { top: calc(var(--wv-view-h, 0px) - 14px); }
 /* The docked row stays lit in the table — selection follows the pane. */
 .wv-grid tbody tr.entity-row.row-docked td { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
 .pose-glyph { display: inline-flex; line-height: 0; }
@@ -2597,7 +2639,7 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
    through it. The rule beneath it is an inset shadow, not a thicker border: a
    collapsed 2px border lent the first body row a pixel. */
 .wv-grid thead tr.wv-foot td { position: sticky; top: var(--wv-head-h, 0px); z-index: 2; box-shadow: inset 0 -1px 0 var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); font-size: 12px; color: var(--tblr-secondary); vertical-align: top; white-space: nowrap; padding-top: 4px; padding-bottom: 4px; }
-#main .table-wrap.wv-fit .wv-grid thead tr.wv-foot td { top: calc(var(--wv-view-h, 0px) + var(--wv-head-h, 0px)); }
+#main .table-wrap.wv-fit .wv-grid thead tr.wv-foot td { top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px) + var(--wv-head-h, 0px)); }
 /* A stuck header casts its faint shadow from here when the Σ row is shown
    (Feature #240): the rows pass under this row, not under the labels. */
 .table-wrap.wv-head-stuck .wv-grid thead tr.wv-foot td { box-shadow: inset 0 -1px 0 var(--tblr-border-color), var(--wv-head-lift); }
