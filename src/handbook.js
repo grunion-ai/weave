@@ -1931,7 +1931,7 @@ The \`Dockerfile\` bakes the container-shaped values: \`PORT=4400\`, \`WEAVE_HOS
 
 ## How you know it worked
 
-\`curl -s http://<host>:<port>/api/health\` answers with \`"workspace":"workspace"\` (the basename of \`WEAVE_DATA\`), and a listing of the data directory shows \`workspace.db\`, \`weave.db\`, \`files/\` and \`keystore.json\`, and no \`keystore.key\` when the passphrase is set.`,
+\`curl -s http://<host>:<port>/api/health\` answers with the workspace's name: a fresh volume draws a random adjective-animal slug such as \`"workspace":"quiet-turtle"\`, and a workspace an earlier release created keeps the basename of \`WEAVE_DATA\`, \`"workspace"\`. A listing of the data directory shows \`workspace.db\`, \`weave.db\`, \`files/\` and \`keystore.json\`, and no \`keystore.key\` when the passphrase is set.`,
   },
   {
     name: 'Reporting a bug',

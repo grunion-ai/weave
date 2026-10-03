@@ -28,7 +28,9 @@ export class WeaveWorkspace {
     if (this.#handle) return;
     this.#bootedAt = Date.now();
     const store = new CFStore(this.ctx.storage);
-    const weave = new Weave({ store, actor: 'web' });
+    // A fresh DO is named for the route that addressed it, not at random
+    // (Issue #594); one still carrying the old seed name takes it too.
+    const weave = new Weave({ store, actor: 'web', name });
     if (!weave.state.meta.name || weave.state.meta.name === 'Weave Workspace') {
       weave.state.meta.name = name;
       weave.save();

@@ -6,6 +6,7 @@ import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from './engine.js';
+import { workspaceName, nameFromFile } from './workspace-name.js';
 import { createRequestHandler } from './routes.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 
@@ -193,6 +194,25 @@ async function readBody(req, { requireJson = false } = {}) {
   }
 }
 
+// The workspace `weave serve` opens at / (Issue #594). Fresh, it takes its
+// file's name when someone chose one (`--data acme.db`), and otherwise a
+// random adjective-animal slug that no workspace file beside it already
+// names. A workspace that was never served still carries the old seed name
+// 'Weave Workspace' and takes its file's basename, as it always did; one that
+// was (so is called 'workspace', say) keeps its name.
+export function openDefaultWorkspace(dataPath, { actor, random } = {}) {
+  const dir = dirname(dataPath);
+  const stem = (f) => f.split('/').pop().replace(/\.(json|db)$/, '');
+  const taken = existsSync(dir) ? readdirSync(dir).filter((f) => /\.(json|db)$/.test(f)).map(stem) : [];
+  const name = nameFromFile(dataPath) ?? workspaceName({ taken, random }).slug;
+  const w = new Weave({ path: dataPath, actor, name });
+  if (!w.state.meta.name || w.state.meta.name === 'Weave Workspace') {
+    w.state.meta.name = stem(dataPath);
+    w.save();
+  }
+  return w;
+}
+
 // One web app can host several workspaces (like the.fibery.io):
 // the default workspace lives at /, siblings at /w/<name>/ — same UI, same
 // API shapes, path-scoped. Sibling <name>.json files next to the default
@@ -323,6 +343,11 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       return w;
     },
     create(name) {
+      // No name asked for: draw one the instance does not hold (Issue #594).
+      if (name == null || name === '') {
+        scan();
+        name = workspaceName({ taken: instances.keys() }).slug;
+      }
       if (!/^[a-z0-9][a-z0-9-_]*$/i.test(name)) throw new WeaveError('Workspace name must be alphanumeric', 'invalid');
       const held = this.get(name);
       if (held?.state.meta.deletedAt) throw new WeaveError(`Workspace '${name}' is in the trash — restore it instead`, 'conflict');

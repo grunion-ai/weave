@@ -240,7 +240,8 @@ test('G3: docker build, run with the six variables, health ok, an entity survive
       }
     };
     const first = await healthy();
-    assert.equal(first.workspace, 'workspace', 'the workspace on the volume is the one the health reports');
+    // A fresh volume names its workspace at random, adjective-animal (Issue #594).
+    assert.match(first.workspace, /^[a-z]+-[a-z]+$/, 'the workspace on the volume is the one the health reports');
     await api(base, 'POST', '/api/spaces', { name: 'G3' });
     const table = await api(base, 'POST', '/api/tables', { space: 'G3', name: 'Note' });
     await api(base, 'POST', `/api/tables/${table.id}/entities`, { name: 'survives a restart' });
@@ -250,6 +251,7 @@ test('G3: docker build, run with the six variables, health ok, an entity survive
     const second = await healthy();
     assert.ok(second.ok && first.ok, 'health ok twice');
     assert.notEqual(second.startedAt, first.startedAt, 'the second health is from the restarted process');
+    assert.equal(second.workspace, first.workspace, 'the restart keeps the name the volume was given');
     const after = (await api(base, 'POST', `/api/tables/${table.id}/query`, {})).total;
     assert.equal(after, before, 'entity count unchanged across restart');
     // The process runs unprivileged and the volume is writable by it.
