@@ -131,7 +131,8 @@ Schema
                                       checks it all and writes nothing
   vocabulary [section [query]]        Every legal config value and what it looks like
                                       (icons are lucide:<name>; colors are hex from the palette;
-                                      "vocabulary icons <query>" searches the icon names)
+                                      "vocabulary icons <query>" searches the icon names;
+                                      "vocabulary icons,optionColors" answers several sections)
   space create <name> [--description] [--icon lucide:briefcase]
   space list | update <ref> [--name] [--description] [--icon lucide:briefcase] | delete <ref>
   table create <space> <name> [--description] [--icon]

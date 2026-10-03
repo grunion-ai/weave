@@ -715,7 +715,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         // looks like on screen — served so an agent never has to guess a
         // color, an icon name or a format (src/vocabulary.js).
         if (route === 'GET /api/vocabulary') {
-          // ?section=icons&query=build searches the icon names (Issue #591).
+          // ?section=icons&query=build searches the icon names (Issue #591);
+          // ?section=icons,optionColors answers several at once (Issue #625).
           try { return out(200, vocabularyView(rx.searchParams?.get('section'), rx.searchParams?.get('query'))); }
           catch (e) { throw new WeaveError(e.message, 'invalid'); }
         }

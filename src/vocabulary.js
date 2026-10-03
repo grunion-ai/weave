@@ -138,16 +138,24 @@ export function searchIcons(query, limit = 20) {
   if (direct.length) return { ...out, matches: direct.slice(0, limit).map(iconEntry) };
   return { ...out, fuzzy: true, matches: nearestIcons(q, 5) };
 }
-/* One section of the vocabulary, or all of it; `query` searches icons. The
-   three doors (MCP, REST, CLI) share this so they answer alike. */
+/* One section of the vocabulary, several, or all of it; `query` searches
+   icons. The three doors (MCP, REST, CLI) share this so they answer alike.
+   Several sections or queries ride one call (Issue #625): an agent spent 4 to
+   15 calls a run on one section each, and every call re-read the whole
+   context. Either is a list or a comma-separated string; several sections
+   answer keyed by name, several queries answer as `searches`. */
+const listOf = (v) => (Array.isArray(v) ? v : String(v ?? '').split(',')).map((s) => String(s ?? '').trim()).filter(Boolean);
 export function vocabularyView(section, query) {
-  const q = query == null || String(query).trim() === '' ? null : query;
-  const name = section == null || section === '' ? (q ? 'icons' : null) : String(section);
-  if (!name) return VOCABULARY;
-  if (!Object.hasOwn(VOCABULARY, name)) throw new Error(`Unknown vocabulary section '${name}' (${Object.keys(VOCABULARY).join(', ')})`);
-  if (q == null) return VOCABULARY[name];
-  if (name !== 'icons') throw new Error(`query searches the icons section only (section 'icons'), not '${name}'`);
-  return searchIcons(q);
+  const qs = listOf(query);
+  const names = listOf(section);
+  if (!names.length && qs.length) names.push('icons');
+  if (!names.length) return VOCABULARY;
+  for (const name of names) if (!Object.hasOwn(VOCABULARY, name)) throw new Error(`Unknown vocabulary section '${name}' (${Object.keys(VOCABULARY).join(', ')})`);
+  if (qs.length && !names.includes('icons')) throw new Error(`query searches the icons section only (section 'icons'), not '${names.join(', ')}'`);
+  const icons = () => (qs.length === 1 ? searchIcons(qs[0])
+    : { form: ICON_FORM, searches: qs.map((q) => { const { form, ...rest } = searchIcons(q); return rest; }) });
+  const one = (name) => (name === 'icons' && qs.length ? icons() : VOCABULARY[name]);
+  return names.length === 1 ? one(names[0]) : Object.fromEntries(names.map((n) => [n, one(n)]));
 }
 
 /* The formula functions, verbatim from the dialog's catalog: name, signature,

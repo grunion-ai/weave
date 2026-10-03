@@ -267,8 +267,8 @@ export const TOOLS = [
      curl for it, which is a human gate wearing a shell prompt. */
   {
     name: 'weave_vocabulary',
-    description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table. section returns one section alone (e.g. "icons"); {section: "icons", query: "build"} searches the icon names by name, category and synonym.',
-    inputSchema: { type: 'object', properties: { section: { type: 'string' }, query: { type: 'string' } } },
+    description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table. Name every section you need in one call (sections:["icons","optionColors"]); query searches the icon names by name, category and synonym ("wallet, bank" searches both).',
+    inputSchema: { type: 'object', properties: { sections: { type: 'array', items: { type: 'string' } }, section: { type: 'string' }, query: { type: 'string' } } },
   },
   {
     name: 'weave_update_space',
@@ -374,12 +374,12 @@ export const TOOLS = [
     // Feature #253: the one-call build. Under ~1,500 characters with one full
     // example: a worked input raises accuracy on nested parameters.
     name: 'weave_build',
-    description: 'Build in ONE call: spaces, tables, fields, relations and rows. A field is {name, type, plus that type\'s weave_add_field config keys, flat}; a relation is {name, type:"relation", to:<table>, cardinality?}; lookups, rollups and formulas may read relations made in the same build. Rows are values by field name; a relation value is the target row\'s Name. Re-sending the whole spec is safe: existing spaces, tables and same-typed fields are reused; rows append, so pass skipExistingRows:true to skip rows whose Name is already there. A refused icon or colour is dropped, not fatal. Returns one line: {ok, created, existing, ignored (keys dropped: not taken by the type, or refused, with reason), errors:[{path, error}]}. Example spec:\n'
+    description: 'Build in ONE call: spaces, tables, fields, relations and rows. A field is {name, type, plus that type\'s weave_add_field config keys, flat}; a relation is {name, type:"relation", to:<table>, cardinality?}; lookups, rollups and formulas may read relations made in the same build. Rows are values by field name; a relation value is the target row\'s Name. Re-sending the whole spec is safe: existing spaces, tables and same-typed fields are reused; rows append, so pass skipExistingRows:true to skip rows whose Name is already there. A refused icon or colour is dropped, not fatal. Returns one line: {ok, created, existing, ignored (keys dropped, with reason), errors:[{path, error}], computed:{field: its first values}}. Example spec:\n'
       + '{"workspace":"personal-finance","spaces":[{"name":"Budget","icon":"lucide:wallet","tables":[{"name":"Account","icon":"lucide:credit-card","fields":[{"name":"Kind","type":"select","options":[{"name":"Credit card"},{"name":"Checking"}]}],"rows":[{"Name":"Amex Gold","Kind":"Credit card"}]},{"name":"Transaction","fields":[{"name":"Amount","type":"number","format":"currency","currency":"USD"},{"name":"Date","type":"date"},{"name":"Account","type":"relation","to":"Account","cardinality":"many-to-one"}],"rows":[{"Name":"Whole Foods","Amount":142.18,"Date":"2026-08-03","Account":"Amex Gold"}]}]}]}\n'
       + 'dryRun:true first is cheap: it checks the whole spec, rows included, returns every error with its path, and writes nothing. Any error means nothing is written.',
     inputSchema: {
       type: 'object',
-      properties: { spec: { type: 'object', description: '{workspace?, description?, spaces:[{name, icon?, description?, tables:[{name, icon?, description?, fields?, rows?}]}]}' }, dryRun: { type: 'boolean' }, skipExistingRows: { type: 'boolean', description: 'Skip a row whose Name the table already holds (for a re-run)' } },
+      properties: { spec: { type: 'object', description: '{workspace?, description?, spaces:[{name, icon?, description?, tables:[{name, icon?, description?, fields?, rows?, fieldOrder? (leading names), hidden? (names), sort? ("Amount desc")}]}]}' }, dryRun: { type: 'boolean' }, skipExistingRows: { type: 'boolean', description: 'Skip a row whose Name the table already holds (for a re-run)' } },
       required: ['spec'],
     },
   },
@@ -511,7 +511,7 @@ export const SUMMARY = {
   weave_update_field: 'rename, retype or reconfigure a field (options are a full replacement)',
   weave_add_relation: 'add a relation and its inverse between two tables',
   weave_workspace: 'read or rename the workspace, set its description or logo',
-  weave_vocabulary: 'allowed values, one section per call; a build needs at most optionColors and icons (with query)',
+  weave_vocabulary: 'allowed values; several sections and icon queries in one call',
   weave_call: 'run any other tool by name; help describes one',
   weave_delete_entity: 'trash a row (hard: true purges)',
   weave_restore_entity: 'bring a row back from the trash',
@@ -698,7 +698,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_attach_file':
       return weave.attachFile(args.entity, { name: args.name, mime: args.mime, bytes: args.contentBase64 });
     case 'weave_vocabulary':
-      return vocabularyView(args.section, args.query);
+      return vocabularyView(args.sections ?? args.section, args.query);
     case 'weave_update_space':
       return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon']));
     case 'weave_delete_space':
