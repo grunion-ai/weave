@@ -8,6 +8,8 @@
    label — icon, text, sort arrow, computed mark — plus the padding around it
    (the right pad is where the ⋮ menu and the grip sit), and never less than
    the engine's minimum. It is measured off the rendered header by app.js.
+   A date (Issue #159) and a toggle (Issue #586) raise it to what their
+   value paints, so no column of theirs can cut one.
 
    width: where the column is while the pointer is at x. The SAME number is
    painted on every move and persisted on release — one rounding, one
@@ -60,6 +62,19 @@
      right where every other cell has 4 — and the ordinary cell's 8 when
      nothing has been measured yet. */
   const ratingWidth = (n, pad) => n * RATING_METRICS.icon + (n - 1) * RATING_METRICS.gap + (Number.isFinite(pad) ? pad : RATING_METRICS.pad);
+
+  /* A toggle's switch, as the cell paints it (public/style.css: a
+     .wv-toggle-track is 28px, .wv-toggle sets a 7px gap before the word,
+     and a grid cell carries 4px of padding each side). Issue #586: the
+     floor took only the header label, so a toggle named "On" dragged to
+     about 50px, its word ellipsized and then its track clipped. Kyle
+     (2026-10-02): the minimum width is set so a toggle is never cut off.
+     The words are text, so app.js measures them in the grid's own face;
+     `pad` is the cell's measured padding and border, as for a rating.
+     test/toggle-width-browser.test.mjs holds these numbers to the paint. */
+  const TOGGLE_METRICS = { track: 28, gap: 7, pad: 8 };
+  const toggleWidth = ({ on = 0, off = 0, pad } = {}) =>
+    Math.ceil(TOGGLE_METRICS.track + TOGGLE_METRICS.gap + Math.max(on, off) + (Number.isFinite(pad) ? pad : TOGGLE_METRICS.pad));
 
   const defaultWidth = (f = {}) => {
     if (f.role === 'name') return NAME_WIDTH;
@@ -175,7 +190,7 @@
   }
 
   root.WeaveColumnResize = {
-    DEFAULT_WIDTHS, NAME_WIDTH, CAP, RATING_METRICS,
+    DEFAULT_WIDTHS, NAME_WIDTH, CAP, RATING_METRICS, TOGGLE_METRICS, toggleWidth,
     floor({ label = 0, padLeft = 0, padRight = 0, min = 0 } = {}) {
       return Math.max(min, Math.ceil(label + padLeft + padRight));
     },

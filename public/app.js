@@ -5740,6 +5740,31 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       valueFloors.set(c, Math.ceil(probe.getBoundingClientRect().width + box));
       measure.remove();
     }
+    /* A toggle paints its switch and the word of its state, and neither may
+       be cut (Issue #586; Kyle, 2026-10-02): its floor holds the track, the
+       gap and the wider of its two words inside the cell's padding. The
+       words are measured in the cell's own face, off the grid; the padding
+       is read every draw, as a rating's is, because hiding a field moves
+       which cell is last and Tabler pads the last one 20px on the right.
+       Like a date's, this floor binds a drag, a nudge, a fit and the frozen
+       cap, and raises a stored or default width under it. */
+    for (const c of cols) {
+      const f = colField(db, c);
+      if (f?.type !== 'toggle') continue;
+      const td = table.querySelector(`:scope > tbody > tr.entity-row > td[data-field="${CSS.escape(c)}"]`);
+      if (!td?.querySelector('.wv-toggle-word')) continue;
+      const cs = getComputedStyle(td);
+      const probe = el('span', { class: 'wv-measure-cell' });
+      for (const prop of ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing']) probe.style[prop] = cs[prop];
+      const word = el('span', { class: 'wv-toggle-word' });
+      probe.append(word);
+      const measure = el('div', { class: 'wv-measure' }, probe);
+      document.body.append(measure);
+      const wide = (text) => { word.textContent = text; return word.getBoundingClientRect().width; };
+      const pad = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
+      valueFloors.set(c, CR.toggleWidth({ on: wide(f.on ?? 'On'), off: wide(f.off ?? 'Off'), pad }));
+      measure.remove();
+    }
     for (const [c, w] of valueFloors) floors.set(c, Math.max(floors.get(c) ?? 0, w));
     /* A rating column opens at the width its own icons need (Issue #404,
        Feature #235). The icon box and the gap are constants in
