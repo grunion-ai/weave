@@ -607,6 +607,19 @@ export function mayAdminister(on, role) {
 }
 const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'root' };
 
+/* A row write names its values in one map (Issue #600). Agents send the
+   entity alone, or `fields` where `values` belongs; refuse by name before the
+   engine reaches the missing map, and name every key the tool does not take. */
+const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+function checkRowArgs(name, args, required) {
+  const props = TOOLS.find((t) => t.name === name).inputSchema.properties;
+  const unknown = Object.keys(args).filter((k) => !Object.hasOwn(props, k) && k !== 'verbose');
+  const extra = unknown.length ? `; unknown ${unknown.map((k) => `'${k}'`).join(', ')}` : '';
+  if (required && !isMap(args.values)) throw new Error(`values is required: a map of field name to value, e.g. {"Name": "…"}${extra}`);
+  if (!required && args.values != null && !isMap(args.values)) throw new Error(`values is a map of field name to value, e.g. {"Name": "…"}${extra}`);
+  if (unknown.length) throw new Error(`${name} takes ${Object.keys(props).join(', ')}${extra}; field values go in values`);
+}
+
 /* caller: { role, root, rootRole, updateWorkspace } — who is calling over
    HTTP, verified by the dispatcher, and the hub's rename door. The stdio
    server passes none: its caller is the local operator who started
@@ -635,10 +648,12 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_get_entity':
       return weave.readEntity(args.entity);
     case 'weave_create_entity': {
+      checkRowArgs(name, args, false);
       const e = weave.createEntity(args.db, { name: args.name, values: args.values, doc: args.doc, docs: args.docs });
       return weave.readEntity(e.id);
     }
     case 'weave_update_entity':
+      checkRowArgs(name, args, true);
       weave.updateEntity(args.entity, args.values);
       return weave.readEntity(args.entity);
     case 'weave_delete_entity':

@@ -28,7 +28,7 @@ Rules for building in weave:
 - Money is a number field with format:"currency" and currency:"USD". A date field takes grain as a list of parts: ["year","month"] for a month, ["year"] for a year.
 - Colour carries meaning: options stay slate unless the hue says something (green income, red overdue). An option is {name, hue, icon}; status options and workflow states take an icon.
 - Icons are lucide:<name> from the inventory. Most builds need no weave_vocabulary call: weave_build lists a refused icon or colour under ignored, with the nearest icons. To look things up, ask for every list in one call: weave_vocabulary {sections:["icons","optionColors"], query:"<word>"}.
-- A build table takes fieldOrder, hidden and sort. A Sort is "Date desc" (comma-separated for more keys), never JSON or "-Date".
+- A build table takes fieldOrder, hidden and sort. A Sort is "Date desc", comma-separated for more keys.
 - Writes answer compact ({id, publicId, name}); pass verbose:true for the full object.
 - Read rows with weave_query (where, sort) and find a row by text with weave_search. weave_call {name, args} runs any tool not listed; weave_call {name:"help", args:{tool}} describes one.
 ```
@@ -176,7 +176,7 @@ Each error below is the text weave returns, followed by the fix.
 | `Workspace name must be alphanumeric` | Name the workspace as a slug: letters, digits and dashes, starting with a letter or digit (`personal-finance`). |
 | `Field 'Stage' not found in table 'Deal'` | The field was never made because an earlier step failed. Read the build's `errors` (each has a `path` such as `spaces[0].tables[1].fields[2]`), fix that entry and resend the whole spec. |
 | `Invalid number format 'currencyy' (number, currency, percent, compact)` | Pick a value the message lists. |
-| `Field '-Date' not found in table 'Transaction'` (a `Sort` on a `Workspace/Tables` or `Workspace/Views` row) | Write `"Date desc"`, comma-separated for more keys; JSON and `-Date` read as field names (Issue #626). `weave_table_view` takes `sort: [{field, dir}]`. |
+| `Field 'When' not found in table 'Transaction'. Sort reads 'Field asc\|desc, Field2 asc\|desc', e.g. 'Date desc'` (a `Sort` on a `Workspace/Tables` or `Workspace/Views` row) | Name a field the table has; `-Date` and `[{field, dir}]` land too (Issue #626). |
 | `Table 'Deals' not found` | Use the name `weave_schema` shows, as `Table` or `Space/Table`. Table names are singular. |
 
 ## Reference

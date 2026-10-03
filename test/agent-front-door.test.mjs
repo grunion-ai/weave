@@ -48,7 +48,7 @@ test('the primer fits what Claude Code keeps and leads with the build', () => {
     ['date grain is a list', /\["year","month"\]/],
     ['replies are compact, verbose for the full object', /verbose:\s*true/],
     ['weave_call reaches the other tools', /weave_call/],
-    ['a Sort is "Date desc", not JSON or -Date (Issue #626)', /"Date desc"/],
+    ['a Sort is "Date desc" (Issue #626)', /"Date desc"/],
     ['a build needs no vocabulary call, at most optionColors and icons (Issue #625)', /optionColors/],
   ]) assert.match(PRIMER, re, `the primer says: ${what}`);
   assert.doesNotMatch(PRIMER, /—/, 'no em dashes');
@@ -107,7 +107,7 @@ test('Using weave carries the primer verbatim and stays a short read', () => {
   assert.match(using, /POST \/api\/mcp/, 'the HTTP door');
   assert.match(using, /\/w\/<workspace>\/api/, 'the REST door');
   assert.match(using, /claude mcp add/, 'the Claude Code config');
-  assert.match(using, /Field '-Date' not found[^\n]*Date desc/, 'the Sort pitfall names the accepted form (Issue #626)');
+  assert.match(using, /Sort reads[^\n]*Date desc/, 'the Sort pitfall names the accepted form (Issue #626)');
   assert.match(using, /Skip `weave_vocabulary`/, 'the build plan says most builds need no lookup (Issue #625)');
   assert.doesNotMatch(using, /—/, 'no em dashes in the new text');
 });

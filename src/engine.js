@@ -872,11 +872,32 @@ const parseFilters = (text) => {
   return out;
 };
 const formatSort = (sort) => (sort ?? []).map((s) => `${s.field} ${s.dir}`).join(', ');
-const parseSort = (text) => String(text ?? '').split(',').map((x) => x.trim()).filter(Boolean)
-  .map((part) => {
-    const m = part.match(/^(.+)\s+(asc|desc)$/i);
-    return m ? { field: m[1].trim(), dir: m[2].toLowerCase() } : { field: part, dir: 'asc' };
-  });
+/* A Sort cell reads 'Date desc, Name'. Agents also write '-Date' and the
+   [{field, dir}] list weave_query takes, as JSON text or a list (Issue #626):
+   both land, and anything else is refused with the one spelling. */
+const SORT_FORM = "Sort reads 'Field asc|desc, Field2 asc|desc'";
+const parseSortPart = (part) => {
+  if (part && typeof part === 'object' && !Array.isArray(part)) {
+    const field = String(part.field ?? part.name ?? '').trim();
+    const dir = String(part.dir ?? part.direction ?? 'asc').trim().toLowerCase();
+    if (!field || !['asc', 'desc'].includes(dir)) throw new WeaveError(`${SORT_FORM}; got ${JSON.stringify(part)}`, 'invalid');
+    return { field, dir };
+  }
+  const s = String(part ?? '').trim();
+  const m = s.match(/^(.+)\s+(asc|desc)$/i);
+  if (m) return { field: m[1].trim(), dir: m[2].toLowerCase() };
+  if (/^[-+]\S/.test(s)) return { field: s.slice(1).trim(), dir: s[0] === '-' ? 'desc' : 'asc' };
+  return { field: s, dir: 'asc' };
+};
+const parseSort = (value) => {
+  let v = value;
+  if (typeof v === 'string' && /^\s*[[{]/.test(v)) {
+    try { v = JSON.parse(v); } catch { throw new WeaveError(`${SORT_FORM}, e.g. 'Date desc'; got '${v}'`, 'invalid'); }
+  }
+  if (v && typeof v === 'object' && !Array.isArray(v)) v = [v];
+  const parts = Array.isArray(v) ? v : String(v ?? '').split(',');
+  return parts.filter((x) => typeof x !== 'string' || x.trim()).map(parseSortPart);
+};
 
 // Narrower than this and a column can hold neither a chip nor a resize grip.
 const MIN_COLUMN_WIDTH = 60;
@@ -2454,7 +2475,10 @@ export class Weave {
       // The table's own fields first, so a field an import named
       // `Created At` keeps its column; then the system columns (Issue #254).
       const f = this.findField(db, s.field);
-      const name = f ? f.name : Object.hasOwn(SYSTEM_SORT_KEYS, s.field) ? s.field : this.getField(db.id, s.field).name;
+      if (!f && !Object.hasOwn(SYSTEM_SORT_KEYS, s.field)) {
+        throw new WeaveError(`Field '${s.field}' not found in table '${db.name}'. ${SORT_FORM}, e.g. 'Date desc'`, 'not-found');
+      }
+      const name = f ? f.name : s.field;
       const dir = s.dir ?? 'asc';
       if (!['asc', 'desc'].includes(dir)) throw new WeaveError(`Sort direction is asc or desc, got '${s.dir}'`, 'invalid');
       return { field: name, dir };

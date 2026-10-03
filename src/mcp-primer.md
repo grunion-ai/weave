@@ -5,6 +5,6 @@ Rules for building in weave:
 - Money is a number field with format:"currency" and currency:"USD". A date field takes grain as a list of parts: ["year","month"] for a month, ["year"] for a year.
 - Colour carries meaning: options stay slate unless the hue says something (green income, red overdue). An option is {name, hue, icon}; status options and workflow states take an icon.
 - Icons are lucide:<name> from the inventory. Most builds need no weave_vocabulary call: weave_build lists a refused icon or colour under ignored, with the nearest icons. To look things up, ask for every list in one call: weave_vocabulary {sections:["icons","optionColors"], query:"<word>"}.
-- A build table takes fieldOrder, hidden and sort. A Sort is "Date desc" (comma-separated for more keys), never JSON or "-Date".
+- A build table takes fieldOrder, hidden and sort. A Sort is "Date desc", comma-separated for more keys.
 - Writes answer compact ({id, publicId, name}); pass verbose:true for the full object.
 - Read rows with weave_query (where, sort) and find a row by text with weave_search. weave_call {name, args} runs any tool not listed; weave_call {name:"help", args:{tool}} describes one.
