@@ -6986,7 +6986,9 @@ export class Weave {
           results.push(undressed && (typeof resolved === 'number' || f.type === 'date') ? resolved
             : undressed && f.type === 'daterange' ? DG.rangeKey(resolved)
             : undressed && (f.type === 'select' || f.type === 'workflow') ? this.#definitionRank(f, resolved)
-            : this.#displayValue(cdb, f, resolved));
+            // The row rides along: an attachments name lives in its file
+            // ledger, and without it every file read as gone (Issue #622).
+            : this.#displayValue(cdb, f, resolved, ce));
         } else {
           if (f.type !== 'relation') throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');
           // Each target knows its own table — a target-set relation's members
@@ -8042,6 +8044,26 @@ export class Weave {
     this.#landBlobs();
     this.#dirtyAll = true;
     this.save();
+    return this.#fileLedger();
+  }
+
+  /* What an import says about its files (Issue #462). The MCP dump leaves
+     the bytes out by design, so a fresh data directory gets names with
+     nothing behind them; checked after the landing, so a dump imported back
+     where its bytes already sit reports nothing missing. */
+  #fileLedger() {
+    let files = 0;
+    const missing = [];
+    for (const e of Object.values(this.state.entities)) {
+      for (const f of e.files ?? []) {
+        files++;
+        if (!this.#hasBlob(f.id)) missing.push({ entity: e.id, file: f.id, name: f.name });
+      }
+    }
+    if (!missing.length) return { files, missing };
+    const warning = `${missing.length} of ${files} file${files === 1 ? '' : 's'} arrived without ${missing.length === 1 ? 'its' : 'their'} bytes: `
+      + 'the dump names them and carries none. Export with blobs (weave export, GET /api/export, or weave_export_json with blobs: true) to bring them.';
+    return { files, missing, warning };
   }
 
   exportCSV(dbRef) {

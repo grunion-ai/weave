@@ -1406,8 +1406,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'POST /api/import') {
           // The import replaces the accounts too: the accounts gate (Issue #482).
           if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Replacing the workspace needs an architect token');
-          weave.importJSON(body);
-          return out(200, { ok: true });
+          return out(200, { ok: true, ...weave.importJSON(body) });
         }
 
         return out(404, { error: `No route: ${route}` });
