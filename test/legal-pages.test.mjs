@@ -34,7 +34,11 @@ test('with requireAuth on, an anonymous visitor reads /privacy and /terms', asyn
       assert.match(html, new RegExp(`<title>${heading}`), `${path} lacks its title`);
       assert.match(html, ATTRIBUTION, `${path} lacks the CC BY attribution`);
       assert.match(html, /Effective date: 2026-10-02/);
+      // [Entity name] waits on Kyle naming the legal entity (Issue #613, 2026-10-03).
       assert.ok(html.includes('[Entity name]'), `${path} lost the entity placeholder`);
+      assert.ok(!html.includes('[Contact email]'), `${path} still shows the contact email slot`);
+      assert.ok(!html.includes('[Address]'), `${path} still shows the address slot`);
+      assert.ok(html.includes('<a href="mailto:weave@grunion.ai">weave@grunion.ai</a>'), `${path} lacks the contact mailto link`);
     }
   } finally { stop(); }
 });
@@ -86,12 +90,15 @@ test('the Worker serves the same pages through the shared dispatcher', async () 
   }
 });
 
-test('the legal text keeps its placeholders and carries no em dash', () => {
+test('the legal text names the contact address, keeps the entity slot and carries no em dash', () => {
   for (const [name, md] of [['privacy', PRIVACY], ['terms', TERMS]]) {
     assert.ok(!md.includes('—'), `${name} carries an em dash`);
-    for (const p of ['[Entity name]', '[Contact email]']) assert.ok(md.includes(p), `${name} lacks ${p}`);
+    // [Entity name] stays until Kyle names the legal entity (Issue #613, 2026-10-03).
+    assert.ok(md.includes('[Entity name]'), `${name} lost the entity placeholder`);
+    for (const gone of ['[Contact email]', '[Address]']) assert.ok(!md.includes(gone), `${name} still carries ${gone}`);
+    assert.ok(md.includes('weave@grunion.ai'), `${name} lacks the contact address`);
     assert.ok(!/37signals|Basecamp(?! open-source policies)/.test(md.replace(/github\.com\/basecamp\/policies/g, '')), `${name} still names the source company`);
   }
-  assert.ok(PRIVACY.includes('[Address]'));
+  assert.ok(PRIVACY.includes('please contact us at [weave@grunion.ai](mailto:weave@grunion.ai). If an authorized agent'), 'privacy contact sentence lost its address clause');
   for (const vendor of ['Clerk', 'Railway', 'Cloudflare']) assert.ok(PRIVACY.includes(vendor), `privacy lacks ${vendor}`);
 });
