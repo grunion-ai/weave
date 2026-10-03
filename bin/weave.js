@@ -11,6 +11,7 @@ const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().us
 import { Weave, WeaveError, deferMigrations, runDeferredMigrations } from '../src/engine.js';
 import { startServer, openDefaultWorkspace } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
+import { guided } from '../src/field-hints.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
 import { vocabularyView } from '../src/vocabulary.js';
@@ -754,7 +755,7 @@ async function main() {
     }
     case 'space': {
       const [sub, name] = args;
-      if (sub === 'create') return out(w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '' }));
+      if (sub === 'create') return out(guided(w, 'space', w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '' })));
       if (sub === 'update') return out(w.updateSpace(name, pickFlags(['name', 'description', 'icon'])));
       if (sub === 'delete') { w.deleteSpace(name, { hard: Boolean(flags.hard) }); return out({ space: name, deleted: true }); }
       if (sub === 'restore') return out(w.restoreSpace(name));
@@ -764,7 +765,7 @@ async function main() {
     case 'table':
     case 'db': { // `db` kept as an alias
       const [sub, space, name] = args;
-      if (sub === 'create') return out(w.createTable({ space, name, description: flags.description ?? '', icon: flags.icon ?? '' }));
+      if (sub === 'create') return out(guided(w, 'table', w.createTable({ space, name, description: flags.description ?? '', icon: flags.icon ?? '' })));
       // `table view Task` lists; `table view Task/Open --fields Name,State` writes (Feature #229).
       if (sub === 'view') {
         const patch = {};
@@ -805,7 +806,7 @@ async function main() {
       if (sub === 'add') {
         const config = parseJsonFlag('config') ?? {};
         if (flags.description != null) config.description = String(flags.description);
-        return out(w.addField(db, { name, type, config }));
+        return out(guided(w, 'field', w.addField(db, { name, type, config }), config));
       }
       if (sub === 'update') {
         const patch = {};
@@ -819,7 +820,7 @@ async function main() {
         if (flags.default != null) config.default = flags.default === 'null' ? null : flags.default;
         if (flags.description != null) config.description = flags.description === 'null' ? null : String(flags.description);
         if (Object.keys(config).length) patch.config = config;
-        return out(w.updateField(db, name, patch));
+        return out(guided(w, 'field', w.updateField(db, name, patch), patch.type == null ? patch.config : {}));
       }
       // weave field rollback <db> <field> --activity <tableId:fN> (Issue #428)
       if (sub === 'rollback') return out(w.rollbackFieldConfig(flags.activity, { table: db ?? null, field: name ?? null }));

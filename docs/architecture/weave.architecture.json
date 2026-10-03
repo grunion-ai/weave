@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "93979c56bd24a600ce0126da9e86cfa0df01624a"
+      "revision": "4b501c7c6d638ba57ee05d664b826431f84d542e"
     },
     "views": [
       {
@@ -446,6 +446,7 @@
       "title": "Shared by every runtime",
       "items": [
         "src/vocabulary.js: one field vocabulary for UI, CLI and MCP",
+        "src/field-hints.js: the next settings and hints a schema write answers with on MCP, REST and the CLI",
         "src/ids.js, src/mark.js and src/workspace-name.js: ids, the rope mark, a new workspace's name",
         "src/applet.js, src/bugreport.js, src/oidc.js, src/legal.js, src/mail.js and src/mail-send.js: routes, provider sign-in, the public privacy and terms pages, and the invite emails and their sender behind the request core"
       ]
