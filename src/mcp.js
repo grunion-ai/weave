@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'node:fs';
 import { VOCABULARY } from './vocabulary.js';
+import { Weave } from './engine.js';
 const PROTOCOL_VERSION = '2024-11-05';
 // Lazy-tolerant, same reason as pdf.js's font path: module-top file reads
 // crash the workerd bundle at cold start. The HTTP transport passes the real
@@ -417,7 +418,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_accounts',
-    description: 'Agent and human accounts. action: list | create (name, role: reader|writer|admin — the token is returned once) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, email, issuer — the email an OpenID Connect provider will vouch for; signing in at the provider provisions nobody, so an account opens to a provider identity only after this; issuer defaults to WEAVE_OIDC_ISSUER) | unlink-identity (account, email).',
+    description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor — observer reads and comments, editor writes rows, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, email, issuer — the email an OpenID Connect provider will vouch for; signing in at the provider provisions nobody, so an account opens to a provider identity only after this; issuer defaults to WEAVE_OIDC_ISSUER) | unlink-identity (account, email).',
     inputSchema: {
       type: 'object',
       properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, email: { type: 'string' }, issuer: { type: 'string' } },
@@ -565,11 +566,11 @@ function callTool(weave, name, rawArgs, caller) {
 
 /* The one gate for accounts, the wall, the keystore and whole-workspace
    import (Issue #482). REST and the MCP dispatcher both ask it, so the two
-   doors cannot drift: anyone until `on` holds an account, an admin of `on`
+   doors cannot drift: anyone until `on` holds an account, an architect of `on`
    after. `on` is the workspace for accounts and import, and the hub root for
    keys, because one keystore serves the whole process (Issue #480). */
 export function mayAdminister(on, role) {
-  return role === 'admin' || !on.listAccounts().length;
+  return Weave.roleName(role) === 'architect' || !on.listAccounts().length;
 }
 const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'root' };
 
@@ -581,7 +582,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   if (caller && ADMIN_TOOLS[name]) {
     const atRoot = ADMIN_TOOLS[name] === 'root';
     if (!mayAdminister(atRoot ? caller.root ?? weave : weave, atRoot ? caller.rootRole : caller.role)) {
-      throw new Error(`${name} needs an admin token${atRoot ? ' on the hub root' : ''}`);
+      throw new Error(`${name} needs an architect token${atRoot ? ' on the hub root' : ''}`);
     }
   }
   // The MCP server is long-running: pick up commits from other processes
@@ -735,7 +736,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_accounts':
       switch (args.action) {
         case 'list': return { accounts: weave.listAccounts() };
-        case 'create': return weave.createAccount({ name: args.name, role: args.role ?? 'writer' });
+        case 'create': return weave.createAccount({ name: args.name, role: args.role ?? 'editor' });
         case 'delete': return weave.deleteAccount(args.account);
         case 'require-auth': return weave.setRequireAuth(Boolean(args.on));
         case 'sessions': return { sessions: weave.listSessions(args.account ?? args.name) };

@@ -22,7 +22,7 @@ test('engine: a session is a hash at rest with a sliding 30-day expiry; revoke b
   assert.ok(!JSON.stringify(w.state.meta.sessions).includes(s1.token), 'the raw session token is not at rest');
   const me = w.verifySession(s1.token);
   assert.equal(me.name, 'kyle');
-  assert.equal(me.role, 'admin');
+  assert.equal(me.role, 'architect');
   assert.ok(!('tokenHash' in me));
   assert.equal(w.verifySession('nope'), null);
   // Sliding: an old lastSeenAt is refreshed on use, and expiresAt moves with it.
@@ -122,7 +122,7 @@ test('routes: a provider sign-in sets a session cookie that opens the wall; logo
     assert.equal((await s.call('GET', '/api/schema', { cookie: kyle.cookie })).status, 200);
     const me = await (await s.call('GET', '/api/auth/me', { cookie: kyle.cookie })).json();
     assert.equal(me.account.name, 'kyle');
-    assert.equal(me.role, 'admin');
+    assert.equal(me.role, 'architect');
     assert.equal(me.sessions.length, 1);
     assert.equal(me.sessions[0].current, true);
     // A write lands under the account's name.

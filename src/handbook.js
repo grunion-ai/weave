@@ -1175,14 +1175,14 @@ A deck is a read over slide rows, composed on request — the rows stay editable
 ## Who can do it
 
 \`\`\`bash
-weave account create ci-bot --role writer
+weave account create ci-bot --role editor
 weave account list
 weave audit --limit 50
 \`\`\`
 
-Three roles: \`admin\`, \`writer\`, \`reader\`. Tokens are \`wv_\` values hashed at rest, and every mutation lands in a durable audit log with the actor that made it — a person, the CLI, or a named MCP client.
+Three roles. An **Observer** (free) reads every page and comments: it may post a comment, under its own name, and delete a comment it made. An **Editor** (paid seat) also creates, edits and deletes rows and any comment, and never touches structure: no workspace, space, table or field definition. An **Architect** (paid) does everything, structure, accounts and the keystore included. "Free" and "paid seat" are labels: weave bills nobody. Before 2026-10-02 the three were \`reader\`, \`writer\` and \`admin\`; every open rewrites a stored old name to the new one, so every token keeps working, and \`--role admin|writer|reader\` is still accepted, with a deprecation note, for one more release. Tokens are \`wv_\` values hashed at rest, and every mutation lands in a durable audit log with the actor that made it — a person, the CLI, or a named MCP client.
 
-\`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\`, a view's share link, the task applet, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either is sent to the sign-in when a provider is configured and gets a page that links to it when none is, and an API call gets a 401. People sign in through an identity provider (the **Door C: sign in with a provider** guide) and agents keep the token. A reader may read any page and write at none; a writer writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an admin token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
+\`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\`, a view's share link, the task applet, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either is sent to the sign-in when a provider is configured and gets a page that links to it when none is, and an API call gets a 401. People sign in through an identity provider (the **Door C: sign in with a provider** guide) and agents keep the token. An observer may read any page and write nothing but its own comments; an editor writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an architect token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
 
 Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard deletes and file deletions are not. In the app, \`⌘Z\` (Ctrl+Z) steps back the last change: a selection-bar trash comes back whole when nothing was written after it. A text box, an open cell and a document keep \`⌘Z\` as their own text undo. There is no redo.
 
@@ -1692,7 +1692,7 @@ Service → **Settings → Networking → Custom Domain** → \`weave.example.co
 
 ## 6. The door
 
-The custom domain is public. Turn \`requireAuth\` on (\`weave workspace require-auth\` from a shell on the service, or \`PATCH /api/workspace\` with \`{"requireAuth": true}\` and an admin token) and put a door in front: **Door C: sign in with a provider** (set \`WEAVE_ORIGIN\` to the custom domain, \`WEAVE_TRUST_PROXY=1\` and the \`WEAVE_OIDC_*\` variables, then \`weave account link\` from a shell on the service) or **Door A: an edge gate**.
+The custom domain is public. Turn \`requireAuth\` on (\`weave workspace require-auth\` from a shell on the service, or \`PATCH /api/workspace\` with \`{"requireAuth": true}\` and an architect token) and put a door in front: **Door C: sign in with a provider** (set \`WEAVE_ORIGIN\` to the custom domain, \`WEAVE_TRUST_PROXY=1\` and the \`WEAVE_OIDC_*\` variables, then \`weave account link\` from a shell on the service) or **Door A: an edge gate**.
 
 ## Backups
 

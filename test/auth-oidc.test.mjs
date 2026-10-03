@@ -165,7 +165,7 @@ test('routes: a linked person signs in at the provider and comes back with a ses
     assert.match(res.headers.get('set-cookie'), /^wv_session=[\w-]{40,}; HttpOnly; SameSite=Lax; Path=\//);
     assert.equal((await s.call('GET', '/api/spaces', { cookie })).status, 200);
     const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();
-    assert.deepEqual([me.account.name, me.role], ['kyle', 'writer']);
+    assert.deepEqual([me.account.name, me.role], ['kyle', 'editor']);
     assert.equal(me.account.identities[0].subject, 'user_kyle');
     assert.equal(s.idp.seen.token[0].form.grant_type, 'authorization_code');
     assert.ok(s.idp.seen.token[0].form.code_verifier.length >= 43);

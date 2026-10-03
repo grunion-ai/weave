@@ -553,7 +553,7 @@ export const ONTOLOGY = {
     },
     {
       key: 'account', name: 'Account', storedIn: 'state.meta.accounts',
-      definition: 'A named token holder with a role — admin, writer, or reader. Only the token hash is kept. Browser sessions are kept beside it as sha256 hashes (Feature #222 part 2). A credentials[] array left on a row by the passkey door removed in Feature #243 is kept and ignored. Provider identities (issuer, email, pinned subject) live on the row as identities[] (Feature #212).',
+      definition: 'A named token holder with a role — architect, editor, or observer (admin, writer and reader before 2026-10-02, rewritten on open). Only the token hash is kept. Browser sessions are kept beside it as sha256 hashes (Feature #222 part 2). A credentials[] array left on a row by the passkey door removed in Feature #243 is kept and ignored. Provider identities (issuer, email, pinned subject) live on the row as identities[] (Feature #212).',
       identity: 'uuid; name unique in the workspace',
       api: ['createAccount', 'listAccounts', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'listSessions', 'revokeSession', 'linkIdentity', 'unlinkIdentity', 'accountForIdentity'],
     },
@@ -1096,6 +1096,14 @@ export class Weave {
         auto.seq = ++s.meta.automationSeq;
         changed = true;
       }
+    }
+    // admin / writer / reader became architect / editor / observer
+    // (2026-10-02). The token hash is untouched, so every wv_ token and
+    // session keeps opening the account it opened. No flag: an older weave
+    // sharing the .db can still write an old name, so every open looks.
+    for (const a of Object.values(s.meta.accounts ?? {})) {
+      const role = Weave.roleName(a.role);
+      if (role !== a.role) { a.role = role; changed = true; }
     }
     if (changed) {
       this.#dirtyAll = true;
@@ -3067,10 +3075,19 @@ export class Weave {
 
   // ---------------- accounts & audit (Feature #14) ----------------
   /* Accounts are how a hosted instance (#84, v0.5) knows its callers. The
-     token is handed out exactly once; only its sha256 lands at rest. Roles:
-     admin (everything), writer (entity work, no schema), reader (reads).
-     Enforcement lives at the surfaces — the engine keeps the facts. */
-  static ROLES = ['admin', 'writer', 'reader'];
+     token is handed out exactly once; only its sha256 lands at rest. Roles
+     (Kyle, 2026-10-02): architect (everything, structure included), editor
+     (entities and comments, no structure), observer (reads, and its own
+     comments). Enforcement lives at the surfaces — the engine keeps the
+     facts. The labels are billing words only; weave bills nobody. */
+  static ROLES = ['architect', 'editor', 'observer'];
+  static ROLE_LABELS = { architect: 'Architect, paid', editor: 'Editor, paid seat', observer: 'Observer, free' };
+  /* The names before 2026-10-02. Accepted as input for one release, and
+     rewritten wherever a stored row still carries one (#migrate).
+     ponytail: drop OLD_ROLES from input in the release after v0.4.55;
+     keep the #migrate rewrite for any .db opened late. */
+  static OLD_ROLES = { admin: 'architect', writer: 'editor', reader: 'observer' };
+  static roleName(role) { return Weave.OLD_ROLES[role] ?? role; }
 
   #audit(action, detail = {}) {
     this.store.audit({ at: nowISO(), actor: this.actor, action, detail });
@@ -3080,10 +3097,11 @@ export class Weave {
     return this.store.listAudit(opts).map((r) => ({ ...r, detail: Weave.#publicDetail(r.detail) }));
   }
 
-  createAccount({ name, role = 'writer' } = {}) {
+  createAccount({ name, role: asked = 'editor' } = {}) {
     if (!name) throw new WeaveError('Account name is required', 'invalid');
     refuseReserved('account', name);
-    if (!Weave.ROLES.includes(role)) throw new WeaveError(`Invalid role '${role}' (${Weave.ROLES.join(', ')})`, 'invalid');
+    const role = Weave.roleName(asked);
+    if (!Weave.ROLES.includes(role)) throw new WeaveError(`Invalid role '${asked}' (${Weave.ROLES.join(', ')})`, 'invalid');
     const accounts = (this.state.meta.accounts ??= {});
     if (Object.values(accounts).some((a) => a.name === name)) throw new WeaveError(`Account '${name}' already exists`, 'conflict');
     const token = 'wv_' + randomBytes(24).toString('base64url');
@@ -3092,7 +3110,8 @@ export class Weave {
     this.save();
     this.#audit('account-created', { name, role });
     const { tokenHash, ...pub } = account;
-    return { account: pub, token };
+    const note = role !== asked ? `Role '${asked}' is now '${role}'; the old name is deprecated and accepted for one more release` : undefined;
+    return { account: pub, token, ...(note ? { note } : {}) };
   }
 
   verifyToken(token) {

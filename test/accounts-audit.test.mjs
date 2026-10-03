@@ -14,7 +14,7 @@ import { startServer } from '../src/server.js';
 test('an account is born with a token that is never stored in the clear', () => {
   const w = new Weave();
   const { account, token } = w.createAccount({ name: 'deploy-bot', role: 'writer' });
-  assert.equal(account.role, 'writer');
+  assert.equal(account.role, 'editor', 'writer is the old name for editor');
   assert.match(token, /^wv_/);
   assert.ok(!JSON.stringify(w.exportJSON()).includes(token), 'the raw token is nowhere at rest');
 
