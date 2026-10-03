@@ -468,6 +468,101 @@ export const TOOLS = [
 ];
 for (const t of TOOLS) if (COMPACT_TOOLS.has(t.name)) t.inputSchema.properties.verbose = VERBOSE;
 
+/* Issue #595: 56 definitions cost about 12,000 tokens on every turn, and a
+   workspace build uses about twelve of them. tools/list answers the core
+   build set plus weave_call by default; weave_call reaches the rest, and its
+   description names each of them in one line. `weave mcp --tools all` or
+   WEAVE_MCP_TOOLS=all lists every tool. weave_build joins the core set when
+   it exists. */
+export const CORE_TOOLS = new Set([
+  'weave_schema', 'weave_query', 'weave_get_entity', 'weave_create_entity', 'weave_update_entity',
+  'weave_create_space', 'weave_create_table', 'weave_add_field', 'weave_update_field', 'weave_add_relation',
+  'weave_import_csv', 'weave_vocabulary', 'weave_workspace', 'weave_search', 'weave_build', 'weave_call',
+]);
+// The line weave_call shows for each tool the core list leaves out.
+const SUMMARY = {
+  weave_delete_entity: 'trash a row (hard: true purges)',
+  weave_restore_entity: 'bring a row back from the trash',
+  weave_trash: 'list trashed rows',
+  weave_stats: 'summarise every column of a table',
+  weave_undo: 'revert the last row edits (list: true previews)',
+  weave_bulk: 'set, link, move or roll up many rows in one write',
+  weave_set_state: 'move a row to a workflow state',
+  weave_link: 'link rows through a relation field',
+  weave_unlink: 'unlink rows from a relation field',
+  weave_get_doc: 'read a row\'s document as markdown',
+  weave_set_doc: 'replace or append a row\'s document',
+  weave_doc_revisions: 'a document\'s version history',
+  weave_doc_restore: 'write a past revision back',
+  weave_add_comment: 'comment on a row',
+  weave_delete_comment: 'delete a comment',
+  weave_check_formula: 'validate and preview a formula before saving it',
+  weave_create_automation: 'create an automation rule',
+  weave_automations: 'list, describe, update or delete automations',
+  weave_export_csv: 'a table as CSV',
+  weave_attach_file: 'attach a file to a row (base64)',
+  weave_files: 'read or delete an attached file',
+  weave_update_space: 'rename a space, change its description or icon',
+  weave_delete_space: 'trash a space (hard: true purges)',
+  weave_restore_space: 'restore a trashed space',
+  weave_update_table: 'rename, icon, noun, field order, system fields, Σ row',
+  weave_table_view: 'read and write a table\'s views',
+  weave_move_table: 'move a table to another space',
+  weave_duplicate_table: 'copy a table\'s schema, no rows',
+  weave_delete_table: 'trash a table (hard: true purges)',
+  weave_restore_table: 'restore a trashed table',
+  weave_rollback_field: 'put a field back to an earlier config',
+  weave_delete_field: 'delete a field and its values',
+  weave_apply_schema: 'apply a whole schema document (dryRun plans)',
+  weave_views: 'saved multi-table pages and share links',
+  weave_activity: 'the change feed',
+  weave_audit: 'the schema and account audit log',
+  weave_accounts: 'accounts, tokens, sessions, require-auth',
+  weave_keys: 'the credential keystore',
+  weave_registry: 'registry drift report and rebuild',
+  weave_relation_map: 'the relation map as mermaid',
+  weave_export_json: 'the whole workspace as JSON',
+  weave_import_json: 'replace the workspace from a JSON export',
+};
+TOOLS.push({
+  name: 'weave_call',
+  description: [
+    'Call any weave tool by name: {name, args}, where args is that tool\'s input. {name: "help", args: {tool}} returns the tool\'s description and input schema; read it before the first call. The tools not listed on their own:',
+    ...TOOLS.filter((t) => !CORE_TOOLS.has(t.name)).map((t) => `${t.name}: ${SUMMARY[t.name] ?? t.description.split(/[.:]\s/)[0].slice(0, 60)}`),
+  ].join('\n'),
+  inputSchema: {
+    type: 'object',
+    properties: { name: { type: 'string', description: 'A tool name, or "help"' }, args: { type: 'object', description: 'That tool\'s arguments' } },
+    required: ['name'],
+  },
+});
+
+export function toolProfile(env = globalThis.process?.env ?? {}) {
+  return env.WEAVE_MCP_TOOLS === 'all' ? 'all' : 'core';
+}
+export function listTools(profile = toolProfile()) {
+  return profile === 'all' ? TOOLS : TOOLS.filter((t) => CORE_TOOLS.has(t.name));
+}
+
+/* tools/call, with weave_call unwrapped: the inner tool gets the same admin
+   gate, compact reply and verbose switch as a direct call. */
+function callTool(weave, name, rawArgs, caller) {
+  if (name === 'weave_call') {
+    let inner = rawArgs.args ?? {};
+    if (typeof inner === 'string') inner = JSON.parse(inner);
+    if (rawArgs.name === 'help') {
+      const t = TOOLS.find((x) => x.name === inner.tool);
+      if (!t) throw new Error(`help needs args.tool, one of the names weave_call lists (got ${JSON.stringify(inner.tool ?? null)})`);
+      return { name: t.name, description: t.description, inputSchema: t.inputSchema };
+    }
+    if (!rawArgs.name || rawArgs.name === 'weave_call') throw new Error('weave_call needs name: a weave tool name, or "help"');
+    return callTool(weave, rawArgs.name, inner, caller);
+  }
+  const { verbose, ...args } = rawArgs;
+  const result = dispatchTool(weave, name, COMPACT_TOOLS.has(name) ? args : rawArgs, { caller });
+  return verbose === true ? result : compactResult(name, result);
+}
+
 /* The one gate for accounts, the wall, the keystore and whole-workspace
    import (Issue #482). REST and the MCP dispatcher both ask it, so the two
    doors cannot drift: anyone until `on` holds an account, an admin of `on`
@@ -694,7 +789,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
    transport-free, so stdio and POST /api/mcp (Feature #99) cannot drift.
    HTTP note: requests are stateless, so the actor set by `initialize` lasts
    one request; HTTP clients name themselves per call with x-weave-actor. */
-export function handleMcpMessage(weave, msg, { version = VERSION, caller = null } = {}) {
+export function handleMcpMessage(weave, msg, { version = VERSION, caller = null, tools = toolProfile() } = {}) {
   const { id, method, params } = msg ?? {};
   const reply = (result) => (id !== undefined ? { jsonrpc: '2.0', id, result } : null);
   const fail = (code, message) => (id !== undefined ? { jsonrpc: '2.0', id, error: { code, message } } : null);
@@ -714,12 +809,10 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null 
       case 'ping':
         return reply({});
       case 'tools/list':
-        return reply({ tools: TOOLS });
+        return reply({ tools: listTools(tools) });
       case 'tools/call': {
         try {
-          const { verbose, ...args } = params.arguments ?? {};
-          const result = dispatchTool(weave, params.name, COMPACT_TOOLS.has(params.name) ? args : (params.arguments ?? {}), { caller });
-          return reply(textResult(verbose === true ? result : compactResult(params.name, result)));
+          return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller)));
         } catch (err) {
           return reply({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
         }
@@ -732,13 +825,13 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null 
   }
 }
 
-export function startMcpServer(weave, { input = process.stdin, output = process.stdout } = {}) {
+export function startMcpServer(weave, { input = process.stdin, output = process.stdout, tools = toolProfile() } = {}) {
   let buffer = '';
 
   const send = (msg) => output.write(JSON.stringify(msg) + '\n');
 
   const handle = (msg) => {
-    const response = handleMcpMessage(weave, msg);
+    const response = handleMcpMessage(weave, msg, { tools });
     if (response) send(response);
   };
 
