@@ -1,0 +1,3 @@
+{
+  "_": "Flickers that were fixed and must stay fixed. Key: journey|kind|selector, as scripts/flicker-sweep.mjs prints it. Value: { \"issue\": <weave Issue number>, \"why\": \"<what flashed>\" }. The fixer adds the row's fingerprint here in the change that fixes it; test/flicker-gate-browser.test.mjs fails when one comes back."
+}
