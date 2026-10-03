@@ -8,8 +8,10 @@
    label — icon, text, sort arrow, computed mark — plus the padding around it
    (the right pad is where the ⋮ menu and the grip sit), and never less than
    the engine's minimum. It is measured off the rendered header by app.js.
-   A date (Issue #159) and a toggle (Issue #586) raise it to what their
-   value paints, so no column of theirs can cut one.
+   A date (Issue #159), a toggle (Issue #586), a select, a multi-select, a
+   state and a rating (Issue #614) raise it to what their value paints, so
+   no column of theirs can cut one. Free text is not floored: it truncates
+   with an ellipsis and its pop shows the rest.
 
    width: where the column is while the pointer is at x. The SAME number is
    painted on every move and persisted on release — one rounding, one
@@ -63,10 +65,11 @@
      nothing has been measured yet. */
   const ratingWidth = (n, pad) => n * RATING_METRICS.icon + (n - 1) * RATING_METRICS.gap + (Number.isFinite(pad) ? pad : RATING_METRICS.pad);
   /* Whether a rating's icons fit in a column this wide; a column narrower
-     than its icons (a person dragged it, or the max passes the fit cap)
-     draws the compact "★ 3/12" instead of cutting icons off. A rollup or a
-     lookup that reads a rating draws inside the computed chip and is sized
-     on its own (Issue #564). */
+     than its icons draws the compact "★ 3/12" instead of cutting icons off.
+     Since Issue #614 a drag cannot take a rating under its icons (its floor,
+     ratingFloor below), so the compact form is what a max past the fit cap
+     draws. A rollup or a lookup that reads a rating draws inside the
+     computed chip and is sized on its own (Issue #564). */
   const ratingFits = (width, max, pad) => !(max > 0) || width >= ratingWidth(max, pad);
 
   /* A toggle's switch, as the cell paints it (public/style.css: a
@@ -81,6 +84,31 @@
   const TOGGLE_METRICS = { track: 28, gap: 7, pad: 8 };
   const toggleWidth = ({ on = 0, off = 0, pad } = {}) =>
     Math.ceil(TOGGLE_METRICS.track + TOGGLE_METRICS.gap + Math.max(on, off) + (Number.isFinite(pad) ? pad : TOGGLE_METRICS.pad));
+
+  /* A select, a multi-select or a state paints a chip of fixed shape:
+     fill, padding, colour or icon, name. Kyle (2026-10-03, Issue #614):
+     "make sure no part of the toggle or box can be cut off by field
+     resize." Before, these floored at their header label only, so a State
+     column dragged under a "Setup incomplete" chip cut it mid-word. `chip`
+     is the widest option's chip as app.js measures it in the column's own
+     cell, so a CSS change moves the number with it. A multi-select keeps one
+     chip whole beside the +N count that says the rest are hidden (fitChips
+     in app.js): `more` is that count's width and `gap` the box's gap
+     between them — one chip, never the sum. `pad` is the cell's measured
+     padding and border, as for a toggle. */
+  const CELL_PAD = 8;
+  const chipWidth = ({ chip = 0, more = 0, gap = 0, pad } = {}) =>
+    (chip ? Math.ceil(chip + (more ? gap + more : 0) + (Number.isFinite(pad) ? pad : CELL_PAD)) : 0);
+
+  /* A rating's icons are a control of fixed shape too (Issue #614), so its
+     floor holds every icon. That supersedes Feature #235's "a width the
+     reader dragged still wins" for widths under the icons. Past the fit
+     ceiling a rating stops there, as its default does: a max that long
+     (the engine allows 100) draws its compact form. */
+  const ratingFloor = (f = {}, pad) => {
+    const icons = ratingIcons(f);
+    return icons ? Math.min(maxWidth(f), ratingWidth(icons, pad)) : 0;
+  };
 
   /* A graphic number column opens at the width its graphic needs (Feature
      #235): never a bar squeezed to a sliver. The sizes are the cells' own
@@ -216,7 +244,7 @@
   }
 
   root.WeaveColumnResize = {
-    DEFAULT_WIDTHS, NAME_WIDTH, CAP, RATING_METRICS, TOGGLE_METRICS, toggleWidth,
+    DEFAULT_WIDTHS, NAME_WIDTH, CAP, RATING_METRICS, TOGGLE_METRICS, toggleWidth, chipWidth, ratingFloor,
     floor({ label = 0, padLeft = 0, padRight = 0, min = 0 } = {}) {
       return Math.max(min, Math.ceil(label + padLeft + padRight));
     },

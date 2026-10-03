@@ -3264,6 +3264,32 @@ function fileDropZone(zone, take) {
   return zone;
 }
 
+// An option's colour is a name from the ten-hue ramp, not a loose hex —
+// chip-core.js reads the stored hex back as one, so an option that predates
+// the ramp keeps exactly the colour it had. Uncoloured rests on slate.
+function optionHue(field, name) {
+  const o = (field.optionsFull ?? []).find((x) => x.name === name);
+  return `hue-${chipCore.hueFromHex(o?.color)}`;
+}
+// The glyph an option wears, if its author gave it one.
+function optionIcon(field, name) {
+  const ico = (field.optionsFull ?? []).find((x) => x.name === name)?.icon;
+  return ico ? iconEl(ico, 'ico wv-icon') : null;
+}
+/* The chip a select, a multi-select or a state paints for one value. The
+   cell draws it here and the grid's column floor measures it here (Issue
+   #614), so the floor is the chip the cell shows, never a copy of its
+   recipe. A select's and a state's chip is the picker's trigger button; a
+   multi-select's chips sit in a box that is the trigger. */
+function optionChipEl(f, name) {
+  const unset = name == null ? ' is-empty' : '';
+  switch (f.type) {
+    case 'workflow': return el('button', { class: `${stateChipClass(f, name)}${unset} chip-trigger`, type: 'button', title: f.name }, ...stateNodes(f, name));
+    case 'multiselect': return el('span', { class: `k k-multi ${optionHue(f, name)}` }, optionIcon(f, name), chipLabel(name));
+    default: return el('button', { class: `k k-select ${optionHue(f, name)}${unset} chip-trigger`, type: 'button', title: f.name }, optionIcon(f, name), chipLabel(name ?? '—'));
+  }
+}
+
 function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
@@ -3295,19 +3321,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     } catch (err) { paint?.(val); toast(err.message, true); }
   };
 
-  // An option's colour is a name from the ten-hue ramp, not a loose hex —
-  // chip-core.js reads the stored hex back as one, so an option that predates
-  // the ramp keeps exactly the colour it had. Uncoloured rests on slate.
-  function optionHue(field, name) {
-    const o = (field.optionsFull ?? []).find((x) => x.name === name);
-    return `hue-${chipCore.hueFromHex(o?.color)}`;
-  }
-  // The glyph an option wears, if its author gave it one.
-  function optionIcon(field, name) {
-    const ico = (field.optionsFull ?? []).find((x) => x.name === name)?.icon;
-    return ico ? iconEl(ico, 'ico wv-icon') : null;
-  }
-
   if (f.type === 'view') return viewCell(item.raw?.[f.name], f, { compact });
   if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
     // Read-only: the glyph says "computed, not editable" at a glance so these
@@ -3336,9 +3349,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     return box;
   }
   if (f.type === 'workflow') {
-    const unset = (v) => (v == null ? ' is-empty' : '');
-    const trigger = el('button', { class: stateChipClass(f, val) + unset(val), type: 'button', title: f.name }, ...stateNodes(f, val));
-    const paint = (name) => { trigger.className = `${stateChipClass(f, name)}${unset(name)} chip-trigger`; trigger.replaceChildren(...stateNodes(f, name)); };
+    const trigger = optionChipEl(f, val);
+    const paint = (name) => { const next = optionChipEl(f, name); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
       /* The picker paints a row or a staged chip with the class it is handed,
@@ -3361,10 +3373,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     });
   }
   if (f.type === 'select') {
-    const unset = (v) => (v == null ? ' is-empty' : '');
-    const trigger = el('button', { class: `k k-select ${optionHue(f, val)}${unset(val)}`, type: 'button', title: f.name },
-      optionIcon(f, val), chipLabel(val ?? '—'));
-    const paint = (v) => { trigger.className = `k k-select ${optionHue(f, v)}${unset(v)} chip-trigger`; trigger.replaceChildren(...[optionIcon(f, v), chipLabel(v ?? '—')].filter(Boolean)); };
+    const trigger = optionChipEl(f, val);
+    const paint = (v) => { const next = optionChipEl(f, v); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
       // Each option is its own chip in the list, in the hue it wears in the
@@ -3380,7 +3390,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const box = el('span', { class: 'ms-box', title: 'Edit selections' });
     const paint = (ids) => {
       box.replaceChildren();
-      for (const v of ids ?? []) box.append(el('span', { class: `k k-multi ${optionHue(f, v)}` }, optionIcon(f, v), chipLabel(v)), ' ');
+      for (const v of ids ?? []) box.append(optionChipEl(f, v), ' ');
       if (!ids?.length) box.append(el('span', { class: 'k k-add' }, iconEl('+', 'wv-icon wv-icon-xs')));
     };
     paint(current);
@@ -5674,7 +5684,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const gid = `g${++GRID_SEQ}`;
   const layoutSheet = el('style', { class: 'wv-grid-layout' });
   const floors = new Map();        // column → its label floor, measured off the rendered header
-  const valueFloors = new Map();   // date column → the width its widest date needs (Issue #159)
+  const valueFloors = new Map();   // column → the width its value needs whole: a date (Issue #159), a toggle (#586), a chip or a rating (#614)
+  const chipWidths = new Map();    // chip column → { key, chip, more, gap }: its widest option, measured while its options and face stay the same (Issue #614)
   const cellPads = new Map();      // rating column → its cell's own horizontal padding (Issue #404)
   const override = new Map();      // column → the width a gesture is painting right now
   let frozenShown = 0;             // frozen fields drawn: the stored count, capped at 60%
@@ -5729,9 +5740,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (pidWidth) out.push(`${scope} > * > tr > :is(th.pid-head, td.pid-cell){min-width:${pidWidth}px}`);
     cols.forEach((c, i) => {
       out.push(cell(at + i + 1) + fixed(widthOf(c)));
-      /* A rating column narrower than its icons — a person dragged it, or
-         the max passes the fit cap — draws the compact "★ 3/12" rather
-         than cutting icons off (Issue #404). */
+      /* A rating column narrower than its icons draws the compact "★ 3/12"
+         rather than cutting icons off (Issue #404). Its floor holds every
+         icon since Issue #614, so a drag cannot get it there: only a max
+         past the fit cap does. */
       const f = colField(db, c);
       if (f?.type === 'rating' && !CR.ratingFits(widthOf(c), f.max, cellPads.get(c))) {
         out.push(`${cell(at + i + 1, 'tbody')} .wv-rating > .wv-rate-ico{display:none}`,
@@ -5832,21 +5844,66 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       valueFloors.set(c, CR.toggleWidth({ on: wide(f.on ?? 'On'), off: wide(f.off ?? 'Off'), pad }));
       measure.remove();
     }
-    for (const [c, w] of valueFloors) floors.set(c, Math.max(floors.get(c) ?? 0, w));
+    /* A select, a multi-select and a state paint a chip of fixed shape, and
+       no part of it may be cut either (Issue #614; Kyle, 2026-10-03: "make
+       sure no part of the toggle or box can be cut off by field resize").
+       The floor is the widest OPTION's chip, not the widest value on screen,
+       so picking a long option later never lands cut. The chips are drawn
+       by the cell's own optionChipEl inside the column's own cell, hidden
+       off to the side, so every grid rule on a chip (its face, padding, the
+       box's gap) applies and a CSS change moves the number with it. A multi-
+       select keeps one chip whole beside the +N count fitChips shows, never
+       the sum of its chips. They are measured again only when the options
+       or the cell's face change (an option added, renamed or given an icon;
+       a density; the column moved to lead the row), so a cached width cannot
+       go stale the way a date's `valueFloors.has(c)` would; the padding is
+       read every draw, as a toggle's is. Free text is not floored. */
+    for (const c of cols) {
+      const f = colField(db, c);
+      if (!['select', 'multiselect', 'workflow'].includes(f?.type)) continue;
+      const names = f.type === 'workflow' ? (f.states ?? []).map((st) => st.name) : (f.options ?? []);
+      const td = table.querySelector(`:scope > tbody > tr.entity-row > td[data-field="${CSS.escape(c)}"]`);
+      if (!td || !names.length) continue;
+      const cs = getComputedStyle(td);
+      const key = JSON.stringify([cs.font, table.dataset.density, f.type === 'workflow' ? f.states : (f.optionsFull ?? names)]);
+      let m = chipWidths.get(c);
+      if (m?.key !== key) {
+        const chips = names.map((o) => optionChipEl(f, o));
+        const more = f.type === 'multiselect' && names.length > 1 ? el('span', { class: 'k k-more' }, `+${names.length - 1}`) : null;
+        const box = el('span', { class: f.type === 'multiselect' ? 'ms-box' : 'wv-measure-cell' }, ...chips, more);
+        const measure = el('div', { class: 'wv-measure' }, box);
+        td.append(measure);
+        m = {
+          key,
+          chip: Math.max(...chips.map((n) => n.getBoundingClientRect().width)),
+          more: more?.getBoundingClientRect().width ?? 0,
+          gap: parseFloat(getComputedStyle(box).columnGap) || 0,
+        };
+        measure.remove();
+        chipWidths.set(c, m);
+      }
+      const pad = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
+      valueFloors.set(c, CR.chipWidth({ ...m, pad }));
+    }
     /* A rating column opens at the width its own icons need (Issue #404,
        Feature #235). The icon box and the gap are constants in
        column-resize.js; the cell's padding is not — Tabler gives the row's
        last cell 20px on the right where every other gets 4 — so it is read
        off the rendered cell, every draw, because hiding a field moves which
-       cell is last. Unlike a date's floor this only raises the DEFAULT: a
-       width the reader dragged still wins (Kyle, Feature #235). */
+       cell is last. Its icons are a control of fixed shape, so since Issue
+       #614 they floor the column as a toggle's switch does: a drag no longer
+       cuts the last icon (Kyle, 2026-10-03, superseding Feature #235's "a
+       width the reader dragged still wins" for widths under the icons). */
     for (const c of cols) {
-      if (colField(db, c)?.type !== 'rating') continue;
+      const f = colField(db, c);
+      if (f?.type !== 'rating') continue;
       const td = table.querySelector(`:scope > tbody > tr.entity-row > td[data-field="${CSS.escape(c)}"]`);
       if (!td) continue;
       const cs = getComputedStyle(td);
       cellPads.set(c, ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0));
+      valueFloors.set(c, CR.ratingFloor(f, cellPads.get(c)));
     }
+    for (const [c, w] of valueFloors) floors.set(c, Math.max(floors.get(c) ?? 0, w));
     const pidCell = table.querySelector(':scope > tbody > tr.entity-row > td.pid-cell');
     if (pidCell) {
       let top = db.entityCount ?? 0;

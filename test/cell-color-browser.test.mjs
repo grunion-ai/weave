@@ -132,36 +132,52 @@ if (s) {
     } finally { await acc.close(); }
   });
 
-  test('a 10-icon rating opens without clipping; dragged narrower it draws the compact form (Issue #404)', async () => {
+  test('a 10-icon rating opens without clipping; stored narrower it is raised to every icon; past the fit cap it draws the compact form (Issues #404, #614)', async () => {
+    const iconsFit = (td) => {
+      const r = td.querySelector('.wv-rating');
+      const cs = getComputedStyle(td);
+      const inner = td.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const last = [...r.querySelectorAll('.wv-rate-ico')].pop().getBoundingClientRect();
+      return { need: r.scrollWidth, inner, lastRight: last.right, tdRight: td.getBoundingClientRect().right, clipped: td.classList.contains('clipped') };
+    };
     const page = await grid(deals.id, 'light', 1400);
     try {
       const sel = `${cell(big.id, 'Ten')}`;
       await page.locator(sel).scrollIntoViewIfNeeded();
-      const fit = await page.$eval(sel, (td) => {
-        const r = td.querySelector('.wv-rating');
-        const cs = getComputedStyle(td);
-        const inner = td.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-        const last = [...r.querySelectorAll('.wv-rate-ico')].pop().getBoundingClientRect();
-        return { need: r.scrollWidth, inner, lastRight: last.right, tdRight: td.getBoundingClientRect().right, clipped: td.classList.contains('clipped') };
-      });
+      const fit = await page.$eval(sel, iconsFit);
       assert.ok(fit.need <= fit.inner, `ten icons (${fit.need}px) fit the column (${fit.inner}px)`);
       assert.ok(fit.lastRight <= fit.tdRight, 'the tenth icon is inside the cell');
       assert.equal(fit.clipped, false);
       assert.equal(await page.locator(`${sel} .wv-rating-compact`).isVisible(), false, 'the full row, not the compact form');
       if (shots) await page.locator('.wv-grid').screenshot({ path: `${shots}/cell-color-ten-${'light'}.png` });
     } finally { await page.close(); }
+    /* A width stored under the icons is raised to them (Issue #614): the
+       floor holds every icon, so a drag never reaches the compact form. */
     weave.updateField(deals, 'Ten', { config: { width: 90 } });
     const narrow = await grid(deals.id, 'light', 1400);
     try {
       const sel = `${cell(big.id, 'Ten')}`;
       await narrow.locator(sel).scrollIntoViewIfNeeded();
-      await narrow.waitForSelector(`${sel} .wv-rating-compact`, { state: 'visible' });
-      assert.equal(await narrow.textContent(`${sel} .wv-rating-n`), '7/10');
-      assert.equal(await narrow.locator(`${sel} .wv-rate-ico`).first().isVisible(), false, 'no icon is cut off: the row gives way to the compact form');
-      assert.equal(await narrow.getAttribute(`${sel} .wv-rating`, 'aria-label'), '7 of 10', 'a screen reader hears the same');
+      const fit = await narrow.$eval(sel, iconsFit);
+      assert.ok(fit.need <= fit.inner, `a stored 90px is raised: ten icons (${fit.need}px) fit the column (${fit.inner}px)`);
+      assert.ok(fit.lastRight <= fit.tdRight, 'the tenth icon is inside the cell');
+      assert.equal(await narrow.locator(`${sel} .wv-rating-compact`).isVisible(), false, 'the full row, not the compact form');
+    } finally { await narrow.close(); }
+    /* Past the fit cap the floor stops at the cap, and the icons give way
+       to the compact form rather than being cut (Issue #404): 24 icons need
+       367px, the cap is 320. */
+    weave.updateField(deals, 'Ten', { config: { max: 24 } });
+    const long = await grid(deals.id, 'light', 1400);
+    try {
+      const sel = `${cell(big.id, 'Ten')}`;
+      await long.locator(sel).scrollIntoViewIfNeeded();
+      await long.waitForSelector(`${sel} .wv-rating-compact`, { state: 'visible' });
+      assert.equal(await long.textContent(`${sel} .wv-rating-n`), '7/24');
+      assert.equal(await long.locator(`${sel} .wv-rate-ico`).first().isVisible(), false, 'no icon is cut off: the row gives way to the compact form');
+      assert.equal(await long.getAttribute(`${sel} .wv-rating`, 'aria-label'), '7 of 24', 'a screen reader hears the same');
     } finally {
-      await narrow.close();
-      weave.updateField(deals, 'Ten', { config: { width: null } });
+      await long.close();
+      weave.updateField(deals, 'Ten', { config: { max: 10, width: null } });
     }
   });
 
