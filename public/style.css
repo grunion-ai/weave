@@ -280,7 +280,7 @@ a.nav-space:hover { color: var(--tblr-primary); }
 @media (max-width: 600px) {
   #ws-rail { display: none; }
   #app.nav-peek #ws-rail { display: flex; position: fixed; left: 0; top: 0; height: 100dvh; z-index: 71; background: var(--wv-canvas); }
-  #main { --wv-pane-pad: 16px; margin-left: 8px; padding: var(--wv-pane-pad) 14px; }
+  #main { --wv-pane-pad: 16px; --wv-pane-pad-x: 14px; margin-left: 8px; padding: var(--wv-pane-pad) var(--wv-pane-pad-x); }
 }
 /* Disclosure caret: a hairline chevron in a full 24px target, TRAILING the
    space label — "Routines ›" (UAT round 2, Kyle, 2026-08-16). It points right
@@ -319,6 +319,16 @@ a.nav-space:hover { color: var(--tblr-primary); }
    sits at --wv-view-h less it. */
 .view-header { padding-bottom: 16px; }
 #main > .view-header { position: sticky; top: calc(-1 * var(--wv-pane-pad, 0px)); z-index: 6; background: var(--tblr-bg-surface); }
+/* The frame holds (Issue #608): the header leading its pane takes the pane's
+   top and side padding as its own ground, so the panel's rounded top edge,
+   the band above the crumb row, the crumb row and the title never move, and
+   only what sits below the title scrolls, under the header. Before, the
+   panel's padding scrolled away above a header pinned flush to the edge, and
+   the header floated with no frame round it. At rest it lays out exactly as
+   before; held, its top meets the panel's own. */
+:is(#main, #dock > .dock-entity) > .view-header:first-child {
+  margin: calc(-1 * var(--wv-pane-pad, 0px)) calc(-1 * var(--wv-pane-pad-x, 0px)) 0;
+  padding: var(--wv-pane-pad, 0px) var(--wv-pane-pad-x, 0px) 16px; }
 /* A header that would take half the window does not pin: in a 200px-tall
    window it would hold nothing but header, and the Show less control at its
    foot would sit off screen with no way to scroll to it, because the pinned
@@ -394,7 +404,7 @@ button.chip-trigger { cursor: pointer; font-family: inherit; font-weight: inheri
    focused control, a hash anchor, find-in-page — stops below the pinned view
    header instead of behind it (Issue #321); the app's own scrolls go through
    scrollTargetIntoView. */
-#main { --wv-pane-pad: 24px; flex: 1; padding: var(--wv-pane-pad) 28px; min-width: 0; margin: 8px 8px 8px 0; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); }
+#main { --wv-pane-pad: 24px; --wv-pane-pad-x: 28px; flex: 1; padding: var(--wv-pane-pad) var(--wv-pane-pad-x); min-width: 0; margin: 8px 8px 8px 0; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); }
 .wv-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .wv-toolbar h1 { font-size: 19px; margin: 0 auto 0 0; }
 
@@ -2033,7 +2043,7 @@ body:has(#tray-back) #hub-foot { display: none; }
    to the even split.
    Side padding matches #main's 28px, so the entity reads on the page's
    grid (Kyle, 2026-09-02: padding on either edge of the split dock). */
-#dock { --wv-pane-pad: 14px; flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: 14px 28px 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); position: relative; }
+#dock { --wv-pane-pad: 14px; --wv-pane-pad-x: 28px; flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); position: relative; }
 /* The divider is the canvas gap itself: a 16px flex column between the two
    panels (Kyle, 2026-09-02 — never a strip inside either panel). Its
    hairline waits for the pointer or a drag, centered mid-gap. */
@@ -2060,14 +2070,15 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
    align-self goes back to auto: on a positioned box flex-start means "as
    tall as the content", and a long record ran 62px past the screen. */
 @media (max-width: 600px) {
-  #dock { position: fixed; inset: 0; z-index: 62; align-self: auto; height: 100dvh; margin: 0; padding: 14px 14px 24px; border-radius: 0; box-shadow: none; min-height: 0; max-height: none; overscroll-behavior: contain; }
+  #dock { --wv-pane-pad-x: 14px; position: fixed; inset: 0; z-index: 62; align-self: auto; height: 100dvh; margin: 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; border-radius: 0; box-shadow: none; min-height: 0; max-height: none; overscroll-behavior: contain; }
   #dock-gutter:not([hidden]) { display: none; }
   #main:has(+ #dock-gutter:not([hidden])) { min-width: 0; margin-right: 8px; }
 }
 /* The pane is narrower than a page: the field grid single-columns. The
    entity header pins to the top of the pane, as it does on the full page
-   (Issue #411); the pane's top padding scrolls away above it. Past half the
-   pane it sits in the flow, the page header's rule. */
+   (Issue #411), carrying the pane's top padding as its own ground so the
+   frame holds (Issue #608). Past half the pane it sits in the flow, the
+   page header's rule. */
 #dock .dock-entity .entity-grid { grid-template-columns: minmax(0, 1fr); }
 #dock .dock-entity .view-header { position: sticky; top: calc(-1 * var(--wv-pane-pad, 0px)); z-index: 6; background: var(--tblr-bg-surface); }
 #dock.view-header-loose .dock-entity .view-header { position: static; }

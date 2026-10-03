@@ -6196,13 +6196,17 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
     win.start = w.start; win.end = w.end;
     if (pager) pager.window = { start: w.start, end: w.end };
-    if (!changed) return;
+    /* The foot counts what is loaded even when no row moved: a prefetched
+       page lands outside the drawn window, and the note still said "200 of"
+       while ⌘A took 400 (found landing Issue #608). */
     if (loadedNote) {
       const n = loadedIds().length;
       // A search says how many rows it found (Feature #228).
-      loadedNote.textContent = n < total() ? `${n.toLocaleString()} of ${total().toLocaleString()} loaded`
+      const note = n < total() ? `${n.toLocaleString()} of ${total().toLocaleString()} loaded`
         : pager?.search ? `${WeaveTerm.count(total(), db.term)} found` : '';
+      if (loadedNote.textContent !== note) loadedNote.textContent = note;
     }
+    if (!changed) return;
     // Rows that just arrived take their state: the clipped marker measured
     // after layout, the selection, the docked light and the cell range.
     requestAnimationFrame(() => markClippedCells(table));
@@ -6219,7 +6223,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       // The pages under the window, and the one past its leading edge, are
       // asked for once; a page landing repaints the placeholders it fills.
       const want = GW().pagesFor(w, pager.page, pager.total);
-      if (w.prefetchOffset != null) want.push(w.prefetchOffset);
+      /* The page past the leading edge waits for the reader to move: an
+         open fetches the pages it draws and no more. It used to by luck —
+         the at-rest geometry read a pane's padding as travel upward — and
+         read right (Issue #608) the open asked for a second page. */
+      if (w.prefetchOffset != null && win.travelled) want.push(w.prefetchOffset);
       for (const o of want) if (!pager.has(o)) pager.fetch(o).then(schedule, () => {});
     }
     paint(w);
@@ -6229,7 +6237,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; rewindow(); }); };
   const onScroll = (e) => {
     if (!wrap.isConnected) return document.removeEventListener('scroll', onScroll, true);
-    if (e.target === document || e.target === wrap || e.target === paneOf(wrap)) schedule();
+    if (e.target === document || e.target === wrap || e.target === paneOf(wrap)) { win.travelled = true; schedule(); }
   };
   document.addEventListener('scroll', onScroll, { capture: true, passive: true });
   // Bring row i into view with the least motion and paint the window there,
