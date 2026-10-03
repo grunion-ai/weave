@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
-import { Weave, WeaveError } from '../src/engine.js';
+import { Weave, WeaveError, deferMigrations, runDeferredMigrations } from '../src/engine.js';
 import { VOCABULARY } from '../src/vocabulary.js';
 import { startServer, openDefaultWorkspace } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
@@ -86,6 +86,9 @@ Server
   serve [--port 4400] [--host 127.0.0.1]
                                       Start the web app + REST API
                                       (--host 0.0.0.0 exposes it to this network)
+  supervise [--port 4400] [--host 127.0.0.1]
+                                      serve, swapped in place for each newer release
+                                      when WEAVE_AUTO_UPDATE=1 (plain serve otherwise)
   mcp [--tools all]                   Start the MCP stdio server (for agents); core tools + weave_call by default
 
 Service (macOS launchd — auto-start on login, restart on crash)
@@ -217,6 +220,7 @@ Data file: --data flag > WEAVE_DATA env > ~/.weave/workspace.json
 Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (public origin the provider
      redirects back to and the session cookie binds to, e.g. https://weave.example.com — required when auth
      is on and the host is not loopback), WEAVE_TRUST_PROXY=1 (rate-limit by X-Forwarded-For behind Railway/Fly/a proxy),
+     WEAVE_AUTO_UPDATE=1 (supervise: install each newer release from grunion-ai/weave main in place),
      WEAVE_ALLOWED_HOSTS (comma-separated extra Host names served besides loopback and WEAVE_ORIGIN's host;
      others get 421), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
      with one OpenID Connect provider, redirect URI <origin>/api/auth/oidc/callback), WEAVE_FRAME_ANCESTORS (comma-separated origins allowed to frame weave pages besides
@@ -226,73 +230,98 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
 async function main() {
   if (!command || command === 'help' || flags.help) return out(HELP);
 
-  if (command === 'serve') {
+  /* In-place self-update (Feature #250). With WEAVE_AUTO_UPDATE=1 the
+     supervisor holds the port and runs `serve` as a worker it can swap for a
+     newer release (src/supervisor.js); unset, supervise is serve, so one start
+     command fits every install. */
+  if (command === 'supervise') {
+    const { autoUpdateFromEnv, startSupervisor } = await import('../src/supervisor.js');
+    if (autoUpdateFromEnv()) {
+      const port = Number(flags.port ?? process.env.PORT ?? 4400);
+      const host = String(flags.host ?? process.env.WEAVE_HOST ?? '127.0.0.1');
+      const sup = await startSupervisor({ port, host, dataPath });
+      for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => sup.close().finally(() => process.exit(0)));
+      const s = sup.status();
+      console.log(`weave supervise: serving ${s.release} (${s.dir}) at http://${host}:${sup.port}; checking for a newer release every 10 minutes`);
+      return;
+    }
+  }
+
+  if (command === 'serve' || command === 'supervise') {
+    /* A worker the supervisor starts beside a running one opens everything
+       without writing, and runs the open-time migrations and the boot syncs
+       below only when told the old worker has exited (Feature #250). */
+    const deferred = process.env.WEAVE_DEFER_MIGRATIONS === '1' && !!process.send;
+    if (deferred) deferMigrations();
     // Fresh: a random adjective-animal name; legacy 'Weave Workspace': the basename.
     const w = openDefaultWorkspace(dataPath, { actor: CLI_ACTOR });
-    // The self-referential docs workspace ("weave") always exists alongside.
-    if (w.state.meta.name !== 'weave') {
-      const dir = dirname(dataPath);
-      // Any spelling counts — legacy weaver.* files migrate/rename on adoption.
-      const present = ['weave.db', 'weave.json', 'weaver.db', 'weaver.json']
-        .some((f) => existsSync(join(dir, f)));
-      if (!present) {
-        const { seedWeaver } = await import('../src/weaver-seed.js');
-        const weavePath = join(dir, 'weave.db');
-        seedWeaver(new Weave({ path: weavePath, actor: CLI_ACTOR }));
-        console.log(`Created docs workspace at ${weavePath}`);
+    const bootWrites = async () => {
+      // The self-referential docs workspace ("weave") always exists alongside.
+      if (w.state.meta.name !== 'weave') {
+        const dir = dirname(dataPath);
+        // Any spelling counts — legacy weaver.* files migrate/rename on adoption.
+        const present = ['weave.db', 'weave.json', 'weaver.db', 'weaver.json']
+          .some((f) => existsSync(join(dir, f)));
+        if (!present) {
+          const { seedWeaver } = await import('../src/weaver-seed.js');
+          const weavePath = join(dir, 'weave.db');
+          seedWeaver(new Weave({ path: weavePath, actor: CLI_ACTOR }));
+          console.log(`Created docs workspace at ${weavePath}`);
+        }
       }
-    }
-    /* Every build carries its issue list (2026-08-31): apply the shipped
-       Development manifest to the docs workspace, so an updated install
-       shows the current known / resolved issues and the roadmap. Fail-open —
-       a missing or unreadable manifest never blocks serving. */
-    const docsPath = w.state.meta.name === 'weave' ? dataPath : join(dirname(dataPath), 'weave.db');
-    let docsW = null;
-    try {
-      if (existsSync(docsPath)) docsW = w.state.meta.name === 'weave' ? w : new Weave({ path: docsPath, actor: CLI_ACTOR });
-    } catch (err) {
-      console.warn(`Docs workspace sync skipped: ${err.message}`);
-    }
-    try {
-      const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'development.json'), 'utf8'));
-      if (docsW) {
-        const { syncDevelopment } = await import('../src/weaver-seed.js');
-        const r = syncDevelopment(docsW, manifest);
-        if (r.applied) console.log(`Development sync v${manifest.version}: ${r.created} created, ${r.updated} updated`);
-        for (const s of r.skipped ?? []) console.warn(`Development sync skipped ${s}`);
+      /* Every build carries its issue list (2026-08-31): apply the shipped
+         Development manifest to the docs workspace, so an updated install
+         shows the current known / resolved issues and the roadmap. Fail-open —
+         a missing or unreadable manifest never blocks serving. */
+      const docsPath = w.state.meta.name === 'weave' ? dataPath : join(dirname(dataPath), 'weave.db');
+      let docsW = null;
+      try {
+        if (existsSync(docsPath)) docsW = w.state.meta.name === 'weave' ? w : new Weave({ path: docsPath, actor: CLI_ACTOR });
+      } catch (err) {
+        console.warn(`Docs workspace sync skipped: ${err.message}`);
       }
-    } catch (err) {
-      // Fail-open still, but never silent: this catch spent a release
-      // reporting "no manifest in this build" over a mid-pass throw that had
-      // left the install half-synced (Issue #245).
-      console.warn(`Development sync skipped: ${err.message}`);
-    }
-    /* The Handbook pages are generated from src/handbook.js, so a build that
-       edits one carries the edit to an existing docs workspace here — once
-       per build, keyed on the pages' hash (Issue #255). Fail-open, same as
-       the Development sync. */
-    try {
-      if (docsW) {
-        const { syncHandbook } = await import('../src/handbook.js');
-        const r = syncHandbook(docsW);
-        if (r.applied) console.log(`Handbook sync: ${r.created} created, ${r.updated} updated`);
+      try {
+        const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'development.json'), 'utf8'));
+        if (docsW) {
+          const { syncDevelopment } = await import('../src/weaver-seed.js');
+          const r = syncDevelopment(docsW, manifest);
+          if (r.applied) console.log(`Development sync v${manifest.version}: ${r.created} created, ${r.updated} updated`);
+          for (const s of r.skipped ?? []) console.warn(`Development sync skipped ${s}`);
+        }
+      } catch (err) {
+        // Fail-open still, but never silent: this catch spent a release
+        // reporting "no manifest in this build" over a mid-pass throw that had
+        // left the install half-synced (Issue #245).
+        console.warn(`Development sync skipped: ${err.message}`);
       }
-    } catch (err) {
-      console.warn(`Handbook sync skipped: ${err.message}`);
-    }
-    /* The Showcase columns a build adds (bar/ring/heat, ratings, sparklines)
-       reach a docs workspace seeded before them the same way: once per
-       build, additive, fail-open. */
-    try {
-      if (docsW) {
-        const { syncShowcase } = await import('../src/weaver-seed.js');
-        const r = syncShowcase(docsW);
-        if (r.applied) console.log(`Showcase sync: ${r.added} fields added`);
+      /* The Handbook pages are generated from src/handbook.js, so a build that
+         edits one carries the edit to an existing docs workspace here — once
+         per build, keyed on the pages' hash (Issue #255). Fail-open, same as
+         the Development sync. */
+      try {
+        if (docsW) {
+          const { syncHandbook } = await import('../src/handbook.js');
+          const r = syncHandbook(docsW);
+          if (r.applied) console.log(`Handbook sync: ${r.created} created, ${r.updated} updated`);
+        }
+      } catch (err) {
+        console.warn(`Handbook sync skipped: ${err.message}`);
       }
-    } catch (err) {
-      console.warn(`Showcase sync skipped: ${err.message}`);
-    }
-    if (docsW && docsW !== w) docsW.store.close?.();
+      /* The Showcase columns a build adds (bar/ring/heat, ratings, sparklines)
+         reach a docs workspace seeded before them the same way: once per
+         build, additive, fail-open. */
+      try {
+        if (docsW) {
+          const { syncShowcase } = await import('../src/weaver-seed.js');
+          const r = syncShowcase(docsW);
+          if (r.applied) console.log(`Showcase sync: ${r.added} fields added`);
+        }
+      } catch (err) {
+        console.warn(`Showcase sync skipped: ${err.message}`);
+      }
+      if (docsW && docsW !== w) docsW.store.close?.();
+    };
+    if (!deferred) await bootWrites();
     const port = Number(flags.port ?? process.env.PORT ?? 4400);
     // Loopback unless asked otherwise. --host 0.0.0.0 puts every workspace on
     // the local network with no authentication in front of /api/*; it exists
@@ -349,6 +378,19 @@ async function main() {
     console.log(`Weave running at http://${shown}:${actual}  (workspace: ${w.state.meta.name}, data: ${dataPath})`);
     if (wide) console.log(`Bound to ${host} — every workspace on this network can reach it.`);
     console.log(`Docs workspace: http://${shown}:${actual}/w/weave/`);
+    // Under the supervisor: say where we listen, follow it out, migrate on its word.
+    if (process.send) {
+      process.on('disconnect', () => process.exit(0));
+      if (deferred) {
+        process.on('message', async (m) => {
+          if (m?.weave !== 'migrate') return;
+          runDeferredMigrations();
+          await bootWrites();
+          process.send({ weave: 'migrated' });
+        });
+      }
+      process.send({ weave: 'listening', port: actual });
+    }
     return;
   }
   if (command === 'mcp') {

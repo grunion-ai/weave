@@ -124,9 +124,10 @@ export function packTar(out, entries) {
 const field = (h, off, len) => h.toString('utf8', off, off + len).replace(/\0.*$/s, '');
 
 /* Regular files only; a header that fails its own checksum stops the read
-   rather than yielding whatever the bytes happen to say. */
+   rather than yielding whatever the bytes happen to say. A Buffer works in
+   place of a path: the supervisor unpacks a release it holds in memory. */
 export function readTar(path) {
-  const buf = readFileSync(path);
+  const buf = Buffer.isBuffer(path) ? path : readFileSync(path);
   const entries = [];
   for (let off = 0; off + BLOCK <= buf.length; ) {
     const h = buf.subarray(off, off + BLOCK);
