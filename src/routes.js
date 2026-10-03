@@ -17,6 +17,7 @@ const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './bugreport.js';
 import { renderAuthPage } from './auth-page.js';
+import { PRIVACY, TERMS } from './legal.js';
 
 export function statusFor(err) {
   if (!(err instanceof WeaveError)) return 500;
@@ -249,7 +250,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     // on to the provider, ?next kept (Issue #569). The page stays for token
     // and share-link instances, and for a bad Bearer token.
     const wall = () => (oidc ? { status: 302, headers: { Location: authHref, 'Cache-Control': 'no-store' }, body: '' } : wallPage());
-    const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/')
+    /* /privacy and /terms (Feature #251) are public by nature: a sign-in
+       provider's consent screen links them for people with no account. */
+    const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms');
+    const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage
       || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
     /* Who is here (Feature #222 part 2): a Bearer token wins when both are
@@ -475,6 +479,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return { status: 302, headers: { Location: `${wsPrefix}/api/auth/oidc/start${next}`, 'Cache-Control': 'no-store' }, body: '' };
         }
         return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      }
+
+      if (legalPage) {
+        const [title, markdown] = path === '/privacy' ? ['Privacy policy', PRIVACY] : ['Terms of Service', TERMS];
+        return out(200, renderDocumentPage({ title, subtitle: 'weave', markdown }), { 'Content-Type': 'text/html; charset=utf-8' });
       }
 
       // ---------- API ----------

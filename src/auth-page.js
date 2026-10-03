@@ -53,6 +53,8 @@ li:first-child{border-top:0}
 a{color:var(--accent)}
 a.provider{display:block;text-align:center;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px 16px;margin-top:10px;font-weight:600}
 .mark{display:block;width:40px;height:40px;margin:0 0 14px}
+.legal{text-align:center;margin-top:14px;font-size:12.5px}
+.legal a{color:var(--muted)}
 `;
 
 /* Runs in the browser. Plain script, no modules: it has to work on a phone
@@ -141,6 +143,7 @@ ${provider ? `      <p class="sub">Your account here is linked to your ${esc(pro
     </section>
     <div id="msg" class="msg" role="status"></div>
   </div>
+  <p class="sub legal"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
 </main>
 <script>${JS}</script>
 </body></html>`;
