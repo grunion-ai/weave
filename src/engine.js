@@ -5335,6 +5335,8 @@ export class Weave {
      (edited since: its edit converts, the snapshot does not overwrite it),
      converted (no snapshot: made since, or empty then). */
   #migrateFieldType(db, field, toType, config, { force = false, restore = null } = {}) {
+    if (field.type === 'text' && toType === 'relation') return this.#textToRelation(db, field, config);
+    if (field.type === 'relation' && toType === 'text' && force) return this.#relationToText(db, field, restore);
     const allowed = TYPE_MIGRATIONS[field.type] ?? [];
     if (!force && !allowed.includes(toType)) {
       throw new WeaveError(`A ${field.type} field can become ${allowed.length ? allowed.join(', ') : 'nothing else'} — not ${toType}`, 'invalid');
@@ -5455,6 +5457,105 @@ export class Weave {
     // have a string; migrating to a formula fills the cache for every row.
     if (toType === 'formula' && field.id === db.nameFieldId) for (const e of rows) this.#mark(e);
     if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from, to: toType, rows: rows.length });
+    return { rows: snapshot, counts };
+  }
+
+  /* Text becomes a relation in place (Issue #582): a stock agent typed an
+     account as text beside an Account table and had no way back short of a
+     rebuild. Each value links to the target row of that name, matched by
+     name only (a figure in a cell is never read as a public id), case
+     folded when no exact name matches. A value no row carries is refused by
+     name before anything changes, unless config.createMissing makes the
+     rows. Off TYPE_MIGRATIONS on purpose: the field tray has no way to pick
+     a target, so the lane is the API's (weave_update_field {type:
+     'relation', config: {targetDb}}). Only the cardinalities where a target
+     row may hold many sources: one-to-one or one-to-many would let a second
+     row naming Checking take it from the first. */
+  #textToRelation(db, field, config) {
+    if (field.id === db.nameFieldId) throw new WeaveError('The Name field can be text or a formula — a name is a label, not a link', 'invalid');
+    const ref = config.targetDb ?? config.to;
+    if (ref == null || ref === '') throw new WeaveError('A text field becomes a relation to one table: pass config.targetDb, the table its values name', 'invalid');
+    const target = this.getTable(ref);
+    const cardinality = config.cardinality ?? 'many-to-one';
+    if (!['many-to-one', 'many-to-many'].includes(cardinality)) throw new WeaveError(`A text field becomes a many-to-one or many-to-many relation, not ${cardinality}`, 'invalid');
+    const many = cardinality === 'many-to-many';
+    const invName = config.inverseName ?? db.name + 's';
+    refuseReserved('field', invName);
+    if (this.findField(target, invName)) throw new WeaveError(`Field '${invName}' already exists in target table — pass config.inverseName`, 'conflict');
+    const exact = new Map();
+    const folded = new Map();
+    for (const e of this.listEntities(target.id)) {
+      const n = this.entityName(e);
+      if (!exact.has(n)) exact.set(n, e.id);
+      if (!folded.has(n.toLowerCase())) folded.set(n.toLowerCase(), e.id);
+    }
+    const lookup = (v) => exact.get(v) ?? folded.get(v.toLowerCase());
+    const rows = this.listEntities(db.id, { includeDeleted: true });
+    const parts = (raw) => (raw == null || raw === '' ? [] : many ? String(raw).split(',') : [String(raw)]).map((s) => s.trim()).filter(Boolean);
+    const missing = [...new Set(rows.flatMap((e) => parts(e.values[field.id])).filter((v) => !lookup(v)))];
+    if (missing.length && !config.createMissing) {
+      const shown = missing.slice(0, 10).map((v) => `'${v}'`).join(', ');
+      throw new WeaveError(`No ${target.name} row is named ${shown}${missing.length > 10 ? ` and ${missing.length - 10} more` : ''}: make those rows first, or pass config.createMissing: true`, 'invalid');
+    }
+    // Case-folded duplicates make one row: 'Brokerage' and 'brokerage' are one account.
+    for (const v of missing) if (!lookup(v)) { const made = this.createEntity(target.id, { name: v }); exact.set(v, made.id); folded.set(v.toLowerCase(), made.id); }
+    const inverse = { id: uuid(), name: invName, type: 'relation', config: { targetDb: db.id, many: true, inverseFieldId: field.id } };
+    target.fields[inverse.id] = inverse;
+    placeField(target, inverse.id);
+    const raws = new Map(rows.map((e) => [e.id, e.values[field.id]]));
+    const { width, description } = field.config;
+    field.type = 'relation';
+    field.config = { targetDb: target.id, many, inverseFieldId: inverse.id, ...(width ? { width } : {}), ...(description ? { description } : {}) };
+    const snapshot = {};
+    for (const e of rows) {
+      const raw = raws.get(e.id);
+      e.values[field.id] = many ? [] : null;
+      const ids = [...new Set(parts(raw).map(lookup))];
+      if (ids.length) this.#setRelationValue(e, db, field, ids);
+      if (raw != null && raw !== '') snapshot[e.id] = [raw, structuredClone(e.values[field.id] ?? null)];
+    }
+    this.#syncFieldRow(target, inverse);
+    this.#syncTableRow(target);
+    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from: 'text', to: 'relation', rows: rows.length, target: target.name });
+    return { rows: snapshot, counts: null };
+  }
+
+  /* The way back, for a roll back of the conversion above: each row's
+     linked names joined, or the text it held when the link is the one the
+     conversion made; the inverse goes with it. Rows the conversion created
+     stay: they are rows now, with their own history. */
+  #relationToText(db, field, restore) {
+    if (field.config.targetDbs) throw new WeaveError('A relation to several tables cannot become text', 'invalid');
+    const invId = field.config.inverseFieldId;
+    const readers = this.listTables().flatMap((t) => Object.values(t.fields)
+      .filter((f) => (f.type === 'lookup' || f.type === 'rollup') && [field.id, invId].includes(f.config.relationField))
+      .map((f) => `${t.name}.${f.name}`));
+    if (readers.length) throw new WeaveError(`${readers.join(', ')} read${readers.length === 1 ? 's' : ''} ${field.name} — delete ${readers.length === 1 ? 'it' : 'them'} first`, 'invalid');
+    const rows = this.listEntities(db.id, { includeDeleted: true });
+    const snapshot = {};
+    const counts = restore ? { restored: 0, left: 0, converted: 0 } : null;
+    for (const e of rows) {
+      const ids = this.#relationIds(e, field);
+      const stored = e.values[field.id] ?? null;
+      let next = ids.map((id) => this.state.entities[id]).filter(Boolean).map((t) => this.entityName(t)).join(', ') || null;
+      const pair = restore?.[e.id];
+      if (pair && canonicalJSON(stored) === canonicalJSON(pair[1] ?? null)) { next = pair[0]; counts.restored += 1; }
+      else if (pair) counts.left += 1;
+      else if (counts && ids.length) counts.converted += 1;
+      if (ids.length) snapshot[e.id] = [structuredClone(stored), next];
+      if (ids.length) this.#setRelationValue(e, db, field, []);
+      e.values[field.id] = next;
+    }
+    const target = this.state.tables[field.config.targetDb];
+    if (target && invId) {
+      this.#removeFieldRaw(target, invId);
+      this.#dropFieldRow(invId);
+      this.#syncTableRow(target);
+    }
+    const { width, description } = field.config;
+    field.type = 'text';
+    field.config = { ...(width ? { width } : {}), ...(description ? { description } : {}) };
+    if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from: 'relation', to: 'text', rows: rows.length });
     return { rows: snapshot, counts };
   }
 
