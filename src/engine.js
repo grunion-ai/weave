@@ -3527,7 +3527,7 @@ export class Weave {
 
   // ---------------- provider identities (Feature #212, door C; Feature #252) ----------------
   /* Signing in at a provider provisions nobody, and weave keeps no email for
-     sign-in (Feature #252). An admin links an account by minting a one-time
+     sign-in (Feature #252). An architect links an account by minting a one-time
      invite (linkIdentity): a code handed out once and stored as its sha256,
      like a token or a session, that expires in a week. The person opens the
      invite link, signs in at the provider, and redeeming the invite pins the
@@ -3703,7 +3703,7 @@ export class Weave {
   /* Feature #252 on open: weave holds no email for sign-in. An identity the
      provider already pinned keeps its subject and loses the email it was
      linked by; one never pinned is dropped, since only an email named it and
-     nobody holds an invite for it (the admin mints a new one). The identity
+     nobody holds an invite for it (the architect mints a new one). The identity
      entries in the audit log lose their email too. Every open looks, not
      once per workspace: an older weave sharing the .db could still write one. */
   #scrubIdentityEmails() {

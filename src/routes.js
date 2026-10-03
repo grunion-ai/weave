@@ -666,7 +666,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (!engine) {
                 noteFailure(ip);
                 const ws = c.holder.state.meta.name;
-                return refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace admin can send you an invite link that adds you. Or sign in with a different account.'], [await differentAccount(), signInAgain()]);
+                return refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or sign in with a different account.'], [await differentAccount(), signInAgain()]);
               }
               const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
               return { status: 302, headers: { Location: c.next, 'Set-Cookie': sessionCookie(minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };

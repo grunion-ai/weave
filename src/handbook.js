@@ -1406,7 +1406,7 @@ A workspace that minted its own Workspace space keeps it as a **tombstone**: the
 
 weave on a laptop binds \`127.0.0.1\` and needs no login. weave on a server needs a door: something that decides who gets to the port. The rule this page and the ones after it follow: **the authentication surface is the operator's choice.** Two doors, each a complete path on its own page, each ending with a check you can run.
 
-\`requireAuth\` is the switch inside weave (\`weave workspace require-auth\`). With requireAuth on, every page and API call needs a token: a \`wv_\` bearer for agents, a session for people who sign in through the provider (door C). Off, whoever reaches the port is an admin. A door in front of the port is what makes "reaches the port" mean something.
+\`requireAuth\` is the switch inside weave (\`weave workspace require-auth\`). With requireAuth on, every page and API call needs a token: a \`wv_\` bearer for agents, a session for people who sign in through the provider (door C). Off, whoever reaches the port is an architect. A door in front of the port is what makes "reaches the port" mean something.
 
 ## The two doors
 
@@ -1656,7 +1656,7 @@ weave account sessions kyle                     # what is signed in, and from wh
 weave account revoke-session kyle --all         # every session ends now
 \`\`\`
 
-Every step lands in the audit log: \`identity-invited\`, \`identity-linked\`, \`identity-unlinked\`, \`session-created\`, \`session-revoked\`. An admin \`wv_\` token is the rescue path, and \`weave account\` runs on the data file without a server.
+Every step lands in the audit log: \`identity-invited\`, \`identity-linked\`, \`identity-unlinked\`, \`session-created\`, \`session-revoked\`. An architect \`wv_\` token is the rescue path, and \`weave account\` runs on the data file without a server.
 
 ## \`WEAVE_ORIGIN\` and \`WEAVE_TRUST_PROXY\`
 

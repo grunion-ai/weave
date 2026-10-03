@@ -2,7 +2,7 @@
    sign in with one OpenID Connect provider — Clerk, Auth0, Keycloak, Google —
    on top of door B's session. The provider proves who is there; weave decides
    whether that person has an account. Nobody is provisioned by signing in: an
-   admin mints a one-time invite for an account, the person signs in at the
+   architect mints a one-time invite for an account, the person signs in at the
    provider through it, and the provider's subject is pinned to the account.
    weave asks the provider for `openid` alone and stores no email (Feature
    #252). The provider is test/lib/idp.mjs. */
@@ -307,11 +307,20 @@ test('routes: signing in provisions nobody — a stranger, and the linked email 
       const page = await res.text();
       assert.match(page, /<h1>No access to /, why);
       assert.match(page, /invite link/, `${why}: the page says what to do`);
+      assert.match(page, /A workspace architect can send you an invite link/, `${why}: the page names the role by its current name`);
+      assert.ok(!/\badmin\b/i.test(page), `${why}: the page names no admin`);
       assert.ok(!mail.test(page), `${why}: the page names no email`);
     }
     assert.equal((await s.signIn(KYLE)).res.status, 302);
     assert.equal(Object.keys(s.w.state.meta.sessions).length, 1);
   } finally { s.stop(); }
+});
+
+test('handbook: no guide names the architect role "admin" except the rename note that maps the old names', async () => {
+  const { GUIDES } = await import('../src/handbook.js');
+  const hits = [];
+  for (const g of GUIDES) for (const line of g.doc.split('\n')) if (/\badmin\b/i.test(line) && !/\breader\b/.test(line)) hits.push(`${g.name}: ${line.slice(0, 120)}`);
+  assert.deepEqual(hits, [], 'a guide line says admin where the role is architect (Feature #255)');
 });
 
 test('routes: a token that fails verification never becomes a session', async () => {
