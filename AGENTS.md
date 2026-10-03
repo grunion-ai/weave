@@ -24,7 +24,7 @@ to [Using weave as an agent](#using-weave-as-an-agent).
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
 | `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP server: 57 tools over the engine, 15 listed by default |
+| `src/mcp.js` | MCP server: 58 tools over the engine, 16 listed by default |
 | `src/formula.js` | Formula parser/evaluator |
 | `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
 | `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
@@ -80,23 +80,23 @@ sign-in in place of a token:
 claude mcp add --scope user --transport http weave https://weave.example.com/mcp
 ```
 
-Fifty-seven tools, grouped. Every one of them reaches something the web UI can
+Fifty-eight tools, grouped. Every one of them reaches something the web UI can
 do — there is no configuration that needs a browser, and none that needs a
 human.
 
-**`tools/list` names fifteen of them by default.** The core build set is
+**`tools/list` names sixteen of them by default.** The core build set is
 `weave_schema`, `weave_query`, `weave_get_entity`, `weave_create_entity`,
 `weave_update_entity`, `weave_create_space`, `weave_create_table`,
 `weave_add_field`, `weave_update_field`, `weave_add_relation`,
-`weave_import_csv`, `weave_vocabulary`, `weave_workspace` and `weave_search`,
-plus `weave_call`. Every other tool in the table below is one `weave_call`
+`weave_import_csv`, `weave_vocabulary`, `weave_workspace`, `weave_search` and
+`weave_build`, plus `weave_call`. Every other tool in the table below is one `weave_call`
 away: `weave_call {name: "weave_set_doc", args: {entity, markdown}}` runs it
 with the same gate, the same compact reply and the same `verbose` switch as a
 direct call. The `weave_call` description lists each of those tools with a few
 words, and `weave_call {name: "help", args: {tool: "weave_set_doc"}}` returns
 that tool's full description and input schema. The full list costs about 12,000
 tokens on every turn and a build uses about twelve tools, so the default lists
-only those (Issue #595). To list all 57 directly, start the server with
+only those (Issue #595). To list all 58 directly, start the server with
 `weave mcp --tools all` or set `WEAVE_MCP_TOOLS=all`; the variable also
 applies to `POST /api/mcp` on `weave serve`.
 
@@ -106,6 +106,7 @@ applies to `POST /api/mcp` on `weave serve`.
 | Spaces & tables | `weave_create_space`, `weave_update_space`, `weave_delete_space`, `weave_restore_space`, `weave_create_table`, `weave_update_table`, `weave_move_table`, `weave_duplicate_table`, `weave_delete_table`, `weave_restore_table` |
 | Fields | `weave_add_field`, `weave_update_field`, `weave_rollback_field`, `weave_delete_field`, `weave_add_relation` |
 | Formulas | `weave_check_formula` — validate + preview an expression before saving it |
+| Build in one call | `weave_build`: spaces, tables, fields, relations and rows from one short spec; see [Build in one call](#build-in-one-call) |
 | Whole schema | `weave_apply_schema` |
 | Entities | `weave_query`, `weave_get_entity`, `weave_create_entity`, `weave_update_entity`, `weave_delete_entity`, `weave_restore_entity`, `weave_trash`, `weave_undo` |
 | Statistics | `weave_stats` — every column of a table summarised in one read (sum, avg, median, min, max, p25/p75, stdev, a histogram for numbers; a ranked distribution for chips; earliest/latest/span for dates), the space rollups pointed at the table, and per-group figures with `by`. To keep a figure on the record, add a rollup on the `Workspace/Spaces` row with `config.via` naming the table (`aggregate` from the vocabulary, optional `where`) — that is the Σ the grid footer draws under the column. A grid draws no Σ row until the table asks for one: `weave_update_table` with `hideRollups: false` (`weave table update <ref> --rollup-row on`) turns it on, `true` puts it away |
@@ -128,6 +129,46 @@ answers `{field, inverse}` in the same shape. Pass `verbose: true` to any of
 them for the whole row or table, or read it back with `weave_get_entity` or
 `weave_schema`. Tool text is one-line JSON. REST and the CLI still return the
 full object (Issue #596).
+
+### Build in one call
+
+`weave_build` (`weave build <spec.json> [--dry-run]`, `POST /api/build`) stands
+up a workspace outline in one call: spaces, tables, fields, relations and rows.
+A field is `{name, type}` plus the config keys `weave_add_field` takes for that
+type, written flat. A relation is a field with `type: "relation"` and `to`
+naming the table, plus an optional `cardinality`. Lookups, rollups and formulas
+may read relations made in the same build. A row is values by field name, and a
+relation value is the target row's Name, so rows link to rows made in the same
+call.
+
+```json
+{"workspace": "personal-finance", "spaces": [{"name": "Budget", "icon": "lucide:wallet", "tables": [
+  {"name": "Account", "icon": "lucide:credit-card",
+   "fields": [{"name": "Kind", "type": "select", "options": [{"name": "Credit card"}, {"name": "Checking"}]}],
+   "rows": [{"Name": "Amex Gold", "Kind": "Credit card"}]},
+  {"name": "Transaction",
+   "fields": [{"name": "Amount", "type": "number", "format": "currency", "currency": "USD"},
+              {"name": "Date", "type": "date"},
+              {"name": "Account", "type": "relation", "to": "Account", "cardinality": "many-to-one"}],
+   "rows": [{"Name": "Whole Foods", "Amount": 142.18, "Date": "2026-08-03", "Account": "Amex Gold"}]}]}]}
+```
+
+The build runs in this order: workspace name, spaces, tables, plain fields,
+relations, lookups and rollups, formulas, rows, then the rows' relation values.
+A space, table or same-typed field that already exists is reused and listed in
+`existing`, so resending the whole spec after an error is safe. Rows append, so
+a spec with only rows is a batch create; on a re-run, `skipExistingRows: true`
+(`--skip-existing-rows`) skips a row whose Name the table already holds. An
+icon outside the inventory or an option colour weave cannot name is dropped and
+reported, never fatal. The reply is one line: `{ok, created: {spaces, tables,
+fields, relations, rows}, existing, ignored, errors}`. `ignored` holds `{path,
+keys}` for config keys a field's type does not take, plus a `reason` for a
+refused icon or colour; `errors` holds `{path, error}` with paths like
+`spaces[0].tables[1].fields[2]`. The spec runs first, rows included, on an
+in-memory copy of the workspace, so `dryRun: true` returns every error at once
+and writes nothing, and a spec with any error writes nothing either. A step that
+fails only because an earlier one did (a row value for a field that failed) is
+not reported twice.
 
 ### Configuration without a browser
 

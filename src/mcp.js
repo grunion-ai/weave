@@ -371,6 +371,19 @@ export const TOOLS = [
     },
   },
   {
+    // Feature #253: the one-call build. Under ~1,500 characters with one full
+    // example: a worked input raises accuracy on nested parameters.
+    name: 'weave_build',
+    description: 'Build in ONE call: spaces, tables, fields, relations and rows. A field is {name, type, plus that type\'s weave_add_field config keys, flat}; a relation is {name, type:"relation", to:<table>, cardinality?}; lookups, rollups and formulas may read relations made in the same build. Rows are values by field name; a relation value is the target row\'s Name. Re-sending the whole spec is safe: existing spaces, tables and same-typed fields are reused; rows append, so pass skipExistingRows:true to skip rows whose Name is already there. A refused icon or colour is dropped, not fatal. Returns one line: {ok, created, existing, ignored (keys dropped: not taken by the type, or refused, with reason), errors:[{path, error}]}. Example spec:\n'
+      + '{"workspace":"personal-finance","spaces":[{"name":"Budget","icon":"lucide:wallet","tables":[{"name":"Account","icon":"lucide:credit-card","fields":[{"name":"Kind","type":"select","options":[{"name":"Credit card"},{"name":"Checking"}]}],"rows":[{"Name":"Amex Gold","Kind":"Credit card"}]},{"name":"Transaction","fields":[{"name":"Amount","type":"number","format":"currency","currency":"USD"},{"name":"Date","type":"date"},{"name":"Account","type":"relation","to":"Account","cardinality":"many-to-one"}],"rows":[{"Name":"Whole Foods","Amount":142.18,"Date":"2026-08-03","Account":"Amex Gold"}]}]}]}\n'
+      + 'dryRun:true first is cheap: it checks the whole spec, rows included, returns every error with its path, and writes nothing. Any error means nothing is written.',
+    inputSchema: {
+      type: 'object',
+      properties: { spec: { type: 'object', description: '{workspace?, description?, spaces:[{name, icon?, description?, tables:[{name, icon?, description?, fields?, rows?}]}]}' }, dryRun: { type: 'boolean' }, skipExistingRows: { type: 'boolean', description: 'Skip a row whose Name the table already holds (for a re-run)' } },
+      required: ['spec'],
+    },
+  },
+  {
     name: 'weave_views',
     description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table or board — a board groups by the first workflow field, falling back to the first select). action: list | get | create | delete | share | unshare. Sharing mints a capability token; the /view/<token> URL renders that view read-only, even when the workspace requires auth.',
     inputSchema: {
@@ -698,6 +711,11 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.deleteField(args.db, args.field);
     case 'weave_apply_schema':
       return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive) }) };
+    case 'weave_build': {
+      // A spec passed bare, without the `spec` wrapper, is taken as meant.
+      const { spec, dryRun, skipExistingRows, ...bare } = args;
+      return JSON.stringify(weave.build(spec ?? bare, { dryRun: Boolean(dryRun), skipExistingRows: Boolean(skipExistingRows) }));
+    }
     case 'weave_views':
       switch (args.action) {
         case 'list': return { views: weave.listViews() };

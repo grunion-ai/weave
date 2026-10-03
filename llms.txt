@@ -26,7 +26,7 @@ is nothing to build and nothing to install from npm.
 ## Docs
 
 - [README](https://github.com/grunion-ai/weave/blob/main/README.md): what weave is, quickstart, comparison against Airtable/ClickUp/Fibery and other open-source alternatives, self-hosting, FAQ
-- [AGENTS.md](https://github.com/grunion-ai/weave/blob/main/AGENTS.md): agent-facing map — repo layout, the 57 MCP tools (15 listed by default, the rest through `weave_call`; `--tools all` lists every one) and their CLI equivalents, configuring a workspace without a browser, entity-ref forms, rules for changing the repo
+- [AGENTS.md](https://github.com/grunion-ai/weave/blob/main/AGENTS.md): agent-facing map — repo layout, the 58 MCP tools (16 listed by default, the rest through `weave_call`; `--tools all` lists every one) and their CLI equivalents, configuring a workspace without a browser, entity-ref forms, rules for changing the repo
 - [Ontology & glossary](https://github.com/grunion-ai/weave/blob/main/docs/ONTOLOGY.md): the entity as weave's one core kind, its five levels, what an entity is made of, and the glossary
 - [Architecture map](https://github.com/grunion-ai/weave/tree/main/docs/architecture): interactive runtime map rendered by archify, each node linked to its source at a pinned commit
 - [Feature parity matrix](https://github.com/grunion-ai/weave/blob/main/docs/PARITY.md): weave against Fibery's core work-platform feature set, feature by feature

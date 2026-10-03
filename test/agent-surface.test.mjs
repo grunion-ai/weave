@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { TOOLS } from '../src/mcp.js';
+import { TOOLS, listTools } from '../src/mcp.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = readFileSync(join(ROOT, 'bin/weave.js'), 'utf8');
@@ -30,6 +30,8 @@ const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const SURFACE = [
   ['schema.describe', ['describeSchema'], 'weave_schema', 'schema', ['GET /api/schema']],
   ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply', ['PUT /api/schema']],
+  // Feature #253: spaces, tables, fields, relations and rows in one call.
+  ['build', ['build'], 'weave_build', 'build', ['POST /api/build']],
   ['vocabulary', [], 'weave_vocabulary', 'vocabulary', ['GET /api/vocabulary']],
   ['space.create', ['createSpace'], 'weave_create_space', 'space create', ['POST /api/spaces']],
   ['space.list', ['listSpaces'], 'weave_schema', 'space', ['GET /api/spaces']],
@@ -236,6 +238,25 @@ test('the CLI creates take the same options', () => {
 test('every MCP tool is documented in AGENTS.md', () => {
   const undocumented = [...toolNames].filter((n) => !AGENTS.includes(n));
   assert.deepEqual(undocumented, [], `tools missing from AGENTS.md: ${undocumented.join(', ')}`);
+});
+
+/* The count an agent reads before it reads the list. AGENTS.md said 56 while
+   llms.txt said 55 and the README said 23; the number moves with TOOLS. */
+test('the docs that count the MCP tools count them right', () => {
+  const LLMS = readFileSync(join(ROOT, 'llms.txt'), 'utf8');
+  for (const [doc, name, re] of [
+    [AGENTS, 'AGENTS.md', /MCP server: (\d+) tools/],
+    [LLMS, 'llms.txt', /the (\d+) MCP tools/],
+    [README, 'README.md', /MCP server exposes (\d+) tools/],
+  ]) {
+    const n = doc.match(re)?.[1];
+    assert.equal(Number(n), TOOLS.length, `${name} says ${n} tools; TOOLS has ${TOOLS.length}`);
+  }
+  // And the default list (Issue #595), which weave_build joined.
+  const core = listTools('core').length;
+  for (const [doc, name, re] of [[AGENTS, 'AGENTS.md', /(\d+) listed by default/], [LLMS, 'llms.txt', /\((\d+) listed by default/]]) {
+    assert.equal(Number(doc.match(re)?.[1]), core, `${name} miscounts the default list; it has ${core}`);
+  }
 });
 
 test('every CLI command is documented in AGENTS.md', () => {

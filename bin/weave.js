@@ -125,6 +125,10 @@ Schema
   schema export [--out file]          The schema as an editable JSON document
   schema apply --file doc.json [--dry-run] [--allow-destructive]
                                       Grow the workspace to match the document
+  build <spec.json> [--dry-run] [--skip-existing-rows]
+                                      Spaces, tables, fields, relations and rows in one
+                                      call (spec: weave_build in AGENTS.md); --dry-run
+                                      checks it all and writes nothing
   vocabulary [section [query]]        Every legal config value and what it looks like
                                       (icons are lucide:<name>; colors are hex from the palette;
                                       "vocabulary icons <query>" searches the icon names)
@@ -668,6 +672,15 @@ async function main() {
         return out(json);
       }
       return out(w.describeSchema());
+    }
+    // Feature #253: a whole outline in one call. One line out; a spec with
+    // errors writes nothing and exits 1.
+    case 'build': {
+      const file = args[0] ?? flags.file;
+      if (!file || file === true) throw new WeaveError('Usage: weave build <spec.json> [--dry-run]', 'invalid');
+      const r = w.build(JSON.parse(readFileSync(file, 'utf8')), { dryRun: !!flags['dry-run'], skipExistingRows: !!flags['skip-existing-rows'] });
+      if (!r.ok) process.exitCode = 1;
+      return out(JSON.stringify(r));
     }
     case 'account': {
       const [sub, ref] = args;
