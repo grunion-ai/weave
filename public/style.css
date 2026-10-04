@@ -2076,9 +2076,15 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
    pin is a flex basis, so it means nothing here and comes back past 600px.
    The table underneath keeps its scroll, and the sheet keeps its own.
    align-self goes back to auto: on a positioned box flex-start means "as
-   tall as the content", and a long record ran 62px past the screen. */
+   tall as the content", and a long record ran 62px past the screen.
+   The sheet says nothing about overscroll-behavior, the same as #main and
+   the desktop dock: `contain` stops Chromium moving the caret with End
+   inside a code block, so the text landed at the start of the line
+   (Issue #616, the same trap as Issue #609). Nothing is lost by dropping
+   it — since #609 the document no longer scrolls, so a scroll that runs
+   out at the sheet's edge has nowhere to chain. */
 @media (max-width: 600px) {
-  #dock { --wv-pane-pad-x: 14px; position: fixed; inset: 0; z-index: 62; align-self: auto; height: 100dvh; margin: 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; border-radius: 0; box-shadow: none; min-height: 0; max-height: none; overscroll-behavior: contain; }
+  #dock { --wv-pane-pad-x: 14px; position: fixed; inset: 0; z-index: 62; align-self: auto; height: 100dvh; margin: 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; border-radius: 0; box-shadow: none; min-height: 0; max-height: none; }
   #dock-gutter:not([hidden]) { display: none; }
   #main:has(+ #dock-gutter:not([hidden])) { min-width: 0; margin-right: 8px; }
 }

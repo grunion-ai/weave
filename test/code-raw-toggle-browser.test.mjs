@@ -12,7 +12,9 @@
    it looking like itself (code stays code, a diagram stays a diagram), a
    </> button sits in the panel's upper right, and that button, and only that
    button, shows and hides the fence, the language and a diagram's source.
-   Typing in the code with the fences hidden still writes the markdown.
+   Typing in the code with the fences hidden still writes the markdown, on the
+   full page and on the phone dock's sheet (Issue #616), where the sheet's
+   overscroll-behavior once pinned the caret at the start of the code line.
 
    Playwright is NOT a dependency of weave; the suite skips without it. */
 import test from 'node:test';
@@ -164,6 +166,34 @@ if (s) {
       const r = await readBlock(page);
       assert.ok(r.expanded && r.source, 'the writer is still in the code');
       assert.equal(r.fence || r.info || r.close, false, 'typing does not bring the fence back');
+    } finally { await page.close(); }
+  });
+
+  /* The same keystroke on the phone pose, where the dock covers the screen as
+     a sheet (Issue #549). The sheet carried `overscroll-behavior: contain`,
+     and in Chromium that stops End from moving the caret inside a code block:
+     the caret stayed at the CODE element's offset 0 and the text landed at
+     the START of the line (Issue #616). #main and the desktop dock already
+     leave the property off for this reason (Issue #609). */
+  async function openDocked(id) {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.addInitScript(() => localStorage.setItem('weave-theme', 'light'));
+    await page.goto(`${base}/#/table/${tableRef.id}?e=${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#dock .vditor-ir [contenteditable="true"]');
+    return page;
+  }
+  test('End reaches the end of the code line on the phone dock (Issue #616)', async () => {
+    const id = entityWithDoc('Docked typing', JS_DOC);
+    const page = await openDocked(id);
+    try {
+      await page.click('#dock .vditor-ir__preview code');
+      await page.waitForSelector('button.doc-code-raw', { state: 'visible' });
+      await page.keyboard.press('End');
+      await page.keyboard.type(' // hi');
+      const saved = await settle(id, /\/\/ hi/);
+      assert.match(saved, /```js\nconst x = 1; \/\/ hi\n```/, `End moved the caret to the end of the line before the text was typed: ${JSON.stringify(saved)}`);
+      assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#dock')).overscrollBehaviorY), 'auto',
+        'the sheet leaves overscroll alone, so the caret keys keep working');
     } finally { await page.close(); }
   });
 
