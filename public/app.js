@@ -5268,7 +5268,22 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
      neither the header nor the + New foot ever held against the page.
      Measured, not assumed: a grid wider than its card keeps its sideways
      scroll, and so does every wrap this observer does not watch. */
-  const fitWatch = new ResizeObserver(() => {
+  /* The body runs in the next frame, never inside the observation that asked
+     for it (Issue #464). Three of these writes resize the very wrap this
+     observer watches — `wv-grid-scroll` caps its height against the viewport
+     — so a synchronous body fed its own observer, and WebKit answered with a
+     window `error`, "ResizeObserver loop completed with undelivered
+     notifications.", on every table a Safari reader opened. The in-app bug
+     recorder listens on `error`, so that reader then filed a report carrying
+     an error nobody caused. One frame also collapses the repeat callbacks a
+     first draw delivers into a single pass. */
+  let fitFrame = 0;
+  const refit = () => {
+    fitFrame = 0;
+    // A redraw replaces the wrap; a frame queued against the old one has
+    // nothing left to measure and its settle()/rewindow() belong to a grid
+    // the reader no longer sees.
+    if (!wrap.isConnected) return;
     const fit = wrap.scrollWidth <= wrap.clientWidth + 1;
     wrap.classList.toggle('wv-fit', fit);
     // The trailing "+" wears its fade and chip only while it floats over
@@ -5288,7 +5303,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     // The box that scrolls may have just changed hands, and a density flip
     // lands here too: the row window is re-measured against whichever it is.
     rewindow();
-  });
+  };
+  const fitWatch = new ResizeObserver(() => { fitFrame ||= requestAnimationFrame(refit); });
 
   /* ---------- Feature #132: row selection ----------
      The Puck won the five-bars study (Kyle, 2026-08-24). This is the layer
