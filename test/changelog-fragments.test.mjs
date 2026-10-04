@@ -21,7 +21,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
-import { fold, foldRepo, changelogGuard, openSecurityCitations, FRAGMENT_NAME } from '../scripts/changelog-fold.mjs';
+import { fold, foldRepo, changelogGuard, fragmentGuard, openSecurityCitations, FRAGMENT_NAME } from '../scripts/changelog-fold.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -156,6 +156,53 @@ test('the guard refuses CHANGELOG.md lines added without a version bump', () => 
   assert.equal(changelogGuard({ added: 0, versionBefore: '0.4.43', versionAfter: '0.4.43' }), null, 'removals only');
 });
 
+/* The other direction (Issue #573). Gerrit change 527 fixed Issue #551 and
+   merged as e85ada8 with nine files, none under changelog.d/; the gate voted
+   Verified +1 and the fix would have been missing from the v0.4.54 notes had
+   the bullet not been written by hand at release time. changelogGuard watches
+   CHANGELOG.md; fragmentGuard watches the fragment a code change owes. The two
+   stay separate functions so a red names one direction and one fix. */
+const FIX = {
+  subject: 'grid: tab starts from the focused row (Issue #551)',
+  message: 'grid: tab starts from the focused row (Issue #551)\n\nBody.\n\nChange-Id: I0123456789abcdef\n',
+  files: ['src/grid.js', 'public/app.js', 'test/grid.test.mjs'],
+  fragmentsAdded: 0,
+  versionBefore: '0.4.63',
+  versionAfter: '0.4.63',
+};
+
+test('a code change naming an Issue or Feature is refused when it adds no fragment', () => {
+  const why = fragmentGuard(FIX);
+  assert.match(why, /changelog\.d\/<short-slug>/, 'names the file to write');
+  assert.match(why, /src\/grid\.js/, 'names the code file that asked for it');
+  assert.match(why, /No-changelog/, 'names the opt-out');
+  for (const subject of ['grid: two fixes (Issues #551, #552)', 'grid: tab order (Feature #236)', 'grid: three (Features #1, #2)']) {
+    assert.match(fragmentGuard({ ...FIX, subject, message: `${subject}\n` }), /adds no changelog\.d/, subject);
+  }
+  for (const file of ['src/grid.js', 'public/app.js', 'bin/weave.js', 'scripts/changelog-fold.mjs']) {
+    assert.match(fragmentGuard({ ...FIX, files: [file] }), /adds no changelog\.d/, file);
+  }
+});
+
+test('a fragment, a No-changelog reason, or a release commit satisfies the fragment guard', () => {
+  assert.equal(fragmentGuard({ ...FIX, fragmentsAdded: 1 }), null, 'a fragment added in the same commit');
+  assert.equal(fragmentGuard({ ...FIX, message: `${FIX.message}No-changelog: a rename with no user-visible change\n` }), null, 'the opt-out trailer');
+  assert.equal(fragmentGuard({ ...FIX, versionAfter: '0.4.64' }), null, 'a release commit deletes the fragments it folded');
+});
+
+test('the fragment guard passes a commit that names no row or touches no code', () => {
+  assert.equal(fragmentGuard({ ...FIX, subject: 'grid: tab starts from the focused row', message: 'grid: tab starts from the focused row\n' }), null, 'no Issue or Feature in the subject');
+  assert.equal(fragmentGuard({ ...FIX, subject: 'grid: tab order, see Issue #551', message: 'grid: tab order, see Issue #551\n' }), null, 'the subject names the row outside parentheses');
+  assert.equal(fragmentGuard({ ...FIX, files: ['DEVELOPMENT.md', 'test/grid.test.mjs', 'docs/architecture/index.html'] }), null, 'no src/, public/, bin/ or scripts/ file');
+  assert.equal(fragmentGuard({ ...FIX, files: [] }), null, 'no files at all');
+});
+
+test('a No-changelog trailer with no reason does not opt out', () => {
+  for (const trailer of ['No-changelog:', 'No-changelog:   ']) {
+    assert.match(fragmentGuard({ ...FIX, message: `${FIX.message}${trailer}\n` }), /No-changelog: <reason>/, trailer);
+  }
+});
+
 test('every fragment is named <slug>-<number>.md and opens on a bullet', () => {
   const dir = join(ROOT, 'changelog.d');
   const names = existsSync(dir) ? readdirSync(dir) : [];
@@ -169,14 +216,38 @@ test('every fragment is named <slug>-<number>.md and opens on a bullet', () => {
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
 const parentsOf = (rev) => git('rev-list', '--parents', '-n', '1', rev).split(' ').slice(1);
 const versionAt = (rev) => { try { return JSON.parse(git('show', `${rev}:package.json`)).version; } catch { return null; } };
+const pathsIn = (...args) => git(...args).split('\n').filter(Boolean);
+/* The commits this HEAD puts under test: for a merge HEAD, each non-merge
+   parent's own diff; for a plain HEAD, HEAD. */
+const underTest = () => {
+  const parents = parentsOf('HEAD');
+  return parents.length > 1 ? parents.filter((p) => parentsOf(p).length === 1) : parents.length ? ['HEAD'] : [];
+};
 
 test('this commit edits CHANGELOG.md only if it bumps the version', () => {
-  const parents = parentsOf('HEAD');
-  const commits = parents.length > 1 ? parents.filter((p) => parentsOf(p).length === 1) : parents.length ? ['HEAD'] : [];
-  for (const sha of commits) {
+  for (const sha of underTest()) {
     const stat = git('diff', '--numstat', `${sha}^`, sha, '--', 'CHANGELOG.md');
     const added = stat ? Number(stat.split('\t')[0]) : 0;
     const why = changelogGuard({ added, versionBefore: versionAt(`${sha}^`), versionAfter: versionAt(sha) });
+    assert.equal(why, null, `${sha.slice(0, 8)}: ${why}`);
+  }
+});
+
+/* Issue #573: the same commits, read the other way round. A commit that
+   changes code and names its row owes a fragment. Commits that landed before
+   this guard did not all pay it (e85ada8, 0ccab1d, 5323354, 4c5faa3, ae87f1a,
+   79f2f60), so a checkout of one of those is red on its own history, not on
+   the change being tested. */
+test('this commit ships the changelog.d fragment the code it changes owes', () => {
+  for (const sha of underTest()) {
+    const why = fragmentGuard({
+      subject: git('log', '-1', '--format=%s', sha),
+      message: git('log', '-1', '--format=%B', sha),
+      files: pathsIn('diff', '--name-only', `${sha}^`, sha),
+      fragmentsAdded: pathsIn('diff', '--name-only', '--diff-filter=A', `${sha}^`, sha, '--', 'changelog.d').length,
+      versionBefore: versionAt(`${sha}^`),
+      versionAfter: versionAt(sha),
+    });
     assert.equal(why, null, `${sha.slice(0, 8)}: ${why}`);
   }
 });

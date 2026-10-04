@@ -77,6 +77,27 @@ export function changelogGuard({ added, versionBefore, versionAfter }) {
     + 'Write changelog.d/<short-slug>-<Issue or Feature number>.md instead; only a release commit edits CHANGELOG.md, through scripts/changelog-fold.mjs.';
 }
 
+/* The other direction (Issue #573). A commit that changes code and names its
+   row in the subject owes that row a bullet, and the release can only fold
+   what is on disk: change 527 fixed Issue #551 and merged as e85ada8 with no
+   fragment, so the fix reached v0.4.54 only because the bullet was written by
+   hand. A refactor or a docs-only change says so in a `No-changelog: <reason>`
+   trailer, as towncrier and changesets both allow. A release commit bumps the
+   version and deletes the fragments it folded, so the bump exempts it. */
+const CODE_PATH = /^(?:src|public|bin|scripts)\//;
+const SUBJECT_ROW = /\((?:Issue|Feature)s? #\d+/;
+const NO_CHANGELOG = /^No-changelog:[ \t]*\S/m;
+
+export function fragmentGuard({ subject = '', message = '', files = [], fragmentsAdded = 0, versionBefore, versionAfter }) {
+  if (versionBefore !== versionAfter) return null;
+  if (fragmentsAdded || !SUBJECT_ROW.test(subject) || NO_CHANGELOG.test(message)) return null;
+  const code = files.find((f) => CODE_PATH.test(f));
+  if (!code) return null;
+  return `"${subject}" changes ${code} and names its row, but adds no changelog.d/ fragment. `
+    + 'Write changelog.d/<short-slug>-<Issue or Feature number>.md in the same commit, holding the bullet the release folds, '
+    + 'or say why it owes none in a `No-changelog: <reason>` trailer.';
+}
+
 /* A fragment's `Issue #N` names the row it finishes. A security finding's row
    stays Open until its fix lands, so at release time, when every landed fix
    has set its row Fixed, a fragment citing an open finding ships other work

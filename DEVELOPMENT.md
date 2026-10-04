@@ -104,7 +104,13 @@ open changes touch the same file and Gerrit rebases them without a hand (Issue #
 every change added a bullet under `## Unreleased`, each landing sent every open change
 back for a hand rebase and a fresh gate). Step 4 folds the fragments, sorted by file name;
 it is idempotent, so a second run changes nothing. `test/changelog-fragments.test.mjs`
-fails a commit that adds lines to CHANGELOG.md without changing the package.json version.
+guards both directions: it fails a commit that adds lines to CHANGELOG.md without changing
+the package.json version, and it fails a commit that changes `src/`, `public/`, `bin/` or
+`scripts/` and names `(Issue #N)` or `(Feature #N)` in its subject while adding no fragment
+(Issue #573: change 527 landed `e85ada8` with nine files and no fragment, and its fix reached
+the v0.4.54 notes only because the bullet was written by hand). A refactor or a docs-only
+change that owes no bullet says so in a `No-changelog: <reason>` trailer; a release commit,
+which bumps the version and deletes the fragments it folded, is exempt.
 
 Step 6 is the one users see. After the change lands and the main watcher mirrors the
 green gerrit/main to GitHub (rule 7), it runs `harness/scripts/weave-release-tags.mjs`:
