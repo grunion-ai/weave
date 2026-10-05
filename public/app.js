@@ -1324,6 +1324,11 @@ function renderNav() {
       nav.append(row);
     }
   }
+  /* "+ New space" rides the pinned strip, not the nav's own flow (Issue
+     #452): Kyle on the uno home at 1470x794 found it at 1028px in a 794px
+     window, out of sight until the nav was scrolled to its end. In the strip
+     it holds the sidebar's bottom edge however long the space list grows,
+     and the name input it opens is pinned with it. */
   const foot = el('div', { class: 'nav-foot' },
     el('button', {
       class: 'btn btn-sm btn-ghost-secondary', type: 'button',
@@ -1338,7 +1343,7 @@ function renderNav() {
   const entityTotal = state.schema.reduce((n, s) => n + s.tables.reduce((m, d) => m + (d.entityCount ?? 0), 0), 0);
   const line = el('span', { class: 'nav-stats-line', title: 'Records in this workspace · storage on disk' },
     `${entityTotal.toLocaleString()} ${entityTotal === 1 ? 'record' : 'records'}`);
-  const stats = el('div', { class: 'nav-stats' }, line);
+  const stats = el('div', { class: 'nav-stats' }, foot, line);
   /* The workspace's system tables (Kyle, 2026-09-29): Activity, Trash and
      Workflows, pinned under the spaces in that order. Fixed rows: no kebab,
      no grip, and the engine refuses a rename, move or delete of any system
@@ -1361,7 +1366,6 @@ function renderNav() {
   // Instance status (Feature #54): version + uptime from /api/health, so a
   // stale server is visible at a glance instead of masquerading as a broken
   // feature. startedAt arrives with the same payload for tooling to compare.
-  nav.append(foot);
   // The instance chip sits under the stats line (Issue #380). In the
   // bottom-right corner, where it lived from 2026-08-22, it covered the grid's
   // "200 of 333 loaded" note and every error toast. It is built once per load

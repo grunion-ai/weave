@@ -149,6 +149,53 @@ if (s) {
     await page.close();
   });
 
+  /* Issue #452, Kyle on the uno home at 1470x794: "+ New space" sat in the
+     nav's own scrolling flow, so a workspace with enough spaces pushed it out
+     of sight — measured on v0.4.64, its top was at 1028px in a 794px window,
+     reachable only by scrolling the nav to its end. It now rides the pinned
+     strip at the sidebar's foot, above the records line, so it holds the
+     bottom edge however long the space list grows. The name input it opens
+     is a child of the same strip and is pinned with it. */
+  for (const theme of ['light', 'dark']) {
+    test(`${theme}: + New space holds the sidebar's bottom edge however far the nav scrolls (Issue #452)`, async () => {
+      const page = await open(`#/table/${big.id}`, { theme, width: 1470, height: 794 });
+      const spare = await page.evaluate(() => { const n = document.querySelector('#sidebar'); return n.scrollHeight - n.clientHeight; });
+      assert.ok(spare > 300, `the nav has more content than room, so an unpinned foot would scroll away: ${spare}`);
+      // Where the button sits in the window, and how much of the sidebar's
+      // own box it is inside: a pinned control is wholly within it, always.
+      const seen = (q) => page.evaluate((sel) => {
+        const n = document.querySelector('#sidebar');
+        const box = n.getBoundingClientRect();
+        const r = document.querySelector(sel)?.getBoundingClientRect();
+        return r && { top: r.top, bottom: r.bottom, within: r.top >= box.top - 1 && r.bottom <= box.bottom + 1, scroll: n.scrollTop };
+      }, q);
+      const btn = '#sidebar .nav-foot button';
+      const atTop = await seen(btn);
+      assert.ok(atTop?.within, `+ New space is in the sidebar's window with the nav unscrolled: ${JSON.stringify(atTop)}`);
+      await page.evaluate(() => { const n = document.querySelector('#sidebar'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
+      await page.waitForTimeout(150);
+      const atEnd = await seen(btn);
+      assert.ok(atEnd.scroll >= spare - 1, `the nav is at its end: ${atEnd.scroll} of ${spare}`);
+      assert.ok(atEnd.within, `+ New space is still in the sidebar's window at the nav's end: ${JSON.stringify(atEnd)}`);
+      /* The strip is pinned, not carried: a nav row travels the whole
+         `spare`, the button barely moves. It rises by the strip's own
+         14px ground at the very end, where sticky hands back to the flow
+         (Issue #380), so the slack here is that band, not the scroll. */
+      assert.ok(Math.abs(atEnd.top - atTop.top) <= 20, `the button held its place while the nav ran ${spare}px: ${atTop.top} -> ${atEnd.top}`);
+      // The strip stays the strip: the records line and the instance chip
+      // keep their order under the button (Issue #380).
+      const order = await page.evaluate(() => [...document.querySelectorAll('#sidebar .nav-stats > *')].map((n) => n.className.split(' ')[0]));
+      assert.deepEqual(order.slice(0, 2), ['nav-foot', 'nav-stats-line'], `the button leads the strip, the records line follows: ${order}`);
+      // The name input opens inside the pinned strip, so it is in view too.
+      await page.click(btn);
+      await page.waitForTimeout(150);
+      const input = await seen('.nav-inline-add');
+      assert.ok(input?.within, `the new-space name input is in the sidebar's window: ${JSON.stringify(input)}`);
+      assert.ok(await page.evaluate(() => !!document.querySelector('.nav-inline-add')?.closest('.nav-stats')), 'the name input opens inside the pinned strip');
+      await page.close();
+    });
+  }
+
   test(`the ${ROWS}-row grid still paints rows as the main panel scrolls to its bottom`, async () => {
     const page = await open(`#/table/${big.id}`);
     const firstPaint = await page.evaluate(() => Math.max(...[...document.querySelectorAll('#main .wv-grid tbody tr.entity-row[data-i]')].map((tr) => Number(tr.dataset.i))));

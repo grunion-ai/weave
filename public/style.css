@@ -157,7 +157,10 @@ a.nav-space { text-decoration: none; display: block; }
 a.nav-space:hover { color: var(--tblr-primary); }
 .nav-add-table { margin-left: auto; opacity: 0; }
 .nav-space-row:hover .nav-add-table, .nav-add-table:focus-visible { opacity: 1; }
-.nav-foot { border-top: 1px solid var(--wv-pill-hover); margin-top: 12px; padding-top: 8px; }
+/* The "+ New space" row, the first line of the pinned strip below (Issue
+   #452). Its divider is what marks where the scrolling nav ends, so it
+   stretches and its side margins cancel the strip's own padding. */
+.nav-foot { align-self: stretch; margin: 0 -10px; padding-top: 8px; border-top: 1px solid var(--wv-pill-hover); }
 /* The workspace system tables, pinned under the spaces (Activity, Trash, Workflows). */
 .nav-system { border-top: 1px solid var(--wv-pill-hover); padding-top: 6px; flex: none; }
 /* The stats strip: workspace entity count + on-disk size, pinned to the
