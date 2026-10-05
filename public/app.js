@@ -1556,9 +1556,10 @@ function expandDocument(grid, url, title) {
    dialog hosting an iframe with its own back/refresh — mention links inside
    keep navigating in-frame (#27), and Esc brings you home. Also the host for
    the whiteboard (#46), which fills the frame slot with a canvas instead. */
-function fullscreenViewer(title, { url = null, mount = null } = {}) {
+function fullscreenViewer(title, { url = null, mount = null, sandbox = null, prev = null, next = null } = {}) {
   document.querySelector('#fsv-back')?.remove();
-  const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen' }) : null;
+  // An HTML upload is framed under the sandbox the server sets (never same-origin).
+  const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen', sandbox: sandbox ?? undefined }) : null;
   // Closing leaves real fullscreen too, if we got it; leaving real fullscreen
   // (Esc, the browser's own control) closes the viewer — one state, not two.
   const close = () => back.remove();
@@ -1574,11 +1575,20 @@ function fullscreenViewer(title, { url = null, mount = null } = {}) {
       url ? el('button', { class: 'btn btn-sm', title: 'Refresh', onclick: () => { try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; /* cross-origin: reload by re-src */ } } }, iconEl('⟳')) : null,
       el('span', { class: 'fsv-title' }, title),
       el('span', { style: 'flex:1' }),
+      // Siblings, when the viewer was opened from a list: ← → on the chrome,
+      // outside the frame, so a focused PDF keeps its own page keys.
+      prev || next ? el('span', { class: 'fsv-nav' },
+        el('button', { class: 'btn btn-sm', title: 'Previous (←)', disabled: prev ? undefined : '', onclick: () => prev?.() }, iconEl('‹')),
+        el('button', { class: 'btn btn-sm', title: 'Next (→)', disabled: next ? undefined : '', onclick: () => next?.() }, iconEl('›'))) : null,
       url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')) : null,
       el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, iconEl('✕'))),
     frame ?? el('div', { class: 'fsv-body' }));
   document.body.append(back);
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowLeft' && prev) prev();
+    else if (e.key === 'ArrowRight' && next) next();
+  };
   addEventListener('keydown', function esc(e) {
     if (!back.isConnected) return removeEventListener('keydown', esc);
     onKey(e);
@@ -3225,6 +3235,92 @@ function toggleSwitch(f, val, patch) {
    axe counted 40 unnamed inputs on the Issue table, each read aloud as a
    bare "edit text". A grid control is named by column and row ("Points,
    Grid is slow"); a field row on the entity page passes its field name. */
+/* ---------- attachment previews (Kyle, 2026-10-05) ----------
+   One file kind vocabulary for the sheet, the viewer and the lightbox. A
+   picture is what the sheet can draw with an <img>; a pdf and plain text
+   open in a frame the server already serves inline (Issue #483); an HTML
+   upload opens in a frame under `?view` and the same sandbox the server
+   sets, so it runs in an opaque origin with nothing of weave's to read. */
+const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
+const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
+function fileKind(file) {
+  const mime = String(file.mime ?? '').split(';')[0].trim().toLowerCase();
+  if (/^image\/(png|jpeg|gif|webp)$/.test(mime)) return 'image';
+  if (mime === 'application/pdf') return 'pdf';
+  if (mime === 'text/plain') return 'text';
+  if (mime === 'text/html' || mime === 'application/xhtml+xml') return 'html';
+  return 'other';
+}
+const isPictureFile = (file) => fileKind(file) === 'image';
+const fileIconName = (file) => ({ image: 'lucide:image', pdf: 'lucide:file-text', text: 'lucide:file-text', html: 'lucide:code' })[fileKind(file)] ?? 'lucide:file';
+const fileSizeText = (n) => n == null ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+/* The contact sheet: one cell per file, wrapping to the column's width.
+   `fit-trim` sizes each cell to its picture's shape once the image says
+   what it is; `fit-fill` is a uniform grid with the picture cropped to the
+   cell. A file the sheet cannot picture is a glyph cell naming its kind.
+   ponytail: a server-made still for pdf and html pages would turn those
+   glyph cells into pictures; the sheet's shape does not change for it. */
+function attachSheetEl(files, { size = 'medium', fit = 'trim' } = {}, { remove = null } = {}) {
+  const sheet = el('div', { class: `attach-sheet size-${size} fit-${fit}` });
+  files.forEach((file, i) => {
+    const kind = fileKind(file);
+    const cell = el('a', {
+      class: 'attach-cell' + (kind === 'image' ? '' : ' is-glyph'), href: fileUrl(file), title: file.name,
+      onclick: (e) => { e.preventDefault(); fileLightbox(files, i); },
+    });
+    if (kind === 'image') {
+      const img = el('img', { src: fileUrl(file), alt: file.name, loading: 'lazy' });
+      img.addEventListener('load', () => { if (img.naturalHeight) cell.style.setProperty('--ar', (img.naturalWidth / img.naturalHeight).toFixed(3)); });
+      cell.append(img);
+    } else {
+      cell.append(iconEl(fileIconName(file), 'wv-icon'), el('span', { class: 'attach-cell-kind' }, kind === 'other' ? 'file' : kind));
+    }
+    cell.append(el('span', { class: 'attach-cell-label' }, file.name), remove ? remove(file) : null);
+    sheet.append(cell);
+  });
+  // The last row is never stretched to the edge: the filler takes the slack.
+  if (fit === 'trim') sheet.append(el('span', { class: 'attach-sheet-filler' }));
+  return sheet;
+}
+/* The viewer: the file itself, in place, no click. Height follows `size`
+   and the bottom edge drags, so the page scrolls outside and the file
+   inside. Null for a kind with no viewer: the chip stands alone. */
+function fileViewerEl(file, { size = 'medium' } = {}) {
+  const kind = fileKind(file);
+  const url = fileUrl(file);
+  const body = kind === 'image' ? el('img', { src: url, alt: file.name })
+    : kind === 'pdf' || kind === 'text' ? el('iframe', { class: 'file-viewer-frame', src: url, title: file.name })
+      : kind === 'html' ? el('iframe', { class: 'file-viewer-frame', src: `${url}?view`, title: file.name, sandbox: HTML_FRAME_SANDBOX })
+        : null;
+  if (!body) return null;
+  return el('div', { class: `file-viewer size-${size} kind-${kind}` },
+    el('div', { class: 'file-viewer-bar' },
+      iconEl(fileIconName(file), 'wv-icon'),
+      el('span', { class: 'file-viewer-name' }, file.name),
+      el('span', { class: 'file-viewer-size' }, fileSizeText(file.size)),
+      el('a', { class: 'btn btn-sm btn-ghost-secondary tiny', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon wv-icon-xs'))),
+    body);
+}
+/* The cover: a single-file field's picture at the top of the record. */
+function entityCoverEl(file, { size = 'medium', fit = 'trim' } = {}) {
+  return el('div', { class: `entity-cover size-${size} fit-${fit}`, title: file.name },
+    el('img', { src: fileUrl(file), alt: file.name }));
+}
+/* A sheet cell opens its file in the fullscreen viewer (Feature #47), and
+   ← → walk the field's files. A kind the server only hands back as a
+   download opens in a tab instead of a frame that would save it. */
+function fileLightbox(files, index) {
+  const file = files[index];
+  const kind = fileKind(file);
+  if (kind === 'other') { window.open(fileUrl(file), '_blank'); return; }
+  fullscreenViewer(`${file.name} · ${index + 1} / ${files.length}`, {
+    url: fileUrl(file) + (kind === 'html' ? '?view' : ''),
+    sandbox: kind === 'html' ? HTML_FRAME_SANDBOX : null,
+    prev: index > 0 ? () => fileLightbox(files, index - 1) : null,
+    next: index < files.length - 1 ? () => fileLightbox(files, index + 1) : null,
+  });
+}
+
 function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label } = {}) {
   const node = editorFor(f, item, db, onSaved, { compact, fit });
   if (node instanceof Element) {
@@ -3634,29 +3730,44 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
        sees: the grid wires the <td> and hands a drop to the chip's upload. */
     chip.dropFiles = upload;
     if (compact) return chip;
-    const box = el('span', { class: 'attach-box' });
     const files = (item.files ?? []).filter((x) => ids.includes(x.id));
-    for (const file of files) {
-      /* A file whose bytes are gone keeps its name and loses its link. The
-         anchor was the whole of Issue #121: it looked live, it opened raw
-         404 JSON, and the reporter could only file "file missing?". The row
-         still offers the × so a dead pointer can be cleared. */
-      box.append(el('span', { class: 'attach-item' + (file.missing ? ' is-missing' : '') },
-        file.missing
-          ? el('span', { title: 'The stored file is gone — only its name is left' },
-            file.name, el('span', { class: 'attach-gone' }, '(missing)'))
-          : el('a', { href: `${WS_PREFIX}/api/files/${file.id}`, target: '_blank' }, file.name),
-        el('button', {
-          class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
-          onclick: () => patch(ids.filter((x) => x !== file.id)),
-        }, iconEl('lucide:x', 'wv-icon wv-icon-xs'))));
-    }
+    const remove = (file) => el('button', {
+      class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
+      onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
+    }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
+    /* A file whose bytes are gone keeps its name and loses its link. The
+       anchor was the whole of Issue #121: it looked live, it opened raw
+       404 JSON, and the reporter could only file "file missing?". The row
+       still offers the × so a dead pointer can be cleared. */
+    const chipFor = (file) => el('span', { class: 'attach-item' + (file.missing ? ' is-missing' : '') },
+      file.missing
+        ? el('span', { title: 'The stored file is gone — only its name is left' },
+          file.name, el('span', { class: 'attach-gone' }, '(missing)'))
+        : el('a', { href: fileUrl(file), target: '_blank' }, file.name),
+      remove(file));
+    /* How the record shows the files (Kyle, 2026-10-05): the field's
+       `preview`, unset resolving to auto for many and inline for one. link
+       and cover keep the chip row (the cover itself is drawn by the record
+       page, above the fields); inline is a contact sheet of every file, or
+       the one file in its viewer; auto puts the pictures in the sheet and
+       the rest in the chip row. */
+    const mode = f.preview || (f.multiple === false ? 'inline' : 'auto');
+    const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim' };
+    const present = files.filter((x) => !x.missing);
+    const sheet = mode === 'inline' && f.multiple !== false ? present
+      : mode === 'auto' ? present.filter(isPictureFile) : [];
+    const box = el('span', { class: 'attach-box' + (mode === 'link' || mode === 'cover' ? '' : ' attach-box-wide') });
+    if (mode === 'inline' && f.multiple === false && present[0]) box.append(fileViewerEl(present[0], look));
+    if (sheet.length) box.append(attachSheetEl(sheet, look, { remove }));
+    const chips = el('span', { class: 'attach-chips' });
+    for (const file of files) if (!sheet.includes(file)) chips.append(chipFor(file));
+    box.append(chips);
     const input = el('input', { type: 'file', style: 'display:none' });
     input.addEventListener('change', () => {
       const file = input.files?.[0];
       if (file) upload([file]);
     });
-    box.append(input, el('button', {
+    chips.append(input, el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Upload a file into this field, or drop files here',
       onclick: () => input.click(),
     }, '+ file'));
@@ -8860,9 +8971,28 @@ function fieldDialog(db, existing, after) {
       } else if (t === 'view') {
         kids.push(...viewSection(db, state, changed, drawCfg));
       } else if (t === 'attachments') {
+        const files = state.files ?? (state.files = { preview: '', size: 'medium', fit: 'trim' });
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
-          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.multiple !== false ? '' : undefined, onchange: (e) => { state.multiple = e.target.checked; changed(); } }),
+          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.multiple !== false ? '' : undefined,
+            onchange: (e) => { state.multiple = e.target.checked; if (state.multiple && files.preview === 'cover') files.preview = ''; changed(); drawCfg(); } }),
           el('span', { class: 'form-check-label' }, 'Allow multiple files')));
+        /* How the record shows the files (Kyle, 2026-10-05). Unset follows the
+           box above: a contact sheet for many, the viewer for one. A cover is
+           one picture, so it waits for the box to be unticked. */
+        const previews = segCtl([
+          { id: '', label: 'Unset', title: state.multiple !== false ? 'auto: pictures in a sheet, the rest as chips' : 'inline: the file in its viewer' },
+          ...fieldDialogCore.ATTACHMENT_PREVIEWS.map((id) => ({ id, label: id })),
+        ], files.preview, (id) => { files.preview = id; changed(); });
+        if (state.multiple !== false) {
+          const cover = previews.lastElementChild;
+          cover.disabled = true;
+          cover.title = 'Only a single-file field has a cover';
+        }
+        kids.push(dsection('Show as', previews), // the vditor contract bars the word Preview from the app
+          dsection('Size', segCtl(fieldDialogCore.ATTACHMENT_SIZES, files.size, (id) => { files.size = id; changed(); })),
+          dsection('Fit', segCtl(fieldDialogCore.ATTACHMENT_FITS.map((id) => ({
+            id, label: id, title: id === 'fill' ? 'Uniform cells, the file cropped to the cell' : 'The whole file, the cell trimmed to its shape',
+          })), files.fit, (id) => { files.fit = id; changed(); })));
       } else if (t === 'text' && !(isEdit && existing.role === 'name')) {
         /* Issue #86: a column that holds syntax opts out of the markdown
            costume. The Name column never wears one, so it has nothing to opt
@@ -11664,6 +11794,14 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
   let blockFrom = null;  // a whole block, moving among the blocks
   const hidden = new Set(db.hiddenFields ?? []);
   const shown = db.fields.filter((f) => f.role !== 'name' && f.type !== 'view' && !hidden.has(f.name));
+  /* A single-file field whose preview is `cover` puts its picture at the
+     top of the record (Kyle, 2026-10-05). ponytail: it sits under the
+     sticky title bar rather than between the crumbs and the name, because
+     the bar is sticky and a picture in it would ride along the page. */
+  const coverF = shown.find((x) => x.type === 'attachments' && x.preview === 'cover');
+  const coverIds = coverF ? (entity.raw?.[coverF.name] ?? []) : [];
+  const coverFile = coverF && (entity.files ?? []).find((x) => coverIds.includes(x.id) && !x.missing && isPictureFile(x));
+  if (coverFile) left.prepend(entityCoverEl(coverFile, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' }));
   const blocks = new Map();
 
   /* Every block wears the same anchor — a grip that is itself draggable, so
