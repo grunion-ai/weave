@@ -12,7 +12,7 @@
    Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, styleOf } from './lib/browser.mjs';
 
 const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph ${i + 1} with enough words to read as prose.`).join('\n\n');
 const ROWS = 2000;
@@ -113,6 +113,39 @@ if (s) {
     const after = await tops(page);
     assert.equal(after.main, before.main, 'the main panel did not take the leftover wheel');
     assert.equal(after.doc, 0);
+    await page.close();
+  });
+
+  /* Issue #451, Kyle on the uno home at 1470x794: wheeling the left nav past
+     its end scrolled the main panel with it. The nav is its own scroller, so
+     the wheel it could not use chained to the document, which outgrew the
+     window before the shell landed. Two things stop that and both are pinned
+     here: the document has no scroll of its own, and the nav keeps
+     `overscroll-behavior: contain` in every pose it takes. The in-flow
+     column, the nav-peek overlay (Issue #77) and the phone drawer
+     (Issue #262) are the same element moved, so none of them may reset it. */
+  test('scroll chaining stops at the nav edge: a wheel past the bottom of the left nav moves nothing (Issue #451)', async () => {
+    const page = await open(`#/table/${big.id}`, { width: 1470, height: 794 });
+    const spare = await page.evaluate(() => { const n = document.querySelector('#sidebar'); return n.scrollHeight - n.clientHeight; });
+    assert.ok(spare > 300, `the nav has more content than room, so it can run out: ${spare}`);
+    await page.evaluate(() => { const n = document.querySelector('#sidebar'); n.scrollTo({ top: n.scrollHeight, behavior: 'instant' }); });
+    const before = await tops(page);
+    assert.ok(before.sidebar >= spare - 1, `the nav starts at its end: ${before.sidebar} of ${spare}`);
+    await wheelOver(page, '#sidebar', 800);
+    const after = await tops(page);
+    assert.equal(after.doc, 0, `the document did not take the leftover wheel: ${JSON.stringify(after)}`);
+    assert.equal(after.main, before.main, 'the main panel did not take the leftover wheel');
+    assert.equal(after.rail, before.rail, 'the workspace rail did not take it either');
+    assert.ok(after.sidebar >= before.sidebar - 1, 'the nav stays at its end');
+    /* The other two poses are a class on #app and a width, so each is read
+       as a style rather than driven: the interactions that set them are
+       covered by the nav-peek and phone suites. */
+    const chain = () => styleOf(page.locator('#sidebar'), 'overscrollBehaviorY', 'contain');
+    assert.equal(await chain(), 'contain', 'the in-flow nav contains its chain');
+    await page.evaluate(() => document.querySelector('#app').classList.add('nav-collapsed', 'nav-peek'));
+    assert.equal(await chain(), 'contain', 'the nav-peek overlay contains its chain');
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await chain(), 'contain', 'the phone drawer contains its chain');
     await page.close();
   });
 
