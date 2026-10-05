@@ -1,22 +1,28 @@
 #!/usr/bin/env node
 /* The template exercise against a running instance (Feature #262).
 
-     node scripts/template-exercise.mjs --base http://127.0.0.1:4400 --from weave --into test
+     node scripts/template-exercise.mjs --base http://127.0.0.1:4400 --from weave --into test [--keep]
 
    For every template space of the --from workspace (GET /w/<from>/api/templates):
    exercises each of its tables over HTTP (scripts/template-exercise-core.mjs:
    add a row with every field, link and unlink every relation from both ends,
    check every lookup, rollup and formula, trash and restore the row, then
    hard-delete every row it made); uses the template into the --into
-   workspace as "<space> check <yyyymmdd-hhmm>" through POST
+   workspace as "<space> check <yyyymmdd-hhmmss> <4 hex>" through POST
    /w/<from>/api/spaces/<id>/use; exercises every table of the copy the same
-   way; and soft-deletes the copy (it stays in <into>'s trash). Prints one
-   table per template and exits 1 on any failure. */
+   way; and purges the copy, also when a step failed, so a run leaves nothing
+   in <into>, not even trash. --keep leaves the copy live for a look.
+
+   The copy's name is unique per run (Issue #644): it carried only the
+   minute, and a soft-deleted copy kept holding its name in the trash, so a
+   second run in the same minute was refused with a 409. Prints one table
+   per template and exits 1 on any failure. */
+import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { exerciseSpace, httpApi } from './template-exercise-core.mjs';
 
 const pad = (n) => String(n).padStart(2, '0');
-export const stampOf = (d = new Date()) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+export const stampOf = (d = new Date()) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 
 function table(rows) {
   const head = ['where', 'table', 'fields', 'relations', 'computed', 'ok'];
@@ -26,8 +32,10 @@ function table(rows) {
 }
 
 /* The run, as a function the suite calls against an in-process hub. */
-export async function runLive({ base, from = 'weave', into = 'test', stamp = stampOf(), headers = {}, log = console.log } = {}) {
+export async function runLive({ base, from = 'weave', into = 'test', stamp = stampOf(), keep = false, headers = {}, log = console.log } = {}) {
   const root = base.replace(/\/+$/, '');
+  // Two runs stamped the same second still get two names.
+  const suffix = randomBytes(2).toString('hex');
   const src = httpApi(`${root}/w/${from}`, { headers });
   const dst = httpApi(`${root}/w/${into}`, { headers });
   const templates = await src.call('GET', '/api/templates');
@@ -37,7 +45,7 @@ export async function runLive({ base, from = 'weave', into = 'test', stamp = sta
     const result = { template: tpl.name, copy: null, reports: [], failures: [], cleanup: null };
     results.push(result);
     for (const r of await exerciseSpace(src, tpl.name, { label: tpl.name, tag: stamp })) result.reports.push({ where: from, ...r });
-    const copyName = `${tpl.name} check ${stamp}`;
+    const copyName = `${tpl.name} check ${stamp} ${suffix}`;
     let made = null;
     try {
       const used = await src.call('POST', `/api/spaces/${encodeURIComponent(tpl.id)}/use`, { workspace: into, name: copyName });
@@ -54,12 +62,14 @@ export async function runLive({ base, from = 'weave', into = 'test', stamp = sta
     } catch (err) {
       result.failures.push(`${tpl.name}: Use template into ${into} failed: ${err.message}`);
     } finally {
-      if (made) {
+      if (made && keep) {
+        result.cleanup = `copy '${made.name}' kept in ${into} (--keep)`;
+      } else if (made) {
         try {
-          await dst.call('DELETE', `/api/spaces/${encodeURIComponent(made.id)}`);
-          result.cleanup = `copy '${made.name}' soft-deleted; it sits in ${into}'s trash`;
+          await dst.call('DELETE', `/api/spaces/${encodeURIComponent(made.id)}?hard=1`);
+          result.cleanup = `copy '${made.name}' purged from ${into}`;
         } catch (err) {
-          result.failures.push(`${tpl.name}: deleting the copy '${made.name}' failed: ${err.message}`);
+          result.failures.push(`${tpl.name}: purging the copy '${made.name}' failed: ${err.message}`);
         }
       }
     }
@@ -85,6 +95,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     base: arg('--base', 'http://127.0.0.1:4400'),
     from: arg('--from', 'weave'),
     into: arg('--into', 'test'),
+    keep: process.argv.includes('--keep'),
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   console.log(ok ? '\nevery template passed' : '\ntemplate exercise FAILED');

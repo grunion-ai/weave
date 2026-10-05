@@ -2195,7 +2195,7 @@ A relation to a table outside the space cannot follow it. The copy leaves that r
 
 The test suite exercises each template kept in \`test/fixtures/templates/\` (the CRM template) and the three starters. For each table it adds a row that sets every field and reads each value back, links and unlinks every relation from both ends, checks each lookup, rollup and formula while the links stand, then trashes and restores the row. It also uses each template into a workspace named \`test\` and runs the same steps on the copy.
 
-\`node scripts/template-exercise.mjs --base http://127.0.0.1:4400 --from weave --into test\` runs the same checks over HTTP on a running weave. It removes every row it made, soft-deletes its copy and exits 1 on any failure. \`node scripts/template-fixture.mjs --space CRM\` refreshes the fixture from the live template.
+\`node scripts/template-exercise.mjs --base http://127.0.0.1:4400 --from weave --into test\` runs the same checks over HTTP on a running weave. It removes every row it made, purges its copy so the test workspace keeps nothing, not even trash, and exits 1 on any failure; \`--keep\` leaves the copy for a look. \`node scripts/template-fixture.mjs --space CRM\` refreshes the fixture from the live template.
 
 ## For agents
 

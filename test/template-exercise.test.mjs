@@ -132,24 +132,51 @@ async function hub() {
   return { weave, target, server, base: `http://127.0.0.1:${server.address().port}` };
 }
 
-test('the live script exercises the template and its copy over HTTP, then soft-deletes the copy', async () => {
+const copies = (w) => w.listSpaces({ includeDeleted: true }).filter((s) => / check /.test(s.name));
+
+test('the live script exercises the template and its copy over HTTP, then purges the copy', async () => {
   const { weave, target, server, base } = await hub();
   try {
     const lines = [];
-    const run = await runLive({ base, from: 'weave', into: 'test', stamp: '20261005-1200', log: (l) => lines.push(l) });
+    const run = await runLive({ base, from: 'weave', into: 'test', log: (l) => lines.push(l) });
     assert.equal(run.ok, true, lines.join('\n'));
     const [crm] = run.results;
     assert.equal(crm.template, 'CRM');
-    assert.equal(crm.copy.name, 'CRM check 20261005-1200');
+    assert.match(crm.copy.name, /^CRM check \d{8}-\d{6} [0-9a-f]{4}$/, 'named to the second, plus a suffix');
     const tables = fixtures.find((f) => f.file === 'crm.json').doc.tables.map((x) => x.name);
     assert.deepEqual(crm.reports.filter((r) => r.where === 'weave').map((r) => r.table), tables);
     assert.deepEqual(crm.reports.filter((r) => r.where === 'test').map((r) => r.table), tables);
     assert.ok(crm.reports.every((r) => r.ok && r.relations > 0));
-    assert.match(crm.cleanup, /soft-deleted/);
-    assert.equal(target.listSpaces().some((s) => s.name === crm.copy.name), false, 'the copy is gone from the live list');
-    assert.ok(target.listSpaces({ includeDeleted: true }).some((s) => s.name === crm.copy.name), 'and sits in the trash');
+    assert.match(crm.cleanup, /purged/);
+    assert.deepEqual(copies(target), [], 'the copy is gone, trash included');
     assert.equal(userRows(weave).length, 0, 'the template is left with no rows');
     assert.ok(lines.some((l) => /^where\s+table\s+fields\s+relations\s+computed\s+ok$/.test(l.split('\n')[0])), 'a table per template is printed');
+  } finally { server.close(); }
+});
+
+/* Issue #644: the copy was named to the minute and soft-deleted, so its
+   name sat in the trash and a second run in the same minute got a 409. Two
+   runs stamped the same second must both pass and leave nothing behind. */
+test('two live runs in the same second both pass and leave nothing in the test workspace (Issue #644)', async () => {
+  const { target, server, base } = await hub();
+  try {
+    for (const n of [1, 2]) {
+      const lines = [];
+      const run = await runLive({ base, from: 'weave', into: 'test', stamp: '20261005-120000', log: (l) => lines.push(l) });
+      assert.equal(run.ok, true, `run ${n}:\n${lines.join('\n')}`);
+    }
+    assert.deepEqual(copies(target), [], 'no copy, live or trashed');
+  } finally { server.close(); }
+});
+
+test('--keep leaves the copy live for a look', async () => {
+  const { target, server, base } = await hub();
+  try {
+    const run = await runLive({ base, from: 'weave', into: 'test', keep: true, log: () => {} });
+    assert.equal(run.ok, true);
+    const [crm] = run.results;
+    assert.match(crm.cleanup, /kept/);
+    assert.ok(target.listSpaces().some((s) => s.name === crm.copy.name), 'the copy is still live');
   } finally { server.close(); }
 });
 
