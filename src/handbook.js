@@ -443,13 +443,15 @@ A value borrowed across a relation, read-only, refreshed whenever either side ch
 
 Renders on a tinted background marked \`↗\`. Nothing writes to it.
 
+A lookup of a relation draws the far row's chip, the way the relation column draws it: \`Contact › Company\` shows the company's chip, which opens the company. A to-many path draws one chip per far row, each row once. The API answers \`{id, publicId, name, db}\` per row (a list when either hop is to-many), a filter and a formula read the name, and \`raw\` keeps the ids (Issue #643).
+
 The field's settings tray shows the recipe as read-only **Relation** and **Field** rows, and a **Shows as** line naming the display it inherits: a lookup of a rating reads \`Drawn as the rating on People › Skill: 5 stars.\`, with a link to that field's settings, where the look is changed. The recipe is set when the lookup is created (Issue #387).
 
 ## Gotchas
 
 A lookup that returns null usually means the \`relationField\` name is wrong — it is the **field** name on this table, not the target table's name.
 
-Across a to-many relation a lookup takes the first match; use a \`rollup\` with \`join\` when you want all of them.
+Across a to-many relation a lookup reads a list, one value per linked row in relation order; use a \`rollup\` with \`join\` when you want them as one string.
 
 The \`targetField\` cannot be deleted while a lookup reads it — the delete is refused and names the lookup; delete the lookup first. A lookup that already lost its target (a workspace from before that refusal) reads \`null\`.` },
 

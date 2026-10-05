@@ -3332,6 +3332,21 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   };
 
   if (f.type === 'view') return viewCell(item.raw?.[f.name], f, { compact });
+  /* A lookup of a relation draws the far rows' chips, the way the relation
+     column does (Issue #643); it printed their uuids. No ×, no + link: the
+     value is computed, and the chip still opens the row. */
+  const farRel = lookupTargetOf(db, f);
+  if (farRel?.type === 'relation' && val != null && (!Array.isArray(val) || val.length)) {
+    const all = Array.isArray(val) ? val : [val];
+    const CAP = 3;
+    const shown = compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
+    const box = el('span', { class: 'ms-box', title: `${f.name} — lookup, read-only` });
+    for (const s of shown) box.append(relationChipEl(farRel, s), ' ');
+    if (all.length > shown.length) {
+      box.append(el('span', { class: 'k k-more', title: `${all.length - shown.length} more — open the cell to see them` }, `+${all.length - shown.length}`), ' ');
+    }
+    return box;
+  }
   if (READONLY_FIELD_TYPES.includes(f.type) && f.type !== 'document') {
     // Read-only: the glyph says "computed, not editable" at a glance so these
     // are not mistaken for the chips and inputs beside them.
@@ -4389,7 +4404,8 @@ function gridFields(db) {
    too, and it is not a reference. */
 function graftChips(db, res) {
   if (!res?.chips) return res;
-  const rels = db.fields.filter((f) => f.type === 'relation').map((f) => f.name);
+  // A lookup of a relation answers references too (Issue #643).
+  const rels = db.fields.filter((f) => f.type === 'relation' || lookupTargetOf(db, f)?.type === 'relation').map((f) => f.name);
   for (const item of res.items ?? []) {
     for (const name of rels) {
       const v = item.fields?.[name];
@@ -7331,6 +7347,15 @@ function fieldMenuRow(icon, label, run, { current = false } = {}) {
   }, iconEl(icon, 'wv-icon wv-menu-icon'), el('span', { class: 'wv-menu-label' }, label));
   if (current) row.append(el('span', { class: 'chip-pop-check' }, iconEl('✓', 'wv-icon')));
   return row;
+}
+
+/* The field a lookup reads on the far table, found through the relation it
+   rides (Issue #643), or null for anything else. */
+function lookupTargetOf(db, f) {
+  if (f?.type !== 'lookup' || !f.via || !f.targetField) return null;
+  const rel = db?.fields?.find((x) => x.type === 'relation' && x.name === f.via);
+  const far = rel && allTables().find((t) => t.id === rel.targetDbId);
+  return far?.fields.find((x) => x.name === f.targetField) ?? null;
 }
 
 /* The two sort labels a column's menu offers (Issues #254, #318). The words

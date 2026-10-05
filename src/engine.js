@@ -6965,6 +6965,13 @@ export class Weave {
         return field.config.many ? names : (names[0] ?? null);
       }
       case 'lookup': {
+        /* A looked-up relation reads the far rows' names, the way the
+           relation column reads (Issue #643): it printed their uuids. */
+        const far = this.#lookupRelation(db, field, resolved);
+        if (far) {
+          const names = far.ids.map((id) => this.entityName(this.state.entities[id]));
+          return far.many ? names : (names[0] ?? null);
+        }
         /* A looked-up option or state wears the far field's name for it, the
            way that column paints itself: the slug "credit-card" stood in for
            "Credit card" (Issue #598). Other types keep their value as read. */
@@ -6997,6 +7004,19 @@ export class Weave {
       default:
         return resolved;
     }
+  }
+
+  /* The far rows a lookup of a relation reaches (Issue #643): each row once,
+     in the order the path meets it, and whether the answer is a list (either
+     hop to-many). Null when the lookup reads anything but a relation. */
+  #lookupRelation(db, field, resolved) {
+    if (field.type !== 'lookup') return null;
+    const rel = db.fields[field.config.relationField];
+    const target = rel && this.state.tables[rel.config.targetDb]?.fields[field.config.targetField];
+    if (target?.type !== 'relation') return null;
+    const lists = rel.config.many ? resolved : [resolved];
+    const ids = Array.isArray(lists) ? lists.flat().filter((id) => typeof id === 'string' && !isCycle(id)) : [];
+    return { ids: [...new Set(ids)], many: !!(rel.config.many || target.config.many) };
   }
 
   /* Where a rollup reads from: the relation's far table, or the table `via`
@@ -7189,15 +7209,17 @@ export class Weave {
       const f = db.fields[fid];
       const resolved = this.#resolve(e, db, f, 0);
       raw[f.name] = resolved;
-      if (f.type === 'relation') {
-        const summaries = resolved.map((rid) => {
+      // A lookup of a relation carries the far rows' chips too (Issue #643).
+      const far = f.type === 'relation' ? { ids: resolved, many: f.config.many } : this.#lookupRelation(db, f, resolved);
+      if (far) {
+        const summaries = far.ids.map((rid) => {
           if (!chips) return this.#summary(rid);
           const s = chips[rid] ?? this.#summary(rid);
           if (!s) return null;
           chips[rid] = s;
           return { id: s.id, publicId: s.publicId, name: s.name };
         }).filter(Boolean);
-        fields[f.name] = f.config.many ? summaries : (summaries[0] ?? null);
+        fields[f.name] = far.many ? summaries : (summaries[0] ?? null);
       } else {
         fields[f.name] = this.#displayValue(db, f, resolved, e);
       }

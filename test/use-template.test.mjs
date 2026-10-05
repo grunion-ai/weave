@@ -165,6 +165,12 @@ function costumed() {
   w.addRelation(deal.id, { name: 'Company', targetDb: company.id, cardinality: 'many-to-one', inverseName: 'Deals' });
   w.addField(deal.id, { name: 'Company Name', type: 'lookup', config: { relationField: 'Company', targetField: 'Name' } });
   w.addField(company.id, { name: 'Pipeline', type: 'rollup', config: { relationField: 'Deals', targetField: 'Amount', aggregate: 'sum' } });
+  // A lookup whose target is itself a relation reads the far row's chip
+  // (Issue #643): Deal → Contact → the contact's Company.
+  const contact = w.createTable({ space: 'CRM', name: 'Contact' });
+  w.addRelation(contact.id, { name: 'Employer', targetDb: company.id, cardinality: 'many-to-one', inverseName: 'Staff' });
+  w.addRelation(deal.id, { name: 'Contact', targetDb: contact.id, cardinality: 'many-to-one', inverseName: 'Deals' });
+  w.addField(deal.id, { name: 'Contact Employer', type: 'lookup', config: { relationField: 'Contact', targetField: 'Employer' } });
   w.addRelation(deal.id, { name: 'Ledger', targetDb: ledger.id, cardinality: 'many-to-one', inverseName: 'Deals' });
   w.addField(deal.id, { name: 'Ledger Code', type: 'lookup', config: { relationField: 'Ledger', targetField: 'Code' } });
   w.addField(w.getTable('Workspace/Spaces').id, { name: 'Deal · Amount · sum', type: 'rollup', config: { via: deal.id, targetField: 'Amount', aggregate: 'sum' } });
@@ -257,6 +263,13 @@ test('fidelity: a template used into a fresh workspace describes exactly as its 
   assert.deepEqual(normalise(spacesRollups(target)), normalise(want.rollups), 'the space rollup travels');
   for (const t of target.listTables(used.space.id)) assert.equal(target.listEntities(t.id).length, 0, `${t.name} carries no rows`);
   assert.equal(target.listTemplates().length, 0);
+
+  // The copy behaves: its lookup of a relation reads the far row's chip (Issue #643).
+  const globex = target.createEntity('Sales/Company', { name: 'Globex' });
+  target.createEntity('Sales/Contact', { name: 'Hank', values: { Employer: globex.id } });
+  const deal = target.createEntity('Sales/Deal', { name: 'Small one', values: { Contact: 'Hank' } });
+  const chip = target.readEntity(deal.id).fields['Contact Employer'];
+  assert.deepEqual({ id: chip.id, name: chip.name, db: chip.db }, { id: globex.id, name: 'Globex', db: 'Sales/Company' });
   assert.deepEqual(src.listTemplates().map((s) => s.name), ['CRM']);
 });
 
