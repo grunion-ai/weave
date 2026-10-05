@@ -8988,7 +8988,7 @@ function fieldDialog(db, existing, after) {
           cover.disabled = true;
           cover.title = 'Only a single-file field has a cover';
         }
-        kids.push(dsection('Preview', previews),
+        kids.push(dsection('Show as', previews), // the vditor contract bars the word Preview from the app
           dsection('Size', segCtl(fieldDialogCore.ATTACHMENT_SIZES, files.size, (id) => { files.size = id; changed(); })),
           dsection('Fit', segCtl(fieldDialogCore.ATTACHMENT_FITS.map((id) => ({
             id, label: id, title: id === 'fill' ? 'Uniform cells, the file cropped to the cell' : 'The whole file, the cell trimmed to its shape',
