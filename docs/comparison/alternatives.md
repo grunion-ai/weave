@@ -18,7 +18,7 @@ repository for current terms.*
 | Runtime dependencies | None | Many | Many | Many | Many |
 | Users & permissions | Three roles per workspace | Yes | Yes | Yes | Yes |
 | Hosted option | No | Yes | Yes | Yes | Yes |
-| MCP server built in | Yes (58 tools) | Check upstream | Check upstream | Check upstream | Check upstream |
+| MCP server built in | Yes (60 tools) | Check upstream | Check upstream | Check upstream | Check upstream |
 | Markdown documents per record | Yes, any number, as `.md`/`.html`/`.pdf` URLs | No | No | No | No |
 | Formulas | Yes | Yes | Yes | Yes (Python, spreadsheet-grade) | Yes |
 | Relations, lookups, rollups | Yes | Yes | Yes | Yes | Yes |

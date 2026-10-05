@@ -980,6 +980,117 @@ function schemaFingerprint(state) {
   return `${text.length.toString(16)}${h.toString(16).padStart(8, '0')}`;
 }
 
+/* A template space's schema as a document to apply elsewhere (Feature #261).
+   Takes one entry of describeSchema() and hands back that space under a new
+   name, ready for applySchema(..., { partial: true }) on another workspace:
+   every `Space/Table` the descriptor spells is rewritten to the new name; the
+   ids, urls and counts that belong to the source go; and the copy is never a
+   template itself. A relation that leaves the space cannot follow it, so it
+   is removed and named in `skipped`, with every lookup, rollup and formula
+   that reads through it and every view, sort and filter that names it.
+   `rollups` are the source's Workspace/Spaces rollups over this space's
+   tables (they live on the registry row, not in the space's entry); they
+   come back renamed the same way. Pure: the source document is not touched. */
+export function templateDoc(spaceDoc, { name, rollups = [] } = {}) {
+  if (!spaceDoc || typeof spaceDoc.space !== 'string' || !Array.isArray(spaceDoc.tables)) {
+    throw new WeaveError('templateDoc takes one space entry of describeSchema()', 'invalid');
+  }
+  if (spaceDoc.system) throw new WeaveError(`Space '${spaceDoc.space}' is the workspace's own system space and cannot be a template`, 'invalid');
+  const from = spaceDoc.space;
+  const to = String(name ?? from).trim();
+  if (!to) throw new WeaveError('A template copy needs a name', 'invalid');
+  const prefix = `${from}/`;
+  const inside = new Set(spaceDoc.tables.map((t) => prefix + t.name));
+  const move = (q) => (typeof q === 'string' && q.startsWith(prefix) ? `${to}/${q.slice(prefix.length)}` : q);
+  const without = (o, keys) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
+  const src = structuredClone(spaceDoc);
+  const skipped = [];
+  const gone = new Map(src.tables.map((t) => [t.name, new Set()]));
+  const tableOf = (q) => (inside.has(q) ? src.tables.find((t) => prefix + t.name === q) : null);
+  const drop = (t, f, why) => { gone.get(t.name).add(f.name); skipped.push({ table: t.name, field: f.name, ...why }); };
+  for (const t of src.tables) {
+    for (const f of t.fields ?? []) {
+      if (f.type !== 'relation') continue;
+      const targets = Array.isArray(f.targetDbs) ? f.targetDbs : [f.targetDb];
+      if (targets.some((q) => !inside.has(q))) drop(t, f, { targetDb: f.targetDbs ?? f.targetDb });
+    }
+  }
+  // What reads through a removed field goes with it, to a fixed point: a
+  // lookup over a lookup, a formula over either.
+  for (let moved = true; moved;) {
+    moved = false;
+    for (const t of src.tables) {
+      const out = gone.get(t.name);
+      for (const f of t.fields ?? []) {
+        if (out.has(f.name) || f.role === 'name') continue;
+        let why = null;
+        if ((f.type === 'lookup' || f.type === 'rollup') && f.via != null) {
+          const rel = (t.fields ?? []).find((x) => x.name === f.via);
+          const far = rel ? tableOf(rel.targetDb) : null;
+          if (out.has(f.via)) why = { via: f.via };
+          else if (far && f.targetField != null && gone.get(far.name).has(f.targetField)) why = { via: f.via, targetField: f.targetField };
+        } else if (f.type === 'formula' && f.expression) {
+          let refs = [];
+          try { refs = formulaReferences(f.expression); } catch { refs = []; }
+          const hit = refs.find((n) => out.has(n));
+          if (hit) why = { reads: hit };
+        }
+        if (why) { drop(t, f, why); moved = true; }
+      }
+    }
+  }
+  const scrub = (out, list) => (list ?? []).filter((n) => !out.has(n));
+  const scrubKeys = (out, obj) => (obj ? Object.fromEntries(Object.entries(obj).filter(([k]) => !out.has(k))) : obj);
+  const doc = {
+    ...without(src, ['spaceId', 'url', 'template', 'tables', 'id']),
+    space: to,
+    tables: src.tables.map((t) => {
+      const out = gone.get(t.name);
+      const table = without(t, ['id', 'url', 'entityCount']);
+      if (table.qualified != null) table.qualified = move(table.qualified);
+      table.fields = (t.fields ?? []).filter((f) => !out.has(f.name)).map((f) => {
+        const field = without(f, ['id', 'targetDbId', 'targetDbIds', 'inverseFieldId', 'viaTableId']);
+        if (field.targetDb != null) field.targetDb = move(field.targetDb);
+        if (Array.isArray(field.targetDbs)) field.targetDbs = field.targetDbs.map(move);
+        if (field.viaTable != null) field.viaTable = move(field.viaTable);
+        if (Array.isArray(field.optionsFull)) field.optionsFull = field.optionsFull.map((o) => without(o, ['id']));
+        if (Array.isArray(field.states)) field.states = field.states.map((st) => without(st, ['id']));
+        if (field.type === 'view' && Array.isArray(field.fields)) field.fields = scrub(out, field.fields);
+        return field;
+      });
+      if (!out.size) {
+        if (Array.isArray(table.views)) table.views = table.views.map((v) => without(v, ['id']));
+        return table;
+      }
+      if (table.hiddenFields) table.hiddenFields = scrub(out, table.hiddenFields);
+      if (table.filters) table.filters = scrubKeys(out, table.filters);
+      if (table.sort) table.sort = table.sort.filter((x) => !out.has(x.field));
+      if (table.bodyBlocks) table.bodyBlocks = scrub(out, table.bodyBlocks);
+      if (Array.isArray(table.views)) {
+        table.views = table.views.map((v) => {
+          const view = without(v, ['id']);
+          if (view.fields) view.fields = scrub(out, view.fields);
+          if (view.filters) view.filters = scrubKeys(out, view.filters);
+          if (view.sort) view.sort = view.sort.filter((x) => !out.has(x.field));
+          if (view.widths) view.widths = scrubKeys(out, view.widths);
+          return view;
+        });
+      }
+      return table;
+    }),
+  };
+  const kept = [];
+  for (const r of rollups ?? []) {
+    const far = tableOf(r.viaTable);
+    if (!far) { skipped.push({ table: 'Workspace/Spaces', field: r.name, viaTable: r.viaTable }); continue; }
+    if (r.targetField != null && gone.get(far.name).has(r.targetField)) { skipped.push({ table: 'Workspace/Spaces', field: r.name, viaTable: r.viaTable, targetField: r.targetField }); continue; }
+    const out = without(r, ['id', 'viaTableId']);
+    out.viaTable = move(r.viaTable);
+    kept.push(out);
+  }
+  return { doc, rollups: kept, skipped };
+}
+
 /* Deferred migrations (Feature #250). The supervisor starts a new release's
    worker beside the one still serving, against the same .db files. Opening a
    workspace migrates it (#migrate, the registry tables, the boot syncs), and
@@ -1601,7 +1712,7 @@ export class Weave {
 
   // ---------------- spaces ----------------
 
-  createSpace({ name, description = '', icon = '' }) {
+  createSpace({ name, description = '', icon = '', template = false }) {
     if (!name) throw new WeaveError('Space name is required', 'invalid');
     refuseReserved('space', name);
     if (this.findSpace(name)) throw new WeaveError(`Space '${name}' already exists`, 'conflict');
@@ -1609,7 +1720,8 @@ export class Weave {
     // be created and then updated, which is a second call for one field.
     const held = Object.values(this.state.spaces).find((s) => s.deletedAt && s.name.toLowerCase() === name.toLowerCase());
     if (held) throw new WeaveError(`Space '${name}' is in the trash — restore or purge it first`, 'conflict');
-    const space = { id: uuid(), name, description, ...(iconValue(icon) ? { icon: iconValue(icon) } : {}), createdAt: nowISO() };
+    // template (Feature #261) is stored like icon: present only when set.
+    const space = { id: uuid(), name, description, ...(iconValue(icon) ? { icon: iconValue(icon) } : {}), ...(template === true ? { template: true } : {}), createdAt: nowISO() };
     this.state.spaces[space.id] = space;
     this.save();
     this.#syncSpaceRow(space);
@@ -1641,10 +1753,12 @@ export class Weave {
   updateSpace(ref, patch) {
     const s = this.getSpace(ref);
     if (patch.name != null) refuseReserved('space', patch.name);
+    if (patch.template != null && typeof patch.template !== 'boolean') throw new WeaveError(`A space's template is true or false, got ${JSON.stringify(patch.template)}`, 'invalid');
     this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) });
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
     if (patch.icon != null) { const v = iconValue(patch.icon); if (v) s.icon = v; else delete s.icon; }
+    if (patch.template != null) { if (patch.template) s.template = true; else delete s.template; }
     this.#syncSpaceRow(s);
     this.save();
     return s;
@@ -2522,7 +2636,11 @@ export class Weave {
      spelling. Names are identity here, so renames belong to the registry
      rows (#12/#52), not this surface. System spaces/tables are not the
      document's business in either direction. */
-  applySchema(doc, { dryRun = false, allowDestructive = false } = {}) {
+  /* `partial` (Feature #261): the document names only the spaces it touches,
+     so the sweeps that read an omission as a deletion (spaces, and the space
+     rollups on Workspace/Spaces) leave the rest of the workspace alone. A
+     named space is still described whole. */
+  applySchema(doc, { dryRun = false, allowDestructive = false, partial = false } = {}) {
     if (!Array.isArray(doc)) throw new WeaveError('A schema document is the array describeSchema() returns', 'invalid');
     const plan = [];
     const act = (action, subject, fn) => {
@@ -2543,9 +2661,16 @@ export class Weave {
         // alone keeps the color it already had.
         const named = new Map((f.optionsFull ?? []).map((o) => [o.name, o.color ?? '']));
         const kept = new Map((existing?.config.options ?? []).map((o) => [o.name, o.color ?? '']));
+        // An option's icon rides optionsFull too (Feature #261: a template's
+        // status options arrived without theirs); a document that does not
+        // say keeps the icon the option already had.
+        const icons = new Map([
+          ...(existing?.config.options ?? []).map((o) => [o.name, o.icon ?? '']),
+          ...(f.optionsFull ?? []).filter((o) => 'icon' in o).map((o) => [o.name, o.icon ?? '']),
+        ]);
         // named/kept hold the colour an option already had, keyed by name.
         config.options = f.options.map((name) => normaliseOption(
-          { name, color: named.get(name) ?? kept.get(name) ?? '' },
+          { name, color: named.get(name) ?? kept.get(name) ?? '', icon: icons.get(name) ?? '' },
           /* A colour the document names is refused when weave cannot name it.
              One the field already stored is read as it has always been read,
              including when the document carries it back unchanged, so a
@@ -2589,6 +2714,10 @@ export class Weave {
     const fieldChanged = (fDoc, have) => {
       if (!have) return true;
       if (fDoc.optionsFull && colorsOf(fDoc.optionsFull) !== colorsOf(have.optionsFull)) return true;
+      if (fDoc.optionsFull) {
+        const had = new Map((have.optionsFull ?? []).map((o) => [o.name, o.icon ?? '']));
+        if (fDoc.optionsFull.some((o) => 'icon' in o && (o.icon ?? '') !== (had.get(o.name) ?? ''))) return true;
+      }
       return DESCRIPTOR_KEYS.some((k) => k in fDoc && JSON.stringify(fDoc[k]) !== JSON.stringify(have[k]));
     };
     const current = new Map();
@@ -2596,12 +2725,37 @@ export class Weave {
       for (const t of sp.tables) current.set(`${sp.space}/${t.name}`, t);
     }
     const wanted = doc.filter((sp) => !sp.system);
+    /* A relation's cardinality is both ends: this descriptor's `many` and its
+       inverse's, found on the target table's descriptor in the same document.
+       Without the inverse, the older reading (`many` alone) stands. */
+    const docTable = (q) => {
+      const cut = String(q ?? '').lastIndexOf('/');
+      return doc.find((sp) => sp.space === String(q).slice(0, cut))?.tables?.find((t) => t.name === String(q).slice(cut + 1));
+    };
+    const cardinalityOf = (fDoc) => {
+      const inv = fDoc.inverseField != null ? docTable(fDoc.targetDb)?.fields?.find((x) => x.name === fDoc.inverseField) : null;
+      if (!inv) return fDoc.many ? 'one-to-many' : 'many-to-one';
+      return ({ 'true,true': 'many-to-many', 'true,false': 'one-to-many', 'false,true': 'many-to-one', 'false,false': 'one-to-one' })[`${!!fDoc.many},${!!inv.many}`];
+    };
+    const relationArgs = (fDoc) => ({
+      name: fDoc.name,
+      ...(Array.isArray(fDoc.targetDbs) ? { targetDbs: fDoc.targetDbs } : { targetDb: fDoc.targetDb }),
+      cardinality: cardinalityOf(fDoc),
+      inverseName: fDoc.inverseField ?? undefined,
+    });
+    /* A table this apply creates gets its plain fields at once and its
+       relations, lookups, rollups and formulas once every table in the
+       document exists (Feature #261): a relation names a table the document
+       may list later, a rollup crosses an inverse that relation mints, and a
+       formula may read either. Its costume (order, views) goes on last. */
+    const DEFERRED = new Set(['relation', 'lookup', 'rollup', 'formula']);
+    const created = [];
 
     for (const spDoc of wanted) {
       let sp = this.findSpace(spDoc.space);
       if (!sp) {
         act('create-space', spDoc.space, () => {
-          sp = this.createSpace({ name: spDoc.space, description: spDoc.description ?? '' });
+          sp = this.createSpace({ name: spDoc.space, description: spDoc.description ?? '', template: spDoc.template === true });
           if (spDoc.icon) this.updateSpace(sp.id, { icon: spDoc.icon });
         });
         if (dryRun) continue;
@@ -2609,6 +2763,7 @@ export class Weave {
         const patch = {};
         if (spDoc.description != null && spDoc.description !== (sp.description ?? '')) patch.description = spDoc.description;
         if (spDoc.icon != null && spDoc.icon !== (sp.icon ?? '')) patch.icon = spDoc.icon;
+        if (spDoc.template != null && !!spDoc.template !== !!sp.template) patch.template = !!spDoc.template;
         if (Object.keys(patch).length) act('update-space', spDoc.space, () => this.updateSpace(sp.id, patch));
       }
       for (const tDoc of spDoc.tables ?? []) {
@@ -2641,22 +2796,17 @@ export class Weave {
             }
             for (const f of tDoc.fields ?? []) {
               if (f === named || f === described) continue;
+              if (DEFERRED.has(f.type)) continue;
               if (f.type === 'view') {
+                // Renamed now; configured once the fields it shows exist.
                 const minted = this.viewField(db, f.role ?? f.shape);
-                if (!minted) continue;
-                if (f.name !== minted.name) this.updateField(db.id, minted.id, { name: f.name });
-                const cfg = configFromDescriptor(f);
-                delete cfg.shape;
-                if (Object.keys(cfg).length) this.updateField(db.id, minted.id, { config: cfg });
+                if (minted && f.name !== minted.name) this.updateField(db.id, minted.id, { name: f.name });
                 continue;
               }
               this.addField(db.id, { name: f.name, type: f.type, config: configFromDescriptor(f) });
             }
-            // A computed Name reads fields the loop above just added, and the
-            // type change checks every name it reads (Issue #288), so it goes last.
-            if (named?.type === 'formula') this.updateField(db.id, db.nameFieldId, { type: 'formula', config: configFromDescriptor(named) });
-            this.#applyTableCostume(db, tDoc);
           }));
+          if (!dryRun) created.push({ db, tDoc, named: (tDoc.fields ?? []).find((f) => f.role === 'name') ?? (tDoc.fields ?? []).find((f) => f.name === 'Name') });
           continue;
         }
         const tPatch = {};
@@ -2706,11 +2856,7 @@ export class Weave {
           if (!existing) {
             createdHere.add(fDoc.name);
             if (fDoc.type === 'relation') {
-              act('create-relation', `${qualified}.${fDoc.name}`, () => this.addRelation(db.id, {
-                name: fDoc.name, targetDb: fDoc.targetDb,
-                cardinality: fDoc.many ? 'one-to-many' : 'many-to-one',
-                inverseName: fDoc.inverseField ?? undefined,
-              }));
+              act('create-relation', `${qualified}.${fDoc.name}`, () => this.addRelation(db.id, relationArgs(fDoc)));
             } else {
               act('create-field', `${qualified}.${fDoc.name}`, () => this.addField(db.id, { name: fDoc.name, type: fDoc.type, config: configFromDescriptor(fDoc) }));
             }
@@ -2760,6 +2906,8 @@ export class Weave {
           const legacy = this.#legacyEdits(db, tDoc, createdHere);
           if (Object.keys(legacy).length) act('update-table', qualified, () => this.updateTable(db.id, legacy));
         }
+        const body = this.#bodyOrderFrom(db, tDoc);
+        if (body) act('update-table', qualified, () => this.updateTable(db.id, { bodyOrder: body }));
       }
       // Omitted tables are deletions.
       if (sp && !dryRun || sp) {
@@ -2773,31 +2921,81 @@ export class Weave {
         }
       }
     }
+    // The created tables' deferred fields, in passes until none is left: a
+    // rollup may read a formula and a formula a lookup, so no single order
+    // fits every document. A pass that makes nothing throws what it hit.
+    if (created.length) {
+      this.#withoutFieldLog(() => {
+        for (const { db, tDoc } of created) {
+          for (const f of tDoc.fields ?? []) {
+            if (f.type !== 'relation') continue;
+            // The far end of a relation made earlier in this pass is its inverse.
+            const field = this.findField(db, f.name) ?? this.addRelation(db.id, relationArgs(f)).field;
+            const cfg = {};
+            if (f.width != null) cfg.width = f.width;
+            if (f.description != null) cfg.description = f.description;
+            if (Object.keys(cfg).length) this.updateField(db.id, field.id, { config: { ...field.config, ...cfg } });
+          }
+        }
+        let pending = created.flatMap(({ db, tDoc, named }) => (tDoc.fields ?? [])
+          .filter((f) => f !== named && ['lookup', 'rollup', 'formula'].includes(f.type) && !this.findField(db, f.name))
+          .map((f) => ({ db, f })));
+        while (pending.length) {
+          const left = [];
+          let last = null;
+          for (const p of pending) {
+            try { this.addField(p.db.id, { name: p.f.name, type: p.f.type, config: configFromDescriptor(p.f) }); } catch (err) { left.push(p); last = err; }
+          }
+          if (left.length === pending.length) throw last;
+          pending = left;
+        }
+        for (const { db, named } of created) {
+          // A computed Name reads fields made above, and the type change
+          // checks every name it reads (Issue #288), so it goes last.
+          if (named?.type === 'formula') this.updateField(db.id, db.nameFieldId, { type: 'formula', config: configFromDescriptor(named) });
+        }
+        for (const { db, tDoc } of created) {
+          for (const f of tDoc.fields ?? []) {
+            if (f.type !== 'view') continue;
+            const minted = this.findField(db, f.name);
+            if (minted?.type !== 'view') continue;
+            const cfg = configFromDescriptor(f);
+            delete cfg.shape;
+            if (Object.keys(cfg).length) this.updateField(db.id, minted.id, { config: cfg });
+          }
+          this.#applyTableCostume(db, tDoc);
+        }
+      });
+    }
     /* Space rollups live on the Workspace/Spaces registry row, the one system
        table a document may add fields to. Applied after every user table
        exists, since each names one. Computed config has no verb to change
-       it: a differing descriptor is a delete and a create. */
+       it: a differing descriptor is a delete and a create. The row lives on
+       the hub root when this workspace is a member, so the writes go there,
+       naming the table by id: the root cannot resolve a member's names. */
     const spacesT = this.#sysTable('spaces');
+    const reg = this.#reg;
     const spacesDoc = doc.find((sp) => sp.system === 'workspace')?.tables?.find((t) => t.system === 'spaces');
     if (spacesT && spacesDoc) {
       const wantedRollups = (spacesDoc.fields ?? []).filter((f) => f.type === 'rollup' && f.viaTable);
-      const cfgOf = (f) => ({ via: f.viaTable, targetField: f.targetField, aggregate: f.aggregate, ...(f.where ? { where: f.where } : {}) });
+      const cfgOf = (f) => ({ via: this.findTable(f.viaTable)?.id ?? f.viaTable, targetField: f.targetField, aggregate: f.aggregate, ...(f.where ? { where: f.where } : {}) });
+      const regSpaces = reg === this ? current.get('Workspace/Spaces') : reg.describeSchema().find((sp) => sp.system === 'workspace')?.tables.find((t) => t.system === 'spaces');
       for (const fDoc of wantedRollups) {
         const existing = Object.values(spacesT.fields).find((x) => x.name === fDoc.name);
-        const have = current.get('Workspace/Spaces')?.fields.find((x) => x.name === fDoc.name);
+        const have = regSpaces?.fields.find((x) => x.name === fDoc.name);
         if (existing && !fieldChanged(fDoc, have)) continue;
-        if (existing) act('delete-field', `Workspace/Spaces.${fDoc.name}`, () => this.deleteField(spacesT.id, existing.id));
-        act('create-field', `Workspace/Spaces.${fDoc.name}`, () => this.addField(spacesT.id, { name: fDoc.name, type: 'rollup', config: cfgOf(fDoc) }));
+        if (existing) act('delete-field', `Workspace/Spaces.${fDoc.name}`, () => reg.deleteField(spacesT.id, existing.id));
+        act('create-field', `Workspace/Spaces.${fDoc.name}`, () => reg.addField(spacesT.id, { name: fDoc.name, type: 'rollup', config: cfgOf(fDoc) }));
       }
-      for (const existing of Object.values(spacesT.fields)) {
+      for (const existing of partial ? [] : Object.values(spacesT.fields)) {
         if (existing.type !== 'rollup' || !existing.config.via) continue;
         if (wantedRollups.some((f) => f.name === existing.name)) continue;
         if (!allowDestructive) throw new WeaveError(`Applying this document would delete 'Workspace/Spaces.${existing.name}' — a destructive change needs allowDestructive`, 'invalid');
         act('delete-field', `Workspace/Spaces.${existing.name}`, () => this.deleteField(spacesT.id, existing.id));
       }
     }
-    // Omitted spaces are deletions.
-    for (const sp of this.listSpaces()) {
+    // Omitted spaces are deletions, unless the document is partial.
+    for (const sp of partial ? [] : this.listSpaces()) {
       if (sp.system) continue;
       const still = wanted.some((d) => d.space === sp.name);
       if (!still) {
@@ -2807,6 +3005,69 @@ export class Weave {
     }
     if (!dryRun && plan.length) this.#audit('schema-applied', { changes: plan.length });
     return plan;
+  }
+
+  // ---------------- templates (Feature #261) ----------------
+
+  /* The live spaces marked as templates: what Use Template offers. */
+  listTemplates() {
+    return this.listSpaces().filter((sp) => sp.template && !sp.system);
+  }
+
+  /* Copy a space's schema, never its rows, into `target`, another workspace's
+     engine (this one is allowed too, under a new name). The copy is the
+     space's describeSchema() entry through templateDoc(), plus the
+     Workspace/Spaces rollups that read its tables, applied as a partial
+     document so the target's other spaces are left alone. A name the target
+     already holds is refused before anything is written; an apply that fails
+     part way takes the half-made space back out. */
+  useTemplate(spaceRef, target, { name } = {}) {
+    if (!(target instanceof Weave)) throw new WeaveError('useTemplate needs the target workspace', 'invalid');
+    const sp = this.getSpace(spaceRef);
+    if (sp.system) throw new WeaveError(`Space '${sp.name}' is the workspace's own system space and cannot be a template`, 'invalid');
+    const as = String(name ?? sp.name).trim();
+    if (!as) throw new WeaveError('A template copy needs a name', 'invalid');
+    const where = target.state.meta.name || 'the target workspace';
+    if (target.listSpaces().some((x) => x.name.toLowerCase() === as.toLowerCase())) {
+      throw new WeaveError(`${where} already has a space named '${as}'`, 'conflict');
+    }
+    const entry = this.describeSchema().find((x) => x.spaceId === sp.id);
+    // Space rollups live on the Spaces registry row, by table id.
+    const mine = new Set(this.listTables(sp.id).map((t) => t.id));
+    const rollups = [];
+    for (const f of Object.values(this.#sysTable('spaces')?.fields ?? {})) {
+      if (f.type !== 'rollup' || !mine.has(f.config.via)) continue;
+      const via = this.state.tables[f.config.via];
+      rollups.push({
+        name: f.name, type: 'rollup', viaTable: this.qualifiedName(via), aggregate: f.config.aggregate,
+        ...(f.config.targetField ? { targetField: via.fields[f.config.targetField]?.name } : {}),
+        ...(f.config.where ? { where: structuredClone(f.config.where) } : {}),
+      });
+    }
+    const { doc, rollups: carried, skipped } = templateDoc(entry, { name: as, rollups });
+    // A rollup name the target's Spaces row already uses would be replaced,
+    // so the copy's takes the new space's name; one still taken stays home.
+    const theirs = target.#sysTable('spaces');
+    const landing = [];
+    for (const r of carried) {
+      if (!theirs) { skipped.push({ table: 'Workspace/Spaces', field: r.name, viaTable: r.viaTable }); continue; }
+      const taken = (n) => !!target.findField(theirs, n);
+      const n = taken(r.name) ? `${r.name} (${as})` : r.name;
+      if (taken(n)) { skipped.push({ table: 'Workspace/Spaces', field: r.name, viaTable: r.viaTable }); continue; }
+      landing.push({ ...r, name: n });
+    }
+    const full = [doc, ...(landing.length ? [{ space: 'Workspace', system: 'workspace', tables: [{ name: 'Spaces', system: 'spaces', fields: landing }] }] : [])];
+    let plan;
+    try {
+      plan = target.applySchema(full, { partial: true });
+    } catch (err) {
+      const half = target.listSpaces().find((x) => x.name === as);
+      if (half) { try { target.deleteSpace(half.id, { hard: true }); } catch { /* the error below says what failed */ } }
+      throw err;
+    }
+    const made = target.getSpace(as);
+    target.#audit('space-from-template', { name: made.name, template: sp.name, from: this.state.meta.name ?? null });
+    return { space: made, plan, skipped };
   }
 
   // ---------------- a workspace outline in one call (Feature #253) ----------------
@@ -3106,6 +3367,8 @@ export class Weave {
     for (const id of db.fieldOrder) if (!wanted.includes(id)) wanted.push(id);
     if (wanted.length === db.fieldOrder.length && JSON.stringify(wanted) !== JSON.stringify(db.fieldOrder)) patch.fieldOrder = wanted;
     if (Object.keys(patch).length) this.updateTable(db.id, patch);
+    const body = this.#bodyOrderFrom(db, tDoc);
+    if (body) this.updateTable(db.id, { bodyOrder: body });
     // A created table is built to the document: its minted Default goes
     // unless the document names it.
     if (Array.isArray(tDoc.views)) {
@@ -3113,6 +3376,18 @@ export class Weave {
       const legacy = this.#legacyEdits(db, tDoc);
       if (Object.keys(legacy).length) this.updateTable(db.id, legacy);
     }
+  }
+
+  /* The entity page's block order a document names (`bodyBlocks`, which
+     describeSchema emits), as the bodyOrder that reproduces it, or null when
+     the table already reads that way. Names the table lacks are passed over.
+     Feature #261: a template's moved document blocks came back in the default
+     order, because nothing applied this key. */
+  #bodyOrderFrom(db, tDoc) {
+    if (!Array.isArray(tDoc.bodyBlocks)) return null;
+    const want = tDoc.bodyBlocks.filter((n) => n === VALUES_BLOCK || (this.findField(db, n) && isBodyBlock(this.findField(db, n))));
+    const now = this.bodyBlocks(db).filter((n) => want.includes(n));
+    return JSON.stringify(want) === JSON.stringify(now) ? null : want;
   }
 
   /* A document carrying `views` still carries the default view's older
@@ -4167,6 +4442,9 @@ export class Weave {
     };
     const spacesT = this.#sysTable('spaces')
       ?? mkTable('Spaces', 'spaces', 'Every space in this workspace, as a row. Creating a row creates the space; renaming it renames the space; hard-deleting it deletes the space and everything in it.');
+    // Feature #261: a space is a template when this box is ticked. Minted on
+    // every open, so a workspace made before it gains the column.
+    if (!this.#sysField(spacesT, 'Template')) this.addField(spacesT.id, { name: 'Template', type: 'checkbox' }).system = true;
     const tablesT = this.#sysTable('tables')
       ?? mkTable('Tables', 'tables', 'Every table in this workspace, as a row related to its space. Creating a row creates the table; renaming it renames the table; hard-deleting it deletes the table and its rows.');
     if (!this.#sysField(tablesT, 'Space')) {
@@ -4369,7 +4647,7 @@ export class Weave {
     const wsRow = this.#sysRow('workspaces', this.state.meta.id);
     let row = this.#sysRow('spaces', space.id);
     if (!row) {
-      row = reg.#metaSync(() => reg.createEntity(t.id, { name: space.name, values: { Description: space.description ?? '', ...(wsRow ? { Workspace: wsRow.id } : {}) } }));
+      row = reg.#metaSync(() => reg.createEntity(t.id, { name: space.name, values: { Description: space.description ?? '', ...(space.template && this.#sysField(t, 'Template') ? { Template: true } : {}), ...(wsRow ? { Workspace: wsRow.id } : {}) } }));
       row.sysId = space.id;
       reg.#mark(row);
       if (space.deletedAt) reg.#metaSync(() => reg.deleteEntity(row.id));
@@ -4381,6 +4659,8 @@ export class Weave {
     const descF = this.#sysField(t, 'Description');
     if ((row.values[descF.id] ?? '') !== (space.description ?? '')) patch.Description = space.description ?? '';
     if (wsRow && !this.#relIds(row, t, 'Workspace').includes(wsRow.id)) patch.Workspace = wsRow.id;
+    const templateF = this.#sysField(t, 'Template');
+    if (templateF && !!row.values[templateF.id] !== !!space.template) patch.Template = !!space.template;
     if (Object.keys(patch).length) reg.#metaSync(() => reg.updateEntity(row.id, patch));
     return row;
   }
@@ -4613,7 +4893,9 @@ export class Weave {
         if (!wsRow) throw new WeaveError(`Workspace row '${wsRef}' not found`, 'not-found');
         owner = this.#engineOf(wsRow.sysId);
       }
-      made = this.#sysRow('spaces', owner.createSpace({ name, description }).id);
+      const template = !!values.Template;
+      delete values.Template;
+      made = this.#sysRow('spaces', owner.createSpace({ name, description, template }).id);
     } else if (db.system === 'tables') {
       const spaceRef = values.Space;
       delete values.Space;
@@ -4738,6 +5020,7 @@ export class Weave {
       const structural = {};
       if ('Name' in patch) { structural.name = patch.Name; delete patch.Name; }
       if ('Description' in patch) { structural.description = patch.Description; delete patch.Description; }
+      if (db.system === 'spaces' && 'Template' in patch) { structural.template = !!patch.Template; delete patch.Template; }
       if (db.system === 'tables') {
         // Configuration as fields, writing back: same validation as the
         // schema verb, because it IS the schema verb.
@@ -8050,6 +8333,7 @@ export class Weave {
       description: sp.description ?? '',
       ...(sp.system ? { system: sp.system } : {}),
       ...(sp.icon ? { icon: sp.icon } : {}),
+      ...(sp.template ? { template: true } : {}),
       tables: this.listTables(sp.id).map((db) => ({
         id: db.id,
         name: db.name,

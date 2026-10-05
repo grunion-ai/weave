@@ -45,7 +45,7 @@ current details.*
   holds the export button, and there is no per-user bill.
 - **An official CLI.** Fibery has no first-party CLI; weave's covers the whole
   surface — schema, entities, documents, search, import/export.
-- **An MCP server in the box.** 58 tools including schema design, so an agent
+- **An MCP server in the box.** 60 tools including schema design, so an agent
   can create spaces, tables, relations, and automations, not just rows.
 - **Documents as plain URLs.** `/e/Task#12/doc.md`, `.html`, `.pdf` render
   directly, with Mermaid diagrams in place and a whole-entity export that

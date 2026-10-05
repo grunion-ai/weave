@@ -2162,6 +2162,37 @@ Only the title is a link. The rest of the tile is inert — in a grid cell the c
 
 To change what a chip or card contains — the id, the state, the description size, which fields ride along — open the gear on the Appears as strip or \`weave field update Task Chip --config '{"fields":["Due"]}'\`. It changes every row of the table at once.`,
   },
+  {
+    name: 'Templates',
+    audience: 'Both',
+    // After Table views, before the anatomy, which stays last.
+    order: 20.5,
+    doc: `# Templates
+
+Any space can be a template. A template copies its schema into another workspace of this weave: the tables, their fields and settings, option colours and icons, workflow states, views, column widths, field order, hidden fields, filters, sorting, the row term, the icons, and the space rollups over its tables. Rows never travel. The copy is an ordinary space; it is not a template itself.
+
+## Mark a space as a template
+
+Open **Workspace › Spaces** and tick the space's **Template** box, in the grid or on the row's own page. Untick it to stop offering the space.
+
+## Use a template
+
+Open the template space. **Use template** sits beside the space's menu. Pick the workspace to build in and the new space's name, which starts as the template's, then choose **Use**. A toast says where the space landed; **Open** goes there.
+
+| You see | Why |
+| --- | --- |
+| *already has a space named …* | The workspace holds a live space of that name. Choose another name. |
+| *You cannot build in …* | Using a template writes the schema of that workspace, which needs an architect there. |
+| *There is no other workspace to build in* | This weave holds one workspace. Create another from the workspace rail first. |
+
+## What stays behind
+
+A relation to a table outside the space cannot follow it. The copy leaves that relation out, with every lookup, rollup and formula that reads through it, and the answer names each one under \`skipped\`. Relations, lookups, rollups and formulas inside the space travel intact.
+
+## For agents
+
+\`weave_update_space {space, template: true}\` marks a space; \`weave_template_list\` lists this workspace's templates; \`weave_template_use {space, workspace, name?}\` copies one into another workspace of the hub and answers \`{space, workspace, url, plan, skipped}\`. It needs the HTTP door, because a stdio server holds one workspace. Over REST: \`GET /api/templates\` and \`POST /api/spaces/:space/use {workspace, name?}\` on the template's own workspace. On the CLI: \`weave template list\` and \`weave template use <space> --into <other.db> [--name N]\`.`,
+  },
 ];
 
 /* ----------------------------------------------------- formatting samples

@@ -119,7 +119,8 @@ async function api(method, path, body, { signal } = {}) {
   });
   const data = await res.json().catch(() => ({}));
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
-  if (!res.ok) throw new Error(data.error ?? `${res.status}`);
+  // The status rides the error, so a dialog can tell a conflict from a refusal.
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status });
   return data;
 }
 
@@ -354,7 +355,8 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
       await onSubmit?.(new FormData(form));
       close();
     } catch (err) {
-      toast(err.message, true);
+      // A dialog that already said what went wrong, inside itself, marks it.
+      if (!err.shown) toast(err.message, true);
     }
   });
   const box = el('div', { id: 'modal' }, el('h2', {}, title), form);
@@ -9589,6 +9591,7 @@ async function showSpace(spaceId) {
       // Workspace space is never deletable (Issue #126, #248), which leaves
       // it nothing to offer, so it renders no ⋮ at all.
       actions: space.system ? [] : [
+        ...(space.template ? [useTemplateButton(space)] : []),
         dotsMenu([
           {
             hold: space.tables.length
@@ -9649,6 +9652,52 @@ async function showSpace(spaceId) {
       renderTable(body, reg, items, onSaved, onAdd);
     });
   }
+}
+
+/* Use Template (Feature #261): a space marked a template (the Template box
+   on its Workspace/Spaces row) copies its schema, never its rows, into
+   another workspace of the hub. The dialog offers every other workspace and
+   a name prefilled with the space's. A conflict or a refusal is said inside
+   the dialog, which stays open; success closes it and toasts a way to the
+   new space. */
+function useTemplateButton(space) {
+  return el('button', { class: 'btn btn-sm use-template-btn', type: 'button', onclick: () => useTemplateDialog(space) },
+    iconEl('lucide:copy', 'wv-icon'), 'Use template');
+}
+
+async function useTemplateDialog(space) {
+  let list;
+  try { list = await api('GET', '/workspaces'); } catch (err) { return toast(err.message, true); }
+  const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
+  const here = seg ? list.find((w) => w.name === seg || w.id === seg) : list.find((w) => w.default);
+  const others = list.filter((w) => w !== here);
+  const said = el('div', { class: 'use-template-said', role: 'alert' });
+  said.hidden = true;
+  const body = others.length ? [
+    el('label', { class: 'form-label wv-start-label' }, 'Workspace'),
+    pickerSelect({ name: 'workspace', title: 'Workspace', options: others.map((w) => ({ id: w.name, label: w.name })), value: others[0].name }),
+    el('label', { class: 'form-label wv-start-label' }, 'Name'),
+    el('input', { name: 'name', class: 'form-control full', style: 'width:100%', value: space.space, required: '' }),
+    el('div', { class: 'form-hint' }, 'Copies the tables, fields and views. Rows stay here.'),
+    said,
+  ] : [el('p', { class: 'use-template-none' }, 'There is no other workspace to build in. Create one first, from the workspace rail.')];
+  modal(`Use ${space.space} as a template`, body, async (fd) => {
+    if (!others.length) return;
+    said.hidden = true;
+    const workspace = String(fd.get('workspace'));
+    try {
+      const made = await api('POST', `/spaces/${space.spaceId}/use`, { workspace, name: String(fd.get('name') ?? '').trim() });
+      toast(`${made.space.name} is in ${made.workspace}`, false, { label: 'Open', run: () => { location.href = made.url; } });
+    } catch (err) {
+      said.textContent = err.status === 403 ? `You cannot build in ${workspace}: using a template there needs an architect on it.` : err.message;
+      said.hidden = false;
+      err.shown = true;
+      throw err;
+    }
+  }, 'Use');
+  const box = document.querySelector('#modal');
+  if (!others.length) box?.querySelector('button[type=submit]')?.setAttribute('disabled', '');
+  else box?.querySelector('.picker-face')?.focus();
 }
 
 /* The space's tables in plain words: a name and a record count each,

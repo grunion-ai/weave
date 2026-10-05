@@ -198,7 +198,7 @@ export const TOOLS = [
   {
     name: 'weave_create_space',
     description: 'Create a space (top-level grouping of tables).',
-    inputSchema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } }, required: ['name'] },
+    inputSchema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' } }, required: ['name'] },
   },
   {
     name: 'weave_create_table',
@@ -274,11 +274,25 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_space',
-    description: 'Rename a space or change its description or icon. An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused.',
+    description: 'Rename a space or change its description or icon, or mark it a template (template: true; weave_template_use copies a template\'s schema into another workspace). An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused.',
     inputSchema: {
       type: 'object',
-      properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } },
+      properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' } },
       required: ['space'],
+    },
+  },
+  {
+    name: 'weave_template_list',
+    description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its Workspace/Spaces row). Each is a space record: id, name, description, icon.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'weave_template_use',
+    description: 'Copy a template space\'s schema, never its rows, into another workspace of this hub: its tables, fields with their config, option colours and icons, workflow states, views, field order, hidden fields, filters, sort, the term, the icons and the space rollups over its tables. space: the template space (name or id). workspace: the target, a name as the hub lists it. name: the new space\'s name, the template\'s by default; a name the target already holds is refused. A relation to a table outside the space is left out and named in `skipped`, with every lookup, rollup and formula that reads through it. Needs an architect on the target. Answers {space, workspace, url, plan, skipped}. Over HTTP only: a stdio server holds one workspace, so there use the CLI, weave template use <space> --into <other.db>.',
+    inputSchema: {
+      type: 'object',
+      properties: { space: { type: 'string' }, workspace: { type: 'string' }, name: { type: 'string' } },
+      required: ['space', 'workspace'],
     },
   },
   {
@@ -536,7 +550,9 @@ export const SUMMARY = {
   weave_export_csv: 'a table as CSV',
   weave_attach_file: 'attach a file to a row (base64)',
   weave_files: 'read or delete an attached file',
-  weave_update_space: 'rename a space, change its description or icon',
+  weave_update_space: 'rename a space; its description, icon, template mark',
+  weave_template_list: 'the template spaces here',
+  weave_template_use: 'copy a template space into another workspace',
   weave_delete_space: 'trash a space (hard: true purges)',
   weave_restore_space: 'restore a trashed space',
   weave_update_table: 'rename, icon, noun, field order, system fields, Σ row',
@@ -698,7 +714,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_search':
       return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
     case 'weave_create_space':
-      return guided(weave, 'space', weave.createSpace(pick(args, ['name', 'description', 'icon'])));
+      return guided(weave, 'space', weave.createSpace(pick(args, ['name', 'description', 'icon', 'template'])));
     case 'weave_create_table':
       return guided(weave, 'table', weave.createTable(pick(args, ['space', 'name', 'description', 'icon'])));
     case 'weave_add_field':
@@ -718,7 +734,16 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_vocabulary':
       return vocabularyView(args.sections ?? args.section, args.query);
     case 'weave_update_space':
-      return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon']));
+      return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon', 'template']));
+    case 'weave_template_list':
+      return { templates: weave.listTemplates() };
+    /* The copy lands in another workspace, which only the hub can name, so
+       the HTTP dispatcher hands its door in as caller.useTemplate. */
+    case 'weave_template_use':
+      if (!caller?.useTemplate) {
+        throw new Error('weave_template_use copies into another workspace of a hub, and this stdio server holds one workspace. Call it over the HTTP door (POST /api/mcp, or /mcp on the hosted instance), or run weave template use <space> --into <other.db> on the CLI.');
+      }
+      return caller.useTemplate({ space: args.space, workspace: args.workspace, name: args.name });
     case 'weave_delete_space':
       weave.deleteSpace(args.space, { hard: Boolean(args.hard) });
       return { space: args.space, deleted: true, hard: Boolean(args.hard) };

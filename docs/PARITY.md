@@ -87,7 +87,7 @@ Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 | 57 | CSV import | ✅ | typed coercion, atomic rows, error report |
 | 58 | JSON backup / restore | ✅ | JSON export and import, plus `weave backup`: one sealed tar of every workspace, attachments and keystore |
 | 59 | CLI | ✅ | the whole surface; Fibery itself has no official CLI |
-| 60 | MCP server for agents | ✅ | 58 tools over stdio or HTTP, 16 listed by default |
+| 60 | MCP server for agents | ✅ | 60 tools over stdio or HTTP, 16 listed by default |
 | 61 | External integrations (Slack/GitHub/Jira sync) | ❌ | webhooks and the REST API are the escape hatch |
 | 62 | AI assist features | ❌ | MCP, CLI and REST access for your own agent instead |
 

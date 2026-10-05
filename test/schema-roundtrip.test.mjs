@@ -203,3 +203,68 @@ test('the row term round-trips, plural included', () => {
   assert.ok(plan.some((p) => p.action === 'update-field' && p.target === 'Ops/Invoice.Name') || plan.some((p) => p.action === 'update-table'), JSON.stringify(plan));
   assert.deepEqual(w.termOf(t.id), { singular: 'bill', plural: 'bills', set: true });
 });
+
+/* Found by Feature #261's fidelity test (Issues #639 to #642): the costumes a
+   template copy carries that applySchema used to drop on the way in. */
+test('Issue #639 + #642: related tables apply into a fresh workspace, every cardinality kept', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  for (const n of ['A', 'B', 'C', 'D']) w.createTable({ space: 'S', name: n });
+  w.addRelation('S/A', { name: 'Bs', targetDb: 'S/B', cardinality: 'many-to-many', inverseName: 'As' });
+  w.addRelation('S/C', { name: 'D', targetDb: 'S/D', cardinality: 'one-to-one', inverseName: 'C' });
+  w.addRelation('S/D', { name: 'A', targetDb: 'S/A', cardinality: 'many-to-one', inverseName: 'Ds' });
+  w.addField('S/A', { name: 'D count', type: 'rollup', config: { relationField: 'Ds', aggregate: 'count' } });
+  w.addField('S/D', { name: 'A name', type: 'lookup', config: { relationField: 'A', targetField: 'Name' } });
+  const fresh = new Weave();
+  fresh.applySchema(w.describeSchema().filter((s) => !s.system));
+  const many = (t, f) => fresh.findField(fresh.getTable(`S/${t}`), f).config.many;
+  assert.deepEqual([many('A', 'Bs'), many('B', 'As')], [true, true], 'many-to-many');
+  assert.deepEqual([many('C', 'D'), many('D', 'C')], [false, false], 'one-to-one');
+  assert.deepEqual([many('D', 'A'), many('A', 'Ds')], [false, true], 'many-to-one');
+  assert.equal(fresh.findField(fresh.getTable('S/A'), 'D count').type, 'rollup');
+  assert.equal(fresh.findField(fresh.getTable('S/D'), 'A name').type, 'lookup');
+  assert.deepEqual(fresh.applySchema(w.describeSchema().filter((s) => !s.system)), [], 'and the copy reads back as the same document');
+
+  // A relation added to tables that already exist reads both ends too.
+  const later = new Weave();
+  later.createSpace({ name: 'S' });
+  for (const n of ['A', 'B']) later.createTable({ space: 'S', name: n });
+  const doc = later.describeSchema().filter((s) => !s.system);
+  const t = (n) => doc[0].tables.find((x) => x.name === n);
+  t('A').fields.push({ name: 'Bs', type: 'relation', targetDb: 'S/B', many: true, inverseField: 'As' });
+  t('B').fields.push({ name: 'As', type: 'relation', targetDb: 'S/A', many: true, inverseField: 'Bs' });
+  later.applySchema(doc);
+  assert.equal(later.findField(later.getTable('S/B'), 'As').config.many, true, 'the inverse end is many as well');
+});
+
+test('Issue #640: option icons survive an apply, on create and on an edit', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  w.createTable({ space: 'S', name: 'T' });
+  w.addField('S/T', { name: 'Stage', type: 'select', config: { options: [{ name: 'Lead', hue: 'blue', icon: 'lucide:sparkles' }, { name: 'Won', hue: 'green' }] } });
+  const icons = (x) => x.findField(x.getTable('S/T'), 'Stage').config.options.map((o) => o.icon);
+  const fresh = new Weave();
+  fresh.applySchema(w.describeSchema().filter((s) => !s.system));
+  assert.deepEqual(icons(fresh), ['lucide:sparkles', '']);
+  const doc = w.describeSchema();
+  const stage = doc.find((s) => s.space === 'S').tables[0].fields.find((f) => f.name === 'Stage');
+  stage.options.push('Lost');
+  w.applySchema(doc);
+  assert.deepEqual(icons(w), ['lucide:sparkles', '', ''], 'an options edit keeps the icons it does not touch');
+  const edit = w.describeSchema();
+  edit.find((s) => s.space === 'S').tables[0].fields.find((f) => f.name === 'Stage').optionsFull[1].icon = 'lucide:check';
+  assert.ok(w.applySchema(edit).some((p) => p.action === 'update-field'), 'an icon edit is a change');
+  assert.deepEqual(icons(w), ['lucide:sparkles', 'lucide:check', '']);
+});
+
+test('Issue #641: the entity page\'s block order applies', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  const t = w.createTable({ space: 'S', name: 'T' });
+  w.addField(t.id, { name: 'Notes', type: 'document' });
+  w.updateTable(t.id, { bodyOrder: ['Notes', '@values'] });
+  const fresh = new Weave();
+  fresh.applySchema(w.describeSchema().filter((s) => !s.system));
+  assert.deepEqual(fresh.bodyBlocks('S/T'), w.bodyBlocks('S/T'));
+  assert.deepEqual(w.applySchema(w.describeSchema()), [], 'a round trip is still a no-op');
+});

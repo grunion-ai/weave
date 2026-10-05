@@ -55,7 +55,9 @@ test('the core list costs well under half the full one', () => withEnv(null, () 
   // weave_build (Feature #253) joined at about 2,000 bytes, most of it the one
   // worked example spec its description carries on purpose: it stands in for
   // the 30 to 90 single-field and single-row calls a build used to take.
-  assert.ok(core < 14500, `core tools/list is ${core} bytes`);
+  // Feature #261 added two tools, so two lines in weave_call's list and the
+  // template flag on weave_create_space: 14,465 bytes → about 14,610.
+  assert.ok(core < 14700, `core tools/list is ${core} bytes`);
 }));
 
 test('--tools all, WEAVE_MCP_TOOLS=all and listTools("all") list every tool', () => {

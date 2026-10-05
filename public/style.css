@@ -1451,6 +1451,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 #modal h2 { margin: 0 0 12px; font-size: 16px; }
 #modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 #modal input, #modal select { margin-bottom: 6px; }
+/* Use Template (Feature #261): what went wrong, said in the dialog. */
+.use-template-said { margin-top: 8px; padding: 8px 10px; border-radius: var(--tblr-border-radius); color: var(--tblr-danger); background: color-mix(in srgb, var(--tblr-danger) 10%, transparent); font-size: 13px; }
+.use-template-none { color: var(--tblr-secondary); margin: 0; }
+.use-template-btn { display: inline-flex; align-items: center; gap: 6px; }
 /* The onboarding welcome (Feature #248): the same held dialog, one step at
    a time. Progress is three soft squared bars, the step's Lucide icon sits
    on a primary-tinted square, Skip is quiet on the left and the one primary

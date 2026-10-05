@@ -134,8 +134,13 @@ Schema
                                       (icons are lucide:<name>; colors are hex from the palette;
                                       "vocabulary icons <query>" searches the icon names;
                                       "vocabulary icons,optionColors" answers several sections)
-  space create <name> [--description] [--icon lucide:briefcase]
-  space list | update <ref> [--name] [--description] [--icon lucide:briefcase] | delete <ref>
+  space create <name> [--description] [--icon lucide:briefcase] [--template true]
+  space list | update <ref> [--name] [--description] [--icon lucide:briefcase] [--template true|false]
+  space delete <ref>
+  template list                       The template spaces (Feature #261)
+  template use <space> --into <other.db> [--name <name>]
+                                      Copy a template space's schema, never its rows,
+                                      into another workspace file
   table create <space> <name> [--description] [--icon]
   table list | delete <ref>
   table update <ref> [--name] [--description] [--icon lucide:wallet] [--noun invoice]
@@ -756,12 +761,34 @@ async function main() {
     }
     case 'space': {
       const [sub, name] = args;
-      if (sub === 'create') return out(guided(w, 'space', w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '' })));
-      if (sub === 'update') return out(w.updateSpace(name, pickFlags(['name', 'description', 'icon'])));
+      if (sub === 'create') return out(guided(w, 'space', w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '', template: ['true', 'on', 'yes', '1', true].includes(flags.template) })));
+      if (sub === 'update') {
+        const patch = pickFlags(['name', 'description', 'icon']);
+        // Feature #261: --template true|false (on|off) marks the space a template.
+        if (flags.template != null) patch.template = ['true', 'on', 'yes', '1', true].includes(flags.template);
+        return out(w.updateSpace(name, patch));
+      }
       if (sub === 'delete') { w.deleteSpace(name, { hard: Boolean(flags.hard) }); return out({ space: name, deleted: true }); }
       if (sub === 'restore') return out(w.restoreSpace(name));
       if (sub === 'list' || !sub) return out(w.listSpaces());
       throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, delete, restore`);
+    }
+    /* Feature #261: a template space's schema, never its rows, into another
+       workspace file. --into opens that file as a second engine; its own
+       writes save it. */
+    case 'template': {
+      const [sub, ref] = args;
+      if (sub === 'list' || !sub) return out(w.listTemplates());
+      if (sub === 'use') {
+        if (!ref) throw new WeaveError('Usage: weave template use <space> --into <other.db> [--name <name>]', 'invalid');
+        if (!flags.into || flags.into === true) throw new WeaveError('template use needs --into <other.db>: the workspace file to build in', 'invalid');
+        const into = String(flags.into);
+        const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR });
+        try {
+          return out(w.useTemplate(ref, target, { name: flags.name == null || flags.name === true ? undefined : String(flags.name) }));
+        } finally { if (target !== w) target.store.close?.(); }
+      }
+      throw new WeaveError(`Unknown template subcommand '${sub}'. Try: list, use`);
     }
     case 'table':
     case 'db': { // `db` kept as an alias

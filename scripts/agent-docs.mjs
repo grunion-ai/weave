@@ -33,6 +33,7 @@ const AREAS = [
   ['Spaces and tables', ['weave_update_space', 'weave_delete_space', 'weave_restore_space', 'weave_update_table', 'weave_move_table', 'weave_duplicate_table', 'weave_delete_table', 'weave_restore_table', 'weave_table_view']],
   ['Fields and formulas', ['weave_rollback_field', 'weave_delete_field', 'weave_check_formula']],
   ['Whole schema', ['weave_apply_schema', 'weave_registry', 'weave_relation_map']],
+  ['Templates', ['weave_template_list', 'weave_template_use']],
   ['Figures', ['weave_stats']],
   ['Import and export', ['weave_export_csv', 'weave_export_json', 'weave_import_json']],
   ['Files', ['weave_attach_file', 'weave_files']],

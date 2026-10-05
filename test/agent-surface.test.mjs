@@ -38,6 +38,9 @@ const SURFACE = [
   ['space.update', ['updateSpace'], 'weave_update_space', 'space update', ['PATCH /api/spaces/:ref']],
   ['space.delete', ['deleteSpace'], 'weave_delete_space', 'space delete', ['DELETE /api/spaces/:ref']],
   ['space.restore', ['restoreSpace'], 'weave_restore_space', 'space restore', ['POST /api/spaces/:ref/restore']],
+  // Feature #261: a template space's schema, copied into another workspace.
+  ['template.list', ['listTemplates'], 'weave_template_list', 'template list', ['GET /api/templates']],
+  ['template.use', ['useTemplate'], 'weave_template_use', 'template use', ['POST /api/spaces/:ref/use']],
   ['table.create', ['createTable'], 'weave_create_table', 'table create', ['POST /api/tables']],
   ['table.list', ['listTables'], 'weave_schema', 'table', ['GET /api/tables']],
   ['table.update', ['updateTable'], 'weave_update_table', 'table update', ['PATCH /api/tables/:ref']],

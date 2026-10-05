@@ -390,7 +390,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (role && role !== 'architect') {
       const m2 = rx.method;
       const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
-        || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'));
+        || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'))
+        // Using a template reads this workspace and writes another, where the
+        // route asks for an architect itself (Feature #261).
+        || (m2 === 'POST' && /^\/api\/spaces\/[^/]+\/use$/.test(path));
       const schemaWrite = !read && (
         /^\/api\/(spaces|automations|accounts|invites|registry)/.test(path)
         // MCP carries every tool, schema tools included — a capped token must
@@ -740,6 +743,26 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
            caller would pass; create, restore and delete need an architect on the
            hub root once the root holds an account. */
         const canOpen = (w) => !w.state.meta.requireAuth || roleOn(w) != null;
+        /* Use Template (Feature #261): copy a space of the URL workspace into
+           another workspace of the hub. Reading the source is the URL's own
+           gate; building in the target needs an architect there, by the
+           caller's credential as the target verifies it. REST and the MCP
+           tool both come through here. */
+        const useTemplateInto = ({ space, workspace, name } = {}) => {
+          if (workspace == null || String(workspace).trim() === '') throw new WeaveError('Name the workspace to build in: {workspace}, as GET /api/workspaces lists them', 'invalid');
+          const target = hub.get(String(workspace));
+          if (!target || target.state.meta.deletedAt) throw new WeaveError(`Workspace '${workspace}' not found`, 'not-found');
+          const key = hub.list().find((x) => x.id === target.state.meta.id)?.name ?? target.state.meta.name;
+          if (!mayAdminister(target, roleOn(target))) throw new WeaveError(`You cannot build in ${key}: using a template there needs an architect on it`, 'forbidden');
+          target.maybeRefresh?.();
+          const was = target.actor;
+          target.actor = weave.actor;
+          try {
+            const r = weave.useTemplate(space, target, { name: name == null || name === '' ? undefined : String(name) });
+            const url = key === hub.defaultName ? `/#/space/${r.space.id}` : `/w/${key}/#/space/${r.space.id}`;
+            return { space: r.space, workspace: key, url, plan: r.plan, skipped: r.skipped };
+          } finally { target.actor = was; }
+        };
         if (/^\/api\/workspaces(\/|$)/.test(path) && rx.method !== 'GET') {
           const hubRoot = hub.get(hub.defaultName);
           const rootRole = roleOn(hubRoot);
@@ -964,7 +987,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           // The accounts, keys and import tools ask the same gate as REST
           // (Issue #482), so the caller's role travels with the message.
           const root = hub.get(hub.defaultName);
-          const caller = { role, root, rootRole: roleOn(root), updateWorkspace };
+          const caller = { role, root, rootRole: roleOn(root), updateWorkspace, useTemplate: useTemplateInto };
           const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
           return out(200, Array.isArray(body) ? replies : replies[0]);
@@ -1118,6 +1141,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if (route === 'GET /api/spaces') return out(200, weave.listSpaces());
+        if (route === 'GET /api/templates') return out(200, weave.listTemplates());
+        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/use$/)) && rx.method === 'POST') {
+          return out(201, useTemplateInto({ space: decodeURIComponent(m[1]), workspace: body?.workspace, name: body?.name }));
+        }
         if (route === 'POST /api/spaces') return out(201, guided(weave, 'space', weave.createSpace(body)));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
