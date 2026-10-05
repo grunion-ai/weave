@@ -1,0 +1,1006 @@
+{
+  "space": "CRM",
+  "description": "Companies, the people at them, the deals in flight and every call, email and meeting along the way. Start at Companies: one row per organisation, Type is the relationship. Add Contacts under a company, open one Deal per opportunity and move its Stage, and log each touch as an Activity against the contact and the deal it served. Deal value on a company, Last touch on a contact and Weighted on a deal compute themselves; never type them. Search a table by Name before adding a row; the name is the identity.",
+  "icon": "lucide:briefcase",
+  "tables": [
+    {
+      "name": "Companies",
+      "description": "One row per organisation you sell to, buy from or partner with. Search by Name before adding one. Type is the relationship (Prospect, Customer, Partner, Vendor, Ecosystem), never the industry. Deal value sums every deal on the company and needs no entry. Put what the company does in Description; conversations go on Activities, not here.",
+      "icon": "lucide:landmark",
+      "hiddenFields": [
+        "Description",
+        "Chip",
+        "Card"
+      ],
+      "sort": [
+        {
+          "field": "Name",
+          "dir": "asc"
+        }
+      ],
+      "views": [
+        {
+          "name": "Standard",
+          "fields": [
+            "Name",
+            "Type",
+            "Industry",
+            "Size",
+            "Website",
+            "City",
+            "Contacts",
+            "Deals",
+            "Deal value"
+          ],
+          "sort": [
+            {
+              "field": "Name",
+              "dir": "asc"
+            }
+          ],
+          "widths": {
+            "Name": 220,
+            "Website": 180,
+            "City": 120,
+            "Deal value": 130,
+            "Contacts": 185
+          },
+          "frozen": 1
+        }
+      ],
+      "bodyBlocks": [
+        "@values",
+        "Contacts",
+        "Deals",
+        "Description"
+      ],
+      "term": {
+        "singular": "company",
+        "plural": "companies",
+        "set": true
+      },
+      "noun": "company",
+      "qualified": "CRM/Companies",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "text",
+          "term": {
+            "singular": "company",
+            "plural": "companies"
+          },
+          "role": "name"
+        },
+        {
+          "name": "Type",
+          "type": "select",
+          "description": "The relationship: Prospect (you are pursuing them), Customer (they pay you), Partner (they sell with you), Vendor (you pay them), Ecosystem (adjacent, none of the above). One value. A competitor is Ecosystem.",
+          "options": [
+            "Prospect",
+            "Customer",
+            "Partner",
+            "Vendor",
+            "Ecosystem"
+          ],
+          "optionsFull": [
+            {
+              "name": "Prospect",
+              "hue": "blue",
+              "icon": "",
+              "color": "#4769eb"
+            },
+            {
+              "name": "Customer",
+              "hue": "green",
+              "icon": "",
+              "color": "#2ea043"
+            },
+            {
+              "name": "Partner",
+              "hue": "purple",
+              "icon": "",
+              "color": "#8e4ec6"
+            },
+            {
+              "name": "Vendor",
+              "hue": "amber",
+              "icon": "",
+              "color": "#f59f00"
+            },
+            {
+              "name": "Ecosystem",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            }
+          ]
+        },
+        {
+          "name": "Industry",
+          "type": "select",
+          "description": "The sector the company sells into. Pick the nearest; Other when none fits.",
+          "options": [
+            "Software",
+            "Financial services",
+            "Healthcare",
+            "Retail",
+            "Manufacturing",
+            "Professional services",
+            "Other"
+          ],
+          "optionsFull": [
+            {
+              "name": "Software",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Financial services",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Healthcare",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Retail",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Manufacturing",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Professional services",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Other",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            }
+          ]
+        },
+        {
+          "name": "Size",
+          "type": "select",
+          "description": "Headcount band.",
+          "options": [
+            "1-10",
+            "11-50",
+            "51-200",
+            "201-1000",
+            "1000+"
+          ],
+          "optionsFull": [
+            {
+              "name": "1-10",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "11-50",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "51-200",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "201-1000",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "1000+",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            }
+          ]
+        },
+        {
+          "name": "Website",
+          "type": "url",
+          "description": "Home page URL with its scheme, as https://example.com."
+        },
+        {
+          "name": "City",
+          "type": "text",
+          "description": "Headquarters city, plain text."
+        },
+        {
+          "name": "Contacts",
+          "type": "relation",
+          "description": "The people at this company. Add a person from the Contacts table with Company set to this row.",
+          "targetDb": "CRM/Contacts",
+          "many": true,
+          "inverseField": "Company"
+        },
+        {
+          "name": "Deals",
+          "type": "relation",
+          "description": "Opportunities with this company. Add one from the Deals table with Company set to this row.",
+          "targetDb": "CRM/Deals",
+          "many": true,
+          "inverseField": "Company"
+        },
+        {
+          "name": "Deal value",
+          "type": "rollup",
+          "description": "Sum of Value across the company's Deals at every stage. Computed; do not set.",
+          "via": "Deals",
+          "targetField": "Value",
+          "aggregate": "sum"
+        },
+        {
+          "name": "Description",
+          "type": "document",
+          "role": "description"
+        },
+        {
+          "name": "Chip",
+          "type": "view",
+          "role": "chip",
+          "shape": "chip",
+          "link": false,
+          "state": true,
+          "description": "none",
+          "fields": null
+        },
+        {
+          "name": "Card",
+          "type": "view",
+          "role": "card",
+          "shape": "card",
+          "link": true,
+          "state": true,
+          "description": "small",
+          "fields": null
+        }
+      ]
+    },
+    {
+      "name": "Contacts",
+      "description": "The people at each company, one row each, linked to their Company. Role says what they decide on a deal. Last touch is the newest Activity date and fills itself. Log calls and emails as Activities on the contact, not in its Description.",
+      "icon": "lucide:users-round",
+      "hiddenFields": [
+        "Description",
+        "Chip",
+        "Card"
+      ],
+      "sort": [
+        {
+          "field": "Name",
+          "dir": "asc"
+        }
+      ],
+      "views": [
+        {
+          "name": "Standard",
+          "fields": [
+            "Name",
+            "Title",
+            "Company",
+            "Role",
+            "Email",
+            "Phone",
+            "Last touch",
+            "Deals",
+            "Activities"
+          ],
+          "sort": [
+            {
+              "field": "Name",
+              "dir": "asc"
+            }
+          ],
+          "widths": {
+            "Name": 200,
+            "Title": 180,
+            "Email": 200,
+            "Phone": 150
+          },
+          "frozen": 1
+        }
+      ],
+      "bodyBlocks": [
+        "@values",
+        "Deals",
+        "Activities",
+        "Description"
+      ],
+      "term": {
+        "singular": "contact",
+        "plural": "contacts",
+        "set": true
+      },
+      "noun": "contact",
+      "qualified": "CRM/Contacts",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "text",
+          "term": {
+            "singular": "contact",
+            "plural": "contacts"
+          },
+          "role": "name"
+        },
+        {
+          "name": "Title",
+          "type": "text",
+          "description": "Job title as the person writes it."
+        },
+        {
+          "name": "Company",
+          "type": "relation",
+          "description": "The one company the person works at. Move them when they change jobs.",
+          "targetDb": "CRM/Companies",
+          "many": false,
+          "inverseField": "Contacts"
+        },
+        {
+          "name": "Role",
+          "type": "select",
+          "description": "Part in the buying decision. Decision maker signs; Champion sells inside; Influencer shapes the choice; User works with the product; Gatekeeper controls access or budget.",
+          "options": [
+            "Decision maker",
+            "Champion",
+            "Influencer",
+            "User",
+            "Gatekeeper"
+          ],
+          "optionsFull": [
+            {
+              "name": "Decision maker",
+              "hue": "green",
+              "icon": "",
+              "color": "#2ea043"
+            },
+            {
+              "name": "Champion",
+              "hue": "blue",
+              "icon": "",
+              "color": "#4769eb"
+            },
+            {
+              "name": "Influencer",
+              "hue": "purple",
+              "icon": "",
+              "color": "#8e4ec6"
+            },
+            {
+              "name": "User",
+              "hue": "slate",
+              "icon": "",
+              "color": ""
+            },
+            {
+              "name": "Gatekeeper",
+              "hue": "amber",
+              "icon": "",
+              "color": "#f59f00"
+            }
+          ]
+        },
+        {
+          "name": "Email",
+          "type": "email",
+          "description": "Work email, one address."
+        },
+        {
+          "name": "Phone",
+          "type": "text",
+          "description": "Digits with the country code, as +1 206 555 0100."
+        },
+        {
+          "name": "Last touch",
+          "type": "rollup",
+          "description": "Date of the newest Activity on this contact. Computed; do not set.",
+          "via": "Activities",
+          "targetField": "Date",
+          "aggregate": "max"
+        },
+        {
+          "name": "Deals",
+          "type": "relation",
+          "description": "Deals this person is involved in. Set from the deal's Contacts field.",
+          "targetDb": "CRM/Deals",
+          "many": true,
+          "inverseField": "Contacts"
+        },
+        {
+          "name": "Activities",
+          "type": "relation",
+          "description": "Every touch logged on this person, newest first.",
+          "targetDb": "CRM/Activities",
+          "many": true,
+          "inverseField": "Contact"
+        },
+        {
+          "name": "Description",
+          "type": "document",
+          "role": "description"
+        },
+        {
+          "name": "Chip",
+          "type": "view",
+          "role": "chip",
+          "shape": "chip",
+          "link": false,
+          "state": true,
+          "description": "none",
+          "fields": null
+        },
+        {
+          "name": "Card",
+          "type": "view",
+          "role": "card",
+          "shape": "card",
+          "link": true,
+          "state": true,
+          "description": "small",
+          "fields": null
+        }
+      ]
+    },
+    {
+      "name": "Deals",
+      "description": "One row per opportunity, linked to its Company and the Contacts on the buying side. Stage is the pipeline: Lead (not yet qualified), Qualified (need, budget and timing confirmed), Proposal (a proposal is out), Negotiation (terms in play), Won (signed), Lost (closed without a sale). Value is the total contract amount in USD, Probability your estimate as a fraction, Weighted their product. Keep Next step to one concrete action. The Pipeline view shows open deals, Won the closed ones. Notes holds the running narrative.",
+      "icon": "lucide:trending-up",
+      "hiddenFields": [
+        "Description",
+        "Chip",
+        "Card"
+      ],
+      "filters": {
+        "Stage": [
+          "Lead",
+          "Qualified",
+          "Proposal",
+          "Negotiation"
+        ]
+      },
+      "sort": [
+        {
+          "field": "Close date",
+          "dir": "asc"
+        }
+      ],
+      "views": [
+        {
+          "name": "Pipeline",
+          "fields": [
+            "Name",
+            "Stage",
+            "Company",
+            "Value",
+            "Probability",
+            "Weighted",
+            "Close date",
+            "Contacts",
+            "Source",
+            "Next step",
+            "Activities",
+            "Notes"
+          ],
+          "filters": {
+            "Stage": [
+              "Lead",
+              "Qualified",
+              "Proposal",
+              "Negotiation"
+            ]
+          },
+          "sort": [
+            {
+              "field": "Close date",
+              "dir": "asc"
+            }
+          ],
+          "widths": {
+            "Name": 220,
+            "Next step": 240,
+            "Value": 120,
+            "Weighted": 120,
+            "Contacts": 160,
+            "Activities": 255
+          },
+          "frozen": 1
+        },
+        {
+          "name": "Standard",
+          "fields": [
+            "Name",
+            "Stage",
+            "Company",
+            "Value",
+            "Probability",
+            "Weighted",
+            "Close date",
+            "Contacts",
+            "Source",
+            "Next step",
+            "Activities",
+            "Notes"
+          ],
+          "sort": [
+            {
+              "field": "Close date",
+              "dir": "asc"
+            }
+          ],
+          "widths": {
+            "Name": 220,
+            "Next step": 240,
+            "Value": 120,
+            "Weighted": 120
+          },
+          "frozen": 1
+        },
+        {
+          "name": "Won",
+          "fields": [
+            "Name",
+            "Stage",
+            "Company",
+            "Value",
+            "Probability",
+            "Weighted",
+            "Close date",
+            "Contacts",
+            "Source",
+            "Next step",
+            "Activities",
+            "Notes"
+          ],
+          "filters": {
+            "Stage": [
+              "Won"
+            ]
+          },
+          "sort": [
+            {
+              "field": "Close date",
+              "dir": "desc"
+            }
+          ],
+          "widths": {
+            "Name": 220,
+            "Next step": 240,
+            "Value": 120,
+            "Weighted": 120
+          },
+          "frozen": 1
+        }
+      ],
+      "bodyBlocks": [
+        "@values",
+        "Contacts",
+        "Activities",
+        "Description",
+        "Notes"
+      ],
+      "term": {
+        "singular": "deal",
+        "plural": "deals",
+        "set": true
+      },
+      "noun": "deal",
+      "qualified": "CRM/Deals",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "text",
+          "term": {
+            "singular": "deal",
+            "plural": "deals"
+          },
+          "role": "name"
+        },
+        {
+          "name": "Stage",
+          "type": "workflow",
+          "description": "Pipeline position. Lead: unqualified. Qualified: need, budget and timing confirmed. Proposal: a proposal is out. Negotiation: terms in play. Won: signed. Lost: closed without a sale. Move one step at a time and log the Activity that caused the move.",
+          "states": [
+            {
+              "name": "Lead",
+              "category": "not-started",
+              "default": true,
+              "icon": "lucide:compass"
+            },
+            {
+              "name": "Qualified",
+              "category": "in-progress",
+              "default": false,
+              "icon": "lucide:search"
+            },
+            {
+              "name": "Proposal",
+              "category": "in-progress",
+              "default": false,
+              "icon": "lucide:file-text"
+            },
+            {
+              "name": "Negotiation",
+              "category": "in-progress",
+              "default": false,
+              "icon": "lucide:arrow-left-right"
+            },
+            {
+              "name": "Won",
+              "category": "done",
+              "default": false,
+              "icon": "lucide:award"
+            },
+            {
+              "name": "Lost",
+              "category": "canceled",
+              "default": false,
+              "icon": "lucide:square-x"
+            }
+          ]
+        },
+        {
+          "name": "Company",
+          "type": "relation",
+          "description": "The buying organisation. One per deal.",
+          "targetDb": "CRM/Companies",
+          "many": false,
+          "inverseField": "Deals"
+        },
+        {
+          "name": "Value",
+          "type": "number",
+          "description": "Total contract value in USD for the whole deal, never a monthly figure.",
+          "format": "currency",
+          "currency": "USD"
+        },
+        {
+          "name": "Probability",
+          "type": "number",
+          "description": "Chance of winning as a fraction between 0 and 1; 0.6 shows as 60%.",
+          "format": "percent"
+        },
+        {
+          "name": "Weighted",
+          "type": "formula",
+          "description": "Value times Probability. Computed; do not set.",
+          "format": "currency",
+          "currency": "USD",
+          "expression": "Value * Probability"
+        },
+        {
+          "name": "Close date",
+          "type": "date",
+          "description": "The date the decision is expected. Move it when it slips rather than leaving it in the past."
+        },
+        {
+          "name": "Contacts",
+          "type": "relation",
+          "description": "The people on the buying side, the Decision maker included.",
+          "targetDb": "CRM/Contacts",
+          "many": true,
+          "inverseField": "Deals"
+        },
+        {
+          "name": "Source",
+          "type": "select",
+          "description": "The deal's origin: Inbound (they reached out), Outbound (you reached out), Referral (a person introduced you), Partner (a partner company brought it), Event.",
+          "options": [
+            "Inbound",
+            "Outbound",
+            "Referral",
+            "Partner",
+            "Event"
+          ],
+          "optionsFull": [
+            {
+              "name": "Inbound",
+              "hue": "green",
+              "icon": "",
+              "color": "#2ea043"
+            },
+            {
+              "name": "Outbound",
+              "hue": "blue",
+              "icon": "",
+              "color": "#4769eb"
+            },
+            {
+              "name": "Referral",
+              "hue": "purple",
+              "icon": "",
+              "color": "#8e4ec6"
+            },
+            {
+              "name": "Partner",
+              "hue": "amber",
+              "icon": "",
+              "color": "#f59f00"
+            },
+            {
+              "name": "Event",
+              "hue": "pink",
+              "icon": "",
+              "color": "#d6409f"
+            }
+          ]
+        },
+        {
+          "name": "Next step",
+          "type": "text",
+          "description": "The single next action: who does what by when. Rewrite it after every activity. Blank means the deal is stalled."
+        },
+        {
+          "name": "Activities",
+          "type": "relation",
+          "description": "Touches logged against this deal, newest first.",
+          "targetDb": "CRM/Activities",
+          "many": true,
+          "inverseField": "Deal"
+        },
+        {
+          "name": "Description",
+          "type": "document",
+          "role": "description"
+        },
+        {
+          "name": "Notes",
+          "type": "document",
+          "description": "The running narrative: context, objections, decisions. Dated entries, newest first."
+        },
+        {
+          "name": "Chip",
+          "type": "view",
+          "role": "chip",
+          "shape": "chip",
+          "link": false,
+          "state": true,
+          "description": "none",
+          "fields": null
+        },
+        {
+          "name": "Card",
+          "type": "view",
+          "role": "card",
+          "shape": "card",
+          "link": true,
+          "state": true,
+          "description": "small",
+          "fields": null
+        }
+      ]
+    },
+    {
+      "name": "Activities",
+      "description": "Every call, email, meeting, note and task, one row each, dated and linked to the Contact and the Deal it served. Kind says which. Done marks a touch that happened or a task finished; an unchecked Task with a Date is the to-do list (see the Tasks view). Name is a short subject, Notes holds what was said and agreed, Transcript holds the full text of a call or meeting. Company fills from the contact.",
+      "icon": "lucide:phone-call",
+      "hiddenFields": [
+        "Description",
+        "Chip",
+        "Card"
+      ],
+      "sort": [
+        {
+          "field": "Date",
+          "dir": "desc"
+        }
+      ],
+      "views": [
+        {
+          "name": "Standard",
+          "fields": [
+            "Name",
+            "Kind",
+            "Date",
+            "Contact",
+            "Company",
+            "Deal",
+            "Done",
+            "Notes",
+            "Transcript"
+          ],
+          "sort": [
+            {
+              "field": "Date",
+              "dir": "desc"
+            }
+          ],
+          "widths": {
+            "Name": 220,
+            "Date": 120,
+            "Contact": 182,
+            "Deal": 285
+          },
+          "frozen": 1
+        },
+        {
+          "name": "Tasks",
+          "fields": [
+            "Name",
+            "Kind",
+            "Date",
+            "Contact",
+            "Company",
+            "Deal",
+            "Done",
+            "Notes",
+            "Transcript"
+          ],
+          "filters": {
+            "Kind": [
+              "Task"
+            ]
+          },
+          "sort": [
+            {
+              "field": "Date",
+              "dir": "asc"
+            }
+          ],
+          "widths": {
+            "Name": 220,
+            "Date": 120
+          },
+          "frozen": 1
+        }
+      ],
+      "bodyBlocks": [
+        "@values",
+        "Description",
+        "Notes",
+        "Transcript"
+      ],
+      "term": {
+        "singular": "activity",
+        "plural": "activities",
+        "set": true
+      },
+      "noun": "activity",
+      "qualified": "CRM/Activities",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "text",
+          "term": {
+            "singular": "activity",
+            "plural": "activities"
+          },
+          "role": "name"
+        },
+        {
+          "name": "Kind",
+          "type": "select",
+          "description": "Call, Email or Meeting for a touch with the contact; Note for something learned with no contact event; Task for something to do by Date.",
+          "options": [
+            "Call",
+            "Email",
+            "Meeting",
+            "Note",
+            "Task"
+          ],
+          "optionsFull": [
+            {
+              "name": "Call",
+              "hue": "blue",
+              "icon": "lucide:phone",
+              "color": "#4769eb"
+            },
+            {
+              "name": "Email",
+              "hue": "slate",
+              "icon": "lucide:mail",
+              "color": ""
+            },
+            {
+              "name": "Meeting",
+              "hue": "green",
+              "icon": "lucide:calendar",
+              "color": "#2ea043"
+            },
+            {
+              "name": "Note",
+              "hue": "amber",
+              "icon": "lucide:file-text",
+              "color": "#f59f00"
+            },
+            {
+              "name": "Task",
+              "hue": "purple",
+              "icon": "lucide:square-check",
+              "color": "#8e4ec6"
+            }
+          ]
+        },
+        {
+          "name": "Date",
+          "type": "date",
+          "description": "The day it happened, or for a Task, the day it is due. ISO date."
+        },
+        {
+          "name": "Contact",
+          "type": "relation",
+          "description": "The person on the other side. Required for a Call, Email or Meeting.",
+          "targetDb": "CRM/Contacts",
+          "many": false,
+          "inverseField": "Activities"
+        },
+        {
+          "name": "Company",
+          "type": "lookup",
+          "description": "The contact's company. Computed; do not set.",
+          "via": "Contact",
+          "targetField": "Company"
+        },
+        {
+          "name": "Deal",
+          "type": "relation",
+          "description": "The opportunity this served. Leave empty for a touch with no deal.",
+          "targetDb": "CRM/Deals",
+          "many": false,
+          "inverseField": "Activities"
+        },
+        {
+          "name": "Done",
+          "type": "checkbox",
+          "description": "Checked when the touch happened or the task is finished. An unchecked Task is open."
+        },
+        {
+          "name": "Description",
+          "type": "document",
+          "role": "description"
+        },
+        {
+          "name": "Notes",
+          "type": "document",
+          "description": "Your summary of the exchange: decisions and follow-ups first, then the rest."
+        },
+        {
+          "name": "Transcript",
+          "type": "document",
+          "description": "The full text of a call or meeting, pasted whole. Summarise it in Notes."
+        },
+        {
+          "name": "Chip",
+          "type": "view",
+          "role": "chip",
+          "shape": "chip",
+          "link": false,
+          "state": true,
+          "description": "none",
+          "fields": null
+        },
+        {
+          "name": "Card",
+          "type": "view",
+          "role": "card",
+          "shape": "card",
+          "link": true,
+          "state": true,
+          "description": "small",
+          "fields": null
+        }
+      ]
+    }
+  ]
+}

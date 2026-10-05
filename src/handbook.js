@@ -2191,6 +2191,12 @@ Open the template space. **Use template** sits beside the space's menu. Pick the
 
 A relation to a table outside the space cannot follow it. The copy leaves that relation out, with every lookup, rollup and formula that reads through it, and the answer names each one under \`skipped\`. Relations, lookups, rollups and formulas inside the space travel intact.
 
+## Template checks
+
+The test suite exercises each template kept in \`test/fixtures/templates/\` (the CRM template) and the three starters. For each table it adds a row that sets every field and reads each value back, links and unlinks every relation from both ends, checks each lookup, rollup and formula while the links stand, then trashes and restores the row. It also uses each template into a workspace named \`test\` and runs the same steps on the copy.
+
+\`node scripts/template-exercise.mjs --base http://127.0.0.1:4400 --from weave --into test\` runs the same checks over HTTP on a running weave. It removes every row it made, soft-deletes its copy and exits 1 on any failure. \`node scripts/template-fixture.mjs --space CRM\` refreshes the fixture from the live template.
+
 ## For agents
 
 \`weave_update_space {space, template: true}\` marks a space; \`weave_template_list\` lists this workspace's templates; \`weave_template_use {space, workspace, name?}\` copies one into another workspace of the hub and answers \`{space, workspace, url, plan, skipped}\`. It needs the HTTP door, because a stdio server holds one workspace. Over REST: \`GET /api/templates\` and \`POST /api/spaces/:space/use {workspace, name?}\` on the template's own workspace. On the CLI: \`weave template list\` and \`weave template use <space> --into <other.db> [--name N]\`.`,
