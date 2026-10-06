@@ -116,8 +116,19 @@ function tokenize(src) {
   return tokens;
 }
 
+const TOKENS = new Map();
+function tokensOf(expression) {
+  let t = TOKENS.get(expression);
+  if (!t) {
+    t = tokenize(expression);
+    if (TOKENS.size >= 1000) TOKENS.clear();
+    TOKENS.set(expression, t);
+  }
+  return t;
+}
+
 export function evaluate(expression, getField) {
-  const tokens = tokenize(expression);
+  const tokens = tokensOf(expression);
   let pos = 0;
   const peek = () => tokens[pos];
   const next = () => tokens[pos++];
