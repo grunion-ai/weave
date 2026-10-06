@@ -1,0 +1,1 @@
+- The colour swatch beside each option in the field settings tray now shows that option's colour, and a slate option is hatched the way the colour picker draws it. (Issue #552)

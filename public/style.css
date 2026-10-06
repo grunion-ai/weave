@@ -1399,8 +1399,8 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .opt-list { display: flex; flex-direction: column; gap: 4px; }
 .opt-row { display: flex; align-items: center; gap: 6px; }
 .opt-row .opt-name { flex: 1; min-width: 0; background: var(--tblr-bg-forms, var(--tblr-bg-surface)); border: 1px solid var(--tblr-border-color); border-radius: 6px; padding: 4px 8px; font-size: 13px; color: var(--tblr-body-color); }
-.opt-color { width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--tblr-border-color); cursor: pointer; padding: 0; }
-.opt-color.neutral { background: var(--tblr-bg-surface-secondary); }
+.opt-color { width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--tblr-border-color); cursor: pointer; padding: 0; background: var(--dot, transparent); }
+.opt-color.neutral { background: repeating-linear-gradient(45deg, var(--tblr-bg-surface-secondary) 0 3px, var(--tblr-bg-surface) 3px 6px); }
 .opt-row .opt-cat { flex: 0 0 auto; width: auto; }
 .opt-cat .picker-face { padding: 2px 8px; font-size: 12px; width: auto; min-width: 108px; }
 .opt-del { background: none; border: none; color: var(--tblr-secondary); font-size: 12px; cursor: pointer; padding: 2px 4px; }
