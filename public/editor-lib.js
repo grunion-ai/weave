@@ -251,6 +251,16 @@ globalThis.WeaveEditorLib = {
     return `\u2063block:${kind}\u2063`;
   },
 
+  liveMathElements(root) {
+    const found = [...(root ?? globalThis.document).querySelectorAll('.language-math')];
+    return {
+      length: found.length,
+      forEach(fn) {
+        for (const node of found) if (node.parentElement) fn(node);
+      },
+    };
+  },
+
   TASK_BOX_RE: /^(\s*(?:[-*+]|\d+[.)]) )\[([ xX])\] {1,2}(?=\S)/,
   normalizeTaskBoxes(md) {
     const src = String(md ?? '');

@@ -7971,7 +7971,13 @@ const WV_TB_ICONS = {
   undo: tbIcon('undo'), redo: tbIcon('redo'), upload: tbIcon('upload'),
 };
 
+function guardMathRender() {
+  const adapter = window.Vditor?.adapterRender?.mathRenderAdapter;
+  const live = globalThis.WeaveEditorLib.liveMathElements;
+  if (adapter && adapter.getElements !== live) adapter.getElements = live;
+}
 function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
+  guardMathRender();
   const t = vditorTheme();
   let handed = null;
   const stored = (v) => globalThis.WeaveEditorLib.normalizeTaskBoxes(v);
