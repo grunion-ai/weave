@@ -7823,6 +7823,51 @@ function hintFloor(hint) {
   const head = document.querySelector(hint.closest('#dock') ? '#dock .view-header' : '#main > .view-header');
   return head ? head.getBoundingClientRect().bottom + 4 : 8;
 }
+const ENTER_HOLD_MS = 1000;
+const ENTER_DRIFT_PX = 120;
+function editorScroller(node) {
+  for (let n = node?.parentElement; n; n = n.parentElement) {
+    const overflow = getComputedStyle(n).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && n.scrollHeight - n.clientHeight > 1) return n;
+  }
+  return document.scrollingElement;
+}
+const scrollTopOf = (s) => (s === document.scrollingElement ? scrollY : s.scrollTop);
+const putScrollTop = (s, top) => (s === document.scrollingElement
+  ? scrollTo({ top, behavior: 'instant' })
+  : s.scrollTo({ top, behavior: 'instant' }));
+function caretOffsetIn(scroller) {
+  const sel = getSelection();
+  if (!sel?.rangeCount) return null;
+  const r = sel.getRangeAt(0).getBoundingClientRect();
+  if (!r.width && !r.height && !r.top) return null;
+  const base = scroller === document.scrollingElement ? 0 : scroller.getBoundingClientRect().top;
+  return r.top - base + scrollTopOf(scroller);
+}
+function keepPlaceThroughEnter(host) {
+  const scroller = editorScroller(host);
+  if (!scroller) return;
+  const from = scrollTopOf(scroller);
+  const caret = caretOffsetIn(scroller);
+  const viewport = scroller.clientHeight || innerHeight;
+  const held = caret === null || (caret >= from && caret <= from + viewport);
+  const pressedAt = performance.now();
+  const pin = () => {
+    if (performance.now() - pressedAt > ENTER_HOLD_MS || readerActedAt > pressedAt) return;
+    if (held && Math.abs(scrollTopOf(scroller) - from) > ENTER_DRIFT_PX) putScrollTop(scroller, from);
+    requestAnimationFrame(pin);
+  };
+  requestAnimationFrame(pin);
+}
+const HINT_GRACE_MS = 1000;
+let readerActedAt = -Infinity;
+for (const type of ['keydown', 'pointerdown', 'wheel', 'touchstart']) {
+  addEventListener(type, () => { readerActedAt = performance.now(); }, { capture: true, passive: true });
+}
+function readerClosedHint(openedAt) {
+  if (openedAt === undefined) return true;
+  return readerActedAt > openedAt || performance.now() - openedAt >= HINT_GRACE_MS;
+}
 function attachHintClamp(host) {
   const put = (el, prop, v) => { if (el.style[prop] !== v) el.style[prop] = v; };
   const clamp = (hint) => {
@@ -7833,11 +7878,18 @@ function attachHintClamp(host) {
     put(hint, 'maxHeight', `${Math.max(HINT_MIN_PX, r.bottom - floor)}px`);
     put(hint, 'top', `${parseFloat(hint.style.top || '0') + over}px`);
   };
+  const openedAt = new WeakMap();
   new MutationObserver((muts) => {
     for (const m of muts) {
       const hint = m.target.classList?.contains('vditor-hint') ? m.target : null;
       if (!hint) continue;
-      if (hint.style.display === 'none') { if (hint.style.maxHeight) hint.style.removeProperty('max-height'); continue; }
+      if (hint.style.display === 'none') {
+        if (!readerClosedHint(openedAt.get(hint))) { hint.style.display = 'block'; clamp(hint); continue; }
+        openedAt.delete(hint);
+        if (hint.style.maxHeight) hint.style.removeProperty('max-height');
+        continue;
+      }
+      if (!openedAt.has(hint)) openedAt.set(hint, performance.now());
       clamp(hint);
     }
   }).observe(host, { subtree: true, attributes: true, attributeFilter: ['style'] });
@@ -7940,6 +7992,10 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
         requestAnimationFrame(() =>
           scrollTargetIntoView(host.querySelector('.vditor-hint--current'), { block: 'nearest' }));
       });
+      host.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+        keepPlaceThroughEnter(host);
+      }, { capture: true });
       attachToolbarBubble(host);
       attachFileTools(host, editor, onInput);
       watchBlockMarkers(host, editor, onInput);

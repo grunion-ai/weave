@@ -553,4 +553,91 @@ if (s) {
     assert.ok(after.shown, 'and the menu is still open');
     await page.close();
   });
+  test('Enter in an 80-paragraph document keeps the page still, and the next / opens a menu that stays', async () => {
+    const id = freshEntity('Enter scroll case');
+    weave.setDoc(id, '# Top\n\n' + 'filler line\n\n'.repeat(80) + 'end\n', 'Description');
+    const page = await browser.newPage();
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.click('.vditor-ir [contenteditable="true"] p');
+    const before = await page.evaluate(() => {
+      const main = document.querySelector('main');
+      window.__far = 0;
+      window.__from = main.scrollTop;
+      addEventListener('scroll', () => {
+        window.__far = Math.max(window.__far, Math.abs(main.scrollTop - window.__from));
+      }, { capture: true, passive: true });
+      return { top: main.scrollTop, room: main.scrollHeight - main.clientHeight };
+    });
+    assert.ok(before.room > 1000, `the document is longer than the viewport (${before.room}px of it)`);
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await scrollStopped(page);
+    const moved = await page.evaluate(() => {
+      const main = document.querySelector('main');
+      const first = document.querySelector('.vditor-ir [contenteditable="true"] p');
+      const r = first.getBoundingClientRect();
+      return {
+        far: Math.round(window.__far), now: Math.round(main.scrollTop),
+        firstOnScreen: r.bottom > 0 && r.top < innerHeight,
+      };
+    });
+    assert.ok(Math.abs(moved.now - before.top) <= 120,
+      `Enter left the page where it was (from ${before.top}, furthest ${moved.far}px, now ${moved.now})`);
+    assert.ok(moved.firstOnScreen, 'the paragraph the caret was in is still on screen');
+    await page.keyboard.type('/');
+    await page.waitForFunction(() =>
+      !!document.querySelector('.vditor-hint:not(.vditor-panel--arrow) button'), null, { timeout: 15000 });
+    await hintSettled(page);
+    await scrollStopped(page);
+    const menu = await page.evaluate(() => {
+      const h = document.querySelector('.vditor-hint:not(.vditor-panel--arrow)');
+      return { display: h.style.display, rows: h.querySelectorAll('button').length, y: Math.round(scrollY) };
+    });
+    assert.notEqual(menu.display, 'none', `the slash menu is still open at scrollY ${menu.y}`);
+    assert.ok(menu.rows > 0, 'and it has its rows');
+    await page.close();
+  });
+  test('a scroll the reader did not start leaves the slash menu open, and escape still closes it', async () => {
+    const id = freshEntity('Menu scroll case');
+    weave.setDoc(id, '# Top\n\n' + 'filler line\n\n'.repeat(80) + 'end\n', 'Description');
+    const page = await browser.newPage();
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.click('.vditor-ir [contenteditable="true"] p');
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await scrollStopped(page);
+    await page.keyboard.type('/');
+    await page.waitForFunction(() =>
+      !!document.querySelector('.vditor-hint:not(.vditor-panel--arrow) button'), null, { timeout: 15000 });
+    await hintSettled(page);
+    const shown = await page.evaluate(() => {
+      const open = document.querySelector('.vditor-hint:not(.vditor-panel--arrow)').style.display;
+      const main = document.querySelector('main');
+      main.scrollTo({ top: main.scrollTop + 400, behavior: 'instant' });
+      dispatchEvent(new Event('scroll'));
+      return open;
+    });
+    assert.notEqual(shown, 'none', 'the menu was open before the scroll');
+    await scrollStopped(page);
+    await page.waitForTimeout(200);
+    const after = await page.evaluate(() => {
+      const h = document.querySelector('.vditor-hint:not(.vditor-panel--arrow)');
+      return { display: h.style.display, rows: h.querySelectorAll('button').length };
+    });
+    assert.notEqual(after.display, 'none', 'a scroll nobody asked for left the menu open');
+    assert.ok(after.rows > 0, 'with its rows');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() =>
+      document.querySelector('.vditor-hint:not(.vditor-panel--arrow)').style.display === 'none',
+      null, { timeout: 5000 });
+    await page.waitForTimeout(300);
+    const closed = await page.evaluate(() =>
+      document.querySelector('.vditor-hint:not(.vditor-panel--arrow)').style.display);
+    assert.equal(closed, 'none', 'escape closes the menu and it stays closed');
+    await page.close();
+  });
 }
