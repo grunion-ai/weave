@@ -1,1 +1,0 @@
-- A row an automation changed names the automation, not the person (Issue #674): writes made inside a run carry the actor `workflow:<Workflows row id>` in their activity entries and the row's Modified By, and the `automation-ran` entry keeps the person whose write fired the rule and names the row in `detail.workflow`.
