@@ -718,6 +718,12 @@ function dockBack() {
   drawDock();
 }
 
+/* A dock frame as a crumb hop: its table's icon comes from the schema. */
+function frameHop(f) {
+  const t = allTables().find((d) => d.id === f.tableId);
+  return { id: f.id, publicId: f.publicId, name: f.name, table: f.tableName, tableId: f.tableId, tableIcon: t?.icon ?? null };
+}
+
 async function drawDock() {
   if (!dock) return;
   const top = dock.state.chain[dock.state.chain.length - 1];
@@ -726,11 +732,11 @@ async function drawDock() {
   // The frame learns its name here, for the crumb of the next hop; the
   // dock's table follows the frame on top (its eye, its fields).
   top.name = entity.name;
+  top.publicId = entity.publicId;
   noteEntityRecent(entity);
   syncDocTitle();
   dock.db = allTables().find((d) => d.id === top.tableId) ?? dock.db;
-  const tableOf = (tid) => allTables().find((d) => d.id === tid);
-  const crumbs = weaveBreadcrumbs.dockCrumbs(dock.state.chain, tableOf);
+  const crumbs = weaveBreadcrumbs.dockCrumbs(dock.state.chain.map(frameHop));
   releaseDockPanel();
   const panel = $('#dock');
   panel.hidden = false;
@@ -851,7 +857,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 function allTables() {
-  return state.schema.flatMap((s) => s.tables.map((d) => ({ ...d, space: s.space, spaceId: s.spaceId })));
+  return state.schema.flatMap((s) => s.tables.map((d) => ({ ...d, space: s.space, spaceId: s.spaceId, spaceIcon: s.icon ?? null })));
 }
 
 /* The registry lives once, at the weave root (Feature #219). A member
@@ -1142,22 +1148,98 @@ function stickViewHeader(box) {
 // which a ResizeObserver on the header alone never hears.
 addEventListener('resize', publishViewHeaderHeight);
 
-function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null }) {
-  const box = el('div', { class: 'view-header' });
-  const crumbKids = [];
-  for (const c of crumbs) {
-    crumbKids.push(el('a', { href: c.href }, c.label), ' › ');
+/* ---------- the crumb trail (Issues #668, #669) ----------
+   One renderer for every crumb row: the entity page, the dock and the view
+   header of every page. Each crumb wears its icon at every level: the
+   workspace's mark as the rail shows it, the space's and the table's icons
+   as the sidebar shows them, and on a row crumb its table's icon, a muted
+   #id and the Name. The current crumb is bold, takes the spare width with
+   its own ellipsis, and carries copy-link as an icon button that shows on
+   hover or focus (the inline ⧉ read as part of the name). */
+const CRUMB_ICON_FALLBACK = { space: 'lucide:folder', table: 'lucide:table', row: 'lucide:table' };
+function crumbIconEl(c) {
+  if (c.kind === 'ws') return wsMarkEl();
+  return iconEl(c.icon, 'wv-icon crumb-ic') ?? (CRUMB_ICON_FALLBACK[c.kind] ? iconEl(CRUMB_ICON_FALLBACK[c.kind], 'wv-icon crumb-ic') : null);
+}
+function crumbInner(c) {
+  return [
+    crumbIconEl(c),
+    c.publicId != null ? el('span', { class: 'crumb-pid' }, `#${c.publicId}`) : null,
+    el('span', { class: 'crumb-nm' }, c.label ?? ''),
+  ];
+}
+/* copy: { title, run } puts the copy-link button on the current crumb. */
+function crumbPath(crumbs, { copy = null } = {}) {
+  const path = el('span', { class: 'crumb-path' });
+  crumbs.forEach((c, i) => {
+    if (i) path.append(el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›'));
+    path.append(c.current
+      ? el('span', { class: 'crumb-cur-wrap' },
+        el('span', { class: `crumb-item crumb-cur crumb-k-${c.kind ?? 'page'}`, title: c.title ?? c.label, 'aria-current': 'page' }, ...crumbInner(c)),
+        copy ? el('button', {
+          type: 'button', class: 'btn btn-sm btn-ghost-secondary crumb-copy', title: copy.title, 'aria-label': copy.title,
+          onclick: copy.run,
+        }, lucideEl('link')) : null)
+      : el('a', {
+        class: `crumb-item crumb-k-${c.kind ?? 'page'}`, href: c.kind === 'ws' ? wsHomeHref() : c.href,
+        title: c.title ?? c.label,
+      }, ...crumbInner(c)));
+  });
+  return path;
+}
+/* A view header's crumbs name their level by where they lead; the icons
+   come from the schema the sidebar draws from. */
+function crumbOfHref(c) {
+  if (c.kind) return c;
+  const sp = c.href?.match(/^#\/space\/([^/?]+)/);
+  if (sp) return { ...c, kind: 'space', icon: state.schema.find((x) => x.spaceId === sp[1])?.icon ?? null };
+  const tb = c.href?.match(/^#\/(?:table|db)\/([^/?]+)/);
+  if (tb) return { ...c, kind: 'table', icon: allTables().find((d) => d.id === tb[1])?.icon ?? null };
+  if (c.href === wsHomeHref()) return { ...c, kind: 'ws' };
+  return { ...c, kind: 'page' };
+}
+
+/* The workspace's mark, as the rail shows it: the weave rope for the weave
+   docs workspace, an uploaded logo, else the name's first letter on a chip.
+   buildWsRail learns which after the first paint and refills these. */
+function wsMarkEl() {
+  return fillWsMark(el('span', { class: 'wv-icon crumb-ic crumb-ws-mark' }));
+}
+let wsMarkIds = 0;
+function fillWsMark(span) {
+  const weave = $('#rail-weave.active');
+  const chip = $('#ws-list .ws-icon.active');
+  if (weave) {
+    // The rail's own svgs, both themes (style.css shows one); their mask ids
+    // are renamed so the copies never resolve to each other's masks.
+    const n = ++wsMarkIds;
+    span.innerHTML = [...weave.querySelectorAll('svg')].map((svg) => svg.outerHTML).join('')
+      .replace(/id="([^"]+)"/g, `id="$1-c${n}"`).replace(/url\(#([^)]+)\)/g, `url(#$1-c${n})`);
+  } else if (chip?.querySelector('img')) {
+    span.replaceChildren(el('img', { src: chip.querySelector('img').src, alt: '' }));
+  } else {
+    const name = $('#ws-name')?.textContent || 'w';
+    span.replaceChildren(el('span', { class: 'crumb-ws-letter' }, name.slice(0, 1).toUpperCase()));
   }
-  crumbKids.push(el('span', {
-    class: 'permalink-copy', title: 'Copy permalink',
-    // A function when the page outlives its view (the table page, Issue #444).
-    onclick: () => copyText(typeof permalink === 'function' ? permalink() : permalink, 'Permalink copied'),
-  }, `${title} ⧉`));
+  return span;
+}
+function refreshWsMarks() {
+  for (const span of document.querySelectorAll('.crumb-ws-mark')) fillWsMark(span);
+}
+
+function viewHeader({ crumbs = [], permalink, title, onRename = null, description = null, onSaveDescription = null, actions = [], icon = null, onSetIcon = null, kind = 'page' }) {
+  const box = el('div', { class: 'view-header' });
   // The view's controls sit on the crumb line, right-aligned (Kyle,
   // 2026-08-23), leaving the title row to the title.
   box.append(el('div', { class: 'crumb crumb-row' },
     navMenuButton(),
-    el('span', { class: 'crumb-path' }, ...crumbKids),
+    crumbPath([...crumbs.map(crumbOfHref), { kind, label: title, icon, current: true }], {
+      copy: {
+        title: 'Copy permalink',
+        // A function when the page outlives its view (the table page, Issue #444).
+        run: () => copyText(typeof permalink === 'function' ? permalink() : permalink, 'Permalink copied'),
+      },
+    }),
     el('span', { class: 'crumb-actions wv-toolbar' }, ...actions.filter(Boolean))));
 
   syncDocTitle(title);
@@ -4839,6 +4921,7 @@ function tableChrome(db, trashCount) {
     permalink: () => `${location.origin}${WS_PREFIX}/${ref.db.view ? viewHref(ref.db, ref.db.view) : `#/table/${ref.db.id}`}`,
     title: db.name,
     icon: db.icon,
+    kind: 'table',
     // A new face redraws the chrome: the signature no longer matches.
     onSetIcon: async (icon) => {
       await api('PATCH', `/tables/${db.id}`, { icon: icon ?? '' });
@@ -9574,6 +9657,7 @@ async function showSpace(spaceId) {
       crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
       permalink: `${location.origin}${WS_PREFIX}/#/space/${spaceId}`,
       title: space.space,
+      kind: 'space',
       onRename: async (name) => {
         await api('PATCH', `/spaces/${spaceId}`, { name });
         await loadSchema();
@@ -11244,7 +11328,7 @@ async function showEntity(id) {
 
 function entityHop(entity) {
   const db = allTables().find((d) => d.id === entity.dbId);
-  return { id: entity.id, name: entity.name, space: db?.space ?? '', spaceId: db?.spaceId ?? '', table: db?.name ?? entity.db, tableId: entity.dbId };
+  return { id: entity.id, publicId: entity.publicId, name: entity.name, space: db?.space ?? '', spaceId: db?.spaceId ?? '', spaceIcon: db?.spaceIcon ?? null, table: db?.name ?? entity.db, tableId: entity.dbId, tableIcon: db?.icon ?? null };
 }
 
 /* The one entity rendering. The full page and the side peek (Feature #39)
@@ -11369,17 +11453,13 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     stickViewHeader(el('div', { class: 'view-header' },
       el('div', { class: 'crumb crumb-row' },
         inPeek ? (dockControls?.back ?? null) : navMenuButton(),
-        el('span', { class: 'crumb-path' },
-        ...(inPeek
-          /* The dock's crumb is its chain (Issue #276); a caller without
-             one gets the entity's table alone. */
-          ? (crumbs ?? [{ label: entity.db, href: `#/table/${entity.dbId}` }]).map((c) => [el('a', { href: c.href }, c.label), ' › ']).flat()
-          : weaveBreadcrumbs.entityCrumbs($('#ws-name').textContent || 'workspace', state.trail, entityHop(entity))
-            .map((c, i) => i === 0 ? [el('a', { href: wsHomeHref() }, c.label), ' › '] : [el('a', { href: c.href }, c.label), ' › ']).flat()),
-        el('span', {
-          class: 'permalink-copy', title: 'Copy permalink',
-          onclick: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied'),
-        }, `#${entity.publicId} ⧉`)),
+        crumbPath(inPeek
+          /* The dock's crumb is its chain (Issues #276, #673); a caller
+             without one gets the row alone. */
+          ? (crumbs ?? weaveBreadcrumbs.dockCrumbs([entityHop(entity)]))
+          : weaveBreadcrumbs.entityCrumbs($('#ws-name').textContent || 'workspace', state.trail, entityHop(entity)), {
+          copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') },
+        }),
         el('span', { class: 'crumb-actions wv-toolbar' }, eye, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, nameInput))),
   );
@@ -12534,6 +12614,7 @@ async function showHome() {
   main.replaceChildren(
     viewHeader({
       crumbs: [],
+      kind: 'ws',
       permalink: location.origin + (ws.url ?? wsHomeHref()),
       title: ws.title ?? ws.name,
       onRename: async (name) => {
@@ -13452,6 +13533,8 @@ async function buildWsRail() {
         if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) openMenu(e); });
         return chip;
       }));
+    // The crumbs drawn before the rail knew the workspace wear its mark now.
+    refreshWsMarks();
     // The trash: a utility glyph in the corner cluster, under the bug button,
     // only while something is in it, opening
     // a sheet with a Restore per workspace. It left the chip column because a

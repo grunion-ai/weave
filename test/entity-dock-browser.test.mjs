@@ -113,7 +113,8 @@ if (s) {
      stays. A relation hop from a docked row into another table used to tear
      the table down, push #/table/<other> and restart the crumb there. */
   const dockedName = (page, n) => page.waitForFunction((name) => document.querySelector('#dock:not([hidden]) .name-edit')?.value === name, n);
-  const crumbLabels = (page) => page.$$eval('#dock .crumb-path a', (as) => as.map((x) => x.textContent));
+  // Every crumb's Name, the current row's included (Issue #669).
+  const crumbLabels = (page) => page.$$eval('#dock .crumb-path .crumb-nm', (as) => as.map((x) => x.textContent));
   async function hopToJane(page) {
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await dockedName(page, 'Acme Working Capital');
@@ -135,11 +136,11 @@ if (s) {
   test('the dock crumb reads as one path across the tables, and the back arrow walks it', async () => {
     const page = await freshTablePage();
     await hopToJane(page);
-    assert.deepEqual(await crumbLabels(page), ['Deals', 'Acme Working Capital', 'Contacts'], 'Deals › Acme › Contacts › #jane');
+    assert.deepEqual(await crumbLabels(page), ['Acme Working Capital', 'Jane Rivera'], 'Acme › Jane: the row crumbs, their table icons carrying Deals and Contacts (Issue #673)');
     assert.equal(await page.locator(`tr[data-eid="${a.id}"].row-docked`).count(), 1, 'the root row keeps its light while a foreign row is on top');
     await page.click('#dock .dock-back');
     await dockedName(page, 'Acme Working Capital');
-    assert.deepEqual(await crumbLabels(page), ['Deals']);
+    assert.deepEqual(await crumbLabels(page), ['Acme Working Capital']);
     assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${a.id}`);
     assert.equal(await page.locator('#dock .dock-back').count(), 0, 'nothing behind the root: no back arrow');
     await page.close();
@@ -151,7 +152,7 @@ if (s) {
     await page.reload({ waitUntil: 'networkidle' });
     await dockedName(page, 'Jane Rivera');
     assert.equal(await page.locator(`#main .wv-grid tr[data-eid="${a.id}"]`).count(), 1, 'still the Deals grid');
-    assert.deepEqual(await crumbLabels(page), ['Contacts'], 'the row is rendered from its own table');
+    assert.deepEqual(await crumbLabels(page), ['Jane Rivera'], 'the row is rendered from its own table');
     assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${jane.id}`);
     await page.close();
   });

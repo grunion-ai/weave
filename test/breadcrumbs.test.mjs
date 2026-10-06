@@ -42,36 +42,45 @@ test('the trail is capped so the crumb stays a line', () => {
   assert.equal(trail[trail.length - 1].id, 'e8', 'the most recent hops survive');
 });
 
-test('entityCrumbs: structural path when there is no trail', () => {
-  const c = entityCrumbs('weave', [], board).map((x) => x.label);
-  assert.deepEqual(c, ['weave', 'Showcase', 'Field Types']);
+/* Issues #669 and #673 (Kyle, 2026-10-05): every crumb wears its icon; a
+   row crumb is its table's icon, a muted #id and the Name, the current row
+   included. The full page keeps workspace › space › table in front; the
+   row icons carry later tables, so no table crumb sits mid-trail. */
+const adaH = { ...ada, publicId: 7, tableIcon: 'lucide:user', spaceIcon: 'lucide:briefcase' };
+const boardH = { ...board, publicId: 3, tableIcon: 'lucide:cpu', spaceIcon: 'lucide:briefcase' };
+const leoH = { ...leo, publicId: 9, tableIcon: 'lucide:user', spaceIcon: 'lucide:briefcase' };
+
+test('entityCrumbs: the head and the current row when there is no trail', () => {
+  const c = entityCrumbs('weave', [], boardH);
+  assert.deepEqual(c.map((x) => [x.kind, x.label]), [['ws', 'weave'], ['space', 'Showcase'], ['table', 'Field Types'], ['row', 'Sensor board']]);
+  assert.equal(c[1].icon, 'lucide:briefcase', 'the space crumb wears the space icon');
+  assert.equal(c[2].icon, 'lucide:cpu', 'the table crumb wears the table icon');
+  const cur = c[3];
+  assert.equal(cur.current, true, 'the last crumb is the row you are on');
+  assert.equal(cur.publicId, 3);
+  assert.equal(cur.icon, 'lucide:cpu', 'the row crumb wears its table icon');
+  assert.equal(cur.href, '#/entity/b');
 });
 
-test('entityCrumbs: the path taken, with space/table only where they change', () => {
-  const c = entityCrumbs('weave', [ada], board);
-  assert.deepEqual(c.map((x) => x.label), ['weave', 'Showcase', 'People', 'Ada Chen', 'Field Types']);
+test('entityCrumbs: the head is where the path started; rows follow with their own icons', () => {
+  const c = entityCrumbs('weave', [adaH], boardH);
+  assert.deepEqual(c.map((x) => x.label), ['weave', 'Showcase', 'People', 'Ada Chen', 'Sensor board'], 'no Field Types crumb mid-trail');
   assert.equal(c[3].href, '#/entity/a');
-  assert.equal(c[4].href, '#/table/t2');
-  // Same table twice in a row: no repeated table crumb.
-  const same = entityCrumbs('weave', [ada], leo).map((x) => x.label);
-  assert.deepEqual(same, ['weave', 'Showcase', 'People', 'Ada Chen']);
+  assert.equal(c[3].current, false);
+  assert.equal(c[3].icon, 'lucide:user');
+  assert.equal(c[3].title, 'People \u00b7 Ada Chen', 'the tooltip names the table');
+  assert.equal(c[4].icon, 'lucide:cpu', 'the hop into Field Types shows in its icon');
+  assert.deepEqual(entityCrumbs('weave', [adaH], leoH).map((x) => x.label), ['weave', 'Showcase', 'People', 'Ada Chen', 'Leo Marsh']);
 });
 
-/* Issue #276: the dock's crumb is its chain of frames run through the same
-   rule — a hop into another table shows that table where it changes — minus
-   the workspace › space head the sidebar already shows beside a table. */
-test('dockCrumbs: the chain as one path, table crumbs only where they change', () => {
-  const tableOf = (id) => ({ t1: { space: 'Showcase', spaceId: 's1' }, t2: { space: 'Showcase', spaceId: 's1' } })[id];
-  const a1 = { kind: 'entity', id: 'a', name: 'Ada Chen', tableId: 't1', tableName: 'People' };
-  const b1 = { kind: 'entity', id: 'b', name: 'Sensor board', tableId: 't2', tableName: 'Field Types' };
-  const l1 = { kind: 'entity', id: 'l', name: 'Leo Marsh', tableId: 't1', tableName: 'People' };
-  assert.deepEqual(dockCrumbs([a1], tableOf).map((c) => c.label), ['People']);
-  const hop = dockCrumbs([a1, b1], tableOf);
-  assert.deepEqual(hop.map((c) => c.label), ['People', 'Ada Chen', 'Field Types']);
-  assert.equal(hop[1].href, '#/entity/a');
-  assert.equal(hop[2].href, '#/table/t2');
-  assert.deepEqual(dockCrumbs([a1, l1], tableOf).map((c) => c.label), ['People', 'Ada Chen'], 'same table twice: no repeated table crumb');
-  assert.deepEqual(dockCrumbs([], tableOf), []);
+test('dockCrumbs: the rows of the path, no table in front, the last one current', () => {
+  assert.deepEqual(dockCrumbs([adaH]).map((c) => [c.kind, c.label, c.current]), [['row', 'Ada Chen', true]], 'one docked row: just that row');
+  const hop = dockCrumbs([adaH, boardH, leoH]);
+  assert.deepEqual(hop.map((c) => c.label), ['Ada Chen', 'Sensor board', 'Leo Marsh']);
+  assert.deepEqual(hop.map((c) => c.publicId), [7, 3, 9]);
+  assert.deepEqual(hop.map((c) => c.current), [false, false, true]);
+  assert.equal(hop[1].icon, 'lucide:cpu', 'the hop into another table is its icon');
+  assert.deepEqual(dockCrumbs([]), []);
 });
 
 /* Issue #267: the tab title reads the place — the row or table in front of

@@ -20,38 +20,38 @@
     return out.slice(-MAX_TRAIL);
   }
 
-  /* The crumb list up to (not including) the current entity. The structural
-     head is the workspace and the FIRST space; after that, a space or table
-     crumb appears only where it changes from the previous hop. */
-  function entityCrumbs(wsName, trail, entity) {
-    const crumbs = [{ label: wsName, href: '#/' }];
-    let space = null;
-    let table = null;
-    const step = (e) => {
-      if (e.spaceId !== space) { crumbs.push({ label: e.space, href: `#/space/${e.spaceId}` }); space = e.spaceId; table = null; }
-      if (e.tableId !== table) { crumbs.push({ label: e.table, href: `#/table/${e.tableId}` }); table = e.tableId; }
+  /* A row crumb (Issue #669): the row's table icon, its muted #id and its
+     Name, at every place in the trail, the current row included. The icon
+     carries the table, so a hop into another table needs no table crumb of
+     its own; the tooltip names it. */
+  function rowCrumb(h, current = false) {
+    return {
+      kind: 'row', id: h.id, label: h.name ?? '', href: `#/entity/${h.id}`,
+      icon: h.tableIcon ?? null, publicId: h.publicId ?? null,
+      title: h.table ? `${h.table} \u00b7 ${h.name ?? ''}` : (h.name ?? ''), current,
     };
-    for (const e of trail) {
-      step(e);
-      crumbs.push({ label: e.name, href: `#/entity/${e.id}` });
-    }
-    step(entity);
-    return crumbs;
   }
 
-  /* The dock's crumb (Issue #276): the chain of frames the dock walked, run
-     through the same rule — a hop into another table shows that table where
-     it changes — minus the workspace › space head, which the sidebar already
-     shows beside a docked table. Frames carry their table; tableOf(tableId)
-     supplies the space. */
-  function dockCrumbs(chain, tableOf) {
-    const hop = (f) => {
-      const t = tableOf(f.tableId) || {};
-      return { id: f.id, name: f.name, space: t.space ?? '', spaceId: t.spaceId ?? '', table: f.tableName, tableId: f.tableId };
-    };
-    const hops = chain.map(hop);
-    if (!hops.length) return [];
-    return entityCrumbs('', hops.slice(0, -1), hops[hops.length - 1]).slice(2);
+  /* The full page's crumb: workspace, space and table in front, each with
+     its icon, then every row on the path taken, ending at the current one.
+     The head names where the path started (the first hop's space and
+     table); the rows after it carry their own tables in their icons. */
+  function entityCrumbs(wsName, trail, entity) {
+    const first = trail[0] ?? entity;
+    return [
+      { kind: 'ws', label: wsName, href: '#/' },
+      { kind: 'space', label: first.space, href: `#/space/${first.spaceId}`, icon: first.spaceIcon ?? null },
+      { kind: 'table', label: first.table, href: `#/table/${first.tableId}`, icon: first.tableIcon ?? null },
+      ...trail.map((h) => rowCrumb(h)),
+      rowCrumb(entity, true),
+    ];
+  }
+
+  /* The dock's crumb (Issues #276, #673): the rows of the path, nothing in
+     front. The table panel beside the dock already names its table, and
+     each row crumb's icon carries its own. */
+  function dockCrumbs(hops) {
+    return hops.map((h, i) => rowCrumb(h, i === hops.length - 1));
   }
 
   /* The tab title (Issue #267): the row or table in front of the reader,
@@ -67,5 +67,5 @@
     return n && w ? `${n} · ${w}` : n || w || 'Weave';
   }
 
-  root.weaveBreadcrumbs = { pushTrail, entityCrumbs, dockCrumbs, docTitle, MAX_TRAIL };
+  root.weaveBreadcrumbs = { pushTrail, rowCrumb, entityCrumbs, dockCrumbs, docTitle, MAX_TRAIL };
 })(globalThis);

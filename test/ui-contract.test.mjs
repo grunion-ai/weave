@@ -932,7 +932,7 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   // table view"). The title row is the title.
   // The dock's back arrow leads the path where the page has its nav button,
   // and its expand and close are the pose controls (Issue #583).
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*inPeek \? \(dockControls\?\.back \?\? null\) : navMenuButton\(\),\s*\n\s*el\('span', \{ class: 'crumb-path' \},[\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, eye, dlBtn, \.\.\.poseControls\)/,
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*inPeek \? \(dockControls\?\.back \?\? null\) : navMenuButton\(\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, eye, dlBtn, \.\.\.poseControls\)/,
     'the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
   /* The side column (comments, activity, references) follows the table's own
      Activity system toggle — the same switch that adds the ⚡ column to the
