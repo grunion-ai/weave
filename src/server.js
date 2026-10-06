@@ -470,7 +470,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   // side owns the body stream, the response socket, and static files from
   // public/. The Worker adapter (src/worker.js) wraps the same dispatcher.
   const assets = createAssetVersions(PUBLIC_DIR);
-  const serveStatic = (path, rx) => {
+  /* `head` replaces the shell's <title> (Feature #264): a permalink or the
+     workspace root is the shell plus the head its link preview needs, and
+     the validator below follows those bytes like any others. */
+  const serveStatic = (path, rx, { head = null } = {}) => {
     /* Vditor lazy-loads mermaid from inside its own dist tree. weave already
        vendors a mermaid build for document pages, so that path is aliased
        onto it rather than shipping a second 3.5MB copy of the same library. */
@@ -492,7 +495,8 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
          the bytes it serves: an asset can change under an unchanged
          index.html, and a 304 on the file's mtime would keep the old URLs.
          No Last-Modified for the same reason. */
-      const body = assets.rewrite(readFileSync(full, 'utf8'));
+      const shell = readFileSync(full, 'utf8');
+      const body = assets.rewrite(head ? shell.replace(/<title>[^<]*<\/title>/, () => head) : shell);
       const headers = {
         'Content-Type': MIME['.html'],
         'Cache-Control': 'no-cache',

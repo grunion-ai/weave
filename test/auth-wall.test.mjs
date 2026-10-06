@@ -160,7 +160,8 @@ test('a token opens the pages; a bad token is refused on a page the way it is on
       assert.equal((await call('GET', p, { token: admin })).status, 200, `${p} with an admin token`);
       assert.equal((await call('GET', p, { token: reader })).status, 200, `${p} with a reader token`);
     }
-    assert.equal((await call('GET', `/e/${task.id}`, { token: admin })).status, 302, 'the permalink redirects once inside');
+    // A permalink answers the shell with its preview head once inside (Feature #264).
+    assert.equal((await call('GET', `/e/${task.id}`, { token: admin })).status, 200, 'the permalink opens once inside');
     const bad = await call('GET', `/e/${task.id}/doc.html`, { token: 'wv_bogus' });
     assert.equal(bad.status, 401);
     assert.match(bad.headers.get('content-type'), /text\/html/);

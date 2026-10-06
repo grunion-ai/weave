@@ -3493,15 +3493,23 @@ export class Weave {
      hub's name index, which it re-keys after the write. */
   getWorkspace() {
     const m = this.state.meta;
-    return { id: m.id, name: m.name, title: m.title ?? m.name, description: m.description ?? '', logo: !!m.logo, requireAuth: !!m.requireAuth };
+    return { id: m.id, name: m.name, title: m.title ?? m.name, description: m.description ?? '', logo: !!m.logo, requireAuth: !!m.requireAuth, linkPreview: !!m.linkPreview };
   }
 
   /* `name` is what a person calls the workspace, any text (Issue #592): it
      is kept as the title, and meta.name takes its slug, the /w/<slug>/
      address. A name equal to the slug held, mixed-case ones from before
-     Issue #599 included, changes nothing. */
-  updateWorkspace({ name = null, description = null } = {}) {
+     Issue #599 included, changes nothing.
+     `linkPreview` is Link preview before sign-in (Feature #264): on, a
+     signed-out GET of a permalink on a walled workspace reads the preview
+     head (title, path, id, name, logo, state and preview fields) before it
+     is sent to sign in. Off, the default, it is sent straight there. */
+  updateWorkspace({ name = null, description = null, linkPreview = null } = {}) {
     if (description != null) this.state.meta.description = String(description);
+    if (linkPreview != null) {
+      if ([true, 'true', 'on'].includes(linkPreview)) this.state.meta.linkPreview = true;
+      else delete this.state.meta.linkPreview;
+    }
     if (name != null && name !== this.state.meta.name) {
       const slug = workspaceSlug(name);
       if (!slug) throw new WeaveError('A workspace name needs a letter or a digit: its slug keeps letters, digits, - and _', 'invalid');

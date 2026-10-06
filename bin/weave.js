@@ -210,6 +210,7 @@ The workspace itself
   workspace set [--name] [--description]
   workspace logo (--path file | --out file | --clear)
   workspace require-auth [--off]
+  workspace link-preview [--off]      Link preview before sign-in: a walled permalink unfurls
   activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n]
 
 Collaboration & data
@@ -969,8 +970,9 @@ async function main() {
       }
       if (sub === 'set' || sub === 'update') return out(w.updateWorkspace(pickFlags(['name', 'description'])));
       if (sub === 'require-auth') return out(w.setRequireAuth(flags.off ? false : true));
+      if (sub === 'link-preview') return out({ linkPreview: w.updateWorkspace({ linkPreview: !flags.off }).linkPreview });
       if (sub === 'get' || !sub) return out(w.getWorkspace());
-      throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth`);
+      throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth, link-preview`);
     }
     case 'file': {
       const [sub, ref, fileId] = args;
