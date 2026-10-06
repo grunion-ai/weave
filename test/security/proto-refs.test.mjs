@@ -1,8 +1,3 @@
-/* Issue #485: lookups indexed plain objects by the caller's ref, so
-   `__proto__`, `constructor` and `prototype` resolved to Object.prototype
-   or Object itself, and the write verb that followed changed them for every
-   object in the process. Those refs now find nothing, and the names are
-   refused where a space, table, field, view, account or key is named. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -27,7 +22,6 @@ function fresh() {
   return { w, e };
 }
 
-/* Everything reachable from a plain object or from Object itself. */
 function snapshot() {
   const take = (o) => Object.getOwnPropertyNames(o).sort().map((k) => {
     const d = Object.getOwnPropertyDescriptor(o, k);
@@ -38,7 +32,6 @@ function snapshot() {
 
 const PATCH = { name: 'polluted', description: 'polluted', icon: 'x', enabled: false, system: 'spaces', deletedAt: 'now' };
 
-// Every write verb that takes a ref, called with the ref in each slot it has.
 const VERBS = (w, e, r) => [
   () => w.updateSpace(r, PATCH),
   () => w.deleteSpace(r),
@@ -99,7 +92,7 @@ test('no write verb given a reserved ref changes Object.prototype', () => {
   for (const r of REFS) {
     const { w, e } = fresh();
     VERBS(w, e, r).forEach((call, i) => {
-      try { call(); } catch { /* refusing is the point; changing the prototype is not */ }
+      try { call(); } catch {}
       assert.deepEqual(snapshot(), before, `verb #${i} with '${r}' changed a shared prototype`);
     });
   }
@@ -164,7 +157,6 @@ test('reserved names are refused where things are named', () => {
     assert.throws(() => w.createAccount({ name: r }), { code: 'invalid' }, `account ${r}`);
     assert.throws(() => w.setKey(r, 's'), { code: 'invalid' }, `key ${r}`);
   }
-  // Ordinary names that merely contain the words still work.
   w.createSpace({ name: 'constructor notes' });
   w.createTable({ space: 'S', name: 'Prototype' });
   w.addField('T', { name: 'proto', type: 'text' });

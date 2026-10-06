@@ -3,23 +3,12 @@ import assert from 'node:assert/strict';
 import { Weave, WeaveError } from '../src/engine.js';
 import { fresh } from './lib/fixtures.mjs';
 
-/* Feature #12 — the hierarchical meta-model. Space- and workspace-level
-   structure uses the SAME field-based table mechanics as ordinary tables:
-   a Workspace system space holds `Spaces` (rows = the spaces) and `Tables`
-   (rows = the tables, related to their space's row). The rows are REAL
-   entities synced by the engine's own verbs in both directions, so agents
-   get CRUD, relations, automations and custom fields on structure for free —
-   and there is no second source of truth to drift, because every mutation
-   funnels through the same verb no matter which side it started on. */
-
 test('every workspace carries the Workspace system space with Spaces and Tables', () => {
   const w = new Weave();
   const ws = w.getSpace('Workspace');
   assert.equal(ws.system, 'workspace');
   assert.equal(w.getTable('Spaces').system, 'spaces');
   assert.equal(w.getTable('Tables').system, 'tables');
-  // The registry describes the whole workspace, itself included (Issue
-  // #126): the Workspace space is a row, and so are the four system tables.
   const names = w.listEntities(w.getTable('Spaces').id).map((e) => w.entityName(e));
   assert.deepEqual(names, ['Workspace']);
   const tNames = w.listEntities(w.getTable('Tables').id).map((e) => w.entityName(e)).sort();
@@ -35,7 +24,6 @@ test('creating structure creates its row; the row follows renames and deletes', 
   assert.deepEqual(userSpaces().map((e) => w.entityName(e)), ['Dev']);
   assert.deepEqual(userTables().map((e) => w.entityName(e)), ['Task']);
 
-  // The Tables row is RELATED to its space's row — the hierarchy is a relation.
   const spaceField = Object.values(w.getTable('Tables').fields).find((f) => f.name === 'Space');
   assert.equal(spaceField.type, 'relation');
   const rowNamed = (rows, name) => rows.find((e) => w.entityName(e) === name);
@@ -55,7 +43,6 @@ test('creating structure creates its row; the row follows renames and deletes', 
 test('a legacy workspace is backfilled with registry rows on load', () => {
   const w = fresh();
   const json = w.exportJSON();
-  // Simulate a pre-meta-model export: strip the system space and its rows.
   const ws = json.spaces[Object.keys(json.spaces).find((id) => json.spaces[id].system === 'workspace')];
   const sysTables = Object.values(json.tables).filter((t) => t.system);
   for (const t of sysTables) { delete json.tables[t.id]; }
@@ -84,7 +71,6 @@ test('creating a Spaces row creates the real space; a Tables row creates the rea
   assert.ok(w.getTable('Ops/Jobs'), 'the row IS the table');
   assert.equal(w.entityName(t), 'Jobs');
 
-  // A Tables row needs its space.
   assert.throws(() => w.createEntity('Tables', { name: 'Orphan' }), /Space/);
 });
 
@@ -116,18 +102,14 @@ test('the registry is protected structure', () => {
   assert.throws(() => w.deleteTable('Spaces'), /system/i);
   assert.throws(() => w.deleteTable('Tables'), /system/i);
   assert.throws(() => w.deleteSpace('Workspace'), /system/i);
-  // Name and Space are the sync itself; they cannot be removed.
   const spaceField = Object.values(w.getTable('Tables').fields).find((f) => f.name === 'Space');
   assert.throws(() => w.deleteField('Tables', spaceField.id), /system/i);
 });
 
-/* Re-ruled 2026-08-31 (lifecycle regression gate): a registry-row delete is
-   soft and recoverable like any other delete; `hard` remains the real,
-   unrecoverable one. */
 test('deleting a registry row is soft; hard is still the real, unrecoverable delete', () => {
   const w = fresh();
   const row = w.listEntities(w.getTable('Spaces').id).find((e) => w.entityName(e) === 'Dev');
-  w.deleteEntity(row.id); // soft — the space moves to the trash
+  w.deleteEntity(row.id);
   assert.equal(w.findSpace('Dev'), undefined, 'a trashed space is hidden');
   w.restoreEntity(row.id);
   assert.ok(w.getSpace('Dev'), 'and restore brings it back whole');
@@ -135,7 +117,6 @@ test('deleting a registry row is soft; hard is still the real, unrecoverable del
   assert.equal(w.findSpace('Dev'), undefined);
   assert.equal(w.findTable('Dev/Task'), undefined, 'the space took its tables with it');
   assert.equal(w.listEntities(w.getTable('Tables').id).filter((e) => !w.state.tables[e.sysId]?.system).length, 0);
-  // The system rows stay, and refuse to take the registry down (Issue #126).
   const sysRow = w.listEntities(w.getTable('Spaces').id).find((e) => w.entityName(e) === 'Workspace');
   assert.throws(() => w.deleteEntity(sysRow.id, { hard: true }), /system/i);
 });
@@ -156,12 +137,6 @@ test('describeSchema flags the system space and tables so surfaces can badge the
   assert.equal(ws.tables.find((t) => t.name === 'Spaces').system, 'spaces');
 });
 
-/* Kyle, 2026-08-24: a workspace and a space are themselves structured as
-   tables with fields — the space level is a table whose rows are tables, and
-   a table's own configuration is carried AS FIELDS on that row: the
-   description shown at the top of the table, which fields are visible, and in
-   what order. Not a mirror: editing the row edits the table. */
-
 const tval = (w, row, name) => {
   const t = w.getTable('Tables');
   const f = Object.values(t.fields).find((x) => x.name === name);
@@ -179,8 +154,6 @@ test('a table row carries its configuration as fields: Field Order and Hidden Fi
     'the row states the column order — the views close it');
   assert.equal(tval(w, row, 'Hidden Fields') ?? '', 'Chip, Card', 'only the views are hidden to start');
 
-  // The system columns ride systemFields, so naming one here is accepted and
-  // changes nothing: the row speaks the default view (Feature #229).
   w.updateTable('Task', { hiddenFields: ['Points', 'Created At'] });
   assert.equal(tval(w, tableRowOf(w, 'Task'), 'Hidden Fields'), 'Points');
 
@@ -213,12 +186,8 @@ test('editing the row edits the table: Field Order and Hidden Fields write back'
   w.updateEntity(row.id, { 'Hidden Fields': 'Points' });
   assert.deepEqual(w.tableView('Task/Standard').fields, ['Name', 'Description', 'Chip', 'Card'], 'the default view hides it; the list is the whole hidden set, so the chip and card it leaves out show');
   w.updateEntity(row.id, { 'Hidden Fields': '' });
-  // Feature #233 (Kyle's rule 2): a hidden field keeps its place in the view,
-  // so Points returns after Description, where it stood in this view when it
-  // was hidden, not at the front the schema order has since given it.
   assert.deepEqual(w.tableView('Task/Standard').fields, ['Name', 'Description', 'Points', 'Chip', 'Card'], 'empty clears: every column shows, each where it stood');
 
-  // The same validation as the schema verb: a partial order is refused.
   assert.throws(() => w.updateEntity(row.id, { 'Field Order': 'Name' }), /every field exactly once/);
   assert.throws(() => w.updateEntity(row.id, { 'Hidden Fields': 'Nope' }), /not a field/);
 });
@@ -233,10 +202,6 @@ test('the description at the top of the table is the row Description, both ways'
   assert.equal(w.getEntity(row.id).values[descF.id], 'The work, refined');
 });
 
-/* The UI shows the registries AS the space/workspace views, and opening a
-   registry row opens the structure it stands for. That needs the row to say
-   what it stands for: readEntity (and so the query API) exposes sysId on
-   system-registry rows. */
 test('registry rows expose sysId so a row can open its structure', () => {
   const w = fresh();
   const spaceRow = w.listEntities(w.getTable('Spaces').id).find((e) => w.entityName(e) === 'Dev');

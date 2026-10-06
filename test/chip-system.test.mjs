@@ -1,16 +1,3 @@
-/* The chip system (design review 2026-08-24: set E at 4px, no pointer fill).
-   Three tiers and nothing else:
-
-     value    filled tint, no border      colour means "chosen from a set"
-     pointer  1px outline plus ↗          means "clicking goes somewhere"
-     computed a glyph, then the value     means "not yours to type"
-
-   Two halves to the contract. public/chip-core.js is pure logic — the ten-hue
-   ramp, the hex→hue migration, the avatar hash — tested directly. The rest is
-   source-level, in the style of ui-contract.test.mjs: the UI is dependency-free
-   vanilla JS with no DOM runtime here, so a tier's rule is asserted by reading
-   its declarations out of style.css. Each test names the promise it keeps. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
@@ -21,15 +8,11 @@ const chips = globalThis.chipCore;
 
 const ENGINE = read('src/engine.js');
 const INDEX = HTML;
-/* Declarations under a dark-theme ancestor, which is where the ramp's second
-   half lives. */
 const DARK = CSS.split('[data-bs-theme="dark"]').slice(1).join('\n');
 
 
 const VALUE = ['.k-state', '.k-select', '.k-multi', '.k-key'];
 const POINTER = ['.k-rel', '.k-doc', '.k-attach', '.k-more'];
-
-/* ---------- the ramp ---------- */
 
 test('the ramp is ten hues, and slate is held back from the rotation', () => {
   assert.equal(chips.HUES.length, 10);
@@ -62,13 +45,7 @@ test('every hue is redefined for dark — a light tint on navy is the classic un
   }
 });
 
-/* ---------- the migration ---------- */
-
 test("every colour a stored option can already hold is in the ramp", () => {
-  // The claim the migration rests on: this is a rename, not a colour match.
-  // The seven hexes the field dialog offered before the ramp, written out
-  // because the dialog's copy of them is gone (Issue #551) and what a stored
-  // option can hold is history now, not a list anything still reads.
   const stored = ['#4769eb', '#2ea043', '#f59f00', '#e5484d', '#8e4ec6', '#00a2c7', '#d6409f'];
   for (const hex of stored) {
     const hue = chips.hueFromHex(hex);
@@ -90,8 +67,6 @@ test('hueFromHex ignores case and stray whitespace', () => {
   assert.equal(chips.hueFromHex(hex.toUpperCase()), 'blue');
   assert.equal(chips.hueFromHex(` ${hex} `), 'blue');
 });
-
-/* ---------- people ---------- */
 
 test('the same colleague is the same colour in every table', () => {
   const a = chips.hueForName('Sajit Roshan');
@@ -121,8 +96,6 @@ test('every person relation wears an avatar — that is what makes it a person',
   assert.ok(r['border-radius'], '.av declares its own radius');
 });
 
-/* ---------- the four categories ---------- */
-
 test("the fifth state category is gone — nothing seeded 'other'", () => {
   const cats = ENGINE.match(/const STATE_CATEGORIES = \[([^\]]*)\]/)[1]
     .split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
@@ -151,8 +124,6 @@ test('canceled reads as ended, not as finished', () => {
   assert.equal(rulesFor('.k-state.cat-canceled')['text-decoration'], 'line-through');
 });
 
-/* ---------- tier geometry ---------- */
-
 test('the value tier is 4px and square-ish — set E, not the pill', () => {
   assert.equal(rulesFor('.k')['border-radius'], '4px',
     'Kyle chose 4px over the pill on 2026-08-24');
@@ -177,9 +148,6 @@ test('a pointer chip is an outline with no fill — Kyle chose none over faint',
     'a pointer must never borrow the value tier’s fill');
 });
 
-/* The relation chip's mark rides inside its <a>: on the chip it sat outside
-   the link, and the pixel that promised navigation did nothing (2026-08-26).
-   Doc and attachment chips ARE buttons, so theirs stays on the chip. */
 test('a pointer says it goes somewhere', () => {
   for (const sel of ['.k-rel > a::after', '.k-doc::after', '.k-attach::after']) {
     const r = rulesFor(['.k-rel > a::after', '.k-doc::after', '.k-attach::after'].join(', '));
@@ -196,15 +164,11 @@ test('a computed value is never a chip', () => {
 });
 
 test('an empty cell is an invitation, not a disabled control', () => {
-  // Dimming to 50% reads as "you may not", which is the opposite of the truth.
   assert.match(rulesFor('.k-add')['border'] ?? '', /dashed/);
-  // `is-empty`, not `empty`: Tabler owns the bare class name.
   assert.match(CSS, /\.k-doc\.is-empty[^{]*\{[^}]*border-style:\s*dashed/,
     'an empty document chip is dashed too');
   assert.ok(!/\.k-(doc|attach)\.empty\b/.test(CSS), 'and never answers to the framework global');
 });
-
-/* ---------- the new chips ---------- */
 
 test('key and overflow are real chips with real rules', () => {
   assert.ok(Object.keys(rulesFor('.k-key')).length, '.k-key has a rule');
@@ -219,10 +183,7 @@ test('one neutral system chip replaces both of the old ones', () => {
   assert.ok(!/kind-badge/.test(APP), 'app.js no longer builds a .kind-badge');
 });
 
-/* ---------- what must not break ---------- */
-
 test('the old .chip class still resolves for one release', () => {
-  // Board, list, doc rail and the cell popover all still ask for `.chip`.
   assert.match(CSS, /\.chip\b/, '.chip is kept as an alias while callers migrate');
 });
 
@@ -237,16 +198,7 @@ test('chip-core is loaded by the page, not just by the tests', () => {
     'chip-core must load before app.js reads it');
 });
 
-/* ---------- the mockup, implemented directly (2026-08-25) ----------
-   Kyle, reviewing the shipped system against the specimen page: the chips are
-   not all the same size, and the tray should edit the chip you are going to
-   get. These pin both. */
-
 test('a chip keeps its own type on a picker button', () => {
-  // `button.chip-trigger { font: inherit }` outranks `.k` and reset the size,
-  // so a workflow or select chip rendered at the table's 14px while a
-  // multiselect chip beside it — a span, untouched — stayed at 11.5px. That
-  // is the "why are multiselects smaller" defect: they were the correct ones.
   const trigger = rulesFor('button.chip-trigger');
   assert.equal(trigger.font, undefined,
     'the font shorthand resets size and must not fight the chip base');
@@ -255,8 +207,6 @@ test('a chip keeps its own type on a picker button', () => {
 });
 
 test('an empty chip is dashed, never dimmed', () => {
-  // .doc-chip.empty { opacity: .5 } survived the migration and fought the
-  // dashed rule, so an empty document read as disabled rather than inviting.
   assert.equal(rulesFor('.doc-chip.empty').opacity, undefined);
   for (const sel of ['.k-doc.empty', '.k-attach.empty', '.k-add']) {
     assert.notEqual(rulesFor(sel).opacity, '.5', `${sel} must not dim`);
@@ -264,15 +214,11 @@ test('an empty chip is dashed, never dimmed', () => {
 });
 
 test('the filter row above the grid speaks the row’s vocabulary', () => {
-  // It sits directly above the chips it filters; two grammars in one eyeline
-  // is the thing this whole system set out to remove.
   const f = rulesFor('.filter-chip');
   assert.equal(f['border-radius'], '4px', 'same 4px as every chip');
   assert.equal(f['font-size'], 'var(--wv-chip-font)', 'same size as every chip: the token');
   assert.equal(f['line-height'], 'var(--wv-chip-line)', 'and the same line');
 });
-
-/* ---------- the tray edits the chip you will get ---------- */
 
 test('an option carries a hue and a glyph, not a loose hex', () => {
   assert.match(ENGINE, /icon: o\.icon/, 'the option normaliser keeps a glyph');
@@ -294,7 +240,6 @@ test('the colour control opens the ramp instead of cycling seven hexes', () => {
 
 test('a select option can wear a glyph, not just a workflow state', () => {
   const ed = fnBodyOf('optionListEditor');
-  // The same iconButton() a table and a space wear (Issue #419).
   assert.match(ed, /iconButton\(/, 'the option row offers the icon button');
 });
 
@@ -314,11 +259,6 @@ test('a workflow row cannot repaint its category, and says why', () => {
   assert.match(ed, /categor/i, 'and the reason names the category');
 });
 
-/* ---------- one chip size, from two tokens (Issue #194, 2026-09-05) ----------
-   Kyle: "Default chip view is likely too small." 11.5px under a 14px body,
-   a ~21px box. The size is decided once on :root and read by every chip
-   surface — .k (every tier), .chip (the alias), .filter-chip — so the next
-   adjustment is two numbers, not a hunt through the sheet. */
 test('the chip size is two tokens on :root: 13px label, 22px line — a 24px target with the 1px padding', () => {
   const root = rulesFor(':root');
   assert.equal(root['--wv-chip-font'], '13px', 'one step below the 14px body, never smaller');

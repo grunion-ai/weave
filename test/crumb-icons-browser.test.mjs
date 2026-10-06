@@ -1,12 +1,3 @@
-/* Every crumb carries its icon, at every level (Issue #669, Kyle
-   2026-10-05): the workspace's mark, the space's and the table's icons as
-   the sidebar draws them, and on a row crumb its table's icon, a muted #id
-   and the Name. The current crumb used to print "#54 ⧉" while ancestors
-   printed their full names, the ⧉ running into the text. It is now the
-   row's icon, #id and full Name in bold, and copy-link is an icon button.
-   The dock starts at the row (Issue #673): the table panel beside it
-   already names the table.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -23,8 +14,6 @@ const s = await launch('crumb icons', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  // One reading of a crumb path: each crumb's kind, whether it wears an
-  // icon (an svg, or the workspace's mark), its #id and its name.
   const crumbs = (page, scope) => page.$$eval(`${scope} .view-header .crumb-path .crumb-item`, (items) => items.map((c) => ({
     kind: [...c.classList].find((k) => k.startsWith('crumb-k-'))?.slice(8),
     current: c.classList.contains('crumb-cur'),
@@ -64,7 +53,6 @@ if (s) {
     const copy = page.locator('#dock .crumb-path .crumb-copy');
     assert.equal(await copy.getAttribute('title'), 'Copy permalink');
     assert.equal(await copy.locator('svg').count(), 1, 'the copy button is an icon');
-    // A hop into Contacts: the row crumbs carry the hop; no "Contacts" crumb.
     await page.click(`#dock a[href="#/entity/${jane.id}"]`);
     await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Jane Rivera');
     const hop = await crumbs(page, '#dock');

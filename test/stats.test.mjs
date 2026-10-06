@@ -1,7 +1,3 @@
-/* src/stats.js is the one place a number is summarised. The engine's rollup
-   resolver, the table stats report and the grid footer all read it, so a
-   median computed three ways cannot disagree. Zero imports: the browser
-   bundle reads the same file. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { aggregate, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES, COUNTING_AGGREGATES } from '../src/stats.js';
@@ -32,7 +28,6 @@ test('count / filled / empty / distinct count rows, not numbers', () => {
   assert.equal(aggregate('count', vals), 7);
   assert.equal(aggregate('filled', vals), 5);
   assert.equal(aggregate('empty', vals), 2);
-  // distinct flattens lists: a, b, x, y
   assert.equal(aggregate('distinct', vals), 4);
 });
 
@@ -87,9 +82,8 @@ test('histogram bins a list into equal-width buckets and never loses a value to 
   assert.equal(h.reduce((a, b) => a + b.count, 0), 11);
   assert.equal(h[0].from, 0);
   assert.equal(h[4].to, 10);
-  assert.equal(h[4].count, 3); // 8, 9 and the 10 on the top edge
+  assert.equal(h[4].count, 3);
   assert.deepEqual(histogram([], 5), []);
-  // One distinct value is one bucket, not a division by zero.
   assert.deepEqual(histogram([4, 4, 4], 5), [{ from: 4, to: 4, count: 3 }]);
 });
 

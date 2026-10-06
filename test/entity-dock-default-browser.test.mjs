@@ -1,21 +1,3 @@
-/* The ONE entity view opens DOCKED, whatever opened it (Issue #198).
-
-   The ruling of 2026-09-02 made the dock the one entity surface: an entity
-   opens beside its table, the outward arrows expand it to the page, the
-   inward arrows dock it again. The ledger's #id link honoured that; every
-   other opener — a relation chip, a card, a ⌘K hit, a mention chip in a
-   document, openEntity() itself — still navigated to #/entity/<id>, which
-   the router draws as the expanded page. Kyle, 2026-09-05: "entities
-   opening in full screen not dock panel by default, fix."
-
-   One delegated listener now turns every plain click on a #/entity link
-   into a dock beside the table the reader is on — the page stays and the
-   dock follows the click (Issue #276, Kyle 2026-09-12); only a reader with
-   no table under them (home, a space) travels to the entity's table first.
-   Modifier clicks still hand the link to the browser (Issue #134), and the
-   #/entity/<id> route itself stays the expanded page — that is what a new
-   tab, a permalink and the outward arrows land on. Playwright is NOT a
-   dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -34,7 +16,6 @@ const s = await launch('entity dock default', (weave) => {
 if (s) {
   const { base, browser } = s;
   const docked = async (page, name) => {
-    // The dock may already be open on another entity: wait for THIS name.
     await page.waitForFunction((n) => document.querySelector('#dock:not([hidden]) .name-edit')?.value === n, name);
     assert.equal(await page.inputValue('#dock .name-edit'), name, 'the dock holds the entity');
     assert.ok(await page.locator('#main .wv-grid').isVisible(), 'the table stays beside it');

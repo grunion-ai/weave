@@ -1,17 +1,3 @@
-/* The applet's description sheet never loses what was typed into it (Issue
-   #247, Kyle 2026-09-08: "mobile descriptions not captured on save, need
-   autosave"). Driven at a phone's size, with touch, through a real browser.
-
-   The sheet used to write only from its Save button. Tapping the dimmed
-   scrim above it (the way every other sheet on the page is dismissed)
-   closed it and threw the text away, and so did the phone going to the
-   background. Save itself closed the sheet before its request, so a failed
-   write lost the text too. Now every way out of the sheet writes the text if
-   it changed, a pause in typing writes it without any close, and a failed
-   write keeps the text for the next open.
-
-   Playwright is NOT a dependency of weave; launch() skips the suite when it
-   is absent, so `node --test` stays green on a bare checkout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -47,7 +33,6 @@ if (s) {
     return stored();
   };
 
-  // An iPhone-sized, touch-driven page, unlocked, with the task's sheet open.
   const phone = async (colorScheme = 'light') => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, colorScheme });
     await ctx.request.post(`${base}/t/unlock`, { data: { passcode: PASSCODE } });
@@ -61,7 +46,6 @@ if (s) {
     await page.tap('.wv-detail.in button[data-doc]');
     await page.waitForSelector('.wv-sheet.up #docedit');
   };
-  // The scrim is the dimmed strip above the sheet: its top edge is always clear.
   const tapScrim = (page) => page.tap('#scrim', { position: { x: 195, y: 20 } });
 
   test('a scrim tap writes the description, and reopening shows it (Issue #247)', async () => {
@@ -132,10 +116,6 @@ if (s) {
     await ctx.close();
   });
 
-  /* The write as the page hides goes out at once, beside a pause write that
-     may still be in flight, so their answers can come back in either order.
-     The older answer arriving last must not pass for the newest: the sheet
-     would then say the text was lost while the server holds it. */
   test('an older write answering last does not undo the newer one', async () => {
     const { ctx, page } = await phone();
     let release, firstBack = false;
@@ -143,14 +123,13 @@ if (s) {
     const answered = [];
     await page.route('**/t/entity/*/doc', async (route) => {
       const body = JSON.parse(route.request().postData()).doc;
-      const res = await route.fetch();          // the server has it now
+      const res = await route.fetch();
       if (!firstBack) { firstBack = true; await held; }
       await route.fulfill({ response: res });
       answered.push(body);
     });
     await openSheet(page);
     await page.fill('#docedit', 'race: the older text');
-    // The pause write reaches the server; its answer is held back.
     assert.equal(await settle('race: the older text'), 'race: the older text');
     await page.fill('#docedit', 'race: the newer text');
     await page.evaluate(() => {

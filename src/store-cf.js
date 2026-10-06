@@ -1,17 +1,3 @@
-// Durable Object-backed Store for the Cloudflare port (Feature #84).
-// Same interface as src/store.js's Store, over `ctx.storage.sql` — which is
-// synchronous, so the engine's call sites need no changes. Divergences from
-// the node:sqlite backend, all deliberate:
-//   - no PRAGMAs, no WAL: the DO runtime owns durability and journaling
-//   - no BEGIN/COMMIT: DO rejects raw transaction statements; the runtime
-//     wraps each request in an implicit transaction and offers
-//     transactionSync() for explicit grouping
-//   - changedExternally() is always false: one DO is the only writer
-//   - no legacy-JSON migration and no foreign-file validation: a DO's
-//     storage is born a weave workspace and can be nothing else
-// The FTS index is kept identical (DO SQLite ships FTS5), so search parity
-// holds across backends. Zero imports — this file must load in workerd.
-
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS weave_meta (id INTEGER PRIMARY KEY CHECK (id = 1), json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS spaces (id TEXT PRIMARY KEY, json TEXT NOT NULL);
@@ -33,25 +19,22 @@ CREATE TABLE IF NOT EXISTS doc_revisions (
 CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
 `;
 
-// Mirrors src/store.js: automations load in seq order (Issue #285).
 const LOAD_ORDER = {
   automations: " ORDER BY json_extract(json, '$.seq') IS NULL, json_extract(json, '$.seq'), rowid",
 };
 
 const UNDO_CAP = 200;
-const DOC_REVISION_CAP = 200; // mirrors src/store.js (Feature #225)
+const DOC_REVISION_CAP = 200;
 
 export class CFStore {
-  #sql = null;        // ctx.storage.sql
-  #txn = null;        // fn => ctx.storage.transactionSync(fn)
+  #sql = null;
+  #txn = null;
   #cache = null;
 
-  // `storage` is a Durable Object's ctx.storage (or a shim exposing the same
-  // sql.exec / transactionSync surface — the contract tests use one).
   constructor(storage) {
     this.#sql = storage.sql;
     this.#txn = (fn) => storage.transactionSync(fn);
-    this.path = null;           // no filesystem; engine treats blobs in-memory/R2
+    this.path = null;
     this.legacyJsonPath = null;
   }
 
@@ -150,12 +133,10 @@ export class CFStore {
       entry.at, entry.actor, entry.action, JSON.stringify(entry.detail ?? {}));
   }
 
-  // Issue #467: an older type-change entry drops its row values in place.
   setAuditDetail(seq, detail) {
     this.#run('UPDATE audit_log SET detail = ? WHERE seq = ?', JSON.stringify(detail ?? {}), seq);
   }
 
-  // `actions` narrows to those actions; limit -1 is no limit (SQLite's own).
   listAudit({ limit = 100, offset = 0, actions = null } = {}) {
     const where = actions?.length ? ` WHERE action IN (${actions.map(() => '?').join(', ')})` : '';
     return this.#all(`SELECT seq, at, actor, action, detail FROM audit_log${where} ORDER BY seq DESC LIMIT ? OFFSET ?`, ...(where ? actions : []), limit, offset)
@@ -179,7 +160,6 @@ export class CFStore {
       .map((r) => JSON.parse(r.json));
   }
 
-  // Document revisions (Feature #225) — the same contract as src/store.js.
   pushDocRevision({ entityId, fieldId, at, actor = null, text }) {
     this.#run('INSERT INTO doc_revisions (entity_id, field_id, at, actor, text, len) VALUES (?, ?, ?, ?, ?, ?)',
       entityId, fieldId, at, actor, text, text.length);

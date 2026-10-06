@@ -1,7 +1,3 @@
-/* public/cell-graphics.js — the pure drawing behind the rich cells: the
-   number display's bar, ring and heat (Feature #230). No DOM: each function
-   hands back numbers or SVG markup, so node can hold the geometry still and
-   app.js only has to put it in a cell, a chip or a card. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -71,8 +67,6 @@ test('the page loads the module before app.js', () => {
   assert.ok(at > 0 && at < html.indexOf('/app.js'));
 });
 
-/* ---------- the rating (Feature #231) ---------- */
-
 test('a rating fills whole icons: rounded, held to the scale, read as "n of max"', () => {
   assert.deepEqual(cg.ratingParts(3, 5), { filled: 3, max: 5, label: '3 of 5' });
   assert.deepEqual(cg.ratingParts(3.5, 5), { filled: 4, max: 5, label: '4 of 5' }, 'an average rounds to a whole icon');
@@ -88,8 +82,6 @@ test('clicking the nth icon sets n; clicking the current value clears to 0', () 
   assert.equal(cg.ratingClick(null, 1), 1);
   assert.equal(cg.ratingClick(0, 1), 1);
 });
-
-/* ---------- the sparkline (Feature #232) ---------- */
 
 test('a sparkline draws at most the last 60 points and says when it cut', () => {
   const long = Array.from({ length: 75 }, (_, i) => i);
@@ -132,7 +124,6 @@ test('the words a screen reader hears', () => {
   assert.equal(cg.sparkLabel([]), 'no values');
 });
 
-/* ---------- the cell colour and the redrawn shapes (Feature #235) ---------- */
 test('the colours mirror the engine, and an unknown one falls back to ink', () => {
   const engine = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
   assert.deepEqual(cg.COLORS, JSON.parse(engine.match(/CELL_COLORS = (\[[^\]]*\])/)[1].replace(/'/g, '"')));

@@ -1,15 +1,8 @@
-/* Attachment previews on the record page (Kyle, 2026-10-05). A many-file
-   field left unset draws its pictures in a contact sheet (auto, medium,
-   trim) and the rest as chips; a single-file field left unset draws its
-   file in the viewer in place, an HTML upload in a sandboxed frame whose
-   script runs and cannot reach the page; a cover field puts its picture
-   at the top of the record; a sheet cell opens the fullscreen viewer and
-   → walks to the next file. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
 
-const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABAQMAAADO7O3JAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goFETs3n475pwAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=', 'base64'); // a 2x1 red png (ImageMagick)
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABAQMAAADO7O3JAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goFETs3n475pwAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=', 'base64');
 const HTML = Buffer.from('<!doctype html><p id="p">page</p><script>document.getElementById("p").textContent = "ran"; try { parent.document; document.title = "reached"; } catch { document.title = "blocked"; }</script>');
 const SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
 

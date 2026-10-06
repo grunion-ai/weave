@@ -9,8 +9,6 @@ import { serviceOptions, buildPlist, parseLaunchctlPrint, buildStatus, probeHeal
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
-// Pure functions only below — no test may invoke launchctl or write a plist.
-
 test('serviceOptions: defaults derive from the port', () => {
   const o = serviceOptions({}, { home: '/Users/u' });
   assert.equal(o.port, 4400);
@@ -40,7 +38,6 @@ test('buildPlist: launchd agent with absolute paths, KeepAlive, logs', () => {
   const xml = buildPlist(o);
   assert.match(xml, /<\?xml version="1.0" encoding="UTF-8"\?>/);
   assert.match(xml, /<key>Label<\/key>\s*<string>ai\.grunion\.weave\.4400<\/string>/);
-  // ProgramArguments: absolute node, absolute bin, serve --port N --data abs.
   assert.ok(xml.includes(`<string>${o.nodePath}</string>`));
   assert.ok(xml.includes(`<string>${o.binPath}</string>`));
   assert.match(xml, /<string>serve<\/string>\s*<string>--port<\/string>\s*<string>4400<\/string>\s*<string>--data<\/string>\s*<string>\/data\/uno\.json<\/string>/);
@@ -103,9 +100,6 @@ test('buildStatus: version mismatch flags a stale server', () => {
 });
 
 test('buildStatus: a commit mismatch flags a stale server the version cannot see (Issue #114)', () => {
-  // The 2026-08-28 process served a checkout three minutes newer than itself
-  // under the SAME package version — a version comparison is blind to it, so
-  // the CLI said 'running' while the browser's saves were failing.
   const s = buildStatus({
     label: 'l', port: 4400, plistPath: '/p', plistInstalled: true,
     launchctl: { loaded: true, state: 'running', pid: 7, lastExitCode: 0 },
@@ -171,7 +165,6 @@ test('health payload carries startedAt + uptime for staleness checks', async () 
     const res = await fetch(`http://127.0.0.1:${server.address().port}/api/health`);
     const health = await res.json();
     assert.equal(health.ok, true);
-    // ISO start time: a caller can compare against commit/package mtimes.
     assert.ok(!Number.isNaN(Date.parse(health.startedAt)));
     assert.equal(typeof health.uptime, 'number');
   } finally {

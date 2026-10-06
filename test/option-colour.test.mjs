@@ -1,14 +1,3 @@
-/* An option's colour is one name from the ten-hue ramp, and weave used to
-   publish one set of names while accepting another (Issue #551). `magenta` was
-   the name the vocabulary and the Handbook gave pink's hex; the engine knew it
-   as `pink`, did not know `magenta`, and swapped anything it did not know for
-   slate while answering 201. So a field created with the documented name came
-   back grey and nobody was told.
-
-   The rule this suite holds: reads are forgiving and writes are strict. A
-   colour already on disk still resolves, or rests on slate, so no stored
-   workspace becomes unreadable. A colour a caller just sent is refused by
-   name, on every door that takes one. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -22,7 +11,6 @@ await import('../public/chip-core.js');
 const ramp = globalThis.chipCore;
 
 const optionsOf = (f) => f.config.options.map((o) => ({ name: o.name, hue: o.hue, color: o.color }));
-// describeSchema() answers with one entry per space, each carrying its tables.
 const tableIn = (doc, name) => doc.flatMap((s) => s.tables).find((x) => x.name === name);
 const refusal = (fn) => {
   let err;
@@ -32,8 +20,6 @@ const refusal = (fn) => {
   assert.equal(err.code, 'invalid', 'a refused colour is a 400, not a 500');
   return err.message;
 };
-
-/* ---------- the published names are the accepted names ---------- */
 
 test("the vocabulary's colour names are the ramp's hues, in the ramp's order", () => {
   assert.deepEqual(VOCABULARY.optionColors.map((c) => c.name), Object.keys(ramp.HUE_HEX));
@@ -50,8 +36,6 @@ test('the Handbook names every hue of the ramp and no colour outside it', () => 
     assert.ok(!/eight (values|colours|colors)/.test(doc), 'the page still claims eight colours');
   }
 });
-
-/* ---------- a write names a hue, an alias, or a hex ---------- */
 
 test('a hue name, its hex and the published alias all land on the same hue', () => {
   const { w, t } = ws();
@@ -88,8 +72,6 @@ test('an empty colour, the neutral alias and a bare string all rest on slate', (
   }
 });
 
-/* ---------- every door refuses a colour weave cannot name ---------- */
-
 test('addField refuses an invented colour and names the hues in the message', () => {
   const { w, t } = ws();
   const msg = refusal(() => w.addField(t, { name: 'Area', type: 'select', config: { options: [{ name: 'Design', color: 'banana' }] } }));
@@ -109,7 +91,6 @@ test('an options edit refuses it, and the options it had are untouched', () => {
   const f = w.addField(t, { name: 'Area', type: 'select', config: { options: [{ name: 'Design', hue: 'pink' }] } });
   refusal(() => w.updateField(t, f.id, { config: { options: [{ id: f.config.options[0].id, name: 'Design', hue: 'banana' }] } }));
   assert.deepEqual(optionsOf(w.getField(w.getTable(t).id, f.id)), [{ name: 'Design', hue: 'pink', color: '#d6409f' }]);
-  // The same edit with the published alias goes through.
   w.updateField(t, f.id, { config: { options: [{ id: f.config.options[0].id, name: 'Design', hue: 'magenta' }] } });
   assert.equal(w.getField(w.getTable(t).id, f.id).config.options[0].hue, 'pink');
 });
@@ -163,8 +144,6 @@ test('the field route answers 400 and the vocabulary route names the hues', asyn
   }
 });
 
-/* ---------- a colour already on disk still reads ---------- */
-
 test('an imported workspace whose option holds a retired hex still loads and reads as slate', () => {
   const { w, t } = ws();
   const f = w.addField(t, { name: 'Area', type: 'select', config: { options: [{ name: 'Design', hue: 'pink' }] } });
@@ -184,14 +163,9 @@ test('a schema apply keeps the colour an option already stored without re-valida
   w.addField(t, { name: 'Area', type: 'select', config: { options: [{ name: 'Design', hue: 'pink' }] } });
   const dump = w.exportJSON();
   const stored = Object.values(dump.tables[w.getTable(t).id].fields).find((x) => x.name === 'Area');
-  // The pre-ramp shape: a loose hex and no hue at all.
   stored.config.options[0] = { id: 'design', name: 'Design', color: '#ff00ff', icon: '' };
   const fresh = new Weave();
   fresh.importJSON(dump);
-  /* Editing the option list is what carries the stored colour back through the
-     normaliser. The document names no colour of its own, so the apply must
-     keep reading the retired hex rather than refusing the workspace it is
-     editing. */
   const doc = fresh.describeSchema();
   const field = tableIn(doc, 'Task').fields.find((x) => x.name === 'Area');
   delete field.optionsFull;
@@ -212,16 +186,11 @@ test('an edit that hands back an option untouched keeps a colour weave cannot na
   fresh.importJSON(dump);
   const table = fresh.getTable('Task');
   const field = fresh.getField(table.id, 'Area');
-  // Widening the list is how weave's own docs sync adds a milestone or a
-  // severity (src/weaver-seed.js), and it sends the options it found.
   fresh.updateField(table.id, field.id, { config: { options: [...field.config.options, 'Backend'] } });
   const after = fresh.getField(table.id, 'Area').config.options;
   assert.deepEqual(after.map((o) => o.name), ['Design', 'Backend']);
-  // It rests on slate, which is what an edit has always done to a colour
-  // outside the ramp. What matters here is that the edit is not refused.
   assert.equal(after[0].hue, 'slate');
   assert.equal(after[0].color, '');
-  // Naming a different colour on the same option is a new assertion.
   refusal(() => fresh.updateField(table.id, field.id, { config: { options: [{ id: 'design', name: 'Design', hue: 'banana' }] } }));
 });
 
@@ -233,19 +202,15 @@ test('a describeSchema round-trip applies to the workspace it came from', () => 
     .config.options[0] = { id: 'design', name: 'Design', color: '#ff00ff', icon: '' };
   const fresh = new Weave();
   fresh.importJSON(dump);
-  // optionsFull carries the stored colour back verbatim; that is not the
-  // document asserting a new one.
   fresh.applySchema(fresh.describeSchema());
   assert.equal(fresh.getField(fresh.getTable('Task').id, 'Area').config.options[0].name, 'Design');
 });
 
 test('the MCP door and the CLI door answer the same way as the route', () => {
   const { w, t } = ws();
-  // MCP: the same engine verb, so the refusal and the alias both carry over.
   refusal(() => dispatchTool(w, 'weave_add_field', { db: t.id, name: 'Bad', type: 'select', config: { options: [{ name: 'Design', color: 'banana' }] } }));
   const made = dispatchTool(w, 'weave_add_field', { db: t.id, name: 'Area', type: 'select', config: { options: [{ name: 'Design', color: 'magenta' }] } });
   assert.equal(made.config.options[0].hue, 'pink');
-  // The schema door, which the CLI and MCP both hand a document to.
   const doc = w.describeSchema();
   tableIn(doc, 'Task').fields.find((f) => f.name === 'Area').optionsFull = [{ name: 'Design', color: 'teal' }];
   w.applySchema(doc);

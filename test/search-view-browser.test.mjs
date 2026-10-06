@@ -1,7 +1,3 @@
-/* ⌘K finds saved views and opens them (Issue #280).
-   universalSearch now returns kind 'view'; the palette must label the hit
-   and a pick must land on #/view/<id>, not fall through to the home page.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

@@ -1,10 +1,3 @@
-/* Phase 4 editor behaviors, driven through a real browser.
-   Everything here is about what Vditor, Lute and contenteditable actually do
-   at runtime — span counts, overlay geometry, scroll tracking — none of which
-   a source-level assertion can see (the lesson of test/slash-commands.test.mjs).
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps);
-   it is imported dynamically and the whole suite skips when absent, so
-   `node --test` stays green on a bare checkout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -30,10 +23,6 @@ if (s) {
     return page;
   }
 
-  /* The worst-contrasting token in a code block, measured against the slab it
-     actually sits on and on the colours the browser actually paints — a
-     stylesheet can be loaded and still lose to another one. WCAG relative
-     luminance; 4.5:1 is AA for text this size. */
   const worstTokenContrast = (page, selector) => page.evaluate((sel) => {
     const lum = (c) => {
       const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map((n) => {
@@ -47,7 +36,6 @@ if (s) {
       return (hi + 0.05) / (lo + 0.05);
     };
     const code = document.querySelector(sel);
-    // The slab is whichever ancestor paints — <pre> here, the page elsewhere.
     let bg = 'rgb(255, 255, 255)';
     for (let n = code; n; n = n.parentElement) {
       const c = getComputedStyle(n).backgroundColor;
@@ -61,8 +49,6 @@ if (s) {
     }
     return worst;
   }, selector);
-
-  /* ---------- Issue #35: syntax highlighting ---------- */
 
   test('a ```js block tokenizes in the IR editor preview', async () => {
     const id = entityWithDoc('Hl', '```js\nconst x = 1;\nfunction f(a) { return a; }\n```\n');
@@ -84,17 +70,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Issue #81, Kyle 2026-08-26: "code blocks are colored poorly", then —
-     against the first fix — "dark code block background in light mode dont
-     make sense". Two rules, and the second decides the first:
-
-     1. The slab follows the page. A light theme gets a light code block.
-     2. The palette follows the SLAB, not the theme around it — which is what
-        was broken: a token set drawn for a white page was landing on a
-        near-black slab, `.hljs-title.function_` #6f42c1 at 2.72:1.
-
-     So the gate reads what the browser actually paints: the slab is light in
-     light and dark in dark, and every token on it clears AA either way. */
   test('the code slab follows the theme and every token clears 4.5:1 on it', async () => {
     const id = entityWithDoc('Contrast', '```js\nconst pick = vis[state.active] ?? (state.query.trim() ? vis[0] : null);\nfunction toggle(state, option) { return { ...state, active: -1 }; }\n```\n');
     const page = await openEntity(id);
@@ -106,13 +81,10 @@ if (s) {
           const btn = document.querySelector('#theme-toggle');
           for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== want; i++) btn.click();
         }, theme);
-        await page.waitForTimeout(120); // setTheme swaps the hljs stylesheet
+        await page.waitForTimeout(120);
         const worst = await worstTokenContrast(page, '.vditor-ir__preview code.hljs');
-        // Rule 1: a light page gets a light slab. 0.5 relative luminance is
-        // the middle of the range — nothing near a judgement call sits there.
         assert.ok(theme === 'light' ? worst.bgLum > 0.5 : worst.bgLum < 0.5,
           `${theme}: the slab is ${worst.bg} (luminance ${worst.bgLum.toFixed(3)})`);
-        // Rule 2: whatever palette that slab calls for has to carry on it.
         assert.ok(worst.ratio >= 4.5,
           `${theme}: ${worst.token} is ${worst.color} on ${worst.bg} — ${worst.ratio.toFixed(2)}:1`);
       }
@@ -129,12 +101,7 @@ if (s) {
       await page.keyboard.press('Enter');
       await page.waitForTimeout(150);
       const md = await page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
-      /* The fence is bare on purpose now: the content decides the language,
-         and the block detects it. What must hold is the end state — real code
-         lights up — not who named the language. */
       assert.match(md, /^```\n/, 'the command inserts a fence, and guesses nothing');
-      // The placeholder word "code" is a bare identifier — zero tokens in any
-      // grammar. Once real code replaces it, the block must light up.
       await page.evaluate(() => {
         const ed = window.__weaveEditors.values().next().value;
         ed.setValue(ed.getValue().replace('code', 'const x = 1;'));
@@ -143,8 +110,6 @@ if (s) {
         document.querySelector('.vditor-ir__preview code.hljs')?.querySelectorAll('span').length > 0);
     } finally { await page.close(); }
   });
-
-  /* ---------- Issue #86: live [[…]] chips over the IR editor ---------- */
 
   test('a [[…]] reference paints a resolved chip over the literal text', async () => {
     const target = weave.createEntity(tableRef, { name: 'Chip target' });
@@ -155,7 +120,6 @@ if (s) {
       const r = await page.evaluate(() => {
         const chip = document.querySelector('.doc-ref-layer a.mention');
         const chipRect = chip.getBoundingClientRect();
-        // The literal [[Note#N]] text node the chip must cover.
         const walker = document.createTreeWalker(
           document.querySelector('.vditor-ir .vditor-reset'), NodeFilter.SHOW_TEXT);
         let textRect = null;
@@ -186,8 +150,6 @@ if (s) {
     const id = entityWithDoc('CaretChip', `edit [[Note#${target.publicId}]] live\n`);
     const page = await openEntity(id);
     try {
-      // Generous waits: the suite runs many browser files in parallel, and
-      // the decoration pass is debounced behind a resolver round-trip.
       await page.waitForSelector('.doc-ref-layer a.mention', { timeout: 20000 });
       await page.evaluate(() => {
         const walker = document.createTreeWalker(
@@ -203,9 +165,6 @@ if (s) {
       });
       await page.waitForFunction(() => !document.querySelector('.doc-ref-layer a.mention'),
         null, { timeout: 20000 });
-      // Move the caret OUT of the reference (start of the paragraph): the
-      // chip returns. Dropping the selection entirely would race Vditor's
-      // own selection restoration, which can put the caret straight back.
       await page.evaluate(() => {
         const walker = document.createTreeWalker(
           document.querySelector('.vditor-ir .vditor-reset'), NodeFilter.SHOW_TEXT);
@@ -224,14 +183,12 @@ if (s) {
     const id = entityWithDoc('CodeChip', '```\n[[Note#' + target.publicId + ']]\n```\n');
     const page = await openEntity(id);
     try {
-      await page.waitForTimeout(1200); // give the decoration pass every chance
+      await page.waitForTimeout(1200);
       const chips = await page.evaluate(() =>
         document.querySelectorAll('.doc-ref-layer a.mention').length);
       assert.equal(chips, 0, 'code is literal text by definition');
     } finally { await page.close(); }
   });
-
-  /* ---------- Issue #87: outline dash rail ---------- */
 
   const RAIL_DOC = '# One\n\ntext\n\n## Two\n\n' + 'filler\n\n'.repeat(40) + '## Three\n\nmore\n\n### Four\n\nend\n';
 
@@ -262,16 +219,11 @@ if (s) {
     const page = await openEntity(id);
     try {
       await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
-      // The first click anywhere on the rail opens the outline; only then
-      // does a dash click jump.
       await page.evaluate(() => document.querySelector('.doc-rail').click());
       await page.waitForSelector('.doc-rail.open', { timeout: 20000 });
-      // Jump to "Two" — the one heading with enough document below it to
-      // actually reach the top ("Three"/"Four" sit inside the last viewport,
-      // where no scroll position can bring them there).
       await page.evaluate(() => document.querySelectorAll('.doc-rail-dash')[1].click());
       await page.waitForFunction(() => !document.querySelector('.doc-rail.open'),
-        null, { timeout: 20000 }); // the jump closes the outline behind it
+        null, { timeout: 20000 });
       await page.waitForFunction(() => {
         const h = [...document.querySelectorAll('.vditor-ir .vditor-reset h2')]
           .find((x) => x.textContent.includes('Two'));
@@ -306,8 +258,6 @@ if (s) {
       assert.notEqual(after.display, 'none', 'clicking shows the headings');
       assert.equal(after.text, 'One', 'the label is the heading');
       assert.ok(after.width > 0, 'and it takes real space');
-      // Issues #131, #144: the panel opens where the minimap is, never at the
-      // viewport's middle (doc-rail-browser.test.mjs measures the exact spot).
       assert.ok(after.top < after.vh / 3,
         `the open outline stays at the minimap's anchor near the top (top ${after.top} of ${after.vh})`);
       await page.keyboard.press('Escape');
@@ -324,7 +274,6 @@ if (s) {
       const top = () => page.evaluate(() =>
         document.querySelector('.doc-rail-track').getBoundingClientRect().top);
       const resting = await top();
-      // The main panel is the page's scroller since Issue #609.
       await page.evaluate(() => document.querySelector('#main').scrollBy({ top: 600, behavior: 'instant' }));
       await page.waitForFunction(() => document.querySelector('#main').scrollTop >= 590, null, { timeout: 20000 });
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -343,8 +292,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* ---------- toolbar (2026-08-30: a selection bubble, not a strip) ---------- */
-
   test('the toolbar exists but stays out of the flow until text is selected', async () => {
     const id = entityWithDoc('Toolbar', '# T\n\ntext\n');
     const page = await openEntity(id);
@@ -362,11 +309,8 @@ if (s) {
       assert.equal(r.display, 'none', 'no selection: the bubble is hidden, the document is the only chrome');
       assert.ok(r.buttons >= 15, `the full control set is mounted, found ${r.buttons}`);
       assert.ok(r.bold && r.table, 'bold and table are reachable from it');
-      // The full show-on-selection behavior lives in test/toolbar-browser.test.mjs.
     } finally { await page.close(); }
   });
-
-  /* ---------- Issue #88: collapsible headings ---------- */
 
   const FOLD_DOC = '# Top\n\nintro\n\n## Fold me\n\nhidden one\n\nhidden two\n\n### Deeper\n\nalso hidden\n\n## After\n\nvisible\n';
 
@@ -376,7 +320,6 @@ if (s) {
     try {
       await page.waitForSelector('.doc-fold-layer .doc-fold', { timeout: 20000 });
       const before = await page.evaluate(() => window.__weaveEditors.values().next().value.getValue());
-      // Fold "Fold me" (second caret: Top, Fold me, Deeper, After).
       await page.evaluate(() => document.querySelectorAll('.doc-fold')[1].click());
       await page.waitForFunction(() => document.querySelectorAll('.wv-folded').length > 0,
         null, { timeout: 20000 });
@@ -411,29 +354,22 @@ if (s) {
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForFunction(() => document.querySelectorAll('.wv-folded').length > 0,
         null, { timeout: 20000 });
-      // Unfold: the folded caret is the one carrying the folded class.
       await page.evaluate(() => document.querySelector('.doc-fold.folded').click());
       await page.waitForFunction(() => document.querySelectorAll('.wv-folded').length === 0,
         null, { timeout: 20000 });
     } finally { await page.close(); }
   });
 
-  /* ---------- Issue #89: shared row editor ---------- */
-
   test('mount/unmount cycles do not accumulate icon sprites', async () => {
     const e = weave.createEntity(tableRef, { name: 'SpriteRow' });
     weave.setDoc(e.id, 'sprite probe\n', 'Description');
     const page = await openEntity(e.id);
     try {
-      // The entity page mounts an editor already; repeated shared-row mounts
-      // elsewhere ran through the same constructor. Count sprite sheets.
       const sprites = await page.evaluate(() =>
         [...document.querySelectorAll('body > svg')].filter((v) => v.querySelector('symbol')).length);
       assert.ok(sprites <= 1, `one icon sprite for the page, got ${sprites}`);
     } finally { await page.close(); }
   });
-
-  /* ---------- Issue #90: math via vendored KaTeX ---------- */
 
   test('$$…$$ and $…$ render through the vendored KaTeX', async () => {
     const id = entityWithDoc('Math', 'inline $a^2 + b^2$ here\n\n$$\n\\frac{x}{y}\n$$\n');
@@ -467,10 +403,6 @@ if (s) {
       const spans = await page.evaluate(() =>
         document.querySelector('pre > code.hljs').querySelectorAll('span').length);
       assert.ok(spans >= 2, `expected token spans on the rendered page, got ${spans}`);
-      /* This page carries its own chrome — a light slab in light, dark in dark
-         — and switches the hljs stylesheet on prefers-color-scheme to match.
-         Same rule as the editor (Issue #81), read against a different surface:
-         the tokens answer to the slab, whichever way that slab goes. */
       for (const colorScheme of ['light', 'dark']) {
         await page.emulateMedia({ colorScheme });
         await page.waitForTimeout(80);

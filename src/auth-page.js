@@ -1,20 +1,3 @@
-/* The sign-in page (Feature #222 part 2). Served at /auth — and under
-   /w/<ws>/auth — even when requireAuth is on, generated here rather than
-   dropped in public/ so the wall's static-asset door never has to admit an
-   .html, and so the Worker's assets binding cannot serve it ahead of the
-   dispatcher. Everything it needs is inline: no app.js, no vendored CSS.
-
-   With a provider configured, routes.js sends a signed-out visit straight
-   to it, so this page only renders signed out right after sign-out
-   (?signed-out=1) or with no provider. Two states, decided by the browser
-   after one call to /api/auth/me:
-     signed out → "Sign in with <provider>" (door C, Feature #212), a plain
-                  link that keeps ?next; with no provider configured, a line
-                  saying so and pointing agents at a wv_ token
-     signed in  → the "You" section: sessions, sign out
-   The built-in passkey door that used to sit here was removed in Feature
-   #243; the provider sends the browser back through ?next itself. */
-
 import { escapeHtml as esc } from './markdown.js';
 
 const CSS = `
@@ -57,8 +40,6 @@ a.provider{display:block;text-align:center;text-decoration:none;color:var(--ink)
 .legal a{color:var(--muted)}
 `;
 
-/* Runs in the browser. Plain script, no modules: it has to work on a phone
-   that just scanned a QR code. */
 const JS = `
 (() => {
   const mount = document.body.dataset.mount || '';
@@ -114,10 +95,6 @@ const JS = `
 
 const MARK = '<svg class="mark" viewBox="0 0 48 48" role="img" aria-label="weave"><path d="M12,20 C16,20 16,28 20,28 C24,28 24,20 28,20 C32,20 32,28 36,28" fill="none" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round"/><path d="M12,28 C16,28 16,20 20,20 C24,20 24,28 28,28 C32,28 32,20 36,20" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/></svg>';
 
-/* A sign-in trip that ends without a session (Issue #570): the callback's
-   refusals, in this page's card. Every action is a plain link the caller
-   picks; none may be bare /auth, which sends a signed-out browser straight
-   back to the provider and its still-open session. No script. */
 export function renderRefusalPage({ title, lines = [], actions = [] } = {}) {
   return `<!doctype html>
 <html lang="en"><head>

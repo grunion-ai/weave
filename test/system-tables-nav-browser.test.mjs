@@ -1,8 +1,3 @@
-/* Workspace system tables in the nav, in a browser (Feature #242): Activity,
-   Trash and Workflows are three fixed rows under the spaces, Trash opens the
-   workspace trash, and Workflows' page title does not rename. The engine and
-   source contracts are system-tables-nav.test.mjs. Playwright is NOT a
-   dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

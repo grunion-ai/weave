@@ -1,14 +1,3 @@
-/* Document outline dash rail (Issue #87).
-
-   Vditor's own outline panel stays disabled — it wants the left gutter and a
-   tree; weave's outline is a minimap: one dash per heading, longer for higher
-   levels, a tracker that follows the scroll, click to jump. Only the entity
-   page's document panels carry it, and only when a document has at least 3
-   headings — below that a map explains nothing.
-
-   The pure parts (dash spec, current-section pick) live in
-   public/editor-lib.js and are tested here; geometry and scroll behavior are
-   covered by the browser suite in test/editor-phase4-browser.test.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -20,8 +9,6 @@ await import('../public/editor-lib.js');
 const LIB = globalThis.WeaveEditorLib;
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
-
-/* ---------- railSpec: one dash per heading, length by level ---------- */
 
 const H = (...levels) => levels.map((level, i) => ({ level, text: `h${i}` }));
 
@@ -52,10 +39,7 @@ test('dashes are big enough to aim at', () => {
   assert.ok(spec[0].width <= 22, 'and the rail stays inside the 26px gutter');
 });
 
-/* ---------- currentSection: the tracker ---------- */
-
 test('the tracker picks the last heading above the reading line', () => {
-  // tops are viewport-relative; the reading line sits below the site header.
   assert.equal(LIB.currentSection([100, 400, 900], 80), 0, 'nothing scrolled: first section');
   assert.equal(LIB.currentSection([-200, 40, 900], 80), 1, 'second heading passed the line');
   assert.equal(LIB.currentSection([-900, -400, -100], 80), 2, 'past the end: last section');
@@ -63,13 +47,9 @@ test('the tracker picks the last heading above the reading line', () => {
 });
 
 test('a heading resting on the reading line is the current section', () => {
-  // What the rail's own jump produces: the heading lands at the line, and a
-  // fractional scroll offset leaves it a sliver below it (Issue #69).
   assert.equal(LIB.currentSection([-900, 80.15625, 900], 80), 1);
   assert.equal(LIB.currentSection([-900, 82, 900], 80), 0, 'a pixel of slack, not ten');
 });
-
-/* ---------- wiring contracts ---------- */
 
 test("Vditor's own outline stays disabled", () => {
   assert.match(APP, /outline:\s*\{\s*enable:\s*false/);
@@ -103,10 +83,6 @@ test('each dash carries its heading, hidden until the rail is clicked open', () 
 });
 
 test('the open outline widens in place — it never leaves the gutter for the viewport middle', () => {
-  /* Issues #131 and #144: the open panel used to be position:fixed at 50%
-     of the viewport, so a click on the minimap made the headings jump away
-     from the dashes the reader had just clicked. The panel now opens where
-     the minimap is: same sticky anchor, wider. */
   const rule = CSS.match(/\.doc-rail\.open\s+\.doc-rail-track\s*\{[^}]*\}/)?.[0];
   assert.ok(rule, 'an .open state restyles the track');
   assert.doesNotMatch(rule, /position:\s*fixed/, 'the open track stays in the gutter flow');
@@ -134,7 +110,6 @@ test('the document text is indented off the gutter', () => {
 });
 
 test('clicking a dash scrolls to its section, moving only the box it sits in', () => {
-  // scrollIntoView() would drag every scrollable ancestor along (Issue #69).
   assert.match(APP, /doc-rail-dash[^]{0,500}scrollTargetIntoView\(heads\[i\]/);
   assert.match(APP, /scrollTargetIntoView\(heads\[i\][^)]*padding: DASH_READING_LINE/,
     'the heading lands on the line the tracker reads from, clear of the header');

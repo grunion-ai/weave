@@ -1,19 +1,9 @@
-// The runtime-agnostic request core (Feature #84). Every route weave serves,
-// as a pure async function of a request-shaped object — no node:http, no
-// node:fs, no imports beyond the engine and renderers, so the same dispatcher
-// runs under node (src/server.js wraps it) and workerd (src/worker.js will).
-// The adapter owns transport: reading the body stream, writing the response,
-// and static assets (node reads public/; Workers bind Static Assets).
 import { Weave, WeaveError, fileHeaders, logoType, inviteUrl } from './engine.js';
 import { handleApplet } from './applet.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
-// Loaded on demand: the vendored decklet engine resolves its own directory
-// from import.meta.url at module scope, which is undefined inside a bundled
-// Worker — evaluating it there fails the whole upload. Deck routes are rare
-// and node-only anyway, so they pay for the import when they are asked for.
 const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister } from './mcp.js';
 import { workspaceSlug } from './workspace-name.js';
@@ -21,7 +11,6 @@ import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS as MAX_BUG_EVENTS } from './
 import { renderAuthPage, renderRefusalPage } from './auth-page.js';
 import { PRIVACY, TERMS } from './legal.js';
 import { inviteEmail, inviteAcceptedEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
-// The welcome builds a starter from the same template data the page shows (Feature #248).
 import '../public/starter-core.js';
 const { WeaveStarters } = globalThis;
 
@@ -32,68 +21,24 @@ export function statusFor(err) {
 
 const STARTED_AT = new Date().toISOString();
 
-/* What a browser sees at the wall (Feature #222 phase 0): the condition and
-   the ways in — the provider's sign-in page (door C, Feature #212) when one
-   is configured, a Bearer token, a share link. */
 const wallPageHtml = (authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
-/* ---------- link previews (Feature #264) ----------
-   A permalink is read by link fetchers (Slack, Messages) that run no script,
-   so the head they read is rendered here. The uuid stays the address; the
-   preview carries the reading: path, public id, name, state and fields. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
 const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const metaAttr = (s) => escapeHtml(s).replace(/\r?\n/g, '&#10;');
-// Rasters only: Messages and Slack ignore an SVG og:image.
 const RASTER = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-/* The first line of a markdown description with its marks dropped.
-   ponytail: strips emphasis, heading and quote marks only; a link keeps its
-   brackets. */
 const plainLine = (md) => String(md ?? '').split('\n').map((l) => l.replace(/[*_`#>]/g, '').trim()).find(Boolean) ?? '';
-/* What a signed-out fetcher gets when the workspace allows a preview before
-   sign-in: the head, no app shell (nothing that would call the API), and
-   the jump to sign-in that /permalink.js makes. */
 const previewPageHtml = (head, authHref) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${head}<meta name="weave-route" content="${metaAttr(authHref)}" data-sign-in><link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg"><link rel="alternate icon" href="/brand/favicon.ico"><script src="/permalink.js"></script><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style></head><body><p><a href="${escapeHtml(authHref)}">Sign in</a> to open this in weave.</p></body></html>`;
 
-/* ---------- sign-in plumbing (Feature #222 part 2, Feature #212) ----------
-   A provider trip's secrets live five minutes in memory, keyed by the state
-   value the provider echoes back; rate limits are per IP, in memory, sized
-   to blunt guessing and nothing more (10 sign-in starts a minute, 5 failed
-   callbacks a minute). */
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const LIMITS = { options: 10, failed: 5 };
-/* 32 random bytes, base64url. globalThis.crypto, so this file stays free of
-   node: imports and runs under workerd too. */
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-/* hub: createWorkspaceHub's interface (get/list/create/rename/entries/
-   defaultName). opts:
-   - version: the version string /api/health reports (adapter resolves it —
-     node reads package.json, the worker inlines it at deploy)
-   - uptime: () => seconds (node: process.uptime; worker: isolate age)
-   - backup: () => the nightly backup's last result ({lastAt, lastStatus,
-     nextAt, dest}, no secrets) or null when WEAVE_BACKUP_DEST is unset —
-     /api/health carries it so a stale backup shows where staleness is
-     already checked (Feature #222 phase 3, Feature #209)
-   - oidc: createOidc's provider (src/oidc.js), or null when WEAVE_OIDC_* is
-     unset — door C, one provider on top of the wv_session cookie (Feature #212)
-   - mcpOrigins: the public origins besides `origin` that the MCP door's
-     resource may name (WEAVE_MCP_ORIGINS, Feature #254)
-   - serveStatic: (path) => {status, headers, body} | null, or null when the
-     platform serves assets before the dispatcher runs
-   - mail: ({ to, subject, html, text }) => Promise, src/mail-send.js's
-     sender, or null when WEAVE_MAIL_KEY/WEAVE_MAIL_FROM are unset; an
-     invite is then emailed to the address typed (Feature #216)
-   Returns handle(rx) where rx = { method, path (decoded pathname),
-   searchParams, header(name), readBody() } → {status, headers, body}. */
 export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null } = {}) {
   const challenges = new Map();
   const rates = { options: new Map(), failed: new Map() };
-  /* limited(kind, ip) counts this call and says whether the minute's budget
-     is spent; limited(kind, ip, { peek: true }) only asks. Options calls
-     count on arrival; a verify counts only when it fails. */
   const limited = (kind, ip, { peek = false } = {}) => {
     const now = Date.now();
     const bucket = rates[kind];
@@ -104,8 +49,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     return hit.n > limits[kind] || (peek && hit.n >= limits[kind]);
   };
   const noteFailure = (ip) => limited('failed', ip);
-  /* One trip's secrets, used once — takeChallenge deletes on read, so a
-     replayed callback finds nothing. */
   const putChallenge = (entry, id = newChallenge()) => {
     const now = Date.now();
     for (const [k, v] of challenges) if (v.expiresAt <= now) challenges.delete(k);
@@ -118,27 +61,16 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (!c || c.kind !== kind || c.expiresAt <= Date.now()) return null;
     return c;
   };
-  /* The origin the provider sends the browser back to and the session
-     cookie's Secure flag follow. WEAVE_ORIGIN when set; else the loopback
-     dev form, http://localhost:<port>, the one redirect URI a provider
-     registers for a dev instance (the sign-in page moves 127.0.0.1 there). */
   const originFor = (rx) => {
     if (origin) return origin;
     const port = String(rx.header('host') ?? '').split(':')[1];
     return `http://localhost${port ? ':' + port : ''}`;
   };
-  /* The origin the MCP door's resource names: the configured origin whose
-     host the request came in on, else the first configured one, else the
-     loopback form. Never the Host header itself (Feature #254). */
   const mcpOrigin = (rx) => {
     const known = [origin, ...mcpOrigins].filter(Boolean);
     const host = String(rx.header('host') ?? '').toLowerCase();
     return known.find((o) => new URL(o).host === host) ?? known[0] ?? originFor(rx);
   };
-  /* The account a provider identity opens on one engine, kept with the
-     identity: identify() hands back the same object until its cache entry
-     lapses, so accountForIdentity (which writes lastUsedAt) runs once a
-     minute per token and engine, not once a call. */
   const opened = new WeakMap();
   const accountOn = (who, engine) => {
     let byEngine = opened.get(who);
@@ -155,24 +87,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
   return async function handle(rx) {
     let path = rx.path;
-    // Where the reader is: an instant renders in this zone (public/date-grain.js).
     const viewerZone = rx.header('x-weave-zone') || null;
-    /* Every answer names the structure it was computed against (Issue #274),
-       so a tab that loaded the schema once learns it moved — under the CLI,
-       an agent, an automation, a second tab — on the query it was already
-       making, and refetches the schema before it draws stale columns. It is
-       the workspace the URL names, never the registry root a request may
-       fall through to: a version that alternated between two workspaces
-       would have a tab refetching forever. */
     let versionOf = null;
     const out = (status, data, headers = {}) => {
       const isBin = data instanceof Uint8Array;
       const isStr = typeof data === 'string';
       let schemaVersion = null;
-      try { schemaVersion = versionOf?.schemaVersion?.() ?? null; } catch { /* never fail a response over a header */ }
-      // Same-origin only: no CORS headers. An unauthenticated localhost API
-      // with ACAO:* would let any open website read/write the workspace
-      // cross-origin (2026-08-16 release audit).
+      try { schemaVersion = versionOf?.schemaVersion?.() ?? null; } catch {}
       return {
         status,
         headers: {
@@ -184,34 +105,24 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       };
     };
 
-    /* A browser navigation deserves a page, not a JSON shrug (Feature #148):
-       GET on a non-API path answers with the branded 404 page when the
-       platform serves statics; API callers keep the JSON error. */
     const notFound = (json) => {
       const isPage = rx.method === 'GET' && serveStatic && !path.includes('/api/');
       const page = isPage ? serveStatic('/404.html') : null;
       return page ? { ...page, status: 404 } : out(404, json);
     };
 
-    // Workspace scoping: /w/<name>/... targets a sibling workspace.
     let weave = hub.get(hub.defaultName);
     let wsPrefix = '';
     const wsM = path.match(/^\/w\/([^/]+)(\/.*|$)/);
     if (wsM && wsM[1] !== 'undefined') {
-      // Back-compat: the docs workspace was renamed weaver → weave.
       const target = hub.get(wsM[1]) ?? (wsM[1] === 'weaver' ? hub.get('weave') : null);
       if (!target) return notFound({ error: `Workspace '${wsM[1]}' not found`, code: 'not-found' });
       weave = target;
       wsPrefix = `/w/${wsM[1]}`;
       path = wsM[2] || '/';
     }
-    // Pick up commits from other processes (CLI beside the server) before
-    // serving anything from this workspace.
     weave.maybeRefresh();
     versionOf = weave;
-    /* The record is the engine's; the hub's name index is the server's. A
-       slug another workspace holds, in any case, is refused before the write
-       (Issue #599), and REST and MCP rename through this one door. */
     const updateWorkspace = (patch) => {
       const slug = patch.name != null ? workspaceSlug(patch.name) : null;
       const held = slug ? hub.get(slug) : null;
@@ -222,12 +133,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return ws;
     };
 
-    /* The registry lives at the root (Feature #219), but a member page reads
-       and edits the rows that describe it through its own prefix: an entity
-       id or a registry table the member does not hold falls through to the
-       root engine. A Spaces row created from a member lands in that member.
-       ponytail: a member's own Bearer tokens do not verify on the root; a
-       member with requireAuth on reads its registry rows at the root URL. */
     const member = weave;
     {
       const root = weave.registryHost;
@@ -236,27 +141,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (eM && !weave.state.entities[eM[1]] && root.state.entities[eM[1]]) weave = root;
       else if (tM) {
         let ref = tM[1];
-        try { ref = decodeURIComponent(ref); } catch { /* keep as is */ }
-        const has = (w) => { try { return w.findTable(ref); } catch { return null; } }; // an ambiguous name is the route's to refuse
+        try { ref = decodeURIComponent(ref); } catch {}
+        const has = (w) => { try { return w.findTable(ref); } catch { return null; } };
         if (!has(weave) && has(root)?.system) weave = root;
       }
     }
 
-    // Who is calling (Feature #65): callers name themselves per request;
-    // without a header every mutation is 'web'. Set each request — a sticky
-    // actor from the last request would misattribute this one.
     weave.actor = String(rx.header('x-weave-actor') || 'web').slice(0, 120);
 
-    // Accounts & roles (Feature #14). A Bearer token names the account and
-    // caps what it may do; a bad token is a 401, never an anonymous
-    // fallthrough. With requireAuth on, anonymous API calls are refused —
-    // /api/health stays open so a monitor can still see the instance.
     let mcpChallenge = null;
     const deny = (code, error) => out(code, { error, code: code === 401 ? 'unauthorized' : 'forbidden' },
       code === 401 && mcpChallenge ? { 'WWW-Authenticate': mcpChallenge } : {});
 
-    // A share link is its own authorization (Feature #17): the token names
-    // exactly one view, rendered read-only, before any auth wall applies.
     {
       const shareM = path.match(/^\/view\/([A-Za-z0-9_-]+)$/);
       if (shareM && rx.method === 'GET') {
@@ -273,11 +169,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
     }
 
-    // The task applet (mobile, passcode-gated). Like a share link it carries
-    // its own authorization, so it sits ahead of the auth wall — and it is
-    // generated here rather than dropped in public/, which the Cloudflare
-    // assets binding would serve before this dispatcher ever runs.
-    // /t/<table uuid> is a table permalink (Feature #264), never an applet route.
     if (path === '/t' || (path.startsWith('/t/') && !UUID_RE.test(path.slice(3)))) {
       const appletBody = ['POST', 'PUT', 'PATCH'].includes(rx.method) ? await rx.readBody().catch(() => ({})) : {};
       try {
@@ -290,39 +181,25 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         });
         if (hit) return hit;
       } catch (err) {
-        // The applet sits ahead of the dispatcher's own try/catch; without
-        // this a throw here would leave the phone waiting forever.
         const json = { error: err.message, code: err.code ?? 'error' };
-        // A refused write is the phone's mistake, not the server's: 400 and
-        // the rest of the ladder, same as the dispatcher's own catch below.
         return err instanceof WeaveError && err.code === 'not-found' ? notFound(json) : out(statusFor(err), json);
       }
     }
 
-    /* The preview head of a permalink (Feature #264): `/` for the workspace,
-       /e/<uuid or Table#n>, /s/<space uuid>, /t/<table uuid>. Null for any
-       other path and for a miss, so a caller treats null as "no preview"
-       and decides between the wall and the branded 404 itself. `route` is
-       the hash route the app opens, null at the root. */
     const linkPreview = (p, { signedOut = false } = {}) => {
       const m = p.match(/^\/([est])\/([^/]+)$/);
       if (p !== '/' && !m) return null;
-      /* Signed out, only the uuid form previews: Table#n counts up from 1,
-         so answering it would let a stranger list every row's name. */
       if (signedOut && m && !UUID_RE.test(m[2])) return null;
       const ws = weave.state.meta;
       const site = ws.title ?? ws.name;
       const base = origin ?? `http://${rx.header('host')}`;
-      /* og:url names the workspace by slug even for the hub's default, which
-         also answers at /w/<slug>/; the jump keeps the prefix the request
-         came in on, as the 302 it replaced did. */
       const home = `/w/${ws.name || hub.defaultName}`;
       let image = `${base}/brand/weave-mark-512.png`;
       if (ws.logo) {
         try {
           const { meta: logo, bytes } = weave.getWorkspaceLogo();
           if (RASTER.has(logoType(bytes))) image = `${base}${home}/api/workspace/logo?v=${logo.id.slice(0, 8)}`;
-        } catch { /* a missing blob previews the mark */ }
+        } catch {}
       }
       const live = (tables) => tables.reduce((n, d) => n + weave.listEntities(d.id).length, 0);
       let title, trail, detail, url, route = null, fields = [];
@@ -363,10 +240,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           route = `${wsPrefix}/#/table/${db.id}`;
         }
       } catch (err) {
-        if (err instanceof WeaveError) return null; // an unknown or ambiguous ref
+        if (err instanceof WeaveError) return null;
         throw err;
       }
-      // The root's path is its own title: the detail alone says the rest.
       const description = m ? `${trail.filter(Boolean).join(' › ')}${detail ? `\n${detail}` : ''}` : detail;
       const tag = (attr, key, value) => `<meta ${attr}="${key}" content="${metaAttr(value)}">`;
       const head = [
@@ -379,57 +255,22 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         tag('property', 'og:type', m?.[1] === 'e' ? 'article' : 'website'),
         tag('property', 'og:image', image),
         tag('name', 'twitter:card', 'summary'),
-        // Slack draws these pairs as a two-column list under the title.
         ...fields.flatMap((f, i) => [tag('name', `twitter:label${i + 1}`, f.label), tag('name', `twitter:data${i + 1}`, String(f.value))]),
       ].join('\n');
       return { head, route };
     };
 
-    /* The wall covers every route, not just /api (Feature #222 phase 0,
-       closing Feature #194 problem 2): with requireAuth on, an entity page,
-       doc.html, entity.pdf, a deck or the app shell needs a token like the
-       API does. The doors that stay open carry their own authorization or
-       are needed before anyone can sign in: /api/health for a monitor, the
-       share link and the applet above, the sign-in page at /auth with its
-       ceremonies under /api/auth/ (part 2), and the static CSS/JS/font/image
-       assets — never a .html, which is the app itself. A browser gets
-       sign-in or a page, an API caller keeps the JSON. */
     const authHref = `${wsPrefix}/auth?next=${encodeURIComponent(wsPrefix + path)}`;
     const wallPage = () => out(401, wallPageHtml(authHref, oidc?.name), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    // With a provider, a signed-out browser skips the page: /auth sends it
-    // on to the provider, ?next kept (Issue #569). The page stays for token
-    // and share-link instances, and for a bad Bearer token.
     const wall = () => (oidc ? { status: 302, headers: { Location: authHref, 'Cache-Control': 'no-store' }, body: '' } : wallPage());
-    /* /privacy and /terms (Feature #251) are public by nature: a sign-in
-       provider's consent screen links them for people with no account. */
     const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms');
-    /* A preview before sign-in names the workspace logo as its image, so the
-       fetcher that reads the head may read the logo too (Feature #264). */
     const previewLogo = path === '/api/workspace/logo' && ['GET', 'HEAD'].includes(rx.method) && !!weave.state.meta.linkPreview;
     const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage || previewLogo
       || (['GET', 'HEAD'].includes(rx.method) && /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path));
     let role = null;
-    /* Who is here (Feature #222 part 2): a Bearer token wins when both are
-       present; otherwise the wv_session cookie names the account. A session
-       minted on the hub root opens a member workspace too — the root is
-       where the registry lives (Feature #219) and where an operator's
-       account is linked; a member's own sessions still verify first. */
     let session = null;
     const cookies = parseCookies(rx.header('cookie'));
     const authz = rx.header('authorization');
-    /* ---------- the hosted MCP door (Feature #254) ----------
-       /mcp (the default workspace) and /w/<name>/mcp are /api/mcp behind an
-       OAuth 2.1 protected resource, per the MCP authorization spec: the
-       RFC 9728 metadata names door C's provider as the authorization
-       server; a call without a credential is a 401 pointing at it; the
-       client signs the person in at the provider and brings back the
-       provider's access token. Its userinfo names the subject, and the
-       account door C's invite pinned that subject to (here, or on the hub
-       root, as a browser sign-in finds it) is the caller. wv_ tokens
-       work here as everywhere, and /api/mcp takes nothing but them.
-       ponytail: no RFC 8707 audience check. Clerk does not bind a token to
-       this resource, so a token the provider issued to any of its clients
-       passes userinfo; the account link is what stands in front of the data. */
     let oauth = null;
     let mcpDoor = false;
     if (path.startsWith('/.well-known/oauth-protected-resource') && !wsPrefix) {
@@ -450,8 +291,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
       if (oidc && !bearer) return deny(401, `Sign in with ${oidc.name} to use this MCP server`);
       if (oidc && !bearer.startsWith('wv_')) {
-        /* Each unknown token is a call to the provider, so an address that
-           keeps sending refused ones is held off like a failed sign-in. */
         const ip = clientIp(rx);
         if (limited('failed', ip, { peek: true })) return out(429, { error: 'Too many refused tokens: wait a minute and try again', code: 'rate-limited' });
         let who;
@@ -471,7 +310,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (authz && /^Bearer /i.test(authz)) {
       const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim());
       if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
-      // An OAuth caller is the account and the client it came through.
       weave.actor = oauth ? `${account.name} via ${oauth.client}`.slice(0, 120) : account.name;
       role = Weave.roleName(account.role);
     } else if (cookies.wv_session) {
@@ -481,61 +319,35 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         weave.actor = session.name;
         role = Weave.roleName(session.role);
       } else if (weave.state.meta.requireAuth && !openDoor) {
-        // A dead cookie: the browser goes to the sign-in page and the cookie
-        // is cleared on the way; an API caller keeps the JSON 401.
         return path.startsWith('/api/')
           ? deny(401, 'Session expired or revoked')
           : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(rx), 'Cache-Control': 'no-store' }, body: '' };
       }
     } else if (weave.state.meta.requireAuth && !openDoor) {
       if (path.startsWith('/api/')) return deny(401, 'This workspace requires authentication');
-      /* Link preview before sign-in (Feature #264): the head only, then the
-         sign-in jump. No shell, no entity payload; a miss is walled like
-         anything else, so a stranger learns nothing from a wrong guess. */
       const preview = weave.state.meta.linkPreview && ['GET', 'HEAD'].includes(rx.method) ? linkPreview(path, { signedOut: true }) : null;
       if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return wall();
     }
-    // The caps reach the page routes too: every page is a read, so an
-    // observer may GET any of them and POST at none but a comment (Feature
-    // #222 phase 0). The auth verbs are every account's own — an observer
-    // may sign out.
     if (role && role !== 'architect') {
       const m2 = rx.method;
       const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'))
-        // Using a template reads this workspace and writes another, where the
-        // route asks for an architect itself (Feature #261).
         || (m2 === 'POST' && /^\/api\/spaces\/[^/]+\/use$/.test(path));
       const schemaWrite = !read && (
         /^\/api\/(spaces|automations|accounts|invites|registry)/.test(path)
-        // MCP carries every tool, schema tools included — a capped token must
-        // not widen itself through the tunnel. Architect (or the edge gate) only.
         || path === '/api/mcp'
-        // Replacing the whole workspace is every schema change at once
-        // (Issue #230): an editor barred from one field cannot swap them all.
         || path === '/api/import'
         || /^\/api\/tables$/.test(path)
         || (/^\/api\/tables\/[^/]+$/.test(path) && (m2 === 'PATCH' || m2 === 'DELETE'))
-        // Re-homing, cloning or un-trashing a table is structure too (nav
-        // kebab, 2026-08-31; restore since Issue #149).
         || /^\/api\/tables\/[^/]+\/(move|duplicate|restore)$/.test(path)
         || /^\/api\/tables\/[^/]+\/fields/.test(path)
-        // A relation is a field on this table and its inverse on the target
-        // (Issue #489).
         || /^\/api\/tables\/[^/]+\/relations$/.test(path)
-        // A view's columns, filter and sort were a PATCH on the table before
-        // Feature #229 split them out; the gate follows them.
         || /^\/api\/tables\/[^/]+\/views/.test(path)
         || (/^\/api\/schema$/.test(path))
-        // A build makes spaces, tables and fields as readily as rows.
         || path === '/api/build'
         || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH')
-        // The welcome renames the workspace and may build a template.
         || path === '/api/onboarding');
-      // Registry rows ARE structure: writing Spaces/Tables/Fields rows through
-      // the entity door is a schema change wearing entity clothes. A CSV
-      // import creates rows the same way (Issue #489).
       const sysM = !read && (path.match(/^\/api\/tables\/([^/]+)\/(?:entities|import\.csv)/) ?? path.match(/^\/api\/entities\/([^/]+)/));
       const sysTouch = sysM && (() => {
         try {
@@ -545,9 +357,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return !!ref?.system;
         } catch { return false; }
       })();
-      // An observer's one write is its own voice (Kyle, 2026-10-02): a
-      // comment, posted under its own name, and deleting a comment it made.
-      // A role weave does not know is held to the same, never to more.
       const observer = role !== 'editor';
       const cm = observer && !read && path.match(/^\/api\/entities\/([^/]+)\/comments(?:\/([^/]+?))?$/);
       const ownComment = cm && (cm[2] == null ? m2 === 'POST' : m2 === 'DELETE' && (() => {
@@ -556,9 +365,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (observer && !read && !ownComment) return deny(403, 'An observer may read and comment, nothing else');
       if (role === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
     }
-    /* The caller's role on another workspace of this hub, verified there: its
-       Bearer token, or its session (a root session opens a member, as at the
-       wall). For routes that act on more than the URL workspace. */
     const roleOn = (w) => {
       if (w === weave) return role;
       if (oauth) return w === oauth.engine ? Weave.roleName(oauth.account.role) : null;
@@ -568,9 +374,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return Weave.roleName((w.verifySession(cookies.wv_session) ?? (w !== root ? root.verifySession(cookies.wv_session) : null))?.role) ?? null;
     };
 
-    // Resolves [[Table#12]] mentions in rendered documents (active workspace).
-    // The one place that knows how each reference kind is addressed and what
-    // it links to. Returns null for a miss, which renders as a broken chip.
     const resolveMention = (kind, ref) => {
       try {
         if (kind === 'workspace') {
@@ -584,7 +387,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const db = weave.findTable(ref);
           return db ? { href: `${wsPrefix}/#/table/${db.id}`, label: weave.qualifiedName(db) } : null;
         }
-        // A bare uuid is the durable form: resolves whatever the names are now.
         if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) {
           const e = weave.state.entities[ref];
           if (!e || e.deletedAt) return null;
@@ -603,7 +405,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           fields: weave.previewFields(entity.id),
         };
       } catch {
-        return null; // an ambiguous or malformed ref is a miss, not a 500
+        return null;
       }
     };
 
@@ -612,9 +414,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
 
     try {
-      // ---------- native document views ----------
-      // /e/:id/doc.<fmt> serves the default (first) document field;
-      // /e/:id/doc/<Field Name>.<fmt> serves a named document field.
       let m;
       if ((m = path.match(/^\/e\/([^/]+)\/doc(?:\/([^/]+?))?\.(md|mmd|html|pdf)$/))) {
         const entity = weave.readEntity(m[1]);
@@ -629,7 +428,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, markdown, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
         }
         if (m[3] === 'html') {
-          // An HTML document serves itself — its own styles and scripts, verbatim.
           if (isHtmlDocument(markdown)) return out(200, markdown, { 'Content-Type': 'text/html; charset=utf-8' });
           const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown, resolveMention });
           return out(200, page, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -640,7 +438,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           'Content-Disposition': `inline; filename="${(entity.name || 'document').replace(/[^\w.-]+/g, '_')}.pdf"`,
         });
       }
-      // Whole-entity export: name + fields + every document field, in one file.
       if ((m = path.match(/^\/e\/([^/]+)\/entity\.(md|mmd|html|pdf)$/))) {
         const entity = weave.readEntity(m[1]);
         const lines = [`# ${entity.name || '#' + entity.publicId}`, '', `${entity.db} #${entity.publicId} • updated ${entity.updatedAt.slice(0, 10)}`, '', '## Fields', '', '| Field | Value |', '|---|---|'];
@@ -649,7 +446,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const val = v == null ? '' : Array.isArray(v) ? v.map((x) => (x && typeof x === 'object' ? x.name : x)).join(', ') : typeof v === 'object' ? (v.name ?? '') : String(v);
           lines.push(`| ${k} | ${String(val).replace(/\|/g, '\\|')} |`);
         }
-        // Every document renders as its own page (PDF break; print break in HTML).
         for (const [docName, docText] of Object.entries(entity.docs)) {
           lines.push('', '<div class="pagebreak"></div>', '', `## ${docName}`, '', docText || '_empty_');
         }
@@ -666,12 +462,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         });
       }
 
-      /* ---------- composed decks (Feature #118) ----------
-         /e/:ref/deck.html is a deck the way /e/:ref/doc.html is a document:
-         composed on read from the slides the entity links, never stored. A
-         slide entity answers the same route with a one-slide preview wearing
-         its deck's chrome. .json is the composed model plus what the decklet
-         validator says about it. */
       if ((m = path.match(/^\/e\/([^/]+)\/deck\.(html|json)$/))) {
         const { renderDeck } = await deckModule();
         const built = renderDeck(weave, m[1]);
@@ -684,32 +474,19 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         });
       }
 
-      /* Permalinks (Feature #264): /e/<uuid or Table#n>, /s/<space>, /t/<table>
-         and the workspace root answer the shell with their preview head. A
-         permalink's shell carries the hash route it opens; /permalink.js
-         moves the address there with replaceState before the app boots, so
-         Back leaves in one step, as the 302 this replaced did. */
       if ((m = path.match(/^\/(e|s|t)\/([^/]+)$/)) && !['GET', 'HEAD'].includes(rx.method)) {
-        throw new WeaveError(`A permalink answers GET, not ${rx.method}`, 'not-found'); // JSON, as before
+        throw new WeaveError(`A permalink answers GET, not ${rx.method}`, 'not-found');
       }
       if (['GET', 'HEAD'].includes(rx.method) && (path === '/' || m)) {
         const preview = linkPreview(path);
         if (!preview && path !== '/') throw new WeaveError(`Nothing at ${wsPrefix}${path}`, 'not-found');
-        // ponytail: a platform that serves the shell itself (the Worker) keeps the bare 302.
         if (preview?.route && !serveStatic) return { status: 302, headers: { Location: preview.route }, body: '' };
         const jump = preview?.route ? `\n<meta name="weave-route" content="${metaAttr(preview.route)}">\n<script src="/permalink.js"></script>` : '';
         const hit = preview && serveStatic ? serveStatic('/', rx, { head: preview.head + jump }) : null;
         if (hit) return hit;
       }
 
-      /* ---------- the sign-in page (Feature #222 part 2; passkeys removed, Feature #243) ---------- */
       if (path === '/auth') {
-        /* With a provider, a signed-out browser goes straight to it, ?next
-           kept (Kyle, 2026-10-01): no intermediate page. The page is for a
-           signed-in visitor and for the landing right after sign-out, where
-           a trip to the provider would sign the person straight back in on
-           the provider's own session. A typed 127.0.0.1 moves to localhost
-           first: the trip cookie is per host and the redirect URI is there. */
         if (oidc && !session && !role && !rx.searchParams?.has('signed-out')) {
           const q = rx.searchParams?.toString() ?? '';
           if (!origin && String(rx.header('host') ?? '').split(':')[0] === '127.0.0.1') {
@@ -727,7 +504,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return out(200, renderDocumentPage({ title, subtitle: 'weave', markdown }), { 'Content-Type': 'text/html; charset=utf-8' });
       }
 
-      // ---------- API ----------
       if (path.startsWith('/api/')) {
         const body = ['POST', 'PUT', 'PATCH'].includes(rx.method) ? await rx.readBody() : {};
         const route = `${rx.method} ${path}`;
@@ -736,24 +512,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const ip = clientIp(rx);
           const tooMany = () => out(429, { error: 'Too many attempts — wait a minute and try again', code: 'rate-limited' });
           const who = () => session ?? (role ? weave.verifyToken(authz.slice(7).trim()) : null);
-          // Which engine holds the session: the one asked, or the hub root.
           const holder = () => (session && weave.verifySession(cookies.wv_session)) ? weave : hub.get(hub.defaultName);
-          /* ---------- door C: one OIDC provider (Feature #212) ----------
-             start sends the browser to the provider; the callback is one
-             address for every workspace (a provider registers exact
-             redirect URIs), so the trip remembers which engine asked. The
-             account is looked for there, then on the hub root, and the
-             session minted is the wv_session cookie. A refusal is a page: this is a
-             navigation, not a fetch. An invite link is start with ?invite=:
-             the code rides the server-side trip, and the callback redeems it
-             to pin the provider's subject to the invited account (Feature #252). */
           if (path.startsWith('/api/auth/oidc/')) {
             if (!oidc) return notFound({ error: 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
-            /* Every way back lands on /auth?signed-out=1, which renders: bare
-               /auth sends a signed-out browser on to the provider, whose own
-               session signs it straight back in to the same refusal (Issue
-               #570). mount is the workspace that started the trip, once the
-               callback knows it. */
             let mount = wsPrefix;
             const signInAgain = () => ({ href: `${mount}/auth?signed-out=1`, label: 'Back to sign in' });
             const refusal = (status, title, detail, actions = [signInAgain()]) => out(status, renderRefusalPage({ title, lines: detail, actions }),
@@ -768,9 +529,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (invite && !weave.identityInvite(invite)) return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
               let trip;
               try { trip = await oidc.begin({ redirectUri, fresh: rx.searchParams?.has('fresh') }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
-              /* The trip belongs to the browser that started it: a second,
-                 unguessable value rides a cookie scoped to these two routes,
-                 so a callback URL handed to another browser finishes nothing. */
               const binder = newChallenge();
               putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite, mount: wsPrefix }, trip.state);
               const secure = originFor(rx).startsWith('https:') ? '; Secure' : '';
@@ -787,16 +545,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 who = await oidc.redeem({ code: rx.searchParams.get('code'), redirectUri, verifier: c.verifier, nonce: c.nonce });
               } catch (err) {
                 noteFailure(ip);
-                // A provider that is down or slow is its own answer, not a 500.
                 if (!(err instanceof WeaveError)) return refusal(502, `${oidc.name} is not answering`, 'The identity provider could not be reached. Try again in a minute.');
                 return refusal(401, `${oidc.name} sign-in could not be verified`, err.message);
               }
               const root = hub.get(hub.defaultName);
               let account = null;
-              /* A way out to another provider account (Issue #570): sign out at
-                 the provider where discovery says how, else a trip that makes
-                 the provider ask again. An unspent invite rides that trip, and
-                 needs it: the provider would return to /auth without it. */
               const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
               const differentAccount = async () => ({ label: 'Use a different account', href: await oidc.endSessionUrl({ postLogoutRedirectUri: `${originFor(rx)}${mount}/auth?signed-out=1` }).catch(() => null) ?? fresh() });
               let engine = null;
@@ -822,7 +575,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
           if (route === 'POST /api/auth/logout') {
             if (session) {
-              try { holder().revokeSession(session.id, { id: session.sessionId }); } catch { /* already gone */ }
+              try { holder().revokeSession(session.id, { id: session.sessionId }); } catch {}
             }
             return out(200, { ok: true }, { 'Set-Cookie': clearCookie(rx), 'Cache-Control': 'no-store' });
           }
@@ -831,12 +584,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (!account) return deny(401, 'Not signed in');
             const engine = session ? holder() : weave;
             const sessions = engine.listSessions(account.id).map(({ accountId, ...s }) => ({ ...s, current: s.id === session?.sessionId }));
-            // A pre-#243 account row may still carry credentials[]; it is not shown.
             const { credentials, ...pub } = engine.listAccounts().find((a) => a.id === account.id) ?? account;
             return out(200, { account: pub, role: account.role, sessions }, { 'Cache-Control': 'no-store' });
           }
-          /* The self-service verb the You section needs. `others` ends
-             every session but this one; an id ends that one. */
           if ((m = path.match(/^\/api\/auth\/sessions\/([^/]+)$/)) && rx.method === 'DELETE') {
             const account = who();
             if (!account) return deny(401, 'Not signed in');
@@ -847,33 +597,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return notFound({ error: 'Unknown auth route', code: 'not-found' });
         }
 
-        // startedAt + uptime let callers spot a stale server (process start
-        // time vs commit/package version) instead of assuming "up" = "current".
         if (route === 'GET /api/health') {
           const nightly = backup();
           return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...(build() ?? {}), ...weave.storageStats(), ...(nightly ? { backup: nightly } : {}) });
         }
         if (route === 'GET /api/schema') return out(200, weave.describeSchema());
-        // Every closed set a config value can come from, and what the choice
-        // looks like on screen — served so an agent never has to guess a
-        // color, an icon name or a format (src/vocabulary.js).
         if (route === 'GET /api/vocabulary') {
-          // ?section=icons&query=build searches the icon names (Issue #591);
-          // ?section=icons,optionColors answers several at once (Issue #625).
           try { return out(200, vocabularyView(rx.searchParams?.get('section'), rx.searchParams?.get('query'))); }
           catch (e) { throw new WeaveError(e.message, 'invalid'); }
         }
 
-        /* These act on the hub, not the URL workspace (Issue #481). The list
-           and search ?all=1 carry only the workspaces whose own wall this
-           caller would pass; create, restore and delete need an architect on the
-           hub root once the root holds an account. */
         const canOpen = (w) => !w.state.meta.requireAuth || roleOn(w) != null;
-        /* Use Template (Feature #261): copy a space of the URL workspace into
-           another workspace of the hub. Reading the source is the URL's own
-           gate; building in the target needs an architect there, by the
-           caller's credential as the target verifies it. REST and the MCP
-           tool both come through here. */
         const useTemplateInto = ({ space, workspace, name } = {}) => {
           if (workspace == null || String(workspace).trim() === '') throw new WeaveError('Name the workspace to build in: {workspace}, as GET /api/workspaces lists them', 'invalid');
           const target = hub.get(String(workspace));
@@ -902,8 +636,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const w = hub.create(body.name);
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/` });
         }
-        // Workspace trash: soft only — a .db file is removed by a human, not
-        // an API call. Restore is the inverse.
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
           const w = hub.restore(m[1]);
           return out(200, { name: w.state.meta.name, deletedAt: null });
@@ -917,14 +649,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
 
-        /* ---------- the onboarding welcome (Feature #248) ----------
-           Runs once per person, on an instance where they have built
-           nothing: not yet onboarded, allowed to rename this workspace (no
-           role, or architect), no tables of its own here, and none in any other
-           workspace they can open, the weave docs workspace aside. The
-           person is the signed-in account, whose row keeps the mark; with
-           nobody signed in, the hub root keeps it. The default name is the
-           account's first name, else this workspace's current name. */
         if (path === '/api/onboarding') {
           const root = hub.get(hub.defaultName);
           const token = authz && /^Bearer /i.test(authz) ? weave.verifyToken(authz.slice(7).trim()) : null;
@@ -944,13 +668,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(200, { show, name: byDefault }, { 'Cache-Control': 'no-store' });
           }
           if (rx.method === 'POST') {
-            // Skip and finish are one call: an absent name is the default.
             const name = WeaveStarters.workspaceName(body?.name) || byDefault;
             if (taken(name)) throw new WeaveError(`Workspace '${name}' already exists`, 'conflict');
             const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
             if (body?.template && !template) throw new WeaveError(`Unknown template '${body.template}'`, 'invalid');
-            // The name is checked first, so a refusal builds nothing.
-            // One build call (Feature #253): a space already there is reused.
             let table = null;
             if (template) {
               const built = weave.build(WeaveStarters.spec(template));
@@ -965,27 +686,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if (route === 'GET /api/workspace') {
           const ws = weave.getWorkspace();
-          // In the body too, so an agent or a CLI can poll the structure's
-          // version without reading response headers (Issue #274).
           return out(200, { ...ws, url: `/w/${ws.id}/`, schemaVersion: weave.schemaVersion() });
         }
 
-        // Accounts (Feature #14). Once any account exists, only an architect
-        // token manages them — the anonymous door closes behind the first key.
-        // Link preview before sign-in opens part of the wall, so it is the same call (Feature #264).
         if (path.startsWith('/api/accounts') || path.startsWith('/api/invites') || (route === 'PATCH /api/workspace' && ('requireAuth' in (body ?? {}) || 'linkPreview' in (body ?? {})))) {
           if (!mayAdminister(weave, role)) {
             return deny(role ? 403 : 401, 'Managing accounts needs an architect token');
           }
         }
         if (route === 'GET /api/accounts') return out(200, weave.listAccounts());
-        /* A new person, invited to this workspace (Issue #569): the link is
-           the invite, handed out once. With mail on (Feature #216) weave also
-           emails it to the address typed; a failed send is logged and named
-           in the answer, never a failed invite. The accepted notice
-           (inviteAcceptedEmail) is not sent: weave keeps no account email
-           (Feature #252). Kyle's open decision: drop it, keep the inviter's
-           address on the invite until it is used, or show it in-app. */
         if (route === 'GET /api/invites') return out(200, weave.listInvites());
         if (route === 'POST /api/invites') {
           const made = weave.inviteMember({ email: body?.email, role: body?.role ?? 'editor', issuer: body?.issuer ?? oidc?.issuer });
@@ -1004,8 +713,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, { ...made, url, ...sent });
         }
         if ((m = path.match(/^\/api\/invites\/([^/]+)$/)) && rx.method === 'DELETE') return out(200, weave.revokeInvite(decodeURIComponent(m[1])));
-        /* The invite emails with sample values (Feature #216): what a person
-           gets before anyone is sent one. Architect only, like the invites. */
         if ((m = path.match(/^\/api\/mail\/preview\/([^/]+)$/)) && rx.method === 'GET') {
           if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Previewing email needs an architect token');
           const make = { invite: inviteEmail, accepted: inviteAcceptedEmail }[m[1]];
@@ -1019,8 +726,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, email.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         }
         if (route === 'POST /api/accounts') return out(201, weave.createAccount(body ?? {}));
-        // Door C (Feature #212, Feature #252): linking mints a one-time
-        // invite link; the person who opens it and signs in is linked.
         if ((m = path.match(/^\/api\/accounts\/([^/]+)\/identities$/))) {
           const ref = decodeURIComponent(m[1]);
           if (rx.method === 'POST') {
@@ -1032,11 +737,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/accounts\/(.+)$/)) && rx.method === 'DELETE') {
           return out(200, weave.deleteAccount(decodeURIComponent(m[1])));
         }
-        // Keystore (Feature #64): set, list, delete — never read back. The
-        // same architect gate as accounts once any account exists — the hub
-        // root's accounts, whichever workspace the URL names, because one
-        // keystore serves the whole process (Issue #480). A root caller on
-        // a key's access list may reveal it; its owner may rotate or drop it.
         if (path.startsWith('/api/keys')) {
           const root = hub.get(hub.defaultName);
           const rootRole = roleOn(root);
@@ -1050,10 +750,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
           if (route === 'GET /api/keys') return out(200, weave.listKeys());
           if (route === 'POST /api/keys') return out(201, weave.setKey(body?.name, body?.value));
-          /* Reveal is its own verb on its own path (Feature #143). It is a
-             POST because it is an act, not a read: the credential's access
-             list decides, and every call lands in the audit log. GET stays
-             a 404 so nothing that merely follows links can spend a reveal. */
           if ((m = path.match(/^\/api\/keys\/([^/]+)\/reveal$/)) && rx.method === 'POST') {
             return out(200, { name: decodeURIComponent(m[1]), value: weave.revealKey(decodeURIComponent(m[1]), { via: body?.via ?? 'show' }) });
           }
@@ -1073,7 +769,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             allowDestructive: !!body?.allowDestructive,
           }));
         }
-        // Feature #253: a whole outline in one call; 400 when the spec has errors.
         if (route === 'POST /api/build') {
           const { spec, dryRun, skipExistingRows, ...bare } = body ?? {};
           const r = weave.build(spec ?? bare, { dryRun: !!dryRun, skipExistingRows: !!skipExistingRows });
@@ -1082,7 +777,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/relation-map.mmd') {
           return out(200, weave.relationMapMmd());
         }
-        // The meta-model registries, the third door beside MCP and the CLI.
         if (route === 'GET /api/registry') return out(200, weave.registryReport());
         if (route === 'POST /api/registry/rebuild') return out(200, weave.rebuildRegistry());
         if (route === 'GET /api/views') return out(200, weave.listViews());
@@ -1103,16 +797,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             offset: Number(rx.searchParams.get('offset') ?? 0),
           }));
         }
-        /* MCP over HTTP (Feature #99): stateless streamable-HTTP, JSON mode —
-           one JSON-RPC message (or a batch array) per POST, the response in
-           the body, 202 for notifications. The same handler as stdio, so the
-           hosted instance speaks exactly what a local agent already speaks. */
-        // No stream to open: a 405 tells a streamable-HTTP client so (Feature #254).
         if (mcpDoor && rx.method !== 'POST') return out(405, { error: 'The MCP door takes POST: JSON-RPC in, JSON out, no stream', code: 'method-not-allowed' }, { Allow: 'POST' });
         if (route === 'POST /api/mcp') {
           const msgs = Array.isArray(body) ? body : [body];
-          // The accounts, keys and import tools ask the same gate as REST
-          // (Issue #482), so the caller's role travels with the message.
           const root = hub.get(hub.defaultName);
           const caller = { role, root, rootRole: roleOn(root), updateWorkspace, useTemplate: useTemplateInto };
           const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
@@ -1122,13 +809,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/undo') {
           return out(200, weave.listUndo({ limit: Number(rx.searchParams.get('limit') ?? 20) }));
         }
-        /* One write for a whole selection (Feature #132, slice 3): body is
-           { ids, op, ...params }; the reply names what landed and what did not. */
         if (route === 'POST /api/bulk') {
           const { ids, op, ...params } = body ?? {};
-          /* The ids are in the body, so the entity doors' system-table check
-             never saw them (Issue #489): an editor's bulk is refused whole when
-             any row it names, or any table it writes into, is structure. */
           if (role === 'editor') {
             const sys = (fn) => { try { return !!fn()?.system; } catch { return false; } };
             const list = ids == null ? [] : [].concat(ids);
@@ -1158,36 +840,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention }) });
         }
 
-        /* The in-app bug reporter (Feature #141). A reporter picks one of four
-           things, and the page hands over the ring buffer of what just
-           happened; the report is rendered and filed here.
-
-           It files into the **weave** docs workspace, whichever workspace the
-           reporter was looking at, because a bug in weave is not a row in
-           somebody's data. And the server supplies its own version, start
-           time and workspace name rather than trusting the page's copy — a
-           stale build reporting its own version is how this project's most
-           common false bug starts. */
         if (route === 'POST /api/bug-report') {
           const events = body?.events ?? [];
           if (!Array.isArray(events) || events.length > MAX_BUG_EVENTS) {
             return out(400, { error: `events must be an array of at most ${MAX_BUG_EVENTS} entries`, code: 'invalid' });
           }
-          // The docs workspace, by either spelling, or this instance is not
-          // one a bug can be filed against.
           const docs = hub.get('weave') ?? hub.get('weaver');
           const issues = docs && (() => { try { return docs.getTable('Development/Issue'); } catch { return null; } })();
           if (!issues) {
             return out(501, { error: 'No Development/Issue table to file into — this instance has no weave docs workspace', code: 'unsupported' });
           }
-          /* The documented intake: anyone who may write here files into the
-             weave docs workspace. An anonymous caller (the wall off here)
-             must also pass the docs workspace's own wall (Issue #481). */
           if (role == null && !canOpen(docs)) return deny(401, 'The weave docs workspace requires authentication');
           docs.maybeRefresh();
-          /* renderBugReport is the validator too: an unknown symptom, or a
-             report with neither a symptom nor a note, throws before anything
-             is written. */
           let report;
           try {
             report = renderBugReport({
@@ -1208,25 +872,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const was = docs.actor;
           docs.actor = 'bug-report';
           try {
-            /* The symptoms land in a real multiselect so a week of reports
-               can be filtered rather than read (Kyle, 2026-08-25: "this should
-               map perfectly to an issue record with a multiselect and a
-               description field"). A workspace seeded before the field existed
-               keeps them in the Description alone rather than 400ing. */
             const values = { Severity: report.severity };
             const field = docs.findField(issues, SYMPTOM_FIELD);
-            /* Only options the field actually declares. A workspace whose
-               options were renamed would otherwise reject the whole create
-               ("'Slow or stuck' is not an option of 'Symptom'", seen live
-               2026-08-25) and lose a report over a label edit. */
             const declared = new Set((field?.config?.options ?? []).map((o) => o?.name ?? o));
             const settable = report.symptoms.filter((s) => declared.has(s));
             if (settable.length) values[SYMPTOM_FIELD] = settable;
-            /* The report goes to whatever the Issue table calls its
-               description. Naming it 'Description' threw 'not a document
-               field' the moment someone renamed it, and the handler above
-               does not catch — the whole report was lost over a label edit.
-               A table with no description at all files the row anyway. */
             const described = docs.descriptionField(issues);
             const issue = docs.createEntity(issues.id, {
               name: report.title,
@@ -1250,8 +900,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (path === '/api/workspace/logo') {
           if (rx.method === 'GET') {
             const { bytes } = weave.getWorkspaceLogo();
-            /* Typed from the bytes at serve time too, so a logo stored before
-               Issue #492 cannot carry a hostile type. */
             const type = logoType(bytes);
             return out(200, bytes, {
               'Content-Type': type ?? 'application/octet-stream',
@@ -1305,9 +953,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(200, { ok: true });
           }
         }
-        /* Table views (Feature #229): the tableView verb, one door. GET the
-           strip or one view; PATCH writes (creating a view that is new);
-           DELETE removes. The table part takes an id or a name. */
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/views$/)) && rx.method === 'GET') {
           return out(200, weave.tableView(decodeURIComponent(m[1])));
         }
@@ -1333,9 +978,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)$/))) {
           if (rx.method === 'PATCH') {
-            // The field, plus the Activity entry the write recorded (null when
-            // it recorded none: a no-op or a width), so the page can offer an
-            // Undo that names exactly this change (Issue #428).
             const seq = weave.state.meta.activitySeq ?? 0;
             const field = weave.updateField(m[1], m[2], body);
             const [last] = weave.activityFeed({ entityId: weave.getTable(m[1]).id, kinds: ['field-config-updated'], limit: 1 }).items;
@@ -1344,7 +986,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
           if (rx.method === 'DELETE') { weave.deleteField(m[1], m[2]); return out(200, { ok: true }); }
         }
-        // Under /fields, so it takes the rung the schema write takes.
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)\/rollback$/)) && rx.method === 'POST') {
           return out(200, weave.rollbackFieldConfig(body?.activity, { table: m[1], field: m[2], via: body?.via }));
         }
@@ -1354,8 +995,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
           if (rx.method === 'POST') {
-            // A Spaces row born on a member page belongs to that member
-            // (Feature #219); the engine accepts the workspace id as the ref.
             if (weave !== member && weave.findTable(m[1])?.system === 'spaces') {
               const values = body.values ?? body;
               if (values.Workspace == null) values.Workspace = member.state.meta.id;
@@ -1375,10 +1014,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/formula-check$/)) && rx.method === 'POST') {
           return out(200, weave.checkFormula(m[1], body?.expression, { entity: body?.entity ?? null, excludeField: body?.excludeField ?? null, scan: Boolean(body?.scan) }));
         }
-        // Every column summarised — the five-number summary and a histogram
-        // for numbers, a distribution for chips, the span for dates — plus
-        // the space rollups pointed at the table. ?by=Field groups the numeric
-        // columns; ?where=<json> narrows the rows (src/stats.js).
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/stats$/)) && rx.method === 'GET') {
           const by = rx.searchParams.get('by') || null;
           const raw = rx.searchParams.get('where');
@@ -1386,7 +1021,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (raw) { try { where = JSON.parse(raw); } catch { return out(400, { error: 'where must be JSON' }); } }
           return out(200, weave.tableStats(m[1], { by, where }));
         }
-        // The workspace trash: every trashed row, from every table.
         if (path === '/api/trash' && rx.method === 'GET') {
           const items = weave.listTrash();
           return out(200, { total: items.length, items });
@@ -1405,14 +1039,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/entities\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.readEntity(m[1], { viewerZone }));
           if (rx.method === 'PATCH') {
-            /* `affected` is the blast radius of this write (Issue #257): the
-               rows a client has to re-read, so a cell commit patches those
-               rows in place instead of asking for the table again. The fresh
-               row is still the body — an old client reads it as before. */
             const { touched } = weave.touching(() => weave.updateEntity(m[1], body.values ?? body));
             return out(200, { ...weave.readEntity(m[1], { viewerZone }), affected: weave.affectedBy(m[1], touched) });
           }
-          // Soft by default; ?hard=1 is the irreversible purge.
           if (rx.method === 'DELETE') {
             const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
             return out(200, { ok: true, ...weave.deleteEntity(m[1], { hard }) });
@@ -1421,15 +1050,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/restore$/)) && rx.method === 'POST') {
           return out(200, weave.restoreEntity(m[1]));
         }
-        // Backlinks: entities whose documents mention this one. A reference,
-        // never a relation — computed from the text, not stored.
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/references$/)) && rx.method === 'GET') {
           return out(200, weave.referencesTo(m[1]));
         }
-        // The outbound mirror: entities this one's documents mention.
-        /* One row as its chip or card, optionally under a candidate config
-           (?config=<json>): the field dialog's live preview. A read: nothing
-           is saved. */
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/view$/)) && rx.method === 'GET') {
           const shape = rx.searchParams.get('shape') ?? 'chip';
           const rawCfg = rx.searchParams.get('config');
@@ -1442,9 +1065,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/references-from$/)) && rx.method === 'GET') {
           return out(200, weave.referencesFrom(m[1]));
         }
-        // A slide's next version: same key and content, Version + 1, pointing
-        // back at what it supersedes. ?promote=1 swaps it into the decks the
-        // old row sat in, keeping its place in each running order.
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/version$/)) && rx.method === 'POST') {
           const promote = ['1', 'true'].includes(rx.searchParams.get('promote') ?? '') || body.promote === true;
           const { newSlideVersion } = await deckModule();
@@ -1464,8 +1084,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.readEntity(m[1], { viewerZone }));
         }
 
-        // Document history (Feature #225): metadata newest first, one
-        // revision's text, and a restore that is an ordinary write.
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc\/revisions$/)) && rx.method === 'GET') {
           const fieldRef = rx.searchParams.get('field') ?? null;
           return out(200, weave.listDocRevisions(m[1], fieldRef, { limit: rx.searchParams.get('limit') ?? 50 }));
@@ -1477,16 +1095,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.restoreDocRevision(m[1], body.field ?? null, m[2]));
         }
 
-        // Document field selected by ?field= (GET) or body.field (PUT/POST);
-        // omitted = the table's default (first) document field.
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc$/))) {
           const fieldRef = rx.searchParams.get('field') ?? body.field ?? null;
           if (rx.method === 'GET') return out(200, { field: fieldRef, doc: weave.getDoc(m[1], fieldRef) });
-          /* The text under one of the two keys this route reads, and under no
-             other (Issue #572): a body spelling it anything else used to write
-             the `?? ''` fallback, so a PUT answered 200 and left the document
-             blank. `{"doc": ""}` still clears it — that is the write a person
-             makes on purpose, and it is the one thing a missing key is not. */
           if (rx.method === 'PUT' || rx.method === 'POST') {
             const text = body.doc ?? body.markdown;
             if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither. Send `{"doc": ""}` to clear the document.', 'invalid');
@@ -1508,7 +1119,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
           const { meta, bytes } = weave.readFile(m[1]);
-          // `?view` shows an HTML upload in place under HTML_VIEW_POLICY; it changes nothing else.
           return out(200, bytes, fileHeaders(meta, bytes, { view: rx.searchParams?.has('view') ?? false }));
         }
 
@@ -1531,9 +1141,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (rx.method === 'DELETE') { weave.deleteAutomation(m[1]); return out(200, { ok: true }); }
         }
 
-        /* The Activity system table. Read-only by construction: there is no
-           POST here, because an event is something that happened, not
-           something anyone declares. */
         if (route === 'GET /api/activity') {
           return out(200, weave.activityFeed({
             entityId: rx.searchParams.get('entity'),
@@ -1552,7 +1159,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const q = rx.searchParams.get('q') ?? '';
           const limit = Number(rx.searchParams.get('limit') ?? 25);
           if (rx.searchParams.get('all')) {
-            // Cross-workspace search: permalinks carry the workspace path.
             const results = [];
             for (const [name, w] of hub.entries()) {
               if (!canOpen(w)) continue;
@@ -1567,7 +1173,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'GET /api/export') return out(200, weave.exportJSON());
         if (route === 'POST /api/import') {
-          // The import replaces the accounts too: the accounts gate (Issue #482).
           if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Replacing the workspace needs an architect token');
           return out(200, { ok: true, ...weave.importJSON(body) });
         }
@@ -1575,7 +1180,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return out(404, { error: `No route: ${route}` });
       }
 
-      // ---------- static UI ----------
       if (serveStatic) {
         const hit = serveStatic(path, rx);
         if (hit) return hit;
@@ -1585,8 +1189,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const status = statusFor(err);
       if (status === 500 && typeof console !== 'undefined') console.error(err);
       const json = { error: err.message, code: err.code ?? 'internal' };
-      // A not-found from the engine (unknown entity id on /e/<id>, Issue #238)
-      // is a navigation miss like any other: the page rule decides.
       return status === 404 ? notFound(json) : out(status, json);
     }
   };

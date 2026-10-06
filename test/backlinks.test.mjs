@@ -1,9 +1,3 @@
-// References are not relations (Kyle, 2026-09-01): a chip in a document is
-// tracked as a reference, computed from the text on demand. Each entity
-// answers /api/entities/:ref/references with the entities whose documents
-// mention it, in every accepted spelling. Preview fields feed the collapsible
-// chip: workflow state first, then non-empty values in schema order, three at
-// most, zero configuration.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -44,7 +38,6 @@ test('previewFields: workflow first, then non-empty in schema order, capped at 3
 test('previewFields: empty values are skipped, name field never appears', () => {
   const { w, target } = seed();
   const fields = w.previewFields(target.id);
-  // Only the default workflow state is set on a fresh entity.
   assert.deepEqual(fields.map((f) => f.label), ['State']);
   assert.equal(fields[0].value, 'Open');
   assert.ok(!fields.some((f) => f.label === 'Name'));
@@ -62,7 +55,6 @@ test('referencesTo finds every accepted spelling and nothing else', () => {
   const refs = w.referencesTo(target.id);
   const names = refs.map((r) => r.name).sort();
   assert.deepEqual(names, ['bracket pid', 'permalink', 'qualified', 'uuid'].sort());
-  // Summaries carry what a chip needs.
   for (const r of refs) {
     assert.ok(r.id && r.publicId && r.db === 'Dev/Issue');
   }
@@ -121,14 +113,6 @@ test('mention chip without fields renders exactly as before', () => {
   assert.match(html, /<a class="mention mention-entity" href="\/e\/abc\/doc.html">Plain<\/a>/);
 });
 
-/* ---------- the outbound mirror: what this document mentions ----------
-   Same ruling, other direction (Kyle, 2026-09-02): the chips a document
-   carries ARE its outbound references — computed from the text, deduped,
-   1:1 with what the text says right now. Never stored, never linkable,
-   never unlinkable. Spellings match referencesTo exactly, which now also
-   reads an HTML chip's href and a mermaid click target: they all reduce
-   to /e/<uuid>. */
-
 test('referencesFrom finds every accepted spelling and dedupes to one entry', () => {
   const { w, target } = seed();
   const issue = w.createEntity('Issue', {
@@ -155,7 +139,6 @@ test('referencesFrom reads HTML chips and mermaid click targets', () => {
   });
   assert.equal(w.referencesFrom(htmlDoc.id).length, 1);
   assert.equal(w.referencesFrom(mmdDoc.id).length, 1);
-  // And the inbound scan agrees — both directions share the spellings.
   const inbound = w.referencesTo(target.id).map((r) => r.name).sort();
   assert.deepEqual(inbound, ['diagram', 'html chip']);
 });
@@ -197,14 +180,6 @@ test('GET /api/entities/:ref/references-from serves the outbound refs', async ()
     server.close();
   }
 });
-
-/* ---------- references live in the side column, house chips ----------
-   (Kyle, 2026-09-02): references are hidden from the entity view by default,
-   exactly like comments and activity — they live in the entity-side column
-   the Activity system toggle opens, so the resting page never mentions them and
-   nothing is even fetched until the reader asks. The chips are formatted
-   exactly like a linked relation chip — the k k-rel span with its k-home
-   table badge. Source-level gate. */
 
 test('reference panels join the opt-in side column and wear k k-rel chips', async () => {
   const { readFileSync } = await import('node:fs');

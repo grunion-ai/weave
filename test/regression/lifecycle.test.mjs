@@ -1,16 +1,3 @@
-/* The lifecycle regression pack — the gate that fires on every build.
-
-   Twelve named operations: workspace, space, table, entity × create, delete,
-   restore. Each level runs one ordered scenario — create → verify live →
-   delete → verify hidden → restore → verify back intact — and each operation
-   is its own named test, because these names are the breadcrumb vocabulary:
-   when the gate rejects a build, the Gerrit comment lists exactly the tests
-   below that failed.
-
-   weave-review.sh runs this file FIRST (--test-name-pattern 'lifecycle:');
-   a red here rejects the change before the long suite even starts. Keep it
-   fast (in-memory stores, one sqlite reopen) and keep the names stable. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -18,8 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../../src/engine.js';
 import { startServer } from '../../src/server.js';
-
-/* ---------- entity ---------- */
 
 const ew = new Weave();
 ew.createSpace({ name: 'Reg' });
@@ -46,8 +31,6 @@ test('lifecycle: entity restore brings the row back intact', () => {
   assert.equal(ew.readEntity(entity.id).deletedAt, null);
   assert.equal(ew.readEntity(entity.id).publicId, entity.publicId, 'identity survives the round trip');
 });
-
-/* ---------- table ---------- */
 
 const tw = new Weave();
 tw.createSpace({ name: 'Reg' });
@@ -80,8 +63,6 @@ test('lifecycle: table restore brings rows and relations back', () => {
   assert.deepEqual(tw.readEntity(anchorRow.id).fields.Loads.map((e) => e.name), ['Cargo']);
 });
 
-/* ---------- space ---------- */
-
 const sw = new Weave();
 let sSpace;
 let sTable;
@@ -108,8 +89,6 @@ test('lifecycle: space restore rejoins the whole subtree', () => {
   assert.deepEqual(sw.describeSchema().find((s) => s.space === 'Bay').tables.map((t) => t.name), ['Crate']);
   assert.equal(sw.query('Bay/Crate', {}).total, 1);
 });
-
-/* ---------- workspace (hub level, REST) ---------- */
 
 const wsDir = mkdtempSync(join(tmpdir(), 'weave-lifecycle-'));
 const wsMain = new Weave({ path: join(wsDir, 'main.db') });
@@ -145,8 +124,6 @@ test('lifecycle: workspace restore rejoins hub routing', async () => {
     rmSync(wsDir, { recursive: true, force: true });
   }
 });
-
-/* ---------- persistence: the tombstones are storage truth ---------- */
 
 test('lifecycle: trash state survives a save/reload cycle', () => {
   const w = new Weave();

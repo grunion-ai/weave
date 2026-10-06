@@ -1,10 +1,3 @@
-/* The public privacy policy and terms of service (Feature #251), served at
-   /privacy and /terms ahead of the auth wall so a sign-in provider's consent
-   screen can link them. Kept as strings, not .md files, so the Worker adapter
-   needs no filesystem. Adapted from the Basecamp open-source policies
-   (github.com/basecamp/policies, CC BY 4.0); the bracketed placeholders are
-   left for the operator to fill. Never put an em dash in this text. */
-
 export const PRIVACY = `# Privacy policy
 
 *Effective date: 2026-10-02*

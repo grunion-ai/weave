@@ -117,7 +117,7 @@ test('document endpoints serve MD, HTML, PDF natively', async () => {
   assert.equal(html.headers.get('content-type'), 'text/html; charset=utf-8');
   const htmlText = await html.text();
   assert.match(htmlText, /<h1>Design notes<\/h1>/);
-  assert.match(htmlText, /class="mention mention-entity"/); // [[Task#2]] resolved to a link
+  assert.match(htmlText, /class="mention mention-entity"/);
   assert.match(htmlText, /Task#2 — Build/);
 
   const pdf = await fetch(`${base}/e/${taskId}/doc.pdf`);
@@ -192,9 +192,6 @@ test('the workspace activity feed is served, filtered and paged', async () => {
   assert.equal((await api('GET', '/api/activity/nope:1')).status, 404);
 });
 
-/* A create that returns 201 having stored nothing is worse than a 400 (Issue
-   #33): PATCH accepts `body.values ?? body`, so POST must accept the same flat
-   body rather than answering "created" with an empty row. */
 test('POST /entities accepts a flat body, like PATCH does', async () => {
   const created = await api('POST', '/api/tables/Task/entities',
     { Name: 'Flat create', Estimate: 3 });
@@ -202,13 +199,9 @@ test('POST /entities accepts a flat body, like PATCH does', async () => {
   assert.equal(created.data.fields.Name, 'Flat create', 'the name must survive the POST');
   assert.equal(created.data.fields.Estimate, 3);
 
-  // Re-read from the server, not just the create response.
   const read = await api('GET', `/api/entities/${created.data.id}`);
   assert.equal(read.data.fields.Name, 'Flat create');
 
-  // A misspelled field fails loudly instead of creating a blank row. It is a
-  // 404 because the field is what was not found — the same code PATCH already
-  // returns through the same validation, which is the consistency at issue.
   const bad = await api('POST', '/api/tables/Task/entities', { Nmae: 'typo' });
   assert.equal(bad.status, 404);
   assert.match(bad.data.error, /Nmae/, 'the error names the offending field');
@@ -218,23 +211,16 @@ test('POST /entities accepts a flat body, like PATCH does', async () => {
 });
 
 test('ES modules are served with a script MIME type', () => {
-  // No module ships in public/ since Feature #263 dropped lean-qr; the mapping
-  // stays so the next vendored module imports instead of being refused.
   assert.match(MIME['.mjs'], /javascript/,
     'strict module MIME: anything else and the browser refuses the import');
 });
 
 test('health reports the running commit and whether main has moved on', async () => {
-  // Kyle, 2026-09-02: "my local should always be on the latest and should
-  // show a toast when it is not." Build info is OPT-IN — the shared test
-  // server must stay silent (a behind checkout would toast into every
-  // browser test) — so this spins its own server the way bin/weave.js does.
   const { buildInfo } = await import('../src/server.js');
   const { server: bServer, port: bPort } = await startServer(new Weave(), { port: 0, build: buildInfo });
   const res = await fetch(`http://127.0.0.1:${bPort}/api/health`);
   const h = await res.json();
   bServer.close();
-  // The dev tree is a git checkout, so the sha is always here in CI/local.
   assert.match(h.sha ?? '', /^[0-9a-f]{7}$/, 'the running commit rides the payload');
   if ('behind' in h) {
     assert.equal(typeof h.behind, 'boolean', 'behind is a verdict, not a maybe');

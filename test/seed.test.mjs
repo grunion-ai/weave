@@ -7,35 +7,25 @@ test('demo seed builds a coherent workspace', () => {
   const w = new Weave();
   const { apollo, t3, ada } = seed(w);
 
-  // Rollups across the seeded graph.
   const proj = w.readEntity(apollo.id);
   assert.equal(proj.fields['Task Count'], 3);
   assert.equal(proj.fields['Total Estimate'], 24);
   assert.match(proj.fields['Task List'], /Design onboarding wizard/);
 
-  // Automation fired when t3 hit Done.
   const done = w.readEntity(t3.id);
   assert.match(done.doc, /✅ Completed on [A-Z][a-z]{2} \d{1,2}, \d{4}/, '{{Today}} wears the date costume (Issue #676)');
   assert.ok(done.comments.some((c) => c.text.includes('moved to Done')));
 
-  // Lookup + formula computed.
   assert.equal(done.fields['Project Budget'], 120000);
   assert.equal(done.fields.Size, 'small');
 
-  // Person rollup over assigned tasks.
   assert.equal(w.readEntity(ada.id).fields['Open Load'], 16);
 
-  // Mentions resolve in HTML.
   const schema = w.describeSchema();
-  // Demo spaces + the Workspace system space (Feature #12).
   assert.equal(schema.filter((sp) => !sp.system).length, 2);
   assert.equal(schema.filter((sp) => sp.system).length, 1);
 });
 
-/* ---------- Showcase space (2026-08-23) ----------
-   The weave workspace carries a Showcase space whose Field Types table has
-   every field type, with several configurations of the same type side by
-   side, so the range of what a field can be is visible in one grid. */
 import { seedWeaver, seedFieldShowcase, DEFINABLE_TYPES as SHOWCASE_TYPES } from '../src/weaver-seed.js';
 
 test('seedWeaver includes a Showcase space covering every field type and multiple configs per type', () => {
@@ -58,22 +48,14 @@ test('seedWeaver includes a Showcase space covering every field type and multipl
   assert.ok(ofType('formula').length >= 3, 'formula: numeric, text, date');
   assert.ok(ofType('field').length >= 2, 'field: depth 1 and a nested definition');
   assert.ok(ofType('relation').length >= 2, 'relation: single and many');
-  // Rows exist and the computed columns resolve on them.
   const rows = w.listEntities(ft.id).map((e) => w.readEntity(e.id));
   assert.ok(rows.length >= 3);
-  // readEntity wears the display costume (currency strings), so the check
-  // is against the seeded numbers: 149.5 × 12.
   const rich = rows.find((r) => r.name === 'Sensor board');
   assert.equal(rich.fields.Total, 1794, 'a numeric formula over two number configs');
   assert.match(String(rich.fields.Price), /149\.50/, 'currency config renders 2 decimals');
   assert.ok(rows.some((r) => r.fields['Peer count'] >= 2), 'a rollup over a many relation');
 });
 
-/* ---------- the rich displays in the Showcase (Features #230, #231, #232) ----------
-   Each display the engine can draw has a column wearing it, on rows that
-   give it something to draw. The lists come from the engine's own
-   constants, so a display or a sparkline style added later without a
-   Showcase column fails here. */
 import { NUMBER_DISPLAYS, SPARKLINE_STYLES, CELL_COLORS } from '../src/engine.js';
 
 test('the Showcase wears every number display, on the column scale and a fixed one (Feature #230)', () => {
@@ -119,7 +101,6 @@ test('the Showcase rates at max 3, 5 and 7 with two icons, and rolls a rating up
   assert.ok(cells.includes(0), 'a rating set to 0');
   assert.ok(cells.some((v) => v == null), 'an unrated cell');
   assert.ok(new Set(cells.filter((v) => v > 0)).size >= 3, 'varied ratings');
-  // A rollup over a People rating draws the same icons.
   assert.ok(people.fields.some((f) => f.type === 'rating'), 'People carry a rating');
   const rollup = ft.fields.find((f) => f.type === 'rollup' && f.rating && f.aggregate === 'avg');
   assert.ok(rollup, 'an avg rollup over a rating, drawn as icons');
@@ -143,9 +124,6 @@ test('the Showcase draws a sparkline in every style from sorted lookups, and sho
   assert.ok(sparks.some((f) => /null/.test(f.expression) && blank.fields[f.name] === null), 'a formula returns null on a row with no peers');
 });
 
-/* Feature #235: every colour setting on a number display, a rating and a
-   sparkline, each with values to draw. The list is the engine's, so a
-   colour added later without a Showcase column fails here. */
 test('the Showcase draws each colour setting on a number display, a rating and a sparkline (Feature #235)', () => {
   const w = seedWeaver(new Weave());
   const ft = w.describeSchema().find((s) => s.space === 'Showcase').tables.find((t) => t.name === 'Field Types');
@@ -162,9 +140,7 @@ test('the Showcase draws each colour setting on a number display, a rating and a
       assert.ok(rows.filter((r) => r.raw[f.name] != null && !(Array.isArray(r.raw[f.name]) && !r.raw[f.name].length)).length >= 2, `${f.name} has values to draw`);
     }
   }
-  // Color by icon names the icon's hue: at least two different icons wear it.
   assert.ok(new Set(kinds.rating.filter((f) => f.color === 'icon').map((f) => f.icon)).size >= 2, 'two icons in Color by icon');
-  // A ten-icon rating, the width case of Issue #404.
   assert.ok(kinds.rating.some((f) => f.max === 10), 'a rating out of ten');
 });
 
@@ -176,11 +152,6 @@ test('seedFieldShowcase is idempotent — a second run is a no-op', () => {
   assert.equal(w.describeSchema().find((s) => s.space === 'Showcase').tables.length, before);
 });
 
-/* ---------- Every seeded space and table wears a Lucide icon (Issue #203) ----------
-   Development/Release seeded blank, Issue as a legacy alias, Feature as a
-   glyph; the Handbook rule is that every table carries a `lucide:*` icon from
-   the vendored set. The gate walks whatever the seed builds, so a table added
-   later without an icon fails here rather than shipping a blank. */
 import { existsSync } from 'node:fs';
 await import('../public/icon-registry.js');
 test('seedWeaver gives every space and table a lucide: icon that exists in public/vendor/icons', () => {

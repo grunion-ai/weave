@@ -12,24 +12,8 @@ import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
-// The version weave actually is — read at load, never hardcoded (Issue #19).
 export const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
 
-/* ---------- build staleness (Kyle, 2026-09-02) ----------
-   "my local should always be on the latest and should show a toast when it
-   is not." The node adapter reads its own checkout: HEAD at boot, the first
-   remote's main lazily (never blocking a request, at most every 5 minutes,
-   4s timeout so an offline instance stays silent). /api/health carries
-   {sha, latestSha, behind} and the UI raises the toast.
-
-   The disk head rides along too (Issue #114). Static assets are read from
-   disk per request; src/* is loaded once at boot — so a checkout that moves
-   under a running process serves NEW app.js against an OLD engine, and row
-   creation fails silently until someone restarts it. `behind` cannot carry
-   that: it compares the boot HEAD to the REMOTE, it is lazy (the first health
-   call after a boot has no verdict at all), it is absent whenever ls-remote
-   fails, and its remedy is a pull. This one is local, synchronous, and fixed
-   by a restart. */
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const gitOut = (...a) => {
   const r = spawnSync('git', ['-C', ROOT, ...a], { encoding: 'utf8', timeout: 4000 });
@@ -47,14 +31,10 @@ function refreshLatest() {
       BUILD.latest = latest;
     });
 }
-/* Does this checkout already carry `sha`? A sha the local store never fetched
-   fails the check, which is the right answer: HEAD lacks it (Issue #459). */
 export function headContains(root, sha, head = 'HEAD') {
   return new Promise((resolve) => execFile('git', ['-C', root, 'merge-base', '--is-ancestor', sha, head],
     { timeout: 4000 }, (err) => resolve(!err)));
 }
-/* The HEAD the next static asset will be served from. Read for real, at most
-   every 5s: the whole point is that it can differ from the one in memory. */
 function diskHead() {
   if (Date.now() - BUILD.diskCheckedAt > 5000) {
     BUILD.diskCheckedAt = Date.now();
@@ -62,10 +42,6 @@ function diskHead() {
   }
   return BUILD.disk;
 }
-/* The verdicts, apart from the reading: stale = the process is older than the
-   checkout it serves; behind = main has a commit the checkout lacks (Issue
-   #459: a checkout at main or ahead of it is not behind). `contains` says
-   whether HEAD carries main's sha; unknown falls back to "differs". */
 export function describeBuild({ head, disk = null, latest = null, contains = null }) {
   if (!head) return null;
   return {
@@ -74,9 +50,6 @@ export function describeBuild({ head, disk = null, latest = null, contains = nul
     ...(latest ? { latestSha: latest.slice(0, 7), behind: latest !== head && contains !== true } : {}),
   };
 }
-/* The newer-release check (Issue #253, src/update-check.js) rides the same
-   payload. `weave serve` arms it; it needs no checkout, so an install from a
-   source zip still hears about a newer release. */
 let RELEASE = null;
 export function armReleaseCheck(check) { RELEASE = check; }
 export function buildInfo() {
@@ -95,16 +68,9 @@ export const MIME = {
   '.json': 'application/json',
 };
 
-/* ---------- compression (Issue #258) ----------
-   A cold load moved 2.1 MB: app.js 475 KB, the schema 96 KB, all as plain
-   text. The Node adapter gzips text-shaped answers — statics and JSON alike —
-   when the request says it can inflate them. Cloudflare (src/worker.js)
-   compresses at its edge, so this lives here, not in the shared dispatcher.
-   Under 1 KB the header costs more than it saves; images are already packed. */
 const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml)|image\/svg\+xml)/i;
 const GZIP_MIN = 1024;
 
-// RFC 9110 12.5.3: gzip's own q wins; failing that the wildcard's; q=0 refuses.
 export function acceptsGzip(header) {
   const q = {};
   for (const part of String(header ?? '').toLowerCase().split(',')) {
@@ -120,11 +86,9 @@ export function acceptsGzip(header) {
 export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache = null, path = '' } = {}) {
   const type = headers['Content-Type'] ?? '';
   if (!COMPRESSIBLE.test(type) || headers['Content-Encoding']) return { headers, body };
-  // Every representation of a compressible answer depends on the header, 304s included.
   const vary = headers.Vary ? `${headers.Vary}, Accept-Encoding` : 'Accept-Encoding';
   const size = typeof body === 'string' ? Buffer.byteLength(body) : body?.length ?? 0;
   if (status !== 200 || size < GZIP_MIN || !acceptsGzip(acceptEncoding)) return { headers: { ...headers, Vary: vary }, body };
-  // Two files can share a size and an mtime; the path keeps them apart.
   const key = headers.ETag && `${path} ${headers.ETag}`;
   let zipped = key && cache?.get(key);
   if (!zipped) {
@@ -134,12 +98,6 @@ export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache =
   return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'gzip' }, body: zipped };
 }
 
-/* Cross-site writes (Issue #486). A page anywhere could POST a text/plain
-   "simple request" (no preflight) at an instance and change its rows. A write
-   is refused when the browser says it came from another site: an Origin that
-   is not this request's own origin, WEAVE_ORIGIN or a loopback origin on
-   this port, or Sec-Fetch-Site: cross-site. No Origin (curl, the CLI, agents)
-   is served. */
 const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export const requestIsHttps = (req, trustProxy) => !!req.socket?.encrypted
   || (trustProxy && String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim().toLowerCase() === 'https');
@@ -154,13 +112,6 @@ export function crossSiteWrite(req, { origin = null, trustProxy = false } = {}) 
   return !ok.includes(String(from).toLowerCase());
 }
 
-/* Security headers (Issue #494), on every answer the node adapter writes.
-   frame-ancestors is enforced: weave frames only its own pages (deck, doc
-   and file previews), and WEAVE_FRAME_ANCESTORS (comma-separated origins)
-   lets a demo shell elsewhere frame it. The report-only policy is the target
-   state, not today's: the shell and the document pages still run inline
-   scripts and styles, so enforcing it would break them. HSTS only when the
-   request arrived over https. */
 export const CSP_REPORT_ONLY = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'";
 export const frameAncestorsFromEnv = (env = process.env) => String(env.WEAVE_FRAME_ANCESTORS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
 export function securityHeaders(headers, { https = false, frameAncestors = [] } = {}) {
@@ -169,9 +120,6 @@ export function securityHeaders(headers, { https = false, frameAncestors = [] } 
     ...headers,
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'same-origin',
-    /* A page that already carries a policy (an HTML upload under
-       HTML_VIEW_POLICY) keeps it and gains the frame rule; every other page
-       gets the frame rule alone. */
     ...(html ? {
       'Content-Security-Policy': [headers['Content-Security-Policy'], ["frame-ancestors 'self'", ...frameAncestors].join(' ')].filter(Boolean).join('; '),
       'Content-Security-Policy-Report-Only': CSP_REPORT_ONLY,
@@ -181,7 +129,6 @@ export function securityHeaders(headers, { https = false, frameAncestors = [] } 
 }
 
 async function readBody(req, { requireJson = false } = {}) {
-  // With an Origin present a browser sent it: only a JSON body, never a form or text/plain.
   if (requireJson && !/^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? '')) {
     throw new WeaveError('A request with an Origin must send its body as application/json', 'invalid');
   }
@@ -201,12 +148,6 @@ async function readBody(req, { requireJson = false } = {}) {
   }
 }
 
-// The workspace `weave serve` opens at / (Issue #594). Fresh, it takes its
-// file's name when someone chose one (`--data acme.db`), and otherwise
-// personal-workspace, or -2, -3 when a workspace file beside it already
-// holds that name. A workspace that was never served still carries the old
-// seed name 'Weave Workspace' and takes its file's basename, as it always
-// did; one that was (so is called 'workspace', say) keeps its name.
 export function openDefaultWorkspace(dataPath, { actor } = {}) {
   const dir = dirname(dataPath);
   const stem = (f) => f.split('/').pop().replace(/\.(json|db)$/, '');
@@ -220,26 +161,15 @@ export function openDefaultWorkspace(dataPath, { actor } = {}) {
   return w;
 }
 
-// One web app can host several workspaces (like the.fibery.io):
-// the default workspace lives at /, siblings at /w/<name>/ — same UI, same
-// API shapes, path-scoped. Sibling <name>.json files next to the default
-// workspace's data file are discovered automatically.
 export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
   const instances = new Map();
   let defaultName = defaultWeave.state.meta.name || 'workspace';
   instances.set(defaultName, defaultWeave);
-  // The registry lives once, at the root (Feature #219): the default
-  // workspace hosts it and every other workspace the hub holds joins it —
-  // handed in, adopted by scan, or created here. A single-member hub (the
-  // Worker) is its own root, untouched.
   defaultWeave.hostRegistry();
   const enroll = (w) => { if (w !== defaultWeave) w.joinRegistry(defaultWeave); return w; };
   for (const [name, w] of Object.entries(workspaces)) instances.set(name, enroll(w));
 
   const dataDir = defaultWeave.store.path ? dirname(defaultWeave.store.path) : null;
-  // One workspace = one .db file; legacy sibling .json files migrate on
-  // adoption. Both spellings of the same stem resolve to the same .db, so
-  // adopted store paths are the dedupe key.
   const adoptedPaths = new Set([...instances.values()].map((w) => w.store.path).filter(Boolean));
   const scan = () => {
     if (!dataDir) return;
@@ -248,7 +178,6 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       const name = file.replace(/\.(json|db)$/, '');
       const dbPath = join(dataDir, `${name}.db`);
       if (instances.has(name) || adoptedPaths.has(dbPath)) continue;
-      // Only load files that look like Weave workspaces.
       try {
         const w = new Weave({ path: join(dataDir, file) });
         if (w.state.meta) {
@@ -256,11 +185,10 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
             w.state.meta.name = name;
             w.save();
           }
-          // Never let a later file clobber an already-adopted name.
           if (!instances.has(w.state.meta.name)) instances.set(w.state.meta.name, enroll(w));
           adoptedPaths.add(dbPath);
         }
-      } catch { /* not a workspace file */ }
+      } catch {}
     }
   };
   scan();
@@ -275,10 +203,6 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       if (defaultName === oldName) defaultName = newName;
     },
     get(name) {
-      // The universal reference rule: a workspace answers to its id as well
-      // as its friendly name, so /w/<id>/ survives any rename. The name is
-      // case-blind (Issue #599); an exact match wins, so two files that
-      // differ only by case, made before that, both still resolve.
       const find = () => {
         if (instances.has(name)) return instances.get(name);
         const lower = String(name).toLowerCase();
@@ -302,20 +226,9 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
           entities: Object.keys(w.state.entities).length,
           logo: !!w.state.meta.logo,
           deletedAt: w.state.meta.deletedAt ?? null,
-          // What the UI may offer a delete on (Issue #190): a hub without
-          // remove() reports nothing deletable, and the two workspaces the
-          // app stands on never are.
           deletable: !!this.remove && name !== defaultName && name !== 'weave' && !w.state.meta.deletedAt,
         }));
     },
-    /* Workspace trash, two rungs (lifecycle gate Phase 0b + Issue #122).
-       Soft (default): a deletedAt tombstone in the workspace's own meta — it
-       leaves the hub list but keeps its file and its URL, survives restarts
-       and rescans, and restore() undoes it; the readable-by-id rule trashed
-       entities and tables follow. Hard: the .db (with WAL/SHM sidecars)
-       moves to <dataDir>/trash/, where scan() never looks — recoverable only
-       by moving it back by hand. The default workspace and the weave docs
-       workspace refuse both: the app is standing on them. */
     remove(ref, { hard = false } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
@@ -354,9 +267,6 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       return w;
     },
     create(asked) {
-      // No name asked for: personal-workspace, or the first -2, -3 the
-      // instance does not hold (Issue #594). A name asked for is the title
-      // and its slug the file and the URL (Issues #592, #599).
       let title, name;
       if (asked == null || asked === '') {
         scan();
@@ -373,9 +283,6 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
       const w = new Weave({ path: join(dataDir, `${name}.db`) });
       w.state.meta.name = name;
       if (title !== name) w.state.meta.title = title;
-      // A fresh workspace opens on its own page, and the page's empty state
-      // says what to do first (Issue #386) — the job a default description
-      // did since Issue #123. The description starts empty and is theirs.
       w.save();
       instances.set(name, enroll(w));
       adoptedPaths.add(w.store.path);
@@ -389,13 +296,6 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {} } = {}) {
   };
 }
 
-/* The public origin the sign-in provider redirects back to and the session
-   cookie is bound to (Feature #222 part 2, Feature #212): WEAVE_ORIGIN, e.g.
-   https://weave.example.com. Unset means loopback — http://localhost:<port>.
-   WEAVE_TRUST_PROXY=1
-   makes the rate limiter read X-Forwarded-For (Railway, Fly and every other
-   platform proxy put the client there); off, the socket address is the
-   client, so a proxy would rate-limit itself. */
 export function originFromEnv(env = process.env, name = 'WEAVE_ORIGIN') {
   const raw = env[name]?.trim();
   if (!raw) return null;
@@ -406,21 +306,10 @@ export function originFromEnv(env = process.env, name = 'WEAVE_ORIGIN') {
   }
   return url.origin;
 }
-/* The other public origins the MCP door answers on (Feature #254), comma
-   separated: https://mcp.weave.example.com beside WEAVE_ORIGIN on the same
-   service. An MCP client checks that the protected-resource metadata names
-   the URL it dialled, so the resource origin follows the Host header, but
-   only onto an origin listed here or in WEAVE_ORIGIN; a Host header is never
-   echoed. Each host is also served, as WEAVE_ALLOWED_HOSTS would. */
 export const mcpOriginsFromEnv = (env = process.env) => String(env.WEAVE_MCP_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean)
   .map((o) => originFromEnv({ WEAVE_MCP_ORIGINS: o }, 'WEAVE_MCP_ORIGINS'));
 export const trustProxyFromEnv = (env = process.env) => ['1', 'true', 'yes'].includes(String(env.WEAVE_TRUST_PROXY ?? '').toLowerCase());
 
-/* The names this server answers to (Issue #487). Any Host used to do, so a
-   page on an attacker's name that re-resolves to 127.0.0.1 (DNS rebinding)
-   was same-origin with a loopback instance. Loopback names, WEAVE_ORIGIN's
-   host and the comma-separated WEAVE_ALLOWED_HOSTS answer; ports are not
-   compared, since a rebinding page controls the name, not the port. */
 const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const hostnameOf = (host) => { try { return host ? new URL(`http://${host}`).hostname : null; } catch { return null; } };
 export const allowedHostsFromEnv = (env = process.env) => String(env.WEAVE_ALLOWED_HOSTS ?? '').split(',').map((h) => hostnameOf(h.trim())).filter(Boolean);
@@ -429,23 +318,12 @@ export function hostAllowed(host, { origin = null, allowedHosts = [] } = {}) {
   if (!name) return false;
   return LOOPBACK_NAMES.has(name) || (!!origin && new URL(origin).hostname === name) || allowedHosts.includes(name);
 }
-/* A container bound to 0.0.0.0 with neither variable set was reached by
-   whatever name its platform gave it; refusing that on upgrade would take it
-   down, so it keeps answering any Host and says so once. */
 export function hostCheckFor({ host, env = process.env }) {
   const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host);
   if (loopback || env.WEAVE_ORIGIN?.trim() || env.WEAVE_MCP_ORIGINS?.trim() || allowedHostsFromEnv(env).length) return { enforce: true, warning: null };
   return { enforce: false, warning: `weave: bound to ${host} with neither WEAVE_ORIGIN nor WEAVE_ALLOWED_HOSTS set, so any Host header is answered; set one to refuse DNS-rebound requests` };
 }
 
-/* Content-versioned asset URLs (Issue #313). weave has no build step, so the
-   shell is versioned when it is served: every local src/href/import in
-   index.html that names a file gains `?v=<first 12 hex of its sha1>`, and an
-   asset asked for at its current version can be cached `immutable`. A
-   version is cached per file until its mtime or size moves, so a request for
-   the shell costs a stat per asset, not a hash. The Worker's Assets binding
-   serves public/ untouched (Issue #231): its shell keeps plain URLs and the
-   platform's own revalidation, which stays correct without this. */
 export function createAssetVersions(dir) {
   const known = new Map();
   const version = (file) => {
@@ -465,42 +343,22 @@ export function createAssetVersions(dir) {
 }
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 
-/* Door C (Feature #212): the provider WEAVE_OIDC_* names, or null. */
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
 export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv() } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces });
   const answers = [...allowedHosts, ...mcpOrigins.map((o) => new URL(o).hostname)];
 
-  // Node adapter around the runtime-agnostic dispatcher (src/routes.js): this
-  // side owns the body stream, the response socket, and static files from
-  // public/. The Worker adapter (src/worker.js) wraps the same dispatcher.
   const assets = createAssetVersions(PUBLIC_DIR);
-  /* `head` replaces the shell's <title> (Feature #264): a permalink or the
-     workspace root is the shell plus the head its link preview needs, and
-     the validator below follows those bytes like any others. */
   const serveStatic = (path, rx, { head = null } = {}) => {
-    /* Vditor lazy-loads mermaid from inside its own dist tree. weave already
-       vendors a mermaid build for document pages, so that path is aliased
-       onto it rather than shipping a second 3.5MB copy of the same library. */
     const file = path === '/' ? '/index.html'
       : path === '/vendor/vditor/dist/js/mermaid/mermaid.min.js' ? '/vendor/mermaid.min.js'
       : path;
     const full = join(PUBLIC_DIR, file.replace(/\.\./g, ''));
     if (!existsSync(full) || full.endsWith('/')) return null;
-    // no-cache, not no-store: the browser may keep a copy but must
-    // revalidate. Without it heuristic caching serves a stale app.js or
-    // style.css after an edit, so UI changes only appear on a hard reload.
-    // Last-Modified lets that revalidation answer 304 (Feature #148): a
-    // workspace switch is a full page load, and without it every switch
-    // re-downloaded ~1MB of unchanged vendor JS/CSS.
     const match = rx?.header?.('if-none-match');
     const matches = (etag) => match && match.split(',').map((t) => t.trim().replace(/^W\//, '')).some((t) => t === '*' || t === etag.slice(2));
     if (file === '/index.html') {
-      /* The shell names its assets by version, so its validator must follow
-         the bytes it serves: an asset can change under an unchanged
-         index.html, and a 304 on the file's mtime would keep the old URLs.
-         No Last-Modified for the same reason. */
       const shell = readFileSync(full, 'utf8');
       const body = assets.rewrite(head ? shell.replace(/<title>[^<]*<\/title>/, () => head) : shell);
       const headers = {
@@ -514,17 +372,12 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     const { mtime, size } = statSync(full);
     const headers = {
       'Content-Type': MIME[extname(full)] ?? 'application/octet-stream',
-      // Immutable only when the version asked for names these exact bytes.
       'Cache-Control': v && v === assets.version(file) ? IMMUTABLE : 'no-cache',
       'Last-Modified': mtime.toUTCString(),
-      /* Weak on purpose (Issue #258): the adapter may gzip the body, and a
-         weak validator names the file, not the bytes of one encoding. */
       ETag: `W/"${size.toString(16)}-${Math.floor(mtime.getTime()).toString(16)}"`,
     };
-    // If-None-Match wins over If-Modified-Since when both are sent (RFC 9110 13.2.2).
     if (match) return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body: readFileSync(full) };
     const since = Date.parse(rx?.header?.('if-modified-since') ?? '');
-    // HTTP dates carry whole seconds; compare at that grain or nothing matches.
     if (since && Math.floor(mtime.getTime() / 1000) <= Math.floor(since / 1000)) {
       return { status: 304, headers, body: '' };
     }
@@ -534,10 +387,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   const handle = createRequestHandler(hub, {
     version: VERSION,
     uptime: () => process.uptime(),
-    // Opt-in (the CLI serve path passes buildInfo): an embedded/test server
-    // must not read git or toast about a checkout it does not represent.
     build,
-    // The nightly backup's last result, when serve armed one (Feature #222 phase 3).
     backup,
     serveStatic,
     origin,
@@ -548,15 +398,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     ...(limits ? { limits } : {}),
   });
 
-  // gzip of a static, keyed by its ETag: app.js costs ~10ms to deflate and
-  // only changes on a deploy. ponytail: unbounded by count, but the keys are
-  // the files in public/ at their current versions — a deploy restarts us.
   const gzCache = new Map();
-  /* The listener is async, so anything it throws is an unhandled rejection,
-     and node ends the process on one (Issue #484: a malformed percent-escape
-     in the path took the server down). Its whole body is guarded: a path
-     that will not decode is the caller's 400, anything else is a 500 whose
-     detail stays in the log. */
   const secure = (req, headers) => securityHeaders(headers, { https: requestIsHttps(req, trustProxy), frameAncestors });
   const fail = (res, status, error, code) => {
     if (res.headersSent) return res.destroy();
@@ -568,7 +410,6 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       const url = new URL(req.url, 'http://localhost');
       let path;
       try { path = decodeURIComponent(url.pathname); } catch { return fail(res, 400, 'Malformed percent-escape in the path', 'invalid'); }
-      // Health stays open to any name: platform probes send their own Host.
       if (checkHost && path !== '/api/health' && !hostAllowed(req.headers.host, { origin, allowedHosts: answers })) {
         return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
       }

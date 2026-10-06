@@ -4,13 +4,6 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-/* Issue #482: POST /api/mcp reached weave_accounts, weave_keys and
-   weave_import_json without the "admin once accounts exist" gate the REST
-   routes apply, so an anonymous caller on an unwalled workspace minted an
-   admin token. The dispatcher now asks the same function REST asks
-   (mayAdminister in src/mcp.js). The stdio server carries no caller: it is
-   the local operator, the CLI's trust, and bootstraps the first account. */
-
 process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');

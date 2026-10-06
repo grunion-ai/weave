@@ -1,20 +1,3 @@
-/* Row selection, the pure half (Feature #132, slice 1).
-   The five bars study chose the Puck (Kyle, 2026-08-24), but every one of the
-   five would have shared this: a set of chosen rows, a checkbox column left of
-   the # link, and a header box that reads none / some / all.
-
-   Two rules the mockup settled and this suite pins:
-     1. The checkbox column sits to the LEFT of the # link, so the link never
-        disappears while a selection is live. That is a DOM fact — the browser
-        suite owns it. What lives here is the arithmetic underneath.
-     2. Selection is a set of ids, never a set of row indices. A redraw sorts,
-        filters and re-numbers the rows; a selection keyed on position would
-        silently move to different rows. `prune` is the other half of that:
-        an id that is no longer on the page is no longer selected.
-
-   Ledger's one rule (2026-08-24) forces one departure from the mockup: a bare
-   row click raises that cell's editor, so it CANNOT also toggle selection.
-   The checkbox is the only way in, and shift extends from the last box hit. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -38,15 +21,12 @@ test('headState reads none, some and all — the indeterminate box', () => {
   assert.equal(SEL.headState(0, 5), 'none');
   assert.equal(SEL.headState(2, 5), 'some');
   assert.equal(SEL.headState(5, 5), 'all');
-  // An empty table has nothing to select, so its box is not "all".
   assert.equal(SEL.headState(0, 0), 'none');
 });
 
 test('range spans the two ids in the order the rows are DRAWN, either way round', () => {
   const rows = ['a', 'b', 'c', 'd', 'e'];
   assert.deepEqual(SEL.range(rows, 'b', 'd'), ['b', 'c', 'd']);
-  // Shift-clicking upward is the same span. A range that only ran forwards
-  // would select nothing every time the reader picked the lower row first.
   assert.deepEqual(SEL.range(rows, 'd', 'b'), ['b', 'c', 'd']);
   assert.deepEqual(SEL.range(rows, 'c', 'c'), ['c']);
 });
@@ -57,8 +37,6 @@ test('range is empty when either end is no longer on the page', () => {
 });
 
 test('range follows the SORTED order, not the order the rows arrived in', () => {
-  // The grid sorts in place before it draws. Shift-click means "everything
-  // between these two rows on screen", which is the sorted span.
   const drawn = ['e', 'd', 'c', 'b', 'a'];
   assert.deepEqual(SEL.range(drawn, 'd', 'b'), ['d', 'c', 'b']);
 });
@@ -77,9 +55,6 @@ test('selectAll takes the drawn ids, and clearing takes none of them', () => {
   assert.deepEqual([...SEL.selectAll([])], []);
 });
 
-/* The bar is contextual: a table with no relations gets no "Link to…", and
-   the commands that write a field need a field that can be written. Computed
-   types cannot, so they never reach the picker. */
 test('the bar hides Link to… on a table with no relations', () => {
   const none = SEL.barCommands({ relations: [], writableFields: ['Name'] }).map((c) => c.id);
   assert.ok(!none.includes('link'), 'no relation, no link command');
@@ -90,7 +65,6 @@ test('the bar hides Link to… on a table with no relations', () => {
 test('the bar hides Set a field… when nothing on the table can be written', () => {
   const cmds = SEL.barCommands({ relations: [], writableFields: [] }).map((c) => c.id);
   assert.ok(!cmds.includes('fields'));
-  // Duplicate and trash never depend on the schema, so they always survive.
   assert.ok(cmds.includes('dup'));
   assert.ok(cmds.includes('trash'));
 });
@@ -109,10 +83,6 @@ test('the count speaks the table\'s row term, singular at one — the puck says 
   assert.match(SEL.moreCommands({ term: { singular: 'deal', plural: 'deals' }, relations: ['P'] }).find((c) => c.id === 'rollup').label, /new deal/);
 });
 
-/* ---------- the puck (slice 2) ----------
-   A command that is designed but not yet built must not reach the bar. An
-   icon that does nothing reads as broken, not as forthcoming — so the bar
-   carries what this release can actually run, and the rest waits. */
 test('the bar carries only what is built, in the designed order', () => {
   const built = ['dup', 'trash'];
   const cmds = SEL.barCommands({ relations: ['Project'], writableFields: ['Name'], built });
@@ -134,12 +104,6 @@ test('the overflow answers to the same rule, and can be empty', () => {
   assert.deepEqual(SEL.moreCommands({ relations: ['P'] }).map((c) => c.id), ['move', 'rollup', 'copy']);
 });
 
-/* ---------- the commands (slice 3) ----------
-   The overflow is contextual too: Move to table… needs somewhere to move to,
-   Roll up… needs a relation to hang the new parent on, and Copy links always
-   has something to copy. When the overflow is empty, the ⋯ itself leaves the
-   bar — a button that opens nothing is the dead icon the built rule exists
-   to keep off. */
 test('the overflow hides Move to table… when this is the only table, and Roll up… without a relation', () => {
   const alone = SEL.moreCommands({ relations: [], otherTables: 0 }).map((c) => c.id);
   assert.deepEqual(alone, ['copy']);
@@ -154,9 +118,6 @@ test('an empty overflow takes the ⋯ off the bar', () => {
   assert.ok(withMore.includes('more'));
 });
 
-/* Only fields the bulk editor can give ONE value to reach Set a field…:
-   chips, options, a checkbox, a typed value. Relations are Link to…'s,
-   documents are prose, and computed fields are reads. */
 test('settable fields are the ones a single value fits', () => {
   const fields = [
     { name: 'Name', type: 'text' }, { name: 'Est', type: 'number' }, { name: 'Due', type: 'date' },
@@ -169,8 +130,6 @@ test('settable fields are the ones a single value fits', () => {
     ['Name', 'Est', 'Due', 'Status', 'Kind', 'Tags', 'Done', 'Site', 'Mail']);
 });
 
-/* The toast after a bulk command says what did NOT land — a half-working
-   command that reports success is how a row goes missing quietly. */
 test('the bulk toast names failures and what a move left behind', () => {
   const term = { singular: 'task', plural: 'tasks' };
   const ok = SEL.bulkToast({ verb: 'Set', count: 3, term, result: { done: ['a', 'b', 'c'], failed: [] } });

@@ -1,14 +1,3 @@
-/* The runner behind `npm test` — the command the Gerrit gate votes on.
-
-   Issue #44: a different slash-command case failed on roughly every other
-   full run while the file alone was green eight times out of eight, and each
-   one cost a Verified −1 on a change that was fine. scripts/test.mjs runs the
-   files that failed a second time and lets that answer stand.
-
-   The property that makes it safe is asserted here on real runs rather than
-   argued: a file that fails every time still fails, a file that fails once
-   passes and is named, and only the file that failed is run again. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -21,10 +10,6 @@ import { RETRIES, argsFor, browserConcurrency, childEnv, lanes, run, testFiles }
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => readFileSync(join(ROOT, f), 'utf8');
 
-/* Two suites in a scratch directory: one that always passes, one whose
-   verdict the caller chooses. `flaky` fails until the marker exists, so its
-   first run is red and its second is green — a coin toss the runner can win
-   without the test having to wait for a real one. */
 function fixture(kind) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-runner-'));
   writeFileSync(join(dir, 'good.test.mjs'),
@@ -47,8 +32,6 @@ function runFixture(kind) {
   const f = fixture(kind);
   try {
     const said = [];
-    // stdio is inherited, so the child's TAP lands in this suite's own output
-    // rather than being asserted on; what run() decides is what is asserted.
     const code = run([f.good, f.subject], [], { out: (line) => said.push(line) });
     return { code, said: said.join('\n'), ...f };
   } finally {
@@ -86,11 +69,7 @@ test('only the file that failed runs again', () => {
 });
 
 test('the retry breadcrumb is on stdout, where the gate quotes it', () => {
-  /* weave-review.sh puts `tail -c 1500` of the run into its Verified +1
-     message. The retry runs last, so a suite that keeps needing a second
-     chance says so in the review it passed. */
   const f = fixture('flaky');
-  // The CLI queues through the test manager (Feature #236); a private one here.
   const env = { ...childEnv(), WEAVE_TEST_MANAGER_DIR: join(f.dir, 'manager'), WEAVE_TEST_JOB: '',
     WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999' };
   try {
@@ -105,10 +84,6 @@ test('the retry breadcrumb is on stdout, where the gate quotes it', () => {
 });
 
 test('importing the runner does not start the suite', () => {
-  /* Without a main guard this import spawns `node --test` from inside a test
-     file; node:test warns "run() is being called recursively", skips every
-     file, and the whole suite reports one passing test — the gate would vote
-     +1 on nothing at all. */
   const out = execFileSync(process.execPath, ['-e',
     "import('./scripts/test.mjs').then((m) => console.log('retries', m.RETRIES))"],
   { cwd: ROOT, encoding: 'utf8' });
@@ -123,8 +98,6 @@ test('the run finds every suite, and keeps the reporter it would have had', () =
   assert.ok(onDisk.includes('test/regression/lifecycle.test.mjs'), 'and it descends');
   assert.ok(onDisk.length > 150, `the suite is there (${onDisk.length} files)`);
 
-  // Collecting the failed files must not cost the reader their own reporter:
-  // spec on a terminal, tap in the gate's redirected log, as node chooses.
   for (const [tty, want] of [[true, 'spec'], [false, 'tap']]) {
     const args = argsFor(['test/x.test.mjs'], '/tmp/f', [], tty);
     assert.ok(args.includes(`--test-reporter=${want}`), `${want} survives the collector`);
@@ -134,10 +107,6 @@ test('the run finds every suite, and keeps the reporter it would have had', () =
 });
 
 test('default node discovery does not launch the suite through scripts/test.mjs (Issue #435)', () => {
-  /* `node --test` with no files discovers scripts/test.mjs (it matches
-     **\/test.mjs) and runs it as a test file, in a process whose argv[1] is
-     the runner itself. The main guard alone let it start a whole second
-     suite beside the first. */
   const dir = mkdtempSync(join(tmpdir(), 'weave-discovery-'));
   try {
     mkdirSync(join(dir, 'scripts'));
@@ -151,11 +120,6 @@ test('default node discovery does not launch the suite through scripts/test.mjs 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-/* Issues #454 and #466. Each browser suite is a Node process with a server
-   in it plus a Chromium of four or five processes. At node's default of
-   cores minus one files at once, the full suite alone held a ten-core
-   machine at load 20 to 27, and the cases that read a paint or a timer
-   lost to their own siblings: red in the gate, green alone. */
 test('browser suites run in their own lane, capped at half the cores', () => {
   const { unit, browser } = lanes(['test/a.test.mjs', 'test/grid-range-browser.test.mjs', 'test/nav.test.mjs', 'test/test-runner.test.mjs']);
   assert.ok(browser.includes('test/grid-range-browser.test.mjs'), 'a -browser suite is in the browser lane');

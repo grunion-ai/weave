@@ -9,14 +9,7 @@ import { createWorkspaceHub, openDefaultWorkspace } from '../src/server.js';
 
 const { nameFromFile, workspaceName } = naming;
 
-/* Every new workspace is named "Personal Workspace", slug personal-workspace
-   (Issue #594, Kyle's ruling 2026-10-03); the next unnamed one is
-   "Personal Workspace 2", personal-workspace-2. Before 2026-10-02 a fresh
-   workspace was seeded 'Weave Workspace' and `weave serve` renamed it to the
-   data file's basename, so a stock install read "workspace" everywhere; on
-   2026-10-02 it drew a random adjective-animal name, which this replaces. */
-
-const SLUG_RULE = /^[a-z0-9][a-z0-9-_]*$/i; // engine.js updateWorkspace, hub.create
+const SLUG_RULE = /^[a-z0-9][a-z0-9-_]*$/i;
 const tmp = () => mkdtempSync(join(tmpdir(), 'weave-wsname-'));
 
 test('workspaceName: "Personal Workspace", slug personal-workspace, the same every time', () => {
@@ -40,7 +33,6 @@ test('workspaceName: a taken slug gets -2, -3 and so on', () => {
 test('engine: a fresh workspace is seeded personal-workspace, never "Weave Workspace"', () => {
   const w = new Weave();
   assert.equal(w.state.meta.name, 'personal-workspace');
-  // The name the seed picked is one updateWorkspace would accept.
   assert.equal(w.updateWorkspace({ name: w.state.meta.name }).name, 'personal-workspace');
   assert.equal(new Weave({ name: 'acme' }).state.meta.name, 'acme', 'a caller that knows the name seeds it');
 });
@@ -59,7 +51,6 @@ test('engine: a fresh file named by its creator keeps that name (AGENTS.md: --da
   try {
     assert.equal(new Weave({ path: join(dir, 'other.db') }).state.meta.name, 'other');
     assert.equal(new Weave({ path: join(dir, 'workspace.db') }).state.meta.name, 'personal-workspace');
-    // Dropped beside a running hub, it answers at its file name, as before.
     const main = new Weave({ path: join(dir, 'main.db'), name: 'main' });
     assert.equal(createWorkspaceHub(main).get('other')?.state.meta.name, 'other');
     assert.equal(openDefaultWorkspace(join(dir, 'acme.db')).state.meta.name, 'acme', 'weave serve --data acme.db');
@@ -106,19 +97,16 @@ test('weave serve: a fresh default workspace is personal-workspace, -2 when that
 test('weave serve: existing workspaces keep the names they carry', () => {
   const dir = tmp();
   try {
-    // Never served: still seeded "Weave Workspace" → the basename, as before.
     const legacy = new Weave({ path: join(dir, 'acme.db') });
     legacy.state.meta.name = 'Weave Workspace';
     legacy.save();
     legacy.store.close?.();
     assert.equal(openDefaultWorkspace(join(dir, 'acme.db')).state.meta.name, 'acme');
-    // Served before this change: named "workspace", and it stays that.
     const served = new Weave({ path: join(dir, 'workspace.db') });
     served.state.meta.name = 'workspace';
     served.save();
     served.store.close?.();
     assert.equal(openDefaultWorkspace(join(dir, 'workspace.db')).state.meta.name, 'workspace');
-    // Named at random on 2026-10-02: it keeps that name too.
     const drawn = new Weave({ path: join(dir, 'drawn.db'), name: 'quiet-turtle' });
     drawn.save();
     drawn.store.close?.();

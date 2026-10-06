@@ -613,3 +613,8 @@ For agents changing weave itself: where the code lives and the rules every chang
    to a minute and resets the supervisor. Redeploy only for a Node version, a
    `Dockerfile` or a `src/supervisor.js` change. A landed fix reaches the host
    with the next release.
+8. **No inline code comments.** weave's own code carries no `//`, `/* */` or
+   `<!-- -->` comments (Issue #661). Put the why in the commit message and the
+   Issue or Feature row, a `ponytail:` upgrade path included.
+   `test/no-inline-comments.test.mjs` enforces it; vendored code, `brand/` and
+   `docs/` are exempt.

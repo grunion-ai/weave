@@ -1,22 +1,3 @@
-/* The chip, driven through a real browser (Kyle, 2026-09-05). The source
-   gates in view-fields-ui.test.mjs pin what the chip says; this file proves
-   how it draws.
-
-   1. The retract caret faces the text (Issue #193). The expand caret points
-      right, toward the segments it opens. Rotated 90° it pointed DOWN, at
-      nothing — Kyle: "it should face the text it collapses back into". Open
-      turns it 180°, so expand and retract read as one control folding in
-      and out. Same glyph, same box, same hit area either way.
-   2. One chip size, decided once (Issue #194). Kyle: "Default chip view is
-      likely too small." The label sat at 11.5px under 14px body text with a
-      ~21px box. The size is now two tokens on :root — --wv-chip-font (one
-      step below body) and --wv-chip-line — and every chip surface reads
-      them, so a state cell, a relation cell, the Appears-as strip and the
-      filter row measure the same: label >= 13px, box >= 24px tall.
-
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps);
-   it is imported dynamically and the suite skips when it is absent. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled } from './lib/browser.mjs';
@@ -38,8 +19,6 @@ const s = await launch('chip', (weave) => {
   task = weave.createEntity('Task', { name: 'Ship the editor', Severity: 'High', Due: '2026-09-12' });
   weave.setState(task.id, 'State', 'Doing');
   weave.link(task.id, 'Owner', [ada.id]);
-  // The strip follows the eye now (appears-hidden-browser.test.mjs); a new
-  // table hides both views, so this suite switches them on to draw the chip.
   weave.updateTable(tasks, { hiddenFields: [] });
 });
 if (s) {
@@ -60,11 +39,7 @@ if (s) {
       width: Math.round(r.width), height: Math.round(r.height),
     };
   });
-  // The caret turns over a .1s transition; read it once the turn has landed,
-  // however long a loaded machine takes to get there (Issue #454).
   const settle = (page) => settled(page.locator(CARET));
-  /* A 2D transform matrix(a, b, c, d, e, f): rotation θ has a = cos θ,
-     b = sin θ. The browser reports it in pixels-of-matrix, not degrees. */
   const angle = (transform) => {
     if (!transform || transform === 'none') return 0;
     const [a, b] = transform.match(/matrix\(([^)]+)\)/)[1].split(',').map(Number);
@@ -98,7 +73,6 @@ if (s) {
     });
   }
 
-  /* ---------- #194: one size, from the tokens ---------- */
   const measure = (page, sel) => page.$eval(sel, (n) => {
     const r = n.getBoundingClientRect();
     const cs = getComputedStyle(n);
@@ -128,13 +102,10 @@ if (s) {
       for (const [what, sel] of Object.entries(surfaces)) {
         const m = await measure(page, sel);
         assert.equal(m.fontSize, tok.font, `${what} reads the token, not its own number`);
-        // In the grid a chip is 20px at Comfortable and the cell is the hit
-        // target (Feature #239, Kyle 2026-09-27).
         assert.ok(m.height >= 20 && m.height <= 22, `${what} is a Comfortable grid chip: ${m.height}px, want 20 to 22`);
         assert.equal(m.radius, '4px', `${what} keeps the 4px corner`);
       }
       assert.equal((await measure(page, '.wv-grid td .k-rel')).background, 'rgba(0, 0, 0, 0)', 'still no fill behind a pointer chip');
-      // The entity page's own preview and the reference chip share the size.
       await page.goto(`${base}/#/entity/${task.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-appears-chip .k-rel');
       const appears = await measure(page, '.wv-appears-chip .k-rel');

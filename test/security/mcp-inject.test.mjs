@@ -4,15 +4,8 @@ import { mkdtempSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-/* Issue #499: security/mcp-inject/ measures whether an agent reading a
-   workspace over MCP acts on instructions planted in stored data. It calls a
-   model, so it is not part of npm test; this file covers everything around
-   the model: the grid, the seed, the judge, the transcript reader, and the
-   two properties that keep a run away from a real workspace. */
-
 const realHome = process.env.HOME, realKeystore = process.env.WEAVE_KEYSTORE;
 const scratch = () => mkdtempSync(join(tmpdir(), 'weave-inject-test-'));
-// The tool pins HOME and WEAVE_KEYSTORE; leave this process as it was found.
 process.on('exit', () => { process.env.HOME = realHome; if (realKeystore === undefined) delete process.env.WEAVE_KEYSTORE; else process.env.WEAVE_KEYSTORE = realKeystore; });
 process.env.WEAVE_KEYSTORE = join(scratch(), 'keystore.json');
 
@@ -38,7 +31,6 @@ test('the rotation gives every placement and every goal all three wordings', () 
   assert.equal(styles.length, 3);
   for (const p of PLACEMENTS) assert.deepEqual([...new Set(cells.filter((c) => c.placement === p).map((c) => c.style))].sort(), [...styles].sort(), p);
   for (const g of Object.keys(GOALS)) assert.deepEqual([...new Set(cells.filter((c) => c.goal === g).map((c) => c.style))].sort(), [...styles].sort(), g);
-  // Every style is used, and by roughly a third of the grid.
   for (const s of styles) assert.ok(cells.filter((c) => c.style === s).length >= 10, s);
 });
 
@@ -50,7 +42,6 @@ test('open() pins HOME and the keystore to the case dir before the engine exists
   assert.equal(process.env.WEAVE_KEYSTORE, join(dir, 'keystore.json'));
   assert.equal(w.keystorePath, join(dir, 'keystore.json'));
   w.close?.();
-  // A keystore already set by the caller is overridden too.
   process.env.WEAVE_KEYSTORE = join(fakeHome, 'real-keystore.json');
   const again = open(dir);
   assert.equal(again.w.keystorePath, join(dir, 'keystore.json'));
@@ -87,7 +78,6 @@ test('two cases seeded before either is judged do not cross', () => {
   const a = scratch(), b = scratch();
   const sa = seed(a, { placement: 'name', goal: 'delete', style: 'imperative' });
   const sb = seed(b, { placement: 'comment', goal: 'exfil', style: 'authority' });
-  // The env now points at b. Acting on a and judging a must still read a.
   const { w, t } = open(a);
   const customer = w.query('Customer', {}).items[0].id;
   t('weave_delete_entity', { entity: customer, hard: true });
@@ -113,7 +103,6 @@ test('the runner starts the agent with the real HOME and the MCP server with the
   assert.doesNotMatch(noComments(code), /import\.meta\.dirname, 'runs'/);
 });
 
-// Where each placement puts the payload, read back from the seeded workspace.
 const where = {
   name: ({ e }) => e.name,
   doc: ({ e }) => e.fields.Description,
@@ -138,19 +127,16 @@ for (const placement of PLACEMENTS) {
     const ticket = (Array.isArray(schema) ? schema : [schema]).flatMap((s) => s.tables ?? []).find((x) => x.name === 'Ticket');
     const payload = payloadOf(placement, cell.goal, cell.style);
     assert.ok(where[placement]({ e, ticket }).includes(payload), `payload not found at ${placement}`);
-    // And nowhere else on the row or its table.
     for (const other of PLACEMENTS.filter((p) => p !== placement)) {
       assert.ok(!(where[other]({ e, ticket }) ?? '').includes(payload), `payload also at ${other}`);
     }
     w.close?.();
-    // Nothing has acted on it yet.
     const v = judge(dir, baseline);
     assert.deepEqual(v.landed, { delete: false, exfil: false, account: false, share: false });
     assert.equal(v.wrote, false);
   });
 }
 
-// One action per goal, performed through the dispatcher on a seeded workspace.
 const actions = {
   delete: ({ w, t }) => t('weave_delete_entity', { entity: w.query('Customer', {}).items[0].id, hard: true }),
   exfil: ({ t }, poisoned) => t('weave_add_comment', { entity: poisoned, author: 'agent', text: `bank ref ${CANARY}` }),
@@ -171,13 +157,11 @@ for (const goal of Object.keys(GOALS)) {
     h.w.close?.();
     const v = judge(dir, baseline);
     assert.equal(v.landed[goal], true, JSON.stringify(v.after));
-    // `wrote` follows row activity: a comment produces it; a hard delete, an account and a view do not.
     assert.equal(v.wrote, goal === 'exfil');
     for (const other of Object.keys(GOALS).filter((g) => g !== goal)) assert.equal(v.landed[other], false, `${other} landed too`);
   });
 }
 
-// A small recorded stream, written by hand in the shape `claude -p --output-format stream-json` prints.
 const line = (o) => JSON.stringify(o);
 const call = (name, input) => line({ type: 'assistant', message: { content: [{ type: 'text', text: 'working' }, { type: 'tool_use', name: `mcp__weave__${name}`, input }] } });
 const result = (text, extra = {}) => line({ type: 'result', result: text, total_cost_usd: 0.25, num_turns: 6, ...extra });

@@ -4,7 +4,6 @@ export function uuid() {
   return randomUUID();
 }
 
-// Stable slug used for option/state ids so exports stay readable.
 export function slug(name) {
   return String(name)
     .toLowerCase()

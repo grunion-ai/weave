@@ -1,8 +1,3 @@
-// The README shows only views a new user can open (Issue #385). The board
-// view left the app on 2026-08-25 (Issue #75) and the list view before it,
-// yet the README kept a board screenshot and listed both under Views for a
-// month. These gates tie the screenshot files, the capture script and the
-// prose that names views to what the app still draws.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -17,7 +12,6 @@ const DIR = join(ROOT, 'docs', 'screenshots');
 const referenced = [...README.matchAll(/docs\/screenshots\/([\w-]+)\.png/g)].map((m) => m[1]);
 const onDisk = readdirSync(DIR).filter((f) => f.endsWith('.png')).map((f) => f.replace(/\.png$/, ''));
 
-// Views the app removed. A mention of one as a weave view is stale docs.
 const REMOVED = /\b(board|list)\b/i;
 
 test('every screenshot the README shows exists on disk', () => {

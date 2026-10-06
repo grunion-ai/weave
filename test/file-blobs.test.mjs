@@ -12,24 +12,10 @@ import { dispatchTool } from '../src/mcp.js';
 
 const CLI = fileURLToPath(new URL('../bin/weave.js', import.meta.url));
 
-/* Issue #121 — "file missing?". A file-backed workspace keeps attachment
-   bytes in the sibling files/ directory, NOT in state, so exportJSON() (a
-   deep clone of state) used to hand back a dump that named every file and
-   carried none of them. Import it into another data directory and every
-   attachment is metadata pointing at nothing: the row still offers a link,
-   the link 404s with raw JSON, and the reporter can only guess.
-
-   Two halves, tested here:
-     1. the dump carries the blobs, and importing lands them back on disk
-        (without leaving base64 sitting in the persisted .db);
-     2. a blob that is already gone is legible as gone — readEntity says
-        `missing` on that file rather than letting a surface link into a 404. */
-
 function tmp() {
   return mkdtempSync(join(tmpdir(), 'weave-blobs-'));
 }
 
-// A workspace with one attachments column, one row, one attached file.
 function seed(w) {
   w.createSpace({ name: 'Dev' });
   w.createTable({ space: 'Dev', name: 'Deck' });
@@ -146,11 +132,6 @@ test('an in-memory workspace flags a lost blob the same way', () => {
   assert.equal(w.readEntity(entity).files.find((f) => f.id === file).missing, true);
 });
 
-/* Parity: the three surfaces that hand a dump out must agree about what a
-   dump IS. `weave export` is the backup — the exact reproduction the report
-   came from — and so is GET /api/export. The MCP tool is a reader, and gets
-   the structure without tens of megabytes of base64 unless it asks. */
-
 test('the CLI export → import round trip keeps the file (the reported repro)', () => {
   const srcDir = tmp();
   const src = new Weave({ path: join(srcDir, 'src.db') });
@@ -191,10 +172,6 @@ test('a missing file is named in the cell, not silently dropped', () => {
   assert.equal(w.readEntity(entity).fields.Slides, 'c-json-editor.html (missing)');
 });
 
-/* Issue #622: weave_query with a `select` naming an attachments column said
-   `(missing)` for a file that was there. The select path resolved the path
-   without the row, so the file ledger it looks names up in was empty. An
-   agent reading that concludes the upload failed and uploads it again. */
 test('a query select names an attached file the way the record does', () => {
   const dir = tmp();
   const w = new Weave({ path: join(dir, 'ws.db') });
@@ -206,11 +183,6 @@ test('a query select names an attached file the way the record does', () => {
   assert.equal(gone.Slides, 'c-json-editor.html (missing)', 'a lost blob still names its file');
 });
 
-/* Issue #462: the MCP dump leaves the bytes out by design (above), and
-   importing it into a fresh data directory lands every file as a name with
-   no bytes. The import used to report nothing, so the rows looked like the
-   Issue #250 casualties. The import now counts the files it holds and names
-   every one that arrived without bytes, on every surface that imports. */
 test('importing a dump without bytes names every file it could not land', () => {
   const src = new Weave({ path: join(tmp(), 'src.db') });
   const { entity, file } = seed(src);

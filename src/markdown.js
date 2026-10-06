@@ -1,20 +1,3 @@
-// Zero-dependency markdown renderer for entity documents.
-// Supports: headings, paragraphs, bold, italic, strikethrough, inline code,
-// links, images, fenced code blocks, blockquotes, hr, ordered/unordered lists
-// (with nesting by 2-space indent), tables, task lists, entity mentions
-// of the form [[Table#123]] or [[Table#123|label]], and inline icons.
-
-/* Inline icons (Kyle, 2026-09-02): `:bell:` draws the bell where an emoji
-   shortcode would go, `:check:` the tick, `:ring-half:` a ring. The set, its motion and the
-   drawn marks come from the same three browser files (classic scripts node
-   can import for their globals), so a document exports with the same icons
-   the editor shows. Anything not in the set stays literal — `12:30:45`,
-   `:smile:` — and the same grammar lives in WeaveEditorLib.ICON_TOKEN and in
-   the shortcode table the document editor renders from. A progress ring goes
-   by its ascii alias (`:ring-quarter:`). */
-/* Fail open: the Worker bundle has no import.meta.url and no public/ beside
-   it, and a PDF rendered there keeps every token literal rather than
-   throwing (the same rule the font fallback follows in src/pdf.js). */
 let ICONS = null, ICON_SVG = null, MARKS = null;
 try {
   const here = new URL('.', import.meta.url);
@@ -22,7 +5,7 @@ try {
   ICONS = globalThis.weaveIconRegistry ?? null;
   ICON_SVG = globalThis.LUCIDE_MOVING ?? null;
   MARKS = globalThis.weaveMarkIcons ?? null;
-} catch { /* no icon set here: tokens stay literal */ }
+} catch {}
 const ICON_TOKEN = /^:([a-z0-9][a-z0-9-]*):/;
 export function inlineIconHtml(token) {
   if (!ICONS || !ICON_SVG || !MARKS) return null;
@@ -33,18 +16,10 @@ export function inlineIconHtml(token) {
   }
   return `<span class="wv-icon md-icon" title="${escapeHtml(token)}"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">${MARKS.markSvg(hit.mark)}</svg></span>`;
 }
-// The server's & < > " escaper; mail.js has the one that adds '.
 export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-/* The scheme gate for every URL the renderer writes (Issue #490). A target
-   is kept when it has no scheme (a relative path, a query, an in-page or
-   in-app #anchor) or its scheme is http, https or mailto; an image source
-   may also be inline PNG, JPEG, GIF or WebP data. The scheme is read the
-   way a browser reads it: entities decoded, control characters and
-   whitespace dropped, case folded. Anything else returns null and the
-   caller writes the text with no anchor. */
 const ENTITY = { colon: ':', tab: '\t', newline: '\n', amp: '&', sol: '/', period: '.', lpar: '(', rpar: ')' };
 function decodeEntities(s) {
   for (let n = 0; n < 4; n++) {
@@ -67,11 +42,6 @@ function safeUrl(url, { image = false } = {}) {
   return null;
 }
 
-/* A link that leaves weave opens in a new tab (Kyle, 2026-09-07): the
-   reader keeps the page they were on. Anything with a scheme and host is
-   "leaving"; a route (#/entity/…), a workspace path (/e/…) or a bare
-   fragment stays in place. rel=noopener so the far page never holds the
-   opener. */
 function linkTarget(href) {
   return /^https?:\/\//i.test(String(href)) ? ' target="_blank" rel="noopener"' : '';
 }
@@ -79,15 +49,8 @@ function linkTarget(href) {
 function renderInline(text, resolveMention) {
   let out = '';
   let i = 0;
-  /* Hard breaks first, on the raw source: a line ending in two spaces or a
-     backslash is a <br> (both CommonMark spellings). Trailing whitespace on
-     the last line is noise, not a break. */
   const src = String(text).replace(/[ \t]*$/, '').replace(/(?: {2,}|\\)\n/g, '\u0000\n');
   while (i < src.length) {
-    /* Reference: [[Table#12]] (entity), [[table:Space/Name]], [[space:Name]],
-       [[workspace]] — any of them with |label. The parser only splits kind
-       from reference; the resolver decides what each kind addresses and what
-       it links to, so there is one place that knows the URL shapes. */
     if (src.startsWith('[[', i)) {
       const end = src.indexOf(']]', i);
       if (end > 0) {
@@ -96,25 +59,15 @@ function renderInline(text, resolveMention) {
         const ref = (pipe < 0 ? inner : inner.slice(0, pipe)).trim();
         const label = pipe < 0 ? null : inner.slice(pipe + 1).trim();
         const typed = ref.match(/^(table|space|workspace)(?::(.*))?$/);
-        // Two entity spellings: the human 'Table#12' and the durable bare
-        // uuid, which survives every rename (universal reference rule).
         const kind = typed ? typed[1] : (/^.+#\d+$/.test(ref) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) ? 'entity' : null;
         const target = typed ? (typed[2] ?? '').trim() : ref;
         if (kind && resolveMention && (kind === 'workspace' || target)) {
-          // A resolver reaches into workspace state and can throw on an
-          // ambiguous or half-deleted target. One bad reference must cost its
-          // own chip, not the rest of the document.
           let resolved = null;
           try {
             resolved = resolveMention(kind, target);
-          } catch { /* falls through to the broken chip below */ }
+          } catch {}
           if (resolved && safeUrl(resolved.href) != null) {
-            /* A chip with preview fields collapses to its name behind a caret
-               (Kyle, 2026-09-01): the whole chip stays a link to the entity;
-               only the caret toggles the field segments open. */
             const fields = (resolved.fields ?? []).filter((f) => f && f.value != null && f.value !== '').slice(0, 3);
-            // data-name carries the target's own name for a surface that shows
-            // the name alone (the editor's live chip) under a longer label.
             const a = `<a class="mention mention-${kind}" href="${escapeHtml(resolved.href)}"`
               + (resolved.name ? ` data-name="${escapeHtml(resolved.name)}">` : '>')
               + `${escapeHtml(label ?? resolved.label)}`
@@ -135,13 +88,11 @@ function renderInline(text, resolveMention) {
         continue;
       }
     }
-    // Inline icon: :name: or :mark:, only when the set knows it
     if (src[i] === ':') {
       const m = src.slice(i).match(ICON_TOKEN);
       const html = m && inlineIconHtml(m[1]);
       if (html) { out += html; i += m[0].length; continue; }
     }
-    // Inline code
     if (src[i] === '`') {
       const end = src.indexOf('`', i + 1);
       if (end > 0) {
@@ -150,7 +101,6 @@ function renderInline(text, resolveMention) {
         continue;
       }
     }
-    // Image
     if (src.startsWith('![', i)) {
       const m = src.slice(i).match(/^!\[([^\]]*)\]\(([^)\s]+)\)/);
       if (m) {
@@ -160,7 +110,6 @@ function renderInline(text, resolveMention) {
         continue;
       }
     }
-    // Link
     if (src[i] === '[') {
       const m = src.slice(i).match(/^\[([^\]]+)\]\(([^)\s]+)\)/);
       if (m) {
@@ -170,7 +119,6 @@ function renderInline(text, resolveMention) {
         continue;
       }
     }
-    // Bold
     if (src.startsWith('**', i)) {
       const end = src.indexOf('**', i + 2);
       if (end > 0) {
@@ -179,7 +127,6 @@ function renderInline(text, resolveMention) {
         continue;
       }
     }
-    // Strikethrough
     if (src.startsWith('~~', i)) {
       const end = src.indexOf('~~', i + 2);
       if (end > 0) {
@@ -188,7 +135,6 @@ function renderInline(text, resolveMention) {
         continue;
       }
     }
-    // Italic
     if (src[i] === '*' || (src[i] === '_' && /\s|^/.test(src[i - 1] ?? ' '))) {
       const ch = src[i];
       const end = src.indexOf(ch, i + 1);
@@ -204,7 +150,6 @@ function renderInline(text, resolveMention) {
   return out.replace(/\u0000/g, '<br>');
 }
 
-// Parse markdown into a flat block list (also consumed by the PDF renderer).
 export function parseBlocks(markdown) {
   const lines = String(markdown ?? '').replace(/\r\n/g, '\n').split('\n');
   const blocks = [];
@@ -213,13 +158,12 @@ export function parseBlocks(markdown) {
     const line = lines[i];
     if (/^\s*$/.test(line)) { i++; continue; }
 
-    // Fenced code (```mermaid / ```mmd become diagram blocks)
     const fence = line.match(/^```(\w*)\s*$/);
     if (fence) {
       const code = [];
       i++;
       while (i < lines.length && !/^```\s*$/.test(lines[i])) code.push(lines[i++]);
-      i++; // closing fence
+      i++;
       const lang = fence[1] || '';
       blocks.push({
         type: ['mermaid', 'mmd'].includes(lang.toLowerCase()) ? 'mermaid' : 'code',
@@ -229,7 +173,6 @@ export function parseBlocks(markdown) {
       continue;
     }
 
-    // Raw HTML block: passes through untouched until a blank line.
     if (/^<[a-zA-Z!/]/.test(line)) {
       const html = [line];
       i++;
@@ -238,7 +181,6 @@ export function parseBlocks(markdown) {
       continue;
     }
 
-    // Heading
     const h = line.match(/^(#{1,6})\s+(.*)$/);
     if (h) {
       blocks.push({ type: 'heading', level: h[1].length, text: h[2].trim() });
@@ -246,14 +188,12 @@ export function parseBlocks(markdown) {
       continue;
     }
 
-    // Horizontal rule
     if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
       blocks.push({ type: 'hr' });
       i++;
       continue;
     }
 
-    // Blockquote
     if (/^>\s?/.test(line)) {
       const quote = [];
       while (i < lines.length && /^>\s?/.test(lines[i])) quote.push(lines[i++].replace(/^>\s?/, ''));
@@ -261,7 +201,6 @@ export function parseBlocks(markdown) {
       continue;
     }
 
-    // Table: header row + separator row
     if (line.includes('|') && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && lines[i + 1].includes('-')) {
       const parseRow = (l) => l.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map((c) => c.trim());
       const header = parseRow(line);
@@ -272,7 +211,6 @@ export function parseBlocks(markdown) {
       continue;
     }
 
-    // Lists (with 2-space nesting and task items)
     const listMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
     if (listMatch) {
       const items = [];
@@ -292,7 +230,6 @@ export function parseBlocks(markdown) {
       continue;
     }
 
-    // Paragraph: consume until blank line or new block-start
     const para = [line];
     i++;
     while (
@@ -313,7 +250,7 @@ export function parseBlocks(markdown) {
 
 function renderList(items, resolveMention) {
   let html = '';
-  const stack = []; // open list tags: 'ul' | 'ol'
+  const stack = [];
   let prevDepth = null;
   for (const item of items) {
     const tag = item.ordered ? 'ol' : 'ul';
@@ -321,7 +258,6 @@ function renderList(items, resolveMention) {
       html += `<${tag}>`;
       stack.push(tag);
     } else if (item.depth > prevDepth) {
-      // Nested list opens inside the still-open parent <li>.
       for (let d = prevDepth; d < item.depth; d++) {
         html += `<${tag}>`;
         stack.push(tag);
@@ -356,8 +292,6 @@ export function renderMarkdown(markdown, { resolveMention = null } = {}) {
         html += `<pre><code${b.lang ? ` class="language-${escapeHtml(b.lang)}"` : ''}>${escapeHtml(b.text)}</code></pre>\n`;
         break;
       case 'mermaid':
-        // Mermaid's native target element; renders when mermaid.js is present,
-        // and the escaped source stays legible when it is not.
         html += `<pre class="mermaid">${escapeHtml(b.text)}</pre>\n`;
         break;
       case 'html':
@@ -384,12 +318,6 @@ export function renderMarkdown(markdown, { resolveMention = null } = {}) {
   return html;
 }
 
-// Full standalone HTML page for an entity document.
-/* A document can be an app. When the stored text is itself a complete HTML
-   document — a slide deck, an interactive figure — it is not markdown with
-   an HTML block in it, and must never be split at blank lines or wrapped in
-   the page skeleton. The test is the file's own opening: a doctype or the
-   <html> tag, nothing else. */
 export function isHtmlDocument(text) {
   return typeof text === 'string' && /^\s*(?:<!doctype\s+html|<html[\s>])/i.test(text);
 }
@@ -490,13 +418,7 @@ document.addEventListener('click', (ev) => {
 </script>
 ${body.includes('class="mermaid"') ? `<script src="/vendor/mermaid.min.js" onerror="document.querySelectorAll('pre.mermaid').forEach(p=>p.style.textAlign='left')"></script>
 <script>if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });</script>` : ''}
-${/* Same vendored highlight.js the editor loads (Issue #35), and literally
-      the same detection: editor-lib.js is the one place that decides what an
-      untagged fence is written in, so a block cannot be coloured one way in
-      the editor and another on its own page. A fence that names its language
-      wins; one that does not is detected structurally; anything unrecognised
-      — prose, a note, a diagram source — stays plain text. Diagram and math
-      fences belong to their own renderers and are never touched. */
+${
   body.includes('<pre><code') ? `<link rel="stylesheet" href="/vendor/vditor/dist/js/highlight.js/styles/github.min.css" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="/vendor/vditor/dist/js/highlight.js/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
 <script src="/vendor/vditor/dist/js/highlight.js/highlight.min.js"></script>

@@ -4,13 +4,6 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-/* Issue #480: one keystore file serves every workspace of the process, yet
-   access to /api/keys and reveal was decided from the accounts of the
-   workspace in the URL, and a workspace with no accounts opened all of it.
-   After the fix the hub root's accounts decide, whichever workspace the URL
-   names: an authenticated root admin manages keys, a root caller on a key's
-   access list reveals it, and the key's owner may overwrite or delete it. */
-
 process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');
@@ -18,8 +11,6 @@ const { client } = await import('../lib/fixtures.mjs');
 
 const freshKeystore = () => { process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json'); };
 
-/* root: an admin, a writer and a reader; `open`: no accounts, wall off;
-   `mem`: its own admin only. Key `k` is the root admin's, `w` the writer's. */
 function build() {
   freshKeystore();
   const root = new Weave();
@@ -72,13 +63,11 @@ test('reader and writer of the root are not key admins; the writer reveals and m
   assert.equal((await call('POST', '/api/keys', { token: writer.token, body: { name: 'k', value: 'x' } })).status, 403, 'not the owner');
   assert.equal((await call('DELETE', '/api/keys/k', { token: writer.token })).status, 403, 'not the owner');
   assert.equal((await call('POST', '/api/keys', { token: writer.token, body: { name: 'new', value: 'x' } })).status, 403, 'creating needs an admin');
-  // Their own key: reveal, rotate, delete.
   const own = await call('POST', '/api/keys/w/reveal', { token: writer.token });
   assert.equal(own.status, 200);
   assert.equal(own.json.value, 'writer-secret');
   assert.equal((await call('POST', '/api/keys', { token: writer.token, body: { name: 'w', value: 'rotated' } })).status, 201);
   assert.equal(root.resolveKey('w'), 'rotated');
-  // On the access list of the admin's key: reveal only.
   root.actor = 'root-admin';
   root.grantKey('k', 'root-writer');
   assert.equal((await call('POST', '/api/keys/k/reveal', { token: writer.token })).status, 200);
@@ -87,7 +76,6 @@ test('reader and writer of the root are not key admins; the writer reveals and m
 });
 
 test('an admin of a member workspace only is not a key admin', async () => {
-  // Their token verifies on the member, never on the root: unauthenticated there.
   const { call, memAdmin, root } = build();
   assert.equal((await call('GET', '/w/mem/api/keys', { token: memAdmin.token })).status, 401);
   assert.equal((await call('POST', '/w/mem/api/keys/k/reveal', { token: memAdmin.token })).status, 401);

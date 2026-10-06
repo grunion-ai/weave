@@ -1,13 +1,3 @@
-/* The entity page hierarchy (F6, 2026-09-26 design pass on v0.4.31),
-   driven through a real browser on the demo seed at 1440 x 900.
-
-   Measured before the fix: the Description opened with a 26px H1 repeating
-   the 20px page title; the FIELDS caret sat 18px left of DESCRIPTION's; the
-   Apollo Launch "Task List" rollup printed on one line and widened the page
-   to 1576px; `[[Task#1]]` read "# Task#1 —" and the `[[Project#2|Hermes
-   Docs]]` chip trailed ~90px of tint past its label.
-
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -16,14 +6,12 @@ import { seed } from '../scripts/seed.mjs';
 let h;
 const s = await launch('entity hierarchy', (weave) => {
   h = seed(weave);
-  // Enough long task names that no layout fits the joined rollup on one line.
   for (let i = 1; i <= 6; i++) {
     weave.createEntity(h.tasks, {
       name: `Migrate the regional billing ledger export pipeline, phase ${i}`,
       values: { Project: 'Apollo Launch' },
     });
   }
-  // A first H1 that is not the record name is a real heading.
   weave.setDoc(h.t2.id, '# Metering plan\n\nUsage-based endpoints.\n', 'Description');
 });
 

@@ -1,11 +1,3 @@
-/* Door C, end to end without a browser (Feature #212, Feature #222 door C):
-   sign in with one OpenID Connect provider — Clerk, Auth0, Keycloak, Google —
-   on top of door B's session. The provider proves who is there; weave decides
-   whether that person has an account. Nobody is provisioned by signing in: an
-   architect mints a one-time invite for an account, the person signs in at the
-   provider through it, and the provider's subject is pinned to the account.
-   weave asks the provider for `openid` alone and stores no email (Feature
-   #252). The provider is test/lib/idp.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -22,8 +14,7 @@ const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js
 
 const ISS = 'https://clerk.example.com';
 
-/* ---------------------------------------------------------------- engine */
-const mail = /[\w.+-]+@[\w-]+\.[\w.]+/; // an email address, not the issuer's host
+const mail = /[\w.+-]+@[\w-]+\.[\w.]+/;
 
 test('engine: linking mints a one-time invite, stored as its hash; redeeming it pins the subject and nothing else', () => {
   const w = new Weave();
@@ -56,7 +47,6 @@ test('engine: linking mints a one-time invite, stored as its hash; redeeming it 
   assert.equal(w.accountForIdentity({ issuer: ISS, subject: 'user_2', email: 'kyle@example.com', emailVerified: true }), null, 'an email opens nothing');
   assert.equal(w.accountForIdentity({ issuer: 'https://other.example', subject: 'user_1' }), null, 'another issuer is another namespace');
 
-  // A subject already pinned elsewhere is refused, and the invite survives for the right person.
   const second = w.linkIdentity('eye', { issuer: ISS });
   assert.throws(() => w.redeemIdentityInvite(second.code, { issuer: ISS, subject: 'user_1' }), /already opens 'kyle'/);
   assert.equal(w.identityInvite(second.code).account, 'eye');
@@ -79,7 +69,6 @@ test('engine: an invite expires', () => {
   assert.equal(w.identityInvite(inv.code), null);
   assert.throws(() => w.redeemIdentityInvite(inv.code, { issuer: ISS, subject: 'user_1' }), /expired or was already used/);
   assert.equal(w.listAccounts()[0].identities, undefined, 'nothing was pinned');
-  // Minting the next one sweeps the dead ones.
   w.linkIdentity('kyle', { issuer: ISS });
   assert.equal(Object.keys(w.state.meta.identityInvites).length, 1);
 });
@@ -105,7 +94,6 @@ test('migration: a pinned identity drops its email, an unpinned one is dropped, 
     w.createAccount({ name: 'kyle', role: 'admin' });
     w.createSpace({ name: 'Dev' });
     const a = Object.values(w.state.meta.accounts)[0];
-    // The shape v0.4.54 wrote: linked by email, pinned at first sign-in.
     a.identities = [
       { issuer: ISS, email: 'kyle@example.com', subject: 'user_1', createdAt: '2026-10-01T00:00:00.000Z', lastUsedAt: '2026-10-02T00:00:00.000Z' },
       { issuer: 'https://dev.example', email: 'kyle@example.com', subject: null, createdAt: '2026-09-29T00:00:00.000Z', lastUsedAt: null },
@@ -169,7 +157,6 @@ test('cli: account link mints an invite (issuer from WEAVE_OIDC_ISSUER or --issu
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-/* ---------------------------------------------------------------- config */
 test('config: WEAVE_OIDC_* is all or nothing, and the issuer is https off loopback', () => {
   assert.equal(oidcFromEnv({}), null);
   const on = oidcFromEnv({ WEAVE_OIDC_ISSUER: 'https://clerk.example.com/', WEAVE_OIDC_CLIENT_ID: 'abc', WEAVE_OIDC_CLIENT_SECRET: 'shh', WEAVE_OIDC_NAME: 'Clerk' });
@@ -188,7 +175,6 @@ test('page: the sign-in page names the provider only when one is configured', ()
   assert.match(html, /Sign in with Clerk &lt;b&gt;/);
 });
 
-/* ---------------------------------------------------------------- routes */
 async function serve({ idpOptions, link = 'user_kyle', configured = true, limits = { options: 1000, failed: 1000 } } = {}) {
   const idp = await startIdp(idpOptions);
   const w = new Weave();
@@ -229,7 +215,6 @@ test('routes: start sends the browser to the provider with state, nonce and a PK
     assert.equal(q.get('code_challenge_method'), 'S256');
     for (const k of ['state', 'nonce', 'code_challenge']) assert.ok(q.get(k)?.length >= 32, k);
     assert.notEqual(q.get('state'), q.get('nonce'));
-    // Signed out, /auth goes straight here; the page is for after sign-out.
     assert.equal((await s.call('GET', '/auth')).headers.get('location'), '/api/auth/oidc/start');
     assert.match(await (await s.call('GET', '/auth?signed-out=1')).text(), /Sign in with Clerk/);
   } finally { s.stop(); }
@@ -250,7 +235,6 @@ test('routes: a linked person signs in at the provider and comes back with a ses
     assert.equal(s.idp.seen.token[0].form.grant_type, 'authorization_code');
     assert.ok(s.idp.seen.token[0].form.code_verifier.length >= 43);
     assert.ok(s.w.listAudit({ limit: 10 }).some((e) => e.action === 'session-created'));
-    // Sign out is door B's.
     await s.call('POST', '/api/auth/logout', { cookie });
     assert.equal((await s.call('GET', '/api/spaces', { cookie })).status, 401);
   } finally { s.stop(); }
@@ -329,8 +313,6 @@ test('routes: state is one-time, and a callback weave did not start is refused',
 test('routes: a callback finishes only in the browser that started it', async () => {
   const s = await serve();
   try {
-    // Someone signs in at the provider as themselves and hands the callback
-    // URL to another browser: that browser never started a trip.
     const start = await s.call('GET', '/api/auth/oidc/start');
     assert.match(start.headers.get('set-cookie'), /^wv_oidc=[\w-]{32,}; HttpOnly; SameSite=Lax; Path=\/api\/auth\/oidc; Max-Age=300/);
     const back = s.idp.approve(start.headers.get('location'), KYLE);
@@ -368,11 +350,6 @@ test('routes: next stays on this origin', async () => {
   } finally { s.stop(); }
 });
 
-/* Issue #570: with a provider, bare /auth sends a signed-out browser on to
-   the provider, and the provider still holds its own session. A refusal
-   page that links to /auth therefore loops: provider, same identity, same
-   refusal. Every link on a refusal page lands on /auth?signed-out=1, which
-   renders, or leaves the provider's session behind. */
 const hrefs = (html) => [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1].replace(/&amp;/g, '&'));
 const intoRedirect = (href) => { const u = new URL(href, 'http://x'); return /(^|\/)auth$/.test(u.pathname) && !u.searchParams.has('signed-out'); };
 
@@ -391,8 +368,6 @@ test('routes: an identity with no account gets a page that offers a different ac
     assert.deepEqual(links.filter(intoRedirect), [], `a link leads into the automatic redirect: ${links}`);
     assert.ok(links.includes('/auth?signed-out=1'), `Back to sign in: ${links}`);
     assert.match(html, /href="[^"]*"[^>]*>Use a different account</);
-    // The provider names no end-session endpoint, so the other account is a
-    // fresh trip that asks the provider to sign in again.
     const other = links.find((h) => h.startsWith('/api/auth/oidc/start'));
     assert.ok(other, `Use a different account: ${links}`);
     const start = await s.call('GET', other);
@@ -400,14 +375,11 @@ test('routes: an identity with no account gets a page that offers a different ac
     const to = new URL(start.headers.get('location'));
     assert.equal(to.origin + to.pathname, `${s.idp.issuer}/oauth/authorize`);
     assert.equal(to.searchParams.get('prompt'), 'login');
-    // A plain start does not force a sign-in.
     assert.equal(new URL((await s.call('GET', '/api/auth/oidc/start')).headers.get('location')).searchParams.get('prompt'), null);
-    // ?next survives the switch, and the switched trip signs the other person in.
     const back = s.idp.approve(start.headers.get('location'), KYLE);
     const done = await s.call('GET', back.pathname + back.search, { cookie: cookieOf(start) });
     assert.equal(done.status, 302);
     assert.equal(done.headers.get('location'), '/#/Dev/Task');
-    // The page it points back at renders, with no redirect.
     const after = await s.call('GET', '/auth?signed-out=1');
     assert.equal(after.status, 200);
     assert.equal(after.headers.get('location'), null);
@@ -480,8 +452,6 @@ test('routes: no sign-in refusal page links into the automatic redirect', async 
     const back = s.idp.approve(trip.headers.get('location'), KYLE);
     s.idp.stop();
     pages.push(['provider down', await s.call('GET', back.pathname + back.search, { cookie: cookieOf(trip) })]);
-    // Discovery is cached once fetched, so a provider down at start needs a
-    // server that never reached it.
     const cold = await serve();
     cold.idp.stop();
     pages.push(['provider down at start', await cold.call('GET', '/api/auth/oidc/start?next=%2Fx')]);
@@ -544,9 +514,7 @@ test('routes: an invite link signs the person in through the provider and pins t
     assert.equal(me.account.name, 'kyle');
     assert.deepEqual(me.account.identities.map((i) => i.subject), ['user_kyle']);
     assert.ok(!('email' in me.account.identities[0]));
-    // From now on the subject alone signs in.
     assert.equal((await s.signIn(KYLE)).res.status, 302);
-    // The link is spent: start refuses it before the provider is asked.
     const again = await s.call('GET', `/api/auth/oidc/start?invite=${inv.code}`);
     assert.equal(again.status, 410);
     assert.match(await again.text(), /expired or was already used/);

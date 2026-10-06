@@ -1,23 +1,8 @@
-/* Issue #274 — an open tab kept a stale schema until a hard reload.
-
-   `state.schema` was fetched once at boot. A field-config change made by the
-   CLI, an agent over MCP, an automation or a second tab never reached a tab
-   that stayed open: hash navigation refetched the ROWS and drew them against
-   field definitions the tab had held since it loaded, so a recoloured select
-   kept its old hues and a renamed field kept its old header. Only
-   `location.reload()` (or, since Feature #33, refocusing the window) fixed it.
-
-   The cure is a version the structure carries. The store fingerprints its
-   structural rows — meta, spaces, tables, automations — and every API
-   response stamps it, so a tab learns on the query it was already making
-   that the schema moved underneath it. Entity writes must NOT move it, or
-   every row edit anywhere would cost every open tab a schema refetch. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from '../src/server.js';
 import { Weave } from '../src/engine.js';
 
-// Stored options hold a hex; the ramp name is read back from it (chip-core).
 const AMBER = '#f59f00';
 
 const seeded = () => {

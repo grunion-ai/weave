@@ -6,13 +6,6 @@ import { dirname, join } from 'node:path';
 import { Weave, CELL_COLORS } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
-/* Feature #235: the colour a rich cell is drawn in is a setting on the
-   field. A rating, a number's display and a formula's display each take
-   `color`: ink (Quiet ink, the default), icon (Color by icon) or accent (One
-   accent hue). Ink is never written down; the schema says it out loud on
-   every field that draws a graphic, so an agent reads what the grid shows.
-   A lookup and a rollup draw in the colour of the column they read. */
-
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 function fresh() {
@@ -42,7 +35,6 @@ test('a rating, a number display and a formula display take a colour; ink is the
   assert.equal(cfg('Hot').color, 'icon');
   assert.equal(cfg('Bar').color, 'accent');
   assert.equal(cfg('Trend').color, 'icon');
-  // The schema says the colour of every field that draws a graphic.
   assert.equal(field(w, 'Fit').color, 'ink');
   assert.equal(field(w, 'Hot').color, 'icon');
   assert.equal(field(w, 'Bar').color, 'accent');

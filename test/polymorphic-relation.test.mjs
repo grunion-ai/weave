@@ -5,12 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 
-/* Target-set relations (polymorphic): one relation field whose legal targets
-   span several tables — including the Workspace registry, so a row can point
-   at a space or a table as easily as at another row. Multi-target fields are
-   ONE-WAY (no inverse is minted); singleton target sets keep today's paired
-   behaviour exactly. */
-
 function build() {
   const w = new Weave();
   w.createSpace({ name: 'Product' });
@@ -32,7 +26,6 @@ test('multi-target relation: created with targetDbs, no inverse anywhere', () =>
   assert.equal(field.config.inverseFieldId, undefined);
   assert.equal(field.config.many, true);
   assert.equal(inverse, null);
-  // No stray field appeared on either member table.
   for (const t of [tasks, projects]) {
     const names = Object.values(w.getTable(t.id).fields).map((f) => f.name);
     assert.ok(!names.includes('Tickets'), `no inverse on ${t.name}`);
@@ -95,9 +88,9 @@ test('single-cardinality multi-target holds exactly one, replacing on link', () 
   const proj = w.createEntity(projects, { values: { Name: 'B' } });
   const t = w.createEntity(tickets, { values: { Name: 'T' } });
   w.link(t.id, 'Applies To', [task.id]);
-  w.link(t.id, 'Applies To', [proj.id]); // single: replaces
+  w.link(t.id, 'Applies To', [proj.id]);
   const read = w.readEntity(t.id);
-  assert.equal(read.fields['Applies To'].id, proj.id); // single relation reads as one summary
+  assert.equal(read.fields['Applies To'].id, proj.id);
 });
 
 test('lookup and rollup refuse a multi-target relation', () => {

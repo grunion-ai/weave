@@ -1,17 +1,3 @@
-/* Automations carried no ordinal (Issue #285). The engine fired the rules on
-   one trigger in the order `Object.values(state.automations)` yields them,
-   which is the order the store's bare `SELECT id, json FROM automations`
-   returned them: rowid order, and whatever SQLite liked after a VACUUM or a
-   hand-edited file. Two rules that write the same field ran in an order
-   nobody stored.
-
-   Every rule then carried `seq`, a workspace-wide counter minted at create.
-   Since Feature #249 a rule is a row of Workspace/Workflows, and its seq is
-   the row's number: minted at create, never reused after a delete, carried
-   by export and import with the row. The rules on one trigger fire in row
-   order. A workspace still holding state.automations is moved onto rows on
-   open, in seq order, and a rule written before seq existed is numbered
-   first in rowid order, the order it fired in until then. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -27,8 +13,6 @@ import { workspace } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
-// One rule per letter, each appending its letter to the new row's document,
-// so the document spells out the order the rules fired in.
 function rules(w, t, letters) {
   return letters.map((l) => w.createAutomation(t, {
     name: `Rule ${l}`, trigger: { type: 'entity-created' }, actions: [{ type: 'append-doc', text: l }],
@@ -36,7 +20,6 @@ function rules(w, t, letters) {
 }
 const fired = (w, t) => w.getDoc(w.createEntity(t, { name: 'probe' }).id).split(/\n+/).join('');
 
-// A rule in the shape state.automations held before Feature #249.
 const legacy = (t, letter, seq) => ({
   id: `00000000-0000-4000-8000-0000000000${letter.charCodeAt(0)}`, dbId: t.id, name: `Rule ${letter}`, enabled: true,
   trigger: { type: 'entity-created' }, actions: [{ type: 'append-doc', text: letter }], ...(seq != null ? { seq } : {}),
@@ -79,8 +62,6 @@ test('a .db written before seq existed opens cleanly: its rules become rows in r
     const path = join(dir, 'ws.db');
     const { w, t } = workspace({ path });
     w.store.close();
-    // The pre-seq shape: no seq on any rule, no counter on meta, and a
-    // rowid order (insertion order) that is not the letters' order.
     const db = new DatabaseSync(path);
     for (const l of ['B', 'C', 'A']) {
       const a = legacy(t, l);

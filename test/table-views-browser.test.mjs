@@ -1,19 +1,3 @@
-/* The Views list (Feature #229; Kyle's rulings 2026-09-23, 2026-09-25 and
-   2026-09-27): views live in the View dropdown. Order signals the default:
-   the first view opens with the table and its row says "Opens first".
-   Every row shows a drag handle; a drag by it, or Alt+Up / Alt+Down on a
-   focused row, reorders. No right-click and no context menu: Rename,
-   Duplicate and a hold-to-delete are row buttons on hover and on keyboard
-   focus. Rename edits in place; + Add view and Duplicate append an inline
-   row with a focused name ("View 2"), and Enter or a click away creates
-   and opens the view, Escape drops the row, all inside the open dropdown.
-   A table keeps at least one view. A change to the filter, the sort or the
-   columns autosaves into the view on screen; the old …/view/blank link
-   still opens the raw table, read-only. Every write here is the tableView
-   verb an agent calls: the assertions read the engine back, not the DOM
-   alone. Issue #341 rides along: + New on a filtered view makes a row the
-   grid can show. Playwright is NOT a dependency of weave; the suite skips
-   when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, styleOf } from './lib/browser.mjs';
@@ -198,7 +182,6 @@ if (s) {
       assert.ok(!fresh.filters && !fresh.sort, 'the system default: no filter, no sort');
       assert.deepEqual(order(), ['Standard', 'View 2']);
       assert.equal(await rows(page), 4);
-      // The next one is View 3.
       await page.click('.view-strip .view-add');
       assert.equal(await page.locator('.view-strip .view-name-input').inputValue(), 'View 3');
       await page.keyboard.press('Escape');
@@ -291,7 +274,6 @@ if (s) {
       const to = await tab(page, 'Standard').boundingBox();
       await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
       await page.mouse.down();
-      // One jump, as a fast flick or an automation driver sends it.
       await page.mouse.move(from.x + from.width / 2, to.y + 2);
       await page.mouse.up();
       await waitOrder(page, ['A', 'Standard']);
@@ -300,7 +282,6 @@ if (s) {
     } finally { reset(); await page.close(); }
   });
 
-  // CDP's touch input is Chromium's; WEAVE_BROWSER=webkit runs the rest.
   const cdpTouch = !process.env.WEAVE_BROWSER || process.env.WEAVE_BROWSER === 'chromium';
   test('drag with a finger by the handle', { skip: cdpTouch ? false : 'CDP touch input is Chromium-only' }, async () => {
     reset();
@@ -390,14 +371,6 @@ if (s) {
     try {
       assert.equal(await rows(page), 1);
       const before = weave.query(jobs).total;
-      /* open() leaves the View dropdown open, and the + New row runs past
-         the viewport's right edge, so the point Playwright clicks (the
-         middle of its visible part, x ~772) is inside the dropdown once it
-         has settled (right edge 774) and outside it only while its 120 ms
-         pop-in still draws it narrower (770). The case passed when the
-         click beat the pop-in, which a loaded machine stops it doing
-         (Issue #466). The dropdown is not what this case is about: close
-         it first. */
       await page.keyboard.press('Escape');
       await page.waitForSelector('.table-view-popover', { state: 'detached' });
       await page.click('.wv-grid tr.add-entity-row .add-entity-btn');

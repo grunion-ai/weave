@@ -6,13 +6,6 @@ import { join } from 'node:path';
 import { Weave, CREDENTIAL_KINDS, KEYSTORES } from '../src/engine.js';
 import { FIELD_TYPE_VOCABULARY } from '../src/vocabulary.js';
 
-/* Feature #143 — the credential field: `key` generalized.
-   #64 gave the type one shape, an API key named in the local keystore. A
-   column now says WHICH sort of credential it holds and WHICH store holds it,
-   so the same type covers a shared team password, an OAuth pair, and a
-   redacted personal id. The value stays what it always was — a NAME — and the
-   secret stays outside the workspace. */
-
 function fresh() {
   const dir = mkdtempSync(join(tmpdir(), 'weave-cred-'));
   const w = new Weave({ keystorePath: join(dir, 'keystore.json') });
@@ -101,7 +94,6 @@ test('an unset local credential says so; a remote one does not pretend to know',
 test('a key field created before #143 reads as a defaulted credential', () => {
   const { w } = fresh();
   const f = w.addField('Service', { name: 'Legacy', type: 'key' });
-  // Simulate the pre-#143 shape on disk: config was {} for every key field.
   f.config = {};
   w.save();
   const view = w.getTable('Service');

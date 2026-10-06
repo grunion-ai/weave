@@ -1,9 +1,3 @@
-/* Feature #232 in the page: a formula that returns a list, ordered with
-   sortby over two lookups, draws a sparkline in its grid cell (line, column,
-   win/loss), capped at the newest 60 points, the hover listing the values
-   and a screen reader hearing the count, last, low and high. The chip
-   carries it too. The field dialog offers the sparkline once the formula's
-   result is a list, with the three styles and a sample. Both themes. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -24,11 +18,9 @@ const s = await launch('formula sparkline', (weave) => {
   weave.addField(accts, { name: 'Series', type: 'formula', config: { expression: 'sortby([Amounts], [Closes])' } });
   acme = weave.createEntity(accts, { name: 'Acme' });
   globex = weave.createEntity(accts, { name: 'Globex' });
-  // Acme: five deals entered out of date order, one a loss.
   for (const [amt, close] of [[40, '2026-03-01'], [10, '2026-01-01'], [-20, '2026-02-01'], [70, '2026-05-01'], [55, '2026-04-01']]) {
     weave.createEntity(deals, { name: `a${close}`, values: { Amount: amt, Close: close, Account: acme.id } });
   }
-  // Globex: seventy deals, more than the sparkline draws.
   for (let i = 0; i < 70; i++) {
     const day = new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10);
     weave.createEntity(deals, { name: `g${i}`, values: { Amount: i, Close: day, Account: globex.id } });

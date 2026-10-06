@@ -1,4 +1,3 @@
-/* Feature #237: the approved toolbar keeps its controls on the eyebrow. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
@@ -43,7 +42,6 @@ if (s) {
       await page.keyboard.press('ArrowUp');
       await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid .col-label')].map(h => h.textContent.trim()).slice(0, 3).join(',') === 'Name,Owner,Description');
       assert.deepEqual(s.weave.tableView(table).views[0].fields, ['Name', 'Owner', 'Description']);
-      // A press that moves lifts the row; one square-ended line marks the gap (Issue #445).
       const grip = await owner.locator('.field-reorder-handle').boundingBox();
       const target = await page.locator('.table-field-row[data-field="Name"]').boundingBox();
       await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
@@ -144,13 +142,11 @@ if (s) {
       await page.click('.eye-btn');
       await owner.locator('.eye-row').click();
       await waitOwner(true);
-      // The switch flips before its write lands; read the view once it has (Issue #454).
       const fields = () => s.weave.tableView(table).views[0].fields;
       assert.deepEqual(await eventually(fields, ['Name', 'Owner', 'Description']), ['Name', 'Owner', 'Description'], 'reopening the picker keeps the parked position');
       await owner.locator('.eye-row').click();
       await waitOwner(false);
       await owner.locator('.field-reorder-handle').focus();
-      // The reopened picker placed hidden Owner last; move it ahead of both visible fields.
       await page.keyboard.press('ArrowUp');
       await page.keyboard.press('ArrowUp');
       await page.waitForLoadState('networkidle');

@@ -1,13 +1,3 @@
-/* The one-surface pane state machine (2026-09-02). The split dock replaces
-   the side peek AND the entity page: one renderer, three poses (closed,
-   split, expanded), a drill chain, and a crumb that is the only way back.
-   Rules pinned here before any DOM exists:
-   - the anchor table never swaps on a passive drill (wrap-around rule);
-   - selection follows the pane's top entity when it lives in the anchor
-     table, else the chain root, else nobody;
-   - re-anchoring (home tag / view-as-table) is the only deliberate swap;
-   - Esc pops one level: doc → entity → split → closed;
-   - history is linear with forward truncation, like a browser. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -37,7 +27,7 @@ test('open docks a root frame; an already-open pane keeps its pose', () => {
   let s = S.open(base(), deal);
   assert.equal(s.pose, 'split');
   assert.deepEqual(s.chain.map((f) => f.id), ['d1']);
-  s = S.open(S.toggle(s), deal2); // expanded stays expanded
+  s = S.open(S.toggle(s), deal2);
   assert.equal(s.pose, 'expanded');
   assert.deepEqual(s.chain.map((f) => f.id), ['d2']);
 });
@@ -79,13 +69,13 @@ test('escape pops one level: doc, then entity, then split, then closed', () => {
   let s = S.toggle(S.open(base(), deal));
   s = S.drill(s, co);
   s = S.drill(s, memo);
-  s = S.escape(s); // doc off
+  s = S.escape(s);
   assert.deepEqual(s.chain.map((f) => f.id ?? f.field), ['d1', 'c1']);
-  s = S.escape(s); // drill off
+  s = S.escape(s);
   assert.deepEqual(s.chain.map((f) => f.id), ['d1']);
-  s = S.escape(s); // expanded re-docks
+  s = S.escape(s);
   assert.equal(s.pose, 'split');
-  s = S.escape(s); // closed
+  s = S.escape(s);
   assert.equal(s.pose, 'closed');
   assert.deepEqual(s.chain, []);
 });
@@ -93,9 +83,9 @@ test('escape pops one level: doc, then entity, then split, then closed', () => {
 test('selection follows the top frame in the anchor table, else the root', () => {
   let s = S.open(base(), deal);
   assert.equal(S.selectionId(s), 'd1');
-  s = S.drill(s, co); // top lives elsewhere: root still selected
+  s = S.drill(s, co);
   assert.equal(S.selectionId(s), 'd1');
-  s = S.drill(s, deal2); // wrap-around: the drilled deal takes the light
+  s = S.drill(s, deal2);
   assert.equal(S.selectionId(s), 'd2');
   assert.equal(S.selectionId(S.close(s)), null);
 });
@@ -160,7 +150,7 @@ test('history: back and forward walk snapshots; a new push drops the forward leg
   r = S.hFwd(h); h = r.hist;
   assert.deepEqual(r.state.chain.map((f) => f.id), ['d1', 'c1']);
   r = S.hBack(h); h = r.hist;
-  h = S.hPush(h, S.open(r.state, deal2)); // fork: forward leg is gone
+  h = S.hPush(h, S.open(r.state, deal2));
   assert.equal(S.hCanFwd(h), false);
   assert.equal(S.hCanBack(h), true);
 });
@@ -169,12 +159,10 @@ test('history snapshots are immune to later mutation of the live state', () => {
   let h = S.hInit();
   const s = S.open(base(), deal);
   h = S.hPush(h, s);
-  s.chain.push(co); // a sloppy caller mutates in place
+  s.chain.push(co);
   const r = S.hBack(S.hPush(h, S.drill(S.open(base(), deal), jane)));
   assert.deepEqual(r.state.chain.map((f) => f.id), ['d1']);
 });
-
-/* ---------- review (2026-09-02): the edges the first cut left open ---------- */
 
 test('a drill into a closed pane is an open: it docks split with that frame as root', () => {
   const s = S.drill(base(), deal);

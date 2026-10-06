@@ -1,8 +1,3 @@
-/* Feature #185: the chip alternatives mockup makes one measurable claim —
-   a segment inside the chip is the SAME chip it is in a grid cell, at the
-   shared size, and it sits outside the link so a click on it edits instead
-   of navigating. Measure it in a browser rather than trust the class names.
-   Playwright is imported by the shared harness and the suite skips without it. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';

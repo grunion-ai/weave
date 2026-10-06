@@ -1,18 +1,12 @@
 #!/usr/bin/env node
-/* Asks OSV (osv.dev, ecosystem npm) whether any vendored library in
-   security/vendor.lock.json has a published advisory. Manifest scanners cannot
-   see public/vendor/, so this is the check. Makes a network request: it runs in
-   CI and by hand, never in `npm test`. Exit 1 on any advisory or lookup failure. */
 import { fileURLToPath } from 'node:url';
 import { readLock } from './vendor-lock.mjs';
 
 const OSV = 'https://api.osv.dev/v1/querybatch';
 
-/* Libraries OSV can answer for: an npm name and a concrete version. */
 export const queryable = (lock) => lock.libraries.filter((l) => l.npm && l.version);
 export const buildQueries = (libs) => libs.map((l) => ({ package: { name: l.npm, ecosystem: 'npm' }, version: l.version }));
 
-/* results[i] answers libs[i]; returns one row per library. */
 export function toRows(libs, results) {
   return libs.map((l, i) => ({ name: l.npm, version: l.version, ids: (results[i]?.vulns || []).map((v) => v.id) }));
 }

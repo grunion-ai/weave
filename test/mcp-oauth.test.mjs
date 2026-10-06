@@ -1,12 +1,3 @@
-/* The hosted MCP door (Feature #254): /mcp and /w/<name>/mcp are /api/mcp
-   behind an OAuth 2.1 protected resource, so `claude mcp add --transport
-   http weave https://<host>/mcp` signs a person in through the browser. The
-   instance publishes RFC 9728 metadata naming door C's provider as the
-   authorization server; a call without a credential is a 401 that points at
-   it; the provider's access token is checked at its userinfo endpoint and
-   the subject opens the account a door C invite pinned it to (Feature #252:
-   no email is asked for or kept). wv_ tokens are
-   untouched. The provider is test/lib/idp.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
@@ -16,7 +7,6 @@ import { startIdp, serveOidc } from './lib/idp.mjs';
 
 const KYLE = { sub: 'user_kyle' };
 const ANN = { sub: 'user_ann' };
-/* The browser half of door C, done: the invite is opened once and pins the subject. */
 const pin = (w, name, issuer, subject) => w.redeemIdentityInvite(w.linkIdentity(name, { issuer }).code, { issuer, subject });
 
 async function serve({ configured = true, origin = null, mcpOrigins } = {}) {
@@ -39,7 +29,6 @@ async function serve({ configured = true, origin = null, mcpOrigins } = {}) {
     const res = await s.call('POST', path, { token, body: { jsonrpc: '2.0', id: 1, method, params } });
     return { res, data: res.status === 200 ? await res.json() : await res.json().catch(() => null) };
   };
-  /* fetch will not send a Host of our choosing; node:http will. */
   const withHost = (host, path) => new Promise((resolve, reject) => {
     request({ host: '127.0.0.1', port: s.port, path, headers: { Host: host } }, (res) => {
       let raw = '';

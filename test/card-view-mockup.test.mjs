@@ -1,13 +1,3 @@
-/* docs/mockups/card-view-options.html (Feature #181, round 2 Feature #184):
-   fifteen card-view options for one Development/Issue row, every field value
-   drawn as the same chip the table cell and the entity view use, light and
-   dark side by side. The page is generated — scripts/export-card-view-options.mjs
-   lifts the chip rules out of public/style.css. This suite holds the options
-   to the Card contract and the chip markup the mockup claims to reuse. Round
-   2 adds F–O, a comparison matrix at the top, and the renderer note at the
-   foot. It does not hold the checked-in file to a fresh run of the generator
-   or to today's style.css rules (Issue #665): that coupling failed the gate
-   on unrelated style.css changes until someone regenerated the mockup. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,8 +7,6 @@ import { ROOT } from './lib/source.mjs';
 const FILE = join(ROOT, 'docs/mockups/card-view-options.html');
 const HTML = readFileSync(FILE, 'utf8');
 
-/* Every option by key and name: A–E from round 1 (kept intact), F–O from
-   round 2. The brief names each one; the page has to carry them all. */
 const OPTIONS = {
   A: 'Header line', B: 'Footer row', C: 'Labelled grid', D: 'Compact', E: 'Reading card',
   F: 'Cover card', G: 'Two-column split', H: 'Kanban tile', I: 'Sidebar accent', J: 'Table-row card',
@@ -31,7 +19,6 @@ test('fifteen options A–O, each named, each annotated in one line with what it
   for (const [key, name] of Object.entries(OPTIONS)) {
     assert.match(HTML, new RegExp(`<section class="opt" id="option-${key.toLowerCase()}">\n<h2><span class="key">Option ${key}</span>${name}</h2>`), `Option ${key} ${name}`);
   }
-  // Round 1 stays intact: A–E precede F–O in the order the brief lists them.
   const order = [...HTML.matchAll(/<span class="key">Option ([A-O])<\/span>/g)].map((m) => m[1]).join('');
   assert.equal(order, 'ABCDEFGHIJKLMNO', 'options in brief order');
   assert.equal((HTML.match(/Optimises for <b>/g) ?? []).length, options.length, 'one annotation per option');
@@ -44,7 +31,6 @@ test('fifteen options A–O, each named, each annotated in one line with what it
     assert.match(c, /description: '(none|small|medium|large)'/, 'description size');
     assert.match(c, /fields: (null|\[)/, 'fields list or null');
   }
-  // The options vary along the axes the brief names.
   assert.ok(/description: 'none'/.test(HTML) && /description: 'large'/.test(HTML), 'density varies: a compact option and a reading option');
   assert.ok(/wv-cf-l|<dt>/.test(HTML), 'at least one option shows field labels');
   assert.match(HTML, /class="k k-more">\+\d/, 'overflow folds into a +N chip');

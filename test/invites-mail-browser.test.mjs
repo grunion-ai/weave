@@ -1,7 +1,3 @@
-/* Members with mail on (Feature #216): an invite the server emailed says
-   Emailed and shows no link; one whose email failed shows the link to copy,
-   says the email did not go out, and toasts the reason. Both themes. The
-   copy-the-link flow with mail off is test/invites-browser.test.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

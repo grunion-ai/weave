@@ -32,9 +32,6 @@ function buildWorkspace() {
 
 test('spaces and tables', () => {
   const { w } = buildWorkspace();
-  // +1/+5: the Workspace system space with the Spaces/Tables/Fields registry
-  // (Features #12, #52), the Workflows table (2026-08-24) and the
-  // Workspaces table (Feature #219) and the Views table (Feature #229).
   assert.equal(w.listSpaces().length, 2);
   assert.equal(w.listTables().length, 8);
   assert.equal(w.getTable('Product/Task').name, 'Task');
@@ -52,13 +49,11 @@ test('entity CRUD, public ids, name field', () => {
   const read = w.readEntity(t1.id);
   assert.equal(read.name, 'First task');
   assert.equal(read.fields.Estimate, 5);
-  assert.equal(read.fields.State, 'Open'); // default workflow state
+  assert.equal(read.fields.State, 'Open');
   w.updateEntity(t1.id, { Name: 'Renamed', Estimate: 8 });
   assert.equal(w.readEntity(t1.id).name, 'Renamed');
   assert.equal(w.findEntity(tasks, '#2').id, t2.id);
   assert.equal(w.findEntity(tasks, 'Second task').id, t2.id);
-  // Deleting is recoverable by default (see soft-delete.test.mjs): the row
-  // leaves the table but is still addressable. Purging is the opt-in.
   w.deleteEntity(t2.id);
   assert.equal(w.findEntity(tasks, '#2'), undefined);
   assert.equal(w.getEntity(t2.id).id, t2.id);
@@ -85,7 +80,6 @@ test('workflow multistate transitions', () => {
   w.setState(t.id, 'State', 'In Progress');
   assert.equal(w.readEntity(t.id).fields.State, 'In Progress');
   assert.throws(() => w.setState(t.id, 'State', 'Bogus'), /not a state/);
-  // via updateEntity too
   w.updateEntity(t.id, { State: 'Done' });
   assert.equal(w.readEntity(t.id).fields.State, 'Done');
   const activity = w.getEntity(t.id).activity.filter((a) => a.kind === 'state-changed');
@@ -102,17 +96,14 @@ test('many-to-one relation with bidirectional consistency', () => {
   assert.equal(w.readEntity(t.id).fields.Project.name, 'Alpha');
   assert.deepEqual(w.readEntity(p1.id).fields.Tasks.map((s) => s.name), ['T']);
 
-  // Reassign: p1 must lose the task, p2 must gain it.
   w.updateEntity(t.id, { Project: 'Beta' });
   assert.deepEqual(w.readEntity(p1.id).fields.Tasks, []);
   assert.deepEqual(w.readEntity(p2.id).fields.Tasks.map((s) => s.name), ['T']);
 
-  // Link from the collection side steals it back.
   w.link(p1.id, 'Tasks', ['T']);
   assert.equal(w.readEntity(t.id).fields.Project.name, 'Alpha');
   assert.deepEqual(w.readEntity(p2.id).fields.Tasks, []);
 
-  // Deleting the task cleans the collection.
   w.deleteEntity(t.id);
   assert.deepEqual(w.readEntity(p1.id).fields.Tasks, []);
 });
@@ -153,17 +144,15 @@ test('lookup and rollup fields', () => {
   assert.equal(read.fields['Total Estimate'], 8);
   assert.equal(read.fields['Avg Estimate'], 4);
   assert.equal(read.fields['Task Names'], 'T1, T2');
-  assert.equal(read.fields['Task States'], 'Open, Done'); // display values, not ids
+  assert.equal(read.fields['Task States'], 'Open, Done');
 
   const tread = w.readEntity(t2.id);
   assert.equal(tread.fields['Project Budget'], 1000);
 
-  // Rollup over lookup chains: rollup of a computed field on targets.
   w.addField(tasks, { name: 'Padded', type: 'formula', config: { expression: 'Estimate * 2' } });
   w.addField(projects, { name: 'Padded Sum', type: 'rollup', config: { relationField: 'Tasks', targetField: 'Padded', aggregate: 'sum' } });
   assert.equal(w.readEntity(p.id).fields['Padded Sum'], 16);
 
-  // Computed fields reject writes.
   assert.throws(() => w.updateEntity(p.id, { 'Task Count': 5 }), /computed/);
 });
 
@@ -263,7 +252,7 @@ test('search across names and docs', () => {
   w.setDoc(t2.id, 'Notes about the login page redirect');
   const results = w.search('login');
   assert.equal(results.length, 2);
-  assert.equal(results[0].name, 'Fix the login flow'); // name match ranks higher
+  assert.equal(results[0].name, 'Fix the login flow');
   assert.ok(results[1].snippet.includes('login'));
 });
 
@@ -273,14 +262,10 @@ test('field deletion cascades: relation pairs and dependent computeds', () => {
   w.createEntity(projects, { name: 'P' });
   w.createEntity(tasks, { name: 'T', values: { Project: 'P' } });
   w.deleteField(projects, 'Tasks');
-  assert.equal(w.findField(w.getTable(projects.id), 'Task Count'), undefined); // dependent rollup dropped
-  assert.equal(w.findField(w.getTable(tasks.id), 'Project'), undefined); // paired end dropped
+  assert.equal(w.findField(w.getTable(projects.id), 'Task Count'), undefined);
+  assert.equal(w.findField(w.getTable(tasks.id), 'Project'), undefined);
 });
 
-// Issue #206: a rollup or lookup whose targetField is gone must not take down
-// every read of the row. deleteField refuses while something still reads the
-// column; a workspace that already carries the dangling id (uno, 2026-09-06)
-// resolves it to null and keeps counting.
 function personTaskWorkspace() {
   const w = new Weave();
   w.createSpace({ name: 'Ops' });
@@ -293,7 +278,6 @@ function personTaskWorkspace() {
   w.createEntity(tasks, { name: 'T2', values: { Estimate: 5, Assignee: 'Ann' } });
   return { w, people, tasks, estimate, person };
 }
-// The pre-fix state: the column left, the dependant kept its id.
 function dropRaw(w, table, field) {
   const db = w.getTable(table.id);
   delete db.fields[field.id];
@@ -334,7 +318,6 @@ test('a rollup whose target field is already gone resolves to null, and every re
   const read = w.readEntity(person.id);
   for (const name of ['Load', 'Avg', 'Min', 'Max', 'Names']) assert.equal(read.fields[name], null, `${name} is null`);
   assert.equal(read.fields.Count, 2, 'count keeps counting');
-  // The Task rows reach the Person through the Assignee chip.
   assert.equal(w.query(tasks).total, 2);
   assert.equal(w.query(people).items[0].fields.Load, null);
 });
@@ -350,7 +333,7 @@ test('a lookup whose target field is already gone resolves to null (#206)', () =
 test('a rollup whose relation is gone resolves to null instead of throwing (#206)', () => {
   const { w, people, tasks, person } = personTaskWorkspace();
   w.addField(people, { name: 'Count', type: 'rollup', config: { relationField: 'Assigned Tasks', aggregate: 'count' } });
-  w.deleteTable(tasks, { hard: true }); // takes the paired 'Assigned Tasks' with it; the rollup stays
+  w.deleteTable(tasks, { hard: true });
   assert.equal(w.readEntity(person.id).fields.Count, null);
 });
 
@@ -394,24 +377,17 @@ test('import/export JSON roundtrip', () => {
   assert.equal(w2.query('Task', {}).total, 1);
 });
 
-/* ---------- column order (Feature #41) ----------
-   describeSchema() emits fields in fieldOrder, so the grid's column order IS
-   fieldOrder. Reordering columns therefore has to be a schema write, not a
-   client-side sort, or the order dies with the page. */
-
 test('a table reorders its fields', () => {
   const { w, tasks } = buildWorkspace();
   const before = w.getTable(tasks).fieldOrder.slice();
   const names = () => w.describeSchema().find((sp) => !sp.system).tables.find((t) => t.name === 'Task').fields.map((f) => f.name);
   const original = names();
 
-  // Accepts names, not just ids — the UI holds column labels.
   const moved = [original[0], original[2], original[1], ...original.slice(3)];
   w.updateTable(tasks, { fieldOrder: moved });
   assert.deepEqual(names(), moved, 'describeSchema must follow the new order');
   assert.equal(w.getTable(tasks).fieldOrder.length, before.length, 'reorder must not add or drop fields');
 
-  // A partial or padded order is a bug in the caller, not a silent field drop.
   assert.throws(() => w.updateTable(tasks, { fieldOrder: [original[0]] }), /every field/i);
   assert.throws(() => w.updateTable(tasks, { fieldOrder: [...original, original[0]] }), /every field/i);
   assert.throws(() => w.updateTable(tasks, { fieldOrder: [...original.slice(1), 'Nope'] }), /not found/i);
@@ -427,8 +403,6 @@ test('a reordered table survives a reload', () => {
     const db = w1.createTable({ space: 'S', name: 'Item' });
     w1.addField(db, { name: 'A', type: 'text' });
     w1.addField(db, { name: 'B', type: 'text' });
-    // Derived, not hard-coded: a fresh table ships with its own fields
-    // (Name, Description) and the order must stay a full permutation.
     const start = w1.describeSchema().find((sp) => !sp.system).tables[0].fields.map((f) => f.name);
     const want = ['B', 'A', ...start.filter((n) => n !== 'A' && n !== 'B')];
     w1.updateTable(db, { fieldOrder: want });
@@ -443,12 +417,6 @@ test('a reordered table survives a reload', () => {
   }
 });
 
-/* ---------- column widths (Feature #42) ----------
-   A dragged column width is per-field, not per-viewer: the grid is the shared
-   surface, so the width rides on the field like its name does. It is config on
-   every field type, not a new column type, and clearing it returns the column
-   to auto sizing. */
-
 test('a field carries a column width', () => {
   const { w, tasks } = buildWorkspace();
   const fieldOf = (name) => w.describeSchema().find((sp) => !sp.system).tables.find((t) => t.name === 'Task').fields.find((f) => f.name === name);
@@ -457,24 +425,18 @@ test('a field carries a column width', () => {
   w.updateField(tasks, 'Due', { config: { width: 180 } });
   assert.equal(fieldOf('Due').width, 180);
 
-  // Width is orthogonal to the type config — setting one must not wipe the other.
   w.updateField(tasks, 'Priority', { config: { width: 120 } });
   assert.deepEqual(fieldOf('Priority').options, ['Low', 'Medium', 'High'], 'options survive a resize');
   w.updateField(tasks, 'Priority', { config: { options: ['Low', 'High'] } });
   assert.equal(fieldOf('Priority').width, 120, 'the width survives an options edit');
 
-  // Auto-fit resets to auto sizing rather than writing a computed number.
   w.updateField(tasks, 'Due', { config: { width: null } });
   assert.equal(fieldOf('Due').width, undefined, 'null clears the width');
 
-  // A width narrower than a usable column is a bug upstream, not a new default.
   assert.throws(() => w.updateField(tasks, 'Due', { config: { width: 4 } }), /width/i);
   assert.throws(() => w.updateField(tasks, 'Due', { config: { width: 'wide' } }), /width/i);
 });
 
-/* A width the grid forgets on reload is not a width — it is a 300ms animation.
-   The in-memory case above passes without the field config ever reaching the
-   store, so the round-trip needs its own reopen, exactly like fieldOrder. */
 test('a resized column survives a reload', () => {
   const dir = mkdtempSync(join(tmpdir(), 'weave-width-'));
   try {
@@ -489,7 +451,6 @@ test('a resized column survives a reload', () => {
     assert.equal(widthOf(w1), 173, 'the width is set in memory');
     assert.equal(widthOf(new Weave({ path })), 173, 'width is persisted schema, not view state');
 
-    // And clearing it must persist too, or auto-fit silently re-widens on reload.
     w1.updateField(db, 'A', { config: { width: null } });
     assert.equal(widthOf(new Weave({ path })), undefined, 'auto-fit persists as auto');
   } finally {
@@ -497,10 +458,6 @@ test('a resized column survives a reload', () => {
   }
 });
 
-/* Every document write is an event in its own right: "Description updated"
-   says nothing about whether a word or a chapter changed, so the entry carries
-   the shape of the edit — where it landed, how much came and went, and the
-   first line that differs. */
 test('a document change is logged with what actually changed', () => {
   const { w, tasks } = buildWorkspace();
   const t = w.createEntity(tasks, { name: 'T', doc: 'alpha\nbeta\n' });
@@ -518,7 +475,6 @@ test('a document change is logged with what actually changed', () => {
   assert.equal(first.detail.line, 2, '1-based line where the edit starts');
   assert.match(first.detail.preview, /BETA rewritten/, 'the first changed line is quoted');
 
-  // Writing the same markdown back is not a change, so it is not an event.
   w.setDoc(t.id, 'alpha\nBETA rewritten\ngamma\n');
   assert.equal(docs().length, 1, 'an identical write logs nothing');
 
@@ -530,7 +486,6 @@ test('a document change is logged with what actually changed', () => {
   assert.ok(appended.detail.delta > 0);
   assert.match(appended.detail.preview, /delta/);
 
-  // The same enrichment when a document is written through the values path.
   w.updateEntity(t.id, { Description: 'wholly new\n' });
   const patched = docs().at(-1);
   assert.equal(patched.kind, 'doc-updated');
@@ -538,8 +493,6 @@ test('a document change is logged with what actually changed', () => {
   assert.ok(patched.detail.delta < 0, 'a shorter document reports a negative delta');
 });
 
-/* The workspace-level Activity table: one protected, non-user-definable feed
-   of everything that happened anywhere, newest first. */
 test('activityFeed reads every event across the workspace', () => {
   const { w, tasks } = buildWorkspace();
   const a = w.createEntity(tasks, { name: 'A' });
@@ -561,18 +514,11 @@ test('activityFeed reads every event across the workspace', () => {
   assert.ok(one.id.startsWith(a.id), 'a stable per-event id, addressable from a link');
   assert.equal(w.getActivity(one.id).kind, 'doc-updated', 'and readable back by that id');
 
-  // Filters: one entity's own feed is the same rows, narrowed.
   assert.ok(w.activityFeed({ entityId: b.id }).items.every((i) => i.entityId === b.id));
   assert.deepEqual(w.activityFeed({ kinds: ['comment-added'] }).items.map((i) => i.entityId), [b.id]);
   assert.equal(w.activityFeed({ limit: 2 }).items.length, 2);
   assert.equal(w.activityFeed({ limit: 2 }).total, feed.total, 'total counts the feed, not the page');
 });
-
-/* ---------- create is as forgiving as update (Issue #33) ----------
-   updateEntity takes values by name, and the REST layer hands it `body.values
-   ?? body`, so a flat {Name, Status} object is the shape callers reach for
-   first. createEntity read only `input.values`, so the same flat object
-   produced a row with nothing in it — and a 201 saying it worked. */
 
 test('createEntity accepts values at the top level', () => {
   const { w, tasks } = buildWorkspace();
@@ -583,24 +529,17 @@ test('createEntity accepts values at the top level', () => {
   assert.equal(read.fields.Estimate, 5);
   assert.equal(read.fields.Priority, 'High');
 
-  // The documented shapes keep working, and `values` stays authoritative when
-  // both are present — same precedence as `input.name` losing to values.Name.
   const nested = w.createEntity(tasks, { name: 'Nested', values: { Estimate: 1 } });
   assert.equal(w.readEntity(nested.id).fields.Estimate, 1);
   const both = w.createEntity(tasks, { Estimate: 9, values: { Estimate: 2 } });
   assert.equal(w.readEntity(both.id).fields.Estimate, 2, 'explicit values win over flat keys');
 
-  // Reserved keys are still reserved, not mistaken for fields.
   const doc = w.createEntity(tasks, { name: 'Doc', doc: '# hi' });
   assert.match(w.getDoc(doc.id), /# hi/);
 
-  // A misspelled field is now loud instead of silently dropped.
   assert.throws(() => w.createEntity(tasks, { Nmae: 'typo' }), /not found/);
 });
 
-/* A field definition can carry the value a new row starts with. Validated when
-   the field is defined, so a definition can never hold a value the same field
-   would reject on a row. */
 test('field defaults: defined once, applied to every new row', () => {
   const { w, tasks } = buildWorkspace();
   w.addField(tasks, { name: 'Effort', type: 'number', config: { default: 3 } });
@@ -612,47 +551,38 @@ test('field defaults: defined once, applied to every new row', () => {
   assert.equal(fresh.fields.Lane, 'Next');
   assert.equal(fresh.fields.Blocked, true);
 
-  // Naming the field wins, including naming it empty.
   const named = w.readEntity(w.createEntity(tasks, { name: 'Named', values: { Effort: 8, Lane: 'Now' } }).id);
   assert.equal(named.fields.Effort, 8);
   assert.equal(named.fields.Lane, 'Now');
   const cleared = w.readEntity(w.createEntity(tasks, { name: 'Cleared', values: { Effort: null } }).id);
   assert.equal(cleared.fields.Effort, null, 'an explicit empty is a choice, not an omission');
 
-  // Existing rows are untouched by a default added later.
   w.addField(tasks, { name: 'Later', type: 'text', config: { default: 'x' } });
   assert.equal(w.readEntity(fresh.id).fields.Later, null);
 
-  // The default is validated against its own field.
   assert.throws(() => w.addField(tasks, { name: 'Bad', type: 'number', config: { default: 'nope' } }), /number/i);
   assert.throws(() => w.addField(tasks, { name: 'BadPick', type: 'select', config: { options: ['a'], default: 'z' } }), /option/i);
-  // Types with nothing to default say so rather than silently dropping it.
   assert.throws(() => w.addField(tasks, { name: 'Doc2', type: 'document', config: { default: 'hi' } }), /cannot carry a default/);
   assert.throws(() => w.addField(tasks, { name: 'Calc', type: 'formula', config: { expression: '1 + 1', default: 2 } }), /cannot carry a default/);
 
-  // Editing a field can set or clear the default.
   w.updateField(tasks, 'Effort', { config: { default: 5 } });
   assert.equal(w.readEntity(w.createEntity(tasks, { name: 'After' }).id).fields.Effort, 5);
   w.updateField(tasks, 'Effort', { config: { default: null } });
   assert.equal(w.readEntity(w.createEntity(tasks, { name: 'Cleared default' }).id).fields.Effort, null);
   assert.throws(() => w.updateField(tasks, 'Effort', { config: { default: 'nope' } }), /number/i);
 
-  // A workflow keeps its default state — one default mechanism per field.
   assert.equal(w.readEntity(w.createEntity(tasks, { name: 'State check' }).id).fields.State, 'Open');
   assert.throws(() => w.addField(tasks, {
     name: 'Stage', type: 'workflow',
     config: { states: [{ name: 'A', category: 'not-started' }], default: 'A' },
   }), /cannot carry a default/);
 
-  // Defaults survive an export/import round trip.
   const copy = new Weave();
   copy.importJSON(w.exportJSON());
   const copied = copy.getField(copy.getTable('Product/Task').id, 'Lane');
   assert.equal(copied.config.default, w.getField(tasks.id ?? tasks, 'Lane').config.default);
 });
 
-/* An embedded related-record grid asks one question — "these exact rows, with
-   all their fields" — and `id` was the one path a query could not name. */
 test('a query can filter on entity id', () => {
   const { w, tasks } = buildWorkspace();
   const a = w.createEntity(tasks, { name: 'A' });
@@ -664,14 +594,9 @@ test('a query can filter on entity id', () => {
   assert.deepEqual(picked.items.map((i) => i.name).sort(), ['A', 'B']);
   assert.equal(w.query(tasks, { where: [['id', '=', a.id]] }).items[0].name, 'A');
   assert.equal(w.query(tasks, { where: [['id', 'in', []] ] }).total, 0);
-  // The rows come back whole, because the grid renders every column.
   assert.ok('Estimate' in picked.items[0].fields, 'a filtered row is a full row');
 });
 
-/* Autosave flushes every pause, so one editing session used to write one
-   doc-updated row per pause — a keystroke log, not a history (Issue #32).
-   Consecutive updates to the same document within a short window merge into
-   one entry measured from the session start. */
 test('consecutive autosaves of one document coalesce into a single activity entry', () => {
   const { w, tasks } = buildWorkspace();
   const t = w.createEntity(tasks, { name: 'T', doc: 'v1' });
@@ -686,16 +611,11 @@ test('consecutive autosaves of one document coalesce into a single activity entr
   assert.equal(one.detail.length, 'v1 plus more still'.length);
   assert.equal(one.detail.delta, 'v1 plus more still'.length - 'v1'.length);
 
-  // A stale last entry is a different session — no coalescing across the window.
   one.ts = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   w.setDoc(t.id, 'v2');
   assert.equal(docs().length, 2, 'a new session starts a new entry');
 });
 
-/* The unified field dialog (A+E, 2026-08-22) edits option colors and needs
-   stable ids to round-trip renames without regenerating identities. The
-   flattened client view keeps `options` as plain names (existing consumers),
-   and adds `optionsFull` + state ids alongside. */
 test('client schema exposes optionsFull with ids/colors and state ids', () => {
   const { w, tasks } = buildWorkspace();
   const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id);
@@ -710,10 +630,6 @@ test('client schema exposes optionsFull with ids/colors and state ids', () => {
   for (const s of state.states) assert.equal(typeof s.id, 'string');
 });
 
-/* ---------- field type migration (2026-08-23) ----------
-   An existing field may change type along a compatibility matrix — the
-   values are coerced in place, never dropped. TYPE_MIGRATIONS is exported so
-   the field tray can offer exactly the moves the engine will accept. */
 import { TYPE_MIGRATIONS } from '../src/engine.js';
 
 test('TYPE_MIGRATIONS names the compatible moves Kyle asked for', () => {
@@ -801,17 +717,12 @@ test('a migration is audited and mirrored into the Fields registry', () => {
   assert.ok(w.listAudit().some((a) => a.action === 'field-migrated'), 'audited');
 });
 
-/* ---------- dynamic date defaults (2026-08-23) ----------
-   A date field's default may be a specific date(time) or the token
-   today() / now(), resolved when the row is created — a 'Logged' column
-   that stamps itself. The token is stored verbatim and shown as such. */
 test('a date default of today() stamps each new row with the day it was created', () => {
   const { w, tasks } = buildWorkspace();
   const f = w.addField(tasks, { name: 'Logged', type: 'date', config: { default: 'today()' } });
   assert.equal(f.config.default, 'today()');
   const e = w.createEntity(tasks, { name: 'A' });
   assert.equal(w.getEntity(e.id).values[f.id], new Date().toISOString().slice(0, 10));
-  // Naming the field wins over the default, empty included.
   const b = w.createEntity(tasks, { name: 'B', values: { Logged: '2026-01-01' } });
   assert.equal(w.getEntity(b.id).values[f.id], '2026-01-01');
 });
@@ -831,10 +742,6 @@ test('only today() and now() are dynamic — other tokens are refused as dates',
   assert.throws(() => w.addField(tasks, { name: 'X', type: 'date', config: { default: 'yesterday()' } }), /not a valid date/);
 });
 
-/* ---------- units vs currency, on numbers AND formulas (2026-08-23) ----------
-   `unit` is free text appended to a number ('12 days', '3 feet');
-   `currency` is an ISO code formatted by Intl ('$149.50', '€1,200.00').
-   A formula whose result is numeric wears the same costume. */
 test('unit text appends; currency code formats with Intl; the two are separate keys', () => {
   const { w, tasks } = buildWorkspace();
   const days = w.addField(tasks, { name: 'Lead', type: 'number', config: { unit: 'days' } });
@@ -869,11 +776,9 @@ test('a formula result wears the same costume: unit, currency, decimals', () => 
   const r = w.readEntity(e.id).fields;
   assert.equal(r.Total, '$448.50');
   assert.equal(r.Double, '6 days');
-  // The costume is editable after the fact, and the expression survives it.
   w.updateField(tasks, total.id, { config: { currency: 'EUR', decimals: 0 } });
   assert.equal(w.getField(tasks, total.id).config.expression, 'Estimate * Rate');
   assert.equal(w.readEntity(e.id).fields.Total, '€449');
-  // And describeSchema tells the client about it.
   const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id);
   assert.equal(view.fields.find((f) => f.name === 'Total').currency, 'EUR');
   assert.equal(view.fields.find((f) => f.name === 'Double').unit, 'days');
@@ -895,20 +800,15 @@ test('decimals default: currency 2, every other number 0 (Kyle, 2026-08-23)', ()
   const r = w.readEntity(e.id).fields;
   assert.equal(r.Plain, 2.6, 'no costume: the raw number, for formulas and the API');
   assert.equal(r.Days, '3 days');
-  assert.equal(r.Pct, '32%'); // stored fraction ×100 since Issue #127
+  assert.equal(r.Pct, '32%');
   assert.equal(r.Cash, 'CA$2.60');
   assert.equal(r.Fine, '2.60');
 });
 
-/* ---------- hidden fields (Feature #114, 2026-08-23) ----------
-   The table's eyeball hides fields (system columns included) per table,
-   persisted on the table like systemFields. Hidden is a view concern: the
-   field, its values and its API stay exactly as they are. */
 test('hiddenFields persists on the table and rides describeSchema; unknown names are refused', () => {
   const { w, tasks } = buildWorkspace();
   w.updateTable(tasks, { hiddenFields: ['Estimate', 'Created At'] });
   const view = w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id);
-  // A system column rides systemFields; naming one here is accepted and inert.
   assert.deepEqual(view.hiddenFields, ['Estimate']);
   assert.ok(view.fields.some((f) => f.name === 'Estimate'), 'the field itself is untouched');
   assert.throws(() => w.updateTable(tasks, { hiddenFields: ['Nope'] }), /Nope/);
@@ -916,9 +816,6 @@ test('hiddenFields persists on the table and rides describeSchema; unknown names
   assert.equal(w.describeSchema().flatMap((s) => s.tables).find((t) => t.id === tasks.id).hiddenFields, undefined);
 });
 
-/* ---------- files vs documents (Kyle, 2026-08-23) ----------
-   An attachments field says whether it holds one file or many; a document
-   field says what kind of document it is. */
 test('attachments: multiple defaults on; a single-file field refuses a second file', () => {
   const { w, tasks } = buildWorkspace();
   const many = w.addField(tasks, { name: 'Files', type: 'attachments' });
@@ -946,11 +843,7 @@ test('document: kind is markdown by default; html and code are the other kinds',
   assert.equal(w.getField(tasks, md.id).config.kind, 'code');
 });
 
-/* ---------- workflow states: an 'other' category, icons, order (Kyle, 2026-08-23) ---------- */
 test("a state stored as 'other' migrates instead of failing validation (retired 2026-08-24)", () => {
-  // 'other' was a purple escape hatch no seeded workflow used. A caller that
-  // still sends it was describing in-progress, so the normaliser says so
-  // rather than rejecting a workspace that was valid last week.
   const { w, tasks } = buildWorkspace();
   const f = w.addField(tasks, { name: 'Lane', type: 'workflow', config: { states: [{ name: 'Parked', category: 'other' }, { name: 'Live', category: 'in-progress' }] } });
   assert.equal(f.config.states[0].category, 'in-progress');

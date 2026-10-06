@@ -1,11 +1,3 @@
-/* A lookup of a relation draws the far row's chip (Issue #643), through a
-   real browser. CRM/Activities.Company looks up the Contact relation and
-   reads the contact's Company relation; its cell printed the company's
-   uuid where the Contact column beside it drew a chip. The grid, the
-   relation chip cut (`relations: 'chip'`, grafted back by the grid) and the
-   entity page now draw the same .k-rel chip the relation column draws, a
-   to-many path one chip per far row. engine: lookup-relation-chip.test.mjs.
-   Playwright is not a dependency; the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -48,7 +40,6 @@ if (s) {
       assert.equal(href, `#/entity/${northwind.id}`, 'the chip opens the company');
       const text = await page.$eval('.wv-grid tbody', (b) => b.textContent);
       assert.ok(!text.includes(northwind.id), 'no cell prints the far row\'s uuid');
-      // The chip wears the relation column's face, in either theme.
       const face = (field) => page.$eval(`.wv-grid td[data-field="${field}"] .k-rel`, (n) => {
         const cs = getComputedStyle(n);
         return { bg: cs.backgroundColor, color: cs.color, border: cs.borderTopColor, radius: cs.borderTopLeftRadius, font: cs.fontSize };

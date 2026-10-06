@@ -1,9 +1,3 @@
-/* public/picker-core.js — the pure half of the token-box picker (Kyle,
-   2026-08-25): "selected chips should be in the cursor box so the user can
-   navigate around with arrows to quickly delete, and type to add with the top
-   fit autoselected on search". Every rule below is one sentence of that ask.
-   The DOM half (searchPicker in app.js) is contract-tested in
-   test/ui-contract.test.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -27,7 +21,6 @@ test('the top fit is the best match, not the first one that contains the letters
   assert.deepEqual(core.rankOptions(OPTIONS, 'zz'), [], 'no match, no options');
   assert.deepEqual(core.rankOptions(OPTIONS, '').map((o) => o.id), OPTIONS.map((o) => o.id),
     'an empty search keeps the author’s own order');
-  // A hint (the record's #id on a link picker) matches, but never outranks a label.
   const withHint = [{ id: 'a', label: 'Alpha', hint: '#7' }, { id: 'b', label: 'Seven', hint: '#2' }];
   assert.deepEqual(core.rankOptions(withHint, 'seven').map((o) => o.id), ['b']);
   assert.deepEqual(core.rankOptions(withHint, '7').map((o) => o.id), ['a']);
@@ -58,14 +51,6 @@ test('Enter adds the armed option, clears the search, and stays open (multi)', (
   assert.equal(r.state.active, -1);
 });
 
-/* Issue #64, Kyle 2026-08-25: "it should remove the selected items from the
-   list rather than checking them". A chip in the box already says the option
-   is chosen; listing it again says it twice and pushes what you can still
-   pick further down. Issue #63 was the same bug wearing a keyboard: ↓ landed
-   on row 0, row 0 was usually something already chosen, and Enter TOOK IT
-   BACK OUT — which reads exactly as "Enter does not select after arrowing".
-   With the chosen ones gone from the list, every armed row is addable and
-   Enter has one meaning. Un-picking is ⌫ on the chip (Kyle, 2026-08-26). */
 test('a chosen option leaves the list, so an armed row is always one you can add (multi)', () => {
   const s = multi([OPTIONS[3]]);
   assert.deepEqual(core.visible(s).map((o) => o.id), ['Backlog', 'To do', 'Doing'],
@@ -77,24 +62,18 @@ test('a chosen option leaves the list, so an armed row is always one you can add
 });
 
 test('Enter after arrowing adds, and never un-picks what the arrow landed on (Issue #63)', () => {
-  // The reported gesture, on the data that produced it: one tag already set,
-  // ↓ to the first row, Enter.
   const armed = key(multi([OPTIONS[0]]), 'ArrowDown').state;
   assert.equal(core.visible(armed)[armed.active].id, 'To do', '↓ arms the first ADDABLE option');
   assert.deepEqual(core.ids(key(armed, 'Enter').state), ['Backlog', 'To do'], 'Enter adds it to the set');
 });
 
 test('a pick disarms the list, so a second Enter saves', () => {
-  // The list reflows as the chosen row leaves it; arming resets rather than
-  // sliding, which makes pick → Enter mean "and save" in every picker.
   const picked = key(key(multi(), 'ArrowDown').state, 'Enter').state;
   assert.equal(picked.active, -1, 'nothing is armed under the cursor after a pick');
   assert.deepEqual(key(picked, 'Enter').effect, { type: 'commit' }, 'so the next Enter is the save');
 });
 
 test('Enter on a search that matches only what is already chosen does nothing', () => {
-  // Without this the fall-through reads "nothing armed" and SAVES — typing a
-  // tag you already have would close the picker.
   const typed = core.search(multi([OPTIONS[3]]), 'done');
   const r = key(typed, 'Enter');
   assert.equal(r.handled, true, 'the key is the picker’s, not the input’s');
@@ -104,10 +83,6 @@ test('Enter on a search that matches only what is already chosen does nothing', 
     'single holds the same line: a search with no match is not a pick and not a close');
 });
 
-/* Issue #65, settled with Kyle 2026-08-26: "numbering" means quick-pick keys.
-   The rows carry 1–9 and ⌥1–⌥9 picks one. Option and not a bare digit —
-   the box is a text input, and 1 has to be able to type a 1. The core takes
-   the row NUMBER; which chord produces it is the DOM's business. */
 test('⌥1–⌥9 picks the numbered row without arrowing', () => {
   const r = core.keyDown(multi(), { key: '¡', quick: 2 });
   assert.deepEqual(core.ids(r.state), ['To do'], 'the second visible row');
@@ -133,8 +108,6 @@ test('a single select overwrites: Enter picks and the caller closes', () => {
   const r = key(core.search(single('Backlog'), 'doi'), 'Enter');
   assert.equal(r.effect.type, 'pick');
   assert.equal(r.effect.option.id, 'Doing');
-  // Enter with nothing typed re-picks what is already set — the field is
-  // updated and the picker is done either way.
   assert.deepEqual(key(single('Doing'), 'Enter').effect, { type: 'pick', option: OPTIONS[2] });
   assert.deepEqual(key(single(null), 'Enter').effect, { type: 'commit' }, 'nothing set, nothing typed: just leave');
 });
@@ -147,7 +120,6 @@ test('↑ ↓ walk the visible list and stop at its ends', () => {
   assert.equal(s.active, OPTIONS.length - 1, '↓ stops at the last option');
   for (let i = 0; i < 9; i++) s = key(s, 'ArrowUp').state;
   assert.equal(s.active, 0, '↑ stops at the first');
-  // The list is what the search left, not the whole set.
   const filtered = key(core.search(multi(), 'do'), 'ArrowDown').state;
   assert.equal(core.visible(filtered).length, 3);
 });

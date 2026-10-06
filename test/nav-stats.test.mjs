@@ -7,10 +7,6 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { APP, liftFunction } from './lib/source.mjs';
 
-/* The nav stats strip: the sidebar's foot shows how big this workspace is —
-   entity count plus what it weighs on disk. The engine answers with
-   storageStats(), /api/health carries it, app.js renders it. */
-
 function seeded(path = null) {
   const w = new Weave(path ? { path } : undefined);
   w.createSpace({ name: 'Dev' });
@@ -20,8 +16,6 @@ function seeded(path = null) {
 
 test('storageStats: live entity count + attached file bytes (in-memory)', () => {
   const w = seeded();
-  // System-mirror rows (workspace, spaces, tables) are live entities too —
-  // count relative to the seeded baseline.
   const base = w.storageStats().entities;
   w.createEntity('Contract', { name: 'Acme' });
   const gone = w.createEntity('Contract', { name: 'Trashed' });
@@ -72,8 +66,6 @@ test('the strip pins to the sidebar bottom and style.css dresses it', () => {
   const CSS = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   const rule = CSS.match(/\.nav-stats\s*{([^}]*)}/)?.[1] ?? '';
   assert.ok(/position:\s*sticky/.test(rule), 'sticky');
-  // Its ground reaches past the sidebar's 14px bottom padding, so no nav row
-  // shows in that band (Issue #380): bottom and padding cancel the padding.
   const pad = CSS.match(/#sidebar\s*{[^}]*padding:\s*(\d+)px/)[1];
   assert.match(rule, new RegExp(`bottom:\\s*-${pad}px`), 'stuck to the sidebar\'s outer bottom edge');
   assert.ok(Number(rule.match(/padding:\s*\d+px \d+px (\d+)px/)[1]) >= Number(pad), 'and padded over the band it covers');

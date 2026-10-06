@@ -1,27 +1,3 @@
-/* Issue #428: a change to a field's configuration saved silently. No toast,
-   no Undo, and nothing in Activity, so a mistaken edit to a shared field had
-   no way back except rebuilding it by hand.
-
-   Kyle's requirement: every field configuration update, once it completes,
-   shows a toast with Undo and is registered in Activity so it can be rolled
-   back later, not only inside the toast's lifetime.
-
-   The engine half, pinned here:
-   - updateField is the one write path. A change it makes records a
-     `field-config-updated` Activity entry holding the table, the field, the
-     definition before and after, the keys that changed and a seq.
-   - A no-op records nothing. A width-only patch records nothing either: in
-     the grid a column's width is a view setting (Feature #233), and only a
-     registry grid still writes it onto the field, so a toast per resize would
-     be noise.
-   - rollbackFieldConfig applies `before` through the same path and records
-     its own `undo` entry. It refuses when the field changed after the entry
-     (a later entry for the field, or a definition that no longer matches
-     `after`). A type change rolls back with its values (Issue #467,
-     test/field-type-snapshot.test.mjs).
-   - The entries live in the workspace's audit log, the archive of structural
-     work, so they survive a reopen and never ride the table blob.
-   - Every door: route (the rung of the schema write), MCP, CLI. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -46,7 +22,6 @@ function workspace(opts = {}) {
   return { w, t };
 }
 
-// Oldest first, so a loop rolls back in the order the changes were made.
 const configEntries = (w, kinds = ['field-config-updated', 'undo']) =>
   w.activityFeed({ kinds }).items.filter((a) => a.detail?.fieldId).reverse();
 
@@ -76,9 +51,7 @@ test('a config change records one field-config-updated entry with before, after 
   assert.equal(a.detail.after.config.options.length, 3);
   assert.equal(typeof a.seq, 'number');
   assert.ok(a.seq > rowSeq, 'one counter orders it against entity activity');
-  // It reads back by id, like any event.
   assert.equal(w.getActivity(a.id).detail.fieldId, f.id);
-  // The table filter and the table address both find it.
   assert.equal(w.activityFeed({ tableRef: t.id }).items.filter((x) => x.kind === 'field-config-updated').length, 1);
   assert.equal(w.activityFeed({ entityId: t.id }).items.length, 1, 'a table id narrows to its config history');
 });
@@ -120,7 +93,6 @@ test('roll back applies before through the same path and records an undo entry',
   assert.equal(undo.detail.of, a.id, 'the undo names the entry it reversed');
   assert.equal(undo.detail.fieldId, f.id);
   assert.ok(undo.seq > a.seq);
-  // The entry it reversed can no longer be rolled back; the undo can (a redo).
   assert.equal(w.getActivity(a.id).rollback.ok, false);
   assert.equal(w.getActivity(out.activity).rollback.ok, true);
   w.rollbackFieldConfig(out.activity);
@@ -146,7 +118,7 @@ test('a definition changed by a path that records nothing still counts as change
   const f = w.getField(t.id, 'Priority');
   w.updateField(t.id, f.id, { config: { options: [{ id: 'low', name: 'Low' }] } });
   const [a] = configEntries(w);
-  f.config.options.push({ id: 'x', name: 'X', hue: 'slate', icon: '', color: '' }); // behind the verb's back
+  f.config.options.push({ id: 'x', name: 'X', hue: 'slate', icon: '', color: '' });
   assert.throws(() => w.rollbackFieldConfig(a.id), (err) => err.code === 'conflict' && /changed since/.test(err.message));
 });
 

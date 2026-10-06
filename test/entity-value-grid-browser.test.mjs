@@ -1,18 +1,3 @@
-/* The entity page lays its value fields out in two columns (Issue #89).
-
-   Twenty-eight fields in one column put the document a full screen down, so
-   the value rows flow into a two-column grid at the top of the entity while
-   documents and attachments keep the full width below them.
-
-   Density is the easy half. The half worth testing is that nothing the
-   single column could do is lost on the way: a value still edits in place, a
-   row still drags to reorder and writes through the same reorderField the
-   grid header uses, the eye still hides a field for the table and the page at
-   once, and the reading order still follows fieldOrder.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and the
-   suite skips when absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -22,8 +7,6 @@ let parts;
 const VALUES = ['Vendor', 'Batch', 'Price', 'Weight', 'Stage', 'Notes'];
 const trackCount = (page) => page.$eval('.entity-values',
   (n) => Number(getComputedStyle(n).columnCount) || 1);
-/* Which column each field sits in, read off the page: rows sharing a left
-   edge share a column. */
 const columnsOf = (page) => page.$$eval('.entity-values [data-field]', (ns) => {
   const lefts = [...new Set(ns.map((n) => Math.round(n.getBoundingClientRect().left)))].sort((a, b) => a - b);
   const cols = lefts.map(() => []);
@@ -44,8 +27,6 @@ if (s) {
     return weave.createEntity(parts, { name: 'Sensor board', values }).id;
   };
   const table = () => weave.getTable(parts);
-  /* A drag rewrites fieldOrder, so every dragging test gets a table of its
-     own: shared, they would each start from the previous test's leftovers. */
   let n = 0;
   const ownTable = () => {
     const db = weave.createTable({ space: 'Showcase', name: `Drag ${++n}` });
@@ -65,8 +46,6 @@ if (s) {
     return page;
   };
   const order = (page) => page.$$eval('.entity-values [data-field]', (ns) => ns.map((n) => n.dataset.field));
-  /* The pointer's height on the target row decides the side: above the
-     midpoint inserts before, below it inserts after. */
   const drag = (page, from, onto, side = 'above') => page.evaluate(([f, t, s]) => {
     const dt = new DataTransfer();
     const a = document.querySelector(`[data-field="${f}"]`);
@@ -101,9 +80,6 @@ if (s) {
   });
 
   test('the column count follows the width it actually has', async () => {
-    /* Container width, not viewport: the entity page gives room away to the
-       activity rail and to a peek panel, so a media query would promise a
-       third column the row does not have. */
     const id = fresh();
     for (const [width, want] of [[700, 1], [1280, 2], [1800, 3]]) {
       const page = await openEntity(id, width);
@@ -113,9 +89,6 @@ if (s) {
   });
 
   test('no value is clipped by the column it sits in', async () => {
-    /* The reason the ladder stops where it does. A date range is two inputs
-       and a dash — it has a floor no ellipsis can talk it out of, so it takes
-       two tracks, and every other editor has to fit the track it is given. */
     const wide = weave.createTable({ space: 'Showcase', name: 'Wide' });
     weave.addField(wide, { name: 'Vendor', type: 'text' });
     weave.addField(wide, { name: 'Window', type: 'daterange' });
@@ -138,9 +111,6 @@ if (s) {
   });
 
   test('reading order is the fieldOrder, down each column then across', async () => {
-    /* Column-major, not row-major: a field's neighbours in the order are the
-       fields above and below it, so a reorder ripples only at the column
-       boundary instead of reshuffling every later field across columns. */
     const page = await openEntity(fresh());
     assert.deepEqual(await order(page), VALUES);
     const cols = await columnsOf(page);
@@ -183,12 +153,6 @@ if (s) {
   });
 
   test('a second drag lands where it was dropped, not where the page opened', async () => {
-    /* The drop read its direction from the field list captured when the page
-       was drawn, so once a drag had moved something the next one was judged
-       against an order that no longer existed. Dragging a field back over the
-       one it had just passed computed "after" from the stale list and put it
-       where it already was: the row did not move, which reads as a dead drag
-       rather than a wrong one. Direction has to come from the live DOM. */
     const { db, id } = ownTable();
     const page = await openEntity(id, 1800);
     await drag(page, 'Weight', 'Vendor');
@@ -206,8 +170,6 @@ if (s) {
   });
 
   test('a field dropped in another column lands beside its target', async () => {
-    /* Three columns, so the drag crosses one: the field has to land next to
-       the row it was dropped on, wherever that row happens to sit. */
     const page = await openEntity(ownTable().id, 1800);
     assert.equal(await trackCount(page), 3);
     await drag(page, 'Vendor', 'Stage', 'below');
@@ -219,11 +181,6 @@ if (s) {
   });
 
   test('holding a row opens a slot where it will land, and the rows make room', async () => {
-    /* A line on a neighbour's edge told the reader where; it did not show
-       them what. Now the list makes room: one dashed slot, carrying the
-       field's name, opens at the destination while you hold, the rows below
-       it shift down, and the drop puts the field where the slot was. There
-       is no before/after rule to learn — the field goes where the hole is. */
     const page = await openEntity(ownTable().id, 1800);
     const cue = await page.evaluate(() => {
       const dt = new DataTransfer();
@@ -241,8 +198,6 @@ if (s) {
           label: slot?.textContent.trim() ?? null,
           height: slot ? Math.round(slot.getBoundingClientRect().height) : 0,
           slotBeforeStage: !!slot && !!(slot.compareDocumentPosition(onto) & Node.DOCUMENT_POSITION_FOLLOWING),
-          // Reading order on a multicol grid: above it in the same column, or at
-          // the foot of the column before it when the balance puts them apart.
           slotReadsBeforeStage: !!slot && (slot.getBoundingClientRect().bottom <= onto.getBoundingClientRect().top + 1
             || slot.getBoundingClientRect().right <= onto.getBoundingClientRect().left + 1),
           fill: getComputedStyle(onto).backgroundColor,
@@ -291,9 +246,6 @@ if (s) {
   });
 
   test('a move inside one column leaves the other column alone', async () => {
-    /* The point of column-major flow: a field's column is stable under
-       reorders that stay in the column, because only the boundary between
-       columns can move — nothing reshuffles across the page. */
     const { id } = ownTable();
     const page = await openEntity(id);
     const before = await columnsOf(page);

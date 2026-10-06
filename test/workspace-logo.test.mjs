@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { Weave, WeaveError } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
-const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'); // png magic + header start
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 
 test('workspace logo: set / read / delete on a file-backed workspace', () => {
   const dir = mkdtempSync(join(tmpdir(), 'weave-logo-'));
@@ -21,11 +21,9 @@ test('workspace logo: set / read / delete on a file-backed workspace', () => {
   assert.equal(got.meta.mime, 'image/png');
   assert.deepEqual(got.bytes, PNG);
 
-  // Survives reopen (meta.logo persists through the store).
   const w2 = new Weave({ path: join(dir, 'ws.db') });
   assert.deepEqual(w2.getWorkspaceLogo().bytes, PNG);
 
-  // Replacing swaps the blob; deleting removes meta.
   const meta2 = w2.setWorkspaceLogo({ name: 'v2.png', mime: 'image/png', bytes: Buffer.concat([PNG, Buffer.from('next')]) });
   assert.notEqual(meta2.id, meta.id);
   w2.deleteWorkspaceLogo();

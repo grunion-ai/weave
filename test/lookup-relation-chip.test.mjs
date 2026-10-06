@@ -1,14 +1,3 @@
-/* A lookup of a relation shows the far row's chip (Issue #643).
-
-   CRM/Activities.Company looks up the Contact relation and reads the
-   contact's Company, itself a relation. The lookup carried the company's
-   uuid list in `fields`, so the grid, the entity page, CSV and MCP all
-   printed `["73ec…"]` where the Contact column beside it drew a chip. A
-   lookup whose target is a relation now wears the relation's shape: the
-   summary `{id, publicId, name, db}` (with its chip) for a to-one path, a
-   list of them when either hop is to-many. `raw` keeps the ids, as it does
-   for the relation column itself. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -25,7 +14,6 @@ function crm() {
   w.addRelation('Contacts', { name: 'Clients', targetDb: 'Companies', cardinality: 'many-to-many', inverseName: 'Advisors' });
   w.addRelation('Activities', { name: 'Contact', targetDb: 'Contacts', cardinality: 'many-to-one' });
   w.addRelation('Activities', { name: 'Attendees', targetDb: 'Contacts', cardinality: 'many-to-many', inverseName: 'Meetings' });
-  // to-one over to-one, to-many over to-one, to-one over to-many.
   w.addField('Activities', { name: 'Company', type: 'lookup', config: { relationField: 'Contact', targetField: 'Company' } });
   w.addField('Activities', { name: 'Attendee Companies', type: 'lookup', config: { relationField: 'Attendees', targetField: 'Company' } });
   w.addField('Activities', { name: 'Contact Clients', type: 'lookup', config: { relationField: 'Contact', targetField: 'Clients' } });

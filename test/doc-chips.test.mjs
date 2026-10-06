@@ -1,27 +1,3 @@
-/* Documents in a grid row are chips, not a snippet (Kyle, 2026-08-24).
-
-   The Docs cell used to flatten the FIRST document field to 90 characters
-   and print it, so a Task with Description, Spec and test showed a slice of
-   one of them and no sign of the other two. A row now carries one chip per
-   document field, named, with the kind of thing that document actually is —
-   markdown, an HTML app, a JSON model, a mermaid diagram — and clicking a
-   chip opens that document, not the first one.
-
-   Narrowed 2026-08-27, and the narrowing keeps the ruling rather than undoing
-   it. Kyle: a description "should always show a preview of the properly
-   formatted first few lines, not an md document chip." What he rejected in
-   August was a raw slice of ONE document standing in for all of them; what he
-   wants now is the description saying what it says. So the description leaves
-   the Docs cell for a column of its own — one dressed line, the rest on hover
-   — and Spec, Model and test keep exactly the chips this file was written to
-   defend. Both rulings hold at once, and neither cell has to compromise.
-
-   Widened 2026-08-31: the shared Docs cell itself retired. Every document
-   field is now a COLUMN of its own, and its cell is the same named chip with
-   its kind badge — the chips survive, the grouping does not. The column era's
-   own gates live in test/doc-columns.test.mjs; this file keeps the rulings
-   that still hold: the chip form, the peek, the flattened-slice ban, the
-   honest empty state. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -33,8 +9,6 @@ await import('../public/editor-lib.js');
 const LIB = globalThis.WeaveEditorLib;
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
-
-/* ---------- what kind of document this is ---------- */
 
 test('an empty document has no kind to claim', () => {
   assert.equal(LIB.docKind(''), null);
@@ -61,17 +35,10 @@ test('a model is json, a diagram is mermaid', () => {
   assert.equal(LIB.docKind('flowchart TD\n  A --> B'), 'mmd');
 });
 
-/* ---------- the cell ---------- */
-
 test('a document cell is a named chip that says what kind it holds', () => {
   assert.match(APP, /function docChipCell\(/, 'one builder for the chip cell');
   const fn = APP.match(/function docChipCell\([^]*?\n\}/)[0];
   assert.match(fn, /docChipKind\(/, 'and the chip says what kind it is — the declared kind first');
-  // The ban survives both narrowings: what Kyle rejected was a FLATTENED raw
-  // slice of one document standing in for the row. The description's preview
-  // is a block-stripped, mark-dressed read of a named, role-marked field, and
-  // it must not be spelled like the thing that was thrown out — satisfying the
-  // letter of this gate by renaming the old helper would be gaming it.
   assert.ok(!/docPreview\(item\.docs/.test(APP), 'the flattened raw snippet of one document is still gone');
   assert.ok(!/\.slice\(0, 60\)/.test(APP), 'and so is the 60-character document slice it left behind');
 });
@@ -83,9 +50,6 @@ test('the description keeps its first-lines preview; only it previews (Kyle, 202
 });
 
 test('clicking a chip docks the entity, never a row expansion (Issue #74)', () => {
-  // Documents used to expand an editor UNDER the grid row, stretching the
-  // table. Kyle (2026-08-25): they opened the side peek; since 2026-09-02
-  // the peek is gone and the ONE panel is the entity dock beside the table.
   assert.match(APP, /docChipCell\(f, item, \(\) => dockEntity\(db, id\)\)/,
     'a doc chip docks its entity beside the table');
   assert.ok(!APP.includes('peekEntity'), 'the side peek is fully excised');
@@ -94,11 +58,6 @@ test('clicking a chip docks the entity, never a row expansion (Issue #74)', () =
 });
 
 test('an empty document reads as empty rather than lying about a kind', () => {
-  // Since the chip system (2026-08-25) the empty state is a dashed pointer,
-  // not a dimmed one — .doc-chip carries geometry only, .k-doc.is-empty the
-  // look. The modifier is `is-empty` because Tabler ships a global `.empty`
-  // (flex column, height 100%, 1rem pad) and the chip inherited it, which
-  // took a comfortable row from 43px to 85 (Kyle, 2026-08-26).
   assert.match(CSS, /\.k-doc\.is-empty/);
   assert.doesNotMatch(APP, /doc-chip' \+ \(kind \? '' : ' empty'\)/,
     'the chip never wears the framework’s class name');

@@ -1,16 +1,3 @@
-/* A choice field's Default is picked from its own options (Issue #422).
-
-   Select and multi-select fell through to the generic Default text box, so a
-   typo wrote a default that matched no option; a workflow had no Default at
-   all, only the note "the first state is the default". Kyle, 2026-09-26:
-   "Default config should be a drop down selection of available options".
-
-   The default now rides the option or state it names, as a `default` flag on
-   that entry in the dialog state. A rename carries it and a removal takes it,
-   with no bookkeeping; the definition turns the flag back into the stored
-   shape (an option name for select, names for multi-select, the state's own
-   `default: true` for a workflow). The browser half is
-   choice-default-browser. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

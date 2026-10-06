@@ -5,15 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 
-/* Feature #143, phase 2 — the local keystore is encrypted at rest.
-   #64 wrote plaintext JSON at chmod 600, which is honest for one operator's
-   API keys on one laptop. It stops being honest the moment the column is
-   meant to hold a shared password or an id somebody would be harmed by
-   losing, and again when the workspace is hosted. The file mode defends
-   against another user on the box; encryption defends against the copy — a
-   backup, a sync folder, a stolen disk — which is the leak that actually
-   happens. */
-
 function fresh(env = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-ks-'));
   const path = join(dir, 'keystore.json');

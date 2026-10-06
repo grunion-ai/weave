@@ -1,9 +1,3 @@
-/* The nav kebab's two structural verbs (Kyle, 2026-08-31): move a table to
-   another space, and duplicate a table deep — every field with its full
-   config, relations rebuilt as real paired fields (self-relations retargeted
-   into the copy), lookups/rollups re-pointed at the copy's own relation
-   fields, and the name auto-suffixed " Copy" (" Copy 2", …) until free.
-   Duplicate copies SCHEMA, not rows: the copy starts empty. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -23,8 +17,6 @@ const build = () => {
   const projects = w.createTable({ space: 'Product', name: 'Project' });
   return { w, tasks, projects };
 };
-
-/* ---------------- move to space ---------------- */
 
 test('moveTable moves the table into the target space', () => {
   const { w, tasks } = build();
@@ -82,8 +74,6 @@ test('moveTable re-links the registry Tables row to the new Space row', () => {
   assert.ok(linked.includes(archiveRow.id), 'Tables row points at the Archive space row');
 });
 
-/* ---------------- duplicate: naming ---------------- */
-
 test('duplicate lands in the same space as "<name> Copy"', () => {
   const { w, tasks } = build();
   const copy = w.duplicateTable(tasks.id);
@@ -98,7 +88,7 @@ test('duplicate auto-increments when Copy names are taken (live or trashed)', ()
   assert.equal(first.name, 'Task Copy');
   const second = w.duplicateTable(tasks.id);
   assert.equal(second.name, 'Task Copy 2');
-  w.deleteTable(second.id); // trashed still holds the name
+  w.deleteTable(second.id);
   const third = w.duplicateTable(tasks.id);
   assert.equal(third.name, 'Task Copy 3');
 });
@@ -111,8 +101,6 @@ test('duplicate carries description and icon, resets ids and counters', () => {
   assert.notEqual(copy.id, tasks.id);
   assert.equal(copy.publicIdCounter, 0);
 });
-
-/* ---------------- duplicate: field config, deep ---------------- */
 
 test('duplicate copies every field with its full config, deeply (no shared objects)', () => {
   const { w, tasks } = build();
@@ -128,7 +116,6 @@ test('duplicate copies every field with its full config, deeply (no shared objec
   const cpEst = w.findField(copy, 'Estimate');
   assert.equal(cpEst.config.unit, 'pt');
   assert.equal(cpEst.config.width, 120);
-  // Deep, not shared: renaming an option on the copy leaves the source alone.
   cpPrio.config.options[0].name = 'P9';
   assert.notEqual(srcPrio.config.options[0].name, 'P9');
 });
@@ -162,8 +149,6 @@ test('duplicate keeps a deleted description role deleted (null tombstone)', () =
   assert.equal(copy.descriptionFieldId, null);
 });
 
-/* ---------------- duplicate: relations ---------------- */
-
 test('duplicate rebuilds an external relation with its own inverse on the target', () => {
   const { w, tasks, projects } = build();
   const { field: rel } = w.addRelation(tasks.id, { name: 'Project', targetDb: projects.id, cardinality: 'many-to-one', inverseName: 'Tasks' });
@@ -179,7 +164,6 @@ test('duplicate rebuilds an external relation with its own inverse on the target
   assert.equal(inverse.config.inverseFieldId, cpRel.id, 'wired both ways');
   assert.notEqual(inverse.id, rel.config.inverseFieldId, 'the original inverse is untouched');
   assert.match(inverse.name, /^Tasks Copy/, 'inverse auto-renamed past the clash');
-  // Source pair untouched.
   assert.equal(w.findField(w.getTable(tasks.id), 'Project').config.inverseFieldId,
     rel.config.inverseFieldId);
 });
@@ -194,7 +178,6 @@ test('duplicate retargets a self-relation into the copy', () => {
   assert.equal(cpSubs.config.targetDb, copy.id);
   assert.equal(cpParent.config.inverseFieldId, cpSubs.id);
   assert.equal(cpSubs.config.inverseFieldId, cpParent.id);
-  // Source self-relation still closed over the source.
   const srcParent = w.findField(w.getTable(tasks.id), 'Parent');
   assert.equal(srcParent.config.targetDb, tasks.id);
 });
@@ -208,8 +191,6 @@ test('duplicate carries a one-way target-set relation as-is', () => {
   assert.deepEqual(cpAbout.config.targetDbs, [projects.id, spacesT.id]);
   assert.equal(cpAbout.config.inverseFieldId, undefined, 'stays one-way');
 });
-
-/* ---------------- duplicate: lookups, rollups, formulas ---------------- */
 
 test('duplicate re-points lookups and rollups at the copy’s own relation field', () => {
   const { w, tasks, projects } = build();
@@ -237,8 +218,6 @@ test('duplicate carries a formula field’s expression and costume', () => {
   assert.equal(cpF.config.decimals, 1);
 });
 
-/* ---------------- duplicate: boundaries ---------------- */
-
 test('duplicate copies schema, never rows — the copy starts empty', () => {
   const { w, tasks } = build();
   w.createEntity(tasks.id, { name: 'One' });
@@ -263,8 +242,6 @@ test('duplicate registers the copy in the Tables registry', () => {
   assert.equal(w.entityName(row), 'Task Copy');
 });
 
-/* ---------------- trash is not a home (review, 2026-09-02) ---------------- */
-
 test('moveTable refuses a trashed table and a trashed destination space', () => {
   const { w, tasks } = build();
   w.deleteTable(tasks.id);
@@ -282,8 +259,6 @@ test('duplicateTable refuses a trashed source', () => {
   assert.throws(() => w.duplicateTable(tasks.id), /trash/i);
   assert.equal(w.listTables().filter((d) => !d.system).length, 1, 'no copy was born');
 });
-
-/* ---------------- parity: routes ---------------- */
 
 const withServer = async (fn) => {
   const { w, tasks, projects } = build();
@@ -349,8 +324,6 @@ test('restore is a schema write too: a writer cannot un-trash a table (Issue #14
   });
 });
 
-/* ---------------- parity: MCP ---------------- */
-
 test('MCP lists weave_move_table and weave_duplicate_table, and dispatches them to the engine', () => {
   const move = TOOLS.find((t) => t.name === 'weave_move_table');
   const dup = TOOLS.find((t) => t.name === 'weave_duplicate_table');
@@ -364,8 +337,6 @@ test('MCP lists weave_move_table and weave_duplicate_table, and dispatches them 
   assert.equal(w.qualifiedName(copy), 'Archive/Task Copy', 'the copy lands beside its source, wherever that now is');
   assert.throws(() => dispatchTool(w, 'weave_move_table', { db: 'Archive/Task', space: 'Workspace' }), /system/i);
 });
-
-/* ---------------- parity: CLI ---------------- */
 
 test('CLI: `table move` and `table duplicate` reach the engine, and the usage line names them', () => {
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');

@@ -1,8 +1,3 @@
-/* The Members section on a workspace's home (Issue #569, bullet 3): an
-   architect invites a new person by email, picks the role, copies the
-   one-time sign-in link, and revokes a pending invite, in both themes.
-   With no account on the workspace yet, the open caller may manage
-   accounts, which is how this suite reaches the section. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
@@ -10,7 +5,6 @@ import { createOidc } from '../src/oidc.js';
 
 const s = await launch('members and invites', (weave) => {
   weave.updateWorkspace({ name: 'home' });
-  // Onboarded already: the welcome (Feature #248) would sit over the home page.
   weave.markOnboarded();
 }, { server: () => ({ oidc: createOidc({ issuer: 'https://idp.test', clientId: 'weave' }) }) });
 

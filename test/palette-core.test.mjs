@@ -1,9 +1,3 @@
-/* The ⌘K palette's pure half (Issue #382, option A of the 2026-09-26
-   design pass). Every hit is one line: a name, an optional plain-text
-   excerpt, a state chip and where it lives. public/palette-core.js owns the
-   parts a DOM is not needed for — the markdown stripping, the grouping, the
-   Tab jump between groups, the recents list — and this file holds them to
-   the spec. The DOM half is test/palette-browser.test.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -29,16 +23,12 @@ test('plainText keeps a number sign that is content, not a heading', () => {
 });
 
 test('plainText survives the fragments a snippet window cuts through', () => {
-  // The engine slices 40 characters either side of the match, so a link or a
-  // URL can arrive with its head or its tail missing.
   assert.equal(P.plainText('e](https://example.com/a) the onboarding'), 'e the onboarding');
   assert.equal(P.plainText('the onboarding [flow](https://exa'), 'the onboarding flow');
   assert.equal(P.plainText('the onboarding ([spec](http://x)) flow'), 'the onboarding (spec) flow');
 });
 
 test('excerpt is plain text around the match, cut on words, with ellipses where it was cut', () => {
-  // The seeded Apollo Launch document, as the engine windows it (newlines
-  // already folded to spaces).
   const snip = 'unch The Q3 flagship release. Tracks the new onboarding flow and billing revamp. ## Goals';
   const x = P.excerpt(snip, 'onboard');
   assert.equal(x, '… Tracks the new onboarding flow and billing revamp. Goals');
@@ -46,7 +36,6 @@ test('excerpt is plain text around the match, cut on words, with ellipses where 
   assert.equal(P.excerpt('Short onboarding note', 'onboard'), 'Short onboarding note');
   const long = 'alpha beta gamma delta epsilon zeta eta theta onboarding iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon';
   assert.equal(P.excerpt(long, 'onboard'), '… zeta eta theta onboarding iota kappa lambda mu nu xi omicron pi …');
-  // A match the stripping removed (it sat inside a URL) still yields text.
   assert.equal(P.excerpt('see https://x.test/onboard now', 'onboard'), 'see now');
   assert.equal(P.excerpt('', 'x'), '');
 });
@@ -116,7 +105,6 @@ test('pushRecent puts the newest first, drops the older copy and keeps eight', (
   list = P.pushRecent(list, { kind: 'entity', id: 'e5', name: 'E5 renamed' });
   assert.deepEqual(list.slice(0, 2).map((r) => r.name), ['E5 renamed', 'E10']);
   assert.equal(list.filter((r) => r.id === 'e5').length, 1);
-  // A table and a record may share an id space; kind keeps them apart.
   list = P.pushRecent(list, { kind: 'table', id: 'e10', name: 'T' });
   assert.equal(list.filter((r) => r.id === 'e10').length, 2);
   assert.deepEqual(P.pushRecent(null, { kind: 'table', id: 't', name: 'T' }).map((r) => r.id), ['t'], 'a missing list starts one');

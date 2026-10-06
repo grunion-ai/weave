@@ -2,15 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fresh } from './lib/fixtures.mjs';
 
-/* Feature #13 — the schema as an editable document. describeSchema() was
-   already the read half; applySchema() closes the loop: hand back an edited
-   copy of that JSON and the workspace grows to match. Additive by design —
-   creations and config updates apply; deletions and type changes are refused
-   unless explicitly allowed (and type changes always are refused: delete and
-   recreate is the honest spelling). Names are identity in the document, so a
-   rename cannot be expressed here — that is what the registry rows (#12/#52)
-   are for. */
-
 test('a round-trip is a no-op', () => {
   const w = fresh();
   const plan = w.applySchema(w.describeSchema(), { dryRun: true });

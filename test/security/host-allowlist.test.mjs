@@ -7,14 +7,6 @@ import { join } from 'node:path';
 process.env.WEAVE_KEYSTORE ??= join(mkdtempSync(join(tmpdir(), 'weave-sec-')), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { startServer, hostAllowed, hostCheckFor, allowedHostsFromEnv } = await import('../../src/server.js');
-/* Issue #487: the server answered any Host header, so a page on an attacker's
-   name that re-resolves to 127.0.0.1 (DNS rebinding) was same-origin with a
-   loopback instance and could read and write it. A Host that is not a
-   loopback name, WEAVE_ORIGIN's host or a WEAVE_ALLOWED_HOSTS entry is now a
-   421. A non-loopback bind with neither variable set keeps the old behaviour
-   and says so once at startup, so a container upgraded in place still
-   answers. /api/health stays open to any Host: platform health checks
-   (Railway sends Host: healthcheck.railway.app) are not the public name. */
 
 const get = (port, path, host) => new Promise((resolve, reject) => {
   const req = request({ host: '127.0.0.1', port, path, headers: { Host: host } }, (res) => {
@@ -47,7 +39,6 @@ test('a foreign Host is a 421, including names that only look like loopback', as
       assert.equal(await get(port, '/api/workspace', h), 421, JSON.stringify(h));
       assert.equal(await get(port, '/', h), 421, JSON.stringify(h));
     }
-    // A platform health check names its own host.
     assert.equal(await get(port, '/api/health', 'healthcheck.railway.app'), 200);
   } finally { stop(); }
 });

@@ -1,28 +1,7 @@
-/* A bulk state change on eight rows settles in a few hundred milliseconds
-   (Issue #426). Kyle, on uno's Task table in Safari, v0.4.43: "very slow
-   change state of 8 records". The report's trace put every request of that
-   session at seconds, /api/health included (3.3 s), and the bulk write never
-   came back inside the 87 s it covers, so the time was the server's queue.
-   Measured on the same shape on a quiet server, at v0.4.43 and v0.4.51, the
-   whole gesture settles in 44 to 174 ms: one POST /api/bulk (18 ms on a copy
-   of uno's own Task table) and one page read.
-
-   This suite holds that shape so the slowness cannot come back from the
-   client side: the gesture is ONE bulk write and ONE page re-read (never a
-   write per row, never a schema reload, never a read of every page), and the
-   eight rows leave the Open-filtered grid, toast said, inside the budget.
-   The table is uno's Task, field for field: a five-state workflow, three
-   documents, two relations, the Standard view's six columns and its State =
-   Open filter, 104 rows, in a workspace of about 2,300 rows.
-
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps);
-   the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-// Click to settled, measured inside the page. Idle it is under 200 ms; the
-// rest is room for a loaded gate, where scripts/test.mjs also retries once.
 const BUDGET_MS = 600;
 
 let task;
@@ -45,7 +24,6 @@ const s = await launch('bulk state change settles', (weave) => {
   weave.addField(task, { name: 'Fibery', type: 'url' });
   const people = Array.from({ length: 8 }, (_, i) => weave.createEntity(person, { name: `Person ${i}` }));
   const projects = Array.from({ length: 20 }, (_, i) => weave.createEntity(project, { name: `Project ${i}` }));
-  // The rest of the workspace's weight: twelve more tables, 2,100 rows.
   for (let t = 0; t < 12; t++) {
     const other = weave.createTable({ space: 'Product', name: `Other ${t}` });
     for (let i = 0; i < 175; i++) weave.createEntity(other, { name: `row ${t}.${i}`, doc: 'Body text. '.repeat(30) });
@@ -77,7 +55,6 @@ if (s) {
       await page.locator('.picker-pop .picker-row', { hasText: 'State' }).first().click();
       await page.waitForSelector('.picker-pop .picker-search:focus');
 
-      // From here on, every request the gesture costs, and the page's own clock.
       const calls = [];
       page.on('request', (r) => { if (r.url().includes('/api/')) calls.push(`${r.method()} ${new URL(r.url()).pathname}`); });
       await page.evaluate((ids) => {
@@ -107,7 +84,6 @@ if (s) {
         'no schema reload, no per-row PATCH, no trash read');
       assert.ok(ms < BUDGET_MS, `settled in ${Math.round(ms)} ms; the budget is ${BUDGET_MS} ms`);
 
-      // And it landed: the eight are Done, the grid's Open filter let them go.
       const done = await page.evaluate(async (t) => {
         const r = await fetch(`/api/tables/${t}/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ where: [['State', '=', 'Done']] }) });
         return (await r.json()).total;

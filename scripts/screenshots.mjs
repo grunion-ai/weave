@@ -1,15 +1,4 @@
 #!/usr/bin/env node
-// Capture the README screenshots from a running weave server.
-//
-//   node bin/weave.js serve --port 4400 --data ./my-workspace.db   # in one shell
-//   node scripts/screenshots.mjs --url http://127.0.0.1:4400       # in another
-//
-// Tables and entities are resolved by qualified name against /api/schema, so
-// this runs against any workspace that has the tables named in SHOTS. Output
-// lands in docs/screenshots/ at 2x for retina README rendering.
-//
-// Playwright is imported dynamically, below the export, so the unit test can
-// load this module without it — weave itself stays dependency-free.
 import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,21 +16,15 @@ const OUT = arg("out", join(repo, "docs", "screenshots"));
 const WIDTH = Number(arg("width", 1440));
 const HEIGHT = Number(arg("height", 900));
 
-// [file, workspace prefix ("" = default), route resolver, caption]
 export const SHOTS = [
   ["table", "/w/weave", (s) => `#/table/${tableId(s, "Development/Feature")}`],
   ["document", "/w/weave", async (s, ws) =>
     `#/entity/${await entityId(ws, "Guide", "Quickstart")}`],
-  // The seeded `uno` demo (scripts/seed.mjs) is the map subject — it has
-  // relations in both directions plus an automation, which an empty
-  // just-created workspace does not.
   ["map", "/w/uno", () => "#/map"],
   ["search", "/w/weave", (s) => `#/table/${tableId(s, "Development/Feature")}`, "search"],
-  // The first row opened beside its table (Issue #437).
   ["dock", "/w/weave", (s) => `#/table/${tableId(s, "Development/Feature")}`, "dock"],
 ];
 
-/** Find a table's id in a /api/schema payload by "Space/Table" or bare name. */
 export function tableId(schema, qualified) {
   for (const space of schema) {
     for (const table of space.tables ?? []) {
@@ -86,7 +69,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       await page.keyboard.type("document", { delay: 20 });
     }
     if (mode === "dock") {
-      await page.keyboard.press("Escape"); // the search shot leaves ⌘K open
+      await page.keyboard.press("Escape");
       await page.click("td.pid-cell a.open-link");
       await page.waitForSelector("#dock:not([hidden])");
     }

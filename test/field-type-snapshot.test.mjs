@@ -1,22 +1,3 @@
-/* Issue #467 (follow-up to #428): a field type change converts every stored
-   value, and nothing kept the values from before, so its Activity entry was
-   marked lossy and offered no Undo and no Roll back.
-
-   Kyle's ruling, 2026-09-28: a type change must be undoable, values included.
-   - The write path keeps each row's value from before the conversion (and
-     the value the conversion made) with the field-config-updated entry, only
-     for rows that held a value, once per type change.
-   - Undo and Roll back restore the definition and every row that is
-     unchanged since the conversion. A row edited since is left with its edit
-     (converted back to the old type, never overwritten by the snapshot), and
-     a row made since has no snapshot and is converted. The counts are in the
-     answer and in the undo entry.
-   - Growth: the audit log has no size policy, and the capped stores (doc
-     revisions, activity, undo) cap by count per subject, which a whole
-     column of values per entry does not fit. So a field keeps the snapshot of
-     its newest type change only; an older entry says its values were dropped.
-   - The snapshot never leaves the engine: the Activity feed carries only its
-     row count, and the export does not carry the audit log. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -153,7 +134,7 @@ test('snapshot values never leave: not in the feed, not in the export', async ()
   const { w, t } = workspace();
   const f = w.addField(t, { name: 'Ref', type: 'text' });
   w.createEntity(t, { name: 'a', values: { Ref: 'only-in-the-snapshot-9f3' } });
-  w.updateField(t.id, f.id, { type: 'number' }); // the text converts to nothing
+  w.updateField(t.id, f.id, { type: 'number' });
   assert.ok(!JSON.stringify(w.exportJSON({ blobs: false })).includes('only-in-the-snapshot-9f3'), 'the export does not carry it');
   assert.ok(!JSON.stringify(w.activityFeed()).includes('only-in-the-snapshot-9f3'), 'the feed does not carry it');
   const reader = w.createAccount({ name: 'reader-bot', role: 'reader' }).token;

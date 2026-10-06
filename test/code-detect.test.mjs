@@ -1,19 +1,7 @@
-/* What language an unlabelled fence is written in.
-
-   Why this is a table of rules and not a call to hljs.highlightAuto():
-   measured in a live browser against the vendored bundle, auto-detection is
-   confidently wrong. Over a curated subset it read a JavaScript block as CSS
-   (relevance 4) and a mermaid graph as CSS (3) — the same score real SQL got.
-   Over its full language set it answered `ada` for that JavaScript, `ebnf` for
-   `const x = 1;`, `livecodeserver` for Python and `solidity` (relevance 7) for
-   a plain file path. Colour drawn from that is a lie about the writer's code,
-   so weave claims a language only when the shape of the text says so, and
-   shows everything else as the plain text a code block is for. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 await import('../public/editor-lib.js');
-// Called as a method: the rules reach their sibling patterns through `this`.
 const LIB = globalThis.WeaveEditorLib;
 const detect = (text) => LIB.detectCodeLanguage(text);
 
@@ -49,8 +37,6 @@ test('everything else is plain text, on purpose', () => {
 });
 
 test('a diagram source is text, not a language and not a diagram', () => {
-  // A Code block shows what it holds. Rendering belongs to the Mermaid command
-  // and its own ```mermaid fence — an unlabelled graph is source to read.
   for (const head of ['graph TD\n  A --> B', 'sequenceDiagram\n  A->>B: hi', 'gantt\n  title X', 'mindmap\n  root']) {
     assert.equal(detect(head), null, `${head.split('\n')[0]} must stay plain text`);
   }
@@ -62,9 +48,6 @@ test('css and javascript are told apart by their words, not their braces', () =>
 });
 
 test('the same text always gets the same answer', () => {
-  // The objection auto-detection could not answer: a scorer can rank two
-  // languages differently as a document grows, so a block changes colour
-  // between visits. These rules are a function of the text alone.
   const text = 'name: weave\nversion: 0.4.2';
   assert.equal(detect(text), detect(text));
   assert.equal(detect(text), 'yaml');

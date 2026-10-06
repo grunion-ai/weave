@@ -1,10 +1,3 @@
-/* An OpenID Connect provider in software, for test/auth-oidc.test.mjs (door
-   C, Feature #212): discovery, a JWKS, a token endpoint that checks the
-   client, the redirect and the PKCE verifier, and a userinfo endpoint. The
-   browser's trip through the provider's sign-in page is approve(): it takes
-   the authorize URL weave redirected to and returns the callback URL the
-   provider would send the browser back to. serveOidc() puts a workspace
-   behind it on a free port, for every suite that signs in through door C. */
 import { createServer } from 'node:http';
 import { createHash, createSign, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { startServer } from '../../src/server.js';
@@ -18,15 +11,11 @@ export function signJwt(payload, { privateKey, kid = 'k1', alg = 'RS256' } = {})
   return `${head}.${sig}`;
 }
 
-/* endSession: discovery names an end_session_endpoint (RP-initiated logout),
-   as Keycloak and Auth0 do and Clerk does not. */
 export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cret', claimsInIdToken = true, endSession = false } = {}) {
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const codes = new Map();
   const seen = { token: [], userinfo: 0, discovery: 0, jwks: 0 };
   let issuer = '';
-  /* tamper: what the next id_token gets wrong — 'signature', 'nonce', 'aud',
-     'iss', 'expired' — so one provider serves every refusal case. */
   let tamper = null;
 
   const server = createServer(async (req, res) => {
@@ -96,7 +85,6 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
   return {
     issuer, clientId, clientSecret, seen, privateKey,
     tamper: (what) => { tamper = what; },
-    /* The person signs in at the provider as `claims` and is sent back. */
     approve(authorizeUrl, claims) {
       const q = new URL(authorizeUrl).searchParams;
       const code = randomBytes(12).toString('hex');
@@ -106,10 +94,6 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       back.searchParams.set('state', q.get('state'));
       return back;
     },
-    /* An access token for `claims`, as if a client finished its own sign-in
-       here (the MCP door, Feature #254): userinfo answers for it. `jwt`
-       mints it JWT-shaped with these extra claims (a client_id, say); the
-       default is opaque, as Clerk's are. */
     mint(claims, { jwt = null } = {}) {
       const access = jwt ? signJwt({ iss: issuer, sub: claims.sub, ...jwt }, { privateKey }) : randomBytes(16).toString('hex');
       codes.set(`access:${access}`, { claims });
@@ -121,15 +105,10 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
 
 export const cookieOf = (res) => (res.headers.get('set-cookie') ?? '').split(';')[0];
 
-/* `w` served on a free port with `idp` as its door C (none when configured is
-   false); the other options reach startServer. call() never follows a
-   redirect. signIn() is one trip: start at weave, sign in at the provider,
-   come back. stop() closes the server and the provider. */
 export async function serveOidc(w, idp, { configured = true, ...options } = {}) {
   const oidc = configured ? createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' }) : null;
   const { server } = await startServer(w, { port: 0, origin: null, oidc, ...options });
   const port = server.address().port;
-  // localhost, not 127.0.0.1: the loopback origin the callback comes back to.
   const base = `http://localhost:${port}`;
   const call = (method, path, { token, body, cookie, headers = {} } = {}) => fetch(base + path, {
     method,

@@ -1,15 +1,3 @@
-/* Chip and Card: two system view fields on every table (Kyle, 2026-09-04).
-   "each weave entity needs a new field which represents its in line chip and
-   card view. these should be new system fields hidden by default." The config
-   is per table — the same for every row — and says what the chip and the
-   card contain: the public-id link, the state, the name, a description
-   preview at one of three sizes, and a handful of other fields. The entity
-   page renders both so a reader sees how the row will appear elsewhere.
-
-   The two are roles, like the description: a table points at them by id
-   (`chipFieldId`, `cardFieldId`), so a rename costs nothing. Unlike the
-   description they cannot be deleted — every row has a chip and a card by
-   existing — and their type is fixed. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
@@ -48,9 +36,6 @@ function onDisk() {
   return { w, tasks, path, reopen: () => new Weave({ path }) };
 }
 
-// ---------- minting ----------
-
-// Since Feature #229 the hidden set is the default view's; the schema still speaks it.
 const hiddenOf = (w, t) => w.describeSchema().flatMap((s) => s.tables).find((x) => x.id === w.getTable(t).id).hiddenFields;
 
 test('a new table mints Chip and Card: system view fields, roles by id, hidden by default', () => {
@@ -87,7 +72,7 @@ test('a table that predates the roles gets both on open, and keeps what it alrea
     delete db.chipFieldId;
     delete db.cardFieldId;
     db.hiddenFields = ['Notes'];
-    delete db.tableViews; // a dump from before table views (Feature #229)
+    delete db.tableViews;
   }
   const w2 = new Weave();
   w2.importJSON(dump);
@@ -118,8 +103,6 @@ test('the roles survive a reload by id, through a rename', () => {
   assert.ok(hiddenOf(w2, db).includes('Badge') && !hiddenOf(w2, db).includes('Chip'), 'a hidden field stays hidden under its new name');
 });
 
-// ---------- guards ----------
-
 test('neither view field can be deleted, retyped, or created by hand', () => {
   const { w, tasks } = build();
   assert.throws(() => w.deleteField(tasks, 'Chip'), /every row has a chip/i);
@@ -149,16 +132,12 @@ test('fields are stored by id and read back by name; null returns to auto', () =
   assert.deepEqual(described, { name: 'Card', type: 'view', role: 'card', shape: 'card', link: false, state: true, description: 'large', fields: ['Notes', 'Due'] });
   w.updateField(tasks, 'Card', { config: { fields: null } });
   assert.equal(w.viewField(db, 'card').config.fields, null);
-  // A renamed field keeps its place in the list, being held by id.
   w.updateField(tasks, 'Card', { config: { fields: ['Notes'] } });
   w.updateField(tasks, 'Notes', { name: 'Remarks' });
   assert.deepEqual(w.describeSchema().find((s) => s.space === 'Dev').tables.find((t) => t.name === 'Task').fields.find((f) => f.name === 'Card').fields, ['Remarks']);
-  // A deleted field falls out of the list rather than breaking the card.
   w.deleteField(tasks, 'Remarks');
   assert.deepEqual(w.viewField(db, 'card').config.fields, []);
 });
-
-// ---------- rendering ----------
 
 test('renderView chip: name, state first, then the first non-empty fields in order, three segments in all', () => {
   const { w, t } = build();
@@ -205,7 +184,6 @@ test('the description sizes clip the plain first lines of the description docume
   assert.ok(sizes.medium.startsWith('First line of the story. Second paragraph'), 'medium runs across paragraphs');
   assert.ok(sizes.medium.length <= 160 && sizes.medium.endsWith('…'), `medium is clipped: ${sizes.medium.length}`);
   assert.ok(sizes.large.length > sizes.medium.length);
-  // A table without a description role has nothing to preview, and says so quietly.
   w.deleteField(tasks, 'Description');
   assert.equal(w.renderView(t.id, 'card').description, null);
 });
@@ -243,8 +221,6 @@ test('a chip never nests: auto never picks a view field, and the far chip has no
   const v = w.renderView(t.id, 'card');
   assert.ok(!v.fields.some((f) => f.label === 'Chip' || f.label === 'Card'));
 });
-
-// ---------- round trips ----------
 
 test('export/import keeps the config and the roles; a clone maps the ids', () => {
   const { w, tasks } = build();
@@ -284,8 +260,6 @@ test('CSV export leaves the view columns out: they are presentation, not data', 
   const header = csv.split('\n')[0];
   assert.ok(!header.includes('Chip') && !header.includes('Card'), header);
 });
-
-// ---------- the preview route ----------
 
 test('renderView takes a candidate config, checked as a save would be, and saves nothing', () => {
   const { w, tasks, t } = build();

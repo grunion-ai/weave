@@ -7,33 +7,6 @@ import { gunzipSync } from 'node:zlib';
 import { createReleaseCheck, newerVersion } from './update-check.js';
 import { readTar } from './backup.js';
 
-/* ---------- in-place self-update (Feature #250, Kyle, 2026-10-02) ----------
-   A volume-backed Railway service cannot run two deployments at once, so
-   every redeploy is a minute or more of failed requests, and the hosted
-   instance sat on 0.4.53 a day after 0.4.54 shipped (Issue #478). Instead,
-   `weave supervise` holds the public port and runs `weave serve` as a child
-   worker on a loopback-side port, forwarding each request to it.
-
-   Every ten minutes it asks GitHub for the latest release (the same check as
-   /api/health's, src/update-check.js). On a newer one it asks GitHub whether
-   the tag's commit is on grunion-ai/weave main, downloads that commit's
-   tarball, unpacks it to <data dir>/releases/v<version>/, starts a second
-   worker from there and polls its /api/health. Healthy, new requests go to
-   it; the old worker finishes what it was answering and exits; then the new
-   one writes its open-time migrations (src/engine.js deferMigrations), and
-   until it has, writes wait in the supervisor rather than reach it. Any
-   failure leaves the old worker serving and is recorded; a release that was
-   refused (off main, unhealthy, wrong version inside) is not tried again.
-
-   The supervisor forwards HTTP, not TCP: client connections stay on the
-   process that never restarts, so no keep-alive socket is closed under a
-   client mid-swap, and each forwarded request uses its own loopback
-   connection, so none is reused as the worker closes it. weave has no
-   WebSocket or event-stream routes, so nothing needs an Upgrade.
-
-   WEAVE_AUTO_UPDATE=1 opts in. Unset, `weave supervise` is `weave serve`.
-   The supervisor itself only changes with the image: a Node or Dockerfile
-   change still needs a platform rebuild. */
 export const REPO_API = 'https://api.github.com/repos/grunion-ai/weave';
 const IMAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const INTERVAL = 10 * 60 * 1000;
@@ -44,15 +17,12 @@ const GITHUB = { accept: 'application/vnd.github+json', 'user-agent': 'weave' };
 
 export const autoUpdateFromEnv = (env = process.env) => ['1', 'true', 'yes', 'on'].includes(String(env.WEAVE_AUTO_UPDATE ?? '').trim().toLowerCase());
 
-// A verdict on one release: recorded and never retried. Any other error
-// (GitHub down, rate-limited) is tried again on the next check.
 class Refusal extends Error {}
 
 const versionOf = (dir) => { try { return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).version; } catch { return null; } };
 const forwardable = (headers, drop = []) => Object.fromEntries(Object.entries(headers).filter(([k]) => !HOP.has(k) && !drop.includes(k)));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* A GitHub tarball holds one top-level directory; its contents land in dir. */
 export function unpackRelease(tgz, dir) {
   const root = resolve(dir);
   for (const { name, data } of readTar(gunzipSync(tgz))) {
@@ -65,8 +35,6 @@ export function unpackRelease(tgz, dir) {
   }
 }
 
-/* What to boot: the newest release on the volume that once finished a swap,
-   unless the image is as new (a rebuild for a Node or Dockerfile change). */
 function bootRelease({ releasesDir, imageDir, failed }) {
   let best = { dir: imageDir, version: versionOf(imageDir), release: 'image' };
   for (const name of existsSync(releasesDir) ? readdirSync(releasesDir) : []) {
@@ -86,9 +54,8 @@ export async function startSupervisor({
   const releasesDir = join(dirname(resolve(dataPath)), 'releases');
   const stateFile = join(releasesDir, 'state.json');
   let state = { failed: {}, lastSwap: null, attempting: null };
-  try { state = { ...state, ...JSON.parse(readFileSync(stateFile, 'utf8')) }; } catch { /* first boot */ }
+  try { state = { ...state, ...JSON.parse(readFileSync(stateFile, 'utf8')) }; } catch {}
   const save = () => { mkdirSync(releasesDir, { recursive: true }); writeFileSync(stateFile, JSON.stringify(state, null, 1)); };
-  // The container stopped mid-swap: whatever it was installing does not get a second try.
   if (state.attempting) {
     state.failed[state.attempting] = { at: new Date().toISOString(), reason: 'the supervisor stopped during the swap' };
     state.attempting = null;
@@ -98,7 +65,7 @@ export async function startSupervisor({
   const origin = (w) => `http://${target.includes(':') ? `[${target}]` : target}:${w.port}`;
   const release = createReleaseCheck({ version: versionOf(imageDir), fetch, interval });
   let current = null;
-  let pending = null; // the worker a swap is starting
+  let pending = null;
   let closing = false;
   let swapping = null;
   let hook = () => {};
@@ -162,7 +129,6 @@ export async function startSupervisor({
       if (!done) { done = true; if (--w.inflight === 0) w.idle?.(); }
       if (!res.writableFinished) up.destroy();
     });
-    // /api/health also says what the supervisor is serving: read it whole, uncompressed.
     const health = req.method === 'GET' && /^\/api\/health(\?|$)/.test(req.url);
     const up = request({ host: target, port: w.port, method: req.method, path: req.url, headers: forwardable(req.headers, health ? ['accept-encoding'] : []), agent: false }, (ur) => {
       if (!health || ur.statusCode !== 200) {
@@ -174,7 +140,7 @@ export async function startSupervisor({
       ur.on('data', (c) => chunks.push(c));
       ur.on('end', () => {
         let body = Buffer.concat(chunks);
-        try { body = Buffer.from(JSON.stringify({ ...JSON.parse(body), supervisor: status() })); } catch { /* not JSON: pass it on */ }
+        try { body = Buffer.from(JSON.stringify({ ...JSON.parse(body), supervisor: status() })); } catch {}
         res.writeHead(200, { ...forwardable(ur.headers, ['content-length', 'content-encoding']), 'content-length': body.length });
         res.end(body);
       });
@@ -189,8 +155,6 @@ export async function startSupervisor({
 
   const server = createServer((req, res) => {
     const w = current;
-    // A worker still waiting for its migrations takes reads only; writes wait
-    // here, and so does sign-in, whose callback is a GET that writes a session.
     if (w.settling && (!READS.has(req.method) || req.url.startsWith('/api/auth/'))) w.queue.push(() => forward(req, res, w));
     else forward(req, res, w);
   });
@@ -204,7 +168,6 @@ export async function startSupervisor({
   async function download(version) {
     const tag = `v${version}`;
     const cmp = await github(`${REPO_API}/compare/${tag}...main`);
-    // base = the tag, head = main: "ahead" or "identical" means the tag's commit is on main.
     if (cmp.status !== 'ahead' && cmp.status !== 'identical') throw new Refusal(`${tag} is not on grunion-ai/weave main (compare: ${cmp.status ?? 'no status'})`);
     const sha = cmp.base_commit?.sha;
     if (!/^[0-9a-f]{40}$/.test(sha ?? '')) throw new Error(`GitHub named no commit for ${tag}`);
@@ -265,7 +228,6 @@ export async function startSupervisor({
     writeFileSync(join(next.dir, OK_MARK), at);
     state.attempting = null;
     record(true);
-    // Keep the serving release and the one before it; a rollback needs nothing more.
     for (const name of readdirSync(releasesDir)) {
       const dir = join(releasesDir, name);
       if (/^v\d/.test(name) && dir !== next.dir && dir !== old.dir) rmSync(dir, { recursive: true, force: true });
@@ -282,7 +244,6 @@ export async function startSupervisor({
     return swapTo(latest);
   }
 
-  /* One check, now. Concurrent calls share the run in flight. */
   function check({ onEvent: once } = {}) {
     if (closing) return Promise.resolve({ action: 'closed' });
     if (!swapping) {
@@ -292,7 +253,6 @@ export async function startSupervisor({
     return swapping;
   }
 
-  // Boot: the newest good release on the volume, falling back to the image.
   let boot = bootRelease({ releasesDir, imageDir, failed: state.failed });
   let first = spawnWorker(boot, { defer: false });
   try {

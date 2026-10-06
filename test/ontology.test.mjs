@@ -3,19 +3,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Weave, ONTOLOGY, FIELD_TYPES } from '../src/engine.js';
 
-/* The ontology (docs/ONTOLOGY.md). Its spine, per Kyle 2026-08-23: an ENTITY
-   is the one core kind, and workspaces, spaces, tables and the rows inside
-   tables are all entities — differing by LEVEL, not by kind. What a row gets
-   called downstream (record, item, entry, customer, company, account) is a
-   naming convention and changes nothing. Each entity has a dedicated entity
-   view containing its fields. FIELD TYPES are the other axis entirely: the
-   datatype of one slot. An entity HAS fields; a field is described by an
-   entity of its own, and `text` is not a kind of thing weave stores.
-
-   This suite is the drift gate over all of that — including the invariant
-   that structure really is data, checked by creating a space, a table and a
-   field and reading each back as an entity with fields. */
-
 const DOC = readFileSync(new URL('../docs/ONTOLOGY.md', import.meta.url), 'utf8');
 
 function docRows() {
@@ -81,9 +68,6 @@ test('every ontology entry is stored where it says it is', () => {
   }
 });
 
-/* The claim the whole ontology rests on: structure is not a different kind of
-   thing from data. Create a space, a table and a field, then read each back as
-   an entity carrying fields — the same verb a customer row answers to. */
 test('spaces, tables and fields really are entities with fields', () => {
   const w = new Weave();
   const space = w.createSpace({ name: 'Dev' });
@@ -128,7 +112,6 @@ test('row names are documented as aliases, not as kinds', () => {
   for (const a of ONTOLOGY.aliases) {
     assert.ok(DOC.toLowerCase().includes(a), `ONTOLOGY.md never mentions the alias '${a}'`);
     if (!kinds.has(a)) continue;
-    // A word that is both an alias and a kind has to be disambiguated, not tidied away.
     const c = ONTOLOGY.collisions.find((x) => x.alias === a);
     assert.ok(c, `'${a}' is both a row name and a kind, and nothing says so`);
     assert.ok(flat.includes(c.note.replace(/\s+/g, ' ')), `ONTOLOGY.md does not disambiguate '${a}'`);
@@ -173,11 +156,6 @@ test('the doc lists exactly the engine field types', () => {
   }
 });
 
-/* Kyle, 2026-08-24: a workspace and a space are themselves structured as
-   tables with fields — and a table's configuration (the description at its
-   top, which fields are visible, in what order) is fields ON its registry
-   row. The doc must say so, and the fields it names must actually exist on
-   the Tables registry. */
 test('the doc documents structure-as-tables, and the config fields are real', () => {
   const start = DOC.indexOf('## Every level is a table');
   assert.ok(start > 0, 'ONTOLOGY.md must carry the "Every level is a table" section');

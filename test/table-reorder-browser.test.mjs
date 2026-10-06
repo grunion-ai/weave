@@ -1,27 +1,8 @@
-/* Column drag-to-reorder in the grid — the half only a real browser can
-   judge. The simulated DragEvent tests prove the handlers are wired; they
-   cannot prove the columns land where the reader dropped them, because the
-   in-place DOM move does its own cell-index arithmetic against rows that
-   carry two non-field cells (sel-cell, pid-cell) before the first field.
-
-   Three claims a real drag verifies:
-     1. the # column is anchored: it sits at the same index in every row
-        before and after any drag, its header takes no drag, and a field
-        dropped on it goes nowhere.
-     2. a dragged field snaps to the expected spot — in the pre-reload DOM
-        (the in-place move), in the reloaded DOM, and in the view on screen
-        (Feature #229: the grid's columns are its view's, not the schema's).
-     3. every body row moves with the header: no row's cells disagree with
-        the header's column order after the move.
-
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps).
-   It is imported dynamically and the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
 const FIELDS = ['Vendor', 'Batch', 'Price', 'Stage'];
-// A new table arrives with Name and Description; the grid shows them too.
 const BASE = ['Name', 'Description', ...FIELDS];
 
 const s = await launch('table column reorder', (weave) => {
@@ -29,10 +10,8 @@ const s = await launch('table column reorder', (weave) => {
 });
 if (s) {
   const { base, browser, weave } = s;
-  /* The grid opens on the default view, so a drag lands in its fields. */
   const orderOf = (db) => weave.tableView(db).views[0].fields.filter((name) => BASE.includes(name));
 
-  /* A drag rewrites fieldOrder, so every test gets a table of its own. */
   let n = 0;
   const ownTable = () => {
     const db = weave.createTable({ space: 'Showcase', name: `Drag ${++n}` });
@@ -53,10 +32,6 @@ if (s) {
   const headFor = (page, name) => page.locator('.wv-grid thead .col-head',
     { has: page.locator(`.col-label:text-is("${name}")`) }).first();
 
-  /* One snapshot of the whole grid: the header's column order, the # column's
-     index in the header and in every body row, and each body row's own cell
-     order. Read off the live DOM, so an in-place move that shifted the wrong
-     cells cannot hide behind a correct fieldOrder. */
   const gridShape = (page) => page.evaluate(() => {
     const table = document.querySelector('.wv-grid');
     const heads = [...table.querySelectorAll('thead th')];
@@ -74,13 +49,9 @@ if (s) {
     return { headOrder, pidHeadIdx, rows };
   });
 
-  /* A real pointer drag, not a dispatched DragEvent: Playwright drives
-     Chromium's own HTML5 drag pipeline, so dragstart/dragover/drop fire the
-     way a hand fires them. */
   const dragHeader = async (page, from, onto) => {
     await headFor(page, from).dragTo(
       onto === '#' ? page.locator('.wv-grid thead .pid-head') : headFor(page, onto));
-    // reorderField PATCHes the schema behind the in-place move.
     await page.waitForTimeout(150);
   };
 
@@ -139,7 +110,6 @@ if (s) {
     try {
       const pidDraggable = await page.$eval('.wv-grid thead .pid-head', (h) => h.draggable);
       assert.equal(pidDraggable, false, 'the # header is not a drag handle');
-      // Dragging # itself moves nothing.
       const pid = await page.locator('.wv-grid thead .pid-head').boundingBox();
       await page.mouse.move(pid.x + pid.width / 2, pid.y + pid.height / 2);
       await page.mouse.down();
@@ -147,8 +117,6 @@ if (s) {
       await page.mouse.up();
       await page.waitForTimeout(150);
       assertShape(await gridShape(page), BASE, 'a drag on # moves nothing');
-      // Feature #233: # is the frozen zone's seam, so a field dropped across
-      // it freezes — landing AFTER #, never before it.
       await dragHeader(page, 'Batch', '#');
       const expected = ['Batch', 'Name', 'Description', 'Vendor', 'Price', 'Stage'];
       assertShape(await gridShape(page), expected, '# stays first');

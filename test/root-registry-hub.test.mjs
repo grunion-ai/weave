@@ -6,11 +6,6 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer, createWorkspaceHub } from '../src/server.js';
 
-/* Feature #219, slice b — the hub joins every workspace it holds to the
-   root's registry: the ones handed in, the ones its scan adopts, and the
-   ones it creates. The root is the default workspace; a member's API has no
-   Workspace space; a hard delete drops the member's rows. */
-
 const json = async (r) => r.json();
 const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const patch = (url, body) => fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -37,11 +32,9 @@ test('hub: members join the root registry; the root grid carries a Workspace col
     const row = await json(await fetch(`${base}/api/entities/${rows.items[0].id}`));
     assert.equal(row.fields.Workspace?.name ?? row.fields.Workspace, 'uno');
     assert.equal(row.sysWorkspaceId, uno.state.meta.id);
-    // Rename through the root row → the member table renames.
     const res = await patch(`${base}/api/entities/${row.id}`, { Name: 'Job' });
     assert.equal(res.status, 200, await res.text());
     assert.equal(uno.getTable('Dev/Job').name, 'Job');
-    // The member's own registry surface reports its slice, clean.
     const report = await json(await fetch(`${base}/w/uno/api/registry`));
     assert.deepEqual(report.problems, []);
   } finally {
@@ -54,7 +47,6 @@ test('hub: adopted and created workspaces join; a hard delete drops the rows', a
   try {
     const main = new Weave({ path: join(dir, 'main.db') });
     main.updateWorkspace({ name: 'main' });
-    // A sibling file on disk before the hub exists — legacy, with its own registry.
     const legacy = new Weave({ path: join(dir, 'legacy.db') });
     legacy.updateWorkspace({ name: 'legacy' });
     legacy.createSpace({ name: 'Ops' });
@@ -78,7 +70,6 @@ test('hub: adopted and created workspaces join; a hard delete drops the rows', a
       const meta = await json(await fetch(`${base}/w/scratch/api/workspace`));
       assert.doesNotMatch(meta.description, /Workspace\* space below/, 'the fresh description no longer promises a local Workspace space');
       const scratch = list.concat(await json(await fetch(`${base}/api/workspaces`))).find((w) => w.name === 'scratch');
-      // A soft delete trashes the Workspaces row; a restore brings it back.
       const wsRow = () => main.listEntities(wsT.id, { includeDeleted: true }).find((e) => main.entityName(e) === 'scratch');
       await fetch(`${base}/api/workspaces/${scratch.id}`, { method: 'DELETE' });
       assert.ok(wsRow().deletedAt, 'soft delete trashes the row');

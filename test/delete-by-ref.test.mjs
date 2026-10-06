@@ -1,12 +1,3 @@
-/* Deleting a row by its Table#N reference (Issue #597).
-
-   Every entity verb takes an id or a "Table#publicId" reference, and the MCP
-   tool descriptions say so, so agents pass references. deleteEntity resolved
-   the row from the reference and then kept using the reference: a soft
-   delete trashed the row and answered "not found", and a hard delete purged
-   nothing and answered purged:true. A delete answers success exactly when it
-   deleted, and names the row's real id. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -28,9 +19,7 @@ test('engine: a soft delete by Table#N trashes the row and answers it by its id'
   assert.equal(out.id, a.id);
   assert.ok(out.deletedAt);
   assert.equal(w.query('T', {}).total, 1);
-  // Again, on a row already in the trash: same answer, no throw.
   assert.equal(w.deleteEntity('T#1').id, a.id);
-  // The trashed row answers its ref the way it answers its id.
   assert.equal(w.readEntity('T#1').id, a.id);
   assert.equal(w.restoreEntity('T#1').id, a.id);
   assert.equal(w.query('T', {}).total, 2);

@@ -1,23 +1,3 @@
-/* The embedded relation table on an entity page (Issue #200), in a real
-   browser. Kyle's screenshot on 2026-09-05: a Release's Fixes grid showed
-   CHIP and CARD — the two system view fields every table hides by default
-   (Feature #175) — and painted every cell as `[object Object]`.
-
-   Two rulings this file proves in a DOM:
-
-   1. The embedded grid IS the target table's view. Same columns, same order,
-      same visibility: a field the target table hides stays hidden here, and
-      unhiding it there (the eye, or the Tables registry row) surfaces it here
-      on the next render — as a rendered chip, never a stringified object.
-   2. A table cell never reads `[object Object]`. Every table surface — the
-      table view, the embedded grid, the entity page, the Activity table — is
-      swept for the string; and the generic cell fallback, handed a value it
-      has no renderer for, draws an `unrendered <type>` marker instead of a
-      text box holding String(obj). Same class as Issue #91 (daterange).
-
-   Playwright is not a dependency (house rule); the harness skips the suite
-   when it is absent. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -41,7 +21,6 @@ const s = await launch('embedded relation grid', (weave) => {
   const other = weave.createEntity('Issue', { name: 'Second one' });
   release = weave.createEntity('Release', { name: 'v0.4.6' });
   weave.link(release.id, 'Fixes', [fixed.id, other.id]);
-  // The target table hides Notes on top of the default Chip/Card.
   weave.updateTable(issueDb.id, { hiddenFields: ['Chip', 'Card', 'Notes'] });
 });
 
@@ -122,8 +101,6 @@ if (s) {
     const page = await open(`entity/${release.id}`);
     await page.waitForSelector('.entity-grid');
     const out = await page.evaluate(() => {
-      // A field type with no renderer, carrying an object — the exact shape
-      // Issue #91 and Issue #200 leaked through.
       const f = { name: 'Mystery', type: 'mystery' };
       const item = { id: 'x', fields: { Mystery: { a: 1 } }, raw: { Mystery: { a: 1 } } };
       const node = globalThis.editorFor(f, item, null, () => {}, { compact: true });

@@ -1,15 +1,3 @@
-/* A choice field's Default, in a real tray (Issues #421, #422).
-
-   Select and multi-select took their Default in a free-text box, and a
-   workflow had none to set: its first state was the default whether anyone
-   chose it or not. The tray now offers a picker over the field's own options
-   or states, "No default" first, and it follows the list above it — a
-   renamed option is renamed in the Default, a removed one leaves it. With no
-   default, a new row's choice is empty. The pure half is
-   choice-default-dialog.test.mjs; the engine half choice-defaults.test.mjs.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and the
-   suite skips when absent, so `node --test` stays green on a bare checkout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -86,8 +74,6 @@ if (s) {
     weave.addField(tasks, { name: 'Size', type: 'select', config: { options: ['S', 'M'], default: 'M' } });
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
-    // The field menu's Edit opens the same tray on the stored field. The ⋮
-    // shows on hover.
     const th = page.locator('.wv-grid thead th.col-head', { hasText: 'Size' }).first();
     await th.hover();
     await th.locator('.field-menu').click();

@@ -1,23 +1,9 @@
-/* The Ledger grid (Kyle, 2026-08-24 — direction A of the grid study).
-
-   The grid read as a form: every cell wore a control, hovering drew a pale
-   box around each one so a row looked ruled between its fields, and the only
-   way to tell rows apart was to read them. Ledger takes the chrome out and
-   leaves a record, then puts every control back the moment you aim at it.
-
-   Four corrections Kyle made on the mockup, each pinned below:
-     1. clicking a cell raises THAT FIELD TYPE's editor and places the cursor;
-     2. the hover expansion of a clipped cell moves nothing in the grid;
-     3. row hover and the active cell draw no lines between fields;
-     4. ⌘-click opens the side peek — a real panel, not a mockup log line. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APP, rulesFor } from './lib/source.mjs';
 
 await import('../public/editor-lib.js');
 const LIB = globalThis.WeaveEditorLib;
-
-/* ── 1 · clicking a cell raises that field type's editor ───────────────── */
 
 test('every field type says how a click on its cell opens it', () => {
   for (const t of ['text', 'number', 'url', 'email', 'date']) {
@@ -49,8 +35,6 @@ test('the grid dispatches a cell click through that map, and places the caret', 
   assert.match(APP, /dataset:\s*\{[^}]*ftype/, 'each cell carries its field type for the dispatch');
 });
 
-/* ── 2 · the hover expansion moves nothing ─────────────────────────────── */
-
 test('a clipped cell expands into an overlay, never by re-laying-out the cell', () => {
   const pop = rulesFor('.cell-pop');
   assert.equal(pop.position, 'absolute', 'the expansion is an overlay');
@@ -74,8 +58,6 @@ test('a clipped cell draws no floating marker glyph', () => {
   assert.match(APP, /scrollWidth\s*>\s*[\w.]+\.clientWidth/, 'clipped is measured, never assumed');
 });
 
-/* ── 3 · no lines between fields ───────────────────────────────────────── */
-
 test('hovering a row draws no box around each of its cells', () => {
   const hov = rulesFor('.wv-grid .inline-edit:hover');
   assert.equal(hov['border-color'], 'transparent', 'a per-cell border reads as a rule between fields');
@@ -89,8 +71,6 @@ test('the active cell is the only thing wearing a border', () => {
     'no cell-type gets its own outline — the row is the unit of feedback');
 });
 
-/* ── 4 · the id link docks, ⌘-click opens a tab (one entity surface) ───── */
-
 test('the id link docks the entity, ⌘-click opens a tab, and the row itself does neither', () => {
   const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
   assert.match(grid, /dataset: \{ eid: item\.id, href: registryHref\(db, item\) \?\? `#\/entity\/\$\{item\.id\}` \}/,
@@ -101,8 +81,6 @@ test('the id link docks the entity, ⌘-click opens a tab, and the row itself do
     'a bare row click no longer navigates — it edits the cell it landed on');
   assert.match(grid, /class: 'open-link'/, 'the #id link is still the way in');
 });
-
-/* ── the skin ──────────────────────────────────────────────────────────── */
 
 test('chips keep their tint and lose their box', () => {
   assert.equal(rulesFor('.wv-grid .chip')['border-color'], 'transparent');
@@ -122,8 +100,6 @@ test('the name column carries the row, so it is set heavier', () => {
   assert.match(APP, /name-cell/, 'the grid marks which column is the name');
 });
 
-/* ── density ───────────────────────────────────────────────────────────── */
-
 test('density is a control with three declared heights, compact the shortest and spacious the tallest', () => {
   const px = (sel) => Number.parseFloat(rulesFor(sel)['--wv-row-h']);
   assert.equal(px('.wv-grid'), 44, 'Comfortable is the default (Feature #239)');
@@ -139,13 +115,6 @@ test('a table view remembers the density it was last read at (Feature #239)', ()
   assert.match(APP, /Spacious/, 'and it is a visible control, not a hidden setting');
 });
 
-/* ── one type size ─────────────────────────────────────────────────────── */
-
-/* Kyle, 2026-09-07, from a screenshot of the sessions table: a text box at
-   rest was Tabler's 12px form-control-sm, a number's costume ('13 min') was
-   the 14px body, a chip was 13px, a system column 12.5px, the name 15px. Five
-   sizes across one row. The grid reads one token now, and it is the chip's,
-   so a value and the chip beside it are the same size by construction. */
 test('every value surface in the grid is set at one size, and it is the chip size', () => {
   const root = rulesFor(':root');
   assert.equal(root['--wv-grid-font'], 'var(--wv-chip-font)', 'the grid size IS the chip size');

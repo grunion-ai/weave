@@ -1,11 +1,3 @@
-/* Sniffed document kinds get their own viewer (Issues #188, #189).
-   Kyle, 2026-09-05, on the Showcase Documents rows: "diagram doc type
-   doesn't render" and "data and code formatting looks wrong". An undeclared
-   field holding mermaid source or a JSON model went to the markdown editor,
-   which drew the source as paragraphs. The pure decision is tested in
-   doc-columns.test.mjs; what needs a browser is that the entity page mounts
-   the diagram (mermaid renders an svg) and the code box, not the editor.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -34,11 +26,9 @@ if (s) {
     const sec = sectionOf('Diagram');
     await page.waitForSelector(`${sec} .doc-diagram pre.mermaid`, { timeout: 20000 });
     assert.equal(await page.$(`${sec} .vditor-ir`), null, 'no markdown editor on a diagram');
-    // Vendored mermaid renders in Chromium: the source becomes an svg.
     await page.waitForSelector(`${sec} .doc-diagram svg`, { timeout: 20000 });
     const nodes = await page.$$eval(`${sec} .doc-diagram svg .node`, (ns) => ns.length);
     assert.ok(nodes >= 3, `the three nodes are drawn (${nodes})`);
-    // The </> toggle shows the source in the code box, and hides the drawing.
     await page.click(`${sec} .doc-anchor[title="Edit source"]`);
     await page.waitForSelector(`${sec} textarea.doc-source`, { state: 'visible', timeout: 20000 });
     const src = await page.$eval(`${sec} textarea.doc-source`, (t) => t.value);

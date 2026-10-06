@@ -1,8 +1,3 @@
-/* Feature #261, on screen. A space is marked a template by the Template box
-   on its Workspace/Spaces row (in the grid and on the row's own page); a
-   template space's page shows Use template, whose dialog copies the schema
-   into another workspace of the hub. A conflict is said in the dialog,
-   which stays open; a space that is not a template shows no button. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -38,9 +33,6 @@ if (s) {
       await box.click();
       await until(() => root.getSpace('CRM').template === true, 'the grid write');
     } finally { await page.close(); }
-    // The row's own page, in a page of its own: a hash change from the grid
-    // keeps the document, and the grid's redraw after its write can land on
-    // top of the row page under load.
     const rowPage = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     try {
       await rowPage.goto(`${base}/#/entity/${spacesRow().id}`, { waitUntil: 'load' });

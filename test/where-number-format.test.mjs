@@ -1,11 +1,3 @@
-/* A where compares a formatted number by its number (Issue #617).
-
-   A currency column displays "$12,000.00", and the where evaluator compared
-   that string: "deals over $5,000" matched no rows, in the engine and over
-   MCP, with no error. The format is display only. Every comparison reads the
-   stored number, whatever costume the column wears; `contains` still reads
-   the painted text. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -41,7 +33,6 @@ for (const [label, config] of Object.entries(FORMATS)) {
     assert.deepEqual(names(w, [['N', '=', 12000]]), ['big']);
     assert.deepEqual(names(w, [['N', '!=', 12000]]), ['small']);
     assert.deepEqual(names(w, [['N', 'in', [10, 12000]]]), ['big', 'small']);
-    // A value typed as text compares as a number too.
     assert.deepEqual(names(w, [['N', '>', '5000']]), ['big']);
   });
 }

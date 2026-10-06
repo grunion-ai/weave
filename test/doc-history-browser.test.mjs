@@ -1,19 +1,10 @@
-/* Document history in the chrome (Feature #225). A `lucide:history` control
-   in the doc-section-head, hidden until the document has a past to show;
-   it opens a panel INSIDE the section (never a modal) listing revisions
-   newest first — relative time, actor, size delta — and selecting one swaps
-   the editor for a read-only render under a "Viewing revision" bar with
-   Restore and Back. Restore writes the text back through the ordinary doc
-   write and the editor shows it. Escape returns to the editor. Both themes.
-
-   Playwright is NOT a dependency of weave; the harness skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
 let id;
 const s = await launch('document history', (weave) => {
-  weave.revisionWindowMs = 0; // every save is its own revision, so the test needs no clock
+  weave.revisionWindowMs = 0;
   weave.createSpace({ name: 'Wiki' });
   const t = weave.createTable({ space: 'Wiki', name: 'Article' });
   id = weave.createEntity(t, { name: 'Guide', doc: 'first draft' }).id;
@@ -22,8 +13,6 @@ const s = await launch('document history', (weave) => {
 if (s) {
   const { browser, base, weave } = s;
   const revisions = () => weave.listDocRevisions(id).revisions;
-  // Waits for the debounced save to land: a string is an exact match, a
-  // regex a contains (Vditor may open a paragraph under the click).
   const settle = async (want) => {
     const ok = () => (want instanceof RegExp ? want.test(weave.getDoc(id)) : weave.getDoc(id) === want);
     for (let i = 0; i < 60 && !ok(); i++) await new Promise((r) => setTimeout(r, 100));
@@ -51,8 +40,6 @@ if (s) {
       await page.waitForSelector('.doc-history-btn:not([hidden])');
       await typeAtEnd(page, ' plus two');
       assert.match(await settle(/plus two/), /plus one[\s\S]*plus two/);
-      // Vditor also writes on the click that opens a paragraph, so the count
-      // is at least the two sessions plus the create — never fewer.
       assert.ok(revisions().length >= 3, `sessions became revisions (${revisions().length})`);
     } finally { await page.close(); }
   });

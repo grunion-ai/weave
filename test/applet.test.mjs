@@ -1,10 +1,3 @@
-/* The task applet (Feature: uno task applet).
-
-   A passcode-gated single page over one table, built for mobile Safari.
-   The gate is the point of these tests: the page, and every byte of task
-   data behind it, must be unreachable without the cookie — and the cookie
-   must be unforgeable from the outside. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
@@ -15,8 +8,6 @@ import { startServer } from '../src/server.js';
 
 const PASSCODE = '11243947';
 
-/* A workspace shaped like uno's Product/Task, and a server with the applet
-   passcode set. Returns { base, stop, weave, tasks }. */
 async function stand(passcode = PASSCODE) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-applet-'));
   const w = new Weave({ path: join(dir, 'uno.json') });
@@ -95,8 +86,6 @@ test('applet: repeated wrong passcodes are rate-limited', async () => {
     let last = null;
     for (let i = 0; i < 12; i++) last = await unlock(s.base, '00000000');
     assert.equal(last.status, 429, 'guessing must stop being cheap');
-    // The limiter must not lock out the real passcode forever, but it must
-    // still refuse while the window is open.
     assert.equal((await unlock(s.base)).status, 429);
   } finally { s.stop(); }
 });
@@ -152,7 +141,6 @@ test('applet: data opens on the active states, newest edit first', async () => {
     assert.ok(!names.includes('Fix signup race condition'), 'Done is not in the active view');
     assert.equal(names.length, 2);
 
-    // Touch the older row; it must climb to the top.
     const older = data.items[data.items.length - 1];
     await fetch(`${s.base}/t/state`, {
       method: 'POST',
@@ -229,7 +217,6 @@ test('applet: the applet only ever reaches its own table', async () => {
   const s = await stand();
   try {
     const cookie = cookieFrom(await unlock(s.base));
-    // A row from another table must not be addressable through the applet.
     const other = s.weave.createTable({ space: s.weave.findSpace('Product').id, name: 'Secret' });
     const row = s.weave.createEntity(other.id, { Name: 'salaries' });
     const res = await fetch(`${s.base}/t/state`, {
@@ -296,7 +283,6 @@ test('serve: the host is a choice, and loopback is the default', async () => {
   const bin = readFileSync(new URL('../bin/weave.js', import.meta.url), 'utf8');
   assert.match(bin, /flags\.host \?\? process\.env\.WEAVE_HOST \?\? '127\.0\.0\.1'/,
     'the phone needs --host to reach the applet, and nothing else may widen the bind');
-  // The call may carry more (the nightly backup hook, Feature #222 phase 3) — host must be in it.
   assert.match(bin, /startServer\(w, \{ port, host, build: buildInfo[^}]*\}\)/);
 
   const dir = mkdtempSync(join(tmpdir(), 'weave-host-'));
@@ -310,18 +296,12 @@ test('serve: the host is a choice, and loopback is the default', async () => {
   }
 });
 
-/* Kyle, 2026-08-28: "bug from the [applet] not captured". The applet was
-   posting {title, description, symptoms, context} at an endpoint that speaks
-   {categories, note, events, client} — every report 400ed, and the applet
-   said "Reported" anyway because it never looked at the status. Both halves
-   are pinned here. */
 test('applet: the bug sheet speaks the shape /api/bug-report accepts', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
   assert.match(src, /categories:/, 'the endpoint reads body.categories');
   assert.match(src, /\bnote[,:]/, 'the endpoint reads body.note');
   assert.doesNotMatch(src, /symptoms: \[\.\.\.picked\]/, 'symptoms/description was the shape that 400ed');
-  // Never claim a report landed without looking.
   assert.match(src, /res\.ok/, 'the applet must check the response before saying it was reported');
 
   const { BUG_CATEGORIES } = await import('../src/bugreport.js');
@@ -367,9 +347,6 @@ test('applet: a report filed the way the applet files it becomes an Issue', asyn
   }
 });
 
-/* Kyle, 2026-08-28: "make sure this page is field driven". The applet must
-   read the table it is pointed at, not a list of field names baked into it —
-   a workflow called Stage, a select called Urgency, a field added tomorrow. */
 async function standStage() {
   const dir = mkdtempSync(join(tmpdir(), 'weave-applet-stage-'));
   const w = new Weave({ path: join(dir, 'work.json') });
@@ -469,18 +446,12 @@ test('applet: the page cannot be pinched, and wears the real mark', async () => 
     const html = await (await fetch(`${s.base}/t`, { headers: { cookie } })).text();
     assert.match(html, /maximum-scale=1/, 'a task list is not a document to zoom around');
     assert.match(html, /gesturestart/, 'Safari ignores user-scalable, so the gesture is refused directly');
-    // The mark is INLINED, never an <img>: WebKit renders SVG masks inside
-    // an <img> with smeared edges on iOS, which is where this page lives.
     assert.doesNotMatch(html, /<img[^>]*weave-mark/, 'an <img> mark smears on iOS — inline it');
     assert.match(html, /class="wv-mark wv-mark-light"[^>]*>[\s\S]*?<mask id="mLA"/, 'the real mark, inlined, masks namespaced');
     assert.match(html, /class="wv-mark wv-mark-dark"[^>]*>[\s\S]*?<mask id="mDA"/);
   } finally { s.stop(); }
 });
 
-/* Kyle, 2026-08-28: "when the page opens always default to opening with
-   keyboard up and cursor in new task". Safari only grants focus() inside a
-   user gesture and an await spends it, so the order is load-bearing: the
-   focus call must come before the unlock request, on the same page. */
 test('applet: the unlock tap is spent on the caret before the request', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
@@ -490,9 +461,6 @@ test('applet: the unlock tap is spent on the caret before the request', async ()
   assert.match(src, /armFirstTouch/, 'a warm open has no gesture; the first touch supplies one');
 });
 
-/* Kyle, 2026-08-28: after a resume from the app switcher the keyboard was
-   dead. iOS drops the keyboard on background but keeps the field focused, so
-   the next tap lands on an already-focused input and raises nothing. */
 test('applet: a resume gets a fresh first tap — blur on hide, re-arm on show', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
@@ -533,9 +501,6 @@ test('applet: the description is written from the page it is read on', async () 
   } finally { s.stop(); }
 });
 
-/* The applet route took the same `?? ''` fallback the API route did
-   (Issue #572): a body spelling the text anything but `doc` or `markdown`
-   blanked the document and got 200 back. */
 test('applet: a doc write with no recognized key is refused and changes nothing', async () => {
   const s = await stand();
   try {
@@ -556,11 +521,6 @@ test('applet: a doc write with no recognized key is refused and changes nothing'
   } finally { s.stop(); }
 });
 
-/* Issue #247 (Kyle, 2026-09-08: "mobile descriptions not captured on save,
-   need autosave"). The sheet wrote only from its Save button, so a scrim tap
-   or a trip to the app switcher threw the text away. The browser suite
-   (test/applet-autosave-browser.test.mjs) drives each path at 390x844; this
-   pins the wiring so a checkout without a browser still guards it. */
 test('applet: the description sheet writes on every way out, and on a pause', async () => {
   const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
   const doc = src.slice(src.indexOf('function editDoc('), src.indexOf('/* The bug reporter'));
@@ -575,9 +535,6 @@ test('applet: the description sheet writes on every way out, and on a pause', as
 });
 
 test('applet: the description answers to the name it has now', async () => {
-  // Kyle can rename the description (2026-08-27), and the applet printed the
-  // word 'Description' over whatever it was actually showing. The heading and
-  // the sheet read the name off the row instead.
   const s = await stand();
   try {
     s.weave.updateField(s.db.id, 'Description', { name: 'Notes' });
@@ -616,11 +573,6 @@ test('applet: a blank deadline or tag set is still a chip you can tap', async ()
   assert.match(src, /editDoc/, 'the description is editable from the task page');
 });
 
-/* Kyle, 2026-08-28, from the phone: "cursor doesnt automatically drop me in
-   new task with keyboard". Two causes, both pinned here. WebKit grants the
-   gesture on click, not pointerdown; and focusing without a gesture puts the
-   caret in the field so the user's first real tap lands on an already-focused
-   input and raises nothing. */
 test('applet: the first tap is spent raising the keyboard, not wasted', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
@@ -632,14 +584,10 @@ test('applet: the first tap is spent raising the keyboard, not wasted', async ()
   assert.match(raise, /input\.blur\(\)/, 'blur then focus is what re-presents the keyboard');
   assert.match(raise, /input\.focus\(\)/);
 
-  // A coarse pointer must not be given the caret without a gesture: it would
-  // spend the first tap on a field that is already focused.
   const warm = src.slice(src.indexOf('const touch = matchMedia'));
   assert.match(warm, /if \(!touch\)/, 'only a mouse gets the un-gestured caret');
 });
 
-/* Kyle, 2026-08-28: "mobile date selector needs work". A wheel picker is the
-   right tool for "the 14th" and the wrong one for "friday". */
 test('applet: a date can be tapped, typed, or picked', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
@@ -658,9 +606,6 @@ test('applet: the natural-language parser it leans on is the one weave ships', a
   assert.match(nl, /root\.parseNaturalDate = parseNaturalDate/, 'the applet reads it off the window');
 });
 
-/* Kyle, 2026-08-28, from the phone: "bug submission bugs are not being
-   captured" and "bug icon should be the same as desktop and with same
-   funcitnoality". Two causes and one parity gap. */
 test('applet: bug reports are asked of the workspace that can file them', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../src/applet.js', import.meta.url), 'utf8');
@@ -678,11 +623,6 @@ test('applet: the bug reporter is the desktop one, parts and all', async () => {
   assert.match(src, /bug-core\.js/, 'and loads the shipped file, not a copy of it');
   assert.match(src, /rec\.record\(\{ kind: 'api'/, 'requests ride along like they do on the desktop');
 
-  // The face is the desktop's, to the pixel. The box around it is not: a
-  // 26px target fails on a finger, so the applet wraps the same face in a
-  // 44pt box — right:3px + (44-26)/2 puts the visible mark back on the
-  // desktop's own 12px margin, and the bottom offset clears the home
-  // indicator the desktop does not have.
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   const fab = css.slice(css.indexOf('.bug-fab {'), css.indexOf('.bug-fab {') + 400);
   const flat = src.replace(/\s+/g, ' ');
@@ -705,9 +645,6 @@ test('applet: the keyboard is armed on touchend, which iOS always fires', async 
   assert.match(arm, /addEventListener\('click', grab, true\)/, 'click still covers the desktop');
 });
 
-/* Kyle, 2026-08-28: "add task bar should be on the bottom" and "in addition
-   to type or select pro preselected ate chips, we should ahve a mini
-   calendar". */
 test('applet: the field sits under the thumb and rides the keyboard', async () => {
   const s2 = await stand();
   try {

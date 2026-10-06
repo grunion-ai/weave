@@ -1,9 +1,3 @@
-/* Universal search keeps the hierarchy (Issue #280).
-   Rows used to crowd containers out: hierarchy hits scored 8–9, a row hit
-   up to 20, and the merged list was sorted and then sliced to `limit` — so a
-   query matching 200 rows returned 200 rows and never the workspace, space or
-   table of the same name. `limit` bounds rows; the workspace, spaces, tables
-   and saved views that match are always returned. Views are searched too. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -79,9 +73,6 @@ test('GET /api/search keeps hierarchy past the limit, scoped and across workspac
 });
 
 test('a registry row never shadows its own space or table hit (Issue #382)', () => {
-  // The Workspace space holds a row per space and table; that row IS the
-  // container hit above it, so ⌘K listed "Guide" twice: the table, and the
-  // Workspace/Tables row of the same name under Records.
   const { w } = crowded('Onboarding', 0);
   const hits = w.universalSearch('onboarding');
   assert.deepEqual(hits.map((h) => `${h.kind}:${h.db ?? ''}${h.name}`), ['table:Issue desk/Onboarding']);

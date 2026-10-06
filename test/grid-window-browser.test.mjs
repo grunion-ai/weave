@@ -1,16 +1,3 @@
-/* The row window against a real page (Issue #271).
-
-   The Case table drew all 2,087 rows on open: 58,706 DOM nodes and one
-   17–52 s task for fifteen rows on screen. The pure arithmetic is pinned in
-   test/grid-window.test.mjs; this suite proves the DOM half in
-   public/app.js on a table of 1,200 rows: fewer than 200 <tr>s after open
-   and no task over a second; the spacers keep the scrollbar honest; a fast
-   scroll to the middle leaves no blank band under the viewport; the end of
-   the table is reachable by scroll and by End; ⌘A takes the loaded rows and
-   the foot says how many; a cell commit re-windows at the same scroll and
-   hands focus back to the same cell.
-
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -22,8 +9,6 @@ const s = await launch('the row window', (weave) => {
   suites = weave.createTable({ space: 'Quality', name: 'Suite' });
   cases = weave.createTable({ space: 'Quality', name: 'Case' });
   weave.addField(cases, { name: 'Status', type: 'select', config: { options: ['pass', 'fail'] } });
-  // The Case grid's own shape: a relation chip in every row is what made a
-  // row 28 nodes.
   weave.addRelation(cases, { name: 'Suite', targetDb: suites, cardinality: 'many-to-one', inverseName: 'Cases' });
   const st = weave.createEntity(suites, { name: 'engine' });
   for (let i = 0; i < N; i++) {
@@ -34,14 +19,11 @@ const s = await launch('the row window', (weave) => {
 if (s) {
   const { base, browser } = s;
 
-  // Long tasks are collected from before the app script runs, so the open
-  // itself is measured.
-  // Feature #233: every field keeps its default width (Name 260, Description 280, …), so this table fits its card from 1600px, not 1280.
   const open = async ({ viewport = { width: 1600, height: 800 } } = {}) => {
     const page = await browser.newPage({ viewport });
     await page.addInitScript(() => {
       window.__long = [];
-      try { new PerformanceObserver((l) => window.__long.push(...l.getEntries().map((e) => e.duration))).observe({ type: 'longtask', buffered: true }); } catch { /* no longtask API */ }
+      try { new PerformanceObserver((l) => window.__long.push(...l.getEntries().map((e) => e.duration))).observe({ type: 'longtask', buffered: true }); } catch {}
     });
     await page.goto(`${base}/#/table/${cases.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -55,11 +37,7 @@ if (s) {
   const scrollTo = (page, top) => page.evaluate((t) => {
     const wrap = document.querySelector('.table-wrap');
     const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main');
-    // Instant: Tabler asks the page for smooth scrolling, and a jump that
-    // animates is not the fast scroll under test.
     box.scrollTo({ top: t, behavior: 'instant' });
-    // The scroll event lands on the next task; the window is painted on the
-    // frame after that.
     return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   }, top);
   const scrollMax = (page) => page.evaluate(() => {
@@ -76,7 +54,6 @@ if (s) {
       assert.ok(n > 0 && n < 200, `${n} rows drawn for ${N}`);
       const long = await page.evaluate(() => window.__long);
       assert.ok(Math.max(0, ...long) < 1000, `longest task ${Math.max(0, ...long)} ms (${long.length} long tasks)`);
-      // The spacers stand in for the rest: the body is as tall as every row.
       const g = await page.evaluate(() => {
         const tbody = document.querySelector('.wv-grid tbody');
         const row = tbody.querySelector('tr.entity-row');
@@ -95,21 +72,14 @@ if (s) {
       await scrollTo(page, Math.round(max / 2));
       await frames(page, 2);
       const gap = await page.evaluate(() => {
-        // Every row whose box crosses the viewport is a <tr> — drawn, or a
-        // placeholder at the row height while its page lands — and never a
-        // spacer's span.
         const wrap = document.querySelector('.table-wrap');
         const box = wrap.classList.contains('wv-grid-scroll') ? wrap.getBoundingClientRect() : document.querySelector('#main').getBoundingClientRect();
-        // A field header CELL, not the <thead>: the cells are what is sticky,
-        // so their lower edge is where the readable body starts — below the
-        // view header, which holds at the top itself (Issue #321).
         const head = document.querySelector('.wv-grid thead th').getBoundingClientRect().bottom;
         const rows = [...document.querySelectorAll('.wv-grid tbody tr')].filter((tr) => !tr.hidden);
         const inView = rows.filter((tr) => { const r = tr.getBoundingClientRect(); return r.bottom > Math.max(box.top, head) && r.top < box.bottom; });
         return inView.filter((tr) => tr.classList.contains('wv-spacer')).length;
       });
       assert.equal(gap, 0, 'no spacer under the viewport');
-      // And the page lands: real rows replace the placeholders.
       await page.waitForFunction(() => !document.querySelector('.wv-grid tbody tr.entity-row-pending'), null, { timeout: 5000 });
       const ix = await page.evaluate(() => [...document.querySelectorAll('.wv-grid tbody tr.entity-row')].map((tr) => Number(tr.dataset.i)));
       assert.ok(ix.some((i) => i > 500 && i < 700), `the window sits in the middle of the table (${ix[0]}–${ix.at(-1)})`);
@@ -141,19 +111,11 @@ if (s) {
       assert.ok(at.drawn < 200, `${at.drawn} rows drawn`);
       await page.keyboard.press('Home');
       await page.waitForFunction((first) => document.activeElement?.closest?.('tr')?.dataset.eid === first, ids[0], { timeout: 5000 });
-      // A plain arrow past the window's edge walks on, one row at a time.
       await page.keyboard.press('ArrowDown');
       await page.waitForFunction((second) => document.activeElement?.closest?.('tr')?.dataset.eid === second, ids[1]);
     } finally { await page.close(); }
   });
 
-  /* Issue #260, and the window is what made it bite. A bare End inside an
-     open cell was left to the browser; Chromium reads it in a single-line
-     field as "scroll to the end of the document", so the grid scrolled a
-     thousand rows, recycled the row the editor sat in and dropped focus on
-     <body> — with the caret still where it started. A reader who meant to
-     append kept typing into the middle of the value, which is how Issue #85
-     came to be named "L zzs broken: …". */
   test('End inside an open cell moves the caret, not the window', async () => {
     const page = await open();
     try {
@@ -175,7 +137,6 @@ if (s) {
         `the caret sits at the end of the open cell, not on <body>: ${JSON.stringify(land)}`,
       );
       assert.equal(await top(), before, 'the window stayed where the reader left it');
-      // The harm the Issue names: what is typed next goes on the END.
       await page.keyboard.type('!');
       assert.match(await page.evaluate(() => document.activeElement.value), /!$/, 'typing after End appends');
       await page.keyboard.press('Home');
@@ -195,7 +156,6 @@ if (s) {
       assert.match(count, /^200 /, `every loaded row is chosen: ${count}`);
       const head = await page.evaluate(() => ({ checked: document.querySelector('thead .sel-box').checked, ind: document.querySelector('thead .sel-box').indeterminate }));
       assert.deepEqual(head, { checked: true, ind: false }, 'the header box reads all');
-      // Rows drawn later paint the selection they belong to.
       await scrollTo(page, 30 * 150);
       await frames(page, 2);
       const painted = await page.evaluate(() => [...document.querySelectorAll('.wv-grid tbody tr.entity-row')].every((tr) => tr.classList.contains('row-selected')));
@@ -210,12 +170,8 @@ if (s) {
       await scrollTo(page, Math.round(max / 2));
       await page.waitForFunction(() => !document.querySelector('.wv-grid tbody tr.entity-row-pending') && document.querySelectorAll('.wv-grid tbody tr.entity-row').length > 0, null, { timeout: 5000 });
       const eid = await page.evaluate(() => {
-        // A drawn row that is on screen.
         const wrap = document.querySelector('.table-wrap');
         const box = wrap.classList.contains('wv-grid-scroll') ? wrap.getBoundingClientRect() : document.querySelector('#main').getBoundingClientRect();
-        // A field header CELL, not the <thead>: the cells are what is sticky,
-        // so their lower edge is where the readable body starts — below the
-        // view header, which holds at the top itself (Issue #321).
         const head = document.querySelector('.wv-grid thead th').getBoundingClientRect().bottom;
         return [...document.querySelectorAll('.wv-grid tbody tr.entity-row')].find((tr) => { const r = tr.getBoundingClientRect(); return r.top > Math.max(box.top, head) + 5 && r.bottom < box.bottom - 5; }).dataset.eid;
       });
@@ -228,9 +184,6 @@ if (s) {
       await page.click(`tr[data-eid="${eid}"] td[data-field="Name"] input`);
       await page.keyboard.type(' edited');
       await page.keyboard.press('Tab');
-      // The commit PATCHes, re-reads the pages under the window and redraws;
-      // focus comes back to the cell Tab reached — the next stop along the
-      // row, the description — at the same scroll.
       await page.waitForFunction((e) => {
         const td = document.activeElement?.closest?.('tr[data-eid] > td');
         return td?.parentElement.dataset.eid === e && td.dataset.field === 'Description';
@@ -240,9 +193,6 @@ if (s) {
         const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main');
         return { top: box.scrollTop, rowH: document.querySelector('.wv-grid tbody tr.entity-row').getBoundingClientRect().height, drawn: document.querySelectorAll('.wv-grid tbody tr.entity-row').length, name: document.querySelector(`tr[data-eid="${document.activeElement.closest('tr').dataset.eid}"] td[data-field="Name"] input`)?.value };
       });
-      // Held to within a row: the redraw's spacers are sized on a remembered
-      // row height that can differ from the laid-out one by a fraction of a
-      // pixel per row. A jump to the top is thousands of pixels.
       assert.ok(Math.abs(after.top - before) <= after.rowH, `the scroll held (${before} → ${after.top})`);
       assert.ok(after.drawn < 200, `${after.drawn} rows drawn after the commit`);
       assert.match(after.name, / edited$/, 'the row shows the value it was given');
@@ -283,11 +233,6 @@ if (s) {
   });
 
   test('the scroller is measured, not assumed: the same window arithmetic serves the page and the wrap', async () => {
-    // A narrow viewport makes the grid wider than its card, so the wrap is
-    // the scroller (Issue #233); the wide one leaves the page to scroll.
-    // Phone width since the drawer (Issue #262): at 700px the sidebar left
-    // the flow, the card grew to ~584px and the grid only just overflows it,
-    // which is Issue #402, a separate bug the old 700px case never met.
     const narrow = await open({ viewport: { width: 390, height: 700 } });
     const wide = await open({ viewport: { width: 1600, height: 900 } });
     try {

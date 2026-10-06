@@ -1,13 +1,3 @@
-/* Issue #253: a newer release has to reach the person running an old one.
-
-   Tags and GitHub Releases are published on every landing now, but a running
-   instance compared itself only with main's sha (`behind`), and a plain clone
-   or a source zip never learned a release existed. Kyle decided on 2026-09-28
-   that the server asks GitHub for the latest release at most once a day,
-   compares it with its own package version, and says so where the stale and
-   behind signals already show. WEAVE_UPDATE_CHECK=off makes no request at all.
-
-   None of these tests reach GitHub: every check gets an injected fetch. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
@@ -86,7 +76,7 @@ test('it runs at most once a day, and a restart inside the day reads the cache i
   const now = clock();
   const fetch = counting(answer('v0.4.52'));
   const first = createReleaseCheck({ version: '0.4.51', fetch, cacheFile, now });
-  first.status(); // the first status kicks the request off without waiting for it
+  first.status();
   await first.refresh();
   first.status(); first.status();
   await first.refresh();
@@ -108,9 +98,6 @@ test('it runs at most once a day, and a restart inside the day reads the cache i
   assert.equal(fetch.calls.length, 2, 'a day later it asks again');
 });
 
-/* Issue #606: update-check.json lives on the volume and survives a redeploy, so
-   a 0.4.56 build read 0.4.54 from a 0.4.54 build's cache and reported it on
-   /api/health for up to a day. */
 test('an upgrade asks again at boot instead of inheriting the old build\'s answer', async () => {
   const cacheFile = scratch();
   const now = clock();
@@ -186,13 +173,6 @@ test('a hung request times out in seconds and never blocks a status call', async
   assert.equal(check.status(), null);
 });
 
-/* Issue #563: the timeout has to fire on its own. AbortSignal.timeout's timer is
-   unref'd, so a hung request was cut off only while something else happened to hold
-   the event loop open: the test runner's own handles on node 24, nothing on 22.16,
-   where the case above and every case after it were cancelled with "Promise
-   resolution is still pending but the event loop has already resolved" and reddened
-   both 22.16 legs of the tests workflow. A bare child process holds no such handles,
-   so it reproduces that on any node. */
 test('the timeout fires with nothing else holding the event loop open', () => {
   const src = JSON.stringify(fileURLToPath(new URL('../src/update-check.js', import.meta.url)));
   const script = `
@@ -207,9 +187,6 @@ test('the timeout fires with nothing else holding the event loop open', () => {
   assert.equal(r.stdout.trim(), 'aborted', 'the hung request was cut off');
 });
 
-/* The other side of that timer: it is ref'd, so a cut-off left armed after the answer
-   would hold weave open for the rest of timeoutMs. The child asks for a 20 s cut-off and
-   gets its answer at once, so it exits in milliseconds or not before this call's 4 s. */
 test('the cut-off is cleared when the answer lands, so the process still exits at once', () => {
   const src = JSON.stringify(fileURLToPath(new URL('../src/update-check.js', import.meta.url)));
   const script = `
@@ -251,7 +228,6 @@ test('/api/health carries the release verdict beside sha and behind, which keep 
     server.close();
     armReleaseCheck(null);
   }
-  // behind still means main has a commit the boot head lacks (Issue #459), nothing else
   const s = (c) => c.repeat(40);
   assert.equal(describeBuild({ head: s('a'), disk: s('a'), latest: s('b') }).behind, true);
   assert.ok(!('releaseBehind' in describeBuild({ head: s('a'), disk: s('a'), latest: s('a') })));

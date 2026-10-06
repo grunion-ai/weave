@@ -1,11 +1,3 @@
-/* The trash list is loaded on demand (Issue #270).
-   Opening a table ran `Promise.all([query, trash])`: the trash response for a
-   real table was 1.5 MB and a second whole-workspace scan, spent only to
-   print "(N)" beside the eyeball's "Deleted rows" switch. The open now costs
-   one query that carries `trashCount`; the trash list is asked for only when
-   the switch shows the deleted rows. The count must still read in the eye.
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps);
-   the suite skips when it is absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -37,7 +29,6 @@ if (s) {
     const label = await page.locator('.chip-pop .eye-row .eye-label', { hasText: 'Deleted' }).first().textContent();
     assert.match(label, /\(1\)$/, 'the eyeball still says how many rows are in the trash');
 
-    // Showing the deleted rows is what asks for the list — once.
     calls.length = 0;
     await page.locator('.chip-pop .eye-row', { hasText: 'Deleted' }).first().click();
     await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 4);

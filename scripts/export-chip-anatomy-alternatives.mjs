@@ -1,24 +1,4 @@
 #!/usr/bin/env node
-/* docs/mockups/chip-anatomy-alternatives.html — chip anatomy, round 2
-   (Feature #185): five alternatives, P–T, to the chip the anatomy guide
-   (#180) documents, each drawn in the real chip markup at the live chip
-   size, in three surfaces (relation cell, [[…]] mention in a document,
-   References list), light and dark side by side, hitboxes outlined.
-
-   Kyle, 2026-09-05, on the guide's elements 1–8: keep 4 (home badge) and
-   5 (caret); drop 1 (avatar) as a default; drop 7 (↗) because the chip IS
-   the link; segments (6) are the real state / select / multiselect chips at
-   the shared size and stay interactive; 8 (×) may go where Backspace
-   removes the chip.
-
-   The chip CSS is not copied by hand: chipCss() lifts the live rules out of
-   public/style.css (the lift the anatomy export uses), so a token change
-   moves the mockup too, and test/chip-alternatives-mockup.test.mjs fails
-   when the checked-in file no longer matches a fresh run. Everything an
-   option adds on top of the shipped chip is in ALT below, prefixed wv-.
-
-     node scripts/export-chip-anatomy-alternatives.mjs            # writes the file
-     node scripts/export-chip-anatomy-alternatives.mjs --stdout   # prints it */
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -27,7 +7,6 @@ import { chipCss } from './export-chip-card-anatomy.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'mockups', 'chip-anatomy-alternatives.html');
 
-/* ---- the row: the guide's own specimen, Task #12 ---- */
 const ROW = {
   id: '#12',
   name: 'Ship the editor',
@@ -37,9 +16,6 @@ const ROW = {
   tags: [{ value: 'Editor', hue: 'purple' }, { value: 'Docs', hue: 'green' }],
 };
 
-/* ---- the segments: exactly the classes app.js emits for a cell, plus a
-   hitbox class. `hit-seg` is the dashed outline that says "a click here
-   edits"; the chip class is what says it is the same chip as the cell's. */
 const stateChip = () => `<span class="k k-state cat-${ROW.state.category} hue-${ROW.state.hue} hit-seg" title="Change state">${ROW.state.name}</span>`;
 const selectChip = () => `<span class="k k-select hue-${ROW.severity.hue} hit-seg" title="Change Severity">${ROW.severity.value}</span>`;
 const multiChips = () => ROW.tags.map((t) => `<span class="k k-multi hue-${t.hue} hit-seg" title="Change Tags">${t.value}</span>`).join('');
@@ -49,8 +25,6 @@ const home = () => `<span class="k-home">${ROW.home}</span>`;
 const pointer = ({ id = true, badge = true, cls = '' } = {}) => `<a href="#" onclick="return false" class="hit-link${cls}">${id ? `${ROW.id} ` : ''}<span class="k-label">${ROW.name}</span>${badge ? home() : ''}</a>`;
 const x = () => `<span class="x hit-x" title="Unlink">×</span>`;
 
-/* ---- the five options. render(surface) returns one chip for that surface;
-   `cell` may carry a ×, `mention` and `refs` never do. ---- */
 const OPTIONS = [
   {
     key: 'P', name: 'Name-link + live segments',
@@ -124,7 +98,6 @@ const OPTIONS = [
   },
 ];
 
-/* ---- the three surfaces a chip lives in ---- */
 const SURFACES = [
   { key: 'cell', label: 'Relation cell', wrap: (chip) => `<div class="cell-mock"><span class="cell-label">Blocks</span>${chip}</div>` },
   { key: 'mention', label: '[[…]] mention in a document', wrap: (chip) => `<p class="doc-mock">Blocked until ${chip} lands.</p>` },
@@ -133,7 +106,6 @@ const SURFACES = [
 
 const keysTable = (rows) => `<table class="keys"><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</tbody></table>`;
 
-/* ---- the page ---- */
 const TOKENS = `
 :root { --bg: #ecebe6; --fg: #1a1d23; --muted: #6b7280; --line: #d9d6ce; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
 [data-bs-theme="light"] {

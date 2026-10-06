@@ -1,11 +1,3 @@
-/* Document version history (Feature #225). Every document field keeps its
-   own revisions in a `doc_revisions` table beside the entity blob — never
-   inside it, so entity rows stay small and export (a share surface, Issue
-   #230) never carries prior text. A typing session is one revision: writes
-   by the same actor to the same field inside the coalescing window replace
-   the newest revision instead of adding one (the activity feed's rule,
-   Issue #32). A restore is a plain setDoc of the old text, recorded fresh,
-   so nothing in the log is ever destroyed by restoring. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -30,8 +22,6 @@ function build(opts = {}) {
   return w;
 }
 
-// The store contract, run against every backing: in-memory, file, and the
-// Durable Object shim — one shape, three homes.
 function storeContract(name, makeStore) {
   test(`${name}: push, list newest first with metadata only, get carries the text`, () => {
     const s = makeStore();
@@ -123,8 +113,6 @@ test('sqlite: revisions persist across a reopen and live outside the entity blob
   assert.ok(!JSON.stringify(w2.exportJSON()).includes('"first"'), 'export carries no prior text');
 });
 
-// ---------------- engine ----------------
-
 test('a create with a document is its first revision; each later write is a revision of the new text', () => {
   const w = build({ revisionWindowMs: 0 });
   const e = w.createEntity('Article', { name: 'A', doc: 'v1' });
@@ -153,19 +141,17 @@ test('identical text records nothing; each document field keeps its own log', ()
 });
 
 test('a typing session is one revision: same actor, same field, inside the window coalesces', () => {
-  const w = build(); // the default ten-minute window
+  const w = build();
   const e = w.createEntity('Article', { name: 'A', doc: 'v1' });
   w.setDoc(e.id, 'v1 and more');
   w.setDoc(e.id, 'v1 and more and more');
   const list = w.listDocRevisions(e.id).revisions;
   assert.equal(list.length, 1, 'three writes in one session are one revision');
   assert.equal(w.getDocRevision(e.id, null, list[0].seq).text, 'v1 and more and more');
-  // Another actor starts a new revision even inside the window.
   w.actor = 'agent';
   w.setDoc(e.id, 'agent edit');
   assert.equal(w.listDocRevisions(e.id).revisions.length, 2);
   assert.equal(w.listDocRevisions(e.id).revisions[0].actor, 'agent');
-  // Back to the first actor: a new revision too — the newest is the agent's.
   w.actor = 'local';
   w.setDoc(e.id, 'local again');
   assert.equal(w.listDocRevisions(e.id).revisions.length, 3);
@@ -174,7 +160,6 @@ test('a typing session is one revision: same actor, same field, inside the windo
 test('a document that predates the feature gets its prior text as a baseline on its first write', () => {
   const w = build({ revisionWindowMs: 0 });
   const e = w.createEntity('Article', { name: 'A' });
-  // Simulate a pre-feature document: text in the blob, nothing in the log.
   const db = w.getTable('Article');
   const f = w.descriptionField(db);
   w.getEntity(e.id).docs[f.id] = 'legacy text';
@@ -251,8 +236,6 @@ test('the document ontology names the revision verbs', async () => {
   }
 });
 
-// ---------------- doors ----------------
-
 test('HTTP: list, read and restore a revision', async () => {
   const w = build({ revisionWindowMs: 0 });
   const e = w.createEntity('Article', { name: 'A', doc: 'v1' });
@@ -309,7 +292,6 @@ test('CLI: weave doc-revisions and weave doc-restore', () => {
   cli('space', 'create', 'Wiki');
   cli('db', 'create', 'Wiki', 'Article');
   cli('create', 'Article', 'A', '--doc', 'v1');
-  // A second actor inside the window is a second revision (no coalescing).
   execFileSync('node', [BIN, 'doc', 'set', 'Article#1', '--content', 'v2', '--data', data], { encoding: 'utf8', env: { ...process.env, WEAVE_ACTOR: 'agent' } });
   const list = JSON.parse(cli('doc-revisions', 'Article#1'));
   assert.equal(list.field, 'Description');

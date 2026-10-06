@@ -1,19 +1,3 @@
-/* Changelog fragments (Issue #408). 37 of 48 commits on gerrit/main added a
-   bullet under `## Unreleased` in CHANGELOG.md, and Gerrit refuses to
-   auto-rebase two changes that touch the same file, so every landing sent
-   every open change back for a hand rebase and a fresh full gate (GitHub PR
-   #5 took six rebases in six hours). Now each change writes its own
-   `changelog.d/<slug>-<Issue or Feature number>.md`, and only a release
-   commit edits CHANGELOG.md: `scripts/changelog-fold.mjs` moves every
-   fragment under the new `## v<version>` heading and deletes the fragments.
-
-   The guard. A commit that adds lines to CHANGELOG.md must also change the
-   package.json version. The gate (harness `scripts/weave-review.sh`) tests
-   the patchset merged with main, so HEAD can be that merge, and Gerrit's own
-   submits can land as `Merge "…" into main`. For a merge HEAD the guard
-   checks each non-merge parent's own diff; for a plain HEAD it checks HEAD.
-   A commit that only removes lines passes: that is this change, which moves
-   the last `## Unreleased` bullets into fragments. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -97,9 +81,6 @@ test('foldRepo writes CHANGELOG.md, deletes the fragments, and a second run is a
   assert.equal(readFileSync(join(dir, 'CHANGELOG.md'), 'utf8'), after);
 });
 
-/* Issue #629: fold skipped a fragment whose text trimmed to nothing and
-   foldRepo deleted it anyway, so its change would ship with no line in
-   CHANGELOG.md or the GitHub Release and nothing would say so. */
 test('fold refuses an empty fragment and names it', () => {
   for (const text of ['', '\n', '  \n\t\n']) {
     assert.throws(() => fold(MD, [...FRAGS, { name: 'hollow-12.md', text }], { version: '0.4.44', date: '2026-09-27' }),
@@ -119,12 +100,6 @@ test('foldRepo with an empty fragment writes nothing and deletes nothing', () =>
   assert.deepEqual(readdirSync(join(dir, 'changelog.d')).sort(), ['alpha-7.md', 'hollow-12.md', 'zeta-9.md']);
 });
 
-/* Issue #568: changelog.d/mcp-inject-harness-499.md shipped the MCP injection
-   measurement harness as "(Issue #499)", and #499 is security finding S-22,
-   still Open. A finding's row stays Open until its fix lands, so the check
-   runs at release time (scripts/export-development.mjs), when every landed
-   fix has set its row Fixed; a fragment that still cites an open finding then
-   ships other work under that finding's number. */
 const ISSUES = [
   { number: 499, name: 'Error: security finding S-22, details held until the fix lands', status: 'Open' },
   { number: 494, name: 'Error: security finding S-17, details held until the fix lands', status: 'Fixed' },
@@ -156,12 +131,6 @@ test('the guard refuses CHANGELOG.md lines added without a version bump', () => 
   assert.equal(changelogGuard({ added: 0, versionBefore: '0.4.43', versionAfter: '0.4.43' }), null, 'removals only');
 });
 
-/* The other direction (Issue #573). Gerrit change 527 fixed Issue #551 and
-   merged as e85ada8 with nine files, none under changelog.d/; the gate voted
-   Verified +1 and the fix would have been missing from the v0.4.54 notes had
-   the bullet not been written by hand at release time. changelogGuard watches
-   CHANGELOG.md; fragmentGuard watches the fragment a code change owes. The two
-   stay separate functions so a red names one direction and one fix. */
 const FIX = {
   subject: 'grid: tab starts from the focused row (Issue #551)',
   message: 'grid: tab starts from the focused row (Issue #551)\n\nBody.\n\nChange-Id: I0123456789abcdef\n',
@@ -217,8 +186,6 @@ const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8'
 const parentsOf = (rev) => git('rev-list', '--parents', '-n', '1', rev).split(' ').slice(1);
 const versionAt = (rev) => { try { return JSON.parse(git('show', `${rev}:package.json`)).version; } catch { return null; } };
 const pathsIn = (...args) => git(...args).split('\n').filter(Boolean);
-/* The commits this HEAD puts under test: for a merge HEAD, each non-merge
-   parent's own diff; for a plain HEAD, HEAD. */
 const underTest = () => {
   const parents = parentsOf('HEAD');
   return parents.length > 1 ? parents.filter((p) => parentsOf(p).length === 1) : parents.length ? ['HEAD'] : [];
@@ -233,11 +200,6 @@ test('this commit edits CHANGELOG.md only if it bumps the version', () => {
   }
 });
 
-/* Issue #573: the same commits, read the other way round. A commit that
-   changes code and names its row owes a fragment. Commits that landed before
-   this guard did not all pay it (e85ada8, 0ccab1d, 5323354, 4c5faa3, ae87f1a,
-   79f2f60), so a checkout of one of those is red on its own history, not on
-   the change being tested. */
 test('this commit ships the changelog.d fragment the code it changes owes', () => {
   for (const sha of underTest()) {
     const why = fragmentGuard({

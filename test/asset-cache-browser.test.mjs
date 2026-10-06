@@ -1,9 +1,3 @@
-/* Issue #313, in a real browser: the deferred boot still boots, in order, and
-   a warm load of `/` asks the server for none of the shell's assets.
-   Before the fix a warm load revalidated every one of them (32 requests, 24
-   answered 304); with content-versioned URLs sent `immutable`, only the
-   document itself goes back to the server. Playwright is NOT a dependency of
-   weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

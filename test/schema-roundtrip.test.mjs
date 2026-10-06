@@ -1,10 +1,3 @@
-/* Issue #59 + #60: the declarative door has to be lossless, and a schema write
-   that does nothing has to say so.
-
-   `weave_schema` / `GET /api/schema` is what an agent reads, edits, and applies
-   back — the natural way to stand up or amend a whole space. Everything that
-   survives describeSchema() must survive applySchema(), or an edit silently
-   undoes deliberate configuration. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -93,13 +86,10 @@ test('a table-level edit applies without touching the fields', () => {
   assert.equal(w.getTable(t.id).fields[w.getTable(t.id).nameFieldId].name, 'Name', 'fields are untouched');
 });
 
-/* Issue #60 */
 test('a Definition written without a config key is refused, not silently dropped', () => {
   const { w, t } = fixture();
   const fields = w.listTables().find((d) => d.system === 'fields');
   const row = w.query(fields.id, {}).items.find((i) => i.fields.Name === 'Stage');
-  // The shape describeSchema hands back is flat — accepting it silently as an
-  // empty config discarded the caller's intent and returned success.
   assert.throws(() => w.updateEntity(row.id, { Definition: { type: 'select', options: ['A'] } }),
     /config/i, 'a definition with no config must say so');
   const stage = Object.values(w.getTable(t.id).fields).find((f) => f.name === 'Stage');
@@ -115,14 +105,6 @@ test('workspace name and description are engine verbs, not server-only', () => {
   assert.equal(w.updateWorkspace({ name: 'Ops hub' }).name, 'ops-hub', 'a display name keeps its slug (Issue #592)');
   assert.throws(() => w.updateWorkspace({ name: '!!!' }), /letters, digits, - and _/);
 });
-
-/* ---------- the description survives the round trip (Kyle, 2026-08-27) ----
-   Losing it was the same bug twice. The create path skipped any descriptor
-   literally named 'Description' on the assumption createTable had already made
-   one, so a table whose description had been RENAMED to 'Notes' came back as
-   Name + Notes + a spurious second Description, and a table whose description
-   had been DELETED came back with one anyway. A descriptor now carries
-   `role: 'description'` and applying it renames the minted field. */
 
 function described() {
   const w = new Weave();
@@ -179,9 +161,6 @@ test('a schema written before roles is still understood', () => {
   assert.equal(fresh.descriptionField(fresh.getTable('Product/Task')).name, 'Description');
 });
 
-/* Feature #40 (re-homed 2026-09-02): the row term is Name-field config. The
-   table-level `noun` keeps every existing consumer working; the plural rides
-   the Name field's own descriptor so a corrected irregular is not lost. */
 test('the row term round-trips, plural included', () => {
   const { w, t } = fixture();
   const nameField = Object.values(w.getTable(t.id).fields).find((f) => f.name === 'Name');
@@ -204,8 +183,6 @@ test('the row term round-trips, plural included', () => {
   assert.deepEqual(w.termOf(t.id), { singular: 'bill', plural: 'bills', set: true });
 });
 
-/* Found by Feature #261's fidelity test (Issues #639 to #642): the costumes a
-   template copy carries that applySchema used to drop on the way in. */
 test('Issue #639 + #642: related tables apply into a fresh workspace, every cardinality kept', () => {
   const w = new Weave();
   w.createSpace({ name: 'S' });
@@ -225,7 +202,6 @@ test('Issue #639 + #642: related tables apply into a fresh workspace, every card
   assert.equal(fresh.findField(fresh.getTable('S/D'), 'A name').type, 'lookup');
   assert.deepEqual(fresh.applySchema(w.describeSchema().filter((s) => !s.system)), [], 'and the copy reads back as the same document');
 
-  // A relation added to tables that already exist reads both ends too.
   const later = new Weave();
   later.createSpace({ name: 'S' });
   for (const n of ['A', 'B']) later.createTable({ space: 'S', name: n });

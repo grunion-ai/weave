@@ -1,22 +1,13 @@
-/* Feature #248 — the onboarding welcome, in the browser. A new person on an
-   empty instance gets one held dialog: welcome, name the workspace (the
-   default arrives filled in and focused), then an optional starter. Enter
-   takes the primary button, Skip on every step and Esc finish with the
-   defaults, and every path lands in a working workspace that never asks
-   again. Walked in both themes and at phone width. Playwright is NOT a
-   dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
 
-// A second, empty member of the hub holds the name "taken".
 const other = new Weave();
 other.state.meta.name = 'taken';
 const s = await launch('onboarding welcome', (weave) => { weave.state.meta.name = 'workspace'; },
   { server: () => ({ workspaces: { taken: other } }) });
 
-/* Back to a new, empty instance: no spaces of its own, the first name, no mark. */
 async function reset() {
   for (const sp of s.weave.listSpaces().filter((x) => !x.system)) s.weave.deleteSpace(sp.id, { hard: true });
   if (s.weave.state.meta.name !== 'workspace') {
@@ -37,7 +28,6 @@ async function open({ theme = 'light', viewport = null } = {}) {
 await import('../public/starter-core.js');
 const { TEMPLATES, spec, firstTable } = globalThis.WeaveStarters;
 
-/* The server builds before it answers; poll the engine until it has. */
 async function waitFor(get, ms = 10000) {
   for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 50))) {
     const v = get();
@@ -49,8 +39,6 @@ async function waitFor(get, ms = 10000) {
 const heading = (page) => page.locator('.wv-onboard h2').textContent();
 const step = (page, n) => page.waitForSelector(`.wv-onboard[data-step="${n}"]`);
 
-/* Resolves once the page has reloaded into the workspace and asked again:
-   the second answer must be no. */
 async function landsHome(page, act) {
   const asked = page.waitForResponse((r) => r.url().endsWith('/api/onboarding') && r.request().method() === 'GET');
   await act();
@@ -93,7 +81,6 @@ if (s) {
     await step(page, 2);
     assert.equal(await heading(page), 'Your workspace');
     assert.equal(await page.locator('.wv-onboard-line').textContent(), 'Rename it anytime from the sidebar.');
-    // Focus lands in the name field, holding the default.
     assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Workspace name');
     assert.equal(await page.inputValue('.wv-onboard input'), 'workspace');
     await page.keyboard.press('Enter');
@@ -132,7 +119,6 @@ if (s) {
     const page = await open({ theme: 'dark' });
     await page.click('.wv-onboard .btn-primary');
     await step(page, 2);
-    // Typing replaces the selected default.
     await page.keyboard.type('Acme Team');
     await page.keyboard.press('Enter');
     await step(page, 3);
@@ -145,10 +131,6 @@ if (s) {
     await page.close();
   });
 
-  /* Every finished path: the name kept or edited, times starting empty or
-     each template. Each lands in the workspace under the right name, with
-     exactly the template's tables, opened on its first, marked, and with
-     nothing left to ask. */
   for (const edit of [false, true]) {
     for (const template of [null, ...TEMPLATES]) {
       test(`path: ${edit ? 'edit the name' : 'keep the name'}, then ${template ? `the ${template.id} starter` : 'start empty'}`, async () => {
@@ -178,11 +160,6 @@ if (s) {
     }
   }
 
-  /* Every way out early: Skip setup or Esc, on each step, after typing a
-     name where there is one to type. Leaving keeps the defaults, builds
-     nothing, and counts as done. On step 3 that drops a name already
-     confirmed with Continue; Issue #615 asks whether it should, and these
-     two step-3 cases change with its answer. */
   for (const at of [1, 2, 3]) {
     for (const how of ['Skip setup', 'Esc']) {
       test(`leave with ${how} on step ${at}: the defaults, nothing built, done`, async () => {
@@ -240,7 +217,6 @@ if (s) {
     assert.equal(await page.locator('.wv-onboard').count(), 0);
     assert.deepEqual(asked, [], 'a populated home does not even ask');
     await page.close();
-    // Emptied again, but onboarded once already: no second welcome.
     s.weave.deleteSpace('Ops', { hard: true });
     s.weave.markOnboarded();
     const again = await s.browser.newPage();

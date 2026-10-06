@@ -1,12 +1,3 @@
-/* Select and multi-select filters (Issue #319) and the count under the
-   Filters popover (Issue #448). A view's filters hold option names for a
-   single-select or multi-select field beside workflow states and toggle
-   labels: options in one field combine with OR, fields with AND, and a
-   multi-select row matches when it has any chosen option. The grid's
-   where-clause is `in` over those names, which the query answers for both
-   kinds. `countAll: true` adds `all` to a query's answer, the table's
-   undeleted rows before any where or search, so the popover can read "X of
-   N" off the read the grid already makes. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';

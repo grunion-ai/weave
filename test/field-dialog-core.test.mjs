@@ -1,9 +1,3 @@
-/* Tests for public/field-dialog-core.js — the pure logic behind the unified
-   field dialog (design review 2026-08-22: direction A+E). The dialog's state
-   object and the canonical {type, config} definition it round-trips.
-   Source-contract tests keep the catalog and formula function list from
-   drifting away from src/engine.js and src/formula.js. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -18,13 +12,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ENGINE = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
 const FORMULA = readFileSync(join(ROOT, 'src/formula.js'), 'utf8');
 
-/* ---------- source contracts ---------- */
-
 test('type catalog matches the engine DEFINABLE_TYPES exactly', () => {
   const literal = ENGINE.match(/export const DEFINABLE_TYPES = \[([\s\S]*?)\];/)[1];
   const engineTypes = [...literal.matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
-  // relation is a grid tile too (Kyle, 2026-08-23) but is created through
-  // addRelation, not addField — it sits outside DEFINABLE_TYPES.
   const gridTypes = core.FIELD_TYPES.filter((t) => !t.computed && t.id !== 'relation').map((t) => t.id);
   assert.deepEqual(gridTypes.sort(), [...engineTypes].sort());
   assert.ok(core.FIELD_TYPES.some((t) => t.id === 'relation'), 'relation is a type of field');
@@ -53,8 +43,6 @@ test('aggregates match the engine', () => {
   assert.deepEqual(core.AGGREGATES, aggs);
 });
 
-/* ---------- definitionFromState ---------- */
-
 test('select state produces options config, colors kept', () => {
   const def = core.definitionFromState({
     type: 'select',
@@ -78,7 +66,6 @@ test('workflow state produces states config with categories, in list order, no d
 });
 
 test('number config is canonical-minimal, like the engine normaliser output', () => {
-  // format 'number' and empty unit are defaults — they must not appear.
   const plain = core.definitionFromState({ type: 'number', number: { format: 'number', unit: '', decimals: null, separator: false } });
   assert.deepEqual(plain, { type: 'number', config: {} });
   const rich = core.definitionFromState({ type: 'number', number: { format: 'currency', currency: 'USD', decimals: 2, separator: true } });
@@ -97,9 +84,6 @@ test('date config drops the long format and the 12h clock (the defaults), keeps 
   assert.equal(back.clock, '12h');
 });
 
-/* Issue #197: a range default is { start, end } on the wire and JSON text in
-   the dialog state, one string the form edits — never '[object Object]',
-   never a string the engine refuses. */
 test('a daterange default round-trips as a range: JSON text in state, an object in the definition', () => {
   const def = core.definitionFromState({ ...core.blankState('daterange'), default: '{"start":"2026-10-01","end":"2026-10-05"}' });
   assert.deepEqual(def.config.default, { start: '2026-10-01', end: '2026-10-05' });
@@ -122,9 +106,6 @@ test('formula toggle wins over the grid type', () => {
   assert.deepEqual(def, { type: 'formula', config: { expression: 'if(Estimate > 5, "big", "small")' } });
 });
 
-/* Issue #576: Date picked, year and day unticked, Formula ticked. The grain
-   was dropped here first; a formula over the Date tile now carries it, whole
-   even when full, since the grain is what marks a date result. */
 test('a formula over the Date tile carries its grain and style, and reopens on the Date tile', () => {
   const month = core.definitionFromState({
     ...core.blankState('date'), computed: 'formula', expression: '[Date]',
@@ -138,13 +119,11 @@ test('a formula over the Date tile carries its grain and style, and reopens on t
   assert.equal(back.computed, 'formula');
   assert.deepEqual(back.date.grain, { year: false, month: true, day: false });
   assert.deepEqual(core.definitionFromState(back), month, 'the definition round-trips');
-  // The schema's flat view folds back to the same definition, and an edit sends every date lane.
   const view = core.definitionFromFieldView({ type: 'formula', expression: '[Date]', grain: ['month'], format: 'short' });
   assert.deepEqual(view.config, { format: 'short', expression: '[Date]', grain: ['month'] });
   const patch = core.editPatchConfig({ type: 'formula' }, month, back);
   assert.deepEqual(patch.grain, ['month']);
   for (const k of ['currency', 'time', 'clock', 'zone']) assert.equal(patch[k], null, `${k} clears`);
-  // A formula over any other tile keeps the number costume and no grain.
   assert.equal(core.editPatchConfig({ type: 'formula' }, { type: 'formula', config: { expression: '1' } }, {}).grain, null);
 });
 
@@ -155,10 +134,6 @@ test('rollup includes targetField only when aggregate needs one', () => {
   assert.deepEqual(sum.config, { relationField: 'Tasks', aggregate: 'sum', targetField: 'Estimate' });
 });
 
-/* Issue #222: a rollup over a WHOLE table — the Σ under a grid column —
-   names the table it reads (`via`) instead of a relation to cross. The
-   footer picker and the API could author one; the dialog could not, so
-   `via` had no spelling in the dialog's state at all. */
 test('a rollup over a whole table names the table, not a relation', () => {
   const count = core.definitionFromState({ type: 'rollup', via: 'Agent/Sessions', relationField: 'Tables', aggregate: 'count', targetField: 'Cost' });
   assert.deepEqual(count, { type: 'rollup', config: { via: 'Agent/Sessions', aggregate: 'count' } });
@@ -175,8 +150,6 @@ test('a space rollup column reopens on its table, filter and all', () => {
   };
   const def = core.definitionFromFieldView(view);
   assert.deepEqual(def, { type: 'rollup', config: { via: 'Agent/Sessions', targetField: 'Cost', aggregate: 'sum', where: [['Kind', '=', 'scheduled']] } });
-  // A relation rollup still folds back onto the relation (the field view
-  // spells THAT one `via` too — the table is `viaTable`).
   assert.deepEqual(core.definitionFromFieldView({ type: 'rollup', via: 'Tasks', targetField: 'Estimate', aggregate: 'sum' }).config,
     { relationField: 'Tasks', targetField: 'Estimate', aggregate: 'sum' });
 });
@@ -188,7 +161,6 @@ test('default value is typed per field type, empty means absent', () => {
   assert.deepEqual(core.definitionFromState({ type: 'multiselect', options: [{ name: 'a', default: true }, { name: 'b', default: true }, { name: 'c' }], default: '' }).config.default, ['a', 'b']);
 });
 
-/* ---------- toggle: two labels and a default (Feature #202) ---------- */
 test('a toggle definition carries its two labels; blank labels fall back; the default is typed', () => {
   const def = core.definitionFromState({ type: 'toggle', toggle: { on: ' Live ', off: 'Paused' }, default: 'true' });
   assert.deepEqual(def, { type: 'toggle', config: { on: 'Live', off: 'Paused', default: true } });
@@ -211,8 +183,6 @@ test('a toggle column reopens on its stored labels and patches both lanes', () =
   assert.deepEqual(core.typeChoices('checkbox').map((t) => t.id), ['checkbox', 'toggle', 'text']);
   assert.deepEqual(core.typeChoices('toggle').map((t) => t.id), ['toggle', 'checkbox', 'text']);
 });
-
-/* ---------- stateFromDefinition round trip ---------- */
 
 test('definition -> state -> definition round-trips for every shape', () => {
   const defs = [
@@ -254,14 +224,10 @@ test('option and state ids survive the round trip when present', () => {
   assert.equal(wfBack.config.states[0].id, 'open');
 });
 
-/* ---------- type migration offer (2026-08-23) ---------- */
-
 test('TYPE_MIGRATIONS mirrors the engine export exactly', async () => {
   const { TYPE_MIGRATIONS } = await import('../src/engine.js');
   assert.deepEqual(core.TYPE_MIGRATIONS, TYPE_MIGRATIONS);
 });
-
-/* ---------- credentials (Feature #143) ---------- */
 
 test('the credential sets mirror the engine, so the tray cannot offer a refused kind', async () => {
   const { CREDENTIAL_KINDS, KEYSTORES } = await import('../src/engine.js');
@@ -302,8 +268,6 @@ test('migrateState carries config across a compatible move so the form can be ad
   assert.equal(num.default, '', 'a default of the old type does not survive');
 });
 
-/* ---------- units vs currency, numbers and formulas (2026-08-23) ---------- */
-
 test('number state: currency code rides `currency`, free text rides `unit`, never both', () => {
   const cur = core.definitionFromState({ type: 'number', number: { format: 'currency', currency: 'EUR', unit: 'days', decimals: 2, separator: false } });
   assert.deepEqual(cur.config, { format: 'currency', currency: 'EUR', decimals: 2 });
@@ -331,8 +295,6 @@ test('the currency list leads with USD, EUR, MXN, CNY, JPY, RUB, CAD (Kyle, 2026
 });
 
 
-/* ---------- relation as a field type; files vs documents (2026-08-23) ---------- */
-
 test('relation state produces the addRelation payload; files carry multiple; documents carry kind', () => {
   const rel = core.definitionFromState({ type: 'relation', relation: { targetDb: 'tbl-1', cardinality: 'many-to-many', inverseName: 'Tasks' } });
   assert.deepEqual(rel, { type: 'relation', config: { targetDb: 'tbl-1', cardinality: 'many-to-many', inverseName: 'Tasks' } });
@@ -354,22 +316,17 @@ test('select and files wear distinct icons from multiselect and document', () =>
 });
 
 test('url wears a link icon, not the command glyph (Kyle, 2026-08-23)', () => {
-  // Still a link, no longer an emoji: the mark set draws it, so the tile is
-  // monochrome and the same size as the marks beside it (#138).
   assert.equal(core.FIELD_TYPES.find((t) => t.id === 'url').icon, 'lucide:link');
   assert.equal(core.FIELD_TYPES.find((t) => t.id === 'key').icon, '✱', 'a key reads as redacted text');
 });
 
 test('no field-type tile is a colour emoji (Feature #138)', () => {
-  // Emoji_Presentation, not Extended_Pictographic: the ballot box is a dingbat
-  // that renders as monochrome text and belongs beside the other typed marks.
   const emoji = /\p{Emoji_Presentation}/u;
   for (const t of core.FIELD_TYPES) {
     assert.doesNotMatch(t.icon, emoji, `${t.id} still wears an emoji`);
   }
 });
 
-/* ---------- workflow states: icons, reorder, no default radio (2026-08-23) ---------- */
 test('states keep icons; no default is sent (the first state is the default); moveItem reorders', () => {
   const def = core.definitionFromState({ type: 'workflow', states: [{ id: 'a', name: 'A', category: 'other', icon: '⚑' }, { id: 'b', name: 'B', category: 'done' }] });
   assert.deepEqual(def.config.states, [{ id: 'a', name: 'A', category: 'other', icon: '⚑' }, { id: 'b', name: 'B', category: 'done' }]);
@@ -379,12 +336,6 @@ test('states keep icons; no default is sent (the first state is the default); mo
   assert.deepEqual(core.moveItem(['a', 'b', 'c'], 2, 0), ['c', 'a', 'b']);
   assert.ok(core.STATE_ICONS.includes('') && core.STATE_ICONS.length >= 8);
 });
-
-/* ---------- one icon catalogue (Issue #87) ----------
-   A table picked from 101 flat SVGs; a select option picked from fourteen
-   typographic marks in a different file, through a different control, at a
-   different size. `iconChoices` is the one vocabulary both draw from: the
-   marks that carry meaning a glyph cannot, then the whole flat set. */
 
 test('one catalogue serves a table and a select option alike', () => {
   const flat = ['activity', 'bug', 'star'];
@@ -396,8 +347,6 @@ test('one catalogue serves a table and a select option alike', () => {
   assert.ok(ids.includes('✓'), 'the marks are in the same catalogue');
   assert.equal(new Set(ids).size, ids.length, 'no choice appears twice');
 
-  // Every mark that a stored state already wears must still be offered, or
-  // opening the picker on an old row would drop its icon.
   for (const mark of core.STATE_ICONS.filter(Boolean)) assert.ok(ids.includes(mark), mark);
 });
 
@@ -411,8 +360,6 @@ test('a mark is labelled by what it means, so search finds it by word', () => {
 });
 
 test('inside a category the marks come first — they say a state, the icons name a thing', () => {
-  // Since 2026-08-29 marks no longer sit in one block ahead of everything;
-  // they sort into their categories and lead within each.
   const choices = core.iconChoices(['activity', 'bug', 'chart-bar']);
   const status = choices.filter((c) => c.hint === 'status');
   const firstFlat = status.findIndex((c) => c.lucide);
@@ -421,13 +368,6 @@ test('inside a category the marks come first — they say a state, the icons nam
   assert.equal(choices.find((c) => c.id === 'lucide:bug').hint, 'status');
   assert.equal(choices.find((c) => c.id === 'lucide:chart-bar').hint, 'data');
 });
-
-/* ---------- categories (Kyle, 2026-08-29) ----------
-   "Icons should be shown in a grid not a list, no names are needed next to
-   each." A grid needs somewhere to break, so every choice carries the
-   category it belongs to. The category rides in `hint`, which pickerCore
-   already ranks against, so searching 'money' finds the whole group without
-   a second search path. */
 
 test('every offered icon lands in exactly one category', () => {
   const flat = ['wallet', 'dollar-sign', 'user', 'calendar', 'arrow-up', 'message-circle', 'lock', 'camera', 'house', 'file', 'chart-bar'];
@@ -454,7 +394,6 @@ test('choices come out grouped, in category order, ready for a grid', () => {
   const groups = core.iconGroups(core.iconChoices(flat));
   assert.deepEqual(groups.map((g) => g.name), core.ICON_CATEGORIES.map((g) => g.name).filter((n) => groups.some((g) => g.name === n)));
   for (const g of groups) assert.ok(g.items.length, `${g.name} is empty and should not be a group`);
-  // 'No icon' is a control, not an icon, and never sits inside a category.
   assert.equal(groups.some((g) => g.items.some((i) => i.id === '')), false);
 });
 
@@ -465,9 +404,6 @@ test('a name nobody classified still gets offered rather than vanishing', () => 
   assert.ok(odd.hint, 'and must still land in some category');
 });
 
-/* Issue #128 — the formula builder's field chips must insert a token the
-   parser accepts: bare only when the name is a safe identifier, [bracketed]
-   for spaces, punctuation, keywords, and function-name collisions. */
 test('formulaFieldToken quotes exactly what the grammar cannot take bare', () => {
   const t = core.formulaFieldToken;
   assert.equal(t('Estimate'), 'Estimate');
@@ -481,10 +417,6 @@ test('formulaFieldToken quotes exactly what the grammar cannot take bare', () =>
   assert.equal(t('min'), '[min]', 'a function name would parse as a call');
 });
 
-/* ---------- grain and costume (2026-09-02) ----------
-   The tray offers the parts a date field captures (year · month · day, a
-   time), and lists only the styles the chosen grain can wear. The state is
-   the dialog's shape; the definition is the engine's minimal config. */
 test('DATE_FORMATS is the engine\'s nine styles; NUMBER_FORMATS gained compact', () => {
   assert.deepEqual(core.DATE_FORMATS, ['iso', 'us', 'eu', 'long', 'short', 'month', 'quarter', 'ordinal', 'relative']);
   assert.deepEqual(core.NUMBER_FORMATS, ['number', 'currency', 'percent', 'compact']);
@@ -559,14 +491,6 @@ test('the Name field\'s row term rides the definition both ways', () => {
   assert.equal(core.definitionFromState(core.blankState('text')).config.term, undefined, 'unset stays absent');
 });
 
-/* ---------- the fold-back and the patch body (moved from app.js) ----------
-   definitionFromFieldView folds the schema's flattened field view back into
-   the canonical {type, config} the dialog state round-trips with; the tray
-   reopens showing what the column actually is. editPatchConfig builds the
-   PATCH body per type — the engine merges config keys, so clearing a costume
-   key means sending an explicit null. Both were private to app.js and only
-   regex-tested; here they are behavior-tested. */
-
 test('definitionFromFieldView folds a credential column back into config', () => {
   const d = core.definitionFromFieldView({ type: 'key', kind: 'ssn', keystore: 'vault' });
   assert.deepEqual(d, { type: 'key', config: { kind: 'ssn', keystore: 'vault' } });
@@ -628,10 +552,6 @@ test('editPatchConfig builds each type\'s patch body', () => {
   assert.equal(dflt.default, null, 'an emptied input clears the default');
 });
 
-/* ---------- chips that teach (formula builder direction A, 2026-09-07) ----------
-   Every function chip carries its group, a one-line doc and an example that
-   parses; the builder groups the chips the way the grammar groups them, and
-   the fields a formula cannot read are listed with the reason, not hidden. */
 test('every formula function names its group, a doc and an example that parses', async () => {
   const { check } = await import('../src/formula.js');
   assert.deepEqual(core.FORMULA_GROUPS, ['logic', 'text', 'number', 'date']);
@@ -668,11 +588,6 @@ test('formulaFieldChoices greys out what a formula cannot read, and drops the fi
   assert.equal(choices[0].token, 'Amount');
 });
 
-/* ---------- the agent panel (formula builder direction C, 2026-09-07) ----------
-   The dialog prints the calls an agent would make for what was just built:
-   check, save, read a cell back — CLI lines and the MCP tool sequence —
-   from what it already knows (table, field, expression). A pure string
-   builder; the browser test only checks it is on the page. */
 test('agentRecipe for a new field: check, field add, get, and the MCP sequence', () => {
   const r = core.agentRecipe({ table: 'Deals', field: 'Health', expression: 'if([Amount] > 10000, "major", "minor")' });
   assert.deepEqual(r.mcp, ['weave_check_formula', 'weave_add_field', 'weave_get_entity']);
@@ -701,11 +616,6 @@ test('agentRecipe quotes for the shell and stands in for what is not typed yet',
   assert.equal(spaced.cli[1].cmd, `weave field add Deals 'Deal Health' formula --config '{"expression":"1"}'`, 'a name with a space is quoted');
 });
 
-/* ---------- autocomplete (formula builder direction D, 2026-09-07) ----------
-   `[` offers fields and two letters offer functions, from the same two
-   lists the chips draw from, ranked by prefix. The pure half: given the
-   text and the caret, what is being typed and what to offer; and how a
-   pick rewrites the text. */
 const FIELDS = [
   { name: 'Stage', type: 'select' }, { name: 'Start Date', type: 'date' }, { name: 'Amount', type: 'number' },
   { name: 'Notes', type: 'document' }, { name: 'Health', type: 'formula' },
@@ -744,8 +654,6 @@ test('formulaApply rewrites the word under the caret and lands the caret inside 
   assert.deepEqual(core.formulaApply('ro + 1', mid, mid.items[0]), { text: 'round() + 1', caret: 6 });
 });
 
-/* ---------- the number display (Feature #230) ---------- */
-
 test('the display and its scale ride the number costume, canonical-minimal', () => {
   assert.deepEqual(core.NUMBER_DISPLAYS, ['text', 'bar', 'ring', 'heat']);
   const blank = core.blankState('number');
@@ -781,8 +689,6 @@ test('an edit sends every display lane, so going back to text clears the scale',
   assert.equal(patch.scale, null);
 });
 
-/* ---------- the rating type (Feature #231) ---------- */
-
 test('rating is a tile with a star, and a fresh one is five stars', () => {
   const tile = core.FIELD_TYPES.find((t) => t.id === 'rating');
   assert.ok(tile && !tile.computed, 'a value tile');
@@ -804,8 +710,6 @@ test('a rating round-trips through the form, the schema view and an edit', () =>
   assert.equal(patch.icon, 'lucide:heart');
   assert.equal(patch.default, null, 'no default, so an edit clears any');
 });
-
-/* ---------- the rating: any max, a clickable default (Feature #234) ---------- */
 
 test('the dialog takes any whole-number max up to the engine\'s guard, five unless named', async () => {
   const { RATING_MAX } = await import('../src/engine.js');
@@ -858,8 +762,6 @@ test('a default above a lowered max clamps down, in the state and in the definit
   assert.equal(core.definitionFromState(state).config.default, 4, 'the definition carries the clamped default');
 });
 
-/* ---------- formula lists and the sparkline (Feature #232) ---------- */
-
 test('sortby is in the builder catalog, and a formula can wear a sparkline with a style', () => {
   const sortby = core.FORMULA_FUNCTIONS.find((f) => f.name === 'sortby');
   assert.ok(sortby, 'the chip is offered');
@@ -878,7 +780,6 @@ test('sortby is in the builder catalog, and a formula can wear a sparkline with 
   assert.equal(patch.style, null, 'back to text clears the style');
 });
 
-/* ---------- the cell colour (Feature #235) ---------- */
 test('the colour rides the number costume and the rating, canonical-minimal', () => {
   assert.deepEqual(core.CELL_COLORS, ['ink', 'icon', 'accent']);
   assert.deepEqual(Object.keys(core.CELL_COLOR_LABELS), core.CELL_COLORS, 'every colour has a label');
@@ -902,7 +803,6 @@ test('a colour round-trips through the form and the flat schema view', () => {
     { type: 'formula', config: { expression: '[A] * 2', color: 'icon', display: 'heat' } },
     { type: 'rating', config: { max: 5, icon: 'lucide:star', color: 'accent' } },
   ]) assert.deepEqual(core.definitionFromState(core.stateFromDefinition(def)), def);
-  // The schema says ink out loud; the fold-back drops it again.
   assert.deepEqual(core.definitionFromFieldView({ name: 'R', type: 'rating', max: 5, icon: 'lucide:star', color: 'ink' }).config, { max: 5, icon: 'lucide:star' });
   assert.deepEqual(core.definitionFromFieldView({ name: 'S', type: 'number', display: 'ring', color: 'ink' }).config, { display: 'ring' });
   assert.deepEqual(core.definitionFromFieldView({ name: 'S', type: 'number', display: 'ring', color: 'icon' }).config, { display: 'ring', color: 'icon' });

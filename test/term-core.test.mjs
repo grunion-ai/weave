@@ -1,6 +1,3 @@
-/* Tests for public/term-core.js — what one row is called, the pure half.
-   The same module runs in the browser (classic script) and in the engine
-   (side-effect import), so this suite is the contract both sides share. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

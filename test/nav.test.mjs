@@ -1,6 +1,3 @@
-/* Sidebar navigation, driven through a real browser.
-   Playwright is not a dependency (house rule: zero runtime deps); it is
-   imported dynamically and the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -8,8 +5,6 @@ import { read, APP, HTML, rulesFor, fnBodyOf } from './lib/source.mjs';
 
 const CSS = read('public/style.css');
 
-/* Source-level contracts, so the browser suite below is not the only thing
-   holding the wordmark together on a bare checkout. */
 test('the wordmark markup is a link and the rail points it at this workspace', () => {
   assert.match(HTML, /<a id="ws-name"[^>]*href="\/"/, 'the wordmark ships as an anchor');
   const rail = APP.slice(APP.indexOf('async function buildWsRail'), APP.indexOf('async function buildWsRail') + 1400);
@@ -28,11 +23,6 @@ test('the wordmark reads as the wordmark until you point at it', () => {
     'and it keeps the wordmark color — nav blue goes muddy on the dark sidebar');
   assert.match(hover, /:focus-visible/, 'the keyboard gets the same affordance');
 });
-
-/* ---------- the nav kebab (Kyle, 2026-08-31) ----------
-   The table row's right edge is a ⋮ menu carrying the table verbs, not the
-   entity count. Source and CSS contracts, since Playwright is optional. */
-
 
 test('the sidebar has no relation-map row; the map lives on the workspace and space pages', () => {
   const nav = APP.slice(APP.indexOf('function renderNav()'), APP.indexOf('function renderNav()') + 2400);
@@ -102,8 +92,6 @@ test('the kebab is hidden until hover, the active row, keyboard focus, or an ope
 });
 
 test('the kebab paints in both themes by inheriting the house menu tokens', () => {
-  // The nav rules only place and reveal; every colour comes from .dots-btn /
-  // .dl-menu, which read Tabler tokens that flip with data-bs-theme.
   for (const sel of ['.nav-db .nav-db-menu', '.nav-db-menu .dots-btn']) {
     const r = rulesFor(sel);
     for (const k of Object.keys(r)) assert.ok(!/color|background/.test(k), `${sel} must not hard-code ${k}`);
@@ -122,10 +110,6 @@ const s = await launch('sidebar navigation', (weave) => {
 });
 if (s) {
   const { base, browser, weave } = s;
-  /* Kyle, 2026-08-24: "allow clicking the workspace name to take you to the
-     workspace entity page in addition to the workspace selector chip." The
-     wordmark sat above every page as dead text; the only way home was the
-     rail chip or a crumb. */
   test('the workspace wordmark opens the workspace page', async () => {
     const page = await browser.newPage();
     try {
@@ -134,7 +118,6 @@ if (s) {
       await page.click('#ws-name');
       await page.waitForSelector('#main .view-title');
       const title = await page.locator('#main .view-title').first().inputValue();
-      // The page title is the workspace's own name (Issue #594): read it back.
       assert.equal(title.trim(), weave.state.meta.name, 'the workspace page is the workspace, by name');
       const listed = await page.locator('#main').textContent();
       assert.match(listed, /Activity/, 'and it is the page that carries the workspace-wide tables');

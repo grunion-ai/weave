@@ -1,10 +1,3 @@
-/* The activity cap made visible in a real browser (Issue #281). An entity past
-   ACTIVITY_CAP entries says how many older ones it no longer holds: one line
-   under its Activity pane, and one sentence in the entity's Activity table
-   note. An entity that never hit the cap shows neither. Both themes.
-
-   Playwright is imported dynamically by ./lib/browser.mjs; the suite skips on
-   a bare checkout (house rule: zero runtime deps). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

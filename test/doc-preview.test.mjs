@@ -1,16 +1,3 @@
-/* A description previews as prose, not as markup (Kyle, 2026-08-27).
-
-   "it should always show a preview of the properly formatted first few lines,
-   not an md document chip." A chip said the field existed and what kind it
-   was; it never said what it SAID. The preview does, and it does it in the
-   reader's alphabet: a heading arrives as its text, a list as its items, bold
-   as bold — never a hash, a dash or a pair of asterisks.
-
-   inlineTokens is the one inline grammar and stays that way. docPreview is the
-   block pass in front of it: it decides which lines are worth showing, and the
-   caller dresses each line through inlineTokens. A document that is not prose
-   at all — an HTML app, a slide model, a mermaid diagram — is NAMED rather
-   than flattened, because a doctype makes a terrible summary. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -30,8 +17,6 @@ test('list markers are stripped and blank lines are skipped', () => {
 });
 
 test('inline marks survive as marks, not syntax', () => {
-  // docPreview is the BLOCK pass and hands the inline level on untouched —
-  // one inline grammar in the browser, and it is inlineTokens.
   const line = LIB.docPreview('## **bold** text').lines[0];
   assert.equal(line, '**bold** text', 'the heading went, the emphasis stayed for the tokenizer');
   const tokens = LIB.inlineTokens(line);
@@ -86,8 +71,6 @@ test('the preview stops at the line budget', () => {
 });
 
 test('the kind is the one the chips already agreed on', () => {
-  // docPreview classifies through docKind so a preview and a chip can never
-  // disagree about what a document is.
   for (const src of ['# md', '{"a":1}', 'graph TD\n A-->B', '<!doctype html><html></html>']) {
     assert.equal(LIB.docPreview(src).kind, LIB.docKind(src));
   }

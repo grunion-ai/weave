@@ -1,7 +1,3 @@
-/* The vocabulary is only useful if it is true. Every list in src/vocabulary.js
-   is a copy of a closed set that lives somewhere else — the engine's private
-   constants, the browser's field dialog, the vendored icon file — so each one
-   is held against its source here. Drift fails the suite, not the agent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -25,23 +21,17 @@ test('every described type says what it renders as and which config keys it take
     assert.ok(f.renders && f.renders.length > 8, `${f.type} must say what a reader sees`);
     assert.ok(Array.isArray(f.config), `${f.type} must name its config keys`);
   }
-  // The keys that decide how a number reads are the engine's, not a guess.
   const costume = list(ENGINE, 'NUMBER_COSTUME_KEYS');
   const number = FIELD_TYPE_VOCABULARY.find((f) => f.type === 'number');
   for (const k of costume) assert.ok(number.config.includes(k), `number is missing the ${k} key`);
 });
 
 test('the option palette is the ten-hue ramp, under the ramp names', async () => {
-  // Generated from chip-core, because a hand-kept copy drifted: it stopped at
-  // eight hues and called pink "magenta", and a write carrying the published
-  // name was stored as slate (Issue #551).
   await import('../public/chip-core.js');
   const ramp = globalThis.chipCore;
   assert.deepEqual(OPTION_COLORS.map((c) => c.name), Object.keys(ramp.HUE_HEX));
   assert.deepEqual(OPTION_COLORS.map((c) => c.value), Object.values(ramp.HUE_HEX));
   for (const c of OPTION_COLORS) assert.ok(c.name, `${c.value} needs a name an agent can reason about`);
-  // Every alias weave still accepts is published beside the hue it resolves to,
-  // so a caller holding an old name can see what it became.
   for (const [alias, hue] of Object.entries(ramp.HUE_ALIAS)) {
     const entry = OPTION_COLORS.find((c) => c.name === hue);
     assert.ok(entry?.aliases?.includes(alias), `${hue} does not publish its '${alias}' alias`);
@@ -58,8 +48,6 @@ test('the icon names are the curated inventory, every one of them vendored', asy
 });
 
 test('the icon vocabulary gives the value form, not just the names', () => {
-  // A bare 'ticksquare' is a legal string that paints the word "ticksquare" in
-  // the nav — verified live, 2026-08-24. The stored value is prefixed.
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const renderer = app.slice(app.indexOf('function iconEl'), app.indexOf('function iconEl') + 2000);
   assert.match(renderer, /weaveIconRegistry/, 'the renderer resolves the prefixed form through the registry');
@@ -68,14 +56,9 @@ test('the icon vocabulary gives the value form, not just the names', () => {
   assert.equal(VOCABULARY.icons.aliases.notification, 'bell');
   assert.match(VOCABULARY.icons.fallback, /refused/, 'and says that anything else is refused');
   assert.ok(VOCABULARY.icons.names.includes('compass'));
-  // Marks are the other half of the one vocabulary (Issue #87): stored as
-  // the character, drawn as a vector on the same canvas as the flat set.
   assert.ok(VOCABULARY.icons.marks.includes('✓'));
   assert.ok(VOCABULARY.icons.marks.includes('◔'));
   assert.match(renderer, /weaveMarkIcons/, 'the renderer draws a mark rather than spelling it');
-  // The picker writes the same form the vocabulary promises.
-  // The catalogue moved into field-dialog-core with Issue #87 so one list
-  // serves a table, a select option and a workflow state alike.
   const core = readFileSync(join(ROOT, 'public/field-dialog-core.js'), 'utf8');
   assert.match(core, /id: `lucide:\$\{n\}`/, 'the UI picker stores the prefixed form');
   assert.match(app, /fieldDialogCore\.iconChoices/, 'and the app picks from that catalogue');
@@ -86,12 +69,10 @@ test('the closed sets match the engine and the field dialog', () => {
   assert.deepEqual(VOCABULARY.aggregates, list(ENGINE, 'AGGREGATES'));
   assert.deepEqual(VOCABULARY.documentKinds, list(ENGINE, 'DOCUMENT_KINDS'));
   assert.deepEqual(VOCABULARY.numberFormats, list(DIALOG, 'NUMBER_FORMATS'));
-  // Feature #230: the engine, the dialog and the vocabulary name one set of displays.
   assert.deepEqual(VOCABULARY.numberDisplays, list(ENGINE, 'NUMBER_DISPLAYS'));
   assert.deepEqual(VOCABULARY.numberDisplays, list(DIALOG, 'NUMBER_DISPLAYS'));
   assert.deepEqual(VOCABULARY.sparklineStyles, list(ENGINE, 'SPARKLINE_STYLES'));
   assert.deepEqual(VOCABULARY.sparklineStyles, list(DIALOG, 'SPARKLINE_STYLES'));
-  // Feature #235: one set of cell colours.
   assert.deepEqual(VOCABULARY.cellColors, list(ENGINE, 'CELL_COLORS'));
   assert.deepEqual(VOCABULARY.cellColors, list(DIALOG, 'CELL_COLORS'));
   assert.deepEqual(VOCABULARY.dateFormats, list(DIALOG, 'DATE_FORMATS'));
@@ -110,7 +91,6 @@ test('the column width rules are the ones the grid enforces', () => {
 });
 
 test('the registries name the columns that are schema writes', () => {
-  // Writing these runs the schema verb (engine #interceptUpdate).
   assert.deepEqual(Object.keys(VOCABULARY.registries), ['Workspace/Workspaces', 'Workspace/Spaces', 'Workspace/Tables', 'Workspace/Fields']);
   assert.ok(VOCABULARY.registries['Workspace/Tables'].includes('Field Order'));
   assert.ok(VOCABULARY.registries['Workspace/Fields'].includes('Definition'));
@@ -127,9 +107,6 @@ test('the vocabulary is served, so a remote agent has it too', async () => {
   } finally { server.close(); }
 });
 
-/* Direction A (2026-09-07): the function catalog the dialog draws its chips
-   from is the one the vocabulary serves — signature, group, doc and example
-   verbatim — so an agent reads the same card a person hovers. */
 test('the formula functions are served with signature, group, doc and example', async () => {
   await import('../public/field-dialog-core.js');
   const FORMULA = readFileSync(join(ROOT, 'src/formula.js'), 'utf8');

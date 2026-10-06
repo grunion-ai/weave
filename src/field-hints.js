@@ -1,22 +1,3 @@
-/* What a schema write tells the agent that made it (Issues #578, #579, #581,
-   #582). A stock agent with no weave skills read none of the Handbook: it
-   stored an account as text, an amount with no currency, eight grey options,
-   and named the workspace after the task. The 2026-10-02 disclosure eval
-   found the fixes that reach a model which never asks are the ones pushed on
-   the reply to the write it just made, so add-field, update-field,
-   create-table and create-space answer with two lists:
-
-   - next[]: the settings the field's type takes that are still unset, one
-     line each with when to use it, and the settings the choices already made
-     opened (a currency format opens the code and accounting; a display opens
-     the scale and the colour). Never the whole tree: one layer at a time.
-   - hints[]: a likely modelling slip in the write, one sentence each with
-     its fix: a text column named like a table, a money-named number with no
-     currency, options all slate, status options with no icons, a key the
-     type does not take, a space named after its workspace.
-
-   Hints never block a write and never change what is stored. Pure: the
-   caller passes the field and what it knows about the workspace. */
 import { FIELD_TYPE_VOCABULARY } from './vocabulary.js';
 
 const NUMBER_PATHS = {
@@ -28,10 +9,6 @@ const DATE_PATHS = {
   grain: { when: 'parts stored, a list: ["year","month"] for a month', opens: { '*': ['format'] } },
   time: { when: 'true adds a time of day', opens: { '*': ['clock', 'zone'] } },
 };
-/* The first layer of each type, and the keys a choice opens. Each key's
-   line is in WHEN. test/field-hints.test.mjs holds every key to the type's
-   config list in src/vocabulary.js, so the tree cannot offer a key the
-   engine drops. */
 export const FIELD_PATHS = {
   number: NUMBER_PATHS,
   formula: { ...NUMBER_PATHS, display: { when: '"bar", "ring" or "heat" graphic; "sparkline" for a list', opens: { sparkline: ['style', 'color'], '*': ['scale', 'color'] } } },
@@ -59,7 +36,6 @@ const WHEN = {
 
 const unset = (v) => v == null || v === '' || v === 'number' || v === 'text' || v === false;
 
-/* The settings still open on a field of this type, as one line each. */
 export function nextFor(type, config = {}) {
   const tree = FIELD_PATHS[type];
   if (!tree) return [];
@@ -78,12 +54,8 @@ const slug = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const MONEY = /\b(amount|price|cost|balance|total|budget|spend|spent|income|expense|salary|fee|revenue|payment|paid|owed)\b/i;
 const FIGURE = /\b(count|qty|quantity|hours|minutes|days|percent|rate)\b/i;
 const STATUS = /\b(status|state|stage|priority|phase)\b/i;
-// Keys every field takes beside its type's own list, as weave_build counts them.
 const EVERY = ['width', 'description', 'default'];
 
-/* sent: the config the caller wrote, to name the keys the type dropped.
-   tables: names of the workspace's own tables, to catch a text column that
-   names one. */
 export function fieldHints(field, { sent = {}, tables = [] } = {}) {
   const { type, name, config = {} } = field;
   const hints = [];
@@ -109,7 +81,6 @@ export function fieldHints(field, { sent = {}, tables = [] } = {}) {
   return hints;
 }
 
-/* A space or a table, as it was just made. */
 export function containerHints(kind, made, { workspace = '' } = {}) {
   const hints = [];
   if (workspace && slug(made.name) === slug(workspace)) {
@@ -119,9 +90,6 @@ export function containerHints(kind, made, { workspace = '' } = {}) {
   return hints;
 }
 
-/* The reply a door sends (MCP, REST, CLI): the result plus whichever lists
-   are not empty. kind is field, table or space; sent is the config the
-   caller wrote. */
 export function guided(weave, kind, result, sent = {}) {
   const add = ({ next = [], hints = [] }) => ({ ...result, ...(next.length ? { next } : {}), ...(hints.length ? { hints } : {}) });
   if (kind === 'field') return add({ next: nextFor(result.type, result.config), hints: fieldHints(result, { sent, tables: weave.userTables().map((t) => t.name) }) });

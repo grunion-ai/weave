@@ -1,8 +1,3 @@
-/* A permalink in a real browser (Feature #264). The server answers
-   /e/<id> with the shell and a preview head instead of a 302; what needs a
-   browser is the landing: the app opens the entity, and Back leaves the
-   workspace in one step, exactly as the redirect did.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -40,8 +35,6 @@ if (s) {
     await page.close();
   });
 
-  /* The ⧉ on a space page and a table header mints the server-seen form,
-     the one that unfurls in a chat. */
   test('the space and table ⧉ controls copy /s/<id> and /t/<id>', async () => {
     const page = await browser.newPage();
     await page.addInitScript(() => {

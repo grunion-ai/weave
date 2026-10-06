@@ -1,36 +1,19 @@
-/* The slide composer (Feature #118).
-
-   A deck is not a file in weave — it is a read over rows. Any table with a
-   many-relation named `Slides` is a deck table; any table with a document
-   field named `Model` is a slide table. A slide's document holds ONE decklet
-   slide object (`{layout, els:[…]}`); the deck's own `Chrome` and `Style`
-   documents hold the deck-wide layer (layouts + master chrome) and the type
-   scale. Composition assembles them into one decklet model and the vendored
-   decklet engine turns that into one self-contained, editable HTML deck.
-
-   Because it is a read, a deck can never be stale with respect to its slides,
-   and one slide can sit in as many decks as it likes — which is the whole
-   point of the many-to-many. Versioning lives in the rows, not in the file:
-   a deck links a specific slide row, so it stays pinned to the version it
-   linked until someone promotes a newer one (`newSlideVersion`). */
 import { WeaveError } from './engine.js';
 import { create } from './vendor/decklet/create.mjs';
 import { validate } from './vendor/decklet/validate.mjs';
 
-// The field names the composer reads. Conventions, not schema: a workspace
-// opts in by naming its fields these things.
 export const DECK = Object.freeze({
-  slides: 'Slides',       // deck  · many-relation to the slide table
-  model: 'Model',         // slide · document holding the decklet slide JSON
-  chrome: 'Chrome',       // deck  · document: {layouts, master, slots}
-  style: 'Style',         // deck  · document: {tokens, roles, pad}
-  order: 'Order',         // deck  · text: refs, in the order they present
-  space: 'Space',         // deck  · text: "960x540" | "1600x900"
-  format: 'Format',       // deck  · slides | carousel | carousel-4x5 | document-letter | document-a4
-  layout: 'Layout',       // slide · text: overrides the layout the model names
-  version: 'Version',     // slide · number
-  key: 'Key',             // slide · text: what the versions of one slide share
-  supersedes: 'Supersedes', // slide · relation to the version this replaces
+  slides: 'Slides',
+  model: 'Model',
+  chrome: 'Chrome',
+  style: 'Style',
+  order: 'Order',
+  space: 'Space',
+  format: 'Format',
+  layout: 'Layout',
+  version: 'Version',
+  key: 'Key',
+  supersedes: 'Supersedes',
 });
 
 const fieldsOf = (db) => Object.values(db.fields ?? {});
@@ -38,12 +21,6 @@ const named = (db, name) => fieldsOf(db).find((f) => f.name === name);
 
 const isSlideTable = (db) => named(db, DECK.model)?.type === 'document';
 
-/* What a table is, for the composer: 'deck', 'slide', or nothing. Deck wins if
-   a table somehow carries both, because a deck's Slides relation is the more
-   specific claim. Pass the table registry and the Slides relation must point
-   at an actual slide table — otherwise any table that happens to collect
-   something called Slides (a customer's library, say) would answer the deck
-   routes with nothing to compose. */
 export function deckRole(db, tables = null) {
   if (!db) return null;
   const slides = named(db, DECK.slides);
@@ -53,8 +30,6 @@ export function deckRole(db, tables = null) {
   return null;
 }
 
-/* A document may be the JSON itself or prose with a fenced block in it — the
-   Model field is a document, and people write notes above their models. */
 export function parseJsonDoc(text) {
   const raw = String(text ?? '').trim();
   if (!raw) return null;
@@ -78,8 +53,6 @@ const placeholderSlide = (title) => ({
   ],
 });
 
-// One slide row → one decklet slide object. Never throws: a slide that cannot
-// be read becomes a slide that says so, in its own place in the deck.
 function slideFrom(weave, summary, warnings) {
   const ent = weave.readEntity(summary.id);
   const label = `${ent.db.split('/').pop()}#${ent.publicId}`;
@@ -105,9 +78,6 @@ function slideFrom(weave, summary, warnings) {
   return slide;
 }
 
-/* The Order field re-orders and subsets a deck without touching a single link:
-   a list of refs ("#4, #7" or names). Anything it does not name is left out,
-   which is how one library of slides serves a short and a long cut. */
 function ordered(summaries, order) {
   const list = String(order ?? '').split(/[,\n]+/).map((s) => s.trim()).filter(Boolean);
   if (!list.length) return summaries;
@@ -132,9 +102,6 @@ const docJson = (ent, field, warnings) => {
 
 const plainValue = (v) => (v && typeof v === 'object' ? (v.name ?? null) : v);
 
-/* deck entity → {model, style, options}. The model is the decklet model minus
-   the things create() owns (size, format, title) — those ride along in
-   `options` so renderDeck can hand them over unchanged. */
 export function composeDeckModel(weave, ref) {
   const ent = weave.readEntity(ref);
   const db = weave.state.tables[ent.dbId];
@@ -162,9 +129,6 @@ export function composeDeckModel(weave, ref) {
   };
 }
 
-/* One slide, previewed on its own — wearing the chrome and scale of the first
-   deck it belongs to, so a slide looks in isolation exactly as it will in the
-   room. A slide in no deck previews bare. */
 export function composeSlideModel(weave, ref) {
   const ent = weave.readEntity(ref);
   const db = weave.state.tables[ent.dbId];
@@ -184,8 +148,6 @@ export function composeSlideModel(weave, ref) {
   };
 }
 
-// The first deck a slide is linked to, through whichever relation points at a
-// deck table (the inverse of Deck.Slides, whatever the workspace named it).
 function firstDeckOf(weave, ent) {
   const db = weave.state.tables[ent.dbId];
   for (const f of fieldsOf(db)) {
@@ -198,8 +160,6 @@ function firstDeckOf(weave, ent) {
   return null;
 }
 
-// entity ref → one self-contained deck HTML file, plus what the decklet
-// validator makes of the composed model.
 export function renderDeck(weave, ref, { template } = {}) {
   const ent = weave.readEntity(ref);
   const role = deckRole(weave.state.tables[ent.dbId], weave.state.tables);
@@ -209,10 +169,6 @@ export function renderDeck(weave, ref, { template } = {}) {
   return { html, model: deck, errors: v.errors, warnings: [...composed.warnings, ...v.warnings] };
 }
 
-/* A new version of a slide: same key, same content, Version + 1, pointing back
-   at what it supersedes. Decks stay where they are — a deck is pinned to the
-   row it linked — unless `promote` swaps the new row into every deck the old
-   one sits in, in place, keeping its position in each running order. */
 export function newSlideVersion(weave, ref, { promote = false } = {}) {
   const ent = weave.readEntity(ref);
   const db = weave.state.tables[ent.dbId];
@@ -226,8 +182,6 @@ export function newSlideVersion(weave, ref, { promote = false } = {}) {
   for (const f of fieldsOf(db)) {
     if (f.system || ['lookup', 'rollup', 'formula', 'document', 'attachments'].includes(f.type)) continue;
     if (f.name === DECK.version || f.name === DECK.supersedes) continue;
-    // Collections do not clone: a new version starts in no deck of its own,
-    // and single-valued relations (its customer, say) travel with it.
     if (f.type === 'relation' && f.config?.many) continue;
     const raw = ent.raw?.[f.name];
     const val = f.type === 'relation' ? (Array.isArray(raw) ? raw[0] : raw) : raw;

@@ -9,7 +9,6 @@ export function selectTests({ files, changed }) {
   if (changes.length && changes.every(file => all.includes(file))) {
     return { files: changes, mode: 'targeted', reasons: ['Only test files changed; run every changed test.'] };
   }
-  // ponytail: no source file maps to a subset yet; add a reviewed mapping only after proving its callers and coverage, never infer UI scope from names.
   return {
     files: all,
     mode: 'full',
@@ -21,7 +20,6 @@ export function selectTests({ files, changed }) {
 
 export function affectedTests(root, base = 'HEAD') {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).split('\0').filter(Boolean);
-  // Include both paths of renames so moving a shared helper cannot appear test-only.
   const changed = [...git('diff', '--name-only', '--no-renames', '-z', base, '--'), ...git('ls-files', '--others', '--exclude-standard', '-z')];
   const files = [];
   function discover(directory) {

@@ -3,14 +3,6 @@ import assert from 'node:assert/strict';
 import { Weave, WeaveError } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
-/* Feature #14 — accounts, permissions, and the audit log: the groundwork a
-   hosted instance (v0.5, #84) stands on. Accounts carry a role and a token;
-   the token is handed out exactly once and only its hash is stored. The
-   server names the caller from a Bearer token, enforces the role, and — when
-   the workspace demands auth — refuses anonymous API calls. Structural
-   changes land in a durable audit log that names actor, action and subject,
-   riding the actor plumbing from #65. */
-
 test('an account is born with a token that is never stored in the clear', () => {
   const w = new Weave();
   const { account, token } = w.createAccount({ name: 'deploy-bot', role: 'writer' });
@@ -85,24 +77,20 @@ test('a Bearer token names the actor and its role gates what it may do', async (
   const reader = w.createAccount({ name: 'reader-bot', role: 'reader' }).token;
   const { server, call } = await serve(w);
   try {
-    // Writer: entity CRUD yes, schema no.
     const made = await call('POST', '/api/tables/Task/entities', { name: 'By bot' }, writer);
     assert.equal(made.status, 201);
     assert.equal((await made.json()).createdBy, 'writer-bot');
     assert.equal((await call('POST', '/api/spaces', { name: 'Nope' }, writer)).status, 403);
     assert.equal((await call('DELETE', '/api/tables/Task', undefined, writer)).status, 403);
 
-    // The registry is structure: a writer reads the report and cannot rebuild.
     const report = await call('GET', '/api/registry', undefined, writer);
     assert.equal(report.status, 200);
     assert.ok(Array.isArray((await report.json()).problems), 'the report lists its problems');
     assert.equal((await call('POST', '/api/registry/rebuild', undefined, writer)).status, 403);
 
-    // Reader: reads only.
     assert.equal((await call('GET', '/api/schema', undefined, reader)).status, 200);
     assert.equal((await call('POST', '/api/tables/Task/entities', { name: 'X' }, reader)).status, 403);
 
-    // A bad token is a 401, not an anonymous fallthrough.
     assert.equal((await call('GET', '/api/schema', undefined, 'wv_bogus')).status, 401);
   } finally {
     server.close();
@@ -119,7 +107,6 @@ test('requireAuth closes the API to anonymous callers — health stays open', as
     assert.equal((await call('GET', '/api/schema')).status, 401);
     assert.equal((await call('GET', '/api/health')).status, 200);
     assert.equal((await call('GET', '/api/schema', undefined, admin)).status, 200);
-    // Admin can do schema work.
     assert.equal((await call('POST', '/api/spaces', { name: 'Ops' }, admin)).status, 201);
   } finally {
     server.close();
@@ -141,7 +128,6 @@ test('automation create, update and delete land in the audit log (Issue #284)', 
   assert.deepEqual(by('automation-updated')?.detail, { table: 'Task', name: 'Greet', patch: ['enabled'] });
   assert.deepEqual(by('automation-deleted')?.detail, { table: 'Task', name: 'Greet' });
   assert.ok(log.every((r) => r.actor === 'ada'));
-  // Deleting an id that does not exist changes nothing, so it writes nothing.
   w.deleteAutomation('nope');
   assert.equal(w.listAudit({ limit: 50 }).filter((r) => r.action === 'automation-deleted').length, 1);
 });

@@ -1,16 +1,3 @@
-/* A long chip in the References panel (Issue #201), in a real browser.
-   Kyle's screenshot on 2026-09-05: the third pointer chip in "References · 3"
-   ran past the right edge of the card and the panel clipped it — the ↗ and
-   the table badge were pushed out of view.
-
-   The ruling: a chip stacked in a constrained column is at most as wide as
-   its container. The label truncates with an ellipsis; the home badge and
-   the ↗ stay visible at the right end; the full name rides in the title. No
-   horizontal overflow anywhere in the side column. Both themes.
-
-   Playwright is not a dependency (house rule); the harness skips the suite
-   when it is absent. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -25,7 +12,6 @@ const s = await launch('reference chip overflow', (weave) => {
   target = weave.createEntity('Task', { name: LONG });
   short = weave.createEntity('Task', { name: 'Short one' });
   issue = weave.createEntity('Issue', { name: 'Overflowing chip', doc: 'see [[Task#1]] and [[Task#2]]' });
-  // The side column opens with the table's Activity toggle (Issue #177).
   weave.updateTable(issues.id, { systemFields: ['Activity'] });
 });
 

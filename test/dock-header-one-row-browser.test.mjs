@@ -1,14 +1,3 @@
-/* The docked entity has one header row, and it holds while the pane scrolls
-   (Issue #583).
-   Kyle's screenshot, Icons #1 in the dock: expand and close sat in a
-   `.dock-head` row of their own above the breadcrumb. Only the entity's
-   `.view-header` is sticky in the dock (Issue #411), so that row left the
-   screen with the first scroll, and the pane showed two toolbars stacked:
-   back / expand / close on top, the crumb with the eye and the ⋮ below.
-   The full page already wears its pose controls in the crumb row, so the
-   dock now does too: back left of the crumb path, expand and close after
-   the eye and the ⋮, all inside the one pinned band.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -35,7 +24,7 @@ if (s) {
     await page.goto(`${base}/#/table/${deals.id}?e=${acme.id}`, { waitUntil: 'networkidle' });
     if (theme) await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
-    await page.waitForTimeout(400); // the header height is published on a ResizeObserver
+    await page.waitForTimeout(400);
     return page;
   };
   const toBottom = (page) => page.evaluate(() => {
@@ -43,8 +32,6 @@ if (s) {
     d.scrollTo({ top: d.scrollHeight, behavior: 'instant' });
     return d.scrollTop;
   });
-  /* One reading of the dock's chrome after a scroll: where each control is,
-     which row holds it, and whether a tap at its centre reaches it. */
   const read = (page) => page.evaluate(() => {
     const dock = document.querySelector('#dock');
     const pane = dock.getBoundingClientRect();
@@ -96,9 +83,6 @@ if (s) {
       assert.ok(await toBottom(page) > 400, 'the pane really scrolls');
       const r = await read(page);
       assert.ok(r.row, 'the dock has a crumb row');
-      // The header band meets the pane's top edge and carries the pane's
-      // padding as its ground, so the crumb row holds where it rested
-      // (Issue #608) instead of climbing into the padding.
       near(r.header, r.pane.top, 'the header band is pinned to the top of the pane while the body scrolls');
       near(r.row.top, r0.row.top, 'the crumb row keeps the top it had at rest');
       visibleOneRow(r, 'expand', r.expand);

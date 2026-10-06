@@ -1,25 +1,3 @@
-/* The template exercise (Feature #262): one table of a template space, put
-   through what a person does to it. The suite runs it on an engine
-   (test/template-exercise.test.mjs) and scripts/template-exercise.mjs runs it
-   over HTTP on a live instance, through the same adapter shape:
-
-     schema()                       describeSchema(), every space
-     createRow(table, values)       a readEntity() of the new row
-     updateRow(id, values)          a readEntity() after the write
-     getRow(id)                     readEntity()
-     link(id, field, targets) / unlink(id, field, targets)
-     deleteRow(id, { hard })        soft unless hard
-     restoreRow(id)
-     listRows(table) / listTrash(table)   ids of the live rows / the trashed rows
-
-   `table` is a table's id (or its Space/Table name). exerciseTable() adds a
-   row that sets every writable field and reads each value back; edits its
-   name; links a fresh row of the target table through every relation and
-   reads the link from both ends; checks every lookup, rollup and formula
-   while the links stand; unlinks and reads both ends empty; trashes the
-   row, restores it; and hard-deletes every row it made, also when a step
-   failed. Every failure is one line naming the template, the table and the
-   field. */
 import { isDeepStrictEqual } from 'node:util';
 
 const COMPUTED = new Set(['lookup', 'rollup', 'formula']);
@@ -30,10 +8,6 @@ const isEmpty = (v) => v == null || v === '' || (Array.isArray(v) && v.length ==
 const show = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 const ids = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]).map((x) => (x && typeof x === 'object' ? x.id : x));
 
-/* A value a person would type into the field, or undefined for a type the
-   exercise has no sample for (it is then named in `skipped`). Select,
-   multiselect and workflow take names; a workflow takes a state other than
-   its default, so the write is a real move. */
 export function sampleValue(field, name) {
   switch (field.type) {
     case 'text': return field.role === 'name' ? name : `${field.name} sample`;
@@ -59,7 +33,6 @@ export function sampleValue(field, name) {
   }
 }
 
-// A date reads back cut to the field's grain: ['year', 'month'] keeps 2026-10.
 function dateAt(field, iso) {
   const grain = field.grain ?? [];
   if (grain.includes('hour') || grain.includes('minute')) return null;
@@ -67,9 +40,6 @@ function dateAt(field, iso) {
   return iso;
 }
 
-/* What the row should hold for `field` after writing `want`, as [got, want]
-   read from the answer of getRow(): raw values, except select, multiselect
-   and workflow, which read back by name. */
 function readBack(field, want, row) {
   const raw = row.raw?.[field.name];
   switch (field.type) {
@@ -87,9 +57,6 @@ function readBack(field, want, row) {
   }
 }
 
-/* Writable values for every field of `table` the exercise has a sample for:
-   { values, written: [field], skipped: [{ field, type }] }. Relations and
-   computed fields are neither: they have phases of their own. */
 export function sampleRow(table, name) {
   const values = {};
   const written = [];
@@ -104,9 +71,6 @@ export function sampleRow(table, name) {
   return { values, written, skipped };
 }
 
-/* The answer a lookup, rollup or formula on our row should give while each
-   relation is linked to its one far row, or null when the exercise can only
-   ask for an answer (a formula, a join, a spread). */
 function expectComputed(field, rel, farValue) {
   if (field.type === 'lookup') return { want: rel.many ? [farValue] : farValue };
   if (field.type !== 'rollup') return null;
@@ -121,9 +85,6 @@ function expectComputed(field, rel, farValue) {
   }
 }
 
-/* One table of a template, put through add, link, unlink, trash, restore
-   and remove. `options.label` names the template in every failure;
-   `options.tag` makes the row names unique (the live run stamps the time). */
 export async function exerciseTable(api, table, { label = 'template', tag = 'exercise', schema = null } = {}) {
   const spaces = schema ?? await api.schema();
   const tables = spaces.flatMap((sp) => sp.tables ?? []);
@@ -134,14 +95,11 @@ export async function exerciseTable(api, table, { label = 'template', tag = 'exe
   const made = [];
   const relations = (table.fields ?? []).filter((f) => f.type === 'relation');
   const computed = (table.fields ?? []).filter((f) => COMPUTED.has(f.type));
-  // A step that throws is a failure and answers undefined; any other answer
-  // is truthy, so `=== undefined` always means the step failed.
   const step = async (field, what, fn) => {
     try { return (await fn()) ?? true; } catch (err) { fail(field, `${what} threw: ${err.message}`); return undefined; }
   };
 
   try {
-    // ---- add: a row that sets every writable field, read back value by value
     const name = `Template exercise ${table.name} ${tag}`;
     const { values, written, skipped } = sampleRow(table, name);
     report.skipped.push(...skipped);
@@ -156,7 +114,6 @@ export async function exerciseTable(api, table, { label = 'template', tag = 'exe
       }
     }
     report.fields = written.length;
-    // An edit through the update door: the name, when a person types it.
     const nameField = written.find((f) => f.role === 'name' && f.type === 'text');
     if (nameField) {
       values[nameField.name] = `${name} edited`;
@@ -167,8 +124,7 @@ export async function exerciseTable(api, table, { label = 'template', tag = 'exe
       }
     }
 
-    // ---- link: one fresh far row per relation, read from both ends
-    const linked = new Map(); // relation name -> far row id
+    const linked = new Map();
     for (const rel of relations) {
       const far = tableOf(Array.isArray(rel.targetDbs) ? rel.targetDbs[0] : rel.targetDb);
       if (!far) { fail(rel.name, `its target ${show(rel.targetDbs ?? rel.targetDb)} is not in the schema`); continue; }
@@ -176,7 +132,6 @@ export async function exerciseTable(api, table, { label = 'template', tag = 'exe
       const farRow = await step(rel.name, `adding a ${far.name} row to link`, () => api.createRow(refOf(far), farSample.values));
       if (!farRow?.id) continue;
       made.push(farRow.id);
-      // A lookup that reads a relation of the far row needs that link made too.
       for (const lk of computed.filter((c) => c.type === 'lookup' && c.via === rel.name)) {
         const hop = (far.fields ?? []).find((x) => x.name === lk.targetField);
         if (hop?.type !== 'relation') continue;
@@ -202,7 +157,6 @@ export async function exerciseTable(api, table, { label = 'template', tag = 'exe
       }
     }
 
-    // ---- computed: every lookup, rollup and formula answers while linked
     if (computed.length) {
       const now = await step(null, 'reading the row with every relation linked', () => api.getRow(row.id));
       for (const f of now ? computed : []) {
@@ -233,7 +187,6 @@ export async function exerciseTable(api, table, { label = 'template', tag = 'exe
       }
     }
 
-    // ---- unlink: both ends empty again
     for (const rel of relations) {
       const farId = linked.get(rel.name);
       if (!farId) continue;
@@ -246,7 +199,6 @@ export async function exerciseTable(api, table, { label = 'template', tag = 'exe
       }
     }
 
-    // ---- remove and restore
     const t = refOf(table);
     if (await step(null, 'soft delete', () => api.deleteRow(row.id)) !== undefined) {
       const live = await step(null, 'listing rows after delete', () => api.listRows(t));
@@ -266,7 +218,6 @@ export async function exerciseTable(api, table, { label = 'template', tag = 'exe
       }
     }
   } finally {
-    // ---- leave nothing behind: hard-delete what was made, newest first
     for (const id of made.reverse()) {
       try { await api.deleteRow(id, { hard: true }); } catch (err) {
         if (!/not found|404/i.test(err.message)) fail(null, `cleanup of ${id} threw: ${err.message}`);
@@ -277,7 +228,6 @@ export async function exerciseTable(api, table, { label = 'template', tag = 'exe
   return report;
 }
 
-/* Every table of one space, in schema order. */
 export async function exerciseSpace(api, spaceName, options = {}) {
   const schema = await api.schema();
   const space = schema.find((s) => s.space === spaceName);
@@ -290,7 +240,6 @@ export async function exerciseSpace(api, spaceName, options = {}) {
   return reports;
 }
 
-/* The adapter over an engine instance. */
 export function engineApi(w) {
   return {
     schema: async () => w.describeSchema(),
@@ -306,8 +255,6 @@ export function engineApi(w) {
   };
 }
 
-/* The adapter over HTTP: `base` is a workspace's root, as
-   http://127.0.0.1:4400/w/weave. The doors are the ones the page uses. */
 export function httpApi(base, { headers = {} } = {}) {
   const root = base.replace(/\/+$/, '');
   const call = async (method, path, body) => {

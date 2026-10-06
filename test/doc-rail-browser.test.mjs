@@ -1,10 +1,3 @@
-/* The outline rail opens in place (Issues #131, #144).
-   Kyle, 2026-09-01: the outline "pop up on click does not overlap small
-   outline lines and snaps to the center"; 2026-09-02: "outline bar preview
-   snaps and is disjointed". The panel was position:fixed at the viewport's
-   middle, so the headings jumped away from the dashes the reader had just
-   clicked. Only a live layout can show where the panel lands.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -33,9 +26,6 @@ if (s) {
     await page.setViewportSize({ width: 1280, height: 700 });
     await page.goto(`${base}/#/entity/${target.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.doc-rail .doc-rail-dash', { timeout: 20000 });
-    // Scrolled into the document, so the sticky track is pinned mid-page —
-    // the case where a viewport-centred panel and an in-place one differ.
-    // The main panel is the page's scroller since Issue #609.
     await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 400, behavior: 'instant' }));
     await page.waitForFunction(() => document.querySelector('#main').scrollTop >= 395, null, { timeout: 20000 });
     const closed = await box(page);
@@ -53,8 +43,6 @@ if (s) {
     await page.close();
   });
 
-  /* Issue #269: a window resize fired every rail's schedule on every event.
-     A burst of resize events now costs one pass per animation frame. */
   test('a burst of resize events reschedules the rails once per frame', async () => {
     const page = await browser.newPage();
     await page.setViewportSize({ width: 1280, height: 700 });
@@ -63,10 +51,6 @@ if (s) {
     const calls = await page.evaluate(async () => {
       const real = window.setTimeout;
       let n = 0;
-      /* Four document layers share the 250 ms debounce (rails, reference
-         chips, code colouring, heading folds), and code colouring polls on
-         it until highlight.js has loaded, which on a loaded machine is
-         still going when this runs (Issue #454). Count the rails' own. */
       window.setTimeout = (fn, ms, ...rest) => { if (ms === 250 && /refreshDashRail/.test(String(fn))) n++; return real(fn, ms, ...rest); };
       try {
         for (let i = 0; i < 30; i++) window.dispatchEvent(new Event('resize'));

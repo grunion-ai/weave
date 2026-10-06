@@ -1,18 +1,3 @@
-/* An empty cell at rest is blank (Issue #420).
-
-   Every empty cell in a table drew a hint — "Add description…" in a dashed
-   pill, the date box's "today, 15 sep, 9/15/26…" placeholder, a grey "—"
-   chip for an unset select — so a table with many empty cells read as a wall
-   of repeated text. Kyle, 2026-09-26: "make empty cells blank to cut noise".
-   The hint now shows only on the cell that holds the focus (the cell itself,
-   or the control being edited inside it). This supersedes the 2026-08-24
-   chip ruling "empty is dashed, not dimmed" for grid cells at rest.
-
-   Footers, stat tiles and activity logs keep their dash: there it means "no
-   value computed", which is data.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and the
-   suite skips when absent, so `node --test` stays green on a bare checkout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -38,8 +23,6 @@ const s = await launch('empty cells', (weave) => {
 if (s) {
   const { base, browser } = s;
 
-  /* What a reader can see in one cell: text, a placeholder, or a dashed
-     outline — each only when it is painted (not hidden, not transparent). */
   const marks = (page, rowId) => page.evaluate((id) => {
     const tr = document.querySelector(`.wv-grid tbody tr.entity-row[data-eid="${id}"]`);
     const shown = (node) => {
@@ -91,8 +74,6 @@ if (s) {
   test('the focused cell shows its hint', async () => {
     const page = await openGrid('light');
     const cell = (f) => page.locator(`.wv-grid tbody tr.entity-row[data-eid="${empty.id}"] td[data-field="${f}"]`);
-    // The date box shows its hint while it is being edited (Issue #424 holds
-    // it to the box's own focus).
     await cell('Due').locator('input').first().focus();
     assert.ok((await marks(page, empty.id)).Due?.some((m) => m.startsWith('placeholder:')), 'the date hint shows while editing');
     await cell('Kind').focus();

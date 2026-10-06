@@ -2,14 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 
-/* Feature #230 — the number display costume. Beside the format keys a number
-   can say HOW it is drawn: text (the default), bar, ring or heat. `scale` says
-   what 100% is: the column's max (the default, computed by src/stats.js, the
-   same figure a Space-level `via` max rollup reads) or a fixed number. The API
-   keeps returning the raw number; `scales` on a read names the 100% mark each
-   graphic column is drawn against, so a paged grid, a chip and a card all
-   draw against the whole column rather than the rows they happen to hold. */
-
 function fresh(config) {
   const w = new Weave();
   w.createSpace({ name: 'Dev' });

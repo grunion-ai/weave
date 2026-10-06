@@ -1,9 +1,3 @@
-/* Issue #386 — the first-run empty state, the pure half and its engine side.
-   Every root workspace carries the registry (the system Workspace space and
-   its tables) from birth, so a count that includes it is never zero and the
-   empty state never showed. The user-table count reads the engine's system
-   flag; the templates are weave_build specs, so each one is built here on a
-   fresh engine exactly as the browser and the onboarding welcome build it. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -34,12 +28,10 @@ test('the count sees a person\'s table and still ignores the registry', () => {
 
 test('the count goes by the system flag, never the name', () => {
   const w = new Weave();
-  // A person may call their own space "Workspace"-ish and their table "Tables".
   w.createSpace({ name: 'Workspace2' });
   w.createTable({ space: 'Workspace2', name: 'Tables' });
   assert.equal(w.userTables().length, 1);
   assert.equal(S.userTables(w.describeSchema()).length, 1);
-  // A trashed table is not counted: the empty state should come back.
   w.deleteTable('Workspace2/Tables');
   assert.equal(w.userTables().length, 0);
   assert.equal(S.userTables(w.describeSchema()).length, 0);
@@ -51,9 +43,6 @@ test('userTables tolerates an empty or missing schema', () => {
   assert.deepEqual(S.userTables([{ space: 'X', tables: [] }]), []);
 });
 
-/* A template is a weave_build spec (Feature #253), so the engine builds it
-   in one call: the same POST /api/build the empty state sends, and the same
-   build the onboarding welcome runs server side. */
 const NOW = new Date(2026, 9, 3);
 function build(w, template, now = NOW) {
   const r = w.build(S.spec(template, { now }));
@@ -62,7 +51,6 @@ function build(w, template, now = NOW) {
   return r;
 }
 const byId = (id) => S.TEMPLATES.find((t) => t.id === id);
-// Stored values (raw), not the display strings readEntity's fields carry.
 const rows = (w, ref) => w.listEntities(w.getTable(ref).id).map((e) => { const r = w.readEntity(e.id); return { id: r.id, name: r.raw.Name, fields: r.raw }; });
 
 test('three templates: personal finance, tasks and a CRM, each titled for its space', () => {
@@ -117,7 +105,6 @@ test('Personal finance: Months rolls up spent and income and nets them', () => {
 
 test('Personal finance: two transactions and one income linked to a month compute its rollups and net', () => {
   const w = new Weave();
-  // Structure only: the rows here are the test's own.
   const spec = S.spec(byId('finance'), { now: NOW });
   for (const t of spec.spaces[0].tables) delete t.rows;
   assert.deepEqual(w.build(spec).errors, []);
@@ -129,7 +116,6 @@ test('Personal finance: two transactions and one income linked to a month comput
   assert.equal(f.Spent, 1620.5);
   assert.equal(f.Earned, 4000);
   assert.equal(f.Net, 2379.5);
-  // Moving a transaction out of the month moves its figures.
   const groceries = rows(w, 'Money/Transactions').find((t) => t.name === 'Groceries');
   w.updateEntity(groceries.id, { Month: [] });
   assert.equal(w.readEntity(month.id).raw.Spent, 1500);

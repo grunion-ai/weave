@@ -1,32 +1,18 @@
-/* Programmatic scrolling (Issue #69).
-
-   `Element.scrollIntoView()` is defined to scroll EVERY scrollable ancestor of
-   its target. A weave document sits in a scrolling body, often inside a docked
-   panel, so jumping to one heading used to reset scroll positions the reader
-   never asked about — Kyle saw exactly that on the outline rail. Every
-   programmatic scroll now names the one box that may move.
-
-   The arithmetic — which box, and where its scrollTop lands — is pure and
-   lives in public/editor-lib.js; it is tested here. The live behaviour (one
-   box moves, the others hold) is in test/editor-phase4-browser.test.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APP, fnBody } from './lib/source.mjs';
 
 await import('../public/editor-lib.js');
 const LIB = globalThis.WeaveEditorLib;
-// Comments name the method they replaced; only the code may still call it.
 const CODE = APP.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-
-/* ---------- scrollBoxIndex: which single box moves ---------- */
 
 const box = (overflowY, scrollHeight, clientHeight) => ({ overflowY, scrollHeight, clientHeight });
 
 test('the box that scrolls is the nearest ancestor that can and does', () => {
   const chain = [
-    box('visible', 400, 400), // the heading's own wrapper: no overflow at all
-    box('auto', 4000, 600), // the docked panel: this is the one
-    box('auto', 9000, 800), // the page behind it: must not be picked
+    box('visible', 400, 400),
+    box('auto', 4000, 600),
+    box('auto', 9000, 800),
   ];
   assert.equal(LIB.scrollBoxIndex(chain), 1);
 });
@@ -45,17 +31,12 @@ test('nothing in the chain scrolls, so the page does', () => {
   assert.equal(LIB.scrollBoxIndex(undefined), -1);
 });
 
-/* ---------- scrollTopFor: where that box lands ----------
-   One shared coordinate space (viewport rects do fine): the box shows
-   [viewTop, viewTop + viewHeight] and the target sits at [targetTop, +height]. */
-
 const G = (over = {}) => ({
   scrollTop: 500, scrollHeight: 4000, viewTop: 100, viewHeight: 600,
   targetTop: 900, targetHeight: 40, ...over,
 });
 
 test('block start puts the target at the top of the box', () => {
-  // 800px below the box's own top, so the box has to travel 800 further.
   assert.equal(LIB.scrollTopFor(G()), 1300);
 });
 
@@ -77,7 +58,6 @@ test('nearest brings a target above the box down to its top edge', () => {
 });
 
 test('nearest brings a target below the box up to its bottom edge', () => {
-  // bottom of the target (900 + 40) minus bottom of the box (100 + 600) = 240.
   assert.equal(LIB.scrollTopFor(G({ block: 'nearest' })), 740);
 });
 
@@ -86,15 +66,10 @@ test('nearest respects padding at the top edge', () => {
 });
 
 test('nearest respects a cover at the bottom edge (the sticky + New foot, Feature #196)', () => {
-  // The target's bottom (940) must clear the box's bottom (700) minus the 34px foot: 274 more.
   assert.equal(LIB.scrollTopFor(G({ block: 'nearest', bottom: 34 })), 774);
-  // Already clear of the foot: nothing moves.
   assert.equal(LIB.scrollTopFor(G({ block: 'nearest', targetTop: 600, bottom: 34 })), 500);
-  // Inside the box but under the foot: moves just enough.
   assert.equal(LIB.scrollTopFor(G({ block: 'nearest', targetTop: 650, bottom: 34 })), 524);
 });
-
-/* ---------- wiring: every site goes through the one helper ---------- */
 
 test('nothing in the app calls scrollIntoView any more', () => {
   assert.doesNotMatch(CODE, /\.scrollIntoView\(/,

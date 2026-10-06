@@ -1,10 +1,3 @@
-/* Issue #387 in the page: a rollup's settings tray held its name, its
-   description and "Computed config is not editable — delete and recreate to
-   repoint it", so a reader could not tell what the column computes or why it
-   draws stars. The tray now names the recipe as three read-only rows
-   (Relation, Field, Aggregate), says where the display comes from (the
-   rating on People › Skill) with a link to that field's settings, and a
-   lookup gets the same rows without the aggregate. Both themes. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -66,7 +59,6 @@ if (s) {
           const [fg, bg] = await input.evaluate((n) => [getComputedStyle(n).color, getComputedStyle(n).backgroundColor]);
           assert.notEqual(fg, bg, `${label} reads against its ground`);
         }
-        // The result on a real row, drawn as the cell draws it: avg(4, 2) = 3 of 5.
         await section(page, 'Result').locator('.wv-rating[data-value="3"]').waitFor();
         assert.match(await section(page, 'Result').textContent(), /^ResultCore: /);
         const shows = section(page, 'Shows as');
@@ -107,7 +99,6 @@ if (s) {
       }],
       ['Peer age', async (page) => {
         assert.match(await section(page, 'Shows as').textContent(), /People › Age/);
-        // The read-only rows ride the form without breaking its save.
         await page.fill('.tray-form input[name="name"]', 'Peer mean age');
         await page.locator('.tray-form button[type="submit"]').click();
         await page.waitForFunction(() => !document.querySelector('.tray-form'));

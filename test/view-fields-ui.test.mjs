@@ -1,11 +1,3 @@
-/* The chip and the card in the browser (Kyle, 2026-09-04): the field dialog
-   edits a view's config through the same core the other types use, the grid
-   draws an unhidden view as a read-only cell, every relation chip carries the
-   far row's segments behind a caret, and the entity page shows each view
-   the eye leaves on (Kyle, 2026-09-07: a Chip or Card switched off must not
-   show; one hidden set rules the grid, the field rows and the Appears-as
-   strip). The DOM paths are source-gated here; the browser suites cover the
-   rest — appears-hidden-browser.test.mjs drives the eye for real. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -22,8 +14,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
 
-// ---------- the dialog core ----------
-
 test('view is a type the dialog knows but never offers as a tile', () => {
   assert.ok(core.FIELD_TYPES.some((t) => t.id === 'view' && t.computed && t.minted), 'view is listed, computed, minted');
   assert.ok(!core.typeChoices().some((t) => t.id === 'view'), 'a new field is never a view');
@@ -39,13 +29,10 @@ test('a view round-trips schema → state → definition → patch', () => {
   assert.deepEqual(core.definitionFromState(state), def);
   const patch = core.editPatchConfig(f, def, state);
   assert.deepEqual(patch, { link: true, state: false, description: 'medium', fields: ['Owner', 'Due'] }, 'the shape never rides the patch');
-  // Auto fields are null, and stay null through the pane.
   const auto = core.stateFromDefinition({ type: 'view', config: { shape: 'chip', link: false, state: true, description: 'none', fields: null } });
   assert.equal(auto.view.fields, null);
   assert.equal(core.definitionFromState(auto).config.fields, null);
 });
-
-// ---------- the shared renderer core ----------
 
 test('viewSegments puts the state first and keeps blanks out', () => {
   const v = { shape: 'chip', name: 'x', state: { name: 'Doing', category: 'in-progress' }, fields: [{ label: 'Due', value: '2026-09-12' }, { label: 'Tags', value: '' }] };
@@ -72,8 +59,6 @@ test('the eligible fields for a view, in column order, are the glanceable ones',
   assert.deepEqual(viewCore.eligibleFields(db).map((f) => f.name), ['Due', 'Owner']);
 });
 
-// ---------- app.js source gates ----------
-
 test('the grid treats a view as read-only and draws it through the shared renderer', () => {
   assert.match(APP, /READONLY_FIELD_TYPES = \[[^\]]*'view'/, 'view is read-only in the grid');
   assert.match(APP, /if \(f\.type === 'view'\) return viewCell\(/, 'the cell goes to viewCell');
@@ -88,11 +73,6 @@ test('a relation chip carries the far row’s segments behind a caret', () => {
   assert.match(APP, /\.mention-caret/, 'and the same delegated toggle');
 });
 
-/* Issue #193: the retract caret faces the text. The expand › points right,
-   at the segments; rotated 90° the open state pointed down, at nothing. Open
-   is a half turn — ‹ — so the pair reads as one control folding in and out.
-   Two stylesheets draw the chip (style.css in the app, the page CSS in
-   src/markdown.js for /doc.html), and they must agree. */
 test('the open caret turns a half circle to face the label, in both stylesheets', () => {
   const MD = readFileSync(join(ROOT, 'src/markdown.js'), 'utf8');
   for (const [name, css] of [['style.css', CSS], ['markdown.js', MD]]) {
@@ -128,7 +108,6 @@ test('the styles exist for the card tile and the chip segments in both themes', 
   }
 });
 
-// The gates above are greps; this is the parse gate that makes them honest.
 test('app.js and view-core.js still parse', () => {
   assert.doesNotThrow(() => new Function(APP));
   assert.doesNotThrow(() => new Function(readFileSync(join(ROOT, 'public/view-core.js'), 'utf8')));

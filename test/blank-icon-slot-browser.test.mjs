@@ -1,14 +1,3 @@
-/* One blank-icon slot across weave (Issue #419).
-
-   A select option or a workflow state with no icon drew its icon button as a
-   grey bordered box holding an em dash, while a table or a space with no icon
-   draws a ghost ring on a borderless button. Kyle, 2026-09-26: "update blank
-   icons for options to be the same as table and space icons". The option and
-   state rows now use the same iconButton() the table and space headers use,
-   so the unset slot is the same element, class, size and glyph everywhere.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and the
-   suite skips when absent, so `node --test` stays green on a bare checkout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -23,7 +12,6 @@ const s = await launch('blank icon slot', (weave) => {
 if (s) {
   const { base, browser } = s;
 
-  // What a reader sees of an icon slot: the element, its glyph, and the box.
   const look = (btn) => btn.evaluate((b) => {
     const cs = getComputedStyle(b);
     return {

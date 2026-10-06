@@ -1,17 +1,3 @@
-/* Issue #85: "empty file cells look wrong and hover drop hotbox doesn't
-   exist or work".
-
-   An attachments cell took files only through its `+ file` button on the
-   entity page; dragging a file from the desktop over the grid cell did
-   nothing, and letting go handed the file to the browser. A cell that holds
-   files takes a dropped file: while files hover it the cell says so, the
-   drop uploads every file through the same path `+ file` uses, and the new
-   names land in the cell. A drag that carries no files (text, a column or
-   row drag) is not the cell's business and passes through untouched.
-
-   Rendering and a real upload: this suite drives a real browser against a
-   real server, and reads the stored bytes back from the engine. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -41,10 +27,6 @@ if (s) {
     return page;
   }
 
-  /* A drag from the desktop, synthesized: a DataTransfer holding real File
-     objects, dispatched as the browser would. `files` is [[name, text]];
-     `text` alone makes a drag that carries no files at all. Returns whether
-     each event was taken (defaultPrevented) so a swallowed drag shows. */
   const drag = (page, sel, types, { files = [], text = null } = {}) => page.evaluate(({ sel, types, files, text }) => {
     const node = document.querySelector(sel);
     const dt = new DataTransfer();
@@ -101,10 +83,6 @@ if (s) {
     });
   }
 
-  /* The other half of the report. On the day it was filed an empty file
-     chip wore Tabler's global `.empty` (a full-height flex column with a
-     1rem pad) and stretched its row; Issue #93 renamed the class to
-     `is-empty` that afternoon, but no gate held a file column to it. */
   for (const theme of ['light', 'dark']) {
     test(`an empty file cell keeps the row the height of a full one (${theme})`, async () => {
       const page = await open(`/table/${decks.id}`, theme, cellSel('full'));
@@ -124,7 +102,6 @@ if (s) {
     try {
       await drag(page, sel, ['dragenter', 'dragover'], { files: [['x.txt', 'x']] });
       assert.ok(await hasClass(page, sel));
-      // Crossing onto the chip inside the cell is not leaving the cell.
       await drag(page, `${sel} .k-attach`, ['dragenter'], { files: [['x.txt', 'x']] });
       await drag(page, sel, ['dragleave'], { files: [['x.txt', 'x']] });
       assert.ok(await hasClass(page, sel), 'moving onto the chip dropped the target');

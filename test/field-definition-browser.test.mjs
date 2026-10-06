@@ -1,19 +1,3 @@
-/* Clearing a field definition, driven through a real browser (Issue #90).
-
-   Kyle clicked the `×` beside a `field` value to find out what it did, and it
-   destroyed the definition on the spot — no confirm, no toast, no way back.
-   A `field` value is not an ordinary cell: it IS a field definition, type plus
-   config, and the one value on the page a single click could erase beyond
-   guessing.
-
-   The house rule for a destructive action is holdToConfirm, not
-   window.confirm, and the definition editor is where a reader can already see
-   what they would destroy. So the bare `×` goes, the clear lives in the
-   editor behind a held gesture, and what it takes it offers straight back.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and the
-   suite skips when absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -38,8 +22,6 @@ if (s) {
     return page;
   };
 
-  /* The gesture, exactly as a hand makes it: press, wait for the fill to
-     sweep, release. Letting go early has to cancel, so the wait is real. */
   const hold = async (page, locator, ms = 1400) => {
     const box = await locator.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -66,7 +48,6 @@ if (s) {
     await clear.waitFor();
     assert.match(await clear.textContent(), /clear/i);
 
-    // Released early: the definition stands.
     await hold(page, clear, 200);
     await page.waitForTimeout(300);
     assert.deepEqual(weave.readEntity(id).raw.Definition, MONEY, 'a cancelled hold must change nothing');
@@ -84,8 +65,6 @@ if (s) {
     await hold(page, page.locator('#modal .hold-btn'));
     await page.waitForTimeout(400);
 
-    // The toast carrying the offer, not whichever one is topmost — a save
-    // toast rides alongside it.
     const offer = page.locator('.wv-toast', { has: page.locator('.wv-toast-action') });
     await offer.waitFor({ timeout: 3000 });
     assert.match(await offer.textContent(), /currency/i,

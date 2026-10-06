@@ -1,6 +1,3 @@
-/* The configuration tools, exercised. Presence is test/agent-surface.test.mjs's
-   job; this is whether the tools actually do the thing an agent asks for —
-   the same writes the web UI makes over REST, with no browser in the loop. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -31,8 +28,6 @@ test('a table takes its whole costume from one tool call', () => {
   assert.deepEqual(t.fields.map((f) => f.name), ['Stage', 'Name', 'Description', 'Chip', 'Card']);
 });
 
-/* Issue #249: the Σ row is off unless a table asks for it, and an agent asks
-   here — the eye is not a door the agent has. */
 test('the Σ rollup row is switched on and off from the same tool call', () => {
   const w = workspace();
   const t = () => call(w, 'weave_schema').find((s) => s.space === 'Ops').tables[0];

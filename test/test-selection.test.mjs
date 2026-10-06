@@ -44,9 +44,6 @@ test('git discovery includes staged, unstaged and untracked files, recursively',
   assert.throws(() => affectedTests(root, 'nonexistent-ref'));
 });
 
-/* This file names 'test/lib/browser.mjs' in its data above, and the runner
-   once read that as driving a browser and ran it at half concurrency. Only
-   an import counts, static or awaited (Issue #648). */
 test('a suite that only names the browser harness stays in the unit lane', () => {
   const { unit, browser } = lanes(['test/test-selection.test.mjs', 'test/nav.test.mjs', 'test/security/security-headers.test.mjs']);
   assert.deepEqual(unit, ['test/test-selection.test.mjs']);

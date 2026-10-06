@@ -3,12 +3,6 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import '../public/date-grain.js';
 
-/* Issue #676: on Net, "Close out on Done" appended "Closed 2026-10-06: …"
-   beside a grid that prints dates as "Oct 6, 2026". An automation's text
-   now prints {{Today}} and date fields in the workspace's date costume
-   (date-grain's default, the one every date cell wears), and {{Today:iso}}
-   keeps the ISO form for scripts that parse it. */
-
 const DG = globalThis.weaveDateGrain;
 
 test('{{Today}} wears the workspace date format; {{Today:iso}} stays ISO; a date field wears its own', () => {

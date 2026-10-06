@@ -1,15 +1,3 @@
-/* Toasts, in a real browser.
-
-   Tabler ships `.toast:not(.show){display:none}` — Bootstrap's toast, which
-   waits for JavaScript to reveal it. Weave hand-rolls its own toast and gave
-   it the same class name, so every message the app has ever raised — 'Saved',
-   an error's real reason, an Undo offer — was painted into a box the
-   framework had already switched off. Nothing in the source looked wrong,
-   which is why this claim has to be made in a browser and not by reading CSS.
-
-   Playwright is NOT a dependency of weave; it is imported dynamically and the
-   suite skips when absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';

@@ -1,19 +1,3 @@
-/* A value chip longer than its column ends in an ellipsis inside its own fill
-   (Issue #423). Kyle's screenshot, uno › Travel › Points Balances: the Program
-   chips read "Chase Ultimate Re", "Amex Membership", "United MileagePlu". The
-   chip box was capped at the column (`.wv-grid .k { max-width: 100% }`) but
-   its text was an anonymous flex item with overflow visible, so it ran past
-   the fill and the <td> cut it mid-letter. The td's own text-overflow never
-   reaches text inside an inline-flex child. The label is now its own span that
-   truncates, the chip clips at its fill, and a truncated label carries the
-   whole value as its title. State, multi-select and key chips share `.k`, so
-   they are held to the same rule.
-   Since Issue #614 (Kyle, 2026-10-03: "make sure no part of the toggle or
-   box can be cut off by field resize") a select, a state and a multi-select
-   column floors at its widest option's chip, so the stored 124px below is
-   raised and those chips show whole. A key chip names a credential, which is
-   free text, so it still truncates and carries the ellipsis rule here.
-   Geometry, not source: this suite drives a real browser. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -51,7 +35,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme });
     await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`tr[data-eid="${row.id}"] .k-select`);
-    await page.waitForTimeout(300); // the clipped marker is written in a rAF after layout
+    await page.waitForTimeout(300);
     return page;
   }
   const measure = (page, id) => page.evaluate(({ id, chips }) => {
@@ -72,7 +56,6 @@ if (s) {
         truncated: label.scrollWidth > label.clientWidth + 1,
         textOverflow: getComputedStyle(label).textOverflow,
         chipOverflow: ccs.overflowX,
-        // the label ends inside the fill, keeping the chip's right padding
         insideFill: l.right <= c.right - parseFloat(ccs.paddingRight) + 0.5,
         insideCell: c.right <= t.right + 0.5,
         title: chip.title,
@@ -97,8 +80,6 @@ if (s) {
           assert.ok(r.insideCell, `${field}: the chip fits its column`);
           assert.equal(r.labelTitle, '', `${field}: the chip owns the tooltip, so the label carries none of its own`);
           if (field !== 'Secret') {
-            // An option chip floors its column (Issue #614): the stored
-            // 124px is raised and the long value shows whole.
             assert.equal(r.truncated, false, `${field}: the column is raised to the long option, so it is not cut`);
             assert.equal(r.clipped, false, `${field}: and the cell is not marked clipped`);
             continue;
@@ -120,8 +101,6 @@ if (s) {
         assert.equal(m[field].truncated, false, `${field}: a value that fits is not cut`);
         assert.equal(m[field].clipped, false, `${field}: and the cell is not marked`);
       }
-      // Nothing is hidden, so the chip keeps the title it was drawn with:
-      // the field name on a select, none on a multi chip (Issue #584).
       assert.equal(m.Program.title, 'Program', 'a select chip that fits keeps its field name as its title');
       assert.equal(m.Tags.title, '', 'a multi chip that fits carries no title');
     } finally { await page.close(); }
@@ -143,9 +122,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Since Issue #614 the column holds the long option whole, so the repaint
-     is checked for its label span and the ellipsis rule it carries, and for
-     landing uncut. */
   test('a repainted select chip keeps its truncating label', async () => {
     const page = await grid('light');
     try {
@@ -162,10 +138,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Last in the file: the drag saves the wider column into the view. A key
-     chip, because an option chip is never cut since Issue #614; the option
-     columns ahead of it open wider for the same reason, so the page is wide
-     enough to drag it in view. */
   test('a column resize rechecks the title: widened to fit, the chip gets its field name back (Issue #584)', async () => {
     const page = await grid('light', 2400);
     const chip = `tr[data-eid="${row.id}"] td[data-field="Secret"] .k-key`;

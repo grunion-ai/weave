@@ -1,19 +1,3 @@
-/* Feature #262: every template's tables, fields and relations are exercised.
-   Kyle, 2026-10-05: "confirm add remove link works for all templates and
-   template tables and fields as well as use template works to implement
-   template in test workspace."
-
-   "All templates" is both kinds: the template spaces kept as fixtures in
-   test/fixtures/templates/ (the live CRM template, refreshed from :4400 by
-   scripts/template-fixture.mjs) and the three starters in
-   public/starter-core.js. Each table goes through exerciseTable()
-   (scripts/template-exercise-core.mjs): a row with every writable field read
-   back, every relation linked and unlinked from both ends, every lookup,
-   rollup and formula checked while linked, trash and restore, and nothing
-   left behind. A fixture is then used into a second workspace named `test`
-   and its copy passes the same exercise. The last tests run the live script
-   over HTTP against an in-process hub, and prove the exercise fails loudly
-   when a door lies. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -34,7 +18,6 @@ const fixtures = readdirSync(FIXTURES).filter((f) => f.endsWith('.json')).sort()
 const entryOf = (w, name) => w.describeSchema().find((s) => s.space === name);
 const userRows = (w) => Object.values(w.state.entities).filter((e) => !w.state.tables[e.dbId]?.system);
 
-/* A workspace holding one fixture, marked as the template it is on :4400. */
 function fromFixture(doc, workspace = 'weave') {
   const w = new Weave();
   w.updateWorkspace({ name: workspace });
@@ -43,8 +26,6 @@ function fromFixture(doc, workspace = 'weave') {
   return w;
 }
 
-/* Every table of `space` exercised as its own subtest, so a red run names
-   the template and the table before the field-level lines. */
 async function exerciseEvery(t, w, space, label) {
   const api = engineApi(w);
   const schema = await api.schema();
@@ -112,8 +93,6 @@ for (const tpl of S.TEMPLATES) {
   });
 }
 
-// ---------------- the live script, over HTTP, against an in-process hub
-
 async function hub() {
   const root = new Weave();
   root.updateWorkspace({ name: 'root' });
@@ -147,9 +126,6 @@ test('the live script exercises the template and its copy over HTTP, then purges
   } finally { server.close(); }
 });
 
-/* Issue #644: the copy was named to the minute and soft-deleted, so its
-   name sat in the trash and a second run in the same minute got a 409. Two
-   runs stamped the same second must both pass and leave nothing behind. */
 test('two live runs in the same second both pass and leave nothing in the test workspace (Issue #644)', async () => {
   const { target, server, base } = await hub();
   try {
@@ -173,10 +149,6 @@ test('--keep leaves the copy live for a look', async () => {
   } finally { server.close(); }
 });
 
-// ---------------- the exercise bites
-
-/* An engine adapter with one door broken: the exercise must name the
-   template, table and field, and still leave nothing behind. */
 function broken(w, patch) {
   return { ...engineApi(w), ...patch(engineApi(w)) };
 }
@@ -190,7 +162,6 @@ test('a value that does not read back is named with its template, table and fiel
   assert.equal(r.ok, false);
   assert.ok(r.failures.some((f) => /^CRM › Deals › Value: number wrote 1234\.5, read back null/.test(f)), r.failures.join('\n'));
   assert.equal(userRows(w).length, 0);
-  // A formula that answers nothing is a failure of its own.
   const blank = broken(w, (ok) => ({ getRow: async (id) => { const row = await ok.getRow(id); if (row.raw && 'Weighted' in row.raw) row.raw.Weighted = null; return row; } }));
   const f = await exerciseTable(blank, crmTable(w, 'Deals'), { label: 'CRM' });
   assert.deepEqual(f.failures, ['CRM › Deals › Weighted: formula "Value * Probability" answered null']);

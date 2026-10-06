@@ -1,17 +1,3 @@
-/* The flicker probe against a real page (harness routine weave-flicker).
-
-   The probe is what the nightly sweep and the gate's ratchet both read, so
-   its own contract is pinned here on synthetic flickers with known answers:
-   a node painted for a beat and gone, a list emptied and refilled, a class
-   that flips and flips back, content pushed down with no input — each one
-   reported with the element that did it. And the things that look the same
-   to a MutationObserver but never reach the screen are not: a node added
-   and removed inside one task, and the toast's zero-size live region, which
-   empties and refills fifty milliseconds apart on purpose (app.js toast()).
-
-   The screencast half proves a whole-screen flash comes back as A, B, A.
-
-   Playwright is NOT a dependency of weave; the harness skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -24,14 +10,10 @@ const s = await launch('flicker probe', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  /* The cases time their flashes in frames, and a frame under the gate's
-     load can take far longer than 16 ms, so the window is wide here; the
-     150 ms default is pinned by its own case below with a timer. */
   const open = async ({ maxMs = 5000 } = {}) => {
     const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
     await installProbe(page, { maxMs });
     await page.goto(base, { waitUntil: 'networkidle' });
-    // A stage of our own, above the app, so the app's own chrome is not read.
     await page.evaluate(() => {
       const st = document.createElement('div');
       st.id = 'stage';
@@ -44,8 +26,6 @@ if (s) {
   };
   const frames = (page, n) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  // A long frame is the machine's load as much as the page's: never part of
-  // these answers.
   const events = async (page, kind) => (await readProbe(page)).filter((e) => (kind ? e.kind === kind : e.kind !== 'jank'));
 
   test('a node painted for a beat and removed is a transient, named by its selector', async () => {
@@ -76,7 +56,6 @@ if (s) {
         box.style.cssText = 'width:300px;height:120px';
         box.innerHTML = '<div class="head" style="height:40px">h</div><div class="body" style="height:60px">b</div>';
         st.append(box);
-        // Painted, then the children land on their own, then all of it goes.
         requestAnimationFrame(() => requestAnimationFrame(() => {
           box.querySelector('.body').append(Object.assign(document.createElement('p'), { textContent: 'late', style: 'height:20px' }));
           requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => { box.remove(); r(); })));
@@ -359,7 +338,6 @@ if (s) {
       await wait(400);
       const shots = await rec.stop();
       assert.ok(shots.length >= 3, `${shots.length} frames`);
-      // Wide window for the same reason as the probe's: a loaded frame is long.
       const flashes = frameFlashes(shots, { maxMs: 2000 });
       assert.equal(flashes.length, 1, `${flashes.length} flashes over ${shots.length} frames`);
       assert.ok(flashes[0].ratio > 0.9, 'the whole screen changed');

@@ -1,23 +1,4 @@
 #!/usr/bin/env node
-/* docs/chip-card-anatomy.html — the "Chip and card anatomy" Handbook guide
-   as ONE self-contained page (Feature #180), for sharing outside the app.
-
-   The guide's figures are the real chip and card markup, so the page needs
-   the real chip CSS to draw them. Rather than a hand-kept copy that drifts,
-   this lifts the chip rules out of public/style.css by selector (every rule
-   whose selector list touches .k, .av, .hue-*, .mention-*, .wv-card*, the
-   two chip tokens on :root, and their [data-bs-theme="dark"] twins) and
-   inlines them after the document page's own stylesheet. The Tabler tokens
-   those rules read are declared here for both themes, so the page follows
-   prefers-color-scheme with no framework attached.
-
-   No network requests: the favicon link the document page carries is
-   dropped, and the guide has no code fence, diagram or math, so no vendor
-   script is emitted. test/handbook.test.mjs re-runs this with --stdout and
-   fails when docs/chip-card-anatomy.html no longer matches.
-
-     node scripts/export-chip-card-anatomy.mjs            # writes the file
-     node scripts/export-chip-card-anatomy.mjs --stdout   # prints it */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -28,16 +9,12 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'chip-card-anatomy.html');
 const CHIP_SELECTORS = /^(:root|\.k\b|\.k-|\.k\.|\.av\b|\.hue-|\.mention-|\.wv-card|\.wv-seg-state|\[data-bs-theme="dark"\] \.(k|hue|av))/;
 
-/* Every top-level rule block in style.css whose selector list has a part
-   the chip needs. Comments go first so a note above a rule is not read as
-   part of its selector. */
 export function chipCss(css = readFileSync(join(ROOT, 'public/style.css'), 'utf8')) {
   const out = [];
   for (const [, sels, body] of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const parts = sels.split(',').map((s) => s.trim()).filter(Boolean);
     const keep = parts.filter((p) => CHIP_SELECTORS.test(p));
     if (!keep.length) continue;
-    // :root carries the whole theme; only the two chip tokens ride along.
     const decls = keep.some((p) => p.startsWith(':root'))
       ? body.split(';').filter((d) => /--wv-chip-/.test(d)).join(';')
       : body.trim();
@@ -47,9 +24,6 @@ export function chipCss(css = readFileSync(join(ROOT, 'public/style.css'), 'utf8
   return out.join('\n');
 }
 
-/* The Tabler tokens the chip rules read, in weave's own values
-   (public/style.css :root and [data-bs-theme="dark"]), keyed off the
-   viewer's colour scheme and off data-bs-theme so either wins. */
 const TOKENS = `
 :root, [data-bs-theme="light"] {
   --tblr-border-color: #e6e3dc; --tblr-body-color: #1a1d23; --tblr-secondary: #6b7280;

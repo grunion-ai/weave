@@ -1,16 +1,3 @@
-/* OpenID Connect sign-in with no dependencies (Feature #212; door C of
-   Feature #222). One provider per process, named by WEAVE_OIDC_ISSUER: Clerk,
-   Auth0, Keycloak, Authentik, Google — anything that serves
-   /.well-known/openid-configuration. The flow is authorization code with
-   PKCE; the id token is verified here against the provider's JWKS (RS256 or
-   ES256), with its issuer, audience, expiry and nonce checked. The scope is
-   `openid` alone, so the provider is asked for no email and no profile
-   (Feature #252), and what comes out is { issuer, subject }. Whether that
-   subject has an account is the engine's question (accountForIdentity, or
-   redeemIdentityInvite on an invite's trip), and the session is weave's own
-   wv_session.
-   ponytail: one provider. A second one is a list here and a button each on
-   the sign-in page; the account row already keys identities by issuer. */
 import { createHash, randomBytes, webcrypto } from 'node:crypto';
 import { WeaveError } from './store.js';
 const { subtle } = webcrypto;
@@ -25,9 +12,6 @@ const ALGS = {
   ES256: { import: { name: 'ECDSA', namedCurve: 'P-256' }, verify: { name: 'ECDSA', hash: 'SHA-256' } },
 };
 
-/* WEAVE_OIDC_ISSUER and WEAVE_OIDC_CLIENT_ID turn the door on together;
-   WEAVE_OIDC_CLIENT_SECRET is for a confidential client (a public one relies
-   on PKCE alone); WEAVE_OIDC_NAME is the word on the button. */
 export function oidcFromEnv(env = process.env) {
   const raw = env.WEAVE_OIDC_ISSUER?.trim();
   const clientId = env.WEAVE_OIDC_CLIENT_ID?.trim();
@@ -65,7 +49,6 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
     discovered = { at: Date.now(), doc };
     return doc;
   };
-  /* A key id the cache has not seen is a rotation: fetch once more, then give up. */
   const keyFor = async (kid, doc) => {
     const find = () => (keys ?? []).find((k) => (kid ? k.kid === kid : true) && (k.use ?? 'sig') === 'sig');
     if (!find()) keys = (await getJson(doc.jwks_uri)).keys ?? [];
@@ -99,12 +82,6 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
   return {
     issuer,
     name: name || new URL(issuer).hostname,
-    /* What start needs: the three secrets of one trip and where to send the
-       browser. state and nonce ride the URL; the verifier stays here. fresh
-       asks the provider to sign the person in again rather than reuse its
-       session (prompt=login, plus select_account where discovery lists it),
-       which is how a person switches account where the provider names no
-       end_session_endpoint (Issue #570). */
     async begin({ redirectUri, fresh = false }) {
       const doc = await discover();
       const state = randomBytes(32).toString('base64url');
@@ -118,10 +95,6 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
       if (fresh) url.searchParams.set('prompt', doc.prompt_values_supported?.includes('select_account') ? 'login select_account' : 'login');
       return { url: url.href, state, nonce, verifier };
     },
-    /* RP-initiated logout: the provider's end_session_endpoint, coming back
-       to postLogoutRedirectUri, or null when discovery names none.
-       ponytail: client_id and no id_token_hint, which the spec allows; a
-       provider that insists on the hint needs the id token kept per session. */
     async endSessionUrl({ postLogoutRedirectUri }) {
       const doc = await discover();
       if (!doc.end_session_endpoint) return null;
@@ -130,8 +103,6 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
       url.searchParams.set('post_logout_redirect_uri', postLogoutRedirectUri);
       return url.href;
     },
-    /* The code for a verified identity: the issuer and the subject, and
-       nothing else the token may carry. */
     async redeem({ code, redirectUri, verifier, nonce }) {
       const doc = await discover();
       const form = new URLSearchParams({ grant_type: 'authorization_code', code: String(code ?? ''), redirect_uri: redirectUri, code_verifier: verifier });
@@ -144,16 +115,6 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
       const claims = await verifyIdToken(tokens.id_token, { nonce, doc });
       return { issuer, subject: String(claims.sub) };
     },
-    /* Who an access token belongs to, for the MCP door (Feature #254): an
-       agent signed in at the provider on its own and brings the provider's
-       token. The provider's userinfo endpoint is the check, so this works
-       for opaque tokens too. Answers, and refusals, are kept TOKEN_TTL_MS
-       under the token's sha256, never the token. A 401 or 403 from the
-       provider is a WeaveError 'unauthorized'; a provider that is down or
-       answers nonsense throws anything else and is not remembered.
-       client: the token's client_id (or azp) when the token is a JWT, read
-       after userinfo accepted it, for the audit line; an opaque token names
-       none. ponytail: whole-cache clear at TOKEN_CACHE_MAX, not LRU. */
     async identify(accessToken) {
       const key = createHash('sha256').update(String(accessToken)).digest('hex');
       const hit = vouched.get(key);
@@ -162,7 +123,6 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
         return hit.who;
       }
       if (vouched.size >= TOKEN_CACHE_MAX) vouched.clear();
-      // A discovery failure is the provider's trouble, not a bad token: never a 401.
       const doc = await discover().catch((err) => { throw new Error(err.message); });
       if (!doc.userinfo_endpoint) throw new Error('The identity provider\'s discovery document has no userinfo_endpoint');
       const res = await fetch(doc.userinfo_endpoint, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(10_000) });
@@ -174,8 +134,7 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
       const info = await res.json().catch(() => null);
       if (!res.ok || !info?.sub) throw new Error(`The identity provider answered ${res.status} at ${new URL(doc.userinfo_endpoint).pathname}`);
       let client = null;
-      try { const c = decodePart(String(accessToken).split('.')[1]); client = c.client_id ?? c.azp ?? null; } catch { /* opaque */ }
-      // The subject alone, as redeem keeps it (Feature #252): no email is read or kept.
+      try { const c = decodePart(String(accessToken).split('.')[1]); client = c.client_id ?? c.azp ?? null; } catch {}
       const who = { issuer, subject: String(info.sub), client: /^[\w.:@-]{1,64}$/.test(String(client ?? '')) ? String(client) : null };
       vouched.set(key, { at: Date.now(), who });
       return who;

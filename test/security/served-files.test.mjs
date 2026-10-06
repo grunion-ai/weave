@@ -1,12 +1,3 @@
-/* Uploaded files are served inert (Issue #483).
-   GET /api/files/:id used to answer with whatever content type the uploader
-   named and `inline`, so an uploaded .html or .svg opened as a page on the
-   workspace origin and ran its script in the viewer's session. Only a short
-   list of inert types that the app shows in place (the grid's attachment
-   links, image embeds in documents, the PDF viewer iframe) is served inline;
-   everything else downloads as application/octet-stream. Every file response
-   carries nosniff and a sandbox policy. The task applet's /t/file route
-   serves the same way. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';

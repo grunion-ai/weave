@@ -3,12 +3,6 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
-/* Feature #16 — the attachments field type. Entity-level files have existed
-   since v0.1; this puts a named SUBSET of them in a column: the value is an
-   array of file ids, `attachToField` is the one verb that uploads and files
-   in one motion, and deleting a file plucks it from every attachments value
-   so a column can never point at a ghost. */
-
 function fresh() {
   const w = new Weave();
   w.createSpace({ name: 'Dev' });

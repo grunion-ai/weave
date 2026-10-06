@@ -1,7 +1,3 @@
-/* Issue #267, driven through a real browser: document.title follows the
-   place (table, docked row, entity page, space, workspace home), and the
-   table heading is a real <h1> that looks exactly like the old one.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

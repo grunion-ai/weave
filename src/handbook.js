@@ -1,23 +1,5 @@
-// The Handbook: weave's own documentation, stored in weave.
-//
-// Two collections live here. FIELD_DOCS is one page per field type — the
-// reference a writer opens when a column will not do what they meant. GUIDES
-// is the prose that field pages cannot carry: how a document is written, and
-// what a workspace can be made to look like.
-//
-// Both are applied by upsert (name is the key), so a workspace seeded before
-// this file existed grows the new pages and refreshes the old ones without
-// losing a row's id, its links, or anything a reader added underneath.
-// A docs workspace that already exists gets the same apply on the first boot
-// of each build whose pages differ (syncHandbook, Issue #255).
-
 import { createHash } from 'node:crypto';
 
-/* ---------------------------------------------------------------- fields */
-
-/* `kind` groups the pages in the Fields table. The five original groups plus
-   three the v0.4/v0.5 types earned: a definition is Meta, a keystore name is
-   Secret, an upload is Files. */
 export const FIELD_KINDS = ['Value', 'Choice', 'Relation', 'Computed', 'Document', 'Meta', 'Secret', 'Files'];
 
 export const FIELD_DOCS = [
@@ -774,8 +756,6 @@ A file whose bytes are gone keeps its name and is marked \`(missing)\` in the ce
 A file delete is not undoable.` },
 ];
 
-/* ---------------------------------------------------------------- guides */
-
 export const GUIDES = [
   {
     name: 'Document formatting',
@@ -1417,12 +1397,6 @@ Opening a row opens the structure: a row that describes another workspace deep-l
 
 A workspace that minted its own Workspace space keeps it as a **tombstone**: the space and its four tables are marked deleted, their rows kept, nothing purged. Its space rollups are re-created on the root Spaces table (a name clash gets \` (<workspace>)\` appended). \`weave serve\` on that file alone hosts the registry again; joining a hub tombstones it again. The Cloudflare Worker serves one workspace per deployment, so there the root is that workspace and nothing moves.`,
   },
-  /* ---------- Self-hosting (Feature #222, phase 1) ----------
-     The door matrix, the gates, the deploy targets and the environment
-     contract live here so a fresh clone carries them; the README's
-     self-hosting section is an index into these pages. Two stubs name the
-     phase that fills them. test/deploy-artifacts.test.mjs pins the titles,
-     the checks, and the variable set against the Dockerfile and compose. */
   {
     name: "Self-host weave: choose your door",
     audience: 'Human',
@@ -2183,7 +2157,6 @@ To change what a chip or card contains — the id, the state, the description si
   {
     name: 'Templates',
     audience: 'Both',
-    // After Table views, before the anatomy, which stays last.
     order: 20.5,
     doc: `# Templates
 
@@ -2218,13 +2191,6 @@ The test suite exercises each template kept in \`test/fixtures/templates/\` (the
 \`weave_update_space {space, template: true}\` marks a space; \`weave_template_list\` lists this workspace's templates; \`weave_template_use {space, workspace, name?}\` copies one into another workspace of the hub and answers \`{space, workspace, url, plan, skipped}\`. It needs the HTTP door, because a stdio server holds one workspace. Over REST: \`GET /api/templates\` and \`POST /api/spaces/:space/use {workspace, name?}\` on the template's own workspace. On the CLI: \`weave template list\` and \`weave template use <space> --into <other.db> [--name N]\`.`,
   },
 ];
-
-/* ----------------------------------------------------- formatting samples
-
-   The Showcase space answers "what can a field be" in one grid. This answers
-   the same question for a document: one row per construct, each row's own
-   Description written in the construct it names, so the table is the proof
-   and the reference at once. */
 
 export const FORMATTING_SAMPLES = [
   { name: 'Headings and folds', construct: 'Structure', syntax: '`#` … `######`', doc: `# Headings and folds
@@ -2448,14 +2414,9 @@ Coverage is $c = \\frac{documented}{types}$, and this release takes it to $1$.
 See [[table:Fields]] for the field reference.` },
 ];
 
-/* ---------------------------------------------------------------- apply */
-
 const ensureSpace = (w, name, description) =>
   w.listSpaces().find((s) => s.name === name) ?? w.createSpace({ name, description });
 
-/* Fills the blanks on a table that already exists — a workspace seeded before
-   this file had a description, an icon or a noun should gain them — without
-   overwriting anything someone chose deliberately. */
 function ensureTable(w, space, name, { description = '', icon = '', noun = '' } = {}) {
   const existing = w.findTable(`${space}/${name}`);
   if (existing) {
@@ -2473,9 +2434,6 @@ function ensureTable(w, space, name, { description = '', icon = '', noun = '' } 
 
 const ensureField = (w, db, spec) => w.findField(db, spec.name) ?? w.addField(db, spec);
 
-/* A select gains the option names it is missing, and keeps the ids of the
-   ones it has — a bare string would re-slug and orphan every row pointing at
-   the old id. */
 function ensureOptions(w, db, fieldName, names) {
   const field = w.findField(db, fieldName);
   if (!field) return;
@@ -2487,10 +2445,6 @@ function ensureOptions(w, db, fieldName, names) {
   });
 }
 
-/* Upsert on the name. A page that already exists keeps its id, its inbound
-   [[…]] links and its position; only its values and its document move. The
-   engine drops identical values and identical text, so a re-apply that
-   changes nothing writes nothing. */
 function upsertRow(w, db, { name, values, doc }) {
   const existing = w.findEntity(db, name);
   if (!existing) return w.createEntity(db, { name, values, doc });
@@ -2500,15 +2454,10 @@ function upsertRow(w, db, { name, values, doc }) {
 }
 const sameValue = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-/* The generated pages, one list per table — the single source applyHandbook,
-   handbookHash and handbookDrift all read. */
 const guidePages = () => GUIDES.map((g) => ({ name: g.name, values: { Audience: g.audience, Order: g.order }, doc: g.doc }));
 const fieldPages = () => FIELD_DOCS.map((f) => ({ name: f.name, values: { Kind: f.kind }, doc: f.doc }));
 const HANDBOOK_PAGES = () => [['Handbook/Guide', guidePages()], ['Handbook/Fields', fieldPages()]];
 
-/* The Handbook: one page per field type, plus the guides that no single field
-   page can carry. Idempotent — safe on a workspace seeded before either
-   existed, and safe to run again after this file grows. */
 export function applyHandbook(w) {
   ensureSpace(w, 'Handbook', 'Official documentation and how-tos');
 
@@ -2534,16 +2483,6 @@ export function applyHandbook(w) {
   return w;
 }
 
-/* ---------- handbook sync (Issue #255) ----------
-   applyHandbook used to run only from seedWeaver, which serve calls only when
-   no weave.db exists — so a landed edit to a page in this file never reached
-   a docs workspace that already existed. Boot now applies it the way it
-   applies the Development manifest: the generated pages' hash on meta makes
-   it one pass per build, not one per boot, so a hand edit on a page survives
-   restarts until the source of that build moves. `weave handbook sync`
-   applies on demand; `weave handbook check` reports drift and writes nothing.
-   The apply is name-matched and additive: a guide a person wrote is never
-   read, rewritten or removed, and sync deletes nothing. */
 export function handbookHash() {
   return createHash('sha256').update(JSON.stringify(HANDBOOK_PAGES())).digest('hex').slice(0, 16);
 }
@@ -2567,7 +2506,6 @@ export function syncHandbook(w, { force = false } = {}) {
   const hash = handbookHash();
   if (!force && w.state.meta.handbookSync === hash) return { applied: false, hash };
   const { missing, stale } = handbookDrift(w);
-  // The feed names the sync, not whoever happened to start the server.
   const actor = w.actor;
   w.actor = 'handbook-sync';
   try {
@@ -2580,15 +2518,8 @@ export function syncHandbook(w, { force = false } = {}) {
   return { applied: true, created: missing.length, updated: stale.length, hash };
 }
 
-/* The document half of the Showcase space: every construct a document can
-   hold, each row written in the construct it names. Needs the Showcase space,
-   which seedFieldShowcase creates. */
 export const FORMATTING_PAGE = 'Every construct on one page';
 
-/* The showcase as one document (Issue #88): a lead-in, the syntax reference
-   as a table, then every sample body verbatim behind a divider. Nothing is
-   rewritten on the way in — a sample that demonstrates a construct has to
-   keep demonstrating it. */
 function formattingPage() {
   const reference = [
     '| Section | Construct | Syntax |',
@@ -2605,12 +2536,6 @@ function formattingPage() {
   ].join('\n');
 }
 
-/* ---------- the icon library, documented where it lives ----------
-   Kyle, 2026-09-02: "store this as canonical in the showcase — an icon entity
-   with a nicely formatted description, with pictures." One row in
-   Showcase/Icons. The numbers come from the registry at apply time, so the
-   page cannot drift from the set; the pictures are static files the server
-   already serves, so a re-apply refreshes the text without losing them. */
 await import('../public/icon-registry.js');
 await import('../public/field-dialog-core.js');
 const ICON_REGISTRY = globalThis.weaveIconRegistry;
@@ -2622,7 +2547,6 @@ export function iconLibraryPage() {
   const core = globalThis.fieldDialogCore;
   const groups = core.ICON_CATEGORIES.filter((g) => g.flat.length || g.marks.length);
   const twins = Object.entries(R.MARK_TWINS).map(([ch, n]) => `| \`${ch}\` | \`lucide:${n}\` | :${n}: | ${R.MOTION[n] ? `${R.MOTION[n]} ms` : 'still'} |`);
-  // Every icon, drawn beside its name, grouped by Lucide's own categories.
   const gallery = groups.flatMap((g) => [
     '', `### ${g.name} · ${g.marks.length + g.flat.length}`, '', '| Icon | Value | Run |', '| --- | --- | --- |',
     ...g.marks.map((m) => `| :${R.MARK_TWINS[m] ?? R.MARK_ALIASES[m] ?? m}: | \`${m}\` | ${R.MARK_TWINS[m] && R.MOTION[R.MARK_TWINS[m]] ? `${R.MOTION[R.MARK_TWINS[m]]} ms` : 'still'} |`),
@@ -2713,14 +2637,7 @@ export function applyFormattingShowcase(w) {
   });
   ensureField(w, t, { name: 'Syntax', type: 'text' });
 
-  // One page, not twelve (Issue #88). Kyle: "formatting showcase could all be
-  // done in one entity's description." Twelve rows meant opening twelve
-  // records to see a renderer that one scroll proves, and the last of them
-  // already carried the whole demonstration on its own. Each sample's body
-  // moves over verbatim — every construct still demonstrates itself — and the
-  // Syntax column survives as a table inside the page it describes.
   upsertRow(w, t, { name: FORMATTING_PAGE, values: {}, doc: formattingPage() });
-  // Rows from the twelve-row era go to the trash, not the void.
   for (const row of w.query('Showcase/Formatting', { limit: 200 }).items) {
     if (row.name !== FORMATTING_PAGE) w.deleteEntity(row.id);
   }

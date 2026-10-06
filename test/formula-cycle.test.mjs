@@ -5,12 +5,6 @@ import { references } from '../src/formula.js';
 import { startServer } from '../src/server.js';
 import { seeded } from './lib/fixtures.mjs';
 
-/* A cycle used to resolve to null: the recursion guard gave up at depth 8 and
-   the cell read the same as a legitimately empty one (Issue #283). A formula
-   that closes a cycle inside its own table is now refused when it is saved,
-   and a cycle that only closes through a rollup or a lookup — which no save
-   can see, since the loop needs two rows — reads `#CYCLE:` with the path. */
-
 test('references lists every field a formula reads, both branches included', () => {
   assert.deepEqual(references('Amount * 2'), ['Amount']);
   assert.deepEqual(references('if(Amount > 1, [Bonus], [Penalty])'), ['Amount', 'Bonus', 'Penalty']);
@@ -26,7 +20,6 @@ test('updateField refuses a formula that closes a cycle, naming the path', () =>
     () => w.updateField(t.id, 'Bonus', { config: { expression: 'Total + 1' } }),
     /cycle: Bonus → Total → Bonus/,
   );
-  // The refusal left the field alone: the old expression still computes.
   const e = w.createEntity(t.id, { Name: 'Acme', Amount: 10 });
   assert.equal(w.resolveField(w.getEntity(e.id), 'Bonus'), 20);
   assert.equal(w.resolveField(w.getEntity(e.id), 'Total'), 21);
@@ -38,7 +31,6 @@ test('addField refuses a formula that closes a cycle a dropped field left open',
   w.addField(t.id, { name: 'Total', type: 'text' });
   w.addField(t.id, { name: 'Bonus', type: 'formula', config: { expression: 'Total + 1' } });
   w.deleteField(t.id, 'Total');
-  // Bonus still names 'Total'; adding a formula under that name closes the loop.
   assert.throws(
     () => w.addField(t.id, { name: 'Total', type: 'formula', config: { expression: 'Bonus + 1' } }),
     /cycle: Total → Bonus → Total/,
@@ -64,7 +56,6 @@ test('a type change into a formula is refused when it closes a cycle', () => {
 test('a type change into a formula is refused when the expression does not parse or names an unknown field (Issue #288)', () => {
   const { w, t } = seeded();
   w.addField(t.id, { name: 'X', type: 'text' });
-  // The same message addField gives for the same string.
   let addError;
   try { w.addField(t.id, { name: 'Y', type: 'formula', config: { expression: 'if(upper(' } }); } catch (err) { addError = err.message; }
   assert.ok(addError, 'addField refuses the broken expression');
@@ -96,8 +87,6 @@ test('checkFormula reports the cycle instead of previewing a wrong number', () =
   assert.equal(w.checkFormula(t.id, 'Amount + 1', { excludeField: 'Bonus' }).ok, true);
 });
 
-/* The loop that no save-time check can see: it runs through a rollup, so it
-   only exists once two rows point at each other. */
 function linkedPair() {
   const { w, t } = seeded();
   w.addRelation(t.id, { name: 'Peer', targetDb: t.id, cardinality: 'many-to-many', inverseName: 'PeerOf' });
@@ -115,7 +104,6 @@ test('a cycle through a rollup reads #CYCLE with its path, not null', () => {
   const { w, a } = linkedPair();
   const v = w.resolveField(w.getEntity(a.id), 'Double');
   assert.match(String(v), /^#CYCLE: /, `expected a cycle marker, got ${JSON.stringify(v)}`);
-  // The loop travels between two rows, so the path names both.
   assert.equal(v, '#CYCLE: A › Double → A › PeerSum → B › Double → B › PeerSum → A › Double');
 });
 

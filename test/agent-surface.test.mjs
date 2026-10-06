@@ -1,12 +1,3 @@
-/* The agent surface contract: every capability the engine has is reachable
-   from MCP and from the CLI, and named in the agent-facing docs.
-
-   Kyle, 2026-08-24: "we need 100 percent cli mcp and documentation coverage
-   with no human gates whatsoever." A gate is any capability an agent can only
-   reach by driving the browser — or by knowing something no document says.
-   The matrix below is the enforcement: a new engine method fails this suite
-   until it is either surfaced on both doors and documented, or named internal
-   with a reason. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -22,15 +13,9 @@ const ROUTES = readFileSync(join(ROOT, 'src/routes.js'), 'utf8');
 const AGENTS = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
 const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 
-/* capability: engine methods → the MCP tool that reaches them → the CLI
-   command that reaches them → the HTTP routes that reach them. A CLI entry
-   is "<command>" or "<command> <sub>"; an HTTP entry is "<METHOD> <path>"
-   with :ref for a one-segment parameter and :rest for a greedy one, spelled
-   the way routes.js spells them (a literal route string, or the path regex). */
 const SURFACE = [
   ['schema.describe', ['describeSchema'], 'weave_schema', 'schema', ['GET /api/schema']],
   ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply', ['PUT /api/schema']],
-  // Feature #253: spaces, tables, fields, relations and rows in one call.
   ['build', ['build'], 'weave_build', 'build', ['POST /api/build']],
   ['vocabulary', [], 'weave_vocabulary', 'vocabulary', ['GET /api/vocabulary']],
   ['space.create', ['createSpace'], 'weave_create_space', 'space create', ['POST /api/spaces']],
@@ -38,7 +23,6 @@ const SURFACE = [
   ['space.update', ['updateSpace'], 'weave_update_space', 'space update', ['PATCH /api/spaces/:ref']],
   ['space.delete', ['deleteSpace'], 'weave_delete_space', 'space delete', ['DELETE /api/spaces/:ref']],
   ['space.restore', ['restoreSpace'], 'weave_restore_space', 'space restore', ['POST /api/spaces/:ref/restore']],
-  // Feature #261: a template space's schema, copied into another workspace.
   ['template.list', ['listTemplates'], 'weave_template_list', 'template list', ['GET /api/templates']],
   ['template.use', ['useTemplate'], 'weave_template_use', 'template use', ['POST /api/spaces/:ref/use']],
   ['table.create', ['createTable'], 'weave_create_table', 'table create', ['POST /api/tables']],
@@ -48,7 +32,6 @@ const SURFACE = [
   ['table.duplicate', ['duplicateTable'], 'weave_duplicate_table', 'table duplicate', ['POST /api/tables/:ref/duplicate']],
   ['table.delete', ['deleteTable'], 'weave_delete_table', 'table delete', ['DELETE /api/tables/:ref']],
   ['table.restore', ['restoreTable'], 'weave_restore_table', 'table restore', ['POST /api/tables/:ref/restore']],
-  // Table views (Feature #229): one verb on every door, not five CRUD tools.
   ['table.view', ['tableView'], 'weave_table_view', 'table view', ['GET /api/tables/:ref/views', 'GET /api/tables/:ref/views/:ref', 'PATCH /api/tables/:ref/views/:ref', 'DELETE /api/tables/:ref/views/:ref']],
   ['field.add', ['addField', 'materializeField'], 'weave_add_field', 'field add', ['POST /api/tables/:ref/fields']],
   ['field.update', ['updateField'], 'weave_update_field', 'field update', ['PATCH /api/tables/:ref/fields/:ref']],
@@ -91,28 +74,15 @@ const SURFACE = [
   ['workspace.record', ['getWorkspace', 'updateWorkspace'], 'weave_workspace', 'workspace', ['GET /api/workspace', 'PATCH /api/workspace']],
   ['workspace.logo', ['setWorkspaceLogo', 'getWorkspaceLogo', 'deleteWorkspaceLogo'], 'weave_workspace', 'workspace logo', ['GET /api/workspace/logo', 'PUT /api/workspace/logo', 'DELETE /api/workspace/logo']],
   ['accounts', ['createAccount', 'listAccounts', 'deleteAccount', 'setRequireAuth'], 'weave_accounts', 'account', ['GET /api/accounts', 'POST /api/accounts', 'DELETE /api/accounts/:rest']],
-  /* Door C (Feature #212). Linking is the operator's verb on every door;
-     the sign-in itself is the browser's trip through the provider, and the
-     session it mints is listed and revoked from the CLI and MCP. The passkey
-     door's invite and credential verbs were removed (Feature #243). */
-  /* Feature #252: link mints a one-time invite; the browser's trip through
-     the provider with ?invite= checks it at start and redeems it at the
-     callback, so those two verbs have no door of their own. */
   ['auth.identities', ['linkIdentity', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'], 'weave_accounts', 'account link', ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback']],
   ['auth.invites', ['inviteMember', 'listInvites', 'revokeInvite'], 'weave_accounts', 'invite', ['GET /api/invites', 'POST /api/invites', 'DELETE /api/invites/:ref']],
   ['auth.sessions', ['createSession', 'listSessions', 'revokeSession'], 'weave_accounts', 'account sessions', ['GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref']],
   ['keys', ['setKey', 'listKeys', 'deleteKey'], 'weave_keys', 'key', ['GET /api/keys', 'POST /api/keys', 'DELETE /api/keys/:rest']],
-  /* Reveal has no MCP tool ON PURPOSE (Feature #143). A human asking for their
-     own credential is the use case; an agent holding a token that can drain
-     the keystore is the threat. The CLI and the HTTP surface carry it, both
-     behind the credential's own access list, and both audited. */
   ['keys.reveal', ['revealKey', 'grantKey', 'revokeKey'], null, 'key reveal', ['POST /api/keys/:ref/reveal', 'POST /api/keys/:ref/share', 'DELETE /api/keys/:ref/share']],
   ['registry', ['registryReport', 'rebuildRegistry'], 'weave_registry', 'registry', ['GET /api/registry', 'POST /api/registry/rebuild']],
   ['relation.map', ['relationMapMmd'], 'weave_relation_map', 'map', ['GET /api/relation-map.mmd']],
 ];
 
-/* Methods that are not capabilities: resolvers an argument already covers,
-   persistence, and the two that must never leave the process. */
 const INTERNAL = {
   save: 'persistence', maybeRefresh: 'cross-process refresh',
   settleDeferred: 'process plumbing (Feature #250): runDeferredMigrations settles each workspace a supervised worker opened while the old worker still served; an agent never calls it',
@@ -177,10 +147,6 @@ test('every capability has a CLI command that exists', () => {
   }
 });
 
-/* routes.js matches a literal route as `route === 'GET /api/x'` (or the
-   path alone, `path === '/api/x'`, with the method tested inside) and a
-   parameterised one as `path.match(/^\/api\/x\/([^/]+)$/)`. Spell each
-   SURFACE entry the ways the file would, then look for one of them. */
 function routeSignatures(entry) {
   const [method, path] = entry.split(' ');
   if (!path.includes(':')) return [`'${method} ${path}'`, `path === '${path}'`];
@@ -190,8 +156,6 @@ function routeSignatures(entry) {
 }
 
 test('every capability has an HTTP route that exists', () => {
-  // The MCP and CLI doors were gated from the start; HTTP was not, which is
-  // how registry.* stayed reachable from two doors and absent from the third.
   for (const [capability, , , , http] of SURFACE) {
     for (const entry of http) {
       const sigs = routeSignatures(entry);
@@ -207,11 +171,6 @@ test('the key actions MCP offers are the CLI\'s minus reveal, and nothing else h
     'the two advertised lists are hand-typed in two files; reveal is the only sanctioned difference (Feature #143)');
 });
 
-/* Presence is not parity: a tool can name a capability and still leave half
-   its arguments on the floor. `weave_create_table` took space, name and
-   description while the engine's createTable also took an icon, so an agent
-   creating a table could not give it one without a second call — a small gate,
-   but a gate. The creates are checked against the engine's own signatures. */
 test('a create tool takes every option the engine create takes', () => {
   const ENGINE = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
   const optionsOf = (method) => {
@@ -232,8 +191,6 @@ test('the CLI creates take the same options', () => {
     const i = CLI.indexOf(`case '${cmd}'`);
     return CLI.slice(i, i + 2600);
   };
-  // The create call itself, not a neighbouring subcommand that happens to
-  // mention an icon.
   assert.match(block('space'), /createSpace\(\{[^}]*icon/, 'weave space create passes --icon through');
   assert.match(block('table'), /createTable\(\{[^}]*icon/, 'weave table create passes --icon through');
 });
@@ -243,8 +200,6 @@ test('every MCP tool is documented in AGENTS.md', () => {
   assert.deepEqual(undocumented, [], `tools missing from AGENTS.md: ${undocumented.join(', ')}`);
 });
 
-/* The count an agent reads before it reads the list. AGENTS.md said 56 while
-   llms.txt said 55 and the README said 23; the number moves with TOOLS. */
 test('the docs that count the MCP tools count them right', () => {
   const LLMS = readFileSync(join(ROOT, 'llms.txt'), 'utf8');
   for (const [doc, name, re] of [
@@ -255,7 +210,6 @@ test('the docs that count the MCP tools count them right', () => {
     const n = doc.match(re)?.[1];
     assert.equal(Number(n), TOOLS.length, `${name} says ${n} tools; TOOLS has ${TOOLS.length}`);
   }
-  // And the default list (Issue #595), which weave_build joined.
   const core = listTools('core').length;
   for (const [doc, name, re] of [[AGENTS, 'AGENTS.md', /(\d+) listed by default/], [LLMS, 'llms.txt', /\((\d+) listed by default/]]) {
     assert.equal(Number(doc.match(re)?.[1]), core, `${name} miscounts the default list; it has ${core}`);
@@ -269,8 +223,6 @@ test('every CLI command is documented in AGENTS.md', () => {
 });
 
 test('the docs say the registry rows are schema writes', () => {
-  // The gate that cost the most: an agent cannot discover this by reading the
-  // tool list, because it is entity CRUD standing in for a schema verb.
   for (const [doc, name] of [[AGENTS, 'AGENTS.md'], [README, 'README.md']]) {
     assert.match(doc, /Workspace\/Fields/, `${name} must name the field registry`);
   }
@@ -279,9 +231,6 @@ test('the docs say the registry rows are schema writes', () => {
 });
 
 test('the one boundary an agent will hit is named, not left to be discovered', () => {
-  // An MCP server is bound to one workspace file, so "make me another
-  // workspace" has no tool. Saying how, in the document agents read first,
-  // is the difference between a boundary and a gate.
   assert.match(AGENTS, /workspace is a second file/i);
   assert.match(AGENTS, /POST \/api\/workspaces/);
 });
@@ -294,17 +243,11 @@ test('every tool description carries enough to use it without asking a human', (
 });
 
 test('the field-type list in the tool descriptions is the whole list', () => {
-  // It named 13 of 18 for months, so `document`, `field`, `key` and
-  // `attachments` were invisible to every agent that read only the tools.
   const addField = TOOLS.find((t) => t.name === 'weave_add_field');
   assert.match(addField.description, /weave_vocabulary/,
     'the tool that takes a type must point at the list of types');
 });
 
-/* An option is a capability too. checkFormula grew `scan` (direction B,
-   2026-09-07); a door that takes the expression but drops the option is
-   half a door. Every option the engine's signature names must be accepted
-   by the MCP schema, the CLI flags and the HTTP route. */
 test('every checkFormula option reaches every door', () => {
   const ENGINE = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
   const sig = ENGINE.match(/\n  checkFormula\(dbRef, expression, \{([^}]*)\}/)?.[1] ?? '';
@@ -322,12 +265,6 @@ test('every checkFormula option reaches every door', () => {
   assert.match(AGENTS, /scan/, 'AGENTS.md must say what scan returns');
 });
 
-/* Issue #272: the grid asks for its columns (`fields`) and chip-level
-   relations (`relations: 'chip'`), and an agent can ask the same narrow
-   question on every door. Read off the engine's own signature, so the next
-   query option fails here until it reaches MCP and the CLI too. The CLI's
-   two exemptions predate this gate and have their own command: `weave trash`
-   lists the trashed rows and counts them. */
 test('every query option reaches every door', () => {
   const ENGINE = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
   const sig = ENGINE.match(/\n  #queryIn\(dbRef, \{([^}]*)\}/)?.[1] ?? '';

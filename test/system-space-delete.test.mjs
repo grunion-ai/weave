@@ -1,9 +1,3 @@
-/* Issue #248 — the Workspace space is the workspace's own system space.
-   The engine has always refused to delete it or to move a table into it
-   (Issue #126 by design), but the refusal read "is part of the system
-   registry", which Kyle took for a name clash between the space and the
-   Spaces registry table. The message now says plainly what the space is
-   and why the verb is refused; the behaviour itself is unchanged. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';

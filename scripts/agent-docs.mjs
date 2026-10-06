@@ -1,22 +1,10 @@
 #!/usr/bin/env node
-/* Feature #258: the generated parts of AGENTS.md's "Using weave" section.
-
-   Two blocks sit between marker comments in AGENTS.md:
-     primer    src/mcp-primer.md, verbatim (the MCP initialize.instructions)
-     tool-map  the default tools grouped by job, then the weave_call tools
-               grouped by area, read off TOOLS, CORE_TOOLS and SUMMARY in
-               src/mcp.js, so the counts and names never drift.
-
-   node scripts/agent-docs.mjs          rewrites the blocks in AGENTS.md
-   node scripts/agent-docs.mjs --check  exits 1 when AGENTS.md is stale
-   test/agent-front-door.test.mjs runs the same check. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { TOOLS, CORE_TOOLS, SUMMARY, primer } from '../src/mcp.js';
 
 const AGENTS = fileURLToPath(new URL('../AGENTS.md', import.meta.url));
 
-// The default list by the job an agent has in hand. Every core tool sits in one job.
 const JOBS = [
   ['Build', ['weave_build']],
   ['Read and search', ['weave_schema', 'weave_query', 'weave_get_entity', 'weave_search']],
@@ -26,7 +14,6 @@ const JOBS = [
   ['Everything else', ['weave_call']],
 ];
 
-// The tools weave_call reaches, by area. Every other tool sits in one area.
 const AREAS = [
   ['Rows', ['weave_delete_entity', 'weave_restore_entity', 'weave_trash', 'weave_undo', 'weave_bulk', 'weave_set_state', 'weave_link', 'weave_unlink']],
   ['Documents and comments', ['weave_get_doc', 'weave_set_doc', 'weave_doc_revisions', 'weave_doc_restore', 'weave_add_comment', 'weave_delete_comment']],

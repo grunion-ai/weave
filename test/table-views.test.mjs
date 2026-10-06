@@ -1,18 +1,3 @@
-/* Table views (Feature #229, Kyle's rulings 2026-09-23 and 2026-09-25): a
-   strip of named views over one table. Order is the only signal of the
-   default: the leftmost view opens with the table. Blank — the raw table —
-   is no longer a tab; it stays readable as 'Task/blank' (and the old
-   …/view/blank link), computed and never stored. A table keeps at least one
-   view.
-
-   The agent surface is the primary door, so it is tested first and hardest:
-   one verb (`tableView` / `weave_table_view` / `weave table view` /
-   `/api/tables/:t/views/:v`), names instead of ids, one ordered `fields` list
-   that carries visibility and order together, relative edits (show, hide,
-   move) so a wide table is never resent, and compact reads. Filters and sort
-   are updateTable's shapes through updateTable's validators. The UI is a
-   second door onto the same write path; the registry row (Workspace/Views)
-   is a third. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -40,8 +25,6 @@ function fresh() {
   return w;
 }
 const names = (list) => list.map((v) => v.name);
-
-/* ---------- reads ---------- */
 
 test('a new table has one view, Standard; the list is the strip, in order, and Blank is not in it', () => {
   const w = fresh();
@@ -72,8 +55,6 @@ test('Blank is still readable by name: the raw table, schema order, no filter, n
   });
   assert.equal(w.getTable('Task').tableViews.some((v) => /blank/i.test(v.name)), false, 'never stored');
 });
-
-/* ---------- writes ---------- */
 
 test('one call defines a view: fields carry visibility and order together', () => {
   const w = fresh();
@@ -200,8 +181,6 @@ test('rename, and delete: the next view becomes the default; the last view canno
   assert.deepEqual(w.tableView('Task/Alpha').filters, { State: ['Open'] }, 'the legacy verb writes the leftmost view');
 });
 
-/* ---------- the legacy table verbs are the default view ---------- */
-
 test('updateTable filters, sort and hiddenFields write the default view; describeSchema reads it back', () => {
   const w = fresh();
   w.tableView('Task/Other', { from: 'blank' });
@@ -236,8 +215,6 @@ test('a new field shows in every view; a dropped field leaves them; a rename kee
   assert.ok(!after.filters && !after.sort, 'a filter or sort on a dropped field goes with it');
 });
 
-/* ---------- migration ---------- */
-
 test('a workspace from before views: each table\'s filter, sort and hidden set become a Standard view, first in the strip', () => {
   const w = fresh();
   const dump = w.exportJSON();
@@ -260,8 +237,6 @@ test('a workspace from before views: each table\'s filter, sort and hidden set b
   const t = w2.getTable('Task');
   assert.ok(!('filters' in t) && !('sort' in t) && !('hiddenFields' in t), 'the legacy keys are gone: one source');
 });
-
-/* ---------- the schema document ---------- */
 
 test('describeSchema emits views compactly and applySchema round-trips them', () => {
   const w = fresh();
@@ -317,8 +292,6 @@ test('duplicate and export/import carry the views', () => {
   assert.deepEqual(w2.tableView('Dev/Task/V').fields, ['Name', 'Due'], 'Space/Table/View addresses it too');
 });
 
-/* ---------- the registry row is a door onto the same verb ---------- */
-
 const viewRows = (w) => {
   const t = w.getTable('Views');
   return w.listEntities(t.id).map((e) => w.readEntity(e.id));
@@ -366,8 +339,6 @@ test('editing a Views row writes through the verb, with the verb\'s validation',
   assert.throws(() => w.deleteEntity(last.id), /at least one view/, 'the row door keeps the last view too');
 });
 
-/* ---------- MCP ---------- */
-
 const call = (w, name, args) => dispatchTool(w, name, args ?? {});
 
 test('weave_table_view: one tool reads, defines, edits and deletes', () => {
@@ -392,8 +363,6 @@ test('the view tool stays small: one tool, a lean schema', () => {
   assert.ok(bytes <= 1400, `every agent turn pays for this schema; keep it under 1400 bytes (is ${bytes})`);
   assert.equal(TOOLS.filter((t) => /view/.test(t.name)).length, 2, 'weave_views (share pages) and weave_table_view — no CRUD fan-out');
 });
-
-/* ---------- REST ---------- */
 
 test('REST: the same verb at /api/tables/:table/views[/:view]', async () => {
   const w = fresh();
@@ -421,8 +390,6 @@ test('REST: the same verb at /api/tables/:table/views[/:view]', async () => {
     assert.deepEqual(gone.body, { name: 'Open work', deleted: true });
   } finally { server.close(); }
 });
-
-/* ---------- CLI ---------- */
 
 test('CLI: weave table view reads and writes with the same keys', () => {
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');

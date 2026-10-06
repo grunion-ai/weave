@@ -1,9 +1,3 @@
-/* The two poses of the one entity surface, driven through a real browser
-   (change 3). Split is the dock panel; expanded is the classic entity page
-   in #main — same URL, same geometry the page always had — and the pose
-   controls bridge them: outward arrows on the dock expand, inward arrows on
-   the page re-dock, and the page crumb's table link means "re-dock", not
-   "leave". Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -81,15 +75,15 @@ if (s) {
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     const before = await page.evaluate(() => history.length);
-    await page.click(`tr[data-eid="${a.id}"] .open-link`);       // dock
+    await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden]) .pose-btn');
-    await page.click('#dock .pose-btn');                          // expand
+    await page.click('#dock .pose-btn');
     await page.waitForSelector('#main .pose-btn');
-    await page.click('#main .pose-btn');                          // collapse
+    await page.click('#main .pose-btn');
     await page.waitForSelector('#dock:not([hidden]) .pose-btn');
-    await page.click('#dock .pose-btn');                          // expand again
+    await page.click('#dock .pose-btn');
     await page.waitForSelector('#main button[title="Close"]');
-    await page.click('#main button[title="Close"]');              // ✕ to table
+    await page.click('#main button[title="Close"]');
     await page.waitForSelector('#main .wv-grid');
     const after = await page.evaluate(() => history.length);
     assert.equal(after, before,

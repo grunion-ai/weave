@@ -1,0 +1,1 @@
+- **No inline comments** (Issue #661): weave's own code carries no `//`, `/* */` or `<!-- -->` comments. 5,619 came out of `src/`, `bin/`, `scripts/` and `test/` with no code change (every stripped file parses to the same syntax tree), and `test/no-inline-comments.test.mjs` fails on any new one. The why behind a change lives in its commit message and its Issue or Feature row.

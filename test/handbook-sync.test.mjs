@@ -1,13 +1,3 @@
-/* Handbook sync (Issue #255): src/handbook.js is the source of every
-   Handbook/Guide and Handbook/Fields page, but applyHandbook only ran from
-   seedWeaver — once, when no weave.db existed. A landed edit to a page never
-   reached a docs workspace that already existed, so :4400 served the old text
-   while the committed source and its gate were right.
-   The fix mirrors the Quality mirror and the Development sync: boot re-applies
-   the generated pages when their hash moves (one write per build, not one per
-   boot), `weave handbook sync` does it on demand, and `weave handbook check`
-   reports drift. The upsert stays name-matched and additive, so a guide a
-   person wrote is left alone and nothing is ever deleted. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
@@ -26,9 +16,6 @@ test.after(() => rmSync(dir, { recursive: true, force: true }));
 const guideRow = (w, name) => w.findEntity(w.getTable('Handbook/Guide'), name);
 const fieldRow = (w, name) => w.findEntity(w.getTable('Handbook/Fields'), name);
 
-/* A workspace an older build seeded: the pages exist, but one guide lacks a
-   section the current source carries, one field page is stale, and one guide
-   the newer build added was never written. */
 function olderBuild(w = new Weave()) {
   applyHandbook(w);
   const guide = guideRow(w, 'Making a workspace your own');
@@ -100,7 +87,6 @@ test('handbook check reports drift, and none straight after sync', () => {
   assert.deepEqual(drift.stale.sort(), ['Handbook/Fields: number', 'Handbook/Guide: Making a workspace your own']);
   syncHandbook(w);
   assert.deepEqual(handbookDrift(w), { missing: [], stale: [] });
-  // A workspace that never had a Handbook is all drift, and check writes nothing.
   const bare = new Weave();
   assert.equal(handbookDrift(bare).missing.length, GUIDES.length + FIELD_DOCS.length);
   assert.ok(!bare.findTable('Handbook/Guide'), 'check created a table');
@@ -109,12 +95,10 @@ test('handbook check reports drift, and none straight after sync', () => {
 test('the build hash makes boot one write per build, not one per boot', () => {
   const w = olderBuild();
   assert.equal(syncHandbook(w).applied, true);
-  // Same build again: nothing applied, and a hand edit made since survives.
   const row = guideRow(w, 'Polymorphic relations');
   w.setDoc(row.id, '# Polymorphic relations\n\nedited by hand on :4400');
   assert.equal(syncHandbook(w).applied, false);
   assert.match(w.getDoc(row.id), /edited by hand/);
-  // A new build moves the hash: the page is brought back to the source.
   w.state.meta.handbookSync = 'the-previous-build';
   assert.equal(syncHandbook(w).applied, true);
   assert.equal(w.getDoc(row.id), GUIDES.find((g) => g.name === 'Polymorphic relations').doc);
@@ -135,7 +119,6 @@ test('the hash follows the generated content', () => {
   assert.equal(handbookHash(), handbookHash());
 });
 
-/* ---------- the doors: CLI verbs and the serve boot ---------- */
 function staleDb(path) {
   const w = olderBuild(new Weave({ path }));
   w.store.close?.();
@@ -150,7 +133,7 @@ test('weave handbook check exits 1 on drift; handbook sync clears it', () => {
   assert.equal(out.applied, true);
   assert.equal(out.created, 1);
   assert.equal(out.updated, 2);
-  JSON.parse(cli('handbook', 'check', '--data', data)); // exit 0
+  JSON.parse(cli('handbook', 'check', '--data', data));
   assert.throws(() => cli('handbook', 'sync'), /explicit --data/, 'handbook must never guess its target');
 });
 

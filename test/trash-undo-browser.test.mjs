@@ -1,18 +1,3 @@
-/* Trash from the selection bar is instant and takes it back (Issue #259).
-
-   The 2026-09-12 audit trashed a row from the floating bar by accident: the
-   rows went at once, the toast said "Moved to trash 1 bug" with nothing to
-   press, focus fell to <body>, and ⌘Z did nothing although POST /api/undo
-   works. The rule this suite holds the page to is the one Linear and Notion
-   teach: delete is instant, the toast carries Undo, and ⌘Z steps the last
-   gesture back.
-
-   Three things only a real page can show:
-     1. the toast's Undo brings back EVERY row the gesture took, and the grid
-        redraws with them, while the cursor lands on a row rather than <body>;
-     2. ⌘Z on a resting cell does the same for the whole gesture;
-     3. ⌘Z inside an open cell editor is the text box's own undo and never
-        reaches /api/undo. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -38,7 +23,6 @@ if (s) {
   const waitRows = (page, n) => page.waitForFunction(
     (k) => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === k, n, { timeout: 5000 });
 
-  // Tick the second and third drawn rows and press the bar's trash.
   async function trashTwo(page) {
     const before = await rowIds(page);
     const boxes = page.locator('.wv-grid tbody .sel-box');
@@ -62,8 +46,6 @@ if (s) {
         assert.equal((await undo.textContent()).trim(), 'Undo');
         assert.ok(await undo.isVisible(), `the Undo button is visible in ${theme}`);
 
-        /* The cursor lands on the row after the ones that left: the
-           reader keeps a place in the grid rather than on <body>. */
         await page.waitForFunction(() => document.activeElement !== document.body, null, { timeout: 2000 }).catch(() => {});
         const focus = await page.evaluate(() => {
           const at = document.activeElement;
@@ -80,10 +62,6 @@ if (s) {
     });
   }
 
-  /* The undo stack is the workspace's, not the page's. A write that lands
-     between the trash and the click (another tab, an agent) sits on top of
-     the trash's entries, and stepping back two would undo that write and
-     only one of the rows. */
   test('Undo after somebody else\'s write brings the rows back and leaves that write alone', async () => {
     const page = await grid('light');
     try {
@@ -103,7 +81,6 @@ if (s) {
     try {
       const { before, gone } = await trashTwo(page);
       assert.ok(gone.every((id) => !live(id)));
-      // The trash left the cursor on a resting cell; ⌘Z is pressed there.
       await page.locator(`.wv-grid tr[data-eid="${before[3]}"] > td[data-field]`).first().focus();
       await page.keyboard.press('Meta+z');
       await waitRows(page, before.length);

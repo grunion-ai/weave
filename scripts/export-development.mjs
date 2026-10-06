@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-/* Export the canonical Development space (Issues + Features + Releases) to
-   docs/development.json — the manifest a build ships so every instance's
-   issue list updates on update (Feature: development sync, 2026-08-31).
-
-   Run from the machine that owns the canonical weave workspace, as part of
-   the ship cycle:
-
-     node scripts/export-development.mjs [path/to/weave.db]
-
-   The default source is ~/.weave/weave.db. The manifest carries name,
-   status, severity/milestone, symptom, and the Description markdown for
-   every row — name is the upsert key syncDevelopment matches on, so renames
-   in the canonical workspace mint new rows downstream (accepted trade-off:
-   the key survives export/import and needs no shared id space). */
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -59,8 +45,6 @@ const manifest = {
   generatedAt: new Date().toISOString(),
   issues: rows('Development/Issue', ['Status', 'Severity', 'Symptom']),
   features: rows('Development/Feature', ['Status', 'Milestone']),
-  // Release notes are mandatory: a row without a Description fails the export
-  // here and the suite downstream (test/development-sync.test.mjs).
   releases: rows('Development/Release', ['Date', 'Commit'], ['Fixes', 'Ships']),
 };
 
@@ -71,8 +55,6 @@ if (!manifest.releases.some((r) => r.name === `v${pkg.version}`)) {
   console.error(`No Development/Release row named v${pkg.version} — create it with notes before exporting`);
   process.exit(1);
 }
-// The release folds changelog.d/ next; a fragment still citing an open
-// security finding would ship other work under its number (Issue #568).
 const fragDir = join(root, 'changelog.d');
 const fragments = (existsSync(fragDir) ? readdirSync(fragDir).filter((n) => n.endsWith('.md')) : [])
   .map((name) => ({ name, text: readFileSync(join(fragDir, name), 'utf8') }));

@@ -1,12 +1,3 @@
-/* A url cell is a link at rest (Handbook: "a string the grid renders as a
-   link, opening in a new tab"). Until 2026-09-07 it drew the same text box
-   as a text field: a click placed a caret and nothing opened.
-
-   The fix is the #97 costume: the cell wears a real <a target="_blank"
-   rel="noopener"> at rest, and an explicit gesture — the pencil, a
-   double-click, Return on the focused cell — swaps the input in. urlParts()
-   is the pure half; the browser suite (url-cell-browser.test.mjs) is the
-   gesture half. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

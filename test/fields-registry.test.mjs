@@ -2,16 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fresh } from './lib/fixtures.mjs';
 
-/* Feature #52 — Fields as entities. The Workspace system space gains a third
-   registry table, `Fields`: one row per field of every user table, related to
-   its table's row and carrying the definition as a `field`-type value (#85).
-   The registry IS the schema surface: create a row and the column exists,
-   rename the row and the column renames, edit its Definition and the config
-   changes — the same one-verb-per-mutation sync the Spaces/Tables registry
-   uses (#12). Non-definable types (relation, lookup, rollup, formula) appear
-   as rows too — the registry is complete — but their Definition is empty and
-   their shape is edited through the schema verbs that understand them. */
-
 const rowsOf = (w) => w.listEntities(w.getTable('Fields').id);
 const rowNamed = (w, name) => rowsOf(w).find((e) => w.entityName(e) === name);
 const valOf = (w, row, fieldName) => {
@@ -21,7 +11,6 @@ const valOf = (w, row, fieldName) => {
 
 test('every user field is a row: defaults, adds, renames, deletes', () => {
   const w = fresh();
-  // Task arrives with Name, Description, Chip and Card; all four are rows bound to Task's row.
   assert.deepEqual(rowsOf(w).map((e) => w.entityName(e)).sort(), ['Card', 'Chip', 'Description', 'Name']);
   const tableRow = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Task');
   assert.equal(valOf(w, rowsOf(w)[0], 'Table'), tableRow.id);
@@ -41,7 +30,6 @@ test('every user field is a row: defaults, adds, renames, deletes', () => {
 
 test('the registry excludes the registry: system tables have no field rows', () => {
   const w = fresh();
-  // Only Task's four default fields (Name, Description, Chip, Card); nothing from Spaces/Tables/Fields.
   assert.equal(rowsOf(w).length, 4);
 });
 
@@ -59,7 +47,6 @@ test('creating a Fields row materializes the real column', () => {
   assert.equal(w.getEntity(t.id).values[made.id], 'p1');
   assert.equal(w.entityName(row), 'Priority');
 
-  // A row without its Table or Definition cannot become a column.
   assert.throws(() => w.createEntity('Fields', { name: 'Orphan', values: { Definition: { type: 'text' } } }), /Table/);
   assert.throws(() => w.createEntity('Fields', { name: 'Blank', values: { Table: tableRow.id } }), /Definition/);
 });
@@ -91,8 +78,6 @@ test('deleting a Fields row deletes the real column — hard only', () => {
 });
 
 test('a hard-deleted table takes the paired inverse field row with it too', () => {
-  // Found by the promote rehearsal: the inverse relation field was removed
-  // from the other table, but its registry row lived on as an orphan.
   const w = fresh();
   w.createTable({ space: 'Dev', name: 'Sprint' });
   w.addRelation('Task', { name: 'Sprint', targetDb: 'Sprint', cardinality: 'many-to-one', inverseName: 'Tasks' });
@@ -116,7 +101,6 @@ test('relations and computed fields are rows without a Definition', () => {
   assert.ok(rel, 'the relation is in the registry');
   assert.ok(valOf(w, rel, 'Definition') == null, 'no definition on a relation row');
   assert.equal(valOf(w, rel, 'Type'), 'relation');
-  // Its shape belongs to the schema verbs; the registry refuses to guess.
   assert.throws(() => w.updateEntity(rel.id, { Definition: { type: 'text', config: {} } }), /type|relation/i);
 });
 
@@ -125,15 +109,6 @@ test('the Name field of a table is marked and its row cannot be deleted', () => 
   const nameRow = rowsOf(w).find((e) => w.entityName(e) === 'Name');
   assert.throws(() => w.deleteEntity(nameRow.id, { hard: true }), /Name/);
 });
-
-/* The registry's relations are the point of it: a Fields row belongs to its
-   Tables row (`Table` / inverse `Fields`), and a Tables row to its Spaces row
-   (`Space` / inverse `Tables`). Both links were written once at row creation
-   and never re-asserted, so a link that was wrong — or that could not be
-   written yet because the parent row did not exist during bootstrap — stayed
-   wrong forever, and the two sides of the registry disagreed about which
-   fields a table has. Kyle found it by asking why tables were not registered
-   to fields and fields to tables (2026-08-23). */
 
 const drift = (w, table, row, fieldName, value) => {
   const f = Object.values(w.getTable(table).fields).find((x) => x.name === fieldName);
@@ -165,8 +140,6 @@ test('a field row that points at the wrong table is repaired', () => {
   const projectRow = w.listEntities(w.getTable('Tables').id).find((e) => w.entityName(e) === 'Project');
   const orderRow = (w.addField('Task', { name: 'Order', type: 'number' }), rowNamed(w, 'Order'));
 
-  // Drift as a legacy workspace carries it: the row surface refuses a move
-  // ('A field cannot move between tables'), so write the stored value directly.
   drift(w, 'Fields', orderRow, 'Table', projectRow.id);
   assert.deepEqual(relOf(w, 'Fields', w.getEntity(orderRow.id), 'Table'), [projectRow.id], 'setup: drifted');
 
@@ -206,8 +179,6 @@ test('a table row with no space is repaired', () => {
     'and the space lists the table');
 });
 
-/* The invariant both repairs exist to hold: the registry and the schema agree
-   about every field of every table, in both directions. */
 test('every field of every table is registered to it, and only to it', () => {
   const w = fresh();
   w.createTable({ space: 'Dev', name: 'Project' });

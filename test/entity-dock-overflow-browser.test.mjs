@@ -1,9 +1,3 @@
-/* The dock never scrolls sideways (Issue #372). A description holding a
-   markdown table of full, unbroken URLs has a min-content width far past
-   any dock; the dock's entity grid must keep its track at the panel width
-   so the table scrolls inside its own box and the paragraphs wrap. A date
-   row (input + picker button) must also fit the dock at its 360 px floor.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -35,7 +29,6 @@ if (s) {
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.click(`tr[data-eid="${row.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden]) .entity-body table');
-    // The date box sizes itself to its text a frame after it lands.
     await page.waitForFunction(() => [...document.querySelectorAll('#dock .entity-values .date-text')].every((x) => x.style.getPropertyValue('--date-fit')));
     return page;
   }

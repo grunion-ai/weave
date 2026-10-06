@@ -1,24 +1,3 @@
-/* Four faults Kyle found in one pass over the Ledger grid (Issue #93, and the
-   font half of Issue #67). Every one of them is a measurement the source can
-   lie about, so this suite drives a real browser:
-
-     1. the hover expansion of a clipped cell must keep the value's left edge
-        and type. It landed 8px right and 22px high, so reading a cell moved
-        what you were reading. (It opened over the value until Issue #346
-        moved it above the cell, so a click never edits under a copy.)
-     2. an EMPTY document chip must not make the row taller than a full one.
-        Tabler ships a global `.empty` (flex column, height 100%, 1rem padding)
-        and the chip wore the same class name, so one empty Brief field took a
-        43px comfortable row to 85 — in both densities.
-     3. the ↗ on a relation chip is the affordance that says "clicking goes
-        somewhere". It was a ::after on the chip, outside the <a>, so the one
-        pixel that promised navigation was the one pixel that did nothing.
-     4. a relation chip in a grid carries no ×. Unlinking is an edit, and the
-        grid is a record — the picker owns the removal.
-
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps).
-   It is imported dynamically and the suite skips when it is absent. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -30,19 +9,13 @@ const s = await launch('grid chrome', (weave) => {
   people = weave.createTable({ space: 'Product', name: 'Person' });
   tasks = weave.createTable({ space: 'Product', name: 'Task' });
   weave.addField(tasks, { name: 'Notes', type: 'text' });
-  // Enough columns that the grid runs out of room and starts clipping —
-  // the expansion only exists for a cell that does not fit.
   const FILLERS = Array.from({ length: 18 }, (_, i) => `Col ${i + 1}`);
   for (const n of FILLERS) weave.addField(tasks, { name: n, type: 'text' });
   weave.addField(tasks, { name: 'Brief', type: 'document' });
   weave.addRelation(tasks, { name: 'Owners', targetDb: people, cardinality: 'many-to-many', inverseName: 'Tasks' });
-  // A to-one relation as well: on the entity page a collection becomes its
-  // own grid, so the chip that keeps its × is the single link.
   weave.addRelation(tasks, { name: 'Lead', targetDb: people, cardinality: 'many-to-one', inverseName: 'Leads' });
 
   const mia = weave.createEntity(people, { name: 'Mia Okafor' });
-  // A name and a note both long enough that the column clips them: the
-  // expansion only exists for cells that do not fit.
   task = weave.createEntity(tasks, {
     name: 'A task whose name is far too long to sit inside one grid column',
     values: {
@@ -51,16 +24,9 @@ const s = await launch('grid chrome', (weave) => {
     },
   });
   weave.link(task.id, 'Owners', [mia.id]);
-  // A column narrower than the control inside it is what makes a text cell
-  // clip at all — the same 60px Kyle had dragged the Site column to.
   weave.updateField(tasks, 'Name', { config: { width: 60 } });
   weave.link(task.id, 'Lead', [mia.id]);
-  // A description with marks and more lines than a row can hold, so the
-  // preview has something to format and the hover has something to reveal
-  // (Kyle, 2026-08-27). The second row leaves its description empty, which
-  // is what the equal-height assertion below is really measuring.
   weave.setDoc(task.id, '# Title\n\n**bold** body\n\n- third line');
-  // A second row, with its Brief written, to compare row heights against.
   const full = weave.createEntity(tasks, { name: 'Short' });
   weave.setDoc(full.id, '# Written\n\nthis one is not empty', 'Brief');
 
@@ -70,8 +36,6 @@ if (s) {
   async function grid(density) {
     const page = await browser.newPage({ viewport: { width: 820, height: 900 } });
     if (density) {
-      // Density is saved in the view (Feature #239), so it is set there,
-      // before the grid draws.
       weave.tableView(`${tasks.id}/${weave.tableView(tasks).views[0].id}`, { density });
     }
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
@@ -81,20 +45,13 @@ if (s) {
     return page;
   }
 
-  /* ── 1 · the expansion keeps the value's left edge, and never covers it ─
-     Issue #93 put the copy exactly over the value; Issue #346 (Kyle,
-     2026-09-23) moved it above the cell, because a copy over the value hid
-     the editor a click opened. The left edge still holds. This grid's only
-     long row is its first, so the pop opens below it — above/flip geometry
-     has its own suite, cell-pop-above-browser.test.mjs. */
-
   test('a clipped cell expands on its value’s left edge without covering it', async () => {
     const page = await grid();
     try {
       const off = await page.evaluate(async () => {
         const td = [...document.querySelectorAll('.wv-grid tbody td.clipped')][0];
         td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 400)); // the expansion waits out its hover delay (Issue #67)
+        await new Promise((r) => setTimeout(r, 400));
         const pop = document.querySelector('.cell-pop');
         if (!pop) return null;
         const box = (n) => (n.firstElementChild ?? n).getBoundingClientRect();
@@ -108,16 +65,13 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Issue #67: the copy lands outside the cell, so every cell-scoped rule
-     stops matching it. The leading column is 600 weight in the row; it was the
-     grid default in the popover, and the value changed size as you read it. */
   test('a clipped name keeps its type in the expansion', async () => {
     const page = await grid();
     try {
       const type = await page.evaluate(async () => {
         const td = document.querySelector('.wv-grid tbody td.name-cell.clipped');
         td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 400)); // the expansion waits out its hover delay (Issue #67)
+        await new Promise((r) => setTimeout(r, 400));
         const pop = document.querySelector('.cell-pop');
         if (!pop) return null;
         const read = (n) => {
@@ -131,9 +85,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Issue #67 (Kyle): "crossing a row of clipped cells still flashes several
-     in sequence". The expansion is a read surface; it opens for a pointer
-     that RESTS on a cell, not one passing through. */
   test('a pointer passing through a clipped cell opens nothing', async () => {
     const page = await grid();
     try {
@@ -154,18 +105,11 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* The marker is measured, never assumed — so it has to be measured AGAIN
-     when the box changes. Narrowing the window puts cells over their columns
-     that were not over them before, and every one of those has to pick up its
-     clipped class or the expansion cannot be opened at all. Guards the expansion the two
-     cases above are about: they only ever run on a cell that is marked. */
   test('a cell that starts overflowing gets its marker without a redraw', async () => {
     const page = await grid();
     try {
       await page.setViewportSize({ width: 420, height: 900 });
       await page.waitForFunction(() => {
-        // What a value overflows is its clip box (Feature #239), or its own
-        // ellipsised box inside it.
         const tds = [...document.querySelectorAll('.wv-grid tbody td[data-field]')];
         const wide = (n) => n.scrollWidth > n.clientWidth + 1;
         const over = tds.filter((t) => { const b = t.querySelector(':scope > .wv-cb'); return b && (wide(b) || [...b.children].some(wide)); });
@@ -173,8 +117,6 @@ if (s) {
       }, null, { timeout: 3000 });
     } finally { await page.close(); }
   });
-
-  /* ── 2 · an empty document chip costs the row no height ──────────────── */
 
   for (const density of ['comfortable', 'compact']) {
     test(`an empty document chip does not grow a ${density} row`, async () => {
@@ -185,17 +127,11 @@ if (s) {
           .map((r) => Math.round(r.getBoundingClientRect().height)));
         assert.ok(h.length >= 2, 'two rows to compare');
         assert.equal(new Set(h).size, 1, `every row is the same height (${h.join(', ')})`);
-        // A declared height (Feature #239): exact, never a cap.
         const want = density === 'compact' ? 32 : 44;
         assert.equal(h[0], want, `a ${density} row is ${want}px (${h[0]})`);
       } finally { await page.close(); }
     });
   }
-
-  /* ── 2b · the description reads as prose, in a row's worth of space ──────
-     Kyle, 2026-08-27: a description "should always show a preview of the
-     properly formatted first few lines, not an md document chip". A row holds
-     one of those lines — the caps above are why — and hover holds the rest. */
 
   test('the description preview shows its marks, not its syntax', async () => {
     const page = await grid();
@@ -222,7 +158,7 @@ if (s) {
           .filter((l) => getComputedStyle(l).display !== 'none').length;
         const inCell = visible(td);
         td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 400)); // the expansion waits out its hover delay (Issue #67)
+        await new Promise((r) => setTimeout(r, 400));
         const pop = document.querySelector('.cell-pop');
         return pop ? { inCell, inPop: visible(pop) } : { inCell, inPop: 0 };
       });
@@ -233,9 +169,6 @@ if (s) {
   });
 
   test('a description reads at full strength, not dimmed like a computed cell', async () => {
-    // `cell-computed` paints --tblr-secondary and a default cursor: "nothing
-    // to do here". A description is the row's own prose and one click opens
-    // it, so it must read like the Name beside it, not like a rollup.
     const page = await grid();
     try {
       const look = await page.evaluate(() => {
@@ -254,9 +187,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* Blank at rest, a dashed invitation on the focused cell (Issue #420,
-     superseding the 2026-08-24 "dashed, never dimmed" ruling for cells at
-     rest): "Add description…" in every row was a wall of repeated text. */
   test('an empty description is blank at rest and a dashed invitation on focus', async () => {
     const page = await grid();
     try {
@@ -277,8 +207,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* The cause: Tabler's global `.empty` is a full-height flex column with a
-     1rem pad. A chip must not answer to it. */
   test('the empty-document chip does not wear a framework class name', async () => {
     const page = await grid();
     try {
@@ -288,26 +216,17 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* ── 3 · the ↗ on a relation chip opens the record ───────────────────── */
-
   test('clicking the ↗ of a relation chip opens that entity', async () => {
     const page = await grid();
     try {
       const chip = page.locator('.wv-grid tbody .k-rel').first();
-      // The grid scrolls sideways; a relation column can sit past the fold.
       await chip.scrollIntoViewIfNeeded();
       const box = await chip.boundingBox();
-      // The arrow is the last few pixels of the chip — the exact spot that
-      // promises navigation, and the exact spot that used to do nothing.
       await page.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
-      // Issue #198: the arrow opens the record DOCKED beside the table it
-      // lives in — the one entity view's default pose — never the full page.
       await page.waitForSelector('#dock:not([hidden]) .name-edit', { timeout: 3000 });
       assert.match(page.url(), /#\/table\//, 'the arrow docks; the dock is not a navigation');
     } finally { await page.close(); }
   });
-
-  /* ── 4 · no × on a relation chip in a grid ───────────────────────────── */
 
   test('a relation chip in the grid carries no ×', async () => {
     const page = await grid();
@@ -326,8 +245,6 @@ if (s) {
       await page.waitForSelector('.entity-fields .fieldrow');
       assert.ok(await page.locator('.entity-fields .k-rel .x').count() > 0,
         'the record’s own page is where a link is taken off');
-      // A collection is a grid of its own down the page, and that grid keeps
-      // its unlink button — the button IS the edit surface there.
       await page.waitForSelector('.unlink-btn');
       assert.ok(await page.locator('.unlink-btn').count() > 0, 'and a related grid unlinks by its own button');
     } finally { await page.close(); }

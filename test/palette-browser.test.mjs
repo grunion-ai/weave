@@ -1,15 +1,3 @@
-/* The ⌘K palette, option A "Grouped results" (Issue #382; Kyle's pick from
-   the 2026-09-26 design pass, finding F7). Each hit used to take three
-   lines: a kind badge and title, the full http permalink in mono, and a raw
-   markdown snippet ("# Design onboarding…"). Hits from another workspace
-   carried no label, and an empty palette showed nothing.
-   Now: one 36px line per hit, grouped Records → In documents → Tables, a
-   plain-text excerpt for a body match, a workspace tag on a foreign hit, a
-   Recent group when the input is empty, Tab between groups, and combobox /
-   listbox semantics. Runs on the seeded demo workspace (scripts/seed.mjs)
-   beside a second workspace, in both themes. The pure half is
-   test/palette-core.test.mjs. Playwright is NOT a dependency of weave; the
-   suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -47,7 +35,6 @@ if (s) {
       await page.waitForFunction((t) => document.querySelector('#cmdk-results')?.dataset.query === t, text);
     }
   }
-  // Each group's label and the names of its rows, in screen order.
   const groups = (page) => page.$$eval('#cmdk-results [role="group"]', (gs) => gs.map((g) => ({
     label: document.getElementById(g.getAttribute('aria-labelledby'))?.textContent,
     rows: [...g.querySelectorAll('[role="option"] .cmdk-name')].map((n) => n.textContent),
@@ -69,13 +56,10 @@ if (s) {
     assert.equal(g.length, 1);
     assert.match(g[0].label, /^Recent/);
     assert.deepEqual(g[0].rows.slice(0, 2), ['Apollo Launch', 'Design onboarding wizard'], 'newest first');
-    // The state chip rides along in its category colour, and the where-text
-    // names the table and number.
     const first = page.locator('#cmdk-results [role="option"]').first();
     assert.equal(await first.locator('.cmdk-where').textContent(), 'Project #1');
     assert.match(await first.locator('.k-state').getAttribute('class'), /cat-in-progress/);
     assert.equal(await first.locator('.k-state').textContent(), 'Building');
-    // Enter opens the selected recent.
     await page.keyboard.press('Enter');
     await page.waitForFunction((id) => location.hash.includes(id), s.apollo.id);
     await ctx.close();
@@ -143,7 +127,6 @@ if (s) {
     assert.match(await activeName(page), /^Apollo Launch/, 'Tab lands on the first row of the next group');
     assert.equal((await selected()).active, true, 'aria-activedescendant follows the selection');
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'cmdk-input', 'Tab never leaves the input');
-    // The selected row is tinted and carries the 2px inset bar.
     const shadow = await page.$eval('#cmdk-results .result.active', (r) => getComputedStyle(r).boxShadow);
     assert.match(shadow, /inset/);
     await page.keyboard.press('Enter');
@@ -152,7 +135,6 @@ if (s) {
     await palette(page, 'onboard');
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#cmdk-back').count(), 0, 'Esc closes');
-    // The footer shows the keys as keycaps.
     await palette(page);
     const keys = await page.$$eval('#cmdk .cmdk-foot kbd', (ks) => ks.map((k) => k.textContent));
     assert.deepEqual(keys, ['↑', '↓', '↵', 'tab', 'esc']);

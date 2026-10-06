@@ -8,12 +8,6 @@ import { execFileSync } from 'node:child_process';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = join(ROOT, 'docs', 'architecture');
 
-/* The architecture map (docs/architecture/) is an archify source pinned to a
-   weave commit plus the HTML archify rendered from it. The map is only worth
-   keeping while it tells the truth, so the gate holds three things: every file
-   it cites still exists, every runtime module is named in it, and the HTML was
-   rendered from the JSON beside it. Re-pin with `node scripts/architecture.mjs`. */
-
 const spec = JSON.parse(readFileSync(join(DIR, 'weave.architecture.json'), 'utf8'));
 const html = readFileSync(join(DIR, 'weave.architecture.html'), 'utf8');
 const sources = spec.components.flatMap((c) => (c.sources ?? []).map((s) => ({ id: c.id, ...s })));

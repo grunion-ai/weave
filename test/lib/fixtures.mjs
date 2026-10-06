@@ -1,7 +1,3 @@
-/* Fixtures the suites share: a few small workspaces, an in-process route
-   client, a throwaway server, and the test-manager CLI harness. Each one was
-   copied byte for byte into two to seven suites (Issue #648); they live here
-   now, once, and a suite imports the one it uses. */
 import test from 'node:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,9 +10,6 @@ import { request } from '../../scripts/test-manager.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
 
-/* ---------- workspaces ---------- */
-
-// Dev/Task, nothing else.
 export function fresh() {
   const w = new Weave();
   w.createSpace({ name: 'Dev' });
@@ -24,7 +17,6 @@ export function fresh() {
   return w;
 }
 
-// Ops/Ticket; opts reach the Weave constructor.
 export function workspace(opts = {}) {
   const w = new Weave(opts);
   w.createSpace({ name: 'Ops' });
@@ -32,7 +24,6 @@ export function workspace(opts = {}) {
   return { w, t };
 }
 
-// Ops/Task.
 export function ws() {
   const w = new Weave();
   w.createSpace({ name: 'Ops' });
@@ -40,7 +31,6 @@ export function ws() {
   return { w, t };
 }
 
-// Product/Task.
 export function build() {
   const w = new Weave();
   w.createSpace({ name: 'Product' });
@@ -48,7 +38,6 @@ export function build() {
   return { w, tasks };
 }
 
-// Sales/Deals with a number field, Amount.
 export function seeded() {
   const w = new Weave();
   w.createSpace({ name: 'Sales' });
@@ -57,7 +46,6 @@ export function seeded() {
   return { w, t };
 }
 
-// A schema with what is the source's own (ids, urls, counts) stripped: what is left must match.
 export function normalise(v) {
   if (Array.isArray(v)) return v.map(normalise);
   if (!v || typeof v !== 'object') return v;
@@ -66,10 +54,6 @@ export function normalise(v) {
     .map(([k, x]) => [k, normalise(x)]));
 }
 
-/* ---------- servers ---------- */
-
-/* The route handler without a socket: call(method, path, { body, token,
-   cookie }) answers { status, json }. */
 export function client(hub) {
   const handle = createRequestHandler(hub, { version: 'test' });
   return async (method, path, { body, token, cookie } = {}) => {
@@ -82,12 +66,11 @@ export function client(hub) {
       header: (n) => headers[n.toLowerCase()], readBody: async () => body ?? {}, remote: '127.0.0.1',
     });
     let json = null;
-    try { json = JSON.parse(res.body); } catch { /* not json */ }
+    try { json = JSON.parse(res.body); } catch {}
     return { status: res.status, json };
   };
 }
 
-// An empty workspace on a free port; fn gets a fetch bound to it.
 export async function withServer(fn) {
   const { server, port } = await startServer(new Weave(), { port: 0 });
   try {
@@ -97,11 +80,6 @@ export async function withServer(fn) {
   }
 }
 
-/* ---------- the test manager ---------- */
-
-/* A private manager directory with admission wide open, stopped and removed
-   after the suite. cli(args) runs scripts/test.mjs against it; fixture()
-   writes a throwaway suite into it. */
 export function managerHarness(prefix) {
   const scratch = mkdtempSync(join(tmpdir(), prefix));
   const env = { ...process.env, WEAVE_TEST_MANAGER_DIR: scratch, WEAVE_TEST_JOB: '', NODE_TEST_CONTEXT: '', WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999' };

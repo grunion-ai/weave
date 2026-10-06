@@ -1,8 +1,6 @@
-// Seed a demo workspace showing off every Weave feature.
 import { Weave } from '../src/engine.js';
 
 export function seed(w) {
-  // ---------- Product space ----------
   w.createSpace({ name: 'Product', description: 'Product development' });
   const projects = w.createTable({ space: 'Product', name: 'Project' });
   const tasks = w.createTable({ space: 'Product', name: 'Task' });
@@ -35,14 +33,13 @@ export function seed(w) {
     },
   });
   w.addRelation(tasks, { name: 'Project', targetDb: projects, cardinality: 'many-to-one', inverseName: 'Tasks' });
-  w.addField(tasks, { name: 'Spec', type: 'document' }); // second document field
+  w.addField(tasks, { name: 'Spec', type: 'document' });
   w.addField(tasks, { name: 'Project Budget', type: 'lookup', config: { relationField: 'Project', targetField: 'Budget' } });
   w.addField(tasks, { name: 'Size', type: 'formula', config: { expression: 'if(empty(Estimate), "unsized", if(Estimate > 5, "large", "small"))' } });
   w.addField(projects, { name: 'Task Count', type: 'rollup', config: { relationField: 'Tasks', aggregate: 'count' } });
   w.addField(projects, { name: 'Total Estimate', type: 'rollup', config: { relationField: 'Tasks', targetField: 'Estimate', aggregate: 'sum' } });
   w.addField(projects, { name: 'Task List', type: 'rollup', config: { relationField: 'Tasks', targetField: 'Name', aggregate: 'join' } });
 
-  // ---------- People space ----------
   w.createSpace({ name: 'People' });
   const people = w.createTable({ space: 'People', name: 'Person' });
   w.addField(people, { name: 'Email', type: 'email' });
@@ -50,7 +47,6 @@ export function seed(w) {
   w.addRelation(tasks, { name: 'Assignee', targetDb: people, cardinality: 'many-to-one', inverseName: 'Assigned Tasks' });
   w.addField(people, { name: 'Open Load', type: 'rollup', config: { relationField: 'Assigned Tasks', targetField: 'Estimate', aggregate: 'sum' } });
 
-  // ---------- Automation ----------
   w.createAutomation(tasks, {
     name: 'Log completion',
     trigger: { type: 'state-changed', field: 'State', toState: 'Done' },
@@ -60,7 +56,6 @@ export function seed(w) {
     ],
   });
 
-  // ---------- Entities ----------
   const ada = w.createEntity(people, { name: 'Ada Chen', values: { Email: 'ada@example.com', Role: 'Engineer' } });
   const leo = w.createEntity(people, { name: 'Leo Marsh', values: { Email: 'leo@example.com', Role: 'Designer' } });
 
@@ -128,7 +123,7 @@ wizard/
     values: { Estimate: 3, Due: '2026-08-18', Priority: 'P0', Tags: ['bug'], Project: 'Apollo Launch', Assignee: 'Ada Chen' },
     doc: '# Fix signup race condition\n\nDuplicate workspace rows when double-submitting the signup form.\n\n- [x] Reproduce\n- [x] Patch unique constraint\n- [x] Regression test',
   });
-  w.setState(t3.id, 'State', 'Done'); // fires the automation
+  w.setState(t3.id, 'State', 'Done');
 
   const t4 = w.createEntity(tasks, {
     name: 'Write API quickstart',
@@ -141,7 +136,6 @@ wizard/
   return { projects, tasks, people, apollo, hermes, t1, t2, t3, t4, ada, leo };
 }
 
-// Run directly: seed the default (or --data) workspace file.
 if (import.meta.url === `file://${process.argv[1]}`) {
   const pathArg = process.argv.indexOf('--data');
   const path = pathArg >= 0 ? process.argv[pathArg + 1] : new URL('../demo-workspace.json', import.meta.url).pathname;

@@ -1,13 +1,3 @@
-/* The blast radius of one write (Issue #257).
-
-   Every cell commit used to re-read the whole table: PATCH, GET, then the
-   table query again, and a redraw that threw the grid away. The server
-   already knows which rows a write touched, so the PATCH says so and the
-   client patches those rows in place.
-
-   This suite pins the server half: `affected` on the PATCH response, and
-   `["id","in",[…]]` as the read that goes with it. The DOM half is in
-   test/cell-commit-patch-browser.test.mjs. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -32,8 +22,6 @@ test.before(async () => {
   cases = weave.createTable({ space: 'Quality', name: 'Case' });
   weave.addField(cases, { name: 'Note', type: 'text' });
   weave.addRelation(cases, { name: 'Suite', targetDb: suites, cardinality: 'many-to-one', inverseName: 'Cases' });
-  // A lookup is the reason a row that was NOT written can go stale: Case
-  // shows the Suite's name, so renaming the Suite changes what Case paints.
   weave.addField(cases, { name: 'Suite name', type: 'lookup', config: { relationField: 'Suite', targetField: 'Name' } });
   suiteA = weave.createEntity(suites, { name: 'engine' });
   suiteB = weave.createEntity(suites, { name: 'viewer' });
@@ -53,10 +41,6 @@ test('a plain field edit on an unlinked row names only that row', async () => {
   assert.deepEqual(res.data.affected, [loose.id], `same-row edit, same-row blast radius: ${JSON.stringify(res.data.affected)}`);
 });
 
-/* A linked row's own links ride along: a rollup on the Suite can aggregate
-   the very field just written, and it recomputes on read. The grid pays
-   nothing for the extra id — it patches the rows IT is showing and drops
-   the rest — and a Suite left stale is the bug this Issue is about. */
 test('a plain field edit on a linked row names its far side too', async () => {
   const res = await api('PATCH', `/api/entities/${caseA.id}`, { values: { Note: 'hello' } });
   assert.deepEqual(new Set(res.data.affected), new Set([caseA.id, suiteA.id]),

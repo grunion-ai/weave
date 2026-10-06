@@ -1,8 +1,3 @@
-/* The url cell in a real browser: a click opens the link in a new tab and
-   the page stays where it was; the pencil, a double-click, and Return swap
-   the input in; blur saves and the link returns with the new address; an
-   empty or non-http value is the plain text box. The link points at a host
-   the test fulfils itself, so nothing leaves the machine. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -87,7 +82,6 @@ if (s) {
     await page.keyboard.press('Tab');
     await page.waitForSelector(`${cell(fibery.id)} a.url-link[href="https://docs.example.test/api/v3"]`);
     assert.equal(s.weave.getEntity(fibery.id).values[website.id], 'https://docs.example.test/api/v3');
-    // put it back for the suites after this one
     s.weave.updateEntity(fibery.id, { Website: DOCS });
     await page.close();
   });

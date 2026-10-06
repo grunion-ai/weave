@@ -4,15 +4,6 @@ import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-/* Issue #481: routes that act on the whole hub were authorized against the
-   workspace in the URL, so one unwalled or writer-accessible workspace
-   reached every other. After the fix: creating, restoring and deleting a
-   workspace needs an admin on the hub root once the root has an account;
-   the workspace list and search ?all=1 carry only the workspaces whose own
-   wall this caller would pass; a bug report still files into the weave docs
-   workspace for a writer, and an anonymous caller files there only when it
-   could pass that workspace's wall. */
-
 process.env.WEAVE_KEYSTORE = join(mkdtempSync(join(tmpdir(), 'weave-ks-')), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');
@@ -21,9 +12,6 @@ const { seedWeaver } = await import('../../src/weaver-seed.js');
 
 const REPORT = { categories: ['slow'], note: 'the grid stalls', events: [], client: { version: 'test' } };
 
-/* root (wall off; admin, writer, reader when `accounts`), open (no accounts,
-   wall off), secret (its own admin, wall on, one row named needle), weave
-   (the docs workspace). All file-backed so create and hard delete run. */
 function build({ accounts = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-hub-'));
   const at = (name) => { const w = new Weave({ path: join(dir, `${name}.db`) }); w.updateWorkspace({ name }); return w; };
@@ -113,7 +101,6 @@ test('the root admin manages workspaces, from the root or through a member with 
   const { token: session } = root.createSession('root-admin');
   assert.equal((await call('DELETE', '/w/open/api/workspaces/fresh?hard=1', { cookie: session })).status, 200);
   assert.equal(existsSync(join(dir, 'fresh.db')), false);
-  // A root session opens a member, as at the wall: the walled one is listed.
   assert.ok(names(await call('GET', '/w/open/api/workspaces', { cookie: session })).includes('secret'));
 });
 

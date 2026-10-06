@@ -1,10 +1,3 @@
-/* Inline icons in documents (Kyle, 2026-09-02: "show fully formatted real
-   icons in the .md — these can replace emojis").
-   `:bell:` draws the bell, `:check:` the tick, `:ring-quarter:` a progress
-   ring, wherever markdown is shown: the server renderer (exports, previews),
-   the dressed text cell, and the document editor, where the token is Lute's
-   own shortcode node — the inventory REPLACES the GitHub emoji table, so a
-   shortcode draws an inventory icon or stays literal, never an emoji. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';

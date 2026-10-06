@@ -1,10 +1,3 @@
-/* Issue #595: tools/list carried 56 definitions, about 12,000 tokens an
-   agent re-read on every turn, while a workspace build used about twelve of
-   them. The default profile is now the core build set plus weave_call, one
-   hop to everything else: its description names every other tool in a line,
-   and weave_call {name: "help", args: {tool}} returns a tool's full
-   definition. `weave mcp --tools all` or WEAVE_MCP_TOOLS=all lists every tool
-   on stdio and HTTP. Every capability stays reachable either way. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
@@ -50,13 +43,7 @@ test('the core list costs well under half the full one', () => withEnv(null, () 
   const w = new Weave();
   const core = JSON.stringify(rpc(w, 'tools/list').result).length;
   const all = JSON.stringify(rpc(w, 'tools/list', {}, { tools: 'all' }).result).length;
-  // 29,251 bytes for all 56 tools at v0.4.54; 11,942 for the core set.
   assert.ok(core * 2.5 < all, `core ${core} bytes vs all ${all}`);
-  // weave_build (Feature #253) joined at about 2,000 bytes, most of it the one
-  // worked example spec its description carries on purpose: it stands in for
-  // the 30 to 90 single-field and single-row calls a build used to take.
-  // Feature #261 added two tools, so two lines in weave_call's list and the
-  // template flag on weave_create_space: 14,465 bytes → about 14,610.
   assert.ok(core < 14700, `core tools/list is ${core} bytes`);
 }));
 
@@ -81,7 +68,6 @@ test('weave_call reaches a tool the core list leaves out, with compact replies a
   const full = ok(callTool(w, 'weave_call', { name: 'weave_set_state', args: { entity: 'Task#1', field: 'Status', state: 'New', verbose: true } }));
   assert.equal(full.fields.Status, 'New');
   assert.equal(ok(callTool(w, 'weave_call', { name: 'weave_undo', args: { list: true } })).history.length > 0, true);
-  // A client that sends args as a JSON string still lands.
   assert.equal(ok(callTool(w, 'weave_call', { name: 'weave_get_doc', args: '{"entity":"Task#1"}' })), 'hello');
 }));
 

@@ -1,8 +1,3 @@
-/* The invite emails (Feature #216, Issue #569): the two templates Kyle
-   approved on 2026-10-03, and the Architect-only preview route that renders
-   them with sample values. The copy is asserted word for word; the html is
-   held to what a mail client needs: inline styles, no SVG, a PNG mark on
-   the instance's own origin, a dark block, every variable escaped. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -158,7 +153,6 @@ test('the templates import nothing, so they run under workerd too', () => {
   assert.equal(longDate('2026-10-10T17:00:00.000Z'), 'October 10');
 });
 
-/* ---------------------------------------------------------------- preview */
 test('preview: Architect only, sample values, ?role and ?theme', async () => {
   const w = new Weave();
   w.updateWorkspace({ name: 'home' });
@@ -182,7 +176,6 @@ test('preview: Architect only, sample values, ?role and ?theme', async () => {
     assert.ok(acc.includes('>New Architect in weave<') && acc.includes('>dana<') && acc.includes('Joined October 3'));
     assert.equal((await get('/api/mail/preview/nope', architect)).status, 404);
     assert.equal((await get('/api/mail/preview/invite?role=owner', architect)).status, 400);
-    // The mark the email points at is a public static, open at the wall.
     const png = await get('/brand/email-lockup-light.png');
     assert.equal(png.status, 200);
     assert.equal(png.headers.get('content-type'), 'image/png');

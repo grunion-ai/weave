@@ -1,9 +1,3 @@
-/* A PNG reader for the pixel-sampling browser suites, on node:zlib alone.
-   Playwright hands back screenshots as PNG buffers; a suite that asks "what
-   colour is this pixel" needs them decoded, and weave takes no dependency
-   for it (house rule). Enough of the format for a browser screenshot:
-   8-bit truecolour, with or without alpha, not interlaced. Anything else
-   throws rather than returning wrong pixels. */
 import { inflateSync } from 'node:zlib';
 
 export function decodePng(buf) {
@@ -49,7 +43,6 @@ export function decodePng(buf) {
   }
   return {
     width, height,
-    /* [r, g, b] at (x, y) */
     at: (x, y) => { const i = y * stride + x * channels; return [px[i], px[i + 1], px[i + 2]]; },
   };
 }

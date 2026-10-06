@@ -1,9 +1,3 @@
-/* The first view is "Standard" (Kyle, 2026-09-27: "Standard" replaces
-   "Default" everywhere it appears). A new table's first view is born
-   Standard; a workspace whose views were named "Default" before the ruling
-   opens with them renamed, once, the Workspace/Views row included; and a
-   view somebody names "Default" afterwards keeps the name. The agent
-   surface says the same thing. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -17,7 +11,6 @@ test('a new table opens on a view named Standard', () => {
   w.createSpace({ name: 'Dev' });
   w.createTable({ space: 'Dev', name: 'Task' });
   assert.deepEqual(w.tableView('Task').views.map((v) => v.name), ['Standard']);
-  // The old table-level keys still write the first view, whatever its name.
   w.updateTable('Task', { filters: {}, sort: [{ field: 'Name', dir: 'desc' }] });
   assert.deepEqual(w.tableView('Task/Standard').sort, [{ field: 'Name', dir: 'desc' }]);
 });
@@ -30,8 +23,6 @@ test('a workspace saved with "Default" views opens with them named Standard, reg
     w.createSpace({ name: 'Dev' });
     const t = w.createTable({ space: 'Dev', name: 'Task' });
     const other = w.createTable({ space: 'Dev', name: 'Note' });
-    // As the workspace stood before the ruling: first views named Default,
-    // no record of the rename.
     for (const db of [t, other]) {
       const first = w.tableView(db.id).views[0];
       w.tableView(`${db.id}/${first.id}`, { name: 'Default' });
@@ -45,7 +36,6 @@ test('a workspace saved with "Default" views opens with them named Standard, reg
     const rows = w.query('Workspace/Views').items.map((e) => e.name);
     assert.ok(!rows.includes('Default'), `no Views row is still named Default (${rows.join(', ')})`);
     assert.ok(rows.filter((n) => n === 'Standard').length >= 2, 'both first views read Standard on their rows');
-    // Once: a view named Default by somebody after the rename keeps its name.
     w.tableView(`${t.id}/Default`, { from: 'blank' });
     w.save();
     w = new Weave({ path });

@@ -1,12 +1,3 @@
-/* The workspace rail sits at one inset on every view (Issue #546).
-   Tabler's `:root { margin-left: calc(100vw - 100%) }` (≥992px) pushes the
-   whole page right by the width of a classic vertical scrollbar. Safari on a
-   Mac with a mouse attached draws that bar 16px wide, so the rail and the
-   sidebar jumped 16px right on every view that scrolls the page (a long
-   Issue table) and snapped back on one that does not (a short table, a space
-   landing). Chromium on macOS only draws overlay bars that take no width, so
-   this suite runs in WebKit, and says so when the machine gives it no
-   classic bar to measure against. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -53,7 +44,6 @@ if (s) {
     }
     await page.close();
     const all = JSON.stringify(seen);
-    // The case only bites when a long view draws a bar with width and a short one does not.
     if (!seen.Issue.gutter) return t.skip(`overlay scrollbars here: no gutter to measure (${all})`);
     assert.equal(seen.Feature.gutter, 0, `the short Feature table must not scroll the page (${all})`);
     for (const [label, m] of Object.entries(seen)) {

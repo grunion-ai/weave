@@ -1,18 +1,8 @@
-/* Issue #386 — the first-run empty state. A fresh root workspace holds only
-   the registry (the system Workspace space), and it used to open on the
-   Spaces registry grid; the welcome line waited for zero tables, which a
-   root never has. Now an empty workspace shows one primary New table action
-   and three templates (Money, Work, People), and the registry grids on the home and space pages
-   fold under a Schema disclosure, one click away. A populated workspace
-   shows no empty state and keeps its relation map. Both themes are checked.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 import { seed } from '../scripts/seed.mjs';
 
-// Onboarded already: the welcome (Feature #248, onboarding-browser.test.mjs)
-// would otherwise sit over the empty state this suite reads.
 const empty = await launch('first run: empty workspace', (weave) => { weave.markOnboarded(); });
 const full = empty && await launch('first run: populated workspace', (weave) => {
   seed(weave);
@@ -40,12 +30,10 @@ if (empty) {
       const lead = await page.locator('.wv-start-lead').textContent();
       assert.match(lead, /\brows\b/);
       assert.doesNotMatch(lead, /\brecords?\b/, 'row, never record (Issue #605)');
-      // The registry is folded, closed, and drew nothing.
       await page.waitForSelector('details.wv-schema');
       assert.equal(await page.locator('details.wv-schema').evaluate((d) => d.open), false);
       assert.equal(await page.locator('.wv-grid').count(), 0, 'no grid on the first screen');
       assert.equal(await page.locator('.home-map').count(), 0, 'no map with nothing to draw');
-      // The primary action reads on its ground in this theme.
       const btn = await page.locator('.wv-start-new').evaluate((b) => [getComputedStyle(b).color, getComputedStyle(b).backgroundColor]);
       assert.notEqual(btn[0], btn[1], `${theme}: button text and ground differ`);
       await page.close();
@@ -60,7 +48,6 @@ if (empty) {
     await page.reload();
     await page.waitForSelector('details.wv-schema[open] .wv-grid tbody tr.entity-row');
     await page.click('details.wv-schema > summary');
-    // The toggle event lands a task after the click.
     await page.waitForFunction(() => localStorage.getItem('weave-schema-open') === '0');
     await page.close();
   });
@@ -74,7 +61,6 @@ if (empty) {
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => location.hash.startsWith('#/table/'));
     assert.ok(empty.weave.findTable('General/Notes'), 'the table exists in a new General space');
-    // Home is no longer empty.
     await page.goto(`${empty.base}/#/`);
     await page.waitForSelector('.home-map');
     assert.equal(await page.locator('.wv-start').count(), 0);
@@ -136,7 +122,6 @@ if (full) {
     await page.click('details.wv-schema > summary');
     await page.waitForSelector('details.wv-schema .wv-grid tbody tr.entity-row');
     assert.equal(await page.locator('details.wv-schema .wv-grid tbody tr.entity-row').count(), 2, 'this space\'s two Tables rows');
-    // A row in the plain list opens the table.
     await page.locator('.space-tables .list-row', { hasText: 'Task' }).first().click();
     await page.waitForFunction(() => location.hash.startsWith('#/table/'));
     await page.close();

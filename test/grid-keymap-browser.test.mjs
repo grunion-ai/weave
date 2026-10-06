@@ -1,14 +1,3 @@
-/* Cells rest as values: arrows and Tab navigate, Space selects, Return opens
-   (Feature #134, REST) — against a real page.
-
-   The pure keymap is pinned in test/grid-keymap.test.mjs. What this suite
-   proves is the DOM half in public/app.js: that a cell is a focus stop and
-   its control is not, that the verbs land on the right cell, that a commit
-   survives the redraw it triggers, and that the columns Issue #84 named
-   (select, multi-select, checkbox, date) are stops while a document chip
-   column is not.
-
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -32,8 +21,6 @@ const s = await launch('grid keymap', (weave) => {
 if (s) {
   const { base, browser } = s;
 
-  /* Where focus is: the cell it is in (by row and field) and whether the
-     cell itself holds it (rest) or something inside it (open). */
   const at = (page) => page.evaluate(() => {
     const a = document.activeElement;
     const cell = a?.closest?.('tr[data-eid] > td');
@@ -49,13 +36,6 @@ if (s) {
     await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"]`);
     return page;
   };
-  /* A commit PATCHes and then settles the grid — since Issue #257 by swapping
-     the committed row's cells where they stand, and still by redrawing when
-     the edit can move the row. Where the cursor is DURING that is not the
-     contract; where it is once the write has come back and the frame after
-     it has been painted is. The write coming back is the one signal both
-     paths share: the old one, a marked <tbody> being replaced, only ever
-     fired on the redraw. `landed` is registered BEFORE the gesture. */
   const commitLands = (page) => page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
   const settledOn = async (page, landed, eid, field) => {
     await landed;
@@ -69,8 +49,6 @@ if (s) {
     await page.focus(`tr[data-eid="${eid}"] td[data-field="${field}"]`);
     assert.deepEqual(await at(page), { eid, field, tag: 'TD' }, `resting on ${field}`);
   };
-
-  /* ── a cell is the stop; its control is not ───────────────────────── */
 
   test('every field cell is a focus stop and the controls inside are not', async () => {
     const page = await grid();
@@ -90,8 +68,6 @@ if (s) {
       assert.ok(inner.every((t) => t === -1), 'none of them is in the Tab order — the cell is');
     } finally { await page.close(); }
   });
-
-  /* ── at rest: the arrows and Tab navigate ─────────────────────────── */
 
   test('arrows move the resting cursor in all four directions', async () => {
     const page = await grid();
@@ -127,8 +103,6 @@ if (s) {
         'the last cell of the last row is the end of the grid, not the start of the browser chrome (Issue #84)');
     } finally { await page.close(); }
   });
-
-  /* ── Return / a character open; Esc reverts; Return commits down ──── */
 
   test('Return opens a text cell with the value selected; Esc puts it back and rests', async () => {
     const page = await grid();
@@ -183,7 +157,6 @@ if (s) {
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       assert.deepEqual(await at(page), { eid: second.id, field: 'Note', tag: 'TD' }, 'still there once the commit has settled');
       assert.equal(await page.inputValue(`tr[data-eid="${first.id}"] td[data-field="Note"] input`), 'A!', 'the edit landed');
-      // And the value is on the server, not only on the page.
       const saved = await page.evaluate(async (id) => (await (await fetch(`/api/entities/${id}`)).json()).fields.Note, first.id);
       assert.equal(saved, 'A!');
     } finally { await page.close(); }
@@ -206,8 +179,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* ── the other field types open on Return too ─────────────────────── */
-
   test('Return on a select cell opens its picker; Return on a checkbox flips it', async () => {
     const page = await grid();
     try {
@@ -225,8 +196,6 @@ if (s) {
       assert.equal(done, true, 'the box flipped and saved');
     } finally { await page.close(); }
   });
-
-  /* ── selection from the keyboard ──────────────────────────────────── */
 
   test('Space picks the row up, ⇧↓ extends the run, ⌘A takes the table, Esc lets go', async () => {
     const page = await grid();
@@ -260,8 +229,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* ── ⇧Return makes the next row; ⌘Return opens the record ─────────── */
-
   test('⇧Return creates a row and opens its first cell', async () => {
     const page = await grid();
     try {
@@ -287,15 +254,13 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  /* ── the pointer path is unchanged ────────────────────────────────── */
-
   test('a click still opens the cell it lands on, and hover arms it', async () => {
     const page = await grid();
     try {
       const cell = page.locator(`tr[data-eid="${second.id}"] td[data-field="Note"]`);
       const restBorder = await cell.locator('input').evaluate((n) => getComputedStyle(n).borderTopColor);
       await cell.hover();
-      await page.waitForTimeout(300); // Tabler transitions the border in
+      await page.waitForTimeout(300);
       const armedBorder = await cell.locator('input').evaluate((n) => getComputedStyle(n).borderTopColor);
       assert.notEqual(armedBorder, restBorder, 'the control shows itself under the pointer');
       await cell.click();

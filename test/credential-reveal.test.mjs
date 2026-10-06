@@ -6,18 +6,6 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
-/* Feature #143, phase 3 — who may read a secret back.
-   The question this answers (Kyle, 2026-08-26): everywhere else in weave,
-   access to the table is access to the values. A credential is the exception,
-   and the exception is NOT a field-level permission — it is that the value
-   was never in the table. The name is table data and anyone with the table
-   sees it; the secret sits in the keystore behind its OWN access list, and
-   getting it out is a separate, audited act. */
-
-/* An access list only means something once there is someone to keep out, so
-   these tests run a workspace that HAS accounts. A workspace without them is
-   one operator holding the CLI and the keystore file, and reveal is open to
-   them — the `solo` test below pins exactly that. */
 function fresh(actor = 'kyle', { solo = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-reveal-'));
   const w = new Weave({ keystorePath: join(dir, 'keystore.json'), actor });
@@ -56,7 +44,6 @@ test('someone else on the same workspace cannot read it back', () => {
   w.actor = 'sajit';
   assert.throws(() => w.revealKey('stripe'), (e) => e.code === 'forbidden',
     'table access is not credential access');
-  // …and the refusal is not a side channel: it says no more than that.
   assert.throws(() => w.revealKey('stripe'), (e) => !String(e.message).includes('sk_live'));
   void path;
 });
@@ -78,7 +65,6 @@ test('sharing is granted per credential, and revoking takes it back', () => {
 test('one operator with no accounts is not kept out of their own keystore', () => {
   const { w } = fresh('local', { solo: true });
   w.setKey('stripe', 'sk_live_hush');
-  // Set on the CLI as 'local', read in the app as 'web': the same person.
   w.actor = 'web';
   assert.equal(w.revealKey('stripe'), 'sk_live_hush');
 });
@@ -103,10 +89,7 @@ test('a credential carried over from #64 has no owner, so nobody reveals it', ()
   assert.throws(() => w.revealKey('ancient'), (e) => e.code === 'forbidden',
     'a credential nobody claimed is shared with nobody');
   w.actor = 'kyle';
-  // The engine's own consumers are unaffected — an automation still resolves it.
   assert.equal(w.resolveKey('ancient'), 'old-secret');
-  // Opening it is a deliberate, audited grant: an ownerless credential can be
-  // claimed, which is the only way forward for a keystore #64 left behind.
   w.grantKey('ancient', 'sajit');
   w.actor = 'sajit';
   assert.equal(w.revealKey('ancient'), 'old-secret');
@@ -127,8 +110,6 @@ test('a credential in someone else\'s keystore is refused with somewhere to go',
 });
 
 test('the HTTP surface has a reveal verb, and still has no GET', async () => {
-  // Solo: /api/keys is already admin-gated once accounts exist, so this pins
-  // the route's shape. Who may reveal is the engine's rule, tested above.
   const { w } = fresh('kyle', { solo: true });
   const { server } = await startServer(w, { port: 0 });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -167,9 +148,6 @@ test('a formula cannot launder a secret out through a text column', () => {
 });
 
 test('a reveal the engine refuses answers 403 over HTTP, not 400', async () => {
-  // The engine says 'forbidden'; the status map used to have no entry for it
-  // and fell through to "bad request", which told the caller to fix the
-  // request when the answer was "not yours".
   const { w } = fresh('kyle');
   const { token } = w.createAccount({ name: 'sajit', role: 'admin' });
   w.setKey('stripe', 'sk_live_hush');

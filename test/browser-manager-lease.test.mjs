@@ -1,7 +1,3 @@
-/* Feature #236 review (change 446, patchset 2): a raw `node --test` process
-   leases the warm browser. The lease must carry the caller's admission
-   overrides, and a second launch() in the same process must share the
-   first lease instead of queueing behind it until test.after. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
@@ -18,8 +14,6 @@ const skip = chromium ? false : 'playwright not installed';
 const directory = mkdtempSync(join(tmpdir(), 'weave-lease-test-'));
 test.after(async () => { await request({ type: 'stop' }, { directory }).catch(() => {}); rmSync(directory, { recursive: true, force: true }); });
 
-/* Runs `body` as a plain node script (no node --test) that imported the
-   browser harness; kills it at `deadline` so a deadlock fails, not hangs. */
 function script(name, body, overrides = {}, deadline = 60_000) {
   const file = join(directory, `${name}.mjs`);
   writeFileSync(file, `import { chromium } from ${JSON.stringify(helper)};\n${body}\n`);

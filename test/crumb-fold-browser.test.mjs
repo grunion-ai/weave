@@ -1,11 +1,3 @@
-/* The crumb folds its middle instead of cutting off the row you are on
-   (Issues #668, #672). Measured on live :4400: the dock's crumb held 743px
-   of text in a 283px box, and `text-overflow: ellipsis` cut the right end,
-   which is where the current row sits. And MAX_TRAIL = 4 dropped a fifth
-   hop with no sign. Now ancestors cap at about 17 characters, the middle
-   folds into a "…" button whose menu lists the hidden hops, the first
-   crumb and the last two always show, and nothing is dropped.
-   Playwright is NOT a dependency; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -27,7 +19,6 @@ const s = await launch('crumb fold', (weave) => {
 if (s) {
   const { base, browser } = s;
   const docked = (page, i) => page.waitForFunction((n) => document.querySelector('#dock .name-edit')?.value.startsWith(n), `Step ${i} `);
-  /* Dock step 0, then hop through Next to step `to`. */
   async function walk({ to = 5, width = 1200, pin = 550 } = {}) {
     const page = await browser.newPage({ viewport: { width, height: 800 } });
     await page.addInitScript((pin) => localStorage.setItem('wv-dock-width', String(pin)), pin);

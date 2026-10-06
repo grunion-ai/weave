@@ -1,9 +1,3 @@
-/* The Activity table in a real browser reads newest first by commit order
-   (Issue #282), not by the wall clock it displays. Six records created inside
-   one instant used to be ranked by entity uuid, so the table could show the
-   first one made at the top. Both themes. Playwright is imported dynamically
-   by ./lib/browser.mjs; the suite skips on a bare checkout (house rule: zero
-   runtime deps). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -14,7 +8,6 @@ const s = await launch('activity order', (weave) => {
   weave.createSpace({ name: 'Ops' });
   const t = weave.createTable({ space: 'Ops', name: 'Ticket' });
   made = Array.from({ length: 6 }, (_, i) => weave.createEntity(t, { name: `t${i}` }).id);
-  // One instant for the whole workspace: the case with no wall-clock answer.
   for (const e of Object.values(weave.state.entities)) for (const a of e.activity ?? []) a.ts = AT;
 });
 

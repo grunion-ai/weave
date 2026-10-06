@@ -1,24 +1,3 @@
-/* The reference panels on an entity page, driven through a real browser
-   (Kyle, 2026-09-02). Two rulings the source-level gates in backlinks.test.mjs
-   can only spell, this file proves in a DOM:
-
-   1. Hidden with comments and activity. "References" (what this entity's
-      documents mention) and "Referenced by" (who mentions it) live in the
-      entity-side column the Activity system toggle opens — off by default, stored
-      on the table once flipped, exactly the comments/activity contract. The
-      resting page never mentions them, and nothing is even fetched until the
-      column is open. They wear the same card dress as Activity and sit below
-      it, so the column reads: what people said, what happened, what this
-      points at, what points here.
-   2. The house chip. Every reference is the SAME k k-rel chip a relation field
-      wears — the pointer tier of the chip system: a 1px outline, no fill, the
-      ↗ mark inside the link, a k-home badge naming the home table — and no ×,
-      because a reference is text and there is nothing to unlink. Both themes.
-
-   Playwright is NOT a dependency of weave (house rule: zero runtime deps,
-   nothing npm-installed). It is imported dynamically and the whole suite skips
-   when it is absent, so `node --test` stays green on a bare checkout. */
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -35,14 +14,10 @@ const s = await launch('reference panels', (weave) => {
 });
 if (s) {
   const { base, browser, weave } = s;
-  /* `side: true` opens the column the only way it opens: the table's
-     Activity system toggle. Off is what a fresh table sees. */
   const open = async (id, { colorScheme = 'light', side = false } = {}) => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
     page.refRequests = [];
     page.on('request', (r) => { if (/\/references(-from)?$/.test(r.url())) page.refRequests.push(r.url()); });
-    /* The column follows the table's Activity system toggle (Issue #177):
-       stored on the table, so every browser sees the same choice. */
     const db = weave.getEntity(id).dbId;
     weave.updateTable(db, { systemFields: side ? ['Activity'] : [] });
     await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'load' });
@@ -50,8 +25,6 @@ if (s) {
     return page;
   };
   const card = (page, sel) => page.waitForSelector(sel, { state: 'attached' });
-  /* The switch is the eye's Activity row — the same row that adds the ⚡
-     column to the grid. */
   const flipActivity = async (page) => {
     await page.click('.eye-btn');
     await page.click('.chip-pop .eye-row:has(.eye-label:text-is("Activity"))');
@@ -79,7 +52,7 @@ if (s) {
 
   test('references are hidden with comments and activity, and not even fetched, until the Activity toggle opens the column', async () => {
     const page = await open(issue.id);
-    await page.waitForTimeout(150); // a fetch that was going to happen has happened by now
+    await page.waitForTimeout(150);
     assert.equal(await page.$('.ref-backlinks-card'), null, 'the resting page never mentions references');
     assert.equal(await page.isVisible('.entity-side'), false, 'the side column is closed');
     assert.deepEqual(page.refRequests, [], 'nothing is fetched until the reader asks');

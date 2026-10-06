@@ -1,11 +1,3 @@
-/* One relation map, two altitudes.
-
-   Weave carried two maps: the mermaid render on the workspace home had the
-   right CONTENT (user tables only, grouped by space, a labelled arrow per
-   relation) and the SVG behind #/map had the right DESIGN (weave's own cards
-   and type, clickable, automations drawn). This suite pins the shared half —
-   the layout — so the same view serves the workspace, the home card and a
-   single space page, and the per-space Map button can go away. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -33,8 +25,6 @@ const SCHEMA = [
   { id: 'reg', name: 'Tables', space: 'Workspace', spaceId: 's3', entityCount: 9, system: 'tables', fields: [] },
 ];
 
-/* ---------- content: what the mermaid map got right ---------- */
-
 test('the registry stays out of it — user structure only', () => {
   const m = relmapLayout(SCHEMA);
   assert.deepEqual(m.nodes.map((n) => n.name), ['Project', 'Task', 'Person']);
@@ -56,8 +46,6 @@ test('nodes are grouped into one column per space, in schema order', () => {
 test('every relation is one labelled edge, cardinality on both ends', () => {
   const m = relmapLayout(SCHEMA);
   const labels = m.edges.map((e) => e.label).sort();
-  // Read the label with the arrow: many Tasks to one Person, one Project to
-  // many Tasks — the source's cardinality first, crow's-foot order.
   assert.deepEqual(labels, ['Owner ∗–1', 'Peers ∗–∗', 'Tasks 1–∗']);
   assert.equal(m.edges.length, 3, 'a relation and its inverse are one line');
 });
@@ -78,8 +66,6 @@ test('a self-relation loops instead of collapsing to a point', () => {
   assert.equal(loop.fromId, loop.toId);
   assert.notEqual(loop.y1, loop.y2, 'the loop has length');
 });
-
-/* ---------- the space altitude ---------- */
 
 test('a space map is that space plus what it actually touches', () => {
   const m = relmapLayout(SCHEMA, { spaceId: 's1' });
@@ -105,8 +91,6 @@ test('the canvas is big enough for what is on it', () => {
   const right = Math.max(...m.groups.map((g) => g.x + g.w));
   assert.ok(m.width >= right, 'nothing hangs off the right');
   assert.ok(m.height >= Math.max(...m.groups.map((g) => g.y + g.h)), 'nor off the bottom');
-  // Person's loop arcs past its own column — off the last one there is no
-  // gap to arc into, so the canvas has to grow instead.
   const loop = m.edges.find((e) => e.self);
   assert.ok(m.width > loop.x1 + 30, 'the loop is inside the canvas');
 });
@@ -122,8 +106,6 @@ test('a self-relation and its automations get room reserved, not overlap', () =>
   assert.ok(taskBelow.y > taskPlain.y, "two pills under Project push Task down");
   assert.ok(withAutos.groups[0].h > plain.groups[0].h, 'and the space box grows with them');
 });
-
-/* ---------- one view, drawn in three places ---------- */
 
 test('the map is one renderer, used by the page, the home and a space', () => {
   assert.match(INDEX, /relmap-layout\.js/, 'the layout ships with the app');

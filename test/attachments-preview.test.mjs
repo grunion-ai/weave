@@ -1,11 +1,3 @@
-/* Attachment previews (Kyle, 2026-10-05). An attachments field says how a
-   record shows its files: `preview` link | inline | auto | cover, `size`
-   small | medium | large, `fit` fill | trim. Unset resolves at render (auto
-   for many, inline for one); medium and trim are unmarked; a cover is one
-   picture, so only a single-file field is offered it. The dialog core
-   mirrors the three lists. An HTML upload shows live under
-   `GET /api/files/:id?view`, whose policy keeps it a stranger to the
-   workspace: sandboxed with scripts, never same-origin, no remote loads. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS, HTML_VIEW_POLICY, fileHeaders } from '../src/engine.js';

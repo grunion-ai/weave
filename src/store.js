@@ -1,14 +1,9 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 
-// node:sqlite is the storage engine (zero runtime deps — it ships inside Node).
-// The missing-module throw is deferred to first file-backed use: an in-memory
-// Store (and therefore the engine itself) must stay importable on runtimes
-// without node:sqlite — the Cloudflare Worker port (Feature #84) bundles the
-// engine and brings its own Store implementation.
 let DatabaseSync = null;
 try {
   ({ DatabaseSync } = await import('node:sqlite'));
-} catch { /* checked in #open() */ }
+} catch {}
 
 export class WeaveError extends Error {
   constructor(message, code = 'weave-error') {
@@ -38,35 +33,21 @@ CREATE TABLE IF NOT EXISTS doc_revisions (
 CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
 `;
 
-// Automations load in fire order (Issue #285): by the seq the engine mints,
-// kept in each row's json. A row written before seq existed has none; those
-// come last, in rowid order, which is the order the engine numbers them in on
-// open and the order a bare read returned them in before.
 const LOAD_ORDER = {
   automations: " ORDER BY json_extract(json, '$.seq') IS NULL, json_extract(json, '$.seq'), rowid",
 };
 
-// The undo stack is bounded: it is a working set, not an archive (the audit
-// log is the archive). 200 steps of full before-images stays small.
 const UNDO_CAP = 200;
-// A document's history is bounded the same way (Feature #225): 200 snapshots
-// per document, oldest trimmed. A snapshot is one typing session, so 200 is
-// months of editing on a busy page.
 export const DOC_REVISION_CAP = 200;
 
 function isWorkspaceShape(data) {
   return data && typeof data === 'object' && data.meta && (data.tables != null || data.databases != null);
 }
 
-// SQLite persistence: one workspace = one .db file (WAL, fsync'd, row-level
-// writes). A legacy .json path is accepted and auto-migrated to a sibling .db
-// on first open — the .json is preserved untouched as a frozen backup and the
-// human-readable layer moves to exportJSON(). Pass a null path for a purely
-// in-memory store (tests / scratch): no SQLite involved at all.
 export class Store {
   #db = null;
   #dataVersion = null;
-  #cache = null; // last-written json strings: { meta, spaces:Map, tables:Map, automations:Map }
+  #cache = null;
 
   constructor(path = null) {
     this.legacyJsonPath = null;
@@ -80,8 +61,6 @@ export class Store {
   load() {
     if (!this.path) return null;
     if (existsSync(this.path)) return this.#open();
-    // Migration source must be validated BEFORE any .db file is created, so a
-    // stray package.json can never spawn a workspace beside it.
     let legacyState = null;
     if (this.legacyJsonPath && existsSync(this.legacyJsonPath)) {
       try {
@@ -111,9 +90,6 @@ export class Store {
     let db;
     try {
       db = new DatabaseSync(this.path);
-      // busy_timeout FIRST: the WAL switch below needs a lock another process
-      // may briefly hold during its own boot — without the timeout in place
-      // yet, a simultaneous boot dies with "database is locked" (2026-08-21).
       db.exec('PRAGMA busy_timeout = 5000');
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA synchronous = FULL');
@@ -163,13 +139,6 @@ export class Store {
     return state;
   }
 
-  // Row-level persistence. `dirty` is the set of entity ids touched since the
-  // last save (missing from state = deleted row); `all` forces a full
-  // reconcile (migration / importJSON). Schema-side rows (meta, spaces,
-  // tables, automations) never grow with data volume, so they are synced by
-  // cheap string comparison on every save.
-  /* Durable audit trail (Feature #14). SQLite-backed when there is a file;
-     an in-memory workspace keeps a plain array so the API is uniform. */
   #memAudit = [];
 
   audit(entry) {
@@ -178,9 +147,6 @@ export class Store {
       .run(entry.at, entry.actor, entry.action, JSON.stringify(entry.detail ?? {}));
   }
 
-  /* Undo stack (same dual backing as the audit trail): SQLite when there is a
-     file, a plain array in memory otherwise. Rows are inverse-operation
-     payloads owned by the engine; the store only pushes, pops, and caps. */
   #memUndo = [];
 
   pushUndo(entry) {
@@ -207,10 +173,6 @@ export class Store {
       .map((r) => JSON.parse(r.json));
   }
 
-  /* Document revisions (Feature #225): one row per snapshot of a document
-     field, outside the entity blob. Same dual backing. The engine decides
-     when a write is a new revision and when it folds into the newest one;
-     the store pushes, replaces in place, lists metadata, gets text, caps. */
   #memRevs = [];
   #memRevSeq = 0;
 
@@ -266,9 +228,6 @@ export class Store {
     this.#db.prepare('DELETE FROM doc_revisions WHERE entity_id = ?').run(entityId);
   }
 
-  /* Rewrite one entry's detail in place. The one caller is the growth bound
-     on type-change snapshots (Issue #467): an older entry drops its row
-     values and keeps the rest. */
   setAuditDetail(seq, detail) {
     if (!this.#db) {
       const row = this.#memAudit.find((r) => r.seq === seq);
@@ -278,7 +237,6 @@ export class Store {
     this.#db.prepare('UPDATE audit_log SET detail = ? WHERE seq = ?').run(JSON.stringify(detail ?? {}), seq);
   }
 
-  // `actions` narrows to those actions; limit -1 is no limit (SQLite's own).
   listAudit({ limit = 100, offset = 0, actions = null } = {}) {
     if (!this.#db) {
       const rows = this.#memAudit.slice().reverse().filter((r) => !actions || actions.includes(r.action));
@@ -331,8 +289,6 @@ export class Store {
             ON CONFLICT(id) DO UPDATE SET db_id = excluded.db_id, public_id = excluded.public_id,
             updated_at = excluded.updated_at, json = excluded.json`)
             .run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
-          // Soft-deleted rows stay in `entities` (restore needs them) but leave
-          // the search index — the trash must not be searchable.
           db.prepare('DELETE FROM entities_fts WHERE id = ?').run(id);
           if (!e.deletedAt) {
             db.prepare('INSERT INTO entities_fts (id, text) VALUES (?, ?)').run(id, this.#ftsText(state, e));
@@ -354,14 +310,11 @@ export class Store {
     return [name, docs, comments].filter(Boolean).join('\n');
   }
 
-  // On-disk weight of this workspace's database — main file plus WAL/SHM
-  // sidecars. Attachment blobs are the engine's ledger (entity.files carries
-  // each size), not ours: files/ is shared by every sibling workspace.
   sizeBytes() {
     if (!this.path) return null;
     let total = 0;
     for (const p of [this.path, `${this.path}-wal`, `${this.path}-shm`]) {
-      try { total += statSync(p).size; } catch { /* sidecar absent */ }
+      try { total += statSync(p).size; } catch {}
     }
     return total;
   }
@@ -370,8 +323,6 @@ export class Store {
     return this.#db.prepare('PRAGMA data_version').get().data_version;
   }
 
-  // True when another connection (CLI, another server) committed since we
-  // last looked. Own writes never trip it.
   changedExternally() {
     if (!this.#db) return false;
     const v = this.#pragmaDataVersion();

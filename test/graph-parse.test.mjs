@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-/* The whiteboard's parser (Feature #46): weave's own mermaid dialect in,
-   nodes and edges out; anything else ignored, never fatal. */
 await import('../public/graph-parse.js');
 const parse = globalThis.parseMermaidGraph;
 

@@ -1,34 +1,12 @@
-/* The # column is frozen to the grid's left edge (Issue #252).
-
-   A wide table scrolls sideways inside `.table-wrap`, and before this the
-   whole header row went with it: scroll right to read a far column and the
-   row lost its identity — no `#12 ↗` to open it, no id to say which record
-   the values belonged to. The selection box shares the fate, and it has to
-   travel WITH the # link or the pair separates mid-scroll.
-
-   Freezing a table cell is more than `left: 0`. A sticky cell floats over
-   content that is still moving underneath it, so it has to paint: an opaque
-   ground in both themes, and a z-order that beats the cells beside it, the
-   Σ rollup row it passes under, and the sticky header it meets in the
-   corner. Each of those is a claim below, read off a real layout — the
-   opacity by asking the document what is actually on top at that point,
-   which is the only question a bleed-through answers wrong.
-
-   The other half of the Issue — that no drag can move or precede the #
-   column — was already locked by test/table-reorder-browser.test.mjs
-   ("the # column takes no drag") when Issue #139 landed; the two suites
-   together are the Issue's gate. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-/* Ten wide columns against a 900px window: the wrap has to scroll. */
 const COLS = Array.from({ length: 10 }, (_, i) => `A rather wide column ${i}`);
 
 let wide, narrow;
 const s = await launch('the frozen # column', (weave) => {
   weave.createSpace({ name: 'Ledger' });
-  // A grid that fits its card, for the clipped-wrap case below.
   narrow = weave.createTable({ space: 'Ledger', name: 'Narrow' });
   weave.addField(narrow, { name: 'A', type: 'text' });
   for (let i = 0; i < 4; i++) weave.createEntity(narrow, { name: `n${i}`, values: { A: 'x' } });
@@ -50,7 +28,6 @@ if (s) {
     await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     if (theme) await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
-    // Scroll the wrap, not the page: the wrap is the sideways scroller.
     const scrolled = await page.evaluate(() => {
       const wrap = document.querySelector('.table-wrap');
       wrap.scrollLeft = 400;
@@ -61,7 +38,6 @@ if (s) {
     return page;
   };
 
-  /* Geometry, painted colour and what is on top, for one row's frozen pair. */
   const frozenState = (page) => page.evaluate(() => {
     const wrap = document.querySelector('.table-wrap');
     const wrapLeft = wrap.getBoundingClientRect().left;
@@ -73,9 +49,6 @@ if (s) {
         width: Math.round(r.width),
         bg: getComputedStyle(el).backgroundColor,
         zIndex: getComputedStyle(el).zIndex,
-        // The element the reader's pointer would hit at the cell's middle:
-        // anything but this cell (or its own content) means something else
-        // is painting over it, and a transparent cell shows what is under.
         onTop: at ? (el.contains(at) || at === el) : false,
         onTopTag: at ? `${at.tagName}.${at.className}` : 'none',
       };
@@ -88,15 +61,10 @@ if (s) {
       headSel: read(document.querySelector('.wv-grid thead th.sel-head')),
       headPid: read(document.querySelector('.wv-grid thead th.pid-head')),
       headCol: read(document.querySelector('.wv-grid thead th.col-head')),
-      // A field cell that has scrolled left, out of the wrap: proof the body
-      // moved while the frozen pair did not.
       fieldOffset: Math.round(anyField.getBoundingClientRect().left - wrapLeft),
     };
   });
 
-  /* A colour is opaque unless it states an alpha. Both notations turn up
-     here: a token resolves to `rgb(…)`/`rgba(…)`, a `color-mix` to
-     `color(srgb … / a)`. */
   const opaque = (bg) => {
     assert.match(bg, /^(rgba?|color)\(/, `a painted background, got ${bg}`);
     const alpha = /\/\s*([\d.]+)\s*\)$/.exec(bg) ?? /^rgba\([^)]*,\s*([\d.]+)\s*\)$/.exec(bg);
@@ -122,8 +90,6 @@ if (s) {
       const page = await openScrolled(theme);
       try {
         const g = await frozenState(page);
-        // headCol is a plain header: at this width it has scrolled out of the
-        // wrap, which is the point — only the four frozen cells are on screen.
         for (const name of ['sel', 'pid', 'headSel', 'headPid']) {
           const cell = g[name];
           assert.ok(opaque(cell.bg), `${name} has an opaque ground, not ${cell.bg}`);
@@ -134,11 +100,6 @@ if (s) {
   }
 
   test('the checkbox sits a small inset from the grid edge, the select-all box on the same line (Issue #410)', async () => {
-    /* The checkbox column wore Tabler's .card-table first-child inset, 20px
-       of empty space left of a box that only shows on hover. Kyle called it
-       padding to clean up: the column is now a 4px inset, the one every
-       other cell pads with, and the 30px hit box. Header, body and the Σ
-       row keep one vertical line, and the # still sits right behind it. */
     const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
     try {
       await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
@@ -199,19 +160,14 @@ if (s) {
       const rest = await seam();
       assert.match(rest, /rgba\(0, 0, 0, 0\)|transparent/, `no rule down the grid at rest, got ${rest}`);
       await page.evaluate(() => { document.querySelector('.table-wrap').scrollLeft = 400; });
-      // The seam follows the wrap's scroll event, which a busy page handles
-      // late; wait for the colour to move rather than 80 ms (Issue #454).
       await page.waitForFunction((was) => getComputedStyle(document.querySelector('.wv-grid tbody td.pid-cell')).borderRightColor !== was, rest, { timeout: 10000 }).catch(() => {});
       const scrolled = await seam();
       assert.notEqual(scrolled, rest, 'the seam takes its colour once the body scrolls under it');
       assert.doesNotMatch(scrolled, /rgba\(0, 0, 0, 0\)/, `and it is a visible hairline, got ${scrolled}`);
-      // Reserved at rest, so the columns beside it do not jump by a pixel
-      // the first time the reader scrolls.
       const widths = await page.evaluate(() => getComputedStyle(
         document.querySelector('.wv-grid tbody td.pid-cell')).borderRightWidth);
       assert.equal(widths, '1px', 'the hairline is reserved, not grown');
       await page.evaluate(() => { document.querySelector('.table-wrap').scrollLeft = 0; });
-      // The seam follows the scroll event, which a loaded gate delivers late.
       await page.waitForFunction((want) => getComputedStyle(document.querySelector('.wv-grid tbody td.pid-cell')).borderRightColor === want, rest, { timeout: 3000 }).catch(() => {});
       assert.equal(await seam(), rest, 'and it goes again when the grid comes back to its left edge');
     } finally { await page.close(); }
@@ -236,10 +192,6 @@ if (s) {
   });
 
   test('a grid that fits its card is not shifted by the freeze', async () => {
-    /* A fitting grid clips instead of scrolling (`.wv-fit`, Issue #233), and
-       `overflow: clip` is not a scroll container — a sticky cell inside one
-       resolves against the page instead of the wrap. Nothing should move:
-       every cell is already past its own offset, so the freeze is inert. */
     const page = await browser.newPage({ viewport: { width: 1400, height: 700 } });
     try {
       await page.goto(`${base}/#/table/${narrow.id}`, { waitUntil: 'load' });
@@ -281,7 +233,6 @@ if (s) {
     try {
       await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
-      // The Σ row is opt-in per table (Issue #249): switch it on directly.
       await page.evaluate(async (id) => {
         await fetch(`/api/tables/${id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -345,8 +296,6 @@ if (s) {
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
       const g = await page.evaluate(() => {
         const grid = document.querySelector('.wv-grid');
-        // The registry, stats and related grids draw pid-head with no
-        // sel-head beside it; the offset is read off the same rule.
         const probe = document.createElement('table');
         probe.className = 'wv-grid';
         probe.innerHTML = '<thead><tr><th class="pid-head">#</th><th class="col-head">A</th></tr></thead>';

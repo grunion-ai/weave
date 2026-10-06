@@ -1,10 +1,3 @@
-/* The Handbook is documentation that has to stay true, so it is gated like
-   code. Every field type the engine can make has a page; every page names
-   every config key the vocabulary lists for that type; the guides name the
-   constructs the editor actually offers; and the formatting samples are
-   written in the construct they claim.
-   The pages themselves live in src/handbook.js and are applied by upsert, so
-   this suite also holds the line on running the apply twice. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
@@ -41,11 +34,6 @@ test('each page carries the sections a reader looks for, and a known kind', () =
   }
 });
 
-/* Where a page tells the reader HOW a value is drawn, the vocabulary is the
-   source and the page must not contradict it. Added 2026-08-27, after the
-   document page went on claiming "Documents never take a column of their own"
-   for as long as it took someone to read it: nothing in this suite pinned the
-   sentence, so the description could take a column with every test green. */
 test('a page never contradicts the vocabulary about how its type is drawn', () => {
   const doc = page('document').doc;
   const renders = VOCAB.fieldTypes.find((f) => f.type === 'document').renders;
@@ -57,8 +45,6 @@ test('a page never contradicts the vocabulary about how its type is drawn', () =
 });
 
 test('the closed vocabularies a page quotes match the engine', () => {
-  // A page that lists a set has to list the whole set — a stale option colour
-  // or a fifth workflow category is exactly the kind of drift this catches.
   for (const c of VOCAB.optionColors) {
     if (!c.value) continue;
     assert.ok(page('select').doc.includes(c.value), `select omits the ${c.name} option colour`);
@@ -90,9 +76,7 @@ test('the document-formatting guide covers the surface the editor offers', () =>
     'slash menu', 'Task list', 'mermaid', 'KaTeX', 'mhchem', 'highlight.js',
     '[[Task#12]]', '[[table:Task]]', '[[space:Handbook]]', 'fold', 'dash rail',
     'Raw HTML', 'full screen', 'markdown',
-    // Issue #96: the fences and a diagram's source live behind this button.
     '**</>** button',
-    // Issue #455: a line-prefix command converts the line it is typed on.
     'take the line they are typed on', 'Buy milk /task',
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the formatting guide never mentions ${topic}`);
@@ -109,7 +93,6 @@ test('the polymorphic-relations guide covers the target set and the ruling behin
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the polymorphic guide never mentions ${topic}`);
   }
-  // Every cardinality the guide quotes is one the engine accepts.
   for (const m of guide.doc.matchAll(/\`(many-to-one|one-to-many|many-to-many|one-to-one)\`/g)) {
     assert.ok(VOCAB.cardinalities.includes(m[1]), `${m[1]} is not a cardinality the engine knows`);
   }
@@ -119,8 +102,6 @@ test('the polymorphic-relations guide points each use case at its Showcase table
   const guide = GUIDES.find((g) => g.name === 'Polymorphic relations');
   const section = guide.doc.split('## See it in Showcase')[1];
   assert.ok(section, 'the guide has no "See it in Showcase" section');
-  // One case per row, each naming the pointing field and linking its table
-  // with a [[table:Showcase/…]] reference so the chip renders and resolves.
   for (const [table, field] of [
     ['Comments', 'On'], ['Activity', 'Subject'], ['Notes', 'Related'],
     ['Approvals', 'Of'], ['Tags', 'Applied to'], ['Line Items', 'Expense'],
@@ -142,7 +123,6 @@ test('the customization guide covers what a reader can change', () => {
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the customization guide never mentions ${topic}`);
   }
-  // The icon vocabulary is closed; the guide's examples have to come from it.
   for (const m of guide.doc.matchAll(/lucide:([a-z0-9-]+)/g)) {
     assert.ok(VOCAB.icons.names.includes(m[1]), `lucide:${m[1]} is not an icon the engine knows`);
   }
@@ -164,7 +144,6 @@ test('every formatting sample is written in the construct it claims', () => {
   has('Math and chemistry', '\\ce{');
   has('Links to entities, tables and spaces', '[[table:');
   has('Raw HTML', '<div');
-  // An unlabelled fence has to actually be unlabelled, or it proves nothing.
   const bare = FORMATTING_SAMPLES.find((s) => s.name === 'Code, unlabelled');
   assert.ok(/```\n/.test(bare.doc), 'the unlabelled-fence sample labels its fences');
 });
@@ -216,22 +195,12 @@ test('the seeded weave workspace ships the pages, the guides and the samples', a
   const guides = w.query('Handbook/Guide', { limit: 200 }).items.map((e) => e.name);
   for (const g of GUIDES) assert.ok(guides.includes(g.name), `the seed ships no '${g.name}' guide`);
 
-  // The Showcase's two halves answer the same question about different things.
   const spaces = w.listSpaces().map((s) => s.name);
   assert.ok(spaces.includes('Showcase'));
   assert.ok(w.findTable('Showcase/Field Types'));
   assert.ok(w.findTable('Showcase/Formatting'));
 });
 
-/* ---------- one page, not twelve (Issue #88) ----------
-   Kyle: "formatting showcase could all be done in one entity's description."
-   Twelve rows meant opening twelve records to see a renderer that one scroll
-   proves — and row twelve, 'One page using all of it', already carried the
-   whole demonstration on its own. */
-
-/* Kyle, 2026-09-02: the icon library is documented in the Showcase, as one
-   entity with pictures. The page is generated from the registry, so the test
-   holds it to the set rather than to a number. */
 test('the icon library is one Showcase page, true to the registry, with its pictures on disk', async () => {
   await import('../public/icon-registry.js');
   const reg = globalThis.weaveIconRegistry;
@@ -265,11 +234,9 @@ test('the showcase is one page carrying every construct', async () => {
   assert.equal(rows.length, 1);
   const page = w.readEntity(rows[0].id).docs.Description;
 
-  // Every sample's body survives the move, verbatim.
   for (const s of FORMATTING_SAMPLES) {
     assert.ok(page.includes(s.doc), `the page dropped '${s.name}'`);
   }
-  // And the syntax column survives as a table inside the page it describes.
   for (const s of FORMATTING_SAMPLES) {
     assert.ok(page.includes(s.name), `the page never names '${s.name}'`);
   }
@@ -286,15 +253,6 @@ test('re-applying keeps the one page rather than seeding twelve beside it', () =
   assert.equal(rows[0].id, first, 'the page was replaced instead of updated — inbound links would break');
 });
 
-/* ---------- Chip and card anatomy (Feature #180, 2026-09-05) ----------
-   Kyle: "Drop a visual HTML breakdown of chip and card anatomy — what each
-   element does and how to use (copy link, click to open) — with hitboxes."
-   The page is a Guide whose figures are the REAL chip and card markup (the
-   same classes app.js emits, so the app's own CSS draws them and the caret
-   in the figure toggles for real), each element outlined in a colour that
-   the legend beneath repeats. The same page is exported as ONE
-   self-contained HTML file for sharing outside the app; the export and the
-   source must not drift. */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -321,11 +279,9 @@ test('the anatomy names every element of the chip and the card, what it does, an
 
 test('the figures are the real chip and the real card, with each hitbox drawn as an outline', () => {
   const doc = ANATOMY.doc;
-  // The chip specimen: the classes app.js emits, open so the segments show.
   for (const cls of ['mention-wrap open', 'k k-rel', 'mention-caret', 'mention-fields', 'k-state', 'k-home', 'mention-f-label']) {
     assert.ok(doc.includes(cls), `the chip figure carries .${cls.split(' ').pop()}`);
   }
-  // The card specimen.
   for (const cls of ['wv-card', 'wv-card-head', 'wv-card-title', 'wv-card-id', 'wv-card-desc', 'wv-card-fields']) {
     assert.ok(doc.includes(`class="${cls}`), `the card figure carries .${cls}`);
   }
@@ -333,7 +289,6 @@ test('the figures are the real chip and the real card, with each hitbox drawn as
   assert.ok(outlines.length >= 12, `every element carries a dashed outline as its drawn hitbox, got ${outlines.length}`);
   const badges = doc.match(/class="wv-anat-n"/g) ?? [];
   assert.ok(badges.length >= 12, `every outlined element is numbered, got ${badges.length}`);
-  // Raw HTML blocks end at a blank line — a figure with one inside would render half as prose.
   for (const block of doc.split(/\n\s*\n/).filter((b) => b.startsWith('<'))) {
     assert.ok(/^<\w/.test(block) && /<\/(div|figure)>\s*$/.test(block), 'each figure is one unbroken raw-HTML block');
   }
@@ -354,9 +309,6 @@ test('docs/chip-card-anatomy.html is the exported page, self-contained, and curr
   assert.match(html, /class="wv-card"/, 'and the card figure');
 });
 
-/* Feature #221 (Kyle, 2026-09-12): the grid guide names the clipboard rule —
-   ⌘C/⌘V follow the selection and take the cell when there is none — and
-   that a clicked text cell opens with its value selected. */
 test('the grid guide names the cell clipboard rule and select-on-open', () => {
   const guide = GUIDES.find((g) => g.name === 'Making a workspace your own');
   assert.ok(guide, 'the grid guide exists');
@@ -365,10 +317,6 @@ test('the grid guide names the cell clipboard rule and select-on-open', () => {
   assert.match(guide.doc, /whole value selected|value selected/i, 'and that a click opens a text cell with its value selected');
 });
 
-/* Reporting a bug (Feature #223): the panel files a local Issue, and the
-   email link is the way out of a self-hosted box. A reader has to be told
-   both paths exist and, above all, what never leaves the page — the leak
-   review lives in the guide, not only in the test. */
 test('the bug-reporting guide names both paths, the address, and what is never sent', () => {
   const guide = GUIDES.find((g) => g.name === 'Reporting a bug');
   assert.ok(guide, 'there is no bug-reporting guide');

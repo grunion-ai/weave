@@ -7,14 +7,6 @@ import { join } from 'node:path';
 process.env.WEAVE_KEYSTORE ??= join(mkdtempSync(join(tmpdir(), 'weave-sec-')), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { startServer } = await import('../../src/server.js');
-/* Issue #486: a state-changing request was served whatever site sent it. A
-   page anywhere could POST a text/plain "simple request" (no preflight) at a
-   loopback instance and create, edit or delete rows. A write now answers 403
-   when its Origin is neither the request's own origin, WEAVE_ORIGIN nor a
-   loopback origin on this port, or when the browser marks it
-   Sec-Fetch-Site: cross-site. No Origin at all (curl, the CLI, agents) is
-   still served. A body that is not application/json is refused when an
-   Origin is present. */
 
 const call = (port, method, path, { headers = {}, body } = {}) => new Promise((resolve, reject) => {
   const req = request({ host: '127.0.0.1', port, path, method, headers }, (res) => {
@@ -41,7 +33,6 @@ test('a write from another site is a 403 and changes nothing', async () => {
       const r = await call(port, 'POST', '/api/spaces', { headers: { ...JSON_CT, Origin: origin }, body: JSON.stringify({ name: 'Pwned' }) });
       assert.equal(r.status, 403, origin);
     }
-    // The CSRF shape: text/plain, no preflight.
     const plain = await call(port, 'POST', '/api/spaces', { headers: { 'Content-Type': 'text/plain', Origin: 'https://evil.example' }, body: JSON.stringify({ name: 'Pwned' }) });
     assert.equal(plain.status, 403);
     const fetchSite = await call(port, 'POST', '/api/spaces', { headers: { ...JSON_CT, 'Sec-Fetch-Site': 'cross-site' }, body: JSON.stringify({ name: 'Pwned' }) });
@@ -66,11 +57,9 @@ test('same-origin, loopback-on-this-port and origin-less writes are served', asy
     await ok('V6', { Origin: `http://[::1]:${port}` });
     await ok('SameSite', { Origin: `http://127.0.0.1:${port}`, 'Sec-Fetch-Site': 'same-origin' });
     await ok('Curl', {});
-    // curl -d sends a form content type and no Origin: still served.
     const curl = await call(port, 'POST', '/api/spaces', { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: JSON.stringify({ name: 'CurlForm' }) });
     assert.equal(curl.status, 201);
     assert.deepEqual(['Own', 'Localhost', 'V6', 'SameSite', 'Curl', 'CurlForm'].filter((n) => !spaces().includes(n)), []);
-    // Reads are not writes.
     const read = await call(port, 'GET', '/api/workspace', { headers: { Origin: 'https://evil.example' } });
     assert.equal(read.status, 200);
   } finally { stop(); }

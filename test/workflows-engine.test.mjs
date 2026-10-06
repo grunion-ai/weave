@@ -7,19 +7,6 @@ import { DatabaseSync } from 'node:sqlite';
 import { Weave } from '../src/engine.js';
 import { dispatchTool } from '../src/mcp.js';
 
-/* Feature #249: every automation is a row of Workspace/Workflows, and the
-   table is the control panel (Kyle, 2026-10-02). The row's Script document
-   holds the rule as JSON, {table, trigger, actions} with names, the shape
-   weave_create_automation takes. Kyle's ruling of 2026-10-03 splits the row
-   into three columns with one owner each:
-   - On is the user's switch. The engine reads it and never writes it.
-   - State is setup: Setup incomplete or Ready, computed by the engine on
-     every write from whether the rule is valid. A row that is Setup
-     incomplete and Off cannot be switched On.
-   - Health is runtime: Healthy, Warning, Failed or No runs, stamped with
-     Last Run on every fire. A row whose setup breaks while On keeps On, is
-     skipped, and reads Failed with the reason. */
-
 const wf = (w) => w.getTable('Workspace/Workflows');
 const read = (w, id) => w.readEntity(id);
 
@@ -55,7 +42,6 @@ test('createAutomation writes a Workflows row: Script JSON with names, On, State
   assert.deepEqual(row.fields.Tables.map((x) => x.name), ['Request']);
   assert.deepEqual(row.fields.Spaces.map((x) => x.name), ['Workflow Demo']);
   assert.deepEqual(w.state.automations, {}, 'nothing lands in the old store');
-  // The verb's answer keeps its shape: ids for the trigger and actions.
   assert.equal(auto.dbId, t.id);
   assert.equal(auto.trigger.fieldId, w.getField(t.id, 'Status').id);
   assert.equal(auto.actions[0].fieldId, w.getField(t.id, 'Resolved').id);
@@ -164,7 +150,6 @@ test('updateAutomation and deleteAutomation work on the row', () => {
   assert.equal(w.listAutomations().length, 1);
 });
 
-// A legacy automation, as state.automations held it before Feature #249.
 function legacy(w, t, { name, seq, enabled = true }) {
   const status = w.getField(t.id, 'Status');
   return {
@@ -194,7 +179,6 @@ test('migration: every state.automations entry becomes a Workflows row, in seq o
   w2.setState(req.id, 'Status', 'Done');
   assert.match(w2.getDoc(req.id), /A ran/);
   assert.doesNotMatch(w2.getDoc(req.id), /B ran/, 'B came over Off');
-  // Idempotent: a second import of the migrated state adds nothing.
   const w3 = new Weave();
   w3.importJSON(w2.exportJSON({ blobs: false }));
   assert.equal(w3.listEntities(wf(w3).id).length, 2);
@@ -231,7 +215,6 @@ test('migration on a .db: the automations table empties on disk and a reopen doe
     w1.importJSON(w.exportJSON({ blobs: false }));
     const t1 = w1.getTable('Workflow Demo/Request');
     w1.store.close();
-    // Write a legacy rule straight into the store, as a pre-#249 weave did.
     const db = new DatabaseSync(path);
     const a = legacy(w, t, { name: 'A', seq: 1 });
     a.dbId = t1.id;

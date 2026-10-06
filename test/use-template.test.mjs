@@ -1,9 +1,3 @@
-/* Feature #261: any space can be a template, and a template space copies its
-   schema, never its rows, into another workspace. This file holds the engine
-   half: the `template` attribute and its registry checkbox, templateDoc(),
-   useTemplate(), applySchema's `partial` option, listTemplates(), and the
-   CLI and MCP doors onto them. The route and hub half is
-   use-template-routes.test.mjs; the dialog is use-template-browser. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -21,8 +15,6 @@ const spacesRow = (w, name) => {
   return w.listEntities(t.id, { includeDeleted: true }).find((e) => w.entityName(e) === name);
 };
 const templateCell = (w, name) => w.readEntity(spacesRow(w, name).id).fields.Template;
-
-// ---------------- step 1: the attribute ----------------
 
 test('template is a space attribute: stored when true, absent when false', () => {
   const w = new Weave();
@@ -53,7 +45,6 @@ test('the Workspace/Spaces row carries a Template checkbox that mirrors the spac
   assert.equal(templateCell(w, 'CRM'), false);
   w.updateEntity(spacesRow(w, 'CRM').id, { Template: true });
   assert.equal(w.getSpace('CRM').template, true);
-  // A Spaces row created with the box ticked makes a template space.
   w.createEntity(w.getTable('Workspace/Spaces').id, { name: 'Hiring', values: { Template: true } });
   assert.equal(w.getSpace('Hiring').template, true);
   assert.equal(templateCell(w, 'Hiring'), true);
@@ -63,7 +54,6 @@ test('a workspace opened without the Template column gets it, and its rows say w
   const w = new Weave();
   w.createSpace({ name: 'CRM', template: true });
   const dump = w.exportJSON();
-  // Strip the column the way a workspace made before Feature #261 lacks it.
   const spaces = Object.values(dump.tables).find((t) => t.system === 'spaces');
   const id = Object.values(spaces.fields).find((f) => f.name === 'Template').id;
   delete spaces.fields[id];
@@ -99,7 +89,6 @@ test('describeSchema says template only when set, and applySchema applies a chan
   off.find((s) => s.space === 'CRM').template = false;
   w.applySchema(off);
   assert.equal('template' in crm(), false);
-  // A document that creates a template space makes it one.
   const fresh = new Weave();
   fresh.applySchema([{ space: 'Hiring', template: true, tables: [] }]);
   assert.equal(fresh.getSpace('Hiring').template, true);
@@ -137,11 +126,6 @@ test('weave_update_space and the CLI take template', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// ---------------- step 2: the copy ----------------
-
-/* A source workspace whose CRM space wears every costume a schema can carry,
-   plus one relation that leaves the space (Deal.Ledger → Accounts/Ledger)
-   and a lookup that rides it. */
 function costumed() {
   const w = new Weave();
   w.updateWorkspace({ name: 'source' });
@@ -166,8 +150,6 @@ function costumed() {
   w.addRelation(deal.id, { name: 'Company', targetDb: company.id, cardinality: 'many-to-one', inverseName: 'Deals' });
   w.addField(deal.id, { name: 'Company Name', type: 'lookup', config: { relationField: 'Company', targetField: 'Name' } });
   w.addField(company.id, { name: 'Pipeline', type: 'rollup', config: { relationField: 'Deals', targetField: 'Amount', aggregate: 'sum' } });
-  // A lookup whose target is itself a relation reads the far row's chip
-  // (Issue #643): Deal → Contact → the contact's Company.
   const contact = w.createTable({ space: 'CRM', name: 'Contact' });
   w.addRelation(contact.id, { name: 'Employer', targetDb: company.id, cardinality: 'many-to-one', inverseName: 'Staff' });
   w.addRelation(deal.id, { name: 'Contact', targetDb: contact.id, cardinality: 'many-to-one', inverseName: 'Deals' });
@@ -176,16 +158,12 @@ function costumed() {
   w.addField(deal.id, { name: 'Ledger Code', type: 'lookup', config: { relationField: 'Ledger', targetField: 'Code' } });
   w.addField(w.getTable('Workspace/Spaces').id, { name: 'Deal · Amount · sum', type: 'rollup', config: { via: deal.id, targetField: 'Amount', aggregate: 'sum' } });
 
-  // Field order that differs from creation order, hidden fields, filter and
-  // sort on the default view, a second view with widths and a frozen column,
-  // and the body blocks moved.
   const order = ['Name', 'Amount', 'Stage', 'State', 'Company', 'Company Name', 'Weighted', 'Close', 'Ledger', 'Ledger Code', 'Notes', 'Description'];
   w.updateTable(deal.id, { fieldOrder: [...order, ...w.getTable(deal.id).fieldOrder.map((id) => w.getTable(deal.id).fields[id].name).filter((n) => !order.includes(n))] });
   w.updateTable(deal.id, { hiddenFields: ['Description', 'Ledger Code'], filters: { State: ['Open'] }, sort: [{ field: 'Amount', dir: 'desc' }] });
   w.tableView('CRM/Deal/Board', { from: w.tableView('CRM/Deal').views[0].name, fields: ['Name', 'Stage', 'Amount', 'Ledger'], widths: { Name: 260, Amount: 120 }, frozen: 1 });
   w.updateTable(deal.id, { bodyOrder: ['Notes', '@values'] });
 
-  // Rows never travel.
   const acme = w.createEntity(company.id, { name: 'Acme' });
   w.createEntity(deal.id, { name: 'Big one', values: { Amount: 1000, Company: acme.id } });
   return w;
@@ -257,7 +235,6 @@ test('fidelity: a template used into a fresh workspace describes exactly as its 
   for (const t of target.listTables(used.space.id)) assert.equal(target.listEntities(t.id).length, 0, `${t.name} carries no rows`);
   assert.equal(target.listTemplates().length, 0);
 
-  // The copy behaves: its lookup of a relation reads the far row's chip (Issue #643).
   const globex = target.createEntity('Sales/Company', { name: 'Globex' });
   target.createEntity('Sales/Contact', { name: 'Hank', values: { Employer: globex.id } });
   const deal = target.createEntity('Sales/Deal', { name: 'Small one', values: { Contact: 'Hank' } });
@@ -286,11 +263,8 @@ test('useTemplate refuses a name the target already holds and leaves the target\
   assert.throws(() => src.useTemplate('CRM', target), (err) => err.code === 'conflict' && /already has a space named 'CRM'/.test(err.message));
   assert.throws(() => src.useTemplate('CRM', target, { name: 'crm' }), (err) => err.code === 'conflict', 'case does not dodge it');
   assert.equal(JSON.stringify(target.describeSchema()), schema, 'a refusal writes nothing');
-  // The same workspace is a legal target under a new name.
   assert.equal(src.useTemplate('CRM', src, { name: 'CRM copy' }).space.name, 'CRM copy');
 });
-
-// ---------------- step 5: CLI and MCP parity ----------------
 
 test('weave template list and weave template use --into copy the schema into another file', () => {
   const dir = mkdtempSync(join(tmpdir(), 'weave-template-cli-'));

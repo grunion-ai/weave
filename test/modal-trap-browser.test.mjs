@@ -1,18 +1,3 @@
-/* modal() is a modal dialog, not a box drawn over the page (Issue #263).
-
-   The 2026-09-12 audit counted ten hand-rolled dialogs and found none that
-   held the keyboard: Tab walked out of every one of them into the page
-   behind, a click-free reader could type into a grid cell the backdrop
-   covered, and nothing told a screen reader a dialog had opened. Issue #158
-   (the New workspace dialog read unstyled) was one symptom of the same
-   hand-rolling. This suite holds the shared primitive to the dialog
-   contract: it is announced as a modal dialog named by its title, Tab and
-   Shift+Tab cycle inside it, the page behind is inert while it is open and
-   comes back when it closes (however it closes), Escape closes it, and focus
-   returns to what opened it. The New workspace dialog is the case in point.
-   Both themes, since the dialog is chrome.
-
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -33,13 +18,11 @@ if (s) {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
     return page;
   };
-  // What holds focus, named the way a reader would point at it.
   const focused = (page) => page.evaluate(() => {
     const a = document.activeElement;
     if (!a || a === document.body) return 'BODY';
     return a.id || a.getAttribute('name') || a.textContent.trim() || a.tagName;
   });
-  // Every body child that is inert, by id or class, so a leak names itself.
   const inertNow = (page) => page.evaluate(() => [...document.body.children]
     .filter((n) => n.inert).map((n) => n.id || n.className || n.tagName));
 
@@ -81,8 +64,6 @@ if (s) {
         assert.equal(await focused(page), 'Create', 'Shift+Tab from the first control lands on the last');
         await page.keyboard.press('Shift+Tab');
         assert.equal(await focused(page), 'Cancel', 'and steps back from there as usual');
-        // Focus the page drops on the body (a click on the dialog's text) is
-        // still inside the trap: the next Tab lands on the dialog, not the page.
         await page.evaluate(() => document.activeElement.blur());
         await page.keyboard.press('Tab');
         assert.equal(await focused(page), 'name', 'Tab from nowhere lands on the dialog\'s first control');
@@ -120,10 +101,6 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    /* Callers close a dialog by removing its backdrop (Restore in the
-       workspace trash, a field definition's Clear, tray() opening over a
-       modal), and one modal can replace another. The page comes back in the
-       first case and stays held in the second. */
     test(`a backdrop removed by a caller frees the page; a modal replacing a modal keeps it held (${theme})`, async () => {
       const page = await open(theme);
       try {

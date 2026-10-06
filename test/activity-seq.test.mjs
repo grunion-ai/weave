@@ -1,15 +1,3 @@
-/* Activity entries carried a wall clock and nothing else (Issue #282), so two
-   writes inside one millisecond — an entity created with a document does
-   exactly that — had no defined order, and a clock that stepped backwards
-   reordered history. The feed papered over it with an id tie-break, which is
-   wrong twice: across entities it ranks same-millisecond events by entity
-   uuid, which is arbitrary, and within one entity it compares the index as a
-   string, so `:9` reads as newer than `:10`.
-
-   Every entry now carries `seq`, a workspace-wide monotonic counter minted
-   where the entry is stamped. `seq` is the order, `ts` is the display. The
-   counter lives on `meta.activitySeq`; a workspace written before it existed
-   is numbered once on open, in the order its entries are stored. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -24,11 +12,9 @@ import { workspace } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
-// Every stored entry in the workspace, tagged with the address the feed uses.
 const entries = (w) => Object.values(w.state.entities)
   .flatMap((e) => (e.activity ?? []).map((a, i) => ({ ...a, id: `${e.id}:${i}` })));
 
-// Collapse the whole workspace onto one instant: the case the Issue names.
 function oneInstant(w, ts = '2026-09-20T12:00:00.000Z') {
   for (const e of Object.values(w.state.entities)) for (const a of e.activity ?? []) a.ts = ts;
 }
@@ -54,11 +40,8 @@ test('every entry carries a workspace-unique seq, minted in commit order', () =>
 
 test('the feed carries seq and orders by it, not by the entity uuid', () => {
   const { w, t } = workspace();
-  // Six entities on one instant: a uuid tie-break lands creation order by
-  // chance one time in 720, so this fails on an id sort and passes on a seq one.
   const made = Array.from({ length: 6 }, (_, i) => w.createEntity(t, { name: `t${i}` }).id);
   oneInstant(w);
-  // The Ticket table only: a space and a table are entities with activity too.
   const feed = w.activityFeed({ tableRef: 'Ops/Ticket' }).items;
   for (const r of feed) assert.equal(typeof r.seq, 'number', 'the feed row exposes seq');
   assert.deepEqual(feed.map((r) => r.entityId), [...made].reverse(),
@@ -149,12 +132,6 @@ test('a workspace written before seq existed is numbered once, in its stored ord
 });
 
 test('an entry a pre-seq writer appended is numbered on the next open', () => {
-  /* Weave lets a CLI and a server share one .db, so a process still running
-     code from before seq can append an unnumbered entry to a workspace whose
-     counter is already set — which is exactly what happened on the live
-     workspace the hour this landed. Gating the pass on the counter alone left
-     that entry unnumbered for good, so the pass numbers whatever it finds
-     unnumbered and only the numbering already handed out is left alone. */
   const { w, t } = workspace();
   const a = w.createEntity(t, { name: 'a' });
   const dump = JSON.parse(JSON.stringify(w.exportJSON({ blobs: false })));
@@ -171,8 +148,6 @@ test('an entry a pre-seq writer appended is numbered on the next open', () => {
 });
 
 test('until that open, an unnumbered entry still reads as the newest', () => {
-  // A running server refreshes rows from the shared .db without re-opening the
-  // workspace, so the feed must stay sorted with the hole in it.
   const { w, t } = workspace();
   const e = w.createEntity(t, { name: 'a' });
   w.addComment(e.id, { text: 'one' });
@@ -183,8 +158,6 @@ test('until that open, an unnumbered entry still reads as the newest', () => {
 });
 
 test('the counter is a write counter, not part of the schema fingerprint', () => {
-  // Same reason publicIdCounter is excluded: a row write must not cost every
-  // open tab a schema refetch (Issue #274).
   const { w, t } = workspace();
   const before = w.schemaVersion();
   const e = w.createEntity(t, { name: 'a' });
@@ -222,7 +195,6 @@ test('route, MCP and CLI carry seq (parity)', async () => {
     fw.save?.();
     const cli = (...a) => JSON.parse(execFileSync(process.execPath, [BIN, ...a, '--data', data], { encoding: 'utf8', maxBuffer: 64 << 20 }));
     assert.equal(typeof cli('activity', '--entity', fe.id).items[0].seq, 'number', 'weave activity');
-    // The counter survives the file, so a later session cannot reissue a number.
     const reopened = new Weave({ path: data });
     const top = Math.max(...entries(reopened).map((x) => x.seq));
     reopened.addComment(fe.id, { text: 'again' });

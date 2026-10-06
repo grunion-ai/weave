@@ -1,14 +1,3 @@
-/* The loading rope keeps moving while the page is busy (Issue #390).
-
-   The rope used to animate stroke-dashoffset with SMIL, which Chrome and
-   Safari tick on the main thread: boot's JSON parse and a route render froze
-   it mid-weave, then it jumped. It now reveals a still mark through a window
-   that animates transform only, so the compositor drives it.
-
-   A source grep cannot tell which thread paints a frame; the browser can.
-   Chromium's screencast delivers a frame whenever the compositor produces
-   one, so a 250 ms busy loop on the main thread must still yield a run of
-   distinct frames. The SMIL rope delivered none inside the task. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -63,12 +52,10 @@ if (s) {
   test('the rope keeps moving through a 250 ms long task',
     { skip: browser.browserType().name() !== 'chromium' && 'the screencast is Chromium CDP' }, async (t) => {
       const page = await openWithRope(browser, base, 'light');
-      // Only the rope may move, or a frame from anything else would pass the test.
       const others = await page.evaluate(() => document.getAnimations()
         .filter((a) => a.playState === 'running' && !document.querySelector('#page-loader').contains(a.effect.target))
         .map((a) => a.animationName || String(a.effect.target?.className)));
       assert.deepEqual(others, [], 'nothing but the loader animates while it is up');
-      // The rope is up and its clock is running (no fixed sleep: Issues #454, #466).
       await page.waitForFunction(() => {
         const anims = document.querySelector('#page-loader').getAnimations({ subtree: true });
         return anims.length > 0 && anims.every((a) => a.playState === 'running' && a.currentTime > 0);
@@ -79,29 +66,20 @@ if (s) {
         frames.push({ t: f.metadata.timestamp * 1000, hash: createHash('sha1').update(f.data).digest('hex') });
         cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => {});
       });
-      // Small, quick frames: the screencast sends one frame per ack, so a slow
-      // encode queues frames and stamps them late.
       await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: 320, maxHeight: 240 });
-      await eventually(() => frames.length > 0, true); // the screencast is delivering
-      // The rope rests for 340 ms mid-cycle, so start the task where it draws
-      // in: phase 0.05 of the cycle, committed to the compositor by two frames.
+      await eventually(() => frames.length > 0, true);
       const task = await page.evaluate(async () => {
         for (const a of document.querySelector('#page-loader').getAnimations({ subtree: true })) a.currentTime = 100;
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
         return new Promise((resolve) => setTimeout(() => {
           const t0 = performance.timeOrigin + performance.now();
           const end = performance.now() + 250;
-          while (performance.now() < end) { /* the long task */ }
+          while (performance.now() < end) {}
           resolve({ t0, t1: performance.timeOrigin + performance.now() });
         }, 0));
       });
-      // Every frame the task spanned is in once one stamped after it has arrived.
       await eventually(() => frames.some((f) => f.t > task.t1), true);
       await cdp.send('Page.stopScreencast');
-      // The SMIL rope stops for the task: its last frames arrive early in it,
-      // painted before it began and stamped late by the screencast's queue.
-      // The compositor rope keeps changing to the end. So the test asks for a
-      // change in the last 40% of the task, where no queued frame can reach.
       const span = task.t1 - task.t0, lateFrom = task.t0 + 0.6 * span;
       const inside = frames.filter((f) => f.t > task.t0 && f.t < task.t1);
       const before = [...frames].reverse().find((f) => f.t <= lateFrom);

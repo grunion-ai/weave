@@ -1,19 +1,9 @@
-// Zero-dependency PDF generator: renders an entity's markdown document to a
-// valid, viewable PDF (US Letter). Pure-Latin text uses the 14 standard PDF
-// fonts (no embedding, real Helvetica AFM metrics). A line containing glyphs
-// outside WinAnsi (Cyrillic, Greek, arrows, box drawing, …) switches whole to
-// vendored DejaVu Sans, embedded as a CIDFontType2 with Identity-H encoding
-// and a ToUnicode CMap — so ASCII docs stay small and Unicode docs stay
-// copy/paste-able. DejaVu is monochrome: color emoji and anything else it
-// lacks a glyph for render as a visible □, never '?'.
-
 import { readFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { parseBlocks } from './markdown.js';
 
-// AFM widths (1/1000 em) for chars 32..126.
 const HELV = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584];
 const HELV_BOLD = [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584];
 
@@ -21,25 +11,14 @@ const FONTS = {
   F1: { base: 'Helvetica', widths: HELV },
   F2: { base: 'Helvetica-Bold', widths: HELV_BOLD },
   F3: { base: 'Helvetica-Oblique', widths: HELV },
-  F4: { base: 'Courier', widths: null }, // fixed 600
+  F4: { base: 'Courier', widths: null },
 };
 
-// --- Embedded Unicode fallback font (DejaVu Sans, vendored) ---------------
-// Minimal TTF reader: only the tables needed for CID embedding — cmap
-// (codepoint→gid), hmtx/hhea (advance widths), head (unitsPerEm, bbox),
-// maxp (glyph count), OS/2 (cap height). No libraries.
-
-/* Resolved lazily and tolerantly: under a bundler (the Cloudflare Worker,
-   Feature #84) import.meta.url is undefined for non-entry modules and there
-   is no font file on disk anyway — fileURLToPath at module top crashed the
-   whole Worker at cold start (G2, 2026-08-22). With no font available,
-   needsUnicode() reports false and non-WinAnsi text degrades to '?' instead
-   of the embedded DejaVu — a worse PDF, never a dead process. */
 let TTF_PATH = null;
 try {
   TTF_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'vendor', 'fonts', 'DejaVuSans.ttf');
-} catch { /* no file URL in this runtime — unicodeFont() stays null */ }
-const MISSING_GLYPH_CP = 0x25a1; // □ — visible stand-in for glyphs the font lacks
+} catch {}
+const MISSING_GLYPH_CP = 0x25a1;
 
 function parseTtf(buf) {
   const tables = {};
@@ -69,7 +48,6 @@ function parseTtf(buf) {
     capHeight = scale(buf.readInt16BE(tables['OS/2'].off + 88));
   }
 
-  // cmap: prefer format 12 (full Unicode) then format 4 (BMP).
   const cmap = tables.cmap.off;
   let f4 = 0, f12 = 0;
   const subCount = buf.readUInt16BE(cmap + 2);
@@ -137,15 +115,12 @@ export function unicodeFont() {
   try {
     UNI = parseTtf(readFileSync(TTF_PATH));
   } catch {
-    UNI_FAILED = true; // no path (bundled runtime) or no file — degrade, once
+    UNI_FAILED = true;
     return null;
   }
   return UNI;
 }
 
-// A string needs the embedded font when any codepoint has no WinAnsi byte —
-// and the font is actually available; without it the WinAnsi '?' fallback in
-// escapePdfText carries those glyphs instead.
 function needsUnicode(text) {
   for (const ch of String(text)) {
     const cp = ch.codePointAt(0);
@@ -154,8 +129,6 @@ function needsUnicode(text) {
   return false;
 }
 
-// Identity-H text: hex string of glyph ids; records gid→codepoint for the
-// /W widths array and the ToUnicode CMap. Missing glyphs become □.
 function encodeUnicodeHex(text, used) {
   const uni = unicodeFont();
   let hex = '';
@@ -169,7 +142,7 @@ function encodeUnicodeHex(text, used) {
   return hex;
 }
 
-const PAGE_W = 612; // US Letter
+const PAGE_W = 612;
 const PAGE_H = 792;
 const MARGIN = 72;
 const CONTENT_W = PAGE_W - MARGIN * 2;
@@ -183,7 +156,6 @@ function charWidth(font, code, size) {
 
 function textWidth(font, text, size) {
   if (needsUnicode(text)) {
-    // The whole line will render in DejaVu — measure it with DejaVu advances.
     const uni = unicodeFont();
     let w = 0;
     for (const ch of String(text)) {
@@ -197,7 +169,6 @@ function textWidth(font, text, size) {
   return w;
 }
 
-// Strip markdown inline syntax to plain text for PDF rendering.
 export function stripInline(text) {
   return String(text)
     .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
@@ -219,7 +190,6 @@ function wrap(font, text, size, maxWidth) {
     const candidate = line ? line + ' ' + word : word;
     if (textWidth(font, candidate, size) <= maxWidth || !line) {
       line = candidate;
-      // Hard-break a single overlong word.
       while (textWidth(font, line, size) > maxWidth && line.length > 1) {
         let cut = line.length - 1;
         while (cut > 1 && textWidth(font, line.slice(0, cut), size) > maxWidth) cut--;
@@ -235,7 +205,6 @@ function wrap(font, text, size, maxWidth) {
   return lines.length ? lines : [''];
 }
 
-// Typographic characters that exist in WinAnsi but not Latin-1.
 const WINANSI_EXTRA = {
   0x20ac: 128, 0x2026: 133, 0x2018: 145, 0x2019: 146, 0x201c: 147, 0x201d: 148,
   0x2022: 149, 0x2013: 150, 0x2014: 151, 0x2122: 153,
@@ -249,21 +218,18 @@ function escapePdfText(text) {
     else if (code >= 32 && code <= 126) out += ch;
     else if (WINANSI_EXTRA[code]) out += '\\' + WINANSI_EXTRA[code].toString(8).padStart(3, '0');
     else if (code <= 255) out += '\\' + code.toString(8).padStart(3, '0');
-    else out += '?'; // unreachable: non-WinAnsi text routes to the embedded font
+    else out += '?';
   }
   return out;
 }
 
 class PdfBuilder {
   constructor() {
-    this.pages = []; // arrays of content-stream ops
-    this.used = new Map(); // gid → codepoint, for the embedded font objects
+    this.pages = [];
+    this.used = new Map();
     this.newPage();
   }
 
-  // One text-showing op. Lines with non-WinAnsi glyphs switch whole to the
-  // embedded DejaVu font (/FU) — bold/italic runs in such lines render in
-  // DejaVu regular; simpler than per-run splitting and fine at body sizes.
   tj(str, font, size, x, y, rg) {
     const pos = `1 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)} Tm`;
     if (needsUnicode(str)) {
@@ -311,7 +277,6 @@ class PdfBuilder {
 export function markdownToPdf(markdown, { title = 'Document', subtitle = '' } = {}) {
   const b = new PdfBuilder();
 
-  // Header
   b.paragraph(title, { font: 'F2', size: 20, gapAfter: 2 });
   if (subtitle) b.paragraph(subtitle, { size: 9.5, color: [0.45, 0.45, 0.5], gapAfter: 2 });
   b.rule();
@@ -349,11 +314,9 @@ export function markdownToPdf(markdown, { title = 'Document', subtitle = '' } = 
         b.rule();
         break;
       case 'html':
-        // Page-break markers become real PDF page breaks; other raw HTML is skipped.
         if (/class="pagebreak"/.test(block.text)) b.newPage();
         break;
       case 'mermaid': {
-        // Diagrams render as their source in PDF (no JS runtime here).
         b.space(3);
         for (const line of block.text.split('\n')) {
           for (const wrapped of wrap('F4', line || ' ', 9, CONTENT_W - 12)) {
@@ -407,14 +370,12 @@ export function markdownToPdf(markdown, { title = 'Document', subtitle = '' } = 
   return assemble(b.pages, b.used);
 }
 
-// ToUnicode CMap stream body for the used gid→codepoint pairs.
 function toUnicodeCMap(used) {
   const pairs = [...used.entries()].sort((a, b) => a[0] - b[0]);
   const chunks = [];
   for (let i = 0; i < pairs.length; i += 100) {
     const slice = pairs.slice(i, i + 100);
     const rows = slice.map(([gid, cp]) => {
-      // UTF-16BE units of the codepoint (surrogate pair above the BMP).
       const s = String.fromCodePoint(cp);
       let units = '';
       for (let j = 0; j < s.length; j++) units += s.charCodeAt(j).toString(16).padStart(4, '0');
@@ -441,7 +402,7 @@ function toUnicodeCMap(used) {
 }
 
 function assemble(pages, used = new Map()) {
-  const objects = []; // 1-indexed strings (without "N 0 obj" wrapper)
+  const objects = [];
   const addObj = (body) => objects.push(body) && objects.length;
 
   const fontIds = {};
@@ -451,8 +412,6 @@ function assemble(pages, used = new Map()) {
   let fontRes = Object.entries(fontIds).map(([k, id]) => `/${k} ${id} 0 R`).join(' ');
 
   if (used.size) {
-    // Embed the whole vendored TTF (no subsetting — ~750KB, flate-compressed)
-    // as a Type0/CIDFontType2 with Identity-H, only when a doc needed it.
     const uni = unicodeFont();
     const fontData = deflateSync(uni.data).toString('latin1');
     const fileId = addObj(`<< /Length ${fontData.length} /Filter /FlateDecode /Length1 ${uni.data.length} >>\nstream\n${fontData}\nendstream`);
@@ -466,7 +425,7 @@ function assemble(pages, used = new Map()) {
   }
 
   const pageIds = [];
-  const pagesId = objects.length + pages.length * 2 + 1; // reserved: content+page per page, then Pages
+  const pagesId = objects.length + pages.length * 2 + 1;
   for (const ops of pages) {
     const stream = ops.join('\n');
     const contentId = addObj(`<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`);

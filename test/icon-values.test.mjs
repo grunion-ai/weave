@@ -1,8 +1,3 @@
-/* An icon value is enforced at the engine (Kyle, 2026-09-02: "I'm still
-   finding emojis; this should not be possible"). A space, a table, a select
-   option or a workflow state takes one of the inventory, a legacy alias that
-   resolves, or a drawn mark — and refuses anything else, so no surface has
-   to decide what to do with a value that is not an icon. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';

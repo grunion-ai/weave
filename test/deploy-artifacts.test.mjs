@@ -1,15 +1,3 @@
-/* Deploy artifacts (Feature #222, phase 1): one Dockerfile, one compose file,
-   one manifest each for Railway and Fly, and the environment contract that
-   every one of them and the Handbook agree on.
-
-   The contract is the set of variables the "Environment reference" guide
-   documents. The Dockerfile and compose.yaml must name exactly that set, so a
-   variable added to one surface without the other is a red test, never a
-   guide that lies about what the container reads.
-
-   G3 (container boots, write survives restart) runs when a Docker daemon
-   answers; otherwise it reports why and passes, because a missing daemon on
-   a laptop is not a regression in the artifact. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
@@ -25,7 +13,6 @@ const FLY = read('fly.toml');
 const IGNORE = read('.dockerignore');
 const README = read('README.md');
 
-/* The six variables the spec (Feature #222, Part 3) names as the contract. */
 const SPEC_VARS = ['PORT', 'WEAVE_HOST', 'WEAVE_DATA', 'WEAVE_ORIGIN', 'WEAVE_KEYSTORE_PASSPHRASE', 'WEAVE_BACKUP_DEST'];
 const varsIn = (text) => new Set([...text.matchAll(/\b(PORT|WEAVE_[A-Z_]+)\b/g)].map((m) => m[1]));
 
@@ -104,9 +91,7 @@ test('the environment contract cannot drift: the reference guide, the Dockerfile
   for (const [file, text] of [['railway.json', RAILWAY], ['fly.toml', FLY]]) {
     for (const v of varsIn(text)) assert.ok(documented.has(v), `${file} names ${v}, which the guide does not document`);
   }
-  // Nothing is reserved any more: phase 2 reads WEAVE_ORIGIN, phase 3 reads WEAVE_BACKUP_DEST.
   assert.doesNotMatch(ref.doc, /reserved for phase/i, 'no variable is still a promise');
-  // Phase 3 landed: WEAVE_BACKUP_DEST is read by serve (the nightly) and by backup (the default --dest).
   assert.match(read('bin/weave.js'), /process\.env\.WEAVE_BACKUP_DEST/, 'serve reads WEAVE_BACKUP_DEST');
   assert.match(read('src/backup.js'), /env\.WEAVE_BACKUP_DEST/, 'backup reads WEAVE_BACKUP_DEST');
   assert.doesNotMatch(ref.doc, /`WEAVE_BACKUP_DEST`[^\n]*reserved/i, 'the reference no longer calls it reserved');
@@ -119,9 +104,7 @@ test('the Dockerfile and compose agree with the code on what each variable does'
   assert.match(bin, /flags\.data \?\? process\.env\.WEAVE_DATA/);
   assert.match(read('src/engine.js'), /keystoreEnv\?\.WEAVE_KEYSTORE_PASSPHRASE/);
   assert.match(read('src/engine.js'), /process\.env\.WEAVE_KEYSTORE \?\?/);
-  // Attachments live in files/ beside the .db — so /data holds everything.
   assert.match(read('src/engine.js'), /join\(dirname\(this\.store\.path\), 'files', id\)/);
-  // The keystore would otherwise land in $HOME, off the volume.
   assert.match(DOCKERFILE, /WEAVE_KEYSTORE=\/data\/keystore\.json/);
 });
 
@@ -135,13 +118,10 @@ test('the self-hosting guides ship in the Handbook seed with their exact titles,
   }
   const orders = GUIDE_TITLES.map((t) => guide(t).order);
   assert.deepEqual(orders, [...orders].sort((a, b) => a - b), 'the guides read in the order listed');
-  // Door B (passkeys) was removed (Feature #243): its guide is gone, and door C
-  // carries the session, lost-device and origin material it used to hold.
   assert.equal(guide('Door B: passkeys'), undefined, 'the passkey guide is gone');
   for (const s of ['revoke-session', 'WEAVE_ORIGIN', 'WEAVE_TRUST_PROXY', 'wv_session', 'wv_']) {
     assert.ok(guide('Door C: sign in with a provider').doc.includes(s), `door C covers ${s}`);
   }
-  // Only the removal note in the door guide may still name the old verbs.
   for (const g of GUIDES) {
     const doc = g.doc.replace(/## Door B was removed[\s\S]*?(?=\n## |$)/, '');
     assert.doesNotMatch(doc, /weave account invite|remove-credential|Door B: passkeys|passkey/i, `${g.name} still points at the passkey door`);
@@ -176,8 +156,6 @@ test('the README self-hosting section is an index into the guides and the contai
   assert.ok(section.length < 4000, 'the section is an index, not the guides pasted back in');
   assert.doesNotMatch(section, /systemd|Caddyfile/, 'the systemd and Caddy walkthroughs moved into the guides');
 });
-
-/* ---------- G3: the container boots and a write survives a restart ---------- */
 
 function dockerReady() {
   try {
@@ -230,7 +208,6 @@ test('G3: docker build, run with the six variables, health ok, an entity survive
       '-e', 'PORT=4400', '-e', 'WEAVE_HOST=0.0.0.0', '-e', 'WEAVE_DATA=/data/workspace.db',
       '-e', 'WEAVE_ORIGIN=http://127.0.0.1:4400', '-e', 'WEAVE_KEYSTORE_PASSPHRASE=g3-gate', '-e', 'WEAVE_BACKUP_DEST=', '-e', 'WEAVE_UPDATE_CHECK=off',
       tag);
-    // An ephemeral published port is reassigned on every (re)start: read it each time.
     const baseNow = () => `http://127.0.0.1:${docker('port', name, '4400').split('\n')[0].split(':').pop()}`;
     let base = baseNow();
     const healthy = async () => {
@@ -240,7 +217,6 @@ test('G3: docker build, run with the six variables, health ok, an entity survive
       }
     };
     const first = await healthy();
-    // A fresh volume's workspace is personal-workspace (Issue #594).
     assert.equal(first.workspace, 'personal-workspace', 'the workspace on the volume is the one the health reports');
     await api(base, 'POST', '/api/spaces', { name: 'G3' });
     const table = await api(base, 'POST', '/api/tables', { space: 'G3', name: 'Note' });
@@ -254,12 +230,11 @@ test('G3: docker build, run with the six variables, health ok, an entity survive
     assert.equal(second.workspace, first.workspace, 'the restart keeps the name the volume was given');
     const after = (await api(base, 'POST', `/api/tables/${table.id}/query`, {})).total;
     assert.equal(after, before, 'entity count unchanged across restart');
-    // The process runs unprivileged and the volume is writable by it.
     assert.equal(docker('exec', name, 'id', '-u'), '1000');
     t.diagnostic(`G3 ran: ${tag} built, health ok twice, ${after} entity survived the restart`);
   } finally {
     for (const args of [['rm', '-f', name], ['volume', 'rm', '-f', volume], ['rmi', '-f', tag]]) {
-      try { docker(...args); } catch { /* best effort */ }
+      try { docker(...args); } catch {}
     }
   }
 });

@@ -1,9 +1,3 @@
-/* A date box is as wide as the date it shows (Issue #159).
-   Kyle, 2026-09-03, on the uno Task table: "lock ordinal dates cut off".
-   The date input was a fixed 120px (compact) / 200px box, and a costume like
-   ordinal — "Wednesday 3rd September 2026" — is longer than either, so the
-   value was clipped inside its own control. The box now measures its text.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';

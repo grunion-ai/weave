@@ -1,13 +1,3 @@
-/* Table search in the toolbar (Feature #228). A persistent search box beside the
-   table's controls narrows the grid as you type,
-   with the ⌘K matcher scoped to this table: name, publicId (#143), text
-   fields. The rows come from the server (`search` on the table query), so a
-   paged table narrows across every page, not only the one loaded. It is
-   transient view state: it composes with the saved filter and is never
-   written to the table. Esc clears; / or ⌘F from the grid
-   focuses it; Enter on a single match opens that row; a miss says so and
-   offers a clear.
-   Playwright is NOT a dependency of weave; the suite skips when absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -26,7 +16,6 @@ const s = await launch('table search', (weave) => {
     ['Beta launch', 'quarterly plan', 'Done'],
     ['Gamma cleanup', '', 'Open'],
   ]) named[name] = weave.createEntity(jobs, { name, values: { Notes, Status } });
-  // Past one page (200), so the search has to come from the server.
   for (let i = 0; i < 500; i++) weave.createEntity(jobs, { name: `Filler row ${i}`, values: { Status: 'Open' } });
 });
 
@@ -147,8 +136,6 @@ if (s) {
     }
   });
 
-  // Last: it adds a row. A new row matches no search, so + New clears the
-  // search first and the row lands where the reader can see it (Issue #341).
   test('+ New during a search clears the search and shows the new row', async () => {
     const page = await open();
     try {
