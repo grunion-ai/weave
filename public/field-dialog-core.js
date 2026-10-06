@@ -1,9 +1,6 @@
 /* Pure logic for the unified field dialog (design review 2026-08-22, A+E):
-   the dialog's state object, the canonical {type, config} definition the
-   code pane shows, and a client-side mirror of the engine's config
-   validation so the pane can flag errors before the request is made. The
-   server's normaliser stays the truth — this mirror only repeats its
-   messages verbatim (test/field-dialog-core.test.mjs pins them to source).
+   the dialog's state object and the canonical {type, config} definition
+   it sends. The server's normaliser validates the config.
    Classic script + ESM in one file, same pattern as nl-date.js: the browser
    reads the window global, node imports the same source. */
 (function (root) {
@@ -381,8 +378,6 @@
     const n = ratingNum(v);
     return n == null || !Number.isFinite(n) ? '' : ratingText(Math.min(max, Math.round(n)));
   };
-  // Clicking the nth icon sets n; clicking the current default clears it.
-  const ratingDefaultClick = (v, n) => (ratingNum(v) === n ? '' : String(n));
   const ratingDefaultLabel = (v, max) => {
     const n = ratingNum(v);
     return n == null ? `Default: none, of ${max}` : `Default: ${n} of ${max}`;
@@ -477,7 +472,7 @@
   }
 
   /* Dialog state -> canonical {type, config}. Emits the same minimal shape
-     the engine normaliser would store, so the code pane shows truth. */
+     the engine normaliser would store. */
   /* The number costume: decimals/separator always; then currency (ISO code)
      OR a free-text unit, never both — a currency field's formatting is its
      own (Kyle, 2026-08-23). Shared by number fields and formula results. */
@@ -685,90 +680,6 @@
     return state;
   }
 
-  const serializeDefinition = (state) => JSON.stringify(definitionFromState(state), null, 2);
-
-  /* Client mirror of the engine's config validation — same messages, so the
-     code pane's errors match what the server would say. */
-  function parseDefinition(text) {
-    let def;
-    try { def = JSON.parse(text); } catch (e) { return { ok: false, error: e.message }; }
-    if (!def || typeof def !== 'object' || typeof def.type !== 'string') {
-      return { ok: false, error: 'A field definition must be an object of { type, config }' };
-    }
-    const known = FIELD_TYPES.map((t) => t.id).concat('formula');
-    if (!known.includes(def.type)) {
-      return { ok: false, error: `'${def.type}' is not a type this dialog can create (use ${known.join(', ')})` };
-    }
-    const c = def.config ?? {};
-    if (typeof c !== 'object' || Array.isArray(c)) return { ok: false, error: 'config must be an object' };
-    const fail = (error) => ({ ok: false, error });
-    if (def.type === 'number') {
-      if (c.format != null && !NUMBER_FORMATS.includes(c.format)) return fail(`Invalid number format '${c.format}' (${NUMBER_FORMATS.join(', ')})`);
-      if (c.decimals != null && (!Number.isInteger(c.decimals) || c.decimals < 0 || c.decimals > 6)) return fail(`Decimals must be 0..6, got '${c.decimals}'`);
-      if (c.format === 'compact' && c.separator) return fail('Compact groups on its own; a separator has nothing to add');
-      if (c.accounting && c.format !== 'currency') return fail('Accounting negatives need format currency');
-    }
-    if (def.type === 'number' && c.display === 'sparkline') return fail('A sparkline draws a list: only a formula can wear it');
-    if (def.type === 'formula' && c.display === 'sparkline' && c.style != null && !SPARKLINE_STYLES.includes(c.style)) return fail(`Invalid sparkline style '${c.style}' (${SPARKLINE_STYLES.join(', ')})`);
-    if ((def.type === 'number' || def.type === 'formula') && c.display !== 'sparkline') {
-      if (c.display != null && !NUMBER_DISPLAYS.includes(c.display)) return fail(`Invalid number display '${c.display}' (${NUMBER_DISPLAYS.join(', ')})`);
-      if (c.display && c.display !== 'text' && c.scale != null && c.scale !== 'column' && !(typeof c.scale === 'number' && c.scale > 0)) return fail("Scale is 'column' or a number above 0");
-    }
-    if (def.type === 'date' || def.type === 'daterange') {
-      let grain;
-      try { grain = DG().normalizeGrain(c.grain); } catch (e) { return fail(e.message); }
-      const parts = grain ?? ['year', 'month', 'day'];
-      if (!parts.length && !c.time) return fail('A grain with no date parts must keep a time of day');
-      if (c.format != null) { const problem = DG().formatProblem(parts, c.format); if (problem) return fail(problem); }
-      if (c.clock != null && !CLOCKS.includes(c.clock)) return fail(`Invalid clock '${c.clock}' (${CLOCKS.join(', ')})`);
-      if (c.clock != null && !c.time) return fail('A clock needs a time of day');
-      if (c.zone != null && !ZONES.includes(c.zone)) return fail(`Invalid zone '${c.zone}' (${ZONES.join(', ')})`);
-      if (c.zone != null && !c.time) return fail('A zone needs a time of day');
-      if (c.zone === 'fixed' && !c.zoneName) return fail('A fixed zone needs a zoneName (an IANA name: America/Los_Angeles, Europe/Berlin…)');
-      if (c.zone === 'fixed' && c.zoneName && !DG().isZone(c.zoneName)) return fail(`'${c.zoneName}' is not a time zone`);
-      if (c.elapsed && def.type !== 'daterange') return fail('elapsed belongs to a range');
-      if (c.elapsed && !c.time) return fail('elapsed needs a time of day at both ends');
-    }
-    if (['rating', 'number', 'formula'].includes(def.type) && c.color != null && !CELL_COLORS.includes(c.color)) {
-      return fail(`Invalid color '${c.color}' (${CELL_COLORS.join(', ')})`);
-    }
-    if (def.type === 'rating' && c.max != null && !(Number.isInteger(c.max) && c.max >= 1 && c.max <= RATING_MAX)) {
-      return fail(`A rating's max is a whole number from 1 to ${RATING_MAX}, got '${c.max}'`);
-    }
-    if (def.type === 'field') {
-      const depth = c.depth ?? 1;
-      if (!Number.isInteger(depth) || depth < 1 || depth > MAX_DEPTH) return fail(`Definition depth must be 1..${MAX_DEPTH}, got '${depth}'`);
-    }
-    if (def.type === 'select' || def.type === 'multiselect') {
-      if (c.options != null && !Array.isArray(c.options)) return fail('options must be an array');
-    }
-    if (def.type === 'workflow') {
-      const states = c.states ?? DEFAULT_WORKFLOW_STATES;
-      if (!Array.isArray(states) || states.length === 0) return fail('Workflow field needs at least one state');
-      for (const s of states) {
-        const cat = typeof s === 'string' ? 'in-progress' : (s.category ?? 'in-progress');
-        if (!STATE_CATEGORIES.includes(cat)) return fail(`Invalid state category '${cat}' (use ${STATE_CATEGORIES.join(', ')})`);
-      }
-    }
-    if (def.type === 'formula' && !(typeof c.expression === 'string' && c.expression.trim())) {
-      return fail('Formula field needs an expression');
-    }
-    if (def.type === 'rollup' && c.aggregate != null && !AGGREGATES.includes(c.aggregate)) {
-      return fail(`Invalid aggregate '${c.aggregate}' (use ${AGGREGATES.join(', ')})`);
-    }
-    if (def.type === 'view') {
-      if (!VIEW_SHAPES.includes(c.shape)) return fail(`A view is a chip or a card, not '${c.shape}'`);
-      if (c.description != null && !DESCRIPTION_SIZES.includes(c.description)) return fail(`description is one of ${DESCRIPTION_SIZES.join(', ')}`);
-      if (c.fields !== undefined && c.fields !== null && !Array.isArray(c.fields)) return fail('fields is a list of field names, or null for the first few');
-      for (const k of ['link', 'state']) if (c[k] != null && typeof c[k] !== 'boolean') return fail(`${k} is true or false`);
-    }
-    if (def.type === 'key') {
-      if (c.kind != null && !CREDENTIAL_KINDS.includes(c.kind)) return fail(`Invalid credential kind '${c.kind}' (${CREDENTIAL_KINDS.join(', ')})`);
-      if (c.keystore != null && !KEYSTORES.includes(c.keystore)) return fail(`Invalid keystore '${c.keystore}' (${KEYSTORES.join(', ')})`);
-    }
-    return { ok: true, def: { type: def.type, config: c } };
-  }
-
   /* The exact token the formula language accepts for a field name (Issue
      #128). A bare identifier only parses when it looks like one AND cannot
      be read as something else — a keyword, or a function name the parser
@@ -918,10 +829,9 @@
   root.fieldDialogCore = {
     FIELD_TYPES, FORMULA_FUNCTIONS, FORMULA_GROUPS, formulaFunctionGroups, formulaFieldChoices, agentRecipe, formulaSuggest, formulaApply, STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES, STATE_ICONS, STATE_ICON_LABELS, iconChoices, formulaFieldToken,
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, sortLabels, SYSTEM_SORT, migrateState, moveItem,
-    NUMBER_FORMATS, NUMBER_DISPLAYS, SPARKLINE_STYLES, CELL_COLORS, CELL_COLOR_LABELS, RATING_PRESETS, RATING_MAX, ratingMaxValue, clampRatingDefault, ratingDefaultClick, ratingDefaultLabel, ratingDefaultKey, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, MAX_DEPTH, DEFAULTABLE,
+    NUMBER_FORMATS, NUMBER_DISPLAYS, SPARKLINE_STYLES, CELL_COLORS, CELL_COLOR_LABELS, RATING_PRESETS, RATING_MAX, ratingMaxValue, clampRatingDefault, ratingDefaultLabel, ratingDefaultKey, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
     blankState, definitionFromState, stateFromDefinition, choiceItems, setChoiceDefault,
     definitionFromFieldView, editPatchConfig,
-    serializeDefinition, parseDefinition,
   };
 })(globalThis);

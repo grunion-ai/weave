@@ -101,6 +101,16 @@ function noteSchemaVersion(version, isRead) {
   syncSchema();
 }
 
+// A File's bytes as bare base64 (no data: prefix), the upload routes' body.
+function fileBase64(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = () => res(String(reader.result).split(',')[1] ?? '');
+    reader.onerror = () => rej(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 // `signal` lets a caller cancel a request a newer one has replaced (⌘K).
 async function api(method, path, body, { signal } = {}) {
   const payload = body === undefined ? undefined : JSON.stringify(body);
@@ -3588,12 +3598,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       let landed = 0;
       try {
         for (const file of files) {
-          const bytes = await new Promise((res, rej) => {
-            const reader = new FileReader();
-            reader.onload = () => res(String(reader.result).split(',')[1] ?? '');
-            reader.onerror = () => rej(reader.error);
-            reader.readAsDataURL(file);
-          });
+          const bytes = await fileBase64(file);
           await api('POST', `/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, {
             name: file.name, mime: file.type || 'application/octet-stream', bytes,
           });
@@ -7851,11 +7856,10 @@ function datePopover({ anchor, value, time, format, costume = null, range = fals
 
 /* ---------- unified field dialog (design review 2026-08-22, A+E) ----------
    One dialog for add and edit: a type grid with per-type config editors
-   (direction A) plus a form ⇄ code pane over the canonical {type, config}
-   definition (direction E), both views of the same state object in
-   field-dialog-core.js. Any field can be a formula: ƒ is a toggle, not a
-   grid tile. The section/grid/list-editor pieces are the house dialog
-   framework. */
+   (direction A) over one state object in field-dialog-core.js, which
+   builds the canonical {type, config} definition the server stores. Any
+   field can be a formula: ƒ is a toggle, not a grid tile. The
+   section/grid/list-editor pieces are the house dialog framework. */
 
 function dsection(label, ...kids) {
   return el('div', { class: 'dlg-sec full' }, el('div', { class: 'dlg-lbl' }, label), ...kids);
@@ -10429,12 +10433,7 @@ async function uploadDocFiles(files, entityId, getEditor, onInput) {
   if (!entityId) return 'This document has no record to attach to';
   const editor = getEditor();
   for (const f of files) {
-    const contentBase64 = await new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(String(r.result).split(',')[1] ?? '');
-      r.onerror = () => rej(r.error);
-      r.readAsDataURL(f);
-    });
+    const contentBase64 = await fileBase64(f);
     let meta;
     try {
       meta = await api('POST', `/entities/${entityId}/files`, {
@@ -13556,11 +13555,9 @@ function uploadWorkspaceLogo(w) {
     const file = input.files?.[0];
     input.remove();
     if (!file) return;
-    const buf = new Uint8Array(await file.arrayBuffer());
-    let bin = '';
-    for (const b of buf) bin += String.fromCharCode(b);
+    const contentBase64 = await fileBase64(file);
     try {
-      await wsApi(w, 'PUT', '/workspace/logo', { name: file.name, mime: file.type || 'image/png', contentBase64: btoa(bin) });
+      await wsApi(w, 'PUT', '/workspace/logo', { name: file.name, mime: file.type || 'image/png', contentBase64 });
       toast(`${w.name} logo updated`);
       buildWsRail();
     } catch (err) { toast(err.message, true); }
@@ -13661,8 +13658,8 @@ function navMenuButton() {
 }
 
 /* Theme toggle: auto (follow OS, live) → dark → light.
-   Tabler themes via data-bs-theme on <html>; data-theme kept for legacy
-   custom scopes. Auto resolves from the OS and tracks OS changes live. */
+   Tabler themes via data-bs-theme on <html>. Auto resolves from the OS and
+   tracks OS changes live. */
 /* Skip to content (Issue #378): the first Tab stop, ahead of the rail and
    the sidebar, which spend 30 stops before the content does. The href is
    what it means without script; the router owns the hash, so a click moves
@@ -13688,8 +13685,6 @@ function wireThemeToggle() {
   const apply = () => {
     const resolved = pref === 'auto' ? (media.matches ? 'dark' : 'light') : pref;
     document.documentElement.dataset.bsTheme = resolved;
-    if (pref === 'auto') delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = pref;
     btn.replaceChildren(iconEl(icons[pref]) ?? icons[pref]);
     btn.title = `Theme: ${pref} (click to switch)`;
     retheme(); // live document editors follow the page, not their birth theme

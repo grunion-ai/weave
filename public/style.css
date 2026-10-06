@@ -184,7 +184,6 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .nav-db .nav-db-menu:focus-within,
 .nav-db .nav-db-menu:has(.dl-menu:not(.hidden)) { opacity: 1; }
 .nav-db-menu .dots-btn { padding: 0 4px; line-height: 1.3; }
-.sidebar-actions { display: flex; gap: 4px; border-top: 1px solid var(--wv-pill-hover); padding-top: 8px; }
 .hidden { display: none !important; }
 
 /* Search control = ⌘K entry point */
@@ -298,7 +297,6 @@ a.nav-space:hover { color: var(--tblr-primary); }
 .nav-caret:hover, .nav-space-row:hover .nav-caret { color: var(--tblr-body-color); }
 .nav-caret:hover { background: var(--tblr-active-bg, rgba(0,0,0,.05)); }
 .nav-caret:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
-.kind-mark { width: 13px; height: 13px; vertical-align: -2px; }
 
 /* ---------- shared view header ---------- */
 /* The header never leaves the screen (Issue #321). A table page scrolls one
@@ -884,13 +882,9 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .wv-grid tr.entity-row-pending > td { padding: 0; }
 .wv-grid .wv-loaded { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--tblr-secondary); font-size: var(--wv-grid-font); white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
 .entity-row { cursor: pointer; }
-.docs-cell { white-space: nowrap; }
 /* One chip per document field: its name, then what it holds. The kind rides
    inside the chip as a quieter second half, the way the state chips carry
    their category — a chip you can read at a glance and click to open. */
-/* align-items: center, not the flex default of stretch — a chip is sized by
-   its label, and a stretching one grows to whatever the cell is tall. */
-.doc-chips { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; margin-right: 6px; }
 /* Geometry only — .k-doc carries the look, and the empty state is dashed
    rather than dimmed: 50% opacity reads as "you may not", which is the
    opposite of what an empty document field is telling you. */
@@ -903,10 +897,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .list-row:hover { background: var(--tblr-active-bg); }
 .list-row .pid { color: var(--tblr-secondary); font-size: 12px; min-width: 40px; text-decoration: none; }
 .list-row .spacer { flex: 1; }
-.row-name { flex: 1; border: none; background: none; font: inherit; color: inherit; padding: 3px 5px; }
-.row-name:hover, .row-name:focus { background: var(--tblr-bg-surface-secondary); border-radius: 5px; outline: none; }
-.list-detail { border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); padding: 10px 16px; }
-.detail-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2px 20px; margin-bottom: 8px; }
 
 /* ---------- the chip system (design review 2026-08-24, set E) ----------
    Three tiers carry every value a row can hold, and each tier owns exactly one
@@ -1180,9 +1170,7 @@ input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
 input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .ms-box { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px; }
-.ghost-select { width: 60px; display: inline-block; color: var(--tblr-secondary); }
 .btn.tiny { padding: 1px 7px; font-size: 12px; }
-.active-toggle { color: var(--tblr-primary); }
 .open-link { color: var(--tblr-secondary); text-decoration: none; font-size: 12px; white-space: nowrap; }
 .open-link:hover { color: var(--tblr-primary); }
 .computed .wv-tag { font-size: 10px; color: var(--tblr-secondary); margin-left: 6px; }
@@ -1306,7 +1294,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   display: flex; align-items: center; break-inside: avoid; }
 .entity-body > .drop-slot { margin: 6px 0 12px; min-height: 40px; padding-left: 12px; }
 @media (max-width: 600px) { .entity-fields .fieldrow { grid-template-columns: 16px 110px minmax(0, 1fr); } }
-.doc-toolbar { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
 .comment { border-top: 1px solid var(--tblr-border-color); padding: 8px 0; }
 .comment:first-child { border-top: none; }
 .comment .who { font-weight: 600; font-size: 12.5px; }
@@ -1353,7 +1340,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-invite-link-row input { flex: 1; min-width: 0; font-family: var(--tblr-font-monospace); font-size: 12px; }
 .wv-invite-note { font-size: 12px; color: var(--tblr-secondary); }
 .wv-schema[open] > summary { margin-bottom: 8px; }
-.system-chip, .activity-kind { font-size: 11px; padding: 1px 7px; color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); }
+.activity-kind { font-size: 11px; padding: 1px 7px; color: var(--tblr-secondary); background: var(--tblr-bg-surface-secondary); }
 .wv-note { color: var(--tblr-secondary); font-size: 12px; margin: 0 0 10px; }
 .activity-when { white-space: nowrap; color: var(--tblr-secondary); }
 .activity-row { cursor: pointer; }
@@ -1438,10 +1425,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .vditor-toolbar [data-type="ordered-list"] svg *, .vditor-toolbar [data-type="list"] svg *, .vditor-toolbar [data-type="check"] svg *,
 .vditor-toolbar [data-type="table"] svg *, .vditor-toolbar [data-type="outdent"] svg *, .vditor-toolbar [data-type="indent"] svg * { stroke-width: 1.4; }
 .mention-caret svg { width: 12px; height: 12px; display: block; }
-
-/* ---------- schema editor ---------- */
-.formgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-.formgrid .full { grid-column: 1 / -1; }
 
 /* ---------- modal (custom overlay, Tabler-card look) ---------- */
 #modal-back { position: fixed; inset: 0; background: rgba(15, 20, 25, .48); display: flex; align-items: center; justify-content: center; z-index: 1050; }
@@ -1548,7 +1531,6 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .fielddef-clear .hold-btn { display: inline-flex; width: auto; }
 
 .copy-btn { margin-left: auto; }
-.kbd-hint { color: var(--tblr-secondary); font-size: 12px; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); padding: 2px 8px; }
 
 /* ---------- ⌘K palette ----------
    Option A, "Grouped results" (Issue #382, Kyle 2026-09-26). One 36px line
@@ -1895,7 +1877,6 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 /* The syntax column is the teaching half of the menu: monospace, quiet, and
    never wrapped — it is the shape of the markdown, not prose. */
 .slash-syntax { margin-left: auto; padding: 0; background: none; font-size: 11px; color: var(--tblr-secondary); opacity: .8; white-space: nowrap; }
-.activity-pop { max-width: 560px; }
 .dl-wrap { position: relative; margin-right: 6px; }
 .dl-menu { position: absolute; top: 100%; left: 0; z-index: 30; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-shadow-dropdown, 0 2px 8px rgba(0,0,0,.15)); min-width: 150px; padding: 4px 0; }
 .dl-menu .dropdown-item { display: block; padding: 5px 12px; color: var(--tblr-body-color); text-decoration: none; font-size: 13px; }
@@ -1937,12 +1918,6 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .dl-menu .text-danger:hover { background: rgba(214, 57, 57, .08); }
 .permalink-copy { cursor: pointer; }
 .permalink-copy:hover { color: var(--tblr-primary); }
-
-/* Brand lockup (theme-aware, per brand/README decisions) */
-.brand-lockup { height: 22px; width: auto; }
-.logo-dark { display: none; }
-[data-bs-theme="dark"] .logo-light { display: none; }
-[data-bs-theme="dark"] .logo-dark { display: inline; }
 
 /* ---------- page loader (brand decision 7) ----------
    The weave-on rope, shown while a route is being fetched and rendered.
@@ -2243,11 +2218,6 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .choice-default-none { color: var(--tblr-secondary); }
 .picker-wrap { display: block; width: 100%; }
 .picker-centered { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); min-width: 320px; }
-.chip-add { cursor: pointer; border: 1px dashed var(--tblr-border-color); background: none; color: var(--tblr-secondary); }
-
-.space-table-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.space-table-name { font-weight: 500; }
-.space-table-desc { color: var(--tblr-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 48ch; }
 
 /* ---------- unified field dialog (design review 2026-08-22, A+E) ----------
    The house dialog framework: labeled sections, a type grid, list editors
@@ -2302,7 +2272,6 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .opt-color.neutral { background: var(--tblr-bg-surface-secondary); }
 .opt-row .opt-cat { flex: 0 0 auto; width: auto; }
 .opt-cat .picker-face { padding: 2px 8px; font-size: 12px; width: auto; min-width: 108px; }
-.opt-default { flex-shrink: 0; margin: 0; accent-color: var(--tblr-primary); }
 .opt-del { background: none; border: none; color: var(--tblr-secondary); font-size: 12px; cursor: pointer; padding: 2px 4px; }
 .opt-del:hover { color: var(--tblr-danger); }
 .opt-add { align-self: flex-start; background: none; border: none; color: var(--tblr-primary); font-size: 12.5px; cursor: pointer; padding: 2px 0; }
@@ -2345,14 +2314,6 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .fx-sigcard .doc { font-size: 12px; color: var(--tblr-secondary); margin-top: 2px; }
 .fx-sigcard .eg { font-family: var(--tblr-font-monospace); font-size: 11px; color: var(--tblr-secondary); margin-top: 5px; opacity: .8; }
 
-.def-row { margin: 2px 0 0; }
-.def-toggle { background: none; border: none; padding: 0; font-family: var(--tblr-font-monospace); font-size: 11.5px; color: var(--tblr-secondary); cursor: pointer; }
-.def-toggle:hover, .def-toggle.on { color: var(--tblr-primary); }
-.def-pane { display: none; margin-top: 6px; }
-.def-pane.open { display: block; }
-.def-code { width: 100%; font-family: var(--tblr-font-monospace); font-size: 12px; line-height: 1.55; background: var(--tblr-bg-surface-secondary); border: 1px solid var(--tblr-border-color); border-radius: 6px; padding: 8px 10px; color: var(--tblr-body-color); resize: vertical; }
-.def-err { min-height: 0; font-size: 11.5px; color: var(--tblr-danger); margin-top: 3px; white-space: pre-wrap; }
-.def-err:empty { display: none; }
 /* ---------- icons (Feature #101; Lucide shapes with movingicons.dev motion since 2026-09-02) ----------
    One size scale (Issue #87). Every icon box is set from it, so a mark and a
    flat SVG beside each other occupy the same square instead of each surface
@@ -2422,7 +2383,6 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .date-pop.range .date-pop-smart { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0 6px; }
 .date-pop.range .date-pop-smart .date-smart-preview { grid-column: 2; }
 .date-day.in-range, .date-pick-cell.in-range { background: var(--tblr-active-bg, var(--tblr-bg-surface-secondary)); border-radius: 0; }
-.k-range.is-empty { color: var(--tblr-secondary); }
 .date-pick-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--tblr-secondary); cursor: pointer; }
 .date-pick-btn:hover { color: var(--tblr-body-color); background: var(--tblr-bg-surface-secondary); border-color: var(--tblr-border-color); }
 .date-pop { position: fixed; z-index: 1200; width: 252px; padding: 8px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.18); font-size: 13px; }
@@ -2463,11 +2423,8 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
 .date-grain .form-check-label { white-space: nowrap; }
 .date-zone-name { margin-top: 6px; }
 
-/* formula checkbox + script summary */
-.fx-toggle { cursor: pointer; }
+/* formula checkbox */
 .fx-toggle .form-check-input { margin: 0; }
-.fx-summary { display: flex; align-items: center; gap: 10px; }
-.fx-summary-expr { flex: 1; min-width: 0; font-size: 12px; white-space: pre-wrap; word-break: break-word; color: var(--tblr-body-color); }
 .hintnote { font-size: 11.5px; color: var(--tblr-secondary); margin-top: 4px; }
 
 /* ---------- the eyeball: show / hide (Feature #114) ---------- */
@@ -2513,17 +2470,13 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
   justify-content: flex-end; align-items: center; overflow: hidden; }
 .opt-preview .k { overflow: hidden; text-overflow: ellipsis; display: inline-flex; }
 .opt-color.locked { cursor: not-allowed; opacity: .7; }
-/* The ramp and the glyph vocabulary, as pickers rather than cycles. */
+/* The ramp, as a picker rather than a cycle. */
 .swatch-grid { display: grid; grid-template-columns: repeat(5, 26px); gap: 5px; }
-.glyph-grid { display: grid; grid-template-columns: repeat(7, 26px); gap: 5px; }
-.swatch-grid .sw, .glyph-grid .gl { width: 26px; height: 26px; padding: 0; cursor: pointer;
-  border: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); color: var(--tblr-body-color); }
-.swatch-grid .sw { border-radius: 50%; background: var(--dot, transparent); }
+.swatch-grid .sw { width: 26px; height: 26px; padding: 0; cursor: pointer; border-radius: 50%;
+  border: 1px solid var(--tblr-border-color); background: var(--dot, transparent); color: var(--tblr-body-color); }
 .swatch-grid .sw.neutral { background: repeating-linear-gradient(45deg, var(--tblr-bg-surface-secondary) 0 3px, var(--tblr-bg-surface) 3px 6px); }
-.glyph-grid .gl { border-radius: 6px; font-size: 13px; }
-.swatch-grid .sw:hover, .glyph-grid .gl:hover { border-color: var(--tblr-secondary); }
+.swatch-grid .sw:hover { border-color: var(--tblr-secondary); }
 .swatch-grid .sw.sel { box-shadow: 0 0 0 2px var(--tblr-bg-surface), 0 0 0 3.5px var(--tblr-primary); }
-.glyph-grid .gl.sel { border-color: var(--tblr-primary); color: var(--tblr-primary); background: rgba(var(--tblr-primary-rgb), .08); }
 .pick-note { font-size: 10.5px; font-family: var(--tblr-font-monospace); color: var(--tblr-secondary); margin: 7px 2px 1px; max-width: 190px; }
 
 /* checkboxes: one quiet house style everywhere (grid cells, tray, pickers) —
@@ -2897,7 +2850,7 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .table-control-popover .chip-pop-row > svg { width: 15px; height: 15px; flex-shrink: 0; }
 .table-control-popover hr { margin: 8px 0; }
 .table-control-note { color: var(--tblr-secondary); font-size: 12px; padding: 7px 9px; margin: 0; white-space: normal; }
-.table-view-popover .view-strip { display: flex; flex-direction: column; align-items: stretch; border: 0; overflow: visible; margin: 0; gap: 3px; }
+.table-view-popover .view-strip { position: relative; display: flex; flex-direction: column; align-items: stretch; border: 0; overflow: visible; margin: 0; gap: 3px; }
 .table-view-popover .view-tab { margin: 0; border: 0; border-radius: var(--tblr-border-radius); min-height: 34px; padding: 7px 10px; }
 .table-view-popover .view-tab.active { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
 .table-view-popover .view-add { text-align: left; padding: 8px 10px; margin: 6px 0 0; }
@@ -2906,21 +2859,21 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .table-density-popover .seg-opt { border: 0; border-radius: var(--tblr-border-radius); text-align: left; padding: 8px 10px; }
 .table-density-popover .seg-opt.on { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
 .table-filter-count { border-radius: 4px; min-width: 18px; padding: 0 4px; font-size: 11px; line-height: 18px; background: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); }
-.table-filter-popover .filter-strip { display: flex; flex-direction: column; align-items: stretch; margin: 0; gap: 0; }
+.table-filter-popover .filter-strip { display: flex; flex-direction: column; align-items: stretch; margin: 0; gap: 0; min-height: 0; flex: 0 1 auto; }
 .table-filter-popover .filter-group { display: flex; flex-direction: column; align-items: stretch; gap: 11px; padding: 12px 8px 18px; }
 .table-filter-popover .filter-group + .filter-group { border-top: 1px solid var(--tblr-border-color); }
 .table-filter-popover .filter-label { display: flex; align-items: center; gap: 7px; font-size: 13px; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--tblr-body-color); }
 .table-filter-popover .filter-label svg { width: 14px; height: 14px; color: var(--tblr-secondary); }
 .filter-type { margin-left: auto; font-size: 11px; color: var(--tblr-secondary); font-weight: 400; }
 .filter-values { display: flex; gap: 7px; flex-wrap: wrap; }
-.table-filter-popover .filter-chip { border-radius: 5px; padding: 6px 9px; min-height: 32px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 12px; }
+.table-filter-popover .filter-chip { gap: 8px; border-radius: 5px; padding: 6px 10px 6px 8px; min-height: 32px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: 12px; user-select: none; -webkit-user-select: none; }
 .table-filter-popover .filter-chip.on { border-color: var(--tblr-primary); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-weight: 400; }
 .filter-footer { border-top: 1px solid var(--tblr-border-color); display: flex; align-items: center; justify-content: space-between; padding: 8px 4px 0 8px; gap: 8px; }
 .filter-footer [role="status"] { font-size: 11px; color: var(--tblr-secondary); }
-.table-fields-popover { width: 320px; }
+.table-fields-popover { width: 320px; overflow: hidden; }
 .field-visibility-actions { display: flex; gap: 5px; }
 .table-field-legend { display: flex; justify-content: space-between; padding: 8px; font-size: 11px; color: var(--tblr-secondary); }
-.table-field-row { position: relative; display: flex; align-items: center; border-radius: 0; }
+.table-field-row { position: relative; display: flex; align-items: center; border-radius: 0; cursor: grab; scroll-snap-align: start; }
 .table-field-row .eye-row { flex: 1; min-width: 0; gap: 9px; }
 .table-field-row .eye-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .field-reorder-handle { border: 0; border-radius: var(--tblr-border-radius); background: none; color: var(--tblr-secondary); padding: 8px; cursor: grab; }
@@ -2930,7 +2883,6 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 @media (max-width: 700px) { .crumb-actions .table-search { flex: 1; } .crumb-actions .table-search-input { width: 100%; min-width: 80px; } .table-control-label { max-width: 110px; } }
 @media (pointer: coarse) { .table-control-popover :is(.chip-pop-row,.filter-chip,.seg-opt,.view-tab,.field-reorder-handle) { min-height: 44px; } }
 /* Keep actions visible while a long field list scrolls inside the picker. */
-.table-fields-popover { overflow: hidden; }
 .table-fields-popover > :not(.table-field-list) { flex-shrink: 0; }
 .table-field-list { min-height: 0; overflow-y: auto; flex: 0 1 auto; position: relative; scroll-snap-type: y mandatory; overscroll-behavior: contain; }
 
@@ -2945,10 +2897,8 @@ body:has(#tray-back) .bug-fab { bottom: 72px; }
 .form-check-label code { font-size: 11.5px; padding: 0 3px; border-radius: 3px; background: var(--wv-pill-hover, rgba(0,0,0,.05)); color: inherit; }
 .table-control-popover label.eye-row .form-check-input,
 .table-filter-popover .filter-chip .form-check-input { margin: 0; }
-.table-filter-popover .filter-chip { gap: 8px; padding: 6px 10px 6px 8px; user-select: none; -webkit-user-select: none; }
 
 /* ---------- the Fields popover's drag (Issue #445) ---------- */
-.table-field-row { cursor: grab; scroll-snap-align: start; }
 .table-fields-popover label.eye-row { cursor: grab; user-select: none; -webkit-user-select: none; }
 .table-fields-popover label.eye-row .form-check-input { cursor: pointer; }
 /* Reboot's [type=button]:not(:disabled) pointer would win over a bare class. */
@@ -2961,7 +2911,6 @@ html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select:
    Rename / Duplicate / hold-to-delete buttons on hover or keyboard focus,
    and the check on the view on screen. New view and Duplicate name the
    view in an inline row. */
-.table-view-popover .view-strip { position: relative; }
 .table-view-popover .view-row { display: flex; align-items: center; gap: 2px; padding: 0 6px 0 0; }
 .table-view-popover .view-grip { border: 0; background: none; color: var(--tblr-secondary); padding: 9px 4px 9px 6px; border-radius: 6px; display: grid; place-items: center; opacity: .7; touch-action: none; }
 .table-view-popover .view-grip:not(:disabled) { cursor: grab; }
@@ -2990,7 +2939,6 @@ html.wv-grabbing, html.wv-grabbing * { cursor: grabbing !important; user-select:
    on the right. An option wears its hue's dot. */
 .table-filter-popover { overflow: hidden; }
 .table-filter-popover > :not(.filter-strip) { flex-shrink: 0; }
-.table-filter-popover .filter-strip { min-height: 0; flex: 0 1 auto; }
 .table-filter-popover .filter-scroll { min-height: 0; flex: 0 1 auto; overflow-y: auto; overscroll-behavior: contain; }
 .table-filter-popover .filter-footer { flex: none; }
 .table-filter-popover .filter-total { font-size: 12px; color: var(--tblr-body-color); font-variant-numeric: tabular-nums; transition: opacity .15s; }

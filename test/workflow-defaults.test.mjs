@@ -113,19 +113,15 @@ test('the tray hands back the same four states the engine seeds', () => {
   const blank = FDC.blankState('workflow');
   assert.deepEqual(blank.states.map((s) => s.name), NAMES, 'a fresh workflow tray is not an empty list');
   assert.deepEqual(blank.states.map((s) => s.category), CATS);
-  // Saving the tray untouched is a valid definition, and it round-trips.
+  // Saving the tray untouched is a definition the engine takes.
   const def = FDC.definitionFromState(blank);
-  assert.equal(FDC.parseDefinition(JSON.stringify(def)).error, undefined);
   const { w, t } = ws();
   const f = w.addField(t, { name: 'Status', ...def });
   assert.deepEqual(f.config.states.map((s) => s.name), NAMES);
   // A definition pasted with no states reads back as the defaults too.
   assert.deepEqual(FDC.stateFromDefinition({ type: 'workflow', config: {} }).states.map((s) => s.name), NAMES);
   assert.deepEqual(FDC.stateFromDefinition({ type: 'workflow', config: { states: [] } }).states, [],
-    'an emptied list stays empty, and the validator refuses it');
-  assert.match(FDC.parseDefinition('{ "type": "workflow", "config": { "states": [] } }').error, /at least one state/);
-  assert.equal(FDC.parseDefinition('{ "type": "workflow", "config": {} }').error, undefined,
-    'omitting states is not an error any more — it is the default lifecycle');
+    'an emptied list stays empty');
 });
 
 test('the dialog and the engine name the same default states, and the Handbook prints them', () => {
