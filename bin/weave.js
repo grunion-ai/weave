@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
-import { Weave, WeaveError, deferMigrations, runDeferredMigrations } from '../src/engine.js';
+import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl } from '../src/engine.js';
 import { startServer, openDefaultWorkspace } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { guided } from '../src/field-hints.js';
@@ -717,8 +717,7 @@ async function main() {
         }
         if (!issuer) throw new WeaveError('account link needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
         const made = w.linkIdentity(ref, { issuer });
-        const origin = process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
-        return out({ ...made, url: `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` });
+        return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
       }
       throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, list, delete, sessions, revoke-session, link, unlink`);
     }
@@ -731,8 +730,7 @@ async function main() {
       const issuer = flags.issuer ?? (process.env.WEAVE_OIDC_ISSUER?.trim().replace(/\/+$/, '') || null);
       if (!issuer) throw new WeaveError('invite needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
       const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
-      const origin = process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
-      return out({ ...made, url: `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(made.code)}` });
+      return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
     }
     case 'key': {
       const [sub, name] = args;
