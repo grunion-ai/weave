@@ -2,24 +2,20 @@
    fifteen card-view options for one Development/Issue row, every field value
    drawn as the same chip the table cell and the entity view use, light and
    dark side by side. The page is generated — scripts/export-card-view-options.mjs
-   lifts the chip rules out of public/style.css — so this suite holds the
-   checked-in file to a fresh run, and holds the options to the Card contract
-   and the chip rules the mockup claims to reuse. Round 2 adds F–O, a
-   comparison matrix at the top, and the renderer note at the foot. */
+   lifts the chip rules out of public/style.css. This suite holds the options
+   to the Card contract and the chip markup the mockup claims to reuse. Round
+   2 adds F–O, a comparison matrix at the top, and the renderer note at the
+   foot. It does not hold the checked-in file to a fresh run of the generator
+   or to today's style.css rules (Issue #665): that coupling failed the gate
+   on unrelated style.css changes until someone regenerated the mockup. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { ROOT, CSS, rulesFor } from './lib/source.mjs';
+import { ROOT } from './lib/source.mjs';
 
 const FILE = join(ROOT, 'docs/mockups/card-view-options.html');
 const HTML = readFileSync(FILE, 'utf8');
-
-test('the checked-in mockup is a fresh run of its generator', () => {
-  const fresh = execFileSync(process.execPath, [join(ROOT, 'scripts/export-card-view-options.mjs'), '--stdout'], { encoding: 'utf8' });
-  assert.equal(HTML, fresh, 'docs/mockups/card-view-options.html drifted — run scripts/export-card-view-options.mjs');
-});
 
 /* Every option by key and name: A–E from round 1 (kept intact), F–O from
    round 2. The brief names each one; the page has to carry them all. */
@@ -104,12 +100,6 @@ test('every field value is the table cell’s chip, not text, in both themes', (
   assert.equal(panels('light'), panels('dark'), 'every option is shown light and dark');
   assert.equal(panels('dark'), Object.keys(OPTIONS).length, 'one dark panel per option');
   assert.match(HTML, /k k-computed wv-date/, 'the date chip in the quiet computed costume');
-  // The live rules ride along verbatim, so the specimen is the real chip.
-  for (const sel of ['.k', '.k-rel > a', '.wv-card', '.mention-wrap.open .mention-caret']) {
-    const live = rulesFor(sel);
-    assert.ok(Object.keys(live).length, `${sel} is a live rule`);
-    for (const [k, v] of Object.entries(live)) assert.ok(HTML.includes(`${k}: ${v}`), `${sel} { ${k}: ${v} } is in the mockup`);
-  }
   assert.match(HTML, /--wv-chip-font: 13px/, 'the chip size tokens');
   assert.match(HTML, /\.k-rel, \.k-doc, \.k-attach, \.k-more \{ background: none;/, 'no fill behind a pointer chip');
   assert.match(HTML, /border-radius: 4px/, '4px radius');

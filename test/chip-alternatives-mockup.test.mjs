@@ -5,14 +5,16 @@
    surfaces (relation cell, [[…]] mention, References list), light and dark
    side by side, hitboxes outlined as the anatomy guide (#180) does. The
    page is generated — scripts/export-chip-anatomy-alternatives.mjs lifts
-   the chip rules out of public/style.css — so this suite holds the checked-
-   in file to a fresh run, and holds every option to Kyle's rulings. */
+   the chip rules out of public/style.css — and this suite holds every
+   option to Kyle's rulings. It does not hold the checked-in file to a fresh
+   run of the generator or to today's style.css rules (Issue #665): that
+   coupling failed the gate on unrelated style.css changes until someone
+   regenerated the mockup. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { ROOT, rulesFor } from './lib/source.mjs';
+import { ROOT } from './lib/source.mjs';
 
 const FILE = join(ROOT, 'docs/mockups/chip-anatomy-alternatives.html');
 const HTML = readFileSync(FILE, 'utf8');
@@ -24,11 +26,6 @@ const section = (key) => {
   return m[0];
 };
 const panels = (html, attrs) => html.match(new RegExp(`<div class="panel" ${attrs}>[\\s\\S]*?<!-- /panel -->`, 'g')) ?? [];
-
-test('the checked-in mockup is a fresh run of its generator', () => {
-  const fresh = execFileSync(process.execPath, [join(ROOT, 'scripts/export-chip-anatomy-alternatives.mjs'), '--stdout'], { encoding: 'utf8' });
-  assert.equal(HTML, fresh, 'docs/mockups/chip-anatomy-alternatives.html drifted — run scripts/export-chip-anatomy-alternatives.mjs');
-});
 
 test('options P–T, each with a one-line trade, a keyboard table, and its distance from today’s renderer', () => {
   assert.equal((HTML.match(/<section class="opt"/g) ?? []).length, KEYS.length, 'exactly five options');
@@ -102,12 +99,7 @@ test('hitboxes are outlined as in the anatomy guide, with a legend', () => {
   }
 });
 
-test('the live chip rules ride along verbatim and the page is self-contained', () => {
-  for (const sel of ['.k', '.k-rel > a', '.mention-caret', '.mention-wrap.open .mention-caret']) {
-    const live = rulesFor(sel);
-    assert.ok(Object.keys(live).length, `${sel} is a live rule`);
-    for (const [k, v] of Object.entries(live)) assert.ok(HTML.includes(`${k}: ${v}`), `${sel} { ${k}: ${v} } is in the mockup`);
-  }
+test('the chip size tokens ride along and the page is self-contained', () => {
   assert.match(HTML, /--wv-chip-font: 13px/, 'the chip size tokens');
   assert.match(HTML, /\.k-rel, \.k-doc, \.k-attach, \.k-more \{ background: none;/, 'no fill behind a pointer chip');
   assert.match(HTML, /border-radius: 4px/, '4px radius');
