@@ -92,10 +92,6 @@ if (s) {
   });
 }
 
-/* Found on live :4400 the day the fold landed (Issue #677): in a
-   412px dock against the window's right edge, the menu opened at the "…"
-   button's left and its long row names ran past the window. It stays on
-   screen now. */
 if (s) {
   const { base, browser } = s;
   test('the "…" menu stays inside the window when the dock sits at its right edge', async () => {
