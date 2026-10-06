@@ -376,6 +376,10 @@ const WORKFLOW_STATES = [
   { name: 'Setup incomplete', category: 'not-started', default: true },
   { name: 'Ready', category: 'done' },
 ];
+/* The actor an automation's writes carry (Issue #674): its Workflows row.
+   The UI draws exactly this string as the row's chip, so the spelling is a
+   contract with public/app.js. */
+const workflowActor = (rowId) => `workflow:${rowId}`;
 // A rule as its Script holds it: JSON, two-space indented.
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
 
@@ -8347,14 +8351,20 @@ export class Weave {
       if (t.toStateId && t.toStateId !== event.toStateId) continue;
       const name = reg.entityName(rule.row);
       let failure = null;
+      // Its writes are its own (Issue #674): activity and Modified By name
+      // the Workflows row, and the person who fired it gets the actor back.
+      const person = this.actor;
+      this.actor = workflowActor(rule.row.id);
       try {
         for (const action of rule.actions) this.#runAction(rule, name, action, db, e, event, depth);
       } catch (err) {
         // A failing rule stays On (Kyle, 2026-10-03); the write that fired
         // it stands, and the row says why.
         failure = err.message;
+      } finally {
+        this.actor = person;
       }
-      this.#logActivity(e, 'automation-ran', { name });
+      this.#logActivity(e, 'automation-ran', { name, workflow: rule.row.id });
       reg.#stampRun(rule.row, failure);
       // The write that fired the rule saves this engine; the stamp lives at
       // the root when this is a hub member.

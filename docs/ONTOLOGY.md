@@ -262,6 +262,11 @@ them onto rows on open, in `seq` order (a rule older than `seq` is numbered
 in rowid order first); a hand-made row with the same Name on the same table
 is adopted rather than duplicated.
 
+Writes an automation makes are made as its row (Issue #674): their activity
+entries and the changed row's Modified By read `workflow:<Workflows row id>`,
+while the `automation-ran` entry keeps the person whose write fired the rule
+and names the row in `detail.workflow`.
+
 ### Account
 A named token holder with a role: architect, editor, or observer (admin, writer
 and reader before 2026-10-02). The workspace stores
