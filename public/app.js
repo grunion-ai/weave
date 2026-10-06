@@ -1397,8 +1397,8 @@ function renderNav() {
       } else if (h.behind) {
         status.classList.add('is-behind');
         status.textContent += ` · ${h.sha} ≠ ${h.latestSha}`;
-        status.title = `This instance runs ${h.sha}; main is at ${h.latestSha} — weave service promote`;
-        toast(`This instance is behind main (${h.sha} → ${h.latestSha}) — run weave service promote`, true);
+        status.title = `This instance runs ${h.sha}; main is at ${h.latestSha}. Run git pull, then restart weave.`;
+        toast(`This instance is behind main (${h.sha} → ${h.latestSha}). Run git pull, then restart weave.`, true);
       }
     }).catch(() => { status.textContent = 'offline'; });
     stats.append(status);

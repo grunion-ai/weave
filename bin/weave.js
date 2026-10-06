@@ -97,13 +97,6 @@ Service (macOS launchd — auto-start on login, restart on crash)
                                       Write + load the launch agent; logs to ~/Library/Logs/weave/
   service uninstall [--label name]    Stop the agent and remove its plist
   service status [--port 4400]        Plist, launchctl state, live /api/health probe
-  service promote [--serve-dir ~/.weave-serve] [--remote gerrit] [--label ...] [--port 4400]
-                  [--no-rehearse] [--rehearse-db path]
-                                      Checkout main clean, run the lifecycle pack, then
-                                      rehearse on a COPY of the weave docs workspace +
-                                      a fresh one; restart, probe, roll back on red
-  rehearse --data path                Run the promote rehearsal battery against a COPY
-                                      (mutates its target — never the live file)
   quality sync --data weave.db        Reconcile Quality/Suite + Case rows to the test
                                       files (generated mirror; check = report drift)
   handbook sync --data weave.db       Re-apply the Handbook pages from src/handbook.js
@@ -422,20 +415,6 @@ async function main() {
     return; // stays alive on stdin
   }
 
-  if (command === 'rehearse') {
-    // The promote rehearsal, runnable by hand. Mutates (and then cleans) the
-    // workspace it opens, so it demands an explicit --data: pointing it at
-    // the live default workspace by accident must be impossible.
-    if (!flags.data || flags.data === true) {
-      console.error('rehearse mutates its target — pass an explicit --data pointing at a COPY');
-      process.exit(1);
-    }
-    const { rehearse } = await import('../src/rehearse.js');
-    const result = rehearse(String(flags.data));
-    out(result);
-    process.exit(result.ok ? 0 : 1);
-  }
-
   if (command === 'quality') {
     // The Quality mirror, reconciled from the test files. `sync` writes;
     // `check` only reports drift (exit 1 when any). The main watcher runs
@@ -526,95 +505,7 @@ async function main() {
         localVersion: pkg.version,
       }));
     }
-    /* Promote (lifecycle gate, Phase 3): production is the last SHA that
-       passed the lifecycle pack twice — once pre-merge in Gerrit, once here.
-       The serve checkout (--serve-dir, default ~/.weave-serve) is the ONLY
-       thing the launch agent should run; promoting the dev working tree is
-       exactly the era this ends. Flow: fetch gerrit/main -> clean checkout ->
-       run the pack there -> kickstart -> health + version probe -> roll back
-       to the previous SHA on any red, with the breadcrumb on stdout. */
-    if (sub === 'promote') {
-      const { parseTap, promoteVerdict } = await import('../src/service.js');
-      const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-      const serveDir = flags['serve-dir'] && flags['serve-dir'] !== true ? String(flags['serve-dir']) : join(homedir(), '.weave-serve');
-      const git = (cwd, ...a) => {
-        const r = spawnSync('git', ['-C', cwd, ...a], { encoding: 'utf8' });
-        if (r.status !== 0) throw new WeaveError(`git ${a.join(' ')} failed: ${(r.stderr || '').trim()}`);
-        return r.stdout.trim();
-      };
-      // The source of truth is the review queue's main, not the dev tree.
-      const remote = flags.remote && flags.remote !== true ? String(flags.remote) : 'gerrit';
-      git(repoRoot, 'fetch', remote, 'main');
-      const sha = git(repoRoot, 'rev-parse', 'FETCH_HEAD');
-      if (!existsSync(serveDir)) {
-        spawnSync('git', ['clone', '--no-checkout', repoRoot, serveDir], { encoding: 'utf8' });
-      }
-      const prevSha = spawnSync('git', ['-C', serveDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim() || null;
-      git(serveDir, 'fetch', repoRoot, sha);
-      git(serveDir, 'checkout', '--detach', '--force', sha);
-
-      const pack = spawnSync('node', ['--test', '--test-name-pattern', 'lifecycle:', 'test/regression/lifecycle.test.mjs'],
-        { cwd: serveDir, encoding: 'utf8' });
-      const tap = parseTap((pack.stdout ?? '') + (pack.stderr ?? ''));
-      if (!tap.pass) {
-        if (prevSha) git(serveDir, 'checkout', '--detach', '--force', prevSha);
-        return out({ promoted: false, sha, verdict: 'REJECTED by the lifecycle regression gate before restart', failed: tap.failed });
-      }
-
-      /* Rehearsal (gap 3): the pack proved the code on toy fixtures; now
-         prove it on a COPY of the built-in weave workspace — the most data
-         any workspace carries — plus a fresh workspace built from nothing.
-         Red here rejects before restart, same as the pack. --no-rehearse
-         skips; --rehearse-db points at a different source file. */
-      if (!flags['no-rehearse']) {
-        const { mkdtempSync, copyFileSync, rmSync: rmTmp } = await import('node:fs');
-        const { tmpdir } = await import('node:os');
-        const srcDb = flags['rehearse-db'] && flags['rehearse-db'] !== true
-          ? String(flags['rehearse-db'])
-          : join(homedir(), '.weave', 'weave.db');
-        if (existsSync(srcDb)) {
-          const scratch = mkdtempSync(join(tmpdir(), 'weave-rehearse-'));
-          try {
-            const copy = join(scratch, 'copy.db');
-            for (const suffix of ['', '-wal', '-shm']) {
-              if (existsSync(srcDb + suffix)) copyFileSync(srcDb + suffix, copy + suffix);
-            }
-            const run = spawnSync('node', [join(serveDir, 'bin', 'weave.js'), 'rehearse', '--data', copy], { encoding: 'utf8' });
-            let steps = [];
-            try { steps = JSON.parse(run.stdout).steps ?? []; } catch { /* older builds have no rehearse */ }
-            if (run.status !== 0 && steps.length) {
-              if (prevSha) git(serveDir, 'checkout', '--detach', '--force', prevSha);
-              return out({
-                promoted: false,
-                sha,
-                verdict: 'REJECTED by the promote rehearsal (real-data copy) before restart',
-                failed: steps.filter((s) => !s.ok),
-              });
-            }
-          } finally {
-            rmTmp(scratch, { recursive: true, force: true });
-          }
-        }
-      }
-
-      launchctl('kickstart', '-k', `${domain}/${opts.label}`);
-      const expectedVersion = JSON.parse(readFileSync(join(serveDir, 'package.json'), 'utf8')).version;
-      let health = { reachable: false };
-      for (let i = 0; i < 20 && !promoteVerdict({ health, expectedVersion }).healthy; i++) {
-        await new Promise((r) => setTimeout(r, 500));
-        health = await probeHealth(opts.port);
-      }
-      const verdict = promoteVerdict({ health, expectedVersion });
-      if (!verdict.healthy) {
-        if (prevSha) {
-          git(serveDir, 'checkout', '--detach', '--force', prevSha);
-          launchctl('kickstart', '-k', `${domain}/${opts.label}`);
-        }
-        return out({ promoted: false, sha, verdict: `ROLLED BACK: ${verdict.reason}`, rolledBackTo: prevSha });
-      }
-      return out({ promoted: true, sha, previous: prevSha, server: { version: health.version, startedAt: health.startedAt } });
-    }
-    throw new WeaveError(`Unknown service subcommand '${sub}'. Try: install, uninstall, status, promote`);
+    throw new WeaveError(`Unknown service subcommand '${sub}'. Try: install, uninstall, status`);
   }
 
   /* Backup and restore work on the DATA DIRECTORY, not one workspace: every

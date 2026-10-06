@@ -44,18 +44,6 @@ test('git discovery includes staged, unstaged and untracked files, recursively',
   assert.throws(() => affectedTests(root, 'nonexistent-ref'));
 });
 
-const rehearsalFiles = ['test/rehearse.test.mjs', 'test/cli.test.mjs', 'test/cli-config.test.mjs'];
-test('isolated rehearsal source selects its regression and CLI contracts', () => {
-  const result = selectTests({ files: [...files, ...rehearsalFiles], changed: ['src/rehearse.js', files[0]] });
-  assert.equal(result.mode, 'targeted');
-  assert.deepEqual(result.files, [...rehearsalFiles, files[0]].sort());
-  assert.match(result.reasons.join(' '), /rehearse/);
-});
-test('missing mapped coverage and mixed shared changes expand to full', () => {
-  assert.equal(selectTests({ files, changed: ['src/rehearse.js'] }).mode, 'full');
-  assert.equal(selectTests({ files: [...files, ...rehearsalFiles], changed: ['src/rehearse.js', 'src/engine.js'] }).mode, 'full');
-});
-
 /* This file names 'test/lib/browser.mjs' in its data above, and the runner
    once read that as driving a browser and ran it at half concurrency. Only
    an import counts, static or awaited (Issue #648). */

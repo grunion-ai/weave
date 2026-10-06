@@ -188,7 +188,7 @@ callers also lease this queue. Use the CLI for predictable whole-job admission.
 
 | Operation | Command |
 | --- | --- |
-| Batch targeted regressions | `npm test -- --targeted test/formula.test.mjs test/rehearse.test.mjs` |
+| Batch targeted regressions | `npm test -- --targeted test/formula.test.mjs test/service.test.mjs` |
 | Inspect affected selection | `npm test -- --affected --base=HEAD --plan` |
 | Run affected selection | `npm test -- --affected --base=HEAD` |
 | Full landing verification | Gerrit poller runs `npm test` on the reviewed patchset |
@@ -198,8 +198,8 @@ callers also lease this queue. Use the CLI for predictable whole-job admission.
 | Bound one job, milliseconds | `npm test -- --timeout=120000 test/formula.test.mjs` |
 
 Affected selection includes staged, unstaged and untracked files relative to the
-base. Changed tests and the reviewed isolated rehearsal-module mapping can narrow
-it; shared code, UI, configuration and unknown paths require the full suite. The
+base. Only changed tests narrow it; source, UI, configuration and unknown paths
+require the full suite. The
 printed plan explains the decision. Full landing verification remains mandatory.
 An empty explicit selection fails. File lists must name existing files; use
 `--test-name-pattern='pattern'` or its separate-value form to filter test names.

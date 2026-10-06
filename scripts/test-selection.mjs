@@ -2,11 +2,6 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-// Rehearsal is a CLI-only command: bin/weave.js is its sole production caller.
-const isolated = {
-  'src/rehearse.js': ['test/rehearse.test.mjs', 'test/cli.test.mjs', 'test/cli-config.test.mjs'],
-};
-
 export function selectTests({ files, changed }) {
   const all = [...new Set(files)].sort();
   if (!all.length) throw new Error('No test files discovered; refusing an empty verification.');
@@ -14,11 +9,7 @@ export function selectTests({ files, changed }) {
   if (changes.length && changes.every(file => all.includes(file))) {
     return { files: changes, mode: 'targeted', reasons: ['Only test files changed; run every changed test.'] };
   }
-  const mapped = changes.flatMap(file => all.includes(file) ? [file] : (isolated[file] ?? []));
-  if (changes.length && changes.every(file => all.includes(file) || isolated[file]) && mapped.every(file => all.includes(file))) {
-    return { files: [...new Set(mapped)].sort(), mode: 'targeted', reasons: changes.map(file => `${file}: ${isolated[file] ? 'isolated CLI module; regression and CLI contracts' : 'changed test'}.`) };
-  }
-  // ponytail: reviewed CLI mapping only; expand after proving callers and coverage, never infer UI scope from names.
+  // ponytail: no source file maps to a subset yet; add a reviewed mapping only after proving its callers and coverage, never infer UI scope from names.
   return {
     files: all,
     mode: 'full',
