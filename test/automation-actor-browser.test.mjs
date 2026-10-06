@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
 
 const TOKEN = 'VMH4hSRpVOhCwUno';
+const member = new Weave();
+let memberTable, memberRow;
 const s = await launch('automation actor', (w) => {
   w.createSpace({ name: 'Ops' });
   const t = w.createTable({ space: 'Ops', name: 'Request' });
@@ -17,8 +20,14 @@ const s = await launch('automation actor', (w) => {
   w.addComment(rows[0].id, { author: `workflow:${rule.id}`, text: 'Logged by the rule.' });
   const workflows = Object.values(w.state.tables).find((x) => x.system === 'workflows');
   const broken = w.createEntity(workflows.id, { name: 'Ping the webhook', Health: 'Failed', 'Health Reason': 'The webhook answered 500' });
+  member.updateWorkspace({ name: 'member' });
+  member.createSpace({ name: 'Desk' });
+  memberTable = member.createTable({ space: 'Desk', name: 'Ticket' });
+  member.updateTable(memberTable.id, { systemFields: ['Modified By'] });
+  memberRow = member.createEntity(memberTable.id, { name: 'Printer' });
+  member.state.entities[memberRow.id].modifiedBy = `workflow:${rule.id}`;
   return { table: t, rows, rule, workflows, broken };
-});
+}, { server: () => ({ workspaces: { member } }) });
 
 if (s) {
   const { weave, base, browser, table, rows, rule, workflows, broken } = s;
@@ -130,6 +139,18 @@ if (s) {
     const row = page.locator('.entity-values .fieldrow[data-field="Health"] .chip-trigger');
     await row.waitFor();
     assert.equal(await row.getAttribute('title'), 'The webhook answered 500', 'and on the row\'s page');
+    await page.close();
+  });
+
+  test('in a member workspace the rule chip opens the root, where the Workflows row lives', async () => {
+    const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+    await page.goto(`${base}/w/${member.state.meta.id}/#/table/${memberTable.id}`, { waitUntil: 'networkidle' });
+    const chip = page.locator(`tr[data-eid="${memberRow.id}"] td[data-sys="Modified By"] .k-actor-wf`);
+    await page.waitForFunction((id) => document.querySelector(`tr[data-eid="${id}"] td[data-sys="Modified By"] .k-actor-wf .k-label`)?.textContent === 'Close out on Done', memberRow.id);
+    assert.equal(await chip.locator('a').getAttribute('href'), `/#/entity/${rule.id}`);
+    await chip.locator('a').click();
+    await page.locator('.entity-head textarea, .entity-head input').first().waitFor();
+    assert.equal(new URL(page.url()).pathname, '/', 'the root opens the row');
     await page.close();
   });
 }

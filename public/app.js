@@ -7464,7 +7464,7 @@ function workflowRow(id) {
     const found = own ?? await read('');
     if (!found) return;
     row.name = found.name || row.name;
-    if (own) row.href = `#/entity/${id}`;
+    if (own && allTables().some((t) => t.id === own.dbId)) row.href = `#/entity/${id}`;
   })();
   workflowRows.set(id, row);
   return row;
