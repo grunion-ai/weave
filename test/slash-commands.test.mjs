@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launch } from './lib/browser.mjs';
 
+await import('../public/editor-lib.js');
+const stored = (md) => globalThis.WeaveEditorLib.normalizeTaskBoxes(md);
+
 const slash = test.suite ?? test;
 
 let dir, tableRef;
@@ -321,7 +324,8 @@ if (s) {
       assert.doesNotMatch(r.markdown, /\u2063/, 'the marker never stays in the document');
       assert.ok(r.caret?.inEditor && r.caret.collapsed, 'the caret is back in the document');
       assert.equal(r.caret.before, r.caret.line, 'at the end of the converted line');
-      assert.equal(r.saved.trim(), r.markdown.trim(), 'and the conversion is what was saved');
+      assert.equal(r.saved.trim(), stored(r.markdown).trim(),
+        'and the conversion is what was saved, in the stored task-box shape (Issue #555)');
     });
   }
 
@@ -388,7 +392,7 @@ if (s) {
     const r = await convertLine('', 'task');
     assert.match(r.markdown, /^- \[ \] +To do\n?$/, said(r));
     assert.equal(r.caret.before, 'To do', 'with the caret after the placeholder, where Vditor used to leave it');
-    assert.equal(r.saved.trim(), r.markdown.trim());
+    assert.equal(r.saved.trim(), '- [ ] To do', 'one space after the box reaches storage (Issue #555)');
   });
 
   test('convert: a block that is not a line prefix still inserts beside the text', async () => {

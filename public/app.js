@@ -7974,12 +7974,13 @@ const WV_TB_ICONS = {
 function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
   const t = vditorTheme();
   let handed = null;
-  const onInput = (v) => { handed = v; hand(v); };
+  const stored = (v) => globalThis.WeaveEditorLib.normalizeTaskBoxes(v);
+  const onInput = (v) => { handed = stored(v); hand(handed); };
   const pull = () => {
     if (handed === null) return;
     let v;
     try { v = editor.getValue(); } catch { return; }
-    if (v !== handed && !holdsCommandMarker(v)) onInput(v);
+    if (stored(v) !== handed && !holdsCommandMarker(v)) onInput(v);
   };
   host.addEventListener('focusout', () => { pull(); flushDocSaves(); });
   const chips = attachRefChips(host);
@@ -8021,7 +8022,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       editor.vditor?.lute?.SetEmojis?.(window.weaveIconRegistry?.emojiTable() ?? {});
       const md = editor.getValue();
       if (new RegExp(globalThis.WeaveEditorLib.ICON_TOKEN.source).test(md)) editor.setValue(md);
-      handed = editor.getValue();
+      handed = stored(editor.getValue());
       scheduleDecorFor(host);
       host.addEventListener('keyup', rememberSelection);
       host.addEventListener('mouseup', rememberSelection);

@@ -251,6 +251,19 @@ globalThis.WeaveEditorLib = {
     return `\u2063block:${kind}\u2063`;
   },
 
+  TASK_BOX_RE: /^(\s*(?:[-*+]|\d+[.)]) )\[([ xX])\] {1,2}(?=\S)/,
+  normalizeTaskBoxes(md) {
+    const src = String(md ?? '');
+    if (!src) return src;
+    let fenced = false;
+    const lines = src.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\s*(?:```|~~~)/.test(lines[i])) { fenced = !fenced; continue; }
+      if (fenced) continue;
+      lines[i] = lines[i].replace(this.TASK_BOX_RE, (m, lead, box) => `${lead}[${box === ' ' ? ' ' : 'x'}] `);
+    }
+    return lines.join('\n');
+  },
   convertLine(line, kind) {
     const src = String(line ?? '');
     const spec = this.BLOCK_KINDS[kind];

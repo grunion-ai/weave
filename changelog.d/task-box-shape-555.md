@@ -1,0 +1,1 @@
+- Editing a document no longer rewrites its task items: the box reaches storage as `[ ]` or `[x]` with one space after it, so a string edit by an agent still matches and an unrelated edit leaves every task line unchanged in the revision history. (Issue #555)
