@@ -1,5 +1,3 @@
-// Tests for the weave brand asset generator (brand/build-logos.mjs).
-// Run: node --test brand/
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
@@ -14,10 +12,6 @@ test("rope(3,8) produces the selected h3 geometry", () => {
   assert.deepEqual(r.overs, ["M20,28 C24,28 24,20 28,20"]);
 });
 
-// Issue #571. Mask A cuts strand A wherever strand B runs, with a halo of
-// sw + 2.5; the over-segment repaints strand A on top. Every point of strand
-// A's stroke that the halo removes must sit under the over-segment's stroke,
-// or the background shows through as a notch beside the crossing.
 const pathPoints = d => {
   const pts = [], nums = s => s.trim().split(/[\s,]+/).map(Number);
   let cur;
@@ -41,8 +35,6 @@ test("the over-segment covers every part of strand A the halo cuts (Issue #571)"
   for (const [label, n, sw] of [["mark", 3, 3.5], ["favicon", 3, 4.5], ["app icon", 3, 4], ["travel", 11, 3.5]]) {
     const r = rope(n, 8), x0 = 24 - (n * 8) / 2;
     const A = pathPoints(r.a), B = pathPoints(r.b), O = r.overs.flatMap(pathPoints);
-    // Crossing k sits at x0 + (k + .5) * pitch; A passes under B at even k, where
-    // the cut is the point. Judge only the cut around the odd (over) crossings.
     const atOver = ([x]) => Math.round((x - x0) / 8 - 0.5) % 2 === 1;
     let worst = 0;
     for (let i = 1; i < A.length; i++) {
@@ -51,7 +43,7 @@ test("the over-segment covers every part of strand A the halo cuts (Issue #571)"
       const nx = -(y1 - y0) / len, ny = (x1 - x0) / len;
       for (const off of [-sw / 2, -sw / 4, 0, sw / 4, sw / 2]) {
         const p = [x1 + nx * off, y1 + ny * off];
-        if (!atOver(p) || nearest(B, p) >= (sw + 2.5) / 2) continue; // not cut here
+        if (!atOver(p) || nearest(B, p) >= (sw + 2.5) / 2) continue;
         worst = Math.max(worst, nearest(O, p) - sw / 2);
       }
     }
@@ -77,7 +69,7 @@ test("the inline marks in public/index.html carry the current over-segment", () 
 });
 
 test("rope crossing count scales with n", () => {
-  assert.equal(rope(5, 8).overs.length, 2); // A re-drawn over at odd crossings
+  assert.equal(rope(5, 8).overs.length, 2);
   assert.equal(rope(7, 6).overs.length, 3);
 });
 
@@ -133,7 +125,16 @@ test("build() writes every variant as an svg file, plus the app's loader fragmen
   }
 });
 
-// --- loaders (round 6) ------------------------------------------------------
+test("build() writes the served set straight into the served folder and the rest into assets (Issue #651)", () => {
+  const assets = mkdtempSync(join(tmpdir(), "weave-brand-assets-"));
+  const served = mkdtempSync(join(tmpdir(), "weave-brand-served-"));
+  build(assets, served);
+  assert.deepEqual(readdirSync(served).sort(),
+    ["weave-favicon.svg", "weave-loader-rope.html", "weave-mark-dark.svg", "weave-mark-light.svg"]);
+  const both = readdirSync(assets).filter(f => readdirSync(served).includes(f));
+  assert.deepEqual(both, [], "no file is written to both folders");
+  assert.equal(readdirSync(assets).length, VARIANTS.filter(v => !v.served).length);
+});
 
 test("rope amplitude is morph-safe: every amp emits identical path commands", () => {
   const shape = d => d.replace(/-?[\d.]+/g, "#");
@@ -185,8 +186,6 @@ test("keyframe lists are well-formed: values match keyTimes, 0 → 1", () => {
 });
 
 test("morph loaders keep the mask registered with the strand that cuts it", () => {
-  // The under-strand mask must carry the SAME d keyframes as strand B, or the
-  // gap drifts off the crossing mid-animation.
   for (const name of ["twist", "spin"]) {
     const svg = loaderSvg(name);
     const mask = svg.match(/<mask id="\w+A"[\s\S]*?<\/mask>/)[0];
@@ -198,7 +197,7 @@ test("morph loaders keep the mask registered with the strand that cuts it", () =
 
 test("travel loader translates exactly one weave period and overhangs the frame", () => {
   const svg = loaderSvg("travel");
-  const period = 2 * 8; // 2 x pitch — anything else seams on repeat
+  const period = 2 * 8;
   assert.ok(svg.includes(`values="0 0;-${period} 0"`), "seamless period translate");
   const xs = [...svg.matchAll(/M(-?[\d.]+),/g)].map(m => +m[1]);
   assert.ok(Math.min(...xs) <= -period, "rope starts left of the frame by a full period");
@@ -223,14 +222,11 @@ test("weave-on keeps the crossing by restoring it inside mask A", () => {
   const maskA = svg.match(/<mask id="\w+A"[\s\S]*?<\/mask>/)[0];
   const strokes = [...maskA.matchAll(/stroke="(#\w+)"/g)].map(m => m[1]);
   assert.deepEqual(strokes, ["#000", "#fff"], "cut the under-strand, then paint the crossing back");
-  // Strand A carries the crossing, so it must paint after B.
   const body = svg.slice(svg.indexOf("</defs>"));
   assert.ok(body.indexOf("#60a5fa") < body.indexOf("#2563eb"), "B draws first, A over it");
 });
 
 test("morph loaders close the gap and hide the crossing as the rope flattens", () => {
-  // At amp 0 both strands coincide: a full-width cut would eat the line and
-  // leave the over-segment floating in the hole.
   for (const name of ["twist", "spin"]) {
     const svg = loaderSvg(name);
     const mask = svg.match(/<mask id="\w+A"[\s\S]*?<\/mask>/)[0];
@@ -247,9 +243,6 @@ test("morph loaders close the gap and hide the crossing as the rope flattens", (
 });
 
 test("morph loaders fade the over-segment's cut in strand B as well as narrowing it", () => {
-  // The over-segment spans the whole odd segment (Issue #571). A cut narrower
-  // than strand B, at full strength, shows as a hard slot along it at low
-  // amplitude; fading it with the over-segment keeps those frames soft.
   for (const name of ["twist", "spin"]) {
     const svg = loaderSvg(name);
     const mask = svg.match(/<mask id="\w+B"[\s\S]*?<\/mask>/)[0];

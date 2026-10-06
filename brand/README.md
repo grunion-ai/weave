@@ -35,24 +35,34 @@ width 3.5 on a 48-unit grid. The under-strand is cut with SVG masks
 
 ## Assets
 
-`assets/` — SVG (canonical, transparent):
+`node brand/build-logos.mjs` writes every SVG. The four files the app serves go
+straight into `public/brand/`; the rest go to `assets/`. No file lives in both.
+
+`public/brand/` (served at `/brand/`):
 
 | File | Use |
 | --- | --- |
-| `weave-mark-dark.svg` | Default mark on dark surfaces (blue + sky) |
-| `weave-mark-light.svg` | Mark on light surfaces (blue + ink) |
+| `weave-mark-dark.svg` | Default mark on dark surfaces (blue + sky); the 404 page |
+| `weave-mark-light.svg` | Mark on light surfaces (blue + ink); the 404 page |
+| `weave-favicon.svg` | Favicon (mono, 4.5 strands) |
+| `weave-loader-rope.html` | The app's loader (Issue #390): both themes' rope at rest inside compositor windows, with its CSS |
+| `favicon-32.png`, `favicon.ico` | Raster favicons from `render-png.mjs` |
+| `email-lockup-{light,dark}.png` | The invite emails' lockup, from `render-png.mjs` |
+
+`assets/` (SVG, canonical, transparent):
+
+| File | Use |
+| --- | --- |
 | `weave-mark-mono-blue.svg` | Canonical one-color mark (print, PDF, stamps) |
 | `weave-mark-mono-cream.svg` | One-color on dark surfaces / photography |
 | `weave-mark-white.svg` | On blue-filled contexts (buttons, banners) |
-| `weave-favicon.svg` | Favicon source (mono, 4.5 strands) |
 | `weave-app-icon.svg` | 512 squircle app icon |
 | `weave-loader-dark.svg` / `-light.svg` | Animated loader (decision 7), same strand pairs as the marks |
-| `weave-loader-rope.html` | The app's loader (Issue #390): both themes' rope at rest inside compositor windows, with its CSS |
 | `weave-lockup-dark.svg` / `-light.svg` | Inline mark + wordmark |
 | `weave-lockup-email-light.svg` / `-dark.svg` | The invite emails' lockup (Feature #216): ink second strand on light, `#3b82f6` lead on dark, as approved 2026-10-03. `render-png.mjs` draws them, with Outfit loaded, to `public/brand/email-lockup-{light,dark}.png` at 208x48, which weave serves to mail clients (Gmail strips SVG) |
 
-`assets/png/` — rasters rendered via headless Chromium: favicon 16/32/48 +
-`favicon.ico`, app icon 512/180, mark 256, lockup 512, plus
+`assets/png/`: rasters rendered via headless Chromium: favicon 16/48, app icon
+512/180, mark 256, lockup 512, plus
 `weave-loader-{dark,light}.gif` (see below).
 
 ## The loader (decision 7)
@@ -95,14 +105,14 @@ Consumers:
 ## Rebuilding
 
 ```
-node brand/build-logos.mjs        # SVGs -> brand/assets/
+node brand/build-logos.mjs        # served SVGs + loader -> public/brand/, the rest -> brand/assets/
 node brand/render-png.mjs         # PNGs via Playwright Chromium
 node --test brand/build-logos.test.mjs
 ```
 
 ImageMagick cannot rasterize these SVGs (its delegate drops `<mask>`), which is
 why raster export goes through a browser engine. `favicon.ico` is packed with
-`magick png/favicon-16.png png/favicon-32.png png/favicon-48.png png/favicon.ico`.
+`magick brand/assets/png/favicon-16.png public/brand/favicon-32.png brand/assets/png/favicon-48.png public/brand/favicon.ico`.
 
 ## History
 
