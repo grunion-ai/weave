@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "2b46e4a657ff0919b72ffd44e071c59a7df9e476"
+      "revision": "1074c48a0e119d0e3b181c697809fc22a6afef93"
     },
     "views": [
       {
@@ -98,12 +98,12 @@
       "sources": [
         {
           "path": "src/server.js",
-          "line": 330,
+          "line": 348,
           "label": "createServer"
         },
         {
           "path": "src/server.js",
-          "line": 136,
+          "line": 164,
           "label": "workspace hub"
         }
       ]
@@ -124,7 +124,7 @@
       "sources": [
         {
           "path": "src/worker.js",
-          "line": 18,
+          "line": 5,
           "label": "WeaveWorkspace DO"
         }
       ]
@@ -145,7 +145,7 @@
       "sources": [
         {
           "path": "src/auth-page.js",
-          "line": 113,
+          "line": 116,
           "label": "sign-in page"
         }
       ]
@@ -166,12 +166,12 @@
       "sources": [
         {
           "path": "src/routes.js",
-          "line": 54,
+          "line": 39,
           "label": "createRequestHandler"
         },
         {
           "path": "src/mcp.js",
-          "line": 637,
+          "line": 829,
           "label": "MCP JSON-RPC"
         }
       ]
@@ -192,17 +192,17 @@
       "sources": [
         {
           "path": "src/markdown.js",
-          "line": 316,
+          "line": 280,
           "label": "renderMarkdown"
         },
         {
           "path": "src/pdf.js",
-          "line": 311,
+          "line": 277,
           "label": "markdownToPdf"
         },
         {
           "path": "src/deck.js",
-          "line": 203,
+          "line": 163,
           "label": "renderDeck"
         }
       ]
@@ -223,17 +223,17 @@
       "sources": [
         {
           "path": "src/engine.js",
-          "line": 829,
+          "line": 850,
           "label": "class Weave"
         },
         {
           "path": "src/formula.js",
-          "line": 148,
+          "line": 119,
           "label": "formula evaluator"
         },
         {
           "path": "src/stats.js",
-          "line": 52,
+          "line": 34,
           "label": "rollup aggregates"
         }
       ]
@@ -254,12 +254,12 @@
       "sources": [
         {
           "path": "bin/weave.js",
-          "line": 225,
+          "line": 238,
           "label": "main"
         },
         {
           "path": "src/mcp.js",
-          "line": 674,
+          "line": 865,
           "label": "stdio MCP"
         }
       ]
@@ -280,7 +280,7 @@
       "sources": [
         {
           "path": "src/store.js",
-          "line": 66,
+          "line": 47,
           "label": "Store"
         }
       ]
@@ -301,7 +301,7 @@
       "sources": [
         {
           "path": "src/store-cf.js",
-          "line": 44,
+          "line": 29,
           "label": "CFStore"
         }
       ]
@@ -322,12 +322,12 @@
       "sources": [
         {
           "path": "src/backup.js",
-          "line": 290,
+          "line": 225,
           "label": "backup"
         },
         {
           "path": "src/backup.js",
-          "line": 506,
+          "line": 410,
           "label": "S3 client"
         }
       ]

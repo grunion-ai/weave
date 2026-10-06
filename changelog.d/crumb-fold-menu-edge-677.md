@@ -1,1 +1,0 @@
-- **The crumb's fold menu stays inside the window** (Issue #677): in a dock against the window's right edge, the "…" menu opened at the button's left and its full row Names ran past the screen. It now shifts left by whatever would overflow. `test/crumb-fold-browser.test.mjs` checks the menu's box with a 420px dock in a 1200px window.
