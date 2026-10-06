@@ -243,3 +243,28 @@ test('weave build <file.json> is the CLI door, with --dry-run', () => {
     assert.throws(() => cli('build', file), 'a failed build exits non-zero');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a built row is one write: its relations are in place when its on-create automation reads them, and an empty placeholder says so (Issue #681)', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Workflow Demo' });
+  const font = w.createTable({ space: 'Workflow Demo', name: 'Font' });
+  w.addField(font.id, { name: 'License', type: 'text' });
+  const review = w.createTable({ space: 'Workflow Demo', name: 'Review' });
+  w.addRelation(review.id, { name: 'Font', targetDb: font.id, cardinality: 'many-to-one' });
+  w.createAutomation(review.id, {
+    name: 'Start the license check',
+    trigger: { type: 'entity-created' },
+    actions: [{ type: 'add-comment', text: 'Review #{{PublicId}} opened for {{Font}}.' }],
+  });
+  const res = w.build({ spaces: [{ name: 'Workflow Demo', tables: [
+    { name: 'Review', rows: [{ Name: 'Anton for the deck', Font: 'Anton' }, { Name: 'Nothing picked' }] },
+    { name: 'Font', rows: [{ Name: 'Anton', License: 'SIL OFL' }] },
+  ] }] });
+  assert.equal(res.ok, true, JSON.stringify(res.errors));
+  const anton = w.findEntity(review.id, 'Anton for the deck');
+  assert.equal(anton.publicId, 1, 'rows keep spec order within their table');
+  assert.deepEqual(anton.comments.map((c) => c.text), ['Review #1 opened for Anton.'], 'the Font table is built first, so the create carries the relation');
+  assert.equal(anton.activity.filter((a) => a.kind === 'relation-updated').length, 1, 'linked once, in the create');
+  const blank = w.findEntity(review.id, 'Nothing picked');
+  assert.deepEqual(blank.comments.map((c) => c.text), ['Review #2 opened for (no Font).'], 'an empty placeholder says so instead of leaving a gap');
+});

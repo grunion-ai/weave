@@ -2530,8 +2530,38 @@ export class Weave {
       }
     }
 
-    const links = [];
+    const relationOf = (tb, key) => {
+      const f = this.findField(tb.db, key);
+      return f?.type === 'relation' ? f : null;
+    };
+    const resolves = (f, v) => {
+      try { this.#normalizeRelationInput(f, v); return true; } catch { return false; }
+    };
+    const needs = new Map(tables.map((tb) => [tb, new Set()]));
     for (const tb of tables) {
+      for (const row of Array.isArray(tb.spec.rows) ? tb.spec.rows : []) {
+        if (!isObj(row)) continue;
+        for (const [key, v] of Object.entries(row)) {
+          const f = relationOf(tb, key);
+          if (!f || v == null) continue;
+          for (const id of this.relationTargetDbIds(f)) {
+            for (const other of tables) if (other !== tb && other.db.id === id) needs.get(tb).add(other);
+          }
+        }
+      }
+    }
+    const rowOrder = [];
+    const visit = (tb, path) => {
+      if (rowOrder.includes(tb) || path.has(tb)) return;
+      path.add(tb);
+      for (const other of needs.get(tb)) visit(other, path);
+      path.delete(tb);
+      rowOrder.push(tb);
+    };
+    for (const tb of tables) visit(tb, new Set());
+
+    const links = [];
+    for (const tb of rowOrder) {
       const held = skipExistingRows ? new Set(this.listEntities(tb.db.id).map((e) => this.entityName(e))) : null;
       listAt(`${tb.at}.rows`, tb.spec.rows).forEach((row, k) => {
         const at = `${tb.at}.rows[${k}]`;
@@ -2545,7 +2575,8 @@ export class Weave {
         const rel = {};
         for (const [key, v] of Object.entries(row)) {
           if (tb.failed.has(key)) continue;
-          (this.findField(tb.db, key)?.type === 'relation' ? rel : values)[key] = v;
+          const f = relationOf(tb, key);
+          (f && !resolves(f, v) ? rel : values)[key] = v;
         }
         const e = step(at, () => this.createEntity(tb.db.id, values));
         if (!e) return undefined;
@@ -6679,7 +6710,8 @@ export class Weave {
       const f = this.findField(db, key);
       if (!f) return '';
       const v = this.#displayValue(db, f, this.#resolve(e, db, f, 0), e);
-      return v == null ? '' : Array.isArray(v) ? v.join(', ') : String(v);
+      const s = v == null ? '' : Array.isArray(v) ? v.join(', ') : String(v);
+      return s === '' ? `(no ${f.name})` : s;
     });
   }
 
