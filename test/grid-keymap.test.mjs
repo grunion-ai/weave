@@ -8,9 +8,8 @@
    Esc; EDGE (step out at the text edge) is the one branch this file does
    not carry.
 
-   docs/mockups/table-grid-keymaps.html holds the study's core and
-   test/grid-patterns.test.mjs presses it; public/grid-keymap.js is that
-   core ported into the app, and this suite pins the port plus the two
+   public/grid-keymap.js is the 2026-08-24 keymap study's core ported into
+   the app, and this suite pins the port plus the two
    pieces the app needs that a mockup did not: where a move lands on a real
    grid of stops, and how ⇧↑/⇧↓ grow a selection keyed on entity ids. */
 import test from 'node:test';

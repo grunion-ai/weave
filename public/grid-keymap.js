@@ -6,9 +6,9 @@
    purpose. Two things fall out for free: Space is unclaimed at rest, so
    keyboard row selection costs nothing, and hover finally has a job.
 
-   Ported from the study's core in docs/mockups/table-grid-keymaps.html
-   (test/grid-patterns.test.mjs presses that one). No DOM here: a keystroke
-   plus a grid state resolves to a verb, and public/app.js carries it out.
+   Ported from the 2026-08-24 keymap study's core (git history keeps the
+   mockup). No DOM here: a keystroke plus a grid state resolves to a verb,
+   and public/app.js carries it out.
 
    state  { mode: 'rest' | 'edit', readonly, sel: Set, flip?, range?, rate? }
             flip: the cell is a toggle · range: a cell range is live (#220)
