@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT, APP, HTML, CSS, rulesFor, px, fnBody } from './lib/source.mjs';
 
@@ -1403,17 +1403,22 @@ test('navigation paints a skeleton of the destination first (Feature #49)', () =
   assert.ok(readFileSync(join(ROOT, 'public/style.css'), 'utf8').includes('prefers-reduced-motion'), 'shimmer respects reduced motion');
 });
 
-test('a share link comes with its QR code (Feature #50)', async () => {
+test('the Share dialog shows the link and no QR code (Feature #263)', () => {
+  // Feature #263 removed the share QR that Feature #50 added: nobody scanned
+  // it. The dialog keeps the link, copied to the clipboard on open.
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
-  assert.ok(html.includes('lean-qr.mjs'), 'lean-qr is vendored and loaded as a module');
-  assert.ok(app.includes('function qrCanvas('), 'the QR renderer exists');
-  const share = app.slice(app.indexOf("'Share link'"), app.indexOf("'Revoke share'"));
-  assert.ok(app.includes('qrCanvas(full)'), 'sharing shows the code, not only a silent copy');
-  // The vendored module actually generates: same file, imported under node.
-  const leanQR = await import('../public/vendor/lean-qr.mjs');
-  const code = leanQR.generate('https://example.com/view/wvv_abc');
-  assert.ok(code.size >= 21, 'a real QR matrix comes back');
+  const css = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
+  const start = app.indexOf("modal('Share link'");
+  assert.ok(start > 0, 'the Share dialog exists');
+  const share = app.slice(start, app.indexOf("'Done')", start));
+  assert.match(share, /el\('code', \{ class: 'share-url' \}, full\)/, 'the dialog shows the full link');
+  assert.ok(app.slice(app.indexOf("api('POST', `/views/${id}/share`)"), start).includes('clipboard?.writeText(full)'), 'opening it copies the link');
+  assert.doesNotMatch(share, /canvas|qr|scan/i, 'no QR code and no talk of scanning one');
+  for (const gone of ['qrCanvas', 'leanQR', 'share-qr']) assert.ok(!app.includes(gone), `app.js still names ${gone}`);
+  assert.ok(!html.includes('lean-qr'), 'the shell no longer loads lean-qr');
+  assert.ok(!css.includes('.share-qr'), 'no stylesheet rule for the QR');
+  assert.ok(!existsSync(join(ROOT, 'public/vendor/lean-qr.mjs')), 'lean-qr is no longer vendored');
 });
 
 test('docs go fullscreen and diagrams become whiteboards (Features #47, #46)', () => {

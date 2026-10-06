@@ -212,18 +212,6 @@
       ]
     },
     {
-      "name": "lean-qr",
-      "npm": "lean-qr",
-      "version": "2.7.3",
-      "versionSource": "CHANGELOG.md, \"Share QR codes\": the file carries no version string",
-      "files": [
-        {
-          "path": "public/vendor/lean-qr.mjs",
-          "sha256": "3e1b236f34ce8e89398a12b08984a330a4afa29c7a8a010ae24dc382a216b0fd"
-        }
-      ]
-    },
-    {
       "name": "lucide",
       "npm": "lucide",
       "version": null,

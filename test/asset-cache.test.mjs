@@ -47,7 +47,6 @@ test('the served shell versions every local asset it references', async () => {
       const want = createHash('sha1').update(readFileSync(join(ROOT, 'public', url))).digest('hex').slice(0, 12);
       assert.equal(v, want, `${url}'s version is the hash of its content`);
     }
-    assert.ok(refs.some((r) => r.url === '/vendor/lean-qr.mjs'), 'the module import is versioned too');
   });
 });
 
@@ -106,5 +105,4 @@ test('every classic boot script is deferred; the file on disk keeps plain URLs',
   // The Worker's Assets binding serves this file as-is (Issue #231): a baked-in
   // version would name bytes the binding no longer holds after the next edit.
   assert.doesNotMatch(INDEX, /\?v=/);
-  assert.ok(INDEX.indexOf('/vendor/lean-qr.mjs') < INDEX.indexOf('/app.js'), 'the lean-qr module is queued before app.js, so it runs first');
 });

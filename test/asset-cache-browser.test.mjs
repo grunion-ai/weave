@@ -26,7 +26,7 @@ if (s) {
     await page.waitForSelector('.home-map');
     const boot = await page.evaluate(() => ({
       blocking: [...document.querySelectorAll('script[src]')].filter((el) => !el.defer && el.type !== 'module').map((el) => el.src),
-      globals: ['Vditor', 'chipCore', 'WeaveTerm', 'leanQR'].filter((g) => !(g in window)),
+      globals: ['Vditor', 'chipCore', 'WeaveTerm'].filter((g) => !(g in window)),
       name: document.querySelector('#ws-name')?.textContent,
     }));
     assert.deepEqual(boot.blocking, [], 'no classic script blocks the parser');

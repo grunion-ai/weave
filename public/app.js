@@ -544,31 +544,6 @@ function termOfTable(id) {
   return WeaveTerm.DEFAULT;
 }
 
-/* ---------- share QR (Feature #50, ha.mr-inspired) ----------
-   A share link's natural destination is a phone. lean-qr (the generator
-   ha.mr credits) is vendored as an ES module; drawing on a canvas keeps the
-   page self-contained. ha.mr's URL compression half is not needed — weave
-   has a server, and the wvv_ token IS the short link. */
-function qrCanvas(text, scale = 5) {
-  const code = window.leanQR?.generate?.(text);
-  if (!code) return null;
-  const canvas = el('canvas', { class: 'share-qr' });
-  const quiet = 4;
-  const px = (code.size + quiet * 2) * scale;
-  canvas.width = px;
-  canvas.height = px;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, px, px);
-  ctx.fillStyle = '#000';
-  for (let y = 0; y < code.size; y++) {
-    for (let x = 0; x < code.size; x++) {
-      if (code.get(x, y)) ctx.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale);
-    }
-  }
-  return canvas;
-}
-
 /* The side peek is gone (2026-09-02): the entity dock is the ONE panel;
    every opener routes through dockEntity. */
 
@@ -12516,12 +12491,10 @@ async function showView(id) {
         const { url } = await api('POST', `/views/${id}/share`);
         const full = location.origin + WS_PREFIX + url;
         await navigator.clipboard?.writeText(full).catch(() => {});
-        const qr = qrCanvas(full);
         modal('Share link', [
           el('div', { class: 'share-box' },
-            qr ?? el('span', {}, ''),
             el('code', { class: 'share-url' }, full),
-            el('span', { class: 'share-hint' }, 'Copied to the clipboard — or scan it. Anyone with this link sees this view, read-only, until you revoke it.')),
+            el('span', { class: 'share-hint' }, 'Copied to the clipboard. Anyone with this link sees this view, read-only, until you revoke it.')),
         ], async () => {}, 'Done');
         showView(id);
       },

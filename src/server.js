@@ -85,7 +85,7 @@ export function buildInfo() {
   if (Date.now() - BUILD.checkedAt > 5 * 60 * 1000) refreshLatest();
   return { ...describeBuild({ head: BUILD.head, disk: diskHead(), latest: BUILD.latest, contains: BUILD.contains }), ...release };
 }
-const MIME = {
+export const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
