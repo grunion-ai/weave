@@ -1518,16 +1518,16 @@ function renderNav() {
   const line = el('span', { class: 'nav-stats-line', title: 'Records in this workspace · storage on disk' },
     `${entityTotal.toLocaleString()} ${entityTotal === 1 ? 'record' : 'records'}`);
   const stats = el('div', { class: 'nav-stats' }, foot, line);
-  /* The workspace's system tables (Kyle, 2026-09-29): Activity, Trash and
-     Workflows, pinned under the spaces in that order. Fixed rows: no kebab,
+  /* The workspace's system tables (Kyle, 2026-09-29): Workflows, Activity
+     and Trash (reordered 2026-10-01, Issue #561), pinned under the spaces in that order. Fixed rows: no kebab,
      no grip, and the engine refuses a rename, move or delete of any system
      table. Activity and Trash read across the whole workspace. */
   const wf = allTables().find((d) => d.system === 'workflows');
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
   const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'Workspace system tables' },
+    ...(wf ? [sysRow(`#/table/${wf.id}`, 'workflow', 'Workflows', state.route?.dbId === wf.id)] : []),
     sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
-    sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
-    ...(wf ? [sysRow(`#/table/${wf.id}`, 'workflow', 'Workflows', state.route?.dbId === wf.id)] : []));
+    sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
   // Pinned to the sidebar's bottom edge — a sibling AFTER #nav (which carries
   // flex:1), sticky so a long nav scrolls under it rather than pushing it away.
   document.querySelector('#sidebar .nav-system')?.remove();

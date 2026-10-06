@@ -59,12 +59,12 @@ test('GET /api/trash lists every trashed row in the workspace, and PATCH refuses
   } finally { server.close(); }
 });
 
-test('the nav pins Activity, Trash and Workflows, in that order, under the spaces', () => {
+test('the nav pins Workflows, Activity and Trash, in that order, under the spaces', () => {
   const nav = fnBodyOf('renderNav');
   const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("$('#sidebar').append(system"));
   const at = (s) => group.indexOf(s);
   assert.ok(at("'#/activity'") > -1 && at("'#/trash'") > -1 && at('#/table/${wf.id}') > -1, 'the three routes');
-  assert.ok(at("'#/activity'") < at("'#/trash'") && at("'#/trash'") < at('#/table/${wf.id}'), 'Activity, Trash, Workflows');
+  assert.ok(at('#/table/${wf.id}') < at("'#/activity'") && at("'#/activity'") < at("'#/trash'"), 'Workflows, Activity, Trash (Issue #561)');
   assert.doesNotMatch(group, /navTableMenu|draggable|grip/, 'no kebab, no grip: fixed rows');
   assert.match(nav, /db\.system === 'workflows'\) continue/, 'Workflows leaves the Workspace space list: one place in the nav');
 });

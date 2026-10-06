@@ -161,7 +161,7 @@ a.nav-space:hover { color: var(--tblr-primary); }
    #452). Its divider is what marks where the scrolling nav ends, so it
    stretches and its side margins cancel the strip's own padding. */
 .nav-foot { align-self: stretch; margin: 0 -10px; padding-top: 8px; border-top: 1px solid var(--wv-pill-hover); }
-/* The workspace system tables, pinned under the spaces (Activity, Trash, Workflows). */
+/* The workspace system tables, pinned under the spaces (Workflows, Activity, Trash). */
 .nav-system { border-top: 1px solid var(--wv-pill-hover); padding-top: 6px; flex: none; }
 /* The stats strip: workspace entity count + on-disk size, pinned to the
    sidebar's bottom edge — quiet metadata, same register as the version chip.

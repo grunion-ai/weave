@@ -19,7 +19,7 @@ if (s) {
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
     const rows = await page.$$eval('#sidebar .nav-system a', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href'), !!a.querySelector('.nav-db-menu')]));
-    assert.deepEqual(rows, [['Activity', '#/activity', false], ['Trash', '#/trash', false], ['Workflows', `#/table/${wfId}`, false]]);
+    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`, false], ['Activity', '#/activity', false], ['Trash', '#/trash', false]]);
     const inList = await page.$$eval('#nav .nav-db', (as) => as.map((a) => a.textContent.trim()));
     assert.ok(!inList.includes('Workflows'), 'Workflows is not listed twice');
     const below = await page.evaluate(() => {

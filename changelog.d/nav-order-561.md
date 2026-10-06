@@ -1,0 +1,1 @@
+- **The sidebar's fixed rows read Workflows, Activity, Trash** (Issue #561): the three system rows under the spaces now run Workflows first, then Activity, then Trash, instead of Activity, Trash, Workflows. The Handbook's "System rows in the sidebar" guide states the new order. Tests in `test/system-tables-nav.test.mjs` and `test/system-tables-nav-browser.test.mjs`.

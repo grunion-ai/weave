@@ -1373,7 +1373,7 @@ The system registry — **Spaces**, **Tables**, **Fields** and **Workflows** as 
 
 ## System rows in the sidebar
 
-Three fixed rows sit at the bottom of the sidebar, under the spaces: **Activity** (every change in the workspace, \`#/activity\`), **Trash** (every trashed row in the workspace, \`#/trash\`) and **Workflows** (the Workflows table, shown at the root only). They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces row, and Restore on that row brings the whole structure back. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
+Three fixed rows sit at the bottom of the sidebar, under the spaces: **Workflows** (the Workflows table, shown at the root only), **Activity** (every change in the workspace, \`#/activity\`) and **Trash** (every trashed row in the workspace, \`#/trash\`). They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces row, and Restore on that row brings the whole structure back. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
 
 ## The Workspaces table
 
