@@ -131,6 +131,9 @@ async function api(method, path, body, { signal } = {}) {
   noteSchemaVersion(res.headers.get('X-Weave-Schema-Version'), method === 'GET' || path.endsWith('/query'));
   // The status rides the error, so a dialog can tell a conflict from a refusal.
   if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status });
+  if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
+    noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
+  }
   return data;
 }
 
@@ -173,7 +176,7 @@ async function copyText(text, label = 'Copied') {
    inside the layer; the toast itself never takes focus. */
 const TOAST_MS = { info: 4000, action: 8000, err: 10000, perChar: 60, max: 20000 };
 const TOAST_LIMIT = 3;
-const TOAST_ICON = { info: 'lucide:info', success: 'lucide:check', err: 'lucide:circle-alert' };
+const TOAST_ICON = { info: 'lucide:info', success: 'lucide:check', err: 'lucide:circle-alert', automation: 'lucide:workflow' };
 const toastsUp = [];
 
 function toastLayer() {
@@ -3335,12 +3338,12 @@ function viewCardEl(v, { compact = false } = {}) {
       v.link ? el('span', { class: 'wv-card-id' }, `#${v.publicId}`) : '',
       v.name || (v.link ? '' : `#${v.publicId}`)),
     state ? viewSegmentEl(state) : '');
-  const card = el('div', { class: 'wv-card' + (compact ? ' compact' : '') }, head);
+  const card = el('div', { class: 'wv-card' + (compact ? ' compact' : ''), dataset: { eid: v.id } }, head);
   if (v.description) card.append(el('div', { class: 'wv-card-desc' }, v.description));
   const fields = segs.filter((x) => x.kind === 'field');
   if (fields.length) {
     card.append(el('dl', { class: 'wv-card-fields' },
-      ...fields.flatMap((f) => [el('dt', {}, f.label), el('dd', {}, segmentValueEl(f))])));
+      ...fields.flatMap((f) => [el('dt', {}, f.label), el('dd', { dataset: { field: f.label } }, segmentValueEl(f))])));
   }
   return card;
 }
@@ -3664,6 +3667,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   }
   if (f.type === 'select') {
     const trigger = optionChipEl(f, val);
+    if (db?.system === 'workflows' && f.name === 'Health' && item.fields?.['Health Reason']) trigger.title = item.fields['Health Reason'];
     const paint = (v) => { const next = optionChipEl(f, v); trigger.className = next.className; trigger.replaceChildren(...next.childNodes); };
     return chipPicker({
       trigger,
@@ -6019,7 +6023,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   let pidWidth = 0;                // the # column, held at the widest id this table can show
   let grabbed = null;              // the column a reorder drag holds
   const nudgeTimers = new Map();  // column → its pending keyboard-nudge commit
-  const SYS_WIDTHS = { 'Created At': 150, 'Modified At': 150, 'Created By': 124, 'Modified By': 124, Activity: 88 };
+  const SYS_WIDTHS = { 'Created At': 150, 'Modified At': 150, 'Created By': 160, 'Modified By': 160, Activity: 88 };
   const canFreezeHere = () => !!db.view && !db.view.blank;
   const storedFrozen = () => (canFreezeHere() ? db.view.frozen ?? 0 : 0);
   const storedWidth = (c) => db.view?.widths?.[c] ?? colField(db, c)?.width;
@@ -7412,11 +7416,118 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 const SYSTEM_COLS = {
   'Created At': (e) => (e.createdAt ?? '').slice(0, 16).replace('T', ' '),
   'Modified At': (e) => (e.updatedAt ?? '').slice(0, 16).replace('T', ' '),
-  'Created By': (e) => e.createdBy ?? '',
-  'Modified By': (e) => e.modifiedBy ?? '',
+  'Created By': (e) => actorChipEl(e.createdBy),
+  'Modified By': (e) => actorChipEl(e.modifiedBy),
   // The count links the row to its history; the panel is the full treatment.
   'Activity': (e) => `${(e.activity ?? []).length}⚡`,
 };
+
+function actorChipEl(actor, { link = true } = {}) {
+  const a = weaveActor.parseActor(actor);
+  if (a.kind === 'none') return '';
+  if (a.kind === 'workflow') {
+    const row = workflowRow(a.workflowId);
+    const label = el('span', { class: 'k-label' }, row.name ?? 'Automation');
+    const body = [iconEl('lucide:workflow', 'wv-icon wv-icon-xs'), label];
+    const inner = link ? el('a', { href: row.href, title: row.name ?? 'Automation', onclick: (e) => e.stopPropagation() }, ...body) : null;
+    row.read.then(() => {
+      label.textContent = row.name ?? 'Automation';
+      if (inner) { inner.href = row.href; inner.title = label.textContent; }
+    });
+    return link
+      ? el('span', { class: 'k k-rel k-actor-wf' }, inner)
+      : el('span', { class: 'k k-actor-wf is-inline' }, ...body);
+  }
+  return el('span', { class: 'k k-actor', title: a.via ? `${a.name} via ${a.via}` : a.name },
+    el('span', { class: `av hue-${chipCore.hueForName(a.name)}` }, chipCore.initialsFor(a.name)),
+    el('span', { class: 'k-label' }, a.name),
+    a.via ? el('span', { class: 'k-actor-via' }, `· via ${a.via}`) : null);
+}
+
+function commentAuthorEl(author) {
+  if (/^workflow:/.test(author ?? '')) return actorChipEl(author);
+  if (author === 'automation') return el('span', { class: 'k k-actor-wf is-inline' }, iconEl('lucide:workflow', 'wv-icon wv-icon-xs'), el('span', { class: 'k-label' }, 'Automation'));
+  return author;
+}
+function commentAuthorText(author) {
+  const a = weaveActor.parseActor(author);
+  if (a.kind === 'workflow') return workflowRow(a.workflowId).name ?? 'an automation';
+  if (author === 'automation') return 'an automation';
+  return author ?? 'someone';
+}
+
+const workflowRows = new Map();
+function workflowRow(id) {
+  let row = workflowRows.get(id);
+  if (row) return row;
+  row = { name: null, href: WS_PREFIX ? `/#/entity/${id}` : `#/entity/${id}` };
+  const read = (prefix) => fetch(`${prefix}/api/entities/${encodeURIComponent(id)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  row.read = (async () => {
+    const own = WS_PREFIX ? await read(WS_PREFIX) : null;
+    const found = own ?? await read('');
+    if (!found) return;
+    row.name = found.name || row.name;
+    if (own) row.href = `#/entity/${id}`;
+  })();
+  workflowRows.set(id, row);
+  return row;
+}
+
+const PULSE = { lead: 80, step: 220, ms: 1000 };
+const automationSeen = new Map();
+function noteAutomationWrites(entity, now) {
+  const run = weaveActor.automationWrites(entity.activity, { now });
+  if (!run || run.seq <= (automationSeen.get(entity.id) ?? 0)) return;
+  automationSeen.set(entity.id, run.seq);
+  for (const r of run.runs) {
+    const row = r.workflowId ? workflowRow(r.workflowId) : null;
+    if (row && r.name && !row.name) row.name = r.name;
+    const name = r.name ?? row?.name ?? 'An automation';
+    toast(`${name} ran on #${entity.publicId}`, false,
+      row ? { label: 'Open', run: () => { location.href = row.href; } } : null, { kind: 'automation' });
+  }
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) pulseCells(entity.id, [...run.fields, 'Modified By']);
+}
+
+function pulseTargets(eid, field) {
+  const id = CSS.escape(eid), f = CSS.escape(field);
+  const out = [];
+  for (const scope of document.querySelectorAll(`tr[data-eid="${id}"], .entity-grid[data-eid="${id}"], .wv-card[data-eid="${id}"]`)) {
+    for (const n of scope.querySelectorAll(`[data-field="${f}"], [data-sys="${f}"], [data-block="${f}"]`)) {
+      if (n.parentElement.closest('[data-eid]') === scope) out.push(n);
+    }
+  }
+  return out;
+}
+
+function pulseCells(eid, fields) {
+  const t0 = performance.now();
+  const done = new WeakSet();
+  const end = PULSE.lead + fields.length * PULSE.step + PULSE.ms;
+  const paint = () => {
+    const elapsed = performance.now() - t0;
+    fields.forEach((f, i) => {
+      for (const n of pulseTargets(eid, f)) {
+        const delay = Math.round(PULSE.lead + i * PULSE.step - elapsed);
+        if (done.has(n) || delay + PULSE.ms <= 0) continue;
+        done.add(n);
+        n.style.setProperty('--wv-pulse-delay', `${delay}ms`);
+        n.classList.add('wv-pulse');
+        const off = (e) => {
+          if (e.target !== n || e.animationName !== 'wv-pulse') return;
+          n.removeEventListener('animationend', off);
+          n.classList.remove('wv-pulse');
+          n.style.removeProperty('--wv-pulse-delay');
+        };
+        n.addEventListener('animationend', off);
+      }
+    });
+  };
+  paint();
+  const watch = new MutationObserver(paint);
+  watch.observe(document.body, { childList: true, subtree: true });
+  setTimeout(() => watch.disconnect(), end);
+}
 
 const colField = (db, name) => db.fields.find((f) => f.name === name);
 
@@ -11686,7 +11797,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     ...recent.map((a, n) => el('a', {
       class: 'activity-item', href: `#/activity/${id}:${firstIndex - n}`,
       title: 'Open this event',
-    }, `${new Date(a.ts).toLocaleString()} — ${activitySummary(a)}`)),
+    }, `${new Date(a.ts).toLocaleString()} — `, actorChipEl(a.actor, { link: false }), ` ${activitySummary(a)}`)),
     recent.length ? null : el('span', { class: 'wv-empty' }, 'Nothing has happened here yet.'),
     entity.activityDropped ? el('span', { class: 'activity-dropped' }, droppedText(entity.activityDropped)) : null);
   const actPanel = el('div', { class: 'card panel' },
@@ -11782,7 +11893,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     });
   }
 
-  const grid = el('div', { class: 'entity-grid' });
+  const grid = el('div', { class: 'entity-grid', dataset: { eid: id } });
   grid.classList.toggle('side-open', sideOpen);
   mount.append(grid);
   const left = el('div');
@@ -11901,7 +12012,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
         const delta = prev ? rev.len - prev.len : rev.len;
         const row = el('button', { class: 'wv-rev-row', type: 'button', title: new Date(rev.at).toLocaleString() },
           el('span', { class: 'wv-rev-when' }, i === 0 ? 'Current' : relTime(rev.at)),
-          el('span', { class: 'wv-rev-actor' }, rev.actor ?? '—'),
+          el('span', { class: 'wv-rev-actor' }, actorChipEl(rev.actor, { link: false }) || '—'),
           el('span', { class: 'wv-rev-delta' + (delta > 0 ? ' pos' : delta < 0 ? ' neg' : '') },
             delta > 0 ? `+${delta}` : delta < 0 ? `−${-delta}` : '±0'));
         row.addEventListener('click', () => viewRevision(rev, row, i === 0));
@@ -11997,7 +12108,7 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
     commentsBody);
   for (const c of entity.comments) {
     commentsBody.append(el('div', { class: 'comment' },
-      el('div', {}, el('span', { class: 'who' }, c.author), el('span', { class: 'when' }, new Date(c.createdAt).toLocaleString())),
+      el('div', {}, el('span', { class: 'who' }, commentAuthorEl(c.author)), el('span', { class: 'when' }, new Date(c.createdAt).toLocaleString())),
       el('div', {}, c.text)));
   }
   const commentInput = el('input', { class: 'form-control', placeholder: 'Add a comment…', style: 'width:100%' });
@@ -12689,7 +12800,7 @@ function activitySummary(a) {
     case 'field-updated': return `${d.field}: ${fmtValue(d.from)} → ${fmtValue(d.to)}`;
     case 'relation-updated': return `${d.field} changed`;
     case 'moved': return `moved from ${d.from} #${d.publicId}` + (d.skipped?.length ? ` — left behind: ${d.skipped.join(', ')}` : '');
-    case 'comment-added': return `comment by ${d.author ?? 'someone'}`;
+    case 'comment-added': return `comment by ${commentAuthorText(d.author)}`;
     case 'file-attached': return `attached ${d.name}`;
     case 'automation-ran': return `automation “${d.name}” ran`;
     // A field's configuration (Issue #428): the table's own entries.
@@ -12744,6 +12855,7 @@ async function showActivity(param) {
   },
     el('td', { class: 'activity-when', title: a.ts }, new Date(a.ts).toLocaleString()),
     el('td', {}, el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
+    el('td', {}, actorChipEl(a.actor)),
     el('td', {}, activitySummary(a)),
     el('td', {}, recordChip(a)),
     el('td', {}, a.entityName ?? '—')));
@@ -12764,7 +12876,7 @@ async function showActivity(param) {
       ? el('div', { class: 'card' },
         el('table', { class: 'table table-sm table-vcenter card-table table-hover wv-grid' },
           el('thead', {}, el('tr', {},
-            el('th', {}, 'When'), el('th', {}, 'Event'), el('th', {}, 'Detail'),
+            el('th', {}, 'When'), el('th', {}, 'Event'), el('th', {}, 'Actor'), el('th', {}, 'Detail'),
             el('th', {}, 'Record'), el('th', {}, 'Name'))),
           el('tbody', {}, ...rows)))
       : el('div', { class: 'wv-empty' }, 'No activity yet.'));
@@ -12836,7 +12948,7 @@ async function showActivityDetail(id) {
     row('Table', a.db ? el('a', { href: `#/table/${a.dbId}` }, a.db) : '—'),
     row('Event', el('span', { class: `k k-sys activity-kind kind-${a.kind}` }, a.kind)),
     row('When', el('span', { title: a.ts }, new Date(a.ts).toLocaleString())),
-    row('Actor', a.actor ?? '—'),
+    row('Actor', actorChipEl(a.actor) || '—'),
     // A field configuration entry (Issue #428) reads as the field, what
     // changed, and the two definitions whole; the ids and seq stay in the API.
     ...(field
@@ -12848,7 +12960,7 @@ async function showActivityDetail(id) {
           ? `${d.snapshot.rows} ${d.snapshot.rows === 1 ? 'value' : 'values'} from before this change kept for a roll back`
           : d.snapshotDropped ? 'No longer kept: a newer type change of this field replaced them' : 'Not kept')] : []),
         ...(d.restored != null ? [row('Values put back', `${d.restored} restored, ${d.left} edited since and kept, ${d.converted} newer converted`)] : [])]
-      : Object.entries(d).map(([k, v]) => row(k, fmtValue(v)))),
+      : Object.entries(d).map(([k, v]) => row(k, k === 'workflow' ? actorChipEl(`workflow:${v}`) : fmtValue(v)))),
     ...(field ? [row('Roll back', rollbackControl(a))] : []),
     row('History', el('a', { href: `#/activity/${a.entityId}` }, field ? `All field changes on ${a.db} →` : `All activity for ${a.entityName ?? 'this record'} →`)));
 

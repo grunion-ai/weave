@@ -106,6 +106,11 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .av { flex: none; width: 17px; height: 17px; border-radius: 3px; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; font-family: var(--tblr-font-monospace); font-size: 8.5px; font-weight: 600; letter-spacing: .02em; background: var(--fill, var(--tblr-bg-surface-secondary)); color: var(--text, var(--tblr-secondary)); }
 .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .av.unknown { background: none; box-shadow: inset 0 0 0 1px var(--tblr-border-color); color: var(--tblr-secondary); }
+.k-actor, .k-actor-wf.is-inline { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
+.k-actor { max-width: 100%; min-width: 0; }
+.k-actor > .k-label { flex: none; }
+.k-actor-via { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tblr-secondary); }
+.k-actor-wf .wv-icon { flex: none; }
 .hue-slate { --fill: rgba(0, 5, 20, .05); --text: #60646c; --dot: transparent; }
 .hue-blue { --fill: rgba(71, 105, 235, .12); --text: #3a5bc7; --dot: #4769eb; }
 .hue-green { --fill: rgba(46, 160, 67, .14); --text: #218358; --dot: #2ea043; }

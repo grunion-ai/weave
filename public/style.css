@@ -1058,6 +1058,20 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .av.unknown { background: none; box-shadow: inset 0 0 0 1px var(--tblr-border-color); color: var(--tblr-secondary); }
 
+.k-actor, .k-actor-wf.is-inline { background: none; border: 0; padding: 0; color: var(--tblr-body-color); }
+.k-actor { max-width: 100%; min-width: 0; }
+.k-actor > .k-label { flex: none; }
+.k-actor-via { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tblr-secondary); }
+.k-actor-wf .wv-icon { flex: none; }
+
+@keyframes wv-pulse {
+  from { background-color: rgba(var(--tblr-primary-rgb), .22); box-shadow: inset 0 0 0 1.5px rgba(var(--tblr-primary-rgb), .6); }
+  to   { background-color: rgba(var(--tblr-primary-rgb), 0);   box-shadow: inset 0 0 0 1.5px rgba(var(--tblr-primary-rgb), 0); }
+}
+.wv-pulse { animation: wv-pulse 1000ms ease-out var(--wv-pulse-delay, 0ms) 1 none; border-radius: 4px; }
+.wv-grid td.wv-pulse { border-radius: 0; }
+@media (prefers-reduced-motion: reduce) { .wv-pulse { animation: none; } }
+
 /* ---------- the hue ramp ----------
    Ten hues as a --fill/--text pair, redefined for dark rather than inverted:
    a light tint on navy is the classic unreadable cell. The first seven hexes

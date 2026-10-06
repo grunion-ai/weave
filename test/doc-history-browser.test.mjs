@@ -53,7 +53,7 @@ if (s) {
       const before = revisions().length;
       assert.equal(await rows.count(), before);
       assert.match(await rows.first().textContent(), /Current/, 'the newest row is the current text');
-      assert.match(await rows.first().textContent(), /web/, 'the actor is on the row (the browser writes as web)');
+      assert.equal(await rows.first().locator('.wv-rev-actor .k-actor .k-label').textContent(), 'Web', 'the actor is on the row, as a chip');
       assert.match(await rows.nth(1).textContent(), /\+\d+/, 'the size delta against the revision before it');
       assert.match(await rows.last().textContent(), /ago|just now/, 'a relative time');
       assert.equal(await page.locator('.wv-doc-history').evaluate((n) => n.closest('.doc-section') != null), true, 'inside the section, not a modal');
