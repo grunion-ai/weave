@@ -369,6 +369,16 @@ const DEFAULT_WORKFLOW_STATES = [
   { name: 'Canceled', category: 'canceled' },
 ];
 
+/* A Workflows row's State (Feature #249, Kyle 2026-10-03): setup, computed by
+   the engine. Ready means the rule names a table, trigger and actions that
+   exist and values that fit. */
+const WORKFLOW_STATES = [
+  { name: 'Setup incomplete', category: 'not-started', default: true },
+  { name: 'Ready', category: 'done' },
+];
+// A rule as its Script holds it: JSON, two-space indented.
+const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
+
 /* An option's colour is a name from the ten-hue ramp, which public/chip-core.js
    owns: the ramp, its two published aliases, and the one reader that turns an
    authored name or hex into a ramp name. `color` is kept in step with the hue
@@ -568,8 +578,8 @@ export const ONTOLOGY = {
       api: ['createView', 'listViews', 'getView', 'deleteView', 'resolveView', 'shareView', 'unshareView'],
     },
     {
-      key: 'automation', name: 'Automation', storedIn: 'state.automations',
-      definition: 'A rule bound to one table: a trigger — entity-created, field-updated, state-changed — and the actions it fires: set-field, append-doc, add-comment, webhook. Every rule carries seq, a monotonic per-workspace counter minted at create: the rules on one trigger fire in seq order.',
+      key: 'automation', name: 'Automation', storedIn: 'state.entities',
+      definition: 'A rule bound to one table, held as a row of Workspace/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed) and the actions it fires (set-field, append-doc, add-comment, webhook) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
       identity: 'uuid',
       api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
     },
@@ -1601,6 +1611,16 @@ export class Weave {
   }
 
   save() {
+    // State, Tables and Spaces follow the Script on every write to a
+    // Workflows row, by whichever verb wrote it (Feature #249).
+    if (this.#wfQueue.size && !this.#stamping) {
+      const ids = [...this.#wfQueue];
+      this.#wfQueue.clear();
+      for (const id of ids) {
+        const row = own(this.state.entities, id);
+        if (row && !row.deletedAt) this.#settleWorkflow(row);
+      }
+    }
     if (HELD) this.#held = true;
     else {
       this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll });
@@ -1661,6 +1681,10 @@ export class Weave {
     const id = typeof entityOrId === 'string' ? entityOrId : entityOrId.id;
     this.#dirty.add(id);
     this.#touching?.add(id);
+    // A Workflows row someone wrote is judged again at the next save, and
+    // the rules are re-read (Feature #249). The engine's own stamps are not
+    // a write to the rule.
+    if (db?.system === 'workflows' && !this.#stamping) { this.#wfQueue.add(id); this.#wfEpoch++; }
   }
 
   // The end of a deferred open (see deferMigrations). Re-read what another
@@ -1676,6 +1700,8 @@ export class Weave {
     const held = this.#held;
     this.#held = false;
     this.#migrate();
+    // A reload brings state.automations back too (Feature #249).
+    this.#migrateAutomations();
     if (held) this.save();
   }
 
@@ -1689,6 +1715,9 @@ export class Weave {
       // A CLI beside the hub may have changed this member's structure; the
       // root rows are a projection, so re-assert them (Feature #219).
       if (this.registryHost) this.#syncAll();
+      // A writer on older code beside this one can still leave a rule in
+      // state.automations; it becomes a row here (Feature #249).
+      this.#migrateAutomations();
     }
     this.#schemaVersion = null;
     this.#scales.clear();
@@ -1980,6 +2009,8 @@ export class Weave {
     }
     this.#syncTableRow(db);
     this.save();
+    // A rename is not audited, and a rule names its table (Feature #249).
+    if (patch.name != null) this.#reg.#settleWorkflows();
     return db;
   }
 
@@ -3121,7 +3152,10 @@ export class Weave {
     for (const a of Object.values(state.automations ?? {})) a.actions = (a.actions ?? []).filter((x) => x.type !== 'webhook');
     const store = new Store(null);
     store.load = () => state;
-    return new Weave({ store, actor: this.actor, keystorePath: this.keystorePath, keystoreEnv: this.keystoreEnv });
+    const copy = new Weave({ store, actor: this.actor, keystorePath: this.keystorePath, keystoreEnv: this.keystoreEnv });
+    // The rules are Workflows rows now (Feature #249), cloned with the rest.
+    copy.#noWebhooks = true;
+    return copy;
   }
 
   #buildRun(spec, { keepGoing, skipExistingRows }) {
@@ -3761,6 +3795,10 @@ export class Weave {
 
   #audit(action, detail = {}) {
     this.store.audit({ at: nowISO(), actor: this.actor, action, detail });
+    // A structural change can break a rule or mend one: judge the rows now,
+    // so a rule whose trigger field was just deleted reads Failed at once
+    // rather than at its table's next write (Feature #249).
+    this.#reg.#settleWorkflows();
   }
 
   listAudit(opts) {
@@ -4191,6 +4229,10 @@ export class Weave {
       const config = { via: f.config.via, aggregate: f.config.aggregate, ...(f.config.targetField ? { targetField: f.config.targetField } : {}), ...(f.config.where ? { where: f.config.where } : {}) };
       try { root.addField(spacesT.id, { name, type: 'rollup', config }); } catch { /* an unresolvable rollup stays in the tombstone */ }
     }
+    // A member's rules move to the root's Workflows table (Feature #249),
+    // and the rows that name it can be judged now that its tables are seen.
+    this.#migrateAutomations();
+    root.#settleWorkflows();
     return this;
   }
 
@@ -4508,12 +4550,17 @@ export class Weave {
     }
     if (!this.#sysField(wfT, 'Script')) this.addField(wfT.id, { name: 'Script', type: 'document', config: { kind: 'code' } }).system = true;
     if (!this.#sysField(wfT, 'Version')) this.addField(wfT.id, { name: 'Version', type: 'number', config: { decimals: 0 } }).system = true;
-    if (!this.#sysField(wfT, 'State')) {
-      this.addField(wfT.id, { name: 'State', type: 'workflow', config: { states: [
-        { name: 'Draft', category: 'not-started', default: true },
-        { name: 'Active', category: 'in-progress' },
-        { name: 'Deactivated', category: 'canceled' },
-      ] } }).system = true;
+    /* State is setup (Kyle, 2026-10-03): the engine computes it from whether
+       the row's rule is valid, so Draft / Active / Deactivated became Setup
+       incomplete / Ready — Deactivated said what Off says. A workspace that
+       still carries the old three is rewritten here; #settleWorkflow puts
+       every row back on one of the two. */
+    const stateF = this.#sysField(wfT, 'State');
+    if (!stateF) {
+      this.addField(wfT.id, { name: 'State', type: 'workflow', config: { states: WORKFLOW_STATES } }).system = true;
+    } else if (stateF.config.states.map((s) => s.name).join() !== WORKFLOW_STATES.map((s) => s.name).join()) {
+      stateF.config = normalizeSelfContainedConfig('workflow', { states: WORKFLOW_STATES });
+      this.save();
     }
     if (!this.#sysField(wfT, 'Health')) {
       // Ramp hues, not loose colour words: `yellow` is not one of weave's ten
@@ -4523,8 +4570,17 @@ export class Weave {
         { name: 'Healthy', hue: 'green' },
         { name: 'Warning', hue: 'amber' },
         { name: 'Failed', hue: 'red' },
+        { name: 'No runs', hue: 'slate' },
       ] } }).system = true;
     }
+    // Health is runtime (Kyle, 2026-10-03): a row that never fired reads No
+    // runs, and the reason a row Failed sits beside it for the hover.
+    const healthF = this.#sysField(wfT, 'Health');
+    if (!healthF.config.options.some((o) => o.name === 'No runs')) {
+      healthF.config.options.push(normaliseOption({ name: 'No runs', hue: 'slate' }));
+      this.save();
+    }
+    if (!this.#sysField(wfT, 'Health Reason')) this.addField(wfT.id, { name: 'Health Reason', type: 'text' }).system = true;
     if (!this.#sysField(wfT, 'Last Run')) this.addField(wfT.id, { name: 'Last Run', type: 'date', config: { time: true } }).system = true;
     if (!this.#sysField(wfT, 'Diagram')) this.addField(wfT.id, { name: 'Diagram', type: 'document' }).system = true;
     if (!this.#sysField(wfT, 'Type')) this.addField(wfT.id, { name: 'Type', type: 'select', config: { options: [] } }).system = true;
@@ -4533,8 +4589,7 @@ export class Weave {
        someone switches it. It leads the row's own columns, straight after
        Name, in the schema order and in every view; that move happens only
        when the field is minted, so a reader who moves it later keeps their
-       order. Nothing reads it yet and State stays: whether the switch
-       replaces State is one of #249's open questions. */
+       order. The engine reads it before every fire and never writes it. */
     if (!this.#sysField(wfT, 'On')) {
       const on = this.addField(wfT.id, { name: 'On', type: 'toggle', config: { on: 'On', off: 'Off' } });
       on.system = true;
@@ -4559,6 +4614,8 @@ export class Weave {
       inverse.system = true;
     }
     this.#syncAll();
+    this.#migrateAutomations();
+    this.#settleWorkflows();
   }
 
   /* ---------------- registry integrity (Issue: drifted links) ----------------
@@ -4873,6 +4930,11 @@ export class Weave {
     // (Workflows) are ordinary data and take the ordinary path — a blank
     // row from the grid foot included (Issue #241).
     if (db.system === 'workspaces') throw new WeaveError('A workspace is created from the hub (POST /api/workspaces), not as a row', 'invalid');
+    if (db.system === 'workflows') {
+      const values = { ...Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !CREATE_INPUT_KEYS.has(k))), ...(input?.values ?? {}) };
+      this.#guardWorkflowOn(null, db, values, input?.docs);
+      return undefined;
+    }
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     const flat = Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !['name', 'values', 'doc', 'docs'].includes(k)));
     const values = { ...flat, ...(input?.values ?? {}) };
@@ -4960,6 +5022,7 @@ export class Weave {
       if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(e.id, patch));
       return this.getEntity(e.id);
     }
+    if (db.system === 'workflows') { this.#guardWorkflowOn(e, db, valuesByName); return undefined; }
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     const patch = { ...valuesByName };
     if ('Workspace' in patch) {
@@ -7818,9 +7881,60 @@ export class Weave {
   }
 
   // ---------------- automations ----------------
+  /* Every automation is a row of Workspace/Workflows, and that table is the
+     control panel (Feature #249, Kyle 2026-10-02). The row's Script document
+     holds the rule as JSON — {table, trigger, actions}, with names, the shape
+     createAutomation takes — and the row carries three columns with one
+     owner each (Kyle, 2026-10-03):
+     - On is the user's switch. The engine reads it before every fire and
+       never writes it; a row that is Setup incomplete and Off refuses it.
+     - State is setup: Ready while the rule names a table, trigger and
+       actions that exist and values that fit, Setup incomplete otherwise.
+       Judged on every write to the row and on every structural change.
+     - Health is runtime: Healthy, Failed (with Health Reason) or No runs,
+       stamped with Last Run on every fire. A rule whose setup breaks while
+       On keeps On, is skipped, and reads Failed with the reason.
+     The rows live where the registry does (#reg), so a hub member's rules
+     sit at the root beside the rest of its structure. */
+
+  #stamping = false;
+  #wfQueue = new Set();
+  #wfEpoch = 0;
+  #wfRows = null;
+  #wfRules = null;
+  #noWebhooks = false;
 
   createAutomation(dbRef, { name, trigger, actions, enabled = true }) {
     const db = this.getTable(dbRef);
+    const compiled = this.#compileSpec({ table: db.id, trigger, actions });
+    const reg = this.#reg;
+    const t = this.#sysTable('workflows');
+    if (!t) throw new WeaveError('This workspace has no Workflows table to hold the rule: open it from its hub', 'invalid');
+    const wsRow = this.#sysRow('workspaces', this.state.meta.id);
+    const values = { Name: name ?? 'Automation', On: enabled !== false, ...(wsRow ? { Workspace: wsRow.id } : {}) };
+    const row = this.#asReg(() => reg.createEntity(t.id, { values, docs: { Script: workflowScript(this.#renderSpec(compiled)) } }));
+    if (!db.system) this.#audit('automation-created', { table: db.name, name: values.Name, trigger: compiled.trigger.type });
+    return this.#ruleOut(reg.#allRules().find((r) => r.row === row));
+  }
+
+  // A row write the member asked for runs at the root under the member's actor.
+  #asReg(fn) {
+    const reg = this.#reg;
+    if (reg === this) return fn();
+    const was = reg.actor;
+    reg.actor = this.actor;
+    try { return fn(); } finally { reg.actor = was; }
+  }
+
+  /* A rule in its stored, id-keyed shape, checked against this engine's
+     schema; throws the first thing missing, in the words the old
+     createAutomation used. `spec` names its table, fields and states by name
+     or id. */
+  #compileSpec(spec) {
+    if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new WeaveError('The Script is not a rule: write {"table", "trigger", "actions"} as JSON', 'invalid');
+    if (spec.table == null || spec.table === '') throw new WeaveError('The Script names no table', 'invalid');
+    const db = this.getTable(spec.table);
+    const { trigger, actions } = spec;
     if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed'].includes(trigger.type)) {
       throw new WeaveError(`Invalid automation trigger`, 'invalid');
     }
@@ -7829,63 +7943,296 @@ export class Weave {
       const f = this.getField(db.id, trigger.field);
       t.fieldId = f.id;
       if (trigger.type === 'state-changed' && trigger.toState) {
-        const st = f.config.states.find((s) => s.id === trigger.toState || s.name === trigger.toState);
+        const st = f.config.states?.find((s) => s.id === trigger.toState || s.name === trigger.toState);
         if (!st) throw new WeaveError(`Unknown state '${trigger.toState}'`, 'invalid');
         t.toStateId = st.id;
       }
     }
+    if (!Array.isArray(actions ?? [])) throw new WeaveError('The Script\'s actions are a list', 'invalid');
     const acts = (actions ?? []).map((a) => {
-      if (a.type === 'set-field') {
+      if (a?.type === 'set-field') {
         const f = this.getField(db.id, a.field);
+        this.#checkFits(f, a.value);
         return { type: 'set-field', fieldId: f.id, value: a.value };
       }
-      if (a.type === 'append-doc') {
+      if (a?.type === 'append-doc') {
         const act = { type: 'append-doc', text: String(a.text ?? '') };
         if (a.field) act.fieldId = this.#resolveDocField(db, a.field).id;
+        else if (!this.documentFields(db).length) throw new WeaveError(`Table '${db.name}' has no document to append to`, 'invalid');
         return act;
       }
-      if (a.type === 'add-comment') return { type: 'add-comment', text: String(a.text ?? ''), author: a.author ?? 'automation' };
-      if (a.type === 'webhook') {
+      if (a?.type === 'add-comment') return { type: 'add-comment', text: String(a.text ?? ''), author: a.author ?? 'automation' };
+      if (a?.type === 'webhook') {
         if (!/^https?:\/\//.test(a.url ?? '')) throw new WeaveError('Webhook action needs an http(s) url', 'invalid');
         return { type: 'webhook', url: a.url };
       }
-      throw new WeaveError(`Unknown automation action '${a.type}'`, 'invalid');
+      throw new WeaveError(`Unknown automation action '${a?.type}'`, 'invalid');
     });
     if (!acts.length) throw new WeaveError('Automation needs at least one action', 'invalid');
-    this.state.meta.automationSeq = (this.state.meta.automationSeq ?? 0) + 1;
-    const auto = { id: uuid(), seq: this.state.meta.automationSeq, dbId: db.id, name: name ?? 'Automation', trigger: t, actions: acts, enabled };
-    this.state.automations[auto.id] = auto;
-    this.save();
-    if (!db.system) this.#audit('automation-created', { table: db.name, name: auto.name, trigger: t.type });
-    return auto;
+    return { dbId: db.id, trigger: t, actions: acts };
   }
 
-  /* Every automation in fire order: by seq (Issue #285). The store already
-     loads them that way, but an import keeps the dump's key order and a
-     refresh can bring in a rule a pre-seq writer left unnumbered, so the
-     order is settled here rather than trusted to the object. An unnumbered
-     rule is the newest one there is, so it goes last. */
-  #automationsInOrder() {
-    const key = (a) => a.seq ?? Infinity;
-    return Object.values(this.state.automations).sort((x, y) => (key(x) === key(y) ? 0 : key(x) - key(y)));
+  // "The value fits": the checks the write itself would make, made early.
+  #checkFits(f, value) {
+    if (COMPUTED_TYPES.includes(f.type)) throw new WeaveError(`Field '${f.name}' is computed (${f.type}) and cannot be written`, 'invalid');
+    if (f.type === 'relation') { this.#normalizeRelationInput(f, value); return; }
+    if (f.type === 'workflow') {
+      if (value == null || value === '') return;
+      const hit = f.config.states.some((s) => s.id === value || s.name === value || s.name.toLowerCase() === String(value).toLowerCase());
+      if (!hit) throw new WeaveError(`'${value}' is not a state of '${f.name}'`, 'invalid');
+      return;
+    }
+    if (f.type !== 'document') this.#validateValue(f, value);
   }
+
+  /* The stored shape back into names: what the Script says. Null when the
+     table it points at is gone. */
+  #renderSpec(c) {
+    const db = own(this.state.tables, c.dbId);
+    if (!db || db.deletedAt) return null;
+    const fname = (fid) => {
+      if (!own(db.fields, fid)) throw new WeaveError(`Field '${fid}' not found`, 'not-found');
+      return db.fields[fid].name;
+    };
+    try {
+      const trigger = { type: c.trigger.type };
+      if (c.trigger.fieldId) trigger.field = fname(c.trigger.fieldId);
+      if (c.trigger.toStateId) {
+        const st = db.fields[c.trigger.fieldId].config.states?.find((s) => s.id === c.trigger.toStateId);
+        if (!st) return null;
+        trigger.toState = st.name;
+      }
+      const actions = c.actions.map((a) => {
+        if (a.type === 'set-field') return { type: a.type, field: fname(a.fieldId), value: a.value };
+        if (a.type === 'append-doc') return { type: a.type, ...(a.fieldId ? { field: fname(a.fieldId) } : {}), text: a.text };
+        if (a.type === 'add-comment') return { type: a.type, text: a.text, ...(a.author && a.author !== 'automation' ? { author: a.author } : {}) };
+        return { type: a.type, url: a.url };
+      });
+      return { table: this.qualifiedName(db), trigger, actions };
+    } catch { return null; }
+  }
+
+  /* The Workflows rows, in fire order: by row number, the order they were
+     made in, which is the order the old seq kept (Issue #285). Re-read when
+     someone writes a row or the state is reloaded. */
+  #workflowRows() {
+    const t = this.#sysTable('workflows');
+    if (!t) return [];
+    if (this.#wfRows?.state !== this.state || this.#wfRows.epoch !== this.#wfEpoch || this.#wfRows.table !== t) {
+      const rows = Object.values(this.state.entities).filter((e) => e.dbId === t.id).sort((a, b) => a.publicId - b.publicId);
+      this.#wfRows = { state: this.state, epoch: this.#wfEpoch, table: t, rows };
+    }
+    return this.#wfRows.rows.filter((e) => this.state.entities[e.id] === e && !e.deletedAt);
+  }
+
+  /* The engine a row's rule belongs to: the workspace its Workspace
+     relation names, or the registry itself when it names none (a row made
+     by hand at the root). Undefined when it names a member the hub has not
+     attached yet: that row waits, rather than reading as broken. */
+  #workflowHome(row) {
+    const wsId = this.#wsIdOfRow(row);
+    if (!wsId) return this;
+    return this.#engines().find((w) => w.state.meta.id === wsId);
+  }
+
+  #wfField(name) { return this.#sysField(this.#sysTable('workflows'), name); }
+
+  /* One row's rule: { row, owner, dbId, trigger, actions, problem }. Read
+     on the registry engine. */
+  #workflowRule(row, text = row.docs?.[this.#wfField('Script').id] ?? '') {
+    const owner = this.#workflowHome(row);
+    if (!owner) return null;
+    try {
+      const src = String(text).trim();
+      if (!src) throw new WeaveError('The Script is empty: write the rule as JSON {"table", "trigger", "actions"}', 'invalid');
+      let spec;
+      try { spec = JSON.parse(src); } catch (err) { throw new WeaveError(`The Script is not JSON: ${err.message}`, 'invalid'); }
+      // A table another attached workspace holds is found there too.
+      let w = owner;
+      if (spec?.table != null && !owner.findTable(spec.table)) w = this.#engines().find((x) => x.findTable(spec.table)) ?? owner;
+      return { row, owner: w, ...w.#compileSpec(spec), problem: null };
+    } catch (err) {
+      return { row, owner, dbId: null, trigger: null, actions: [], problem: err.message };
+    }
+  }
+
+  /* Every rule the registry holds, judged against the schema as it stands.
+     Cached on the rows and on every attached workspace's schema version; a
+     schema change re-judges every row and stamps what moved. */
+  #allRules() {
+    const rows = this.#workflowRows();
+    if (!rows.length) return [];
+    const engines = this.#engines();
+    const key = [this.state, this.#wfEpoch, ...engines.flatMap((w) => [w, w.schemaVersion()])];
+    const c = this.#wfRules;
+    if (c && c.key.length === key.length && c.key.every((k, i) => k === key[i])) return c.rules;
+    const schemaMoved = !c || c.key.length !== key.length || c.key.some((k, i) => i !== 1 && k !== key[i]);
+    const rules = rows.map((row) => (schemaMoved ? this.#settleWorkflow(row) : this.#workflowRule(row))).filter(Boolean);
+    // Settling may stamp; the key is taken after it, so a stamp is not news.
+    this.#wfRules = { key: [this.state, this.#wfEpoch, ...engines.flatMap((w) => [w, w.schemaVersion()])], rules };
+    if (this.#stampDirty) { this.#stampDirty = false; this.save(); }
+    return rules;
+  }
+
+  // Re-judge every row now (a load, a join, a structural change).
+  #settleWorkflows() {
+    if (!this.#sysTable('workflows')) return;
+    this.#wfRules = null;
+    this.#allRules();
+  }
+  #stampDirty = false;
+
+  // The engine's own writes to a Workflows row: no activity, no re-judging.
+  #stamp(row, fn) {
+    const was = this.#stamping;
+    this.#stamping = true;
+    try {
+      if (fn() !== false) { this.#mark(row); this.#stampDirty = true; }
+    } finally { this.#stamping = was; }
+  }
+
+  #setOption(row, field, name) {
+    const id = name == null ? null : (field.type === 'workflow' ? field.config.states : field.config.options).find((o) => o.name === name)?.id ?? null;
+    if ((row.values[field.id] ?? null) === id) return false;
+    row.values[field.id] = id;
+    return true;
+  }
+
+  /* Judge one row (on the registry engine) and stamp what follows from it:
+     State, the Tables and Spaces it touches, and Health when its setup broke
+     or mended. Returns the rule. */
+  #settleWorkflow(row) {
+    const F = (n) => this.#wfField(n);
+    const script = F('Script');
+    let rule = this.#workflowRule(row);
+    if (!rule) return null;
+    const text = row.docs?.[script.id] ?? '';
+    /* A rule that stopped resolving although nobody touched its Script was
+       broken by a rename: the ids it last resolved to still name the table,
+       fields and states, so the Script is rewritten in the new names.
+       ponytail: the rewrite keeps no revision or activity entry. */
+    if (rule.problem && row.rule?.text === text) {
+      const hit = this.#tableAnywhere(row.rule.dbId);
+      const spec = hit && hit.owner.#renderSpec(row.rule);
+      const next = spec && workflowScript(spec);
+      if (next && next !== text) {
+        this.#stamp(row, () => { row.docs[script.id] = next; });
+        rule = this.#workflowRule(row);
+      }
+    }
+    const on = row.values[F('On').id] === true;
+    const lastRun = row.values[F('Last Run').id] ?? null;
+    const health = F('Health');
+    const healthName = health.config.options.find((o) => o.id === row.values[health.id])?.name ?? null;
+    const reasonF = F('Health Reason');
+    const reason = row.values[reasonF.id] ?? '';
+    const SETUP = 'Setup incomplete: ';
+    this.#stamp(row, () => {
+      let moved = this.#setOption(row, F('State'), rule.problem ? 'Setup incomplete' : 'Ready');
+      const setReason = (r) => { if ((row.values[reasonF.id] ?? '') === r) return; row.values[reasonF.id] = r || null; moved = true; };
+      if (rule.problem && on) {
+        moved = this.#setOption(row, health, 'Failed') || moved;
+        setReason(SETUP + rule.problem);
+      } else if (!rule.problem && healthName === 'Failed' && String(reason).startsWith(SETUP)) {
+        // Mended: back to what it was before the break.
+        moved = this.#setOption(row, health, lastRun ? 'Healthy' : 'No runs') || moved;
+        setReason('');
+      } else if (!healthName) {
+        moved = this.#setOption(row, health, 'No runs') || moved;
+      }
+      if (!rule.problem) {
+        const next = { text, dbId: rule.dbId, trigger: rule.trigger, actions: rule.actions };
+        if (JSON.stringify(row.rule) !== JSON.stringify(next)) { row.rule = next; moved = true; }
+      }
+      return moved;
+    });
+    // Tables and Spaces follow the rule's table; a row with no rule keeps
+    // whatever was written there by hand.
+    if (!rule.problem) {
+      const db = rule.owner.state.tables[rule.dbId];
+      const wfT = this.#sysTable('workflows');
+      for (const [name, kind, id] of [['Tables', 'tables', db.id], ['Spaces', 'spaces', db.spaceId]]) {
+        const target = this.#sysRow(kind, id);
+        if (!target) continue;
+        const f = F(name);
+        const cur = this.#relationIds(row, f);
+        if (cur.length === 1 && cur[0] === target.id) continue;
+        this.#stamp(row, () => { this.#setRelationValue(row, wfT, f, [target.id]); });
+      }
+    }
+    return rule;
+  }
+
+  /* What a fire leaves on its row (on the registry engine). Warning is the
+     socket for a run that finished with something to look at.
+     ponytail: nothing raises Warning yet; a webhook is fire-and-forget. */
+  #stampRun(row, failure) {
+    const health = this.#wfField('Health');
+    const reasonF = this.#wfField('Health Reason');
+    this.#stamp(row, () => {
+      row.values[this.#wfField('Last Run').id] = nowISO();
+      this.#setOption(row, health, failure ? 'Failed' : 'Healthy');
+      row.values[reasonF.id] = failure ?? null;
+    });
+  }
+
+  /* Refuse switching On a row whose setup is incomplete (Kyle, 2026-10-03).
+     A row already On stays On whatever happens to its setup, and writing On
+     to it again is no switch at all. */
+  #guardWorkflowOn(e, db, values, docs = {}) {
+    if (this.#stamping || this.#migrating) return;
+    const onF = this.#sysField(db, 'On');
+    const scriptF = this.#sysField(db, 'Script');
+    if (!onF || !scriptF) return;
+    const keyOf = (f) => Object.keys(values ?? {}).find((k) => this.findField(db, k)?.id === f.id);
+    const onKey = keyOf(onF);
+    if (onKey === undefined || this.#validateValue(onF, values[onKey]) !== true) return;
+    if (e?.values[onF.id] === true) return;
+    const scriptKey = keyOf(scriptF);
+    const text = scriptKey !== undefined ? values[scriptKey] : docs?.Script ?? e?.docs?.[scriptF.id] ?? '';
+    const reg = this.#reg;
+    const probe = e ?? { dbId: db.id, values: {}, docs: {} };
+    const rule = reg.#workflowRule(probe, text ?? '');
+    if (rule?.problem) {
+      const name = values.Name ?? (e ? this.entityName(e) : '') ?? '';
+      throw new WeaveError(`Workflow '${name}' cannot be switched On until its setup is complete. ${rule.problem}`, 'invalid');
+    }
+  }
+
+  // The verbs' answer: the stored, id-keyed shape the rule always had.
+  #ruleOut(r) {
+    const out = {
+      id: r.row.id,
+      seq: r.row.publicId,
+      dbId: r.dbId,
+      name: this.#reg.entityName(r.row),
+      trigger: r.trigger,
+      actions: r.actions,
+      enabled: r.row.values[this.#wfField('On').id] === true,
+      state: r.problem ? 'Setup incomplete' : 'Ready',
+    };
+    if (r.problem) out.problem = r.problem;
+    return out;
+  }
+
+  // This workspace's rules: the rows whose rule belongs here.
+  #myRules() { return this.#reg.#allRules().filter((r) => r.owner === this); }
 
   listAutomations(dbRef = null) {
-    const all = this.#automationsInOrder();
-    if (!dbRef) return all;
-    const db = this.getTable(dbRef);
-    return all.filter((a) => a.dbId === db.id);
+    const mine = this.#myRules();
+    const db = dbRef ? this.getTable(dbRef) : null;
+    return mine.filter((r) => !db || r.dbId === db.id).map((r) => this.#ruleOut(r));
   }
 
   // Human/agent-readable automation descriptions (field ids → names).
   // Powers the relation map's automation layer.
   describeAutomations(dbRef = null) {
     return this.listAutomations(dbRef).map((auto) => {
-      const db = this.state.tables[auto.dbId];
+      const db = auto.dbId ? this.state.tables[auto.dbId] : null;
       const fieldName = (fid) => db?.fields[fid]?.name ?? null;
-      const trigger = { type: auto.trigger.type };
-      if (auto.trigger.fieldId) trigger.field = fieldName(auto.trigger.fieldId);
-      if (auto.trigger.toStateId && auto.trigger.fieldId) {
+      const trigger = auto.trigger ? { type: auto.trigger.type } : null;
+      if (auto.trigger?.fieldId) trigger.field = fieldName(auto.trigger.fieldId);
+      if (auto.trigger?.toStateId && auto.trigger.fieldId) {
         trigger.toState = db.fields[auto.trigger.fieldId]?.config.states
           ?.find((s) => s.id === auto.trigger.toStateId)?.name ?? null;
       }
@@ -7896,6 +8243,8 @@ export class Weave {
         table: db ? this.qualifiedName(db) : null,
         tableId: auto.dbId,
         enabled: auto.enabled,
+        state: auto.state,
+        ...(auto.problem ? { problem: auto.problem } : {}),
         trigger,
         actions: auto.actions.map((a) => {
           if (a.type === 'set-field') return { type: a.type, field: fieldName(a.fieldId) };
@@ -7908,74 +8257,148 @@ export class Weave {
     });
   }
 
-  updateAutomation(id, patch) {
-    const auto = own(this.state.automations, id);
-    if (!auto) throw new WeaveError(`Automation '${id}' not found`, 'not-found');
-    if (patch.enabled != null) auto.enabled = patch.enabled;
-    if (patch.name != null) auto.name = patch.name;
-    this.save();
-    const changed = ['enabled', 'name'].filter((k) => patch[k] != null);
-    const db = this.state.tables[auto.dbId];
-    if (changed.length && !db?.system) this.#audit('automation-updated', { table: db?.name ?? null, name: auto.name, patch: changed });
-    return auto;
+  // One of this workspace's Workflows rows, by id.
+  #myRow(id) {
+    const r = this.#myRules().find((x) => x.row.id === id);
+    if (r) return r.row;
+    // A trashed row is still this workspace's to answer about.
+    const t = this.#sysTable('workflows');
+    const row = t ? own(this.#reg.state.entities, id) : undefined;
+    return row && row.dbId === t.id && row.deletedAt && this.#reg.#workflowHome(row) === this ? row : null;
   }
 
+  updateAutomation(id, patch) {
+    const row = this.#myRow(id);
+    if (!row || row.deletedAt) throw new WeaveError(`Automation '${id}' not found`, 'not-found');
+    const values = {};
+    if (patch.enabled != null) values.On = !!patch.enabled;
+    if (patch.name != null) values.Name = patch.name;
+    if (Object.keys(values).length) this.#asReg(() => this.#reg.updateEntity(row.id, values));
+    const changed = ['enabled', 'name'].filter((k) => patch[k] != null);
+    const r = this.#myRules().find((x) => x.row === row);
+    const db = r?.dbId ? this.state.tables[r.dbId] : null;
+    if (changed.length && !db?.system) this.#audit('automation-updated', { table: db?.name ?? null, name: this.#reg.entityName(row), patch: changed });
+    return this.#ruleOut(r);
+  }
+
+  /* The row goes to the trash like any row, and comes back with
+     restoreEntity. */
   deleteAutomation(id) {
-    const auto = own(this.state.automations, id);
-    delete this.state.automations[id];
-    this.save();
-    const db = auto && this.state.tables[auto.dbId];
-    if (auto && !db?.system) this.#audit('automation-deleted', { table: db?.name ?? null, name: auto.name });
-    return { id, deleted: !!auto };
+    const row = this.#myRow(id);
+    if (!row || row.deletedAt) return { id, deleted: false };
+    const r = this.#myRules().find((x) => x.row === row);
+    const db = r?.dbId ? this.state.tables[r.dbId] : null;
+    this.#asReg(() => this.#reg.deleteEntity(row.id));
+    if (!db?.system) this.#audit('automation-deleted', { table: db?.name ?? null, name: this.#reg.entityName(row) });
+    return { id, deleted: true };
+  }
+
+  /* Feature #249: the rules a workspace kept in state.automations become
+     Workflows rows, in seq order (Issue #285), On = enabled, and the old
+     store empties. A row with the same Name whose Tables relation names the
+     same table is adopted instead (Net had two such rows made by hand beside
+     its engine rules): it gains the Script and keeps its id, On,
+     Description and Diagram. Idempotent: an empty state.automations is
+     done. A member opened alone has no Workflows table and keeps its rules
+     until it joins a hub. */
+  #migrating = false;
+  #migrateAutomations() {
+    const autos = Object.values(this.state.automations ?? {});
+    if (!autos.length) return;
+    const t = this.#sysTable('workflows');
+    if (!t || !this.#wfField('Script')) return;
+    const reg = this.#reg;
+    const key = (a) => a.seq ?? Infinity;
+    autos.sort((x, y) => (key(x) === key(y) ? 0 : key(x) - key(y)));
+    const wsRow = this.#sysRow('workspaces', this.state.meta.id);
+    this.#migrating = true;
+    reg.#migrating = true;
+    try {
+      for (const auto of autos) {
+        const spec = this.#renderSpec(auto) ?? { table: auto.dbId, trigger: auto.trigger, actions: auto.actions };
+        const Script = workflowScript(spec);
+        const tableRow = this.#sysRow('tables', auto.dbId);
+        const name = auto.name ?? 'Automation';
+        const adopt = tableRow && reg.#workflowRows().find((e) => reg.entityName(e) === name && reg.#relIds(e, t, 'Tables').includes(tableRow.id));
+        if (adopt) {
+          reg.#metaSync(() => reg.updateEntity(adopt.id, { Script }));
+        } else {
+          reg.#metaSync(() => reg.createEntity(t.id, { values: { Name: name, On: auto.enabled !== false, ...(wsRow ? { Workspace: wsRow.id } : {}) }, docs: { Script } }));
+        }
+        delete this.state.automations[auto.id];
+      }
+    } finally {
+      this.#migrating = false;
+      reg.#migrating = false;
+    }
+    reg.save();
+    if (reg !== this) this.save();
   }
 
   #runAutomations(db, e, event, depth) {
     if (depth >= 3) return;
-    for (const auto of this.#automationsInOrder()) {
-      if (!auto.enabled || auto.dbId !== db.id) continue;
-      const t = auto.trigger;
+    const reg = this.#reg;
+    for (const rule of reg.#allRules()) {
+      if (rule.owner !== this || rule.problem || rule.dbId !== db.id) continue;
+      if (rule.row.deletedAt || rule.row.values[reg.#wfField('On').id] !== true) continue;
+      const t = rule.trigger;
       if (t.type !== event.type) continue;
       if (t.fieldId && t.fieldId !== event.fieldId) continue;
       if (t.toStateId && t.toStateId !== event.toStateId) continue;
-      for (const action of auto.actions) {
-        if (action.type === 'set-field') {
-          const f = db.fields[action.fieldId];
-          if (f) {
-            const before = this.#undoBefore(e, db, [f]);
-            this.#applyValues(e, db, { [f.name]: action.value }, { depth: depth + 1 });
-            if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
-          }
-        } else if (action.type === 'append-doc') {
-          const docField = db.fields[action.fieldId] ?? this.documentFields(db)[0];
-          if (docField) {
-            e.docs = e.docs ?? {};
-            const cur = e.docs[docField.id] ?? '';
-            this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: cur } } });
-            e.docs[docField.id] = (cur ? cur.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
-            e.updatedAt = nowISO();
-            e.modifiedBy = this.actor;
-          }
-        } else if (action.type === 'add-comment') {
-          const comment = { id: uuid(), author: action.author, text: this.#template(action.text, e, db), createdAt: nowISO() };
-          e.comments.push(comment);
-          this.#recordUndo('comment-add', e, { commentId: comment.id });
-        } else if (action.type === 'webhook') {
-          // Fire and forget; a dead endpoint must never block a mutation.
-          const payload = {
-            event: event.type,
-            workspace: this.state.meta.name,
-            entity: this.#summary(e.id),
-            automation: auto.name,
-            at: nowISO(),
-          };
-          fetch(action.url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          }).catch(() => {});
-        }
+      const name = reg.entityName(rule.row);
+      let failure = null;
+      try {
+        for (const action of rule.actions) this.#runAction(rule, name, action, db, e, event, depth);
+      } catch (err) {
+        // A failing rule stays On (Kyle, 2026-10-03); the write that fired
+        // it stands, and the row says why.
+        failure = err.message;
       }
-      this.#logActivity(e, 'automation-ran', { name: auto.name });
+      this.#logActivity(e, 'automation-ran', { name });
+      reg.#stampRun(rule.row, failure);
+      // The write that fired the rule saves this engine; the stamp lives at
+      // the root when this is a hub member.
+      if (reg !== this) reg.save();
+    }
+  }
+
+  #runAction(rule, name, action, db, e, event, depth) {
+    if (action.type === 'set-field') {
+      const f = db.fields[action.fieldId];
+      if (f) {
+        const before = this.#undoBefore(e, db, [f]);
+        this.#applyValues(e, db, { [f.name]: action.value }, { depth: depth + 1 });
+        if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
+      }
+    } else if (action.type === 'append-doc') {
+      const docField = db.fields[action.fieldId] ?? this.documentFields(db)[0];
+      if (docField) {
+        e.docs = e.docs ?? {};
+        const cur = e.docs[docField.id] ?? '';
+        this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: cur } } });
+        e.docs[docField.id] = (cur ? cur.replace(/\n*$/, '\n\n') : '') + this.#template(action.text, e, db);
+        e.updatedAt = nowISO();
+        e.modifiedBy = this.actor;
+      }
+    } else if (action.type === 'add-comment') {
+      const comment = { id: uuid(), author: action.author, text: this.#template(action.text, e, db), createdAt: nowISO() };
+      e.comments.push(comment);
+      this.#recordUndo('comment-add', e, { commentId: comment.id });
+    } else if (action.type === 'webhook') {
+      if (this.#noWebhooks) return;
+      // Fire and forget; a dead endpoint must never block a mutation.
+      const payload = {
+        event: event.type,
+        workspace: this.state.meta.name,
+        entity: this.#summary(e.id),
+        automation: name,
+        at: nowISO(),
+      };
+      fetch(action.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
     }
   }
 
@@ -8579,7 +9002,7 @@ export class Weave {
     this.#migrate();
     this.#keepSecrets(prior);
     if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
-    else if (this.registryHost) this.#syncAll();
+    else if (this.registryHost) { this.#syncAll(); this.#migrateAutomations(); }
     this.#landBlobs();
     this.#dirtyAll = true;
     this.save();

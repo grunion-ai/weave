@@ -1,16 +1,17 @@
 /* Automations carried no ordinal (Issue #285). The engine fired the rules on
    one trigger in the order `Object.values(state.automations)` yields them,
    which is the order the store's bare `SELECT id, json FROM automations`
-   returned them: rowid order today, and whatever SQLite likes after a
-   VACUUM or a hand-edited file. Two rules that write the same field ran in an
-   order nobody stored.
+   returned them: rowid order, and whatever SQLite liked after a VACUUM or a
+   hand-edited file. Two rules that write the same field ran in an order
+   nobody stored.
 
-   Every automation now carries `seq`, a workspace-wide monotonic counter
-   minted at create (the same family as `audit_log.seq`, `doc_revisions.seq`
-   and activity's `seq`). The counter lives on `meta.automationSeq`; the store
-   loads by seq, the engine fires and lists by seq, and a workspace written
-   before seq existed is numbered once on open, in rowid order, which is the
-   order its rules fired in until now. */
+   Every rule then carried `seq`, a workspace-wide counter minted at create.
+   Since Feature #249 a rule is a row of Workspace/Workflows, and its seq is
+   the row's number: minted at create, never reused after a delete, carried
+   by export and import with the row. The rules on one trigger fire in row
+   order. A workspace still holding state.automations is moved onto rows on
+   open, in seq order, and a rule written before seq existed is numbered
+   first in rowid order, the order it fired in until then. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -35,20 +36,13 @@ function rules(w, t, letters) {
 }
 const fired = (w, t) => w.getDoc(w.createEntity(t, { name: 'probe' }).id).split(/\n+/).join('');
 
-const tmp = () => mkdtempSync(join(tmpdir(), 'weave-autoseq-'));
+// A rule in the shape state.automations held before Feature #249.
+const legacy = (t, letter, seq) => ({
+  id: `00000000-0000-4000-8000-0000000000${letter.charCodeAt(0)}`, dbId: t.id, name: `Rule ${letter}`, enabled: true,
+  trigger: { type: 'entity-created' }, actions: [{ type: 'append-doc', text: letter }], ...(seq != null ? { seq } : {}),
+});
 
-// Reorder the automations table's rowids: each id in turn moves past the
-// current maximum. Returns the order the store's own pre-seq read
-// (`SELECT id, json`, a full scan) gets back, which is rowid order. A bare
-// `SELECT id` would walk the primary-key index instead and come back in uuid
-// order: a third order, and a reminder that none of them was ever stored.
-function setRowidOrder(path, ids) {
-  const db = new DatabaseSync(path);
-  try {
-    for (const id of ids) db.prepare('UPDATE automations SET rowid = (SELECT MAX(rowid) FROM automations) + 1 WHERE id = ?').run(id);
-    return db.prepare('SELECT id, json FROM automations').all().map((r) => r.id);
-  } finally { db.close(); }
-}
+const tmp = () => mkdtempSync(join(tmpdir(), 'weave-autoseq-'));
 
 test('create mints a workspace-wide seq that never repeats', () => {
   const { w, t } = workspace();
@@ -57,24 +51,19 @@ test('create mints a workspace-wide seq that never repeats', () => {
   const [b] = rules(w, other, ['B']);
   const [c] = rules(w, t, ['C']);
   assert.deepEqual([a.seq, b.seq, c.seq], [1, 2, 3], 'one counter across tables, minted in create order');
-  assert.equal(w.state.meta.automationSeq, 3, 'the counter lives on the workspace');
   w.deleteAutomation(c.id);
   const [d] = rules(w, t, ['D']);
   assert.equal(d.seq, 4, 'a deleted rule does not give its number back');
 });
 
-test('rules on one trigger fire in seq order, not in the order SQLite returns them', () => {
+test('rules on one trigger fire in seq order, in the session that made them and after a reopen', () => {
   const dir = tmp();
   try {
     const path = join(dir, 'ws.db');
     const { w, t } = workspace({ path });
-    const [a, b, c] = rules(w, t, ['A', 'B', 'C']);
+    rules(w, t, ['A', 'B', 'C']);
     assert.equal(fired(w, t), 'ABC', 'in the session that made them');
     w.store.close();
-
-    // The file now hands the rows back as C, B, A.
-    assert.deepEqual(setRowidOrder(path, [c.id, b.id, a.id]), [c.id, b.id, a.id], 'the premise: SQLite returns them reversed');
-
     const w2 = new Weave({ path });
     const t2 = w2.getTable('Ops/Ticket');
     assert.equal(fired(w2, t2), 'ABC', 'the reopened workspace fires by seq');
@@ -84,84 +73,64 @@ test('rules on one trigger fire in seq order, not in the order SQLite returns th
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a .db written before seq existed opens cleanly and is numbered in rowid order', () => {
+test('a .db written before seq existed opens cleanly: its rules become rows in rowid order and keep firing in it', () => {
   const dir = tmp();
   try {
     const path = join(dir, 'ws.db');
     const { w, t } = workspace({ path });
-    const [a, b, c] = rules(w, t, ['A', 'B', 'C']);
     w.store.close();
-
-    // Rewrite the file into the pre-seq shape: no seq on any rule, no counter
-    // on meta. Then give it a rowid order that differs from creation order,
-    // so the test can tell rowid order from anything else.
-    let db = new DatabaseSync(path);
-    for (const row of db.prepare('SELECT id, json FROM automations').all()) {
-      const j = JSON.parse(row.json);
-      delete j.seq;
-      db.prepare('UPDATE automations SET json = ? WHERE id = ?').run(JSON.stringify(j), row.id);
+    // The pre-seq shape: no seq on any rule, no counter on meta, and a
+    // rowid order (insertion order) that is not the letters' order.
+    const db = new DatabaseSync(path);
+    for (const l of ['B', 'C', 'A']) {
+      const a = legacy(t, l);
+      db.prepare('INSERT INTO automations (id, json) VALUES (?, ?)').run(a.id, JSON.stringify(a));
     }
-    const meta = JSON.parse(db.prepare('SELECT json FROM weave_meta WHERE id = 1').get().json);
-    delete meta.meta.automationSeq;
-    db.prepare('UPDATE weave_meta SET json = ? WHERE id = 1').run(JSON.stringify(meta));
     db.close();
-    const rowidOrder = setRowidOrder(path, [b.id, c.id, a.id]);
-    assert.deepEqual(rowidOrder, [b.id, c.id, a.id]);
 
     const w2 = new Weave({ path });
     const t2 = w2.getTable('Ops/Ticket');
-    const seqs = Object.fromEntries(w2.listAutomations().map((x) => [x.id, x.seq]));
-    assert.deepEqual([seqs[b.id], seqs[c.id], seqs[a.id]], [1, 2, 3], 'backfilled in rowid order, the order they fired in before');
-    assert.equal(w2.state.meta.automationSeq, 3, 'the counter continues from the backfill');
+    assert.deepEqual(w2.listAutomations().map((x) => [x.name, x.seq]), [['Rule B', 1], ['Rule C', 2], ['Rule A', 3]], 'numbered in rowid order, the order they fired in before');
     assert.equal(fired(w2, t2), 'BCA', 'and they keep firing in that order');
     w2.store.close();
 
-    // The backfill is written through, and a second open renumbers nothing.
-    db = new DatabaseSync(path);
-    const onDisk = Object.fromEntries(db.prepare('SELECT id, json FROM automations').all().map((r) => [r.id, JSON.parse(r.json).seq]));
-    db.close();
-    assert.deepEqual(onDisk, seqs, 'the numbers are on disk');
+    const check = new DatabaseSync(path);
+    assert.equal(check.prepare('SELECT COUNT(*) AS n FROM automations').get().n, 0, 'the old rows are gone from disk');
+    check.close();
     const w3 = new Weave({ path });
-    assert.deepEqual(Object.fromEntries(w3.listAutomations().map((x) => [x.id, x.seq])), seqs, 'a second open does not renumber');
+    assert.deepEqual(w3.listAutomations().map((x) => x.seq), [1, 2, 3], 'a second open does not renumber');
     const [d] = rules(w3, w3.getTable('Ops/Ticket'), ['D']);
     assert.equal(d.seq, 4, 'a new rule takes the next number');
     w3.store.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a rule a pre-seq writer appended fires last until the next open numbers it', () => {
-  // A CLI still running pre-seq code can append a rule to the shared .db; a
-  // running server refreshes without re-opening, so the hole must sort.
+test('a rule a pre-#249 writer left in state.automations fires after the rows already numbered', () => {
   const { w, t } = workspace();
-  const [a, b, c] = rules(w, t, ['A', 'B', 'C']);
-  delete w.state.automations[a.id].seq;
-  assert.equal(fired(w, t), 'BCA', 'an unnumbered rule reads as the newest');
-
+  const [a, b] = rules(w, t, ['A', 'B']);
+  const dump = w.exportJSON({ blobs: false });
+  const x = legacy(t, 'X', 1);
+  dump.automations = { [x.id]: x };
   const w2 = new Weave();
-  w2.importJSON(w.exportJSON({ blobs: false }));
-  const seqs = Object.fromEntries(w2.listAutomations().map((x) => [x.id, x.seq]));
-  assert.equal(seqs[b.id], b.seq, 'a number already handed out never moves');
-  assert.equal(seqs[c.id], c.seq);
-  assert.equal(seqs[a.id], 4, 'the straggler takes the next one');
-  assert.equal(w2.state.meta.automationSeq, 4);
+  w2.importJSON(dump);
+  const seqs = Object.fromEntries(w2.listAutomations().map((r) => [r.name, r.seq]));
+  assert.equal(seqs['Rule A'], a.seq, 'a number already handed out never moves');
+  assert.equal(seqs['Rule B'], b.seq);
+  assert.equal(seqs['Rule X'], 3, 'the straggler takes the next one');
+  assert.equal(fired(w2, w2.getTable('Ops/Ticket')), 'ABX');
 });
 
-test('export and import carry seq and the counter', () => {
+test('export and import carry the rules as rows, with their numbers', () => {
   const { w, t } = workspace();
   const [, b] = rules(w, t, ['A', 'B', 'C']);
   w.deleteAutomation(b.id);
   const dump = w.exportJSON({ blobs: false });
-  assert.deepEqual(Object.values(dump.automations).map((x) => x.seq), [1, 3], 'the dump carries seq');
-  assert.equal(dump.meta.automationSeq, 3, 'and the counter');
-
-  // A dump whose automations object lists them backwards: the object's key
-  // order is the one thing a JSON round trip does not promise to keep.
-  const reversed = { ...dump, automations: Object.fromEntries(Object.entries(dump.automations).reverse()) };
+  assert.deepEqual(dump.automations, {}, 'nothing rides in the old store');
   const w2 = new Weave();
-  w2.importJSON(reversed);
+  w2.importJSON(dump);
   const t2 = w2.getTable('Ops/Ticket');
   assert.deepEqual(w2.listAutomations().map((x) => x.seq), [1, 3], 'imported seqs are kept as written');
-  assert.equal(fired(w2, t2), 'AC', 'fire order follows seq, not the dump key order');
+  assert.equal(fired(w2, t2), 'AC', 'fire order follows seq');
   const [d] = rules(w2, t2, ['D']);
   assert.equal(d.seq, 4, 'the imported counter carries on');
 });

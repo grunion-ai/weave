@@ -1,10 +1,9 @@
 /* Issue #285, the rules list: the relation map stacks a table's automations as
    pills under its card, in the order GET /api/automations returns them. That
    order was the order the store happened to read the rules back in; it is now
-   seq, the fire order. The seed builds two rules and then reorders the
-   in-memory object backwards, which is what a pre-seq read that returned the
-   rows in another order left behind. Playwright is NOT a dependency; the
-   suite skips when absent. */
+   seq, the fire order: since Feature #249 the Workflows row number. The seed
+   builds two rules. Playwright is NOT a dependency; the suite skips when
+   absent. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
@@ -14,7 +13,6 @@ const s = await launch('automation seq', (w) => {
   const t = w.createTable({ space: 'Ops', name: 'Ticket' });
   w.createAutomation(t, { name: 'First', trigger: { type: 'entity-created' }, actions: [{ type: 'add-comment', text: 'hi' }] });
   w.createAutomation(t, { name: 'Second', trigger: { type: 'entity-created' }, actions: [{ type: 'append-doc', text: 'x' }] });
-  w.state.automations = Object.fromEntries(Object.entries(w.state.automations).reverse());
   return { table: t };
 });
 

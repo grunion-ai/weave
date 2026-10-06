@@ -66,7 +66,7 @@ or an entity view.
 | Kind | Lives in | What it is |
 | --- | --- | --- |
 | **Saved view** | `state.meta.views` | A saved arrangement of table blocks with filters and layouts, optionally shared by token. Distinct from the entity view every entity has by existing. |
-| **Automation** | `state.automations` | A rule bound to one table: a trigger, and the actions it fires. |
+| **Automation** | a `Workspace/Workflows` row | A rule bound to one table: a trigger, and the actions it fires. Its verbs read and write the row. |
 | **Account** | `state.meta.accounts` | A named token holder with a role — architect, editor, observer. Only the hash is kept. |
 | **Credential** | the keystore, *outside* the workspace | A named secret — API key, token, password, id or pair. A key field stores the NAME; the value never enters the .db, and reading it back is gated by the credential's own access list. |
 | **Audit entry** | `store.audit_log` | A workspace-level record of a structural change. |
@@ -248,16 +248,19 @@ view.
 ### Automation
 A rule bound to one table: a trigger — entity-created, field-updated,
 state-changed — and the actions it fires: set-field, append-doc, add-comment,
-webhook.
+webhook. Since Feature #249 every rule is a row of `Workspace/Workflows`: the
+row's Script document holds it as JSON, `{table, trigger, actions}` with
+names, and `createAutomation`, `listAutomations`, `updateAutomation` and
+`deleteAutomation` (REST, MCP and the CLI alike) read and write that row.
 
-Every rule carries `seq`, a monotonic counter over the whole workspace
-(`meta.automationSeq`), minted when the rule is created and never reused after
-a delete. The rules on one trigger fire in `seq` order, and the store, the API
-(`GET /api/automations`), MCP, the CLI and the relation map's pills all list
-them that way. Every open numbers whatever rule it finds unnumbered, in rowid
-order (the order such rules fired in before `seq` existed), and never moves a
-number already handed out. `weave export` carries `seq` and the counter, and
-`weave import` keeps them as written.
+A rule's `seq` is its row number: minted when the rule is created, never
+reused after a delete, carried by export and import with the row. The rules
+on one trigger fire in `seq` order, and the API (`GET /api/automations`),
+MCP, the CLI and the relation map's pills all list them that way. A
+workspace that still holds rules in the old `state.automations` store moves
+them onto rows on open, in `seq` order (a rule older than `seq` is numbered
+in rowid order first); a hand-made row with the same Name on the same table
+is adopted rather than duplicated.
 
 ### Account
 A named token holder with a role: architect, editor, or observer (admin, writer
@@ -305,15 +308,23 @@ registry per hub, at the root; every row carries a `Workspace` relation naming
 the workspace it describes, and a row edit routes to that workspace's engine.
 
 Not every system table is a registry. `Workspace/Workflows` is a system table
-whose rows are ordinary data — one row per workflow: an On toggle (worded
+whose rows are the workspace's automations, one row per rule, and the table
+is their control panel (Feature #249). A row carries an On toggle (worded
 On / Off, off until switched, the first column after Name), the tables and
-spaces it touches (relations into the registries), its executable script (a
-code document), Version, State (Draft / Active / Deactivated), Health
-(Healthy / Warning / Failed), Last Run, a Diagram document carrying the
-workflow's mermaid, and a Type select that ships empty until workflow types
-are rolled out. The table is the workspace's automation control panel
-(Feature #249); the On toggle is its first piece, and the engine does not
-read it yet.
+spaces its rule touches (relations into the registries, kept in step with the
+rule's table), its Script (a code document holding the rule as JSON), Version,
+State, Health with its Health Reason, Last Run, a Diagram document carrying
+the workflow's mermaid, and a Type select that ships empty until workflow
+types are rolled out. Three columns, one owner each (Kyle, 2026-10-03): On is
+the user's switch, which the engine reads before every fire and never
+writes; State is setup, `Setup incomplete` or `Ready`, which the engine
+computes on every write from whether the rule names a table, trigger and
+actions that exist with values that fit, and a row that is Setup incomplete
+and Off refuses to be switched On; Health is runtime, `Healthy`, `Warning`,
+`Failed` or `No runs`, stamped with Last Run on every fire. A row whose setup
+breaks while On (its trigger field deleted, say) stays On, is skipped, and
+reads Failed with the reason; a failing row is never switched off for you.
+A hub member's rows live at the root, its Workspace relation naming it.
 
 The registries are related to each other exactly as the hierarchy says: a
 Fields row belongs to its Tables row (the `Table` field, inverse `Fields`), and

@@ -8,8 +8,9 @@ import { fresh } from './lib/fixtures.mjs';
    DATA, not mirrors of structure — each row is one workflow. Shape:
    which tables and spaces it touches (relations into the registries), the
    executable automation script itself (a code document), Version, State
-   (Draft / Active / Deactivated), Health (Healthy / Warning / Failed),
-   Last Run (a datetime), a Diagram document holding the workflow's mermaid,
+   (Setup incomplete / Ready since Feature #249), Health (Healthy / Warning /
+   Failed / No runs) with its Health Reason, Last Run (a datetime), a Diagram
+   document holding the workflow's mermaid,
    and a Type select that ships EMPTY — types are designed and rolled out
    later, the field is the socket they plug into. */
 
@@ -46,13 +47,14 @@ test('the shape: relations, script, version, state, health, last run, diagram, t
 
   const state = f(t, 'State');
   assert.equal(state.type, 'workflow');
-  assert.deepEqual(state.config.states.map((s) => s.name), ['Draft', 'Active', 'Deactivated']);
-  assert.deepEqual(state.config.states.map((s) => s.category), ['not-started', 'in-progress', 'canceled']);
-  assert.equal(state.config.states[0].default, true, 'a new workflow is a Draft');
+  assert.deepEqual(state.config.states.map((s) => s.name), ['Setup incomplete', 'Ready']);
+  assert.deepEqual(state.config.states.map((s) => s.category), ['not-started', 'done']);
+  assert.equal(state.config.states[0].default, true, 'a new workflow is Setup incomplete');
 
   const health = f(t, 'Health');
   assert.equal(health.type, 'select');
-  assert.deepEqual(health.config.options.map((o) => o.name), ['Healthy', 'Warning', 'Failed']);
+  assert.deepEqual(health.config.options.map((o) => o.name), ['Healthy', 'Warning', 'Failed', 'No runs']);
+  assert.equal(f(t, 'Health Reason').type, 'text', 'the reason a row Failed, for the hover');
 
   assert.equal(f(t, 'Last Run').type, 'date');
   assert.equal(f(t, 'Last Run').config.time, true, 'a run happens at a time, not on a day');
@@ -64,7 +66,7 @@ test('the shape: relations, script, version, state, health, last run, diagram, t
   assert.equal(type.type, 'select');
   assert.deepEqual(type.config.options, [], 'no workflow types exist yet — the field is the socket');
 
-  for (const name of ['On', 'Tables', 'Spaces', 'Script', 'Version', 'State', 'Health', 'Last Run', 'Diagram', 'Type']) {
+  for (const name of ['On', 'Tables', 'Spaces', 'Script', 'Version', 'State', 'Health', 'Health Reason', 'Last Run', 'Diagram', 'Type']) {
     assert.equal(f(t, name).system, true, `${name} is a system field`);
   }
 });
@@ -86,7 +88,7 @@ test('a workflow row is ordinary data: create, link, run, document', () => {
   w.setDoc(wf.id, '```mermaid\nflowchart LR\n  A[query Task] --> B[enrich]\n```', 'Diagram');
 
   const read = w.readEntity(wf.id);
-  assert.equal(read.fields.State, 'Draft', 'born a Draft');
+  assert.equal(read.fields.State, 'Setup incomplete', 'a script that is not a rule is setup still to do (Feature #249)');
   assert.equal(read.fields.Tables.length, 1);
   assert.equal(read.fields.Tables[0].name, 'Task');
   assert.equal(read.fields.Spaces[0].name, 'Dev');
@@ -95,11 +97,13 @@ test('a workflow row is ordinary data: create, link, run, document', () => {
   assert.equal(read.raw.Version, 1);
   assert.equal(read.fields.Version, '1', 'the display value wears the number costume');
 
-  w.setState(wf.id, 'State', 'Active');
+  // State is the engine's: a hand-set state is judged back on the write.
+  w.setState(wf.id, 'State', 'Ready');
   w.updateEntity(wf.id, { Health: 'Healthy' });
   const after = w.readEntity(wf.id);
-  assert.equal(after.fields.State, 'Active');
+  assert.equal(after.fields.State, 'Setup incomplete');
   assert.equal(after.fields.Health, 'Healthy');
+  assert.equal(after.fields.Tables[0].name, 'Task', 'a row with no rule keeps the Tables written by hand');
 
   // Ordinary rows of a system table delete like data — soft first, restorable.
   w.deleteEntity(wf.id);
@@ -152,12 +156,11 @@ test('a Workflows row is ordinary data: a blank name is accepted, as on any tabl
 });
 
 /* Feature #249 (Kyle, 2026-10-02): each automation is a row of this table
-   and the table is the control panel, so the first piece is an On switch on
-   every row. It is a system toggle worded On / Off that starts off, and it
-   leads the row's own columns, straight after Name. The engine does not read
-   it yet and the State select stays: whether the switch replaces State, a
-   workspace-wide pause and an auto-off on failure are still Kyle's to
-   decide, and are later slices of #249. */
+   and the table is the control panel, so every row carries an On switch. It
+   is a system toggle worded On / Off that starts off, and it leads the row's
+   own columns, straight after Name. It is the user's switch: the engine
+   reads it and never writes it, and State beside it is setup (Kyle,
+   2026-10-03), tested in workflows-engine.test.mjs. */
 const names = (t, ids) => ids.map((id) => t.fields[id]?.name ?? id);
 
 test('every Workflows row carries a system On toggle, worded On / Off, off until switched', () => {
@@ -170,11 +173,12 @@ test('every Workflows row carries a system On toggle, worded On / Off, off until
   assert.deepEqual(on.config, { on: 'On', off: 'Off' }, 'worded On / Off, with no default: a new workflow starts off');
   const wf = w.createEntity(t.id, { Name: 'Nightly enrich' });
   assert.equal(w.readEntity(wf.id).fields.On, false, 'born off');
+  w.setDoc(wf.id, JSON.stringify({ table: 'Dev/Task', trigger: { type: 'entity-created' }, actions: [{ type: 'append-doc', text: 'hi' }] }), 'Script');
   w.updateEntity(wf.id, { On: 'On' });
   assert.equal(w.readEntity(wf.id).fields.On, true, 'the On word switches it on');
   w.updateEntity(wf.id, { On: false });
   assert.equal(w.readEntity(wf.id).fields.On, false, 'and off again');
-  assert.equal(w.readEntity(wf.id).fields.State, 'Draft', 'and the State select is untouched: the switch does not drive it yet');
+  assert.equal(w.readEntity(wf.id).fields.State, 'Ready', 'State is setup, not the switch: Off leaves it Ready');
   assert.equal(f(t, 'State').type, 'workflow', 'State stays in place beside it');
 });
 

@@ -238,7 +238,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_create_automation',
-    description: 'Create an automation rule. trigger: {type: entity-created | field-updated | state-changed, field?, toState?}. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text}] — text supports {{FieldName}}, {{PublicId}}, {{Today}} templates.',
+    description: 'Create an automation rule as a Workspace/Workflows row, switched On; its Script holds the rule as JSON. trigger: {type: entity-created | field-updated | state-changed, field?, toState?}. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text}] — text supports {{FieldName}}, {{PublicId}}, {{Today}} templates.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, trigger: { type: 'object' }, actions: { type: 'array' } },
@@ -413,7 +413,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_automations',
-    description: 'Automations already on a table: action list | describe (rules in prose) | update | delete. Create one with weave_create_automation.',
+    description: 'Automations already on a table, read from their Workspace/Workflows rows: action list | describe (rules in prose) | update (patch: name, enabled = the row\'s On) | delete (to the trash). Create one with weave_create_automation.',
     inputSchema: {
       type: 'object',
       properties: { action: { type: 'string' }, db: { type: 'string' }, automation: { type: 'string' }, patch: { type: 'object' } },
