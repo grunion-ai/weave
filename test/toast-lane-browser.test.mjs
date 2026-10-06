@@ -18,18 +18,11 @@ const s = await launch('toast lane', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  const trashScratch = async () => {
-    const { id, deletedAt } = (await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json())).find((w) => w.name === 'scratch');
-    if (!deletedAt) await fetch(`${base}/api/workspaces/${id}`, { method: 'DELETE' });
-  };
-
   async function open(width, height, theme = 'light') {
-    await trashScratch();
     const page = await browser.newPage({ viewport: { width, height } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(base + '/');
     await page.waitForSelector('#sidebar .nav-health', { state: 'attached' });
-    await page.waitForSelector('#ws-trash');
     return page;
   }
   const rect = (page, sel) => page.evaluate((q) => [...document.querySelectorAll(q)].map((n) => {
@@ -40,7 +33,7 @@ if (s) {
   const toasts = (page) => page.locator('#wv-toasts .wv-toast');
 
   for (const [w, h] of [[1440, 900], [390, 844]]) {
-    test(`${w}: toasts never touch the bug button, its open panel or the trash`, async () => {
+    test(`${w}: toasts never touch the bug button or its open panel`, async () => {
       const page = await open(w, h);
       try {
         await page.click('.bug-fab');
@@ -52,8 +45,8 @@ if (s) {
         }, [LONG_ERR, STALE_MSG]);
         assert.equal(await toasts(page).count(), 3);
         const stack = await rect(page, '#wv-toasts .wv-toast');
-        const chrome = [...await rect(page, '.bug-fab'), ...await rect(page, '#bug-panel'), ...await rect(page, '#ws-trash')];
-        assert.equal(chrome.length, 3, 'bug button, open panel and trash are all drawn');
+        const chrome = [...await rect(page, '.bug-fab'), ...await rect(page, '#bug-panel')];
+        assert.equal(chrome.length, 2, 'bug button and open panel are both drawn');
         for (const t of stack) {
           for (const c of chrome) assert.ok(!hits(t, c), `${w}: toast ${JSON.stringify(t)} overlaps ${JSON.stringify(c)}`);
           assert.ok(t.x >= 0 && t.right <= w && t.y >= 0 && t.bottom <= h, `${w}: toast inside the viewport`);
@@ -187,7 +180,6 @@ if (s) {
         const save = (await rect(page, '#tray .tray-actions .btn-primary'))[0];
         const fab = (await rect(page, '.bug-fab'))[0];
         assert.ok(!hits(fab, bar), `the bug button clears the tray's action bar (${JSON.stringify(fab)} vs ${JSON.stringify(bar)})`);
-        assert.equal(await page.locator('#hub-foot').isVisible(), false, 'the trash steps away while the tray is open');
         for (const t of await rect(page, '#wv-toasts .wv-toast')) {
           assert.ok(!hits(t, save), 'no toast on Save changes');
           assert.ok(!hits(t, fab), 'nor on the bug button');

@@ -1592,11 +1592,6 @@ function renderNav() {
   }
 }
 
-/* The bottom-right utility cluster's lower row: the workspace trash glyph,
-   under the bug button. The instance tag left it for the sidebar (Issue
-   #380). It is a landmark (Issue #378): outside one, a screen reader's
-   region list never reaches the trash. */
-const hubFoot = () => document.querySelector('#hub-foot') ?? document.body.appendChild(el('aside', { id: 'hub-foot', 'aria-label': 'Workspace trash' }));
 
 /* ---------- shared value rendering ---------- */
 
@@ -4108,7 +4103,8 @@ async function showTrash(dbId) {
     title: db ? `${db.name} — trash` : 'Trash',
   }));
 
-  if (!items.length) {
+  const wsTrashed = db ? [] : await trashedWorkspaces();
+  if (!items.length && !wsTrashed.length) {
     main.append(el('div', { class: 'card panel empty-note' }, 'Nothing in the trash.'));
     return;
   }
@@ -4140,13 +4136,14 @@ async function showTrash(dbId) {
           } catch (err) { toast(err.message, true); }
         }, { holdingLabel: 'Hold to purge…' }))));
   }
-  main.append(el('div', { class: 'card table-wrap' },
+  if (items.length) main.append(el('div', { class: 'card table-wrap' },
     el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
       el('thead', {}, el('tr', {},
         el('th', { class: 'pid-head' }, '#'), el('th', {}, 'Name'),
         ...(db ? [] : [el('th', {}, 'Table')]),
         el('th', {}, 'Deleted'), el('th', {}, ''))),
       rows)));
+  if (wsTrashed.length) main.append(trashedWorkspacesCard(wsTrashed, () => showTrash(dbId)));
 }
 
 /* ---------- table views (Feature #229) ----------
@@ -13977,19 +13974,6 @@ async function buildWsRail() {
       }));
     // The crumbs drawn before the rail knew the workspace wear its mark now.
     refreshWsMarks();
-    // The trash: a utility glyph in the corner cluster, under the bug button,
-    // only while something is in it, opening
-    // a sheet with a Restore per workspace. It left the chip column because a
-    // chip-sized tile there read as one more workspace (Issue #204).
-    $('#ws-trash')?.remove();
-    const trashed = (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt);
-    if (trashed.length) {
-      hubFoot().prepend(el('button', {
-        id: 'ws-trash', class: 'ws-trash', type: 'button',
-        title: `Trashed workspaces (${trashed.length})`, 'aria-label': `Trashed workspaces (${trashed.length})`,
-        onclick: () => showWorkspaceTrash(trashed),
-      }, iconEl('lucide:trash-2', 'ws-trash-icon')));
-    }
   } catch { /* single-workspace hub */ }
 }
 
@@ -14023,11 +14007,11 @@ function contextMenu(e, items, extraClass = '') {
 
 /* Delete a workspace (Issue #190): soft, through DELETE /api/workspaces/:id,
    confirmed by typing the workspace's name — a hold is too cheap for a whole
-   workspace. The trash glyph in the bottom-right corner is where it comes back from. */
+   workspace. Trash in the sidebar is where it comes back from (Issue #562). */
 function confirmDeleteWorkspace(w, { current = false } = {}) {
   modal(`Delete workspace ${w.name}`, [
     el('p', { class: 'text-secondary', style: 'margin:0 0 8px' },
-      `The workspace moves to the trash — its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities stay on disk and Restore brings it back from the trash glyph in the bottom-right corner, beside the version tag. Type `,
+      `The workspace moves to the trash — its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities stay on disk and Restore brings it back from Trash in the sidebar. Type `,
       el('code', {}, w.name), ' to confirm.'),
     el('input', { name: 'confirm', class: 'form-control', placeholder: w.name, autocomplete: 'off', style: 'width:100%' }),
   ], async (fd) => {
@@ -14043,23 +14027,30 @@ function confirmDeleteWorkspace(w, { current = false } = {}) {
   document.querySelector('#modal button[type="submit"]')?.classList.replace('btn-primary', 'btn-danger');
 }
 
-function showWorkspaceTrash(trashed) {
-  modal('Workspace trash', trashed.map((w) => el('div', { class: 'wv-toolbar', style: 'margin-bottom:6px;gap:8px' },
-    el('span', { style: 'flex:1' }, w.name, ' ', el('span', { class: 'text-secondary' }, `deleted ${new Date(w.deletedAt).toLocaleString()}`)),
-    el('button', {
-      class: 'btn btn-sm', type: 'button',
-      onclick: async () => {
-        try {
-          await api('POST', `/workspaces/${w.id}/restore`);
-          toast(`Workspace ${w.name} restored`);
-          document.querySelector('#modal-back')?.remove();
-          buildWsRail();
-        } catch (err) { toast(err.message, true); }
-      },
-    }, 'Restore'))),
-  async () => {}, 'Done');
+/* Trashed workspaces (Issues #190, #562): the Trash page lists them under the
+   rows, each with a Restore. They used to hang off a glyph in the bottom-right
+   corner, which Trash in the sidebar made redundant. A workspace is the hub's,
+   not this workspace's, so a single-workspace hub has none to list. */
+async function trashedWorkspaces() {
+  try { return (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt); } catch { return []; } // a single-workspace hub has no list to read
 }
-
+function trashedWorkspacesCard(trashed, redraw) {
+  return el('div', { class: 'card panel trash-workspaces', style: 'margin-top:12px' },
+    el('h3', { class: 'card-title' }, 'Workspaces'),
+    ...trashed.map((w) => el('div', { class: 'wv-toolbar', style: 'margin-bottom:6px;gap:8px' },
+      el('span', { style: 'flex:1' }, w.name, ' ', el('span', { class: 'text-secondary' }, `deleted ${new Date(w.deletedAt).toLocaleString()}`)),
+      el('button', {
+        class: 'btn btn-sm', type: 'button',
+        onclick: async () => {
+          try {
+            await api('POST', `/workspaces/${w.id}/restore`);
+            toast(`Workspace ${w.name} restored`);
+            buildWsRail();
+            redraw();
+          } catch (err) { toast(err.message, true); }
+        },
+      }, 'Restore'))));
+}
 // Workspace logo (Feature #57, Issue #202): picked file → base64 → PUT
 // /w/<ws>/api/workspace/logo on the chip's OWN workspace — not `api()`, which
 // is pinned to the workspace being viewed — then the rail re-renders.

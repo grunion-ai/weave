@@ -39,12 +39,14 @@ if (s) {
     await page.close();
   });
 
-  test('delete confirms by typing the name, then the trash chip offers restore — in dark too', async () => {
+  test('delete confirms by typing the name, then Trash in the sidebar offers restore, in dark too', async () => {
     const page = await open('/', 'dark');
     assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), 'dark');
     await chip(page, 'scratch').click({ button: 'right' });
     await page.locator('.ws-ctx .dropdown-item', { hasText: 'Delete workspace' }).click();
     await page.waitForSelector('#modal input[name="confirm"]');
+    assert.match(await page.textContent('#modal'), /Trash in the sidebar/);
+    assert.doesNotMatch(await page.textContent('#modal'), /corner|glyph/);
     await page.fill('#modal input[name="confirm"]', 'scratchy');
     await page.click('#modal button[type="submit"]');
     await page.waitForSelector('.wv-toast.err');
@@ -52,51 +54,34 @@ if (s) {
     assert.equal(await chip(page, 'scratch').count(), 1);
     await page.fill('#modal input[name="confirm"]', 'scratch');
     await page.click('#modal button[type="submit"]');
-    await page.waitForSelector('#ws-trash');
+    await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="scratch "]'));
     assert.equal(await chip(page, 'scratch').count(), 0, 'the deleted workspace leaves the rail');
     const res = await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json());
     assert.ok(res.find((w) => w.name === 'scratch')?.deletedAt, 'the server holds the tombstone');
-    await assertTrashInCorner(page, 'dark');
-    await page.click('#ws-trash');
-    await page.locator('#modal button', { hasText: 'Restore' }).click();
+    await assertNoCornerTrash(page);
+    await page.click('#sidebar .nav-system a[href="#/trash"]');
+    await page.waitForSelector('#main .trash-workspaces');
+    assert.match(await page.textContent('#main .trash-workspaces'), /scratch/);
+    await page.locator('#main .trash-workspaces button', { hasText: 'Restore' }).click();
     await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
-    assert.equal(await page.locator('#ws-trash').count(), 0, 'an empty trash shows no chip');
+    await page.waitForFunction(() => !document.querySelector('#main .trash-workspaces'));
     await page.close();
   });
 
-  async function assertTrashInCorner(page, theme) {
-    assert.equal(await page.locator('#ws-rail #ws-trash').count(), 0, `${theme}: no trash in the chip column`);
-    const g = await page.evaluate(() => {
-      const box = (sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, right: r.right }; };
-      const t = document.querySelector('#ws-trash');
-      const cs = getComputedStyle(t);
-      return { trash: box('#ws-trash'), bug: box('.bug-fab'), healthInSidebar: !!document.querySelector('.nav-health')?.closest('#sidebar'), toggle: box('#theme-toggle'), visible: cs.visibility !== 'hidden' && cs.display !== 'none', title: t.title, color: cs.color };
-    });
-    assert.ok(g.visible && g.trash.w > 0 && g.trash.h > 0, `${theme}: the trash glyph is drawn`);
-    assert.ok(g.trash.y > g.bug.y + g.bug.h - 1, `${theme}: below the bug button (${g.trash.y} vs ${g.bug.y + g.bug.h})`);
-    assert.ok(Math.abs(g.trash.right - g.bug.right) <= 1, `${theme}: under the bug button (${g.trash.right} vs ${g.bug.right})`);
-    assert.ok(g.healthInSidebar, `${theme}: the version tag is in the sidebar`);
-    assert.equal(Math.round(g.trash.h), Math.round(g.bug.h), `${theme}: the bug button's height`);
-    assert.ok(g.trash.h < g.toggle.h, `${theme}: smaller than a rail chip (${g.trash.h} vs ${g.toggle.h})`);
-    assert.equal(g.title, 'Trashed workspaces (1)');
-    const danger = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--tblr-danger').trim());
-    const dangerRgb = await page.evaluate((d) => { const s = document.createElement('span'); s.style.color = d; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, danger);
-    assert.notEqual(g.color, dangerRgb, `${theme}: muted at rest, not red`);
-    await page.hover('#ws-trash');
-    await page.waitForFunction((rest) => getComputedStyle(document.querySelector('#ws-trash')).color !== rest, g.color, { timeout: 2000 })
-      .catch(() => assert.fail(`${theme}: hover changes the colour`));
-    await page.waitForTimeout(200);
-    const hover = await page.evaluate(() => getComputedStyle(document.querySelector('#ws-trash')).color);
-    assert.equal(hover, dangerRgb, `${theme}: red on hover`);
-    await page.mouse.move(0, 0);
+  async function assertNoCornerTrash(page) {
+    assert.equal(await page.locator('#ws-trash').count(), 0, 'no trash glyph');
+    assert.equal(await page.locator('#hub-foot').count(), 0, 'no corner row for it to sit in');
+    assert.equal(await page.locator('#sidebar .nav-system a[href="#/trash"]').count(), 1, 'the Trash row is still in the sidebar');
   }
 
-  test('with one trashed workspace the glyph sits in the corner cluster — light theme', async () => {
+  test('with one trashed workspace the corner stays empty and Trash lists it, light theme', async () => {
     const { id, deletedAt } = (await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json())).find((w) => w.name === 'scratch');
     if (!deletedAt) await fetch(`${base}/api/workspaces/${id}`, { method: 'DELETE' });
     const page = await open('/', 'light');
-    await page.waitForSelector('#ws-trash');
-    await assertTrashInCorner(page, 'light');
+    await assertNoCornerTrash(page);
+    await page.goto(`${base}/#/trash`);
+    await page.waitForSelector('#main .trash-workspaces');
+    assert.match(await page.textContent('#main .trash-workspaces'), /scratch/);
     await fetch(`${base}/api/workspaces/${id}/restore`, { method: 'POST' });
     await page.close();
   });

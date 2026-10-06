@@ -486,11 +486,9 @@ test('a toast never covers the report button', () => {
     'the lane ends left of the open panel, which is wider than the button');
 });
 
-test('the report button stacks above the trash it shares a corner with', () => {
-  const fab = CSS.match(/\.bug-fab\s*{([^}]*)}/)[1];
-  const foot = CSS.match(/#hub-foot\s*{([^}]*)}/)[1];
-  const bottom = (decl) => Number(decl.match(/bottom:\s*(\d+)px/)[1]);
-  assert.ok(bottom(fab) > bottom(foot), 'the report button stacks above the trash');
+test('the corner carries no trash glyph: Trash is a row in the sidebar (Issue #562)', () => {
+  assert.doesNotMatch(CSS, /#hub-foot|\.ws-trash/);
+  assert.doesNotMatch(APP, /hubFoot|ws-trash|#hub-foot/);
 });
 
 test('a quiet successful read is not evidence, and does not crowd out what is', () => {

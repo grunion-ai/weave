@@ -912,7 +912,7 @@ weave workspace require-auth
 weave workspace link-preview        # or --off
 \`\`\`
 
-The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for its menu: **Update logo…** picks an image for that workspace, whether or not it has one yet; **Remove logo** clears it; **Delete workspace…** asks you to type its name to confirm, and it moves to the trash — a small trash glyph in the bottom-right corner, under the bug button beside the version tag, that appears only while something is in it and opens a sheet with a Restore per workspace; the default and the \`weave\` docs workspaces cannot be deleted. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
+The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. Right-click any chip (or click the current one) for its menu: **Update logo…** picks an image for that workspace, whether or not it has one yet; **Remove logo** clears it; **Delete workspace…** asks you to type its name to confirm, and it moves to the trash: the Trash row in the sidebar lists it under Workspaces, with a Restore; the default and the \`weave\` docs workspaces cannot be deleted. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
 
 ## Sharing a link
 
@@ -1373,7 +1373,7 @@ The system registry — **Spaces**, **Tables**, **Fields** and **Workflows** as 
 
 ## System rows in the sidebar
 
-Three fixed rows sit at the bottom of the sidebar, under the spaces: **Workflows** (the Workflows table, shown at the root only), **Activity** (every change in the workspace, \`#/activity\`) and **Trash** (every trashed row in the workspace, \`#/trash\`). They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces row, and Restore on that row brings the whole structure back. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
+Three fixed rows sit at the bottom of the sidebar, under the spaces: **Workflows** (the Workflows table, shown at the root only), **Activity** (every change in the workspace, \`#/activity\`) and **Trash** (every trashed row in the workspace, \`#/trash\`). They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces row, and Restore on that row brings the whole structure back. A workspace you deleted from the icon rail is listed there too, under Workspaces, with its own Restore. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
 
 ## The Workspaces table
 

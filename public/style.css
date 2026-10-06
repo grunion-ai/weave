@@ -1982,21 +1982,9 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 [data-bs-theme="dark"] #main > .grid-loader .mark-dark { display: block; }
 @media (prefers-reduced-motion: reduce) { #main > .grid-loader, #main > .table-wrap[aria-busy="true"] { animation: none; transition: none; } }
 .fielddef-edit { display: inline-flex; align-items: center; gap: 4px; }
-/* The corner cluster's lower row (Issue #204): the workspace trash glyph,
-   pinned bottom-right under the bug button. A tray reaches the bottom edge,
-   so the trash steps away while one is open (Issue #380). */
-#hub-foot { position: fixed; right: 12px; bottom: 10px; z-index: 55; display: flex; align-items: center; gap: 6px; }
-body:has(#tray-back) #hub-foot { display: none; }
 /* The instance tag, under the stats line in the sidebar foot (Issue #380).
    It wraps inside the foot rather than running past it. */
 .nav-health { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; line-height: 16px; color: var(--tblr-secondary); font-family: var(--tblr-font-sans-serif); font-variant-numeric: tabular-nums; background: var(--wv-pill-hover); border: 1px solid transparent; border-radius: 4px; padding: 2px 6px; }
-/* The workspace trash (Issues #190, #204): the bug button's size and costume,
-   muted at rest, red only on hover so the corner says what it is. Present only
-   while a workspace is in the trash. */
-.ws-trash { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: 7px; color: var(--tblr-secondary); cursor: pointer; opacity: .85; transition: color .12s, border-color .12s; }
-.ws-trash:hover, .ws-trash:focus-visible { color: var(--tblr-danger); border-color: var(--tblr-danger); opacity: 1; }
-.ws-trash-icon { display: flex; width: var(--wv-icon-md); height: var(--wv-icon-md); margin: 0; }
-.ws-trash-icon svg { width: 100%; height: 100%; }
 /* A stale instance wears the warning: the chip is how you notice without
    the toast (Kyle, 2026-09-02). */
 .nav-health.is-behind { color: var(--wv-warn-text); border-color: var(--tblr-warning); }
@@ -2623,9 +2611,7 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .chip-pop { max-height: min(70vh, 560px); overflow-y: auto; }
 
 /* ---------- bug reporter (Feature #141) ----------
-   The button lives in the bottom-right corner, stacked above the row it
-   shares that corner with (#hub-foot — the trash glyph — sits at
-   bottom: 10px, 26px tall; 40px clears it by 4px). The
+   The button lives in the bottom-right corner. The
    panel floats beside it rather than over the page: reporting a bug must not
    cover the bug. Small on purpose (Kyle, 2026-08-25) — this is a corner
    affordance, not a form. Every surface is a Tabler token, so both themes
