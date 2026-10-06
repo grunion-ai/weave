@@ -44,3 +44,20 @@ test('the actor is restored even when an action throws', () => {
   w.createEntity(t.id, { Name: 'R' });
   assert.equal(w.actor, 'kyle');
 });
+
+test('a comment an automation adds is signed workflow:<row id>, and its Script stays author-free (Issue #684)', () => {
+  const { w, t, auto } = demo();
+  const req = w.createEntity(t.id, { Name: 'R' });
+  w.setState(req.id, 'Status', 'Done');
+  const comments = w.getEntity(req.id).comments;
+  assert.deepEqual(comments.map((c) => [c.author, c.text]), [[`workflow:${auto.id}`, 'Closed.']]);
+  assert.deepEqual(JSON.parse(w.readEntity(auto.id).docs.Script).actions[2], { type: 'add-comment', text: 'Closed.' });
+  assert.equal(w.describeAutomations()[0].actions[2].type, 'add-comment');
+});
+
+test('an add-comment action that names its own author keeps it', () => {
+  const { w, t } = demo();
+  w.createAutomation(t.id, { name: 'Bot note', trigger: { type: 'entity-created' }, actions: [{ type: 'add-comment', text: 'hi', author: 'release-bot' }] });
+  const req = w.createEntity(t.id, { Name: 'R' });
+  assert.deepEqual(w.getEntity(req.id).comments.map((c) => c.author), ['release-bot']);
+});

@@ -6311,7 +6311,7 @@ export class Weave {
         else if (!this.documentFields(db).length) throw new WeaveError(`Table '${db.name}' has no document to append to`, 'invalid');
         return act;
       }
-      if (a?.type === 'add-comment') return { type: 'add-comment', text: String(a.text ?? ''), author: a.author ?? 'automation' };
+      if (a?.type === 'add-comment') return { type: 'add-comment', text: String(a.text ?? ''), ...(a.author && a.author !== 'automation' ? { author: a.author } : {}) };
       if (a?.type === 'webhook') {
         if (!/^https?:\/\//.test(a.url ?? '')) throw new WeaveError('Webhook action needs an http(s) url', 'invalid');
         return { type: 'webhook', url: a.url };
@@ -6352,7 +6352,7 @@ export class Weave {
       const actions = c.actions.map((a) => {
         if (a.type === 'set-field') return { type: a.type, field: fname(a.fieldId), value: a.value };
         if (a.type === 'append-doc') return { type: a.type, ...(a.fieldId ? { field: fname(a.fieldId) } : {}), text: a.text };
-        if (a.type === 'add-comment') return { type: a.type, text: a.text, ...(a.author && a.author !== 'automation' ? { author: a.author } : {}) };
+        if (a.type === 'add-comment') return { type: a.type, text: a.text, ...(a.author ? { author: a.author } : {}) };
         return { type: a.type, url: a.url };
       });
       return { table: this.qualifiedName(db), trigger, actions };
@@ -6679,7 +6679,7 @@ export class Weave {
         e.modifiedBy = this.actor;
       }
     } else if (action.type === 'add-comment') {
-      const comment = { id: uuid(), author: action.author, text: this.#template(action.text, e, db), createdAt: nowISO() };
+      const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db), createdAt: nowISO() };
       e.comments.push(comment);
       this.#recordUndo('comment-add', e, { commentId: comment.id });
     } else if (action.type === 'webhook') {
