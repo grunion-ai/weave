@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let wide, narrow;
+let wide, narrow, loaded;
 const s = await launch('fields popover drag and height', (weave) => {
   weave.createSpace({ name: 'Ops' });
   wide = weave.createTable({ space: 'Ops', name: 'Wide' });
@@ -11,6 +11,13 @@ const s = await launch('fields popover drag and height', (weave) => {
   narrow = weave.createTable({ space: 'Ops', name: 'Narrow' });
   weave.addField(narrow, { name: 'Owner', type: 'text' });
   weave.createEntity(narrow, { name: 'Row' });
+  loaded = weave.createTable({ space: 'Ops', name: 'Loaded' });
+  weave.addField(loaded, { name: 'Owner', type: 'text' });
+  weave.addField(loaded, { name: 'Stage', type: 'text' });
+  weave.addField(loaded, { name: 'Amount', type: 'number' });
+  for (let i = 1; i <= 3; i++) {
+    weave.createEntity(loaded, { name: `Case ${i}`, values: { Owner: `Owner ${i}`, Stage: 'Open', Amount: i * 10 } });
+  }
 });
 
 if (s) {
@@ -54,6 +61,76 @@ if (s) {
       await page.mouse.up();
       await page.waitForLoadState('networkidle');
       assert.deepEqual(weave.tableView(narrow).views[0].fields, ['Owner', 'Name', 'Description'], 'Escape moved nothing');
+    } finally { await page.close(); }
+  });
+
+  test('a hide leaves the grid with no read of its own, and a show reads once (Issue #328)', async () => {
+    const viewId = weave.tableView(loaded).views[0].id;
+    weave.tableView(`${loaded.id}/${viewId}`, { fields: ['Name', 'Owner', 'Stage', 'Amount'] });
+    const viewFields = () => weave.tableView(`${loaded.id}/${viewId}`).fields;
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      let queries = 0;
+      page.on('request', (r) => {
+        if (r.method() === 'POST' && r.url().endsWith(`/api/tables/${loaded.id}/query`)) queries++;
+      });
+      const patches = [];
+      let gate = null;
+      await page.route(`**/api/tables/${loaded.id}/views/**`, async (route) => {
+        if (route.request().method() !== 'PATCH') return route.continue();
+        patches.push(route.request().postDataJSON());
+        if (gate) await gate.held;
+        await route.continue();
+      });
+      const colWidths = () => page.evaluate(() => Object.fromEntries(
+        [...document.querySelectorAll('#main .wv-grid thead th.col-head')]
+          .map((th) => [th.dataset.col, Math.round(th.getBoundingClientRect().width)])));
+      const columns = () => page.evaluate(() => [...document.querySelectorAll('#main .wv-grid thead th.col-head')].map((th) => th.dataset.col));
+      const cellsOf = (col) => page.evaluate((c) => [...document.querySelectorAll(`#main .wv-grid tbody td[data-field="${c}"]`)]
+        .map((td) => (td.textContent.trim() || td.querySelector('input')?.value || '').trim()), col);
+      const until = async (ok, what) => {
+        for (const t0 = Date.now(); !ok();) {
+          if (Date.now() - t0 > 5000) throw new Error(`timed out waiting for ${what}`);
+          await new Promise((r) => setTimeout(r, 20));
+        }
+      };
+      await page.goto(`${base}/#/table/${loaded.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#main .wv-grid thead th.col-head[data-col="Stage"]');
+      const before = await colWidths();
+      assert.deepEqual(await columns(), ['Name', 'Owner', 'Stage', 'Amount']);
+
+      queries = 0;
+      await page.click('.eye-btn');
+      await page.locator('.table-fields-popover').evaluate((pop) => Promise.all(pop.getAnimations().map((a) => a.finished)));
+      let release;
+      gate = { held: new Promise((r) => { release = r; }) };
+      await page.click('.table-field-row[data-field="Stage"] input');
+      await page.waitForFunction(() => ![...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === 'Stage'), null, { timeout: 2000 });
+      assert.equal(patches.length, 1, 'the hide is on the wire');
+      assert.equal(queries, 0, 'the column left the grid before its PATCH answered, with no table read');
+      release();
+      await until(() => !viewFields().includes('Stage'), 'the hide to reach the view');
+      await page.waitForTimeout(600);
+      assert.deepEqual(viewFields(), ['Name', 'Owner', 'Amount'], 'the hide reached the view');
+      assert.deepEqual(await columns(), ['Name', 'Owner', 'Amount'], 'the grid drew the remaining columns');
+      assert.equal(queries, 0, 'a hide reads no rows at all');
+      const afterHide = await colWidths();
+      for (const c of ['Name', 'Owner', 'Amount']) {
+        assert.equal(afterHide[c], before[c], `${c} kept its width through the hide`);
+      }
+
+      gate = null;
+      queries = 0;
+      await page.click('.table-field-row[data-field="Stage"] input');
+      await page.waitForFunction(() => [...document.querySelectorAll('#main .wv-grid thead th.col-head')].some((th) => th.dataset.col === 'Stage'), null, { timeout: 4000 });
+      await page.waitForTimeout(600);
+      assert.deepEqual(await cellsOf('Stage'), ['Open', 'Open', 'Open'], 'the shown column carries its data');
+      assert.equal(queries, 1, 'a show reads the rows once');
+      const afterShow = await colWidths();
+      for (const c of ['Name', 'Owner', 'Amount']) {
+        assert.equal(afterShow[c], before[c], `${c} kept its width through the show`);
+      }
+      assert.deepEqual(await columns(), ['Name', 'Owner', 'Stage', 'Amount'], 'the column came back where it was');
     } finally { await page.close(); }
   });
 

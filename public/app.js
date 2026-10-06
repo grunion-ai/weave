@@ -3543,9 +3543,10 @@ function tableFieldsPopover(anchor, db, trashCount) {
   let order = [...new Set([...(db.columns || []), ...raw().fields.map((f) => f.name), ...systemColumns])];
   const movedHidden = new Set();
   const here = () => state.route?.page === 'db' && state.route.dbId === db.id && state.route.view === db.view?.id;
-  const write = (make) => {
+  const write = (make, { hides = null } = {}) => {
     if (db.view?.blank) { toast(BLANK_READ_ONLY, true); return; }
-    const release = gridHold();
+    const painted = hides && here() && dropDrawnColumn(db.id, hides);
+    const release = eyeGesture(painted ? () => {} : gridHold());
     const turn = eyeWrites.then(async () => {
       const patch = make(current());
       if (patch.table) { await api('PATCH', `/tables/${db.id}`, patch.table); await loadSchema(); }
@@ -3553,13 +3554,16 @@ function tableFieldsPopover(anchor, db, trashCount) {
     }).catch((err) => toast(err.message, true));
     eyeWrites = turn; eyeTails.set(db.id, turn);
     turn.then(async () => {
-      if (eyeTails.get(db.id) !== turn) return release();
-      eyeTails.delete(db.id);
-      if (!here()) return release();
-      try { await keepScroll(() => showDatabase(db.id, db.view.id)); if (dock?.db.id === db.id) await drawDock(); }
-      catch (err) { toast(err.message, true); }
-      release();
-      if (pop?.isConnected) refresh(current());
+      try {
+        if (eyeTails.get(db.id) !== turn) return;
+        eyeTails.delete(db.id);
+        if (!here()) return;
+        try {
+          if (!painted || !drawnMatches(current())) await keepScroll(() => showDatabase(db.id, db.view.id));
+          if (dock?.db.id === db.id) await drawDock();
+        } catch (err) { toast(err.message, true); }
+        if (pop?.isConnected) refresh(current());
+      } finally { release(); }
     });
   };
   const flip = (name) => write((t) => {
@@ -3570,7 +3574,7 @@ function tableFieldsPopover(anchor, db, trashCount) {
     const next = order.slice(order.indexOf(name) + 1).find((n) => shown.includes(n));
     const previous = order.slice(0, order.indexOf(name)).reverse().find((n) => shown.includes(n));
     return { show: [name], ...(next ? { move: { field: name, before: next } } : previous ? { move: { field: name, after: previous } } : {}) };
-  });
+  }, { hides: (current().columns || []).includes(name) ? name : null });
   const move = (from, target, after) => {
     if (from === target || db.view?.blank) return;
     order = order.filter((n) => n !== from);
@@ -3821,6 +3825,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null) {
   };
 
   renderTable(main, db, items, onSaved, state.inlineAdd, pager);
+  main.wvDraw = { db, items, trashCount, pager };
   paintGridWait();
   main.querySelector('.table-wrap')?.addEventListener('keydown', (e) => {
     if (e.isComposing || e.altKey) return;
@@ -3845,15 +3850,26 @@ function eyeGlyph() {
 
 let eyeWrites = Promise.resolve();
 const eyeTails = new Map();
+let eyeGestures = 0;
+function eyeGesture(hold) {
+  eyeGestures++;
+  let done = false;
+  return () => { if (done) return; done = true; eyeGestures--; hold(); };
+}
+function showSwitch(node, on = node.getAttribute('aria-checked') !== 'true') {
+  node.setAttribute('aria-checked', on ? 'true' : 'false');
+  node.querySelector('.switch')?.classList.toggle('on', on);
+}
 
 function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true } = {}) {
   if (db.view && rowsSection) return tableFieldsPopover(anchor, db, trashCount);
   const row = (on, label, run) => el('button', {
     class: 'chip-pop-row eye-row', type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false',
-    onclick: (e) => { e.stopPropagation(); run(); },
+    onclick: (e) => { e.stopPropagation(); showSwitch(e.currentTarget); run(); },
   }, el('span', { class: 'eye-label' }, label), el('span', { class: 'switch' + (on ? ' on' : '') }, el('span', { class: 'switch-knob' })));
-  const save = (patchOf) => {
-    const release = home?.id === 'main' ? gridHold() : () => {};
+  const save = (patchOf, { hides = null } = {}) => {
+    const painted = hides && home?.id === 'main' && !redraw && stillShown() && dropDrawnColumn(db.id, hides);
+    const release = eyeGesture(home?.id === 'main' && !painted ? gridHold() : () => {});
     const turn = eyeWrites.then(async () => {
       const patch = patchOf(liveTable());
       if (patch.view) await gridConfigWrite(db, null, patch.view);
@@ -3862,10 +3878,14 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
     eyeWrites = turn;
     eyeTails.set(db.id, turn);
     turn.then(async () => {
-      if (eyeTails.get(db.id) !== turn) return release();
-      eyeTails.delete(db.id);
-      await paint();
-      release();
+      try {
+        if (eyeTails.get(db.id) !== turn) return;
+        eyeTails.delete(db.id);
+        if (painted && drawnMatches(liveTable())) {
+          const open = document.querySelector('.chip-pop');
+          if (open?.eyeOf === db.id) open.relearnEye();
+        } else await paint();
+      } finally { release(); }
     });
   };
   const home = anchor.closest('#main, #dock');
@@ -3901,7 +3921,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
         if (db.view) return { view: { [next.has(f.name) ? 'show' : 'hide']: [f.name] } };
         if (next.has(f.name)) next.delete(f.name); else next.add(f.name);
         return { hiddenFields: [...next] };
-      }))),
+      }, { hides: visibleCols(liveTable()).includes(f.name) ? f.name : null }))),
       el('div', { class: 'eye-head' }, 'System'),
       ...Object.keys(SYSTEM_COLS).map((n) => row(sysOn.has(n), n, () => save((t) => {
         if (db.view) return { view: { [(t.columns ?? []).includes(n) ? 'hide' : 'show']: [n] } };
@@ -3928,6 +3948,24 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
       if (wasFocused != null) [...p.querySelectorAll('.eye-row')].find((r) => r.querySelector('.eye-label')?.textContent === wasFocused)?.focus();
     });
   };
+}
+
+function dropDrawnColumn(dbId, name) {
+  const drawn = $('#main')?.wvDraw;
+  if (!drawn || drawn.db.id !== dbId || !visibleCols(drawn.db).includes(name)) return false;
+  if (!drawn.db.columns && !colField(drawn.db, name)) return false;
+  const db = drawn.db.columns
+    ? { ...drawn.db, columns: drawn.db.columns.filter((n) => n !== name) }
+    : { ...drawn.db, hiddenFields: [...(drawn.db.hiddenFields ?? []), name] };
+  keepScroll(() => drawDatabase(db, drawn.items, drawn.trashCount, drawn.pager)).catch((err) => toast(err.message, true));
+  return true;
+}
+function drawnMatches(db) {
+  const drawn = $('#main')?.wvDraw?.db;
+  return !!drawn && drawn.id === db.id
+    && String(visibleCols(drawn)) === String(visibleCols(db))
+    && (drawn.view?.frozen ?? 0) === (db.view?.frozen ?? 0)
+    && String(drawn.systemFields ?? []) === String(db.systemFields ?? []);
 }
 
 function visibleCols(db) {
@@ -10860,6 +10898,7 @@ function syncSchema() {
       toast('Schema changed elsewhere — reopen this entity to see new fields');
       return;
     }
+    if (eyeGestures) return;
     route();
   });
 }

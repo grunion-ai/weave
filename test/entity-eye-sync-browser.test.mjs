@@ -73,7 +73,9 @@ if (s) {
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
     await toggleAmount(page, '#dock');
+    await page.waitForFunction(() => [...document.querySelectorAll('#dock .entity-fields .fieldrow label')].some((l) => l.textContent.trim() === 'Amount'), null, { timeout: 10000 });
     assert.equal(await paneHasAmount(page), true, 'the pane shows Amount again');
+    await page.waitForFunction(() => [...document.querySelectorAll('#main .wv-grid thead th')].some((th) => th.textContent.includes('Amount')), null, { timeout: 10000 });
     assert.equal(await gridHasAmount(page), true, 'and the grid follows without a redraw by hand');
     await page.close();
   });

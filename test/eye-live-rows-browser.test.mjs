@@ -124,9 +124,8 @@ if (s) {
     assert.deepEqual(hiddenNow(), ['Amount', 'Stage'], 'neither flip overwrote the other');
     assert.deepEqual(patches, [{ hide: ['Amount'] }, { hide: ['Stage'] }],
       'the second flip read the table after the first one landed');
-    await until(() => draws >= 1, 'the redraw').catch(() => {});
     await page.waitForLoadState('networkidle');
-    assert.equal(draws, 1, 'the pair redrew the grid once');
+    assert.equal(draws, 0, 'neither hide read the rows back: the grid already had them (Issue #328)');
     await page.close();
   });
 

@@ -1239,8 +1239,17 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
     'every switch writes through one queue, reading the table only when its turn comes');
   assert.match(eye, /if \(patch\.view\) await gridConfigWrite\(db, null, patch\.view\);\s*else \{ await api\('PATCH', `\/tables\/\$\{db\.id\}`, patch\); await loadSchema\(\); \}/,
     "a field flip on a view writes the view (Feature #229), inside the same queue");
-  assert.match(eye, /turn\.then\(async \(\) => \{\s*if \(eyeTails\.get\(db\.id\) !== turn\) return release\(\);\s*eyeTails\.delete\(db\.id\);\s*await paint\(\);\s*release\(\);/,
+  assert.match(eye, /turn\.then\(async \(\) => \{\s*try \{\s*if \(eyeTails\.get\(db\.id\) !== turn\) return;\s*eyeTails\.delete\(db\.id\);\s*if \(painted && drawnMatches\(liveTable\(\)\)\) \{/,
     "the paint runs off the queue, once, after the last write of a burst on this table");
+  assert.match(eye, /\} finally \{ release\(\); \}/, 'and the hold it took is always let go');
+  assert.match(eye, /const painted = hides && home\?\.id === 'main' && !redraw && stillShown\(\) && dropDrawnColumn\(db\.id, hides\);/,
+    'a hide leaves the drawn grid before its write goes out (Issue #328)');
+  assert.match(fnBody('tableFieldsPopover'), /const painted = hides && here\(\) && dropDrawnColumn\(db\.id, hides\);/,
+    'and the same for the view popover');
+  assert.match(fnBody('tableFieldsPopover'), /if \(!painted \|\| !drawnMatches\(current\(\)\)\) await keepScroll/,
+    'a hide reads the rows back only when the table disagrees with what was painted (Issue #328)');
+  assert.match(fnBody('dropDrawnColumn'), /drawDatabase\(db, drawn\.items, drawn\.trashCount, drawn\.pager\)/,
+    'the hide repaints the rows the grid already holds, with no read');
   assert.match(eye, /if \(pop\?\.eyeOf === db\.id\) pop\.relearnEye\(\)/,
     "a late paint teaches only an eye on this table, never a ⋮ menu opened since");
   assert.match(eye, /if \(stillShown\(\)\) redraw \?/, 'and redraws its page only while that page is on screen');

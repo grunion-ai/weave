@@ -33,6 +33,9 @@ if (s) {
     await page.click('.eye-btn');
     await page.locator('.eye-row', { hasText: name }).first().click();
     await page.waitForFunction(switchReads, [name, was ? 'true' : 'false']);
+    for (const t0 = Date.now(); hiddenNow().includes(name) === was && Date.now() - t0 < 5000;) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
     assert.equal(hiddenNow().includes(name), !was, `the ${name} flip reached the table`);
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.chip-pop'));
@@ -48,6 +51,7 @@ if (s) {
     const page = await open();
     await flip(page, 'Chip');
     assert.ok(hiddenNow().includes('Chip'), 'the eye wrote the hidden set');
+    await page.waitForFunction(() => !document.querySelector('.wv-appears-chip'));
     assert.deepEqual(await strip(page), { strip: true, chip: false, card: true });
     await page.close();
   });
@@ -55,8 +59,10 @@ if (s) {
   test('Card switched off too: no strip at all — and switching Chip back on brings it back', async () => {
     const page = await open();
     await flip(page, 'Card');
+    await page.waitForFunction(() => !document.querySelector('.wv-appears'));
     assert.deepEqual(await strip(page), { strip: false, chip: false, card: false });
     await flip(page, 'Chip');
+    await page.waitForFunction(() => !!document.querySelector('.wv-appears-chip'));
     assert.deepEqual(await strip(page), { strip: true, chip: true, card: false });
     await page.close();
   });
