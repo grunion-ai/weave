@@ -2252,7 +2252,8 @@ test('a behind instance raises the toast and tints its chip', () => {
   assert.match(nav, /h\.behind/, 'the chip reads the health verdict');
   assert.match(nav, /is-behind/, 'and wears it');
   assert.match(nav, /toast\([^)]*behind main/, 'the toast names the condition');
-  assert.match(nav, /promote/, 'and the way out');
+  assert.match(nav, /behind main \(.*\)\. Run git pull, then restart weave\./, 'and the way out works on a plain clone (Issue #458)');
+  assert.doesNotMatch(nav, /service promote/, 'not a command that needs a gerrit remote (Issue #649 removed it)');
   const chip = rulesFor('.nav-health.is-behind');
   assert.ok(chip.color, 'the stale chip changes color');
 });

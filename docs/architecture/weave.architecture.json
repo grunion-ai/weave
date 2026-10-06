@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "53b928076e2131ff5c25e429af5390e374b6a8ff"
+      "revision": "348b36ebb603987b180096fb9b834915a861b30d"
     },
     "views": [
       {
@@ -457,7 +457,7 @@
       "items": [
         "src/handbook.js writes the Handbook into the weave workspace",
         "src/weaver-seed.js and src/quality-mirror.js sync Development and Quality",
-        "src/service.js, src/rehearse.js, src/update-check.js and src/supervisor.js: launchd, rehearsal, newer releases, in-place swaps"
+        "src/service.js, src/update-check.js and src/supervisor.js: launchd, newer releases, in-place swaps"
       ]
     }
   ]
