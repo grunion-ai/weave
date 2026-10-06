@@ -640,4 +640,93 @@ if (s) {
     assert.equal(closed, 'none', 'escape closes the menu and it stays closed');
     await page.close();
   });
+  async function surfaceWhile(page, ms = 600) {
+    const seen = [];
+    const until = Date.now() + ms;
+    while (Date.now() < until) {
+      seen.push(await page.evaluate(() =>
+        document.querySelector('.vditor-ir .vditor-reset').textContent));
+    }
+    return seen;
+  }
+
+  test('raw html: the marker is never painted, and the first undo goes back to the text before the command', async () => {
+    const id = freshEntity('Raw html case');
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.click('.vditor-ir [contenteditable="true"]');
+    await page.keyboard.type('First words');
+    await page.waitForFunction(() =>
+      window.__weaveEditors.values().next().value.vditor.undo.ir.lastText.includes('First words'),
+    null, { timeout: 15000, polling: 100 });
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('/raw html');
+    await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
+    await hintFiltered(page);
+    await page.keyboard.press('Enter');
+    const painted = (await surfaceWhile(page)).filter((t) => t.includes('raw-html'));
+    assert.equal(painted.length, 0, `the marker never reaches the surface, saw ${JSON.stringify(painted[0])}`);
+    await page.waitForFunction(() =>
+      /<div>html<\/div>/.test(window.__weaveEditors.values().next().value.getValue()),
+    null, { timeout: 15000, polling: 50 });
+    await page.waitForFunction(() =>
+      /html/.test(window.__weaveEditors.values().next().value.vditor.undo.ir.lastText),
+    null, { timeout: 15000, polling: 50 });
+    const recorded = await page.evaluate(() =>
+      window.__weaveEditors.values().next().value.vditor.undo.ir.lastText);
+    assert.doesNotMatch(recorded, /\u2063/, 'the state on the undo stack carries no marker');
+    await page.evaluate(() => {
+      const v = window.__weaveEditors.values().next().value.vditor;
+      v.undo.undo(v);
+    });
+    const undone = await page.evaluate(() =>
+      window.__weaveEditors.values().next().value.getValue());
+    assert.doesNotMatch(undone, /\u2063|raw-html/, `undo never shows the marker, got ${JSON.stringify(undone)}`);
+    assert.match(undone, /First words/, 'the words typed before the command are still there');
+    await page.close();
+  });
+
+  test('a reference command opens its picker on the keypress, and the undo after a pick never brings the marker back', async () => {
+    const id = freshEntity('Ref timing case');
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.vditor-ir [contenteditable="true"]');
+    await page.click('.vditor-ir [contenteditable="true"]');
+    await page.keyboard.type('/link table');
+    await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
+    await hintSettled(page);
+    await page.keyboard.press('Enter');
+    const opened = await page.evaluate(async () => {
+      const at = performance.now();
+      for (let i = 0; i < 300; i++) {
+        const box = document.querySelector('#cmdk');
+        if (box && getComputedStyle(box).display !== 'none') return { ms: performance.now() - at };
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      return { ms: performance.now() - at, missing: true };
+    });
+    assert.ok(!opened.missing, 'the picker opened');
+    assert.ok(opened.ms < 400, `the picker opened on the keypress, not on Vditor's 800ms timer (${Math.round(opened.ms)}ms)`);
+    await page.keyboard.type('Note');
+    await page.waitForSelector('#cmdk-results[data-query="Note"] [role="option"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() =>
+      /\[\[table:/.test(window.__weaveEditors.values().next().value.getValue()),
+    null, { timeout: 15000, polling: 50 });
+    await page.waitForFunction(() =>
+      /\[\[table:/.test(window.__weaveEditors.values().next().value.vditor.undo.ir.lastText),
+    null, { timeout: 15000, polling: 50 });
+    const recorded = await page.evaluate(() =>
+      window.__weaveEditors.values().next().value.vditor.undo.ir.lastText);
+    assert.doesNotMatch(recorded, /\u2063/, 'the state on the undo stack carries no marker');
+    await page.evaluate(() => {
+      const v = window.__weaveEditors.values().next().value.vditor;
+      v.undo.undo(v);
+    });
+    const undone = await page.evaluate(() =>
+      window.__weaveEditors.values().next().value.getValue());
+    assert.doesNotMatch(undone, /\u2063|ref:table/, `undo never shows the marker, got ${JSON.stringify(undone)}`);
+    await page.close();
+  });
 }

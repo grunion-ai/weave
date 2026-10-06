@@ -159,10 +159,17 @@ test('blocks that are not a line prefix still insert', () => {
 });
 
 test('the editor rewrites the marked line as it lands, puts the caret at its end and saves', () => {
-  const watch = APP.slice(APP.indexOf('function watchBlockMarkers'), APP.indexOf('function convertBlockLine'));
+  const watch = APP.slice(APP.indexOf('function watchCommandMarkers'), APP.indexOf('function applyCommandMarkers'));
   assert.match(watch, /new MutationObserver\(/, 'a marker is seen the moment it is in the surface');
-  assert.match(watch, /convertBlockLine\(host, editor, onInput\)/);
-  assert.match(APP, /after: \(\) => \{[\s\S]*?watchBlockMarkers\(host, editor, onInput\);[\s\S]*?\n    \},/, 'every editor watches its own surface');
+  assert.match(watch, /applyCommandMarkers\(host, editor, onInput\)/);
+  assert.match(watch, /holdsCommandMarker\(n\.textContent\)/, 'every command marker, not only a block one (Issue #456)');
+  assert.match(APP, /after: \(\) => \{[\s\S]*?watchCommandMarkers\(host, editor, onInput\);[\s\S]*?\n    \},/, 'every editor watches its own surface');
+
+  const apply = APP.slice(APP.indexOf('function applyCommandMarkers'), APP.indexOf('const CARET_SENTINEL'));
+  assert.match(apply, /pickReference\(editor, v, ref\[0\], ref\[1\], onInput\)/, 'a reference hands off to the picker on the keypress');
+  assert.match(apply, /convertBlockLine\(host, editor, onInput\)/, 'a block line is rewritten');
+  assert.match(apply, /editor\.setValue\(next\);/, 'a deferred insert is swapped in the task the marker lands in, never on a timer');
+  assert.doesNotMatch(apply, /queueMicrotask/, 'nothing waits for a later turn (Issue #456)');
 
   const settle = APP.slice(APP.indexOf('function convertBlockLine'), APP.indexOf('function pickReference'));
   assert.match(settle, /convertMarkedLine\(md\)/, 'the rewrite is the library\'s, on the markdown');
@@ -175,5 +182,5 @@ test('the editor rewrites the marked line as it lands, puts the caret at its end
 
   const at = APP.indexOf('input: (v) => {');
   const handler = APP.slice(at, APP.indexOf('liveEditors.add(editor)', at));
-  assert.match(handler, /BLOCK_MARKER_RE\.test\(v\)\) return convertBlockLine\(/, 'a marker that reaches the input handler is converted, never saved');
+  assert.match(handler, /holdsCommandMarker\(v\)\) return applyCommandMarkers\(/, 'a marker that reaches the input handler is applied, never saved');
 });

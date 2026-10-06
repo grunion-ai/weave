@@ -7998,24 +7998,12 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       }, { capture: true });
       attachToolbarBubble(host);
       attachFileTools(host, editor, onInput);
-      watchBlockMarkers(host, editor, onInput);
+      watchCommandMarkers(host, editor, onInput);
       if (autoFocus) editor.focus();
     },
     ...(onBlur ? { blur: () => onBlur() } : {}),
     input: (v) => {
-      const ref = v.match(REF_MARKER_RE);
-      if (ref) return pickReference(editor, v, ref[0], ref[1], onInput);
-      if (globalThis.WeaveEditorLib.BLOCK_MARKER_RE.test(v)) return convertBlockLine(host, editor, onInput);
-      for (const [marker, block] of Object.entries(DEFERRED_INSERTS)) {
-        if (!v.includes(marker)) continue;
-        const next = v.replace(marker, block);
-        queueMicrotask(() => {
-          editor.setValue(next);
-          editor.focus();
-          onInput(next);
-        });
-        return;
-      }
+      if (holdsCommandMarker(v)) return applyCommandMarkers(host, editor, onInput);
       onInput(v);
       scheduleDecorFor(host);
     },
@@ -8462,13 +8450,28 @@ async function resolveRefs(refs) {
   } catch {}
 }
 
-function watchBlockMarkers(host, editor, onInput) {
+function watchCommandMarkers(host, editor, onInput) {
   const root = host.querySelector('.vditor-ir .vditor-reset');
   if (!root) return;
-  const marked = (n) => n.textContent.includes('\u2063block:');
+  const marked = (n) => holdsCommandMarker(n.textContent);
   new MutationObserver((records) => {
-    if (records.some((r) => marked(r.target) || [...r.addedNodes].some(marked))) convertBlockLine(host, editor, onInput);
+    if (records.some((r) => marked(r.target) || [...r.addedNodes].some(marked))) applyCommandMarkers(host, editor, onInput);
   }).observe(root, { childList: true, characterData: true, subtree: true });
+}
+
+function applyCommandMarkers(host, editor, onInput) {
+  const v = editor.getValue();
+  const ref = v.match(REF_MARKER_RE);
+  if (ref) return pickReference(editor, v, ref[0], ref[1], onInput);
+  if (globalThis.WeaveEditorLib.BLOCK_MARKER_RE.test(v)) return convertBlockLine(host, editor, onInput);
+  for (const [marker, block] of Object.entries(DEFERRED_INSERTS)) {
+    if (!v.includes(marker)) continue;
+    const next = v.replace(marker, block);
+    editor.setValue(next);
+    editor.focus();
+    onInput(next);
+    return;
+  }
 }
 
 const CARET_SENTINEL = '\u2063caret\u2063';

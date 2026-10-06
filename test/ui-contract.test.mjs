@@ -1376,10 +1376,10 @@ test('formatting wraps the selection the writer had before typing "/"', () => {
 
 test('a command that Vditor cannot insert finishes itself', () => {
   assert.match(APP, /const DEFERRED_INSERTS = \{/, 'the deferred inserts are declared once');
-  const mount = fnBody('mountDocEditor');
-  assert.match(mount, /queueMicrotask\(\(\) => \{/, 'the swap is a microtask');
-  assert.doesNotMatch(mount.slice(mount.indexOf('DEFERRED_INSERTS')), /setTimeout|requestAnimationFrame/,
-    'not a timer or a frame — both are throttled in a backgrounded page');
+  const apply = fnBody('applyCommandMarkers');
+  assert.match(apply, /editor\.setValue\(next\);/, 'the swap runs in the task the marker lands in (Issue #456)');
+  assert.doesNotMatch(apply, /queueMicrotask|setTimeout|requestAnimationFrame/,
+    'not a microtask, a timer or a frame — Vditor writes the undo stack on its own 800ms timer, and the marker has to be gone first');
   assert.match(APP, /REF_MARKER_RE/, 'references travel the same way, through their own marker');
 });
 
