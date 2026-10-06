@@ -1,1 +1,0 @@
-- `{{Today}}` in an automation's text prints in the workspace date format, the costume every date cell wears ("Oct 6, 2026"), instead of 2026-10-06; `{{Today:iso}}` keeps the ISO form for scripts, and date fields in templates keep wearing their own format (Issue #676).
