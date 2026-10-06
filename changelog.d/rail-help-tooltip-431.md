@@ -1,1 +1,0 @@
-- The rail's help button no longer shows a native tooltip on hover; it keeps its accessible name and both the click and the `?` key still open the key sheet. (Issue #431)
