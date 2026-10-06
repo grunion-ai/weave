@@ -341,7 +341,7 @@ html.view-header-loose #main > .view-header { position: static; }
    (Issue #412). Uncapped, sixty paragraphs opened to a 1,340px header: it
    let go of the top, and the crumb and toolbar scrolled off with it. */
 #main > .view-header :is(.view-desc-body:not(.clamped), .view-desc-edit) { max-height: max(20vh, calc(5 * 1.45em)); overflow-y: auto; }
-.view-header .crumb { margin-bottom: 4px; }
+.view-header .crumb { margin-bottom: 12px; }
 .view-title-row { margin-bottom: 0; }
 /* Issue #267: the heading element around the title input, with none of an h1's own look. */
 .view-title-h { display: flex; flex: 1; min-width: 0; margin: 0; font: inherit; }
@@ -2455,6 +2455,11 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
    narrow for 8rem beside the toolbar still wraps as Issue #437 wants. */
 .crumb-path { flex: 1 1 8rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .crumb-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; margin-left: auto; }
+/* The actions box wears .wv-toolbar for its button styling, not its 16px
+   foot: with it the row centred 28px of buttons plus 16px of margin, and the
+   buttons rode 8px above the crumb text beside them (Issue #585). The gap to
+   the title row is the crumb's own margin (.view-header .crumb). */
+.crumb-row > .crumb-actions { margin-bottom: 0; }
 .row-deleted { opacity: .5; }
 .row-deleted .open-link { text-decoration: line-through; }
 
