@@ -4833,6 +4833,15 @@ export class Weave {
       .filter((e) => e.dbId === dbId && (includeDeleted || !e.deletedAt));
   }
 
+  #liveRowCounts() {
+    const counts = new Map();
+    for (const e of Object.values(this.state.entities)) {
+      if (e.deletedAt) continue;
+      counts.set(e.dbId, (counts.get(e.dbId) ?? 0) + 1);
+    }
+    return counts;
+  }
+
   listTrash(dbRef = null) {
     const dbId = dbRef == null ? null : this.getTable(dbRef).id;
     return Object.values(this.state.entities)
@@ -6803,11 +6812,13 @@ export class Weave {
         results.push({ kind: 'space', id: sp.id, name: sp.name, url: `${prefix}/#/space/${sp.id}`, score: 9 });
       }
     }
+    let tableCounts = null;
     for (const db of this.listTables()) {
       if (db.name.toLowerCase().includes(needle) || this.qualifiedName(db).toLowerCase().includes(needle)) {
+        tableCounts ??= this.#liveRowCounts();
         results.push({
           kind: 'table', id: db.id, name: this.qualifiedName(db),
-          url: `${prefix}/#/table/${db.id}`, entityCount: this.listEntities(db.id).length, score: 9,
+          url: `${prefix}/#/table/${db.id}`, entityCount: tableCounts.get(db.id) ?? 0, score: 9,
         });
       }
     }
@@ -7039,6 +7050,7 @@ export class Weave {
   }
 
   describeSchema() {
+    const counts = this.#liveRowCounts();
     return this.listSpaces().map((sp) => ({
       space: sp.name,
       spaceId: sp.id,
@@ -7062,7 +7074,7 @@ export class Weave {
         term: this.termOf(db),
         ...(this.termOf(db).set ? { noun: this.termOf(db).singular } : {}),
         qualified: this.qualifiedName(db),
-        entityCount: this.listEntities(db.id).length,
+        entityCount: counts.get(db.id) ?? 0,
         fields: db.fieldOrder.map((fid) => {
           const f = db.fields[fid];
           const out = { id: f.id, name: f.name, type: f.type };
