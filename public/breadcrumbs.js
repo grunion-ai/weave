@@ -5,8 +5,6 @@
    reads ws › Showcase › People › Ada Chen › Field Types › Sensor board.
    Classic script + ESM in one file (nl-date.js pattern). */
 (function (root) {
-  const MAX_TRAIL = 4;
-
   /* trail: the entities hopped through before `next`. prev: the route being
      left ({page, entity}). Entity-to-entity hops extend it; any other origin
      (table, space, home, sidebar) starts fresh; revisiting an entity already
@@ -16,8 +14,9 @@
     if (prev.entity.id === next.id) return trail.slice();
     const at = trail.findIndex((e) => e.id === next.id);
     if (at >= 0) return trail.slice(0, at);
-    const out = [...trail, prev.entity];
-    return out.slice(-MAX_TRAIL);
+    // No cap (Issue #672): a fifth hop used to drop the oldest with no
+    // sign it was there. The crumb's fold menu carries a long trail.
+    return [...trail, prev.entity];
   }
 
   /* A row crumb (Issue #669): the row's table icon, its muted #id and its
@@ -54,6 +53,25 @@
     return hops.map((h, i) => rowCrumb(h, i === hops.length - 1));
   }
 
+  /* Which crumbs fold into the "…" menu (Issue #668), as a pure choice:
+     widths are each crumb's natural width (its separator included), box is
+     the path's width, more is the width the "…" button takes. Nothing folds
+     when everything fits. Otherwise crumbs fold from `from` onward, in
+     order, until the rest plus the button fit; the crumb at index 0 and
+     the last two are never folded, so the start of the journey, where you
+     came from and where you are stay on screen. */
+  function foldPlan(widths, box, { from = 1, more = 0 } = {}) {
+    let w = widths.reduce((a, b) => a + b, 0);
+    if (w <= box) return [];
+    w += more;
+    const out = [];
+    for (let i = Math.max(1, from); i < widths.length - 2 && w > box; i++) {
+      out.push(i);
+      w -= widths[i];
+    }
+    return out;
+  }
+
   /* The tab title (Issue #267): the row or table in front of the reader,
      then the workspace, so tabs, history entries and bookmarks tell places
      apart. The workspace page is the workspace name alone; "Weave" only
@@ -67,5 +85,5 @@
     return n && w ? `${n} · ${w}` : n || w || 'Weave';
   }
 
-  root.weaveBreadcrumbs = { pushTrail, rowCrumb, entityCrumbs, dockCrumbs, docTitle, MAX_TRAIL };
+  root.weaveBreadcrumbs = { pushTrail, rowCrumb, entityCrumbs, dockCrumbs, foldPlan, docTitle };
 })(globalThis);

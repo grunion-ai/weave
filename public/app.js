@@ -1168,12 +1168,14 @@ function crumbInner(c) {
     el('span', { class: 'crumb-nm' }, c.label ?? ''),
   ];
 }
-/* copy: { title, run } puts the copy-link button on the current crumb. */
-function crumbPath(crumbs, { copy = null } = {}) {
+/* copy: { title, run } puts the copy-link button on the current crumb.
+   foldFrom: the first crumb the overflow fold may take (Issue #668). Each
+   crumb rides a slot with the separator before it, so a folded crumb takes
+   its separator with it. */
+function crumbPath(crumbs, { copy = null, foldFrom = 1 } = {}) {
   const path = el('span', { class: 'crumb-path' });
   crumbs.forEach((c, i) => {
-    if (i) path.append(el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›'));
-    path.append(c.current
+    const node = c.current
       ? el('span', { class: 'crumb-cur-wrap' },
         el('span', { class: `crumb-item crumb-cur crumb-k-${c.kind ?? 'page'}`, title: c.title ?? c.label, 'aria-current': 'page' }, ...crumbInner(c)),
         copy ? el('button', {
@@ -1183,10 +1185,74 @@ function crumbPath(crumbs, { copy = null } = {}) {
       : el('a', {
         class: `crumb-item crumb-k-${c.kind ?? 'page'}`, href: c.kind === 'ws' ? wsHomeHref() : c.href,
         title: c.title ?? c.label,
-      }, ...crumbInner(c)));
+      }, ...crumbInner(c));
+    const slot = el('span', { class: 'crumb-slot' + (c.current ? ' crumb-slot-cur' : '') },
+      i ? el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›') : null, node);
+    slot.crumb = c;
+    path.append(slot);
   });
+  /* Re-fit whenever the box changes: a dock dragged narrower, the nav
+     opening, a window resize. The path's own width comes from the row
+     (an 8rem basis that grows), never from its content, so folding inside
+     it cannot feed the observer back. */
+  new ResizeObserver(() => fitCrumbs(path, foldFrom)).observe(path);
   return path;
 }
+
+/* Overflow folds the middle (Issue #668). Measure every crumb at its
+   natural width (ancestors still at their 17ch cap), ask foldPlan which
+   to hide, and put one "…" button where they were. The first crumb and
+   the last two always stay; the current crumb shrinks last. */
+function fitCrumbs(path, foldFrom) {
+  if (!path.isConnected) return;
+  path.querySelector(':scope > .crumb-more-slot')?.remove();
+  const slots = [...path.querySelectorAll(':scope > .crumb-slot')];
+  for (const sl of slots) sl.hidden = false;
+  path.classList.add('crumb-measure');
+  const widths = slots.map((sl) => sl.getBoundingClientRect().width);
+  path.classList.remove('crumb-measure');
+  const fold = weaveBreadcrumbs.foldPlan(widths, path.clientWidth, { from: foldFrom, more: CRUMB_MORE_PX });
+  if (!fold.length) return;
+  for (const i of fold) slots[i].hidden = true;
+  const hidden = fold.map((i) => slots[i].crumb);
+  const btn = el('button', {
+    type: 'button', class: 'btn btn-sm btn-ghost-secondary crumb-more', title: `${hidden.length} more on the trail`,
+    'aria-label': `${hidden.length} more on the trail`, 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+    onclick: (e) => { e.stopPropagation(); crumbFoldMenu(btn, hidden); },
+  }, lucideEl('ellipsis'));
+  slots[fold[0]].before(el('span', { class: 'crumb-slot crumb-more-slot' },
+    el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›'), btn));
+}
+const CRUMB_MORE_PX = 40; // the "…" button and its separator
+
+/* The fold's menu: the hidden crumbs in trail order, each its icon, #id and
+   Name, each a link — a choice goes where its crumb would have. The menu
+   lives in the crumb row, so a link chosen in the dock is a hop from the
+   docked row like any other link there. */
+function crumbFoldMenu(btn, hidden) {
+  const row = btn.closest('.crumb-row');
+  const open = row.querySelector('.crumb-fold-menu');
+  if (open) { open.remove(); return; }
+  const r = btn.getBoundingClientRect();
+  const menu = el('div', { class: 'chip-pop crumb-fold-menu', role: 'menu', style: `top:${r.bottom + 4}px;left:${r.left}px` },
+    ...hidden.map((c) => el('a', {
+      class: 'chip-pop-row crumb-fold-row', role: 'menuitem', href: c.kind === 'ws' ? wsHomeHref() : c.href, title: c.title ?? c.label,
+    }, ...crumbInner(c))));
+  const close = () => {
+    menu.remove();
+    btn.setAttribute('aria-expanded', 'false');
+    removeEventListener('click', away, true);
+    removeEventListener('keydown', esc, true);
+  };
+  const away = (e) => { if (!menu.contains(e.target) || e.target.closest('a')) setTimeout(close); };
+  const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
+  row.append(menu);
+  btn.setAttribute('aria-expanded', 'true');
+  addEventListener('click', away, true);
+  addEventListener('keydown', esc, true);
+  menu.querySelector('a')?.focus();
+}
+
 /* A view header's crumbs name their level by where they lead; the icons
    come from the schema the sidebar draws from. */
 function crumbOfHref(c) {
@@ -11459,6 +11525,9 @@ async function renderEntityView(entity, { mount, refresh, inPeek = false, onClos
           ? (crumbs ?? weaveBreadcrumbs.dockCrumbs([entityHop(entity)]))
           : weaveBreadcrumbs.entityCrumbs($('#ws-name').textContent || 'workspace', state.trail, entityHop(entity)), {
           copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}${WS_PREFIX}/e/${id}`, 'Permalink copied') },
+          // The dock folds after its first row; the page keeps its
+          // workspace › space › table head and the first row (Issue #668).
+          foldFrom: inPeek ? 1 : 4,
         }),
         el('span', { class: 'crumb-actions wv-toolbar' }, eye, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, nameInput))),

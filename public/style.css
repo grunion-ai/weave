@@ -2459,6 +2459,22 @@ button > .wv-icon:only-child, a.btn > .wv-icon:only-child { margin-right: 0; }
    Name. An ancestor caps at about 17 characters with its own ellipsis; the
    current crumb is bold and is the last thing to shrink (Issue #668). */
 .crumb-sep { flex: none; padding: 0 2px; color: var(--tblr-secondary); }
+/* A slot is a crumb and the separator before it. Past the fold every crumb
+   gives way in proportion to its width; an ancestor may shrink to its icon,
+   the current crumb never below its icon and #id. While fitCrumbs measures,
+   nothing shrinks. */
+.crumb-slot { display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; }
+.crumb-slot:not(.crumb-slot-cur) { min-width: 3em; overflow: hidden; }
+.crumb-slot[hidden] { display: none; }
+.crumb-slot-cur { flex: 1 1 auto; min-width: 6.5em; }
+.crumb-path.crumb-measure > .crumb-slot { flex: none; }
+.crumb-slot > a.crumb-item { min-width: 0; overflow: hidden; }
+.crumb-more { flex: none; padding: 1px 6px; line-height: 0; }
+.crumb-more .wv-icon { margin-right: 0; }
+.crumb-fold-menu { max-width: 340px; }
+.crumb-fold-row { min-width: 0; text-decoration: none; font-size: 13px; }
+.crumb-fold-row .crumb-ic { flex: none; margin-right: 0; color: var(--tblr-secondary); }
+.crumb-fold-row .crumb-nm { white-space: nowrap; }
 .crumb-item { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; max-width: 17ch; padding: 1px 4px; border-radius: 5px; color: var(--tblr-primary); text-decoration: none; }
 a.crumb-item:hover { background: var(--wv-pill-hover); }
 :is(.crumb-k-ws, .crumb-k-space, .crumb-k-table):not(.crumb-cur) { max-width: 14ch; }

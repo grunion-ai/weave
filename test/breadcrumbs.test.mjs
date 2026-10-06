@@ -30,7 +30,9 @@ test('a refresh of the same entity leaves the trail alone', () => {
   assert.deepEqual(pushTrail([ada], { page: 'entity', entity: board }, board).map((e) => e.id), ['a']);
 });
 
-test('the trail is capped so the crumb stays a line', () => {
+/* Issue #672: MAX_TRAIL = 4 dropped the oldest hop with no sign it had
+   been there. The trail keeps every hop; the crumb folds the middle. */
+test('the trail is uncapped: every hop stays, oldest first', () => {
   let trail = [];
   let prev = { page: 'db' };
   for (let i = 0; i < 10; i++) {
@@ -38,8 +40,43 @@ test('the trail is capped so the crumb stays a line', () => {
     trail = pushTrail(trail, prev, e);
     prev = { page: 'entity', entity: e };
   }
-  assert.ok(trail.length <= 4);
-  assert.equal(trail[trail.length - 1].id, 'e8', 'the most recent hops survive');
+  assert.deepEqual(trail.map((e) => e.id), ['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']);
+  assert.equal(globalThis.weaveBreadcrumbs.MAX_TRAIL, undefined, 'no cap left to apply');
+  // Wrap-around still cuts back (Kyle, 2026-10-05: crumbs show place).
+  const cut = pushTrail(trail, { page: 'entity', entity: { ...ada, id: 'e9' } }, { ...ada, id: 'e2' });
+  assert.deepEqual(cut.map((e) => e.id), ['e0', 'e1']);
+});
+
+/* Issue #668: the overflow fold, as a pure choice of which crumbs hide. */
+test('foldPlan: nothing folds when the trail fits', () => {
+  const { foldPlan } = globalThis.weaveBreadcrumbs;
+  assert.deepEqual(foldPlan([100, 100, 100], 300), []);
+  assert.deepEqual(foldPlan([100, 100, 100, 100, 100], 600, { more: 40 }), []);
+});
+
+test('foldPlan: the middle folds in order until the rest and the button fit', () => {
+  const { foldPlan } = globalThis.weaveBreadcrumbs;
+  // 600 of crumbs in 400: fold 1 (500+40 > 400), fold 2 (440 > 400), fold 3 (340 fits).
+  assert.deepEqual(foldPlan([100, 100, 100, 100, 100, 100], 400, { more: 40 }), [1, 2, 3]);
+  assert.deepEqual(foldPlan([100, 100, 100, 100, 100, 100], 560, { more: 40 }), [1]);
+});
+
+test('foldPlan: the first crumb and the last two never fold, whatever the box', () => {
+  const { foldPlan } = globalThis.weaveBreadcrumbs;
+  for (const n of [3, 4, 6, 12]) {
+    const plan = foldPlan(Array(n).fill(150), 50, { more: 40 });
+    assert.ok(!plan.includes(0), `n=${n}: the first crumb stays`);
+    assert.ok(!plan.includes(n - 1) && !plan.includes(n - 2), `n=${n}: the last two stay`);
+    assert.equal(plan.length, Math.max(0, n - 3), `n=${n}: everything else folds`);
+  }
+  assert.deepEqual(foldPlan([100, 300], 200), [], 'two crumbs: nothing can fold; the current crumb ellipsizes');
+});
+
+test('foldPlan: `from` keeps a head on screen (the full page keeps workspace › space › table and the first row)', () => {
+  const { foldPlan } = globalThis.weaveBreadcrumbs;
+  const plan = foldPlan([60, 80, 70, 120, 120, 120, 120, 200], 600, { from: 4, more: 40 });
+  assert.deepEqual(plan, [4, 5]);
+  assert.deepEqual(foldPlan([60, 80, 70, 120, 120, 200], 100, { from: 4, more: 40 }), [], 'from at the tail: nothing left to fold');
 });
 
 /* Issues #669 and #673 (Kyle, 2026-10-05): every crumb wears its icon; a
