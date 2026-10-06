@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..');
-const DIRS = ['src', 'bin', 'scripts', 'test'];
+const DIRS = ['src', 'bin', 'scripts', 'test', 'public'];
 const SKIP_DIRS = new Set(['vendor', 'node_modules', 'brand']);
 const ALLOWED = new Map();
 const RULE = 'weave has no inline code comments (Issue #661). Delete the comment; put the why in the commit message, the Issue or Feature row, or docs/.';
