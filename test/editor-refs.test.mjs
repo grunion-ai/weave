@@ -86,7 +86,11 @@ test('the layer is click-transparent except for the chips themselves', () => {
   assert.match(CSS, /\.doc-ref-chip[^{]*\{[^}]*pointer-events:\s*auto/);
 });
 
-test('editor chips reuse the preview mention styling', () => {
-  assert.match(CSS, /\.doc-preview a\.mention,\s*\.doc-ref-layer a\.mention/);
-  assert.match(CSS, /\.doc-ref-layer \.mention-entity::before|\.doc-ref-layer \.mention-entity/);
+test('editor chips are the pointer chip the rendered document draws (Issue #97)', () => {
+  assert.match(APP, /class: `mention mention-\$\{hit\.kind\} doc-ref-chip`/);
+  assert.match(APP, /el\('span', \{ class: 'k k-rel doc-ref-label' \}, el\('span', \{ class: 'k-label' \}/);
+  assert.match(CSS, /\.k-rel > \.mention-entity::before \{ content: "#"; \}/);
+  assert.match(CSS, /\.doc-ref-layer \.mention-entity \.doc-ref-label::before \{ content: "#"; \}/);
+  assert.doesNotMatch(CSS, /a\.mention[^{]*\{[^}]*rgba\(var\(--tblr-primary-rgb\), \.08\)/, 'no tinted-link costume');
+  assert.doesNotMatch(CSS, /\.doc-ref-chip[^{]*\{[^}]*box-shadow:\s*inset/, 'no tint painted over the chip');
 });

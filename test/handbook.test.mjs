@@ -78,6 +78,7 @@ test('the document-formatting guide covers the surface the editor offers', () =>
     'Raw HTML', 'full screen', 'markdown',
     '**</>** button',
     'take the line they are typed on', 'Buy milk /task',
+    'same pointer chip a relation cell wears',
   ]) {
     assert.ok(guide.doc.toLowerCase().includes(topic.toLowerCase()), `the formatting guide never mentions ${topic}`);
   }

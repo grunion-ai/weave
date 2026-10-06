@@ -16,7 +16,10 @@ h1, h2, h3, h4 { line-height: 1.25; margin: 1.4em 0 0.5em; }
 h1:first-child { margin-top: 0; }
 .doc-meta { color: var(--muted); font-size: 13px; margin-bottom: 2em; border-bottom: 1px solid var(--line); padding-bottom: 1em; }
 a { color: var(--accent); }
-a.mention { background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; text-decoration: none; }
+.k-rel { border: 1px solid var(--line); border-radius: 4px; color: var(--fg); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.k-rel > a { color: inherit; text-decoration: none; padding: 0 5px 0 4px; }
+.k-rel > a::after { content: "↗"; opacity: .42; font-size: .7em; margin-left: 3px; }
+.k-rel:hover { border-color: var(--accent); color: var(--accent); }
 .md-icon { display: inline-flex; width: 1em; height: 1em; vertical-align: -.15em; margin-right: .15em; }
 .md-icon svg { width: 1em; height: 1em; }
 .mention.broken { color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 0 4px; }
@@ -30,11 +33,12 @@ a.mention { background: var(--soft); border: 1px solid var(--line); border-radiu
 .mention-workspace::before { content: "⬡"; }
 /* Collapsed chip shows the name; the caret opens the preview segments. The
    whole chip is the link — the caret is the only non-navigating pixel. */
-.mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
+.mention-wrap { display: inline; }
 .mention-fields { display: none; }
 .mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--line); color: var(--muted); font-size: .85em; }
 .mention-f-label { opacity: .65; margin-right: 3px; }
-.mention-caret { border: 1px solid var(--line); background: none; border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; }
+.mention-caret { border: 1px solid var(--line); background: none; border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .65em; line-height: 1.4; padding: 0 3px; margin-left: 3px; transition: transform .1s; vertical-align: middle; }
+.mention-caret svg { width: 12px; height: 12px; display: block; }
 .mention-wrap.open .mention-caret { transform: rotate(180deg); }
 code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 0.9em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 /* A code block sits on the ground its palette was drawn for — white for
@@ -131,6 +135,17 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 [data-bs-theme="dark"] .hue-pink { --fill: rgba(240, 120, 170, .18); --text: #f79ec0; }
 [data-bs-theme="dark"] .hue-teal { --fill: rgba(70, 200, 180, .16); --text: #6fdcc8; }
 [data-bs-theme="dark"] .hue-orange { --fill: rgba(250, 150, 80, .18); --text: #ffb183; }
+.k-inline { display: inline; font-size: inherit; line-height: inherit; padding: 0; white-space: normal; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.k-inline > a { display: inline; padding: 0 5px 0 4px; }
+.k-inline > a::after { margin-left: 3px; font-size: .7em; }
+.mention-wrap:has(> .k-inline) { display: inline; white-space: normal; }
+.k-inline .mention-caret { vertical-align: middle; }
+.k-rel > a.mention, .k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; }
+.k-rel > a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
+.k-rel > .mention-entity::before { content: "#"; }
+.k-rel > .mention-table::before { content: "▦"; }
+.k-rel > .mention-space::before { content: "◇"; }
+.k-rel > .mention-workspace::before { content: "⬡"; }
 .mention-wrap { display: inline-flex; align-items: center; white-space: nowrap; }
 .mention-fields { display: none; }
 .mention-wrap.open .mention-fields { display: inline-flex; gap: 8px; margin-left: 6px; padding-left: 7px; border-left: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: .85em; }
@@ -186,7 +201,7 @@ th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vert
 <body>
 <div class="doc-meta">Handbook · Guide</div>
 <h1>Chip and card anatomy</h1>
-<p>A row appears in two shapes outside its own page: the <strong>chip</strong>, inline — a relation cell, a <code>[[…]]</code> mention in a document, a reference card, a picker — and the <strong>card</strong>, a tile. Both are drawn from the table's two <code>view</code> fields (the <strong>view</strong> page in <a class="mention mention-table" href="#fields">Fields</a> says what they can contain; the entity page's <strong>Appears as</strong> strip shows the live pair once the eye unhides them — a hidden view is not drawn there either, Issue #208). This page is the face: every element, what it does, how you use it, and its <strong>hitbox</strong> — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.</p>
+<p>A row appears in two shapes outside its own page: the <strong>chip</strong>, inline — a relation cell, a <code>[[…]]</code> mention in a document, a reference card, a picker — and the <strong>card</strong>, a tile. Both are drawn from the table's two <code>view</code> fields (the <strong>view</strong> page in <span class="k k-rel k-inline"><a class="mention mention-table" href="#fields">Fields</a></span> says what they can contain; the entity page's <strong>Appears as</strong> strip shows the live pair once the eye unhides them — a hidden view is not drawn there either, Issue #208). This page is the face: every element, what it does, how you use it, and its <strong>hitbox</strong> — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.</p>
 <h2>The chip</h2>
 <div class="wv-anat" style="font-family:var(--tblr-font-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif);font-size:14px;line-height:1.5;color:var(--tblr-body-color,inherit);display:inline-flex;align-items:center;gap:18px;padding:26px 22px 16px;border:1px dashed rgba(128,128,128,.45);border-radius:8px;margin:4px 0 8px">
 <span class="mention-wrap open"><span class="k k-rel has-segs"><a href="#" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px" onclick="return false"><span class="av hue-blue" style="overflow:visible;position:relative;outline:1.5px dashed #d6409f;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d6409f">1</i>AL</span><span style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">2</i>#12</span> <span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">3</i>Ship the editor</span> <span class="k-home" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a">4</i>Task</span><button type="button" class="mention-caret" aria-expanded="true" title="Hide fields" style="position:relative;outline:1.5px dashed #e5484d;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;bottom:-15px;transform:rotate(180deg);font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#e5484d">5</i>›</button><span class="mention-fields" style="position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">6</i><span class="k k-state cat-in-progress hue-blue wv-seg-state">Doing</span><span class="mention-f"><span class="mention-f-label">Due</span>2026-09-12</span><span class="mention-f"><span class="mention-f-label">Severity</span>High</span></span><span style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px;display:inline-block;width:9px;height:14px;margin-right:-11px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">7</i></span></a><span class="x" style="position:relative;outline:1.5px dashed #ce2c31;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#ce2c31">8</i>×</span></span></span>
@@ -221,6 +236,7 @@ for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
 document.addEventListener('click', (ev) => {
   const caret = ev.target.closest('.mention-caret');
   if (!caret) return;
+  ev.preventDefault();
   const open = caret.closest('.mention-wrap').classList.toggle('open');
   caret.setAttribute('aria-expanded', String(open));
 });

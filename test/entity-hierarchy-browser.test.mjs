@@ -114,7 +114,7 @@ if (s) {
           text: label.textContent,
           chip: chip.getBoundingClientRect().width,
           label: label.getBoundingClientRect().width,
-          natural: label.scrollWidth,
+          natural: label.scrollWidth + parseFloat(getComputedStyle(label).borderLeftWidth) + parseFloat(getComputedStyle(label).borderRightWidth),
           chipTint: getComputedStyle(chip).backgroundImage + getComputedStyle(chip).boxShadow,
         };
       });

@@ -11246,7 +11246,7 @@ async function refreshRefChips(st) {
       title: hit.title,
       // 2px over and under: a bracket's tail drops below the text box.
       style: `left:${r.left - base.left}px; top:${r.top - base.top - 2}px; width:${r.width}px; height:${r.height + 4}px;`,
-    }, el('span', { class: 'doc-ref-label' }, s.label ?? hit.label)));
+    }, el('span', { class: 'k k-rel doc-ref-label' }, el('span', { class: 'k-label' }, s.label ?? hit.label))));
   }
 }
 
@@ -11457,6 +11457,7 @@ async function resolveRefs(refs) {
       // The anchor may carry collapsed preview segments (.mention-fields);
       // the overlay chip's label is the name alone, never the hidden fields.
       a.querySelector('.mention-fields')?.remove();
+      a.querySelector('.mention-caret')?.remove();
       // The chip reads as the record's name (F6): `Task#1 — Name` is the
       // export's label, and it stays on as the tooltip.
       refResolveCache.set(ref, { href, label: a.dataset.name ?? a.textContent, title: a.textContent, kind });

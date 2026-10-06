@@ -1378,13 +1378,20 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .chip.rel.deleted a { text-decoration: line-through; color: var(--tblr-secondary); }
 
 /* ---------- entity doc preview panels ---------- */
-.doc-preview a.mention, .doc-ref-layer a.mention { background: rgba(var(--tblr-primary-rgb), .08); border-radius: 4px; padding: 0 4px; text-decoration: none; color: var(--tblr-primary); }
+.k-inline { display: inline; font-size: inherit; line-height: inherit; padding: 0; white-space: normal;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.k-inline > a { display: inline; padding: 0 5px 0 4px; }
+.k-inline > a::after { margin-left: 3px; font-size: .7em; }
+.mention-wrap:has(> .k-inline) { display: inline; white-space: normal; }
+.k-inline .mention-caret { vertical-align: middle; }
+.k-rel > a.mention, .k-rel > a.mention:hover { box-shadow: none; border-radius: 0; background: none;
+  font-size: inherit; font-weight: inherit; line-height: inherit; text-decoration: none; }
 /* Kind glyphs match the standalone document page (src/markdown.js). */
-.doc-preview a.mention::before, .doc-ref-layer a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
-.doc-preview .mention-entity::before, .doc-ref-layer .mention-entity::before { content: "#"; }
-.doc-preview .mention-table::before, .doc-ref-layer .mention-table::before { content: "▦"; }
-.doc-preview .mention-space::before, .doc-ref-layer .mention-space::before { content: "◇"; }
-.doc-preview .mention-workspace::before, .doc-ref-layer .mention-workspace::before { content: "⬡"; }
+.k-rel > a.mention::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
+.k-rel > .mention-entity::before { content: "#"; }
+.k-rel > .mention-table::before { content: "▦"; }
+.k-rel > .mention-space::before { content: "◇"; }
+.k-rel > .mention-workspace::before { content: "⬡"; }
 /* Backlink chips on the entity page (References section): same chip costume,
    laid out as a wrapping row. wv- prefix on the container, chip classes reuse
    the mention costume above. */
@@ -1413,21 +1420,21 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    `.doc-ref-chip`, so the literal `[[Table#12|Name]]` showed straight through
    the chip that was meant to hide it. The chip is an anchor too: same
    specificity, later in the file, opaque ground. */
-.doc-ref-layer a.doc-ref-chip { background: var(--tblr-bg-surface); padding: 0; }
-.doc-ref-layer .doc-ref-chip { position: absolute; pointer-events: auto; box-sizing: border-box;
-  display: inline-flex; align-items: center; white-space: nowrap; overflow: hidden;
-  background: var(--tblr-bg-surface); box-shadow: none; }
-/* The tint hugs the label (F6, 2026-09-26): the anchor is only the opaque
-   cover over the literal, so `[[Project#2|Hermes Docs]]` no longer trails a
-   tinted box the width of its source. The kind glyph moves inside with it. */
+.doc-ref-layer a.doc-ref-chip { position: absolute; pointer-events: auto; box-sizing: border-box;
+  display: flex; align-items: center; white-space: nowrap; overflow: hidden; margin: 0; padding: 0;
+  border-radius: 0; font-size: inherit; font-weight: inherit; line-height: 1; text-decoration: none;
+  color: var(--tblr-body-color); background: var(--tblr-bg-surface); box-shadow: none; }
 .doc-ref-layer a.doc-ref-chip::before { content: none; }
-.doc-ref-layer .doc-ref-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
-  border-radius: 4px; background: rgba(var(--tblr-primary-rgb), .08); box-shadow: var(--tblr-shadow-border); }
-.doc-ref-layer .doc-ref-label::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; }
+.doc-ref-layer .doc-ref-label { flex: 0 1 auto; min-width: 0; max-width: 100%; gap: 0; padding: 0 5px 0 4px;
+  font-size: inherit; line-height: 1.2; }
+.doc-ref-layer .doc-ref-label > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-ref-layer .doc-ref-label::before { color: var(--tblr-secondary); margin-right: 4px; font-size: .9em; flex: none; }
 .doc-ref-layer .mention-entity .doc-ref-label::before { content: "#"; }
 .doc-ref-layer .mention-table .doc-ref-label::before { content: "▦"; }
 .doc-ref-layer .mention-space .doc-ref-label::before { content: "◇"; }
 .doc-ref-layer .mention-workspace .doc-ref-label::before { content: "⬡"; }
+.doc-ref-layer .doc-ref-label::after { content: "↗"; opacity: .42; font-size: .7em; margin-left: 3px; flex: none; }
+.doc-ref-layer a.doc-ref-chip:hover .doc-ref-label { border-color: var(--tblr-primary); color: var(--tblr-primary); }
 /* `:bell:` in a document is Lute's own shortcode node — an <img> of the icon
    under /vendor/icons, serialised back as the token. Sized to the line; the
    ink is recoloured for the dark theme since an <img> cannot inherit
