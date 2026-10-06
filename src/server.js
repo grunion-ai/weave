@@ -169,7 +169,13 @@ export function securityHeaders(headers, { https = false, frameAncestors = [] } 
     ...headers,
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'same-origin',
-    ...(html ? { 'Content-Security-Policy': ["frame-ancestors 'self'", ...frameAncestors].join(' '), 'Content-Security-Policy-Report-Only': CSP_REPORT_ONLY } : {}),
+    /* A page that already carries a policy (an HTML upload under
+       HTML_VIEW_POLICY) keeps it and gains the frame rule; every other page
+       gets the frame rule alone. */
+    ...(html ? {
+      'Content-Security-Policy': [headers['Content-Security-Policy'], ["frame-ancestors 'self'", ...frameAncestors].join(' ')].filter(Boolean).join('; '),
+      'Content-Security-Policy-Report-Only': CSP_REPORT_ONLY,
+    } : {}),
     ...(https ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}),
   };
 }

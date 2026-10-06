@@ -741,9 +741,16 @@ Files on a row. Bytes live in the workspace's sibling \`files/\` directory; the 
 
 \`multiple\` — \`true\` by default; \`false\` makes the field hold exactly one file.
 
+\`preview\` — how the record shows the files: \`link\` (chips), \`inline\` (a contact sheet of the files, or the one file in its viewer), \`auto\` (pictures in the sheet, everything else a chip) or \`cover\` (the picture above the record; single-file fields only). Unset follows the field: \`auto\` for many, \`inline\` for one.
+
+\`size\` — \`small\`, \`medium\` (default) or \`large\`: the sheet's cell and the viewer's height.
+
+\`fit\` — \`trim\` (default) shows the whole file and trims the cell to its shape, so a portrait page stands tall beside a wide screenshot; \`fill\` makes every cell the same box and crops the file to it. Nothing is ever stretched.
+
 \`\`\`bash
 weave field add Task Files attachments
-weave field add Person Headshot attachments --config '{"multiple":false}'
+weave field add Person Headshot attachments --config '{"multiple":false,"preview":"cover"}'
+weave field add Issue Evidence attachments --config '{"preview":"inline","size":"small","fit":"fill"}'
 \`\`\`
 
 ## Usage
@@ -754,7 +761,7 @@ weave file read <fileId> --out ./spec.pdf
 weave file delete Task#5 <fileId>
 \`\`\`
 
-Renders as file chips; images preview in the fullscreen viewer.
+Renders by its \`preview\`. A click on a sheet cell opens the file full-screen, and ← → step through the field's files. A single-file field shows its file in place: an image, a PDF or plain text in a frame, an HTML upload live under \`GET /api/files/:id?view\`, whose sandbox keeps the page off the workspace's origin (its scripts run, its links open a new tab, and it can read nothing of weave's). The viewer's bottom edge drags.
 
 In the app, drop files from your desktop onto the field's cell in the grid, or onto its files on the record: the cell lights while files hover it, and every file you let go of uploads into the field. **+ file** on the record picks one from a dialog. A single-file field refuses a second file and says so.
 

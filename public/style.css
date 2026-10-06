@@ -2104,7 +2104,57 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .share-box { display: flex; flex-direction: column; gap: 10px; }
 .share-url { font-size: 11.5px; word-break: break-all; color: var(--tblr-secondary); }
 .share-hint { font-size: 12.5px; color: var(--tblr-secondary); }
-.attach-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; } .attach-item { display: inline-flex; align-items: center; gap: 1px; font-size: 12.5px; background: var(--tblr-bg-surface-secondary); border-radius: 5px; padding: 1px 3px 1px 7px; }
+.attach-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* ---------- attachment preview (Kyle, 2026-10-05) ----------
+   A record shows an attachments field by its `preview`: chips, a contact
+   sheet of the files, or the one file in its viewer. The sheet wraps to the
+   column's width; `fit-fill` makes every cell the same 4:3 box with the
+   picture cropped to it, `fit-trim` sizes each cell to the picture's own
+   shape (--ar, read from the image once it loads) and justifies the row.
+   Nothing is ever stretched. */
+.attach-box.attach-box-wide { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; }
+/* A sheet or a viewer is tall: the row's label sits at its top, not its middle. */
+.entity-body > .attach-block:has(.attach-box-wide) { align-items: start; }
+.entity-body > .attach-block:has(.attach-box-wide) > label { padding-top: 6px; }
+.attach-chips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.attach-sheet { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; --rowh: 140px; --cell: 180px; }
+.attach-sheet.size-small { --rowh: 90px; --cell: 120px; }
+.attach-sheet.size-large { --rowh: 200px; --cell: 260px; }
+.attach-cell { position: relative; display: block; overflow: hidden; border-radius: 6px; border: 1px solid var(--tblr-border-color);
+  background: var(--tblr-bg-surface-secondary); color: inherit; text-decoration: none; cursor: zoom-in; min-width: 0; --ar: 1.333; }
+.attach-sheet.fit-trim .attach-cell { flex: var(--ar) 1 calc(var(--rowh) * var(--ar)); max-width: 100%; }
+.attach-sheet.fit-trim .attach-cell img { display: block; width: 100%; height: auto; }
+.attach-sheet.fit-fill { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--cell), 1fr)); }
+.attach-sheet.fit-fill .attach-cell { aspect-ratio: 4 / 3; }
+.attach-sheet.fit-fill .attach-cell img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.attach-sheet-filler { flex: 10 1 0; height: 0; }
+.attach-cell.is-glyph { display: grid; place-items: center; align-content: center; gap: 4px; aspect-ratio: 4 / 3;
+  color: var(--tblr-secondary); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.attach-cell.is-glyph .wv-icon { width: 22px; height: 22px; }
+.attach-cell-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 8px 5px; font-size: 11px; line-height: 1.3; color: #fff;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .65)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .12s; }
+.attach-cell:hover .attach-cell-label, .attach-cell:focus-visible .attach-cell-label { opacity: 1; }
+.attach-cell > .tiny { position: absolute; top: 3px; right: 3px; opacity: 0; background: var(--tblr-bg-surface); }
+.attach-cell:hover > .tiny, .attach-cell:focus-within > .tiny { opacity: 1; }
+/* The viewer: the file itself, in place. Height follows `size`; the bottom
+   edge drags (native resize) so the page scrolls outside and the file
+   inside. A frame that holds an HTML upload carries the sandbox attribute. */
+.file-viewer { display: flex; flex-direction: column; width: 100%; border: 1px solid var(--tblr-border-color); border-radius: 8px; overflow: hidden;
+  background: var(--tblr-bg-surface-secondary); resize: vertical; height: 520px; min-height: 160px; }
+.file-viewer.size-small { height: 360px; }
+.file-viewer.size-large { height: 80vh; }
+.file-viewer-bar { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--tblr-border-color); font-size: 12px; background: var(--tblr-bg-surface); }
+.file-viewer-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.file-viewer-size { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; }
+.file-viewer-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+.file-viewer > img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+/* The cover: a single-file field's picture at the top of the record. */
+.entity-cover { margin: 0 0 14px; border-radius: 8px; overflow: hidden; background: var(--tblr-bg-surface-secondary); }
+.entity-cover img { display: block; width: 100%; height: auto; }
+.entity-cover.fit-fill img { height: 220px; object-fit: cover; }
+.entity-cover.fit-fill.size-small img { height: 140px; }
+.entity-cover.fit-fill.size-large img { height: 320px; }
+.fsv-nav { display: inline-flex; gap: 4px; } .attach-item { display: inline-flex; align-items: center; gap: 1px; font-size: 12.5px; background: var(--tblr-bg-surface-secondary); border-radius: 5px; padding: 1px 3px 1px 7px; }
 /* An attachment whose bytes are gone (Issue #121): the app's own dim colour,
    a dashed edge that says "nothing behind this", and the word in plain text.
    No new hue — a lost file is a state, not a category. */

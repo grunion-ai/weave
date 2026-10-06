@@ -121,12 +121,25 @@ export function logoType(bytes) {
    for every file, so no stored byte runs script on the workspace origin.
    WEAVE_INLINE_FILE_TYPES (comma-separated) adds types served in place. */
 const INLINE_FILE_TYPES = new Set(['application/pdf', 'text/plain']);
-export function fileHeaders(meta, bytes) {
+/* An uploaded HTML file viewed in place (Kyle, 2026-10-05: the record shows
+   the page, live). `GET /api/files/:id?view` serves text/html under a policy
+   that keeps it a stranger to the workspace: `sandbox` with scripts and
+   popups allowed and never `allow-same-origin`, so the page runs in an
+   opaque origin with no cookie, storage or DOM of weave's to read, and
+   `default-src 'none'` with inline script and style only, so it cannot
+   phone home or load a remote script. The app frames it with the same
+   sandbox attribute. Anything that is not HTML answers `?view` exactly as
+   it answers without it. */
+export const HTML_VIEW_POLICY = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
+const HTML_FILE_TYPES = new Set(['text/html', 'application/xhtml+xml']);
+export function fileHeaders(meta, bytes, { view = false } = {}) {
   const claimed = String(meta.mime ?? '').split(';')[0].trim().toLowerCase();
   const image = claimed.startsWith('image/') ? sniffImage(bytes) : null;
   const extra = String(process.env.WEAVE_INLINE_FILE_TYPES ?? '').toLowerCase().split(',').map((t) => t.trim());
+  const html = view && HTML_FILE_TYPES.has(claimed);
   const inline = image === claimed ? image
-    : INLINE_FILE_TYPES.has(claimed) || (claimed && extra.includes(claimed)) ? claimed : null;
+    : html ? 'text/html; charset=utf-8'
+      : INLINE_FILE_TYPES.has(claimed) || (claimed && extra.includes(claimed)) ? claimed : null;
   const name = String(meta.name ?? 'file');
   const ascii = name.replace(/[^\w.-]+/g, '_');
   const utf8 = encodeURIComponent(name).replace(/['()*!]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
@@ -134,9 +147,23 @@ export function fileHeaders(meta, bytes) {
     'Content-Type': inline ?? 'application/octet-stream',
     'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${utf8}`,
     'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy': "sandbox; default-src 'none'",
+    'Content-Security-Policy': html ? HTML_VIEW_POLICY : "sandbox; default-src 'none'",
   };
 }
+
+/* How a record shows an attachments field (Kyle, 2026-10-05). `preview`:
+   link (chips), inline (a contact sheet of the files, or the one file in
+   its viewer), auto (pictures in the sheet, the rest as chips), cover (the
+   one picture above the record). Unset resolves at render: auto for a
+   many-file field, inline for a single-file one. `size` is the sheet's
+   cell and the viewer's height; `fit` is fill (a uniform grid, the file
+   cropped to the cell) or trim (the whole file, the cell trimmed to it).
+   Neither ever stretches. Medium and trim are the unmarked defaults.
+   public/field-dialog-core.js mirrors the three lists (test/attachments-preview). */
+export const ATTACHMENT_PREVIEWS = ['link', 'inline', 'auto', 'cover'];
+export const ATTACHMENT_SIZES = ['small', 'medium', 'large'];
+export const ATTACHMENT_FITS = ['fill', 'trim'];
+const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit'];
 
 /* checkbox and toggle store the same boolean; the toggle names its two states (Feature #202). */
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
@@ -842,8 +869,24 @@ function normalizeSelfContainedConfig(type, config = {}, { formula = false, stri
     if (on.toLowerCase() === off.toLowerCase()) throw new WeaveError(`A toggle needs two different labels, got '${on}' for both`, 'invalid');
     return { on, off };
   }
-  // Files: one or many (Kyle, 2026-08-23 — files are not documents).
-  if (type === 'attachments') return { multiple: config.multiple == null ? true : !!config.multiple };
+  // Files: one or many (Kyle, 2026-08-23 — files are not documents), and
+  // how the record shows them (ATTACHMENT_PREVIEWS above). A cover is one
+  // picture, so only a single-file field is offered it.
+  if (type === 'attachments') {
+    const multiple = config.multiple == null ? true : !!config.multiple;
+    const out = { multiple };
+    const pick = (key, list, unmarked) => {
+      const v = config[key];
+      if (v == null || v === '' || v === unmarked) return;
+      if (!list.includes(v)) throw new WeaveError(`Invalid attachments ${key} '${v}' (${list.join(', ')})`, 'invalid');
+      out[key] = v;
+    };
+    pick('preview', ATTACHMENT_PREVIEWS, null);
+    pick('size', ATTACHMENT_SIZES, 'medium');
+    pick('fit', ATTACHMENT_FITS, 'trim');
+    if (out.preview === 'cover' && multiple) throw new WeaveError("A cover preview needs a single-file field (multiple: false)", 'invalid');
+    return out;
+  }
   // Text: literal paints the characters — a column of syntax, a regex, a
   // glob — instead of dressing inline markdown (Issue #86). Off is unmarked.
   if (type === 'text') return config.literal ? { literal: true } : {};
@@ -2732,6 +2775,7 @@ export class Weave {
       for (const k of DATE_COSTUME_KEYS) if (k !== 'format' && f[k] != null) config[k] = f[k];
       if (f.kind != null) config.kind = f.kind;
       if (f.multiple != null) config.multiple = f.multiple;
+      if (f.type === 'attachments') for (const k of ATTACHMENT_LOOK_KEYS) if (f[k] != null) config[k] = f[k];
       if (f.term != null) config.term = f.term;
       if (f.type === 'rating') { if (f.max != null) config.max = f.max; if (f.icon != null) config.icon = f.icon; if (f.color != null) config.color = f.color; }
       if (f.type === 'view') {
@@ -2746,7 +2790,7 @@ export class Weave {
        name on the other. */
     const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'viaTable', 'where', 'targetField', 'aggregate',
       'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style', 'time', 'kind', 'multiple', 'types', 'depth',
-      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term', 'link', 'state', 'description', 'fields', 'max', 'icon'];
+      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term', 'link', 'state', 'description', 'fields', 'max', 'icon', 'preview', 'size', 'fit'];
     const colorsOf = (full) => JSON.stringify((full ?? []).map((o) => ({ name: o.name, color: o.color ?? '' })));
     const fieldChanged = (fDoc, have) => {
       if (!have) return true;
@@ -5490,8 +5534,11 @@ export class Weave {
         field.config.on = on;
         field.config.off = off;
       }
-      if (field.type === 'attachments' && 'multiple' in patch.config) {
-        field.config.multiple = normalizeSelfContainedConfig('attachments', patch.config).multiple;
+      if (field.type === 'attachments' && ['multiple', ...ATTACHMENT_LOOK_KEYS].some((k) => k in patch.config)) {
+        // Every lane, merged: a null clears a look key back to its default.
+        const next = normalizeSelfContainedConfig('attachments', { ...field.config, ...patch.config });
+        field.config.multiple = next.multiple;
+        for (const k of ATTACHMENT_LOOK_KEYS) { if (next[k] == null) delete field.config[k]; else field.config[k] = next[k]; }
       }
       if (field.type === 'document' && 'kind' in patch.config) {
         const kind = normalizeSelfContainedConfig('document', patch.config).kind;
@@ -8885,7 +8932,10 @@ export class Weave {
             // A graphic says its colour out loud, ink included (Feature #235).
             if (f.config.display) out.color = f.config.color ?? 'ink';
           }
-          if (f.type === 'attachments') out.multiple = f.config.multiple !== false;
+          if (f.type === 'attachments') {
+            out.multiple = f.config.multiple !== false;
+            for (const k of ATTACHMENT_LOOK_KEYS) if (f.config[k] != null) out[k] = f.config[k];
+          }
           if (f.type === 'toggle') { out.on = f.config.on; out.off = f.config.off; }
           if (f.type === 'rating') { out.max = f.config.max; out.icon = f.config.icon; out.color = f.config.color ?? 'ink'; }
           // A lookup or a rollup that reads a rating draws its icons (#231).

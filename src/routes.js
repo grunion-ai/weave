@@ -1508,7 +1508,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
           const { meta, bytes } = weave.readFile(m[1]);
-          return out(200, bytes, fileHeaders(meta, bytes));
+          // `?view` shows an HTML upload in place under HTML_VIEW_POLICY; it changes nothing else.
+          return out(200, bytes, fileHeaders(meta, bytes, { view: rx.searchParams?.has('view') ?? false }));
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments$/)) && rx.method === 'POST') {

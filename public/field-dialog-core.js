@@ -409,6 +409,13 @@
   const DG = () => root.weaveDateGrain;
   const legalFormats = (grain) => DG().legalFormats(grain);
   const DOCUMENT_KINDS = ['markdown', 'html', 'code'];
+  /* How a record shows an attachments field (Kyle, 2026-10-05). The engine's
+     ATTACHMENT_PREVIEWS / SIZES / FITS, mirrored; test/attachments-preview
+     holds them equal. Cover is offered to a single-file field only. */
+  const ATTACHMENT_PREVIEWS = ['link', 'inline', 'auto', 'cover'];
+  const ATTACHMENT_SIZES = ['small', 'medium', 'large'];
+  const ATTACHMENT_FITS = ['fill', 'trim'];
+  const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit'];
   // Mirrors the engine's CREDENTIAL_KINDS / KEYSTORES (contract-tested).
   const CREDENTIAL_KINDS = ['apikey', 'token', 'password', 'id', 'pair'];
   const KEYSTORES = ['local', '1password', 'aws-sm', 'google-sm', 'cloudflare', 'apple-passwords'];
@@ -434,6 +441,7 @@
     date: { grain: { year: true, month: true, day: true }, format: DG().DEFAULT_FORMAT, time: false, clock: DG().DEFAULT_CLOCK, zone: 'floating', zoneName: '', pad: false, elapsed: false },
     depth: 1,
     multiple: true,           // attachments: one file or many
+    files: { preview: '', size: 'medium', fit: 'trim' }, // attachments: how the record shows them
     kind: 'markdown',         // document: markdown | html | code
     toggle: { on: 'On', off: 'Off' }, // toggle: the two state labels
     rating: { max: 5, icon: 'lucide:star', color: 'ink' }, // rating: the scale, its icon and its colour
@@ -562,6 +570,11 @@
       if (state.literal) config.literal = true;
     } else if (t === 'attachments') {
       if (state.multiple === false) config.multiple = false;
+      // The look (Kyle, 2026-10-05): unset, medium and trim are unmarked.
+      const fl = state.files ?? {};
+      if (fl.preview) config.preview = fl.preview;
+      if (fl.size && fl.size !== 'medium') config.size = fl.size;
+      if (fl.fit && fl.fit !== 'trim') config.fit = fl.fit;
     } else if (t === 'document') {
       if (state.kind && state.kind !== 'markdown') config.kind = state.kind;
     } else if (t === 'key') {
@@ -661,6 +674,7 @@
       state.rating = { max: c.max ?? 5, icon: c.icon ?? 'lucide:star', color: c.color ?? 'ink' };
     } else if (def.type === 'attachments') {
       state.multiple = c.multiple !== false;
+      state.files = { preview: c.preview ?? '', size: c.size ?? 'medium', fit: c.fit ?? 'trim' };
     } else if (def.type === 'document') {
       state.kind = c.kind ?? 'markdown';
     } else if (def.type === 'key') {
@@ -770,7 +784,10 @@
     }
     if (f.type === 'field') c.depth = f.depth ?? 1;
     if (f.type === 'text' && f.literal) c.literal = true;
-    if (f.type === 'attachments') c.multiple = f.multiple !== false;
+    if (f.type === 'attachments') {
+      c.multiple = f.multiple !== false;
+      for (const k of ATTACHMENT_LOOK_KEYS) if (f[k] != null) c[k] = f[k];
+    }
     if (f.type === 'toggle') { c.on = f.on ?? 'On'; c.off = f.off ?? 'Off'; }
     if (f.type === 'rating') { c.max = f.max ?? 5; c.icon = f.icon ?? 'lucide:star'; if (f.color && f.color !== 'ink') c.color = f.color; }
     if (f.type === 'document' && f.kind) c.kind = f.kind;
@@ -814,7 +831,11 @@
     }
     if (existing.type === 'formula' && state.expression) patch.expression = state.expression;
     if (existing.type === 'text') patch.literal = !!state.literal;
-    if (existing.type === 'attachments') patch.multiple = state.multiple !== false;
+    if (existing.type === 'attachments') {
+      patch.multiple = state.multiple !== false;
+      // Every look lane, every time: a null clears back to the default.
+      for (const k of ATTACHMENT_LOOK_KEYS) patch[k] = c[k] ?? null;
+    }
     if (existing.type === 'toggle') { patch.on = c.on; patch.off = c.off; }
     if (existing.type === 'rating') { patch.max = c.max; patch.icon = c.icon; patch.color = c.color ?? null; }
     // The shape is the field's identity; everything else is the patch.
@@ -831,6 +852,7 @@
     ICON_CATEGORIES, ICON_INVENTORY, iconGroups, categoryOf, AGGREGATES, TYPE_MIGRATIONS, typeChoices, typeLabel, sortLabels, SYSTEM_SORT, migrateState, moveItem,
     NUMBER_FORMATS, NUMBER_DISPLAYS, SPARKLINE_STYLES, CELL_COLORS, CELL_COLOR_LABELS, RATING_PRESETS, RATING_MAX, ratingMaxValue, clampRatingDefault, ratingDefaultLabel, ratingDefaultKey, CURRENCIES, DATE_FORMATS, CLOCKS, ZONES, legalFormats, dateCostume, rangeDefault, DOCUMENT_KINDS, CARDINALITIES, MAX_DEPTH, DEFAULTABLE,
     CREDENTIAL_KINDS, KEYSTORES, VIEW_SHAPES, DESCRIPTION_SIZES, blankView,
+    ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS,
     blankState, definitionFromState, stateFromDefinition, choiceItems, setChoiceDefault,
     definitionFromFieldView, editPatchConfig,
   };
